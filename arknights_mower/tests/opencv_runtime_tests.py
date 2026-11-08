@@ -1,4 +1,4 @@
-"""Keep Windows shutdown independent of native OpenCL driver cleanup."""
+"""Verify native library defaults before loading OpenCV or NumPy."""
 
 import json
 import os
@@ -9,6 +9,12 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+BLAS_THREAD_VARIABLES = (
+    "OPENBLAS_NUM_THREADS",
+    "OPENBLAS_DEFAULT_NUM_THREADS",
+    "GOTO_NUM_THREADS",
+    "OMP_NUM_THREADS",
+)
 BOOTSTRAP_PROBE = """
 import json
 import os
@@ -22,16 +28,18 @@ if sys.argv[3] == 'frozen':
 import arknights_mower
 print(json.dumps({
     'runtime': os.environ.get('OPENCV_OPENCL_RUNTIME'),
+    'blas_threads': {key: os.environ[key] for key in sys.argv[4:] if key in os.environ},
     'cv2_imported': 'cv2' in sys.modules,
+    'numpy_imported': 'numpy' in sys.modules,
 }))
 """
 
 
-def probe(script, *args, runtime=None):
+def probe(script, *args, overrides=None):
     environment = dict(os.environ, PYTHONUTF8="1")
-    environment.pop("OPENCV_OPENCL_RUNTIME", None)
-    if runtime is not None:
-        environment["OPENCV_OPENCL_RUNTIME"] = runtime
+    for key in ("OPENCV_OPENCL_RUNTIME", *BLAS_THREAD_VARIABLES):
+        environment.pop(key, None)
+    environment.update(overrides or {})
     result = subprocess.run(
         [sys.executable, "-I", "-c", script, str(ROOT), *args],
         env=environment,
@@ -46,27 +54,49 @@ def probe(script, *args, runtime=None):
     return json.loads(result.stdout)
 
 
+def probe_bootstrap(platform, deployment, *, overrides=None):
+    return probe(
+        BOOTSTRAP_PROBE,
+        platform,
+        deployment,
+        *BLAS_THREAD_VARIABLES,
+        overrides=overrides,
+    )
+
+
 @pytest.mark.parametrize("deployment", ["source", "frozen"])
-def test_windows_bootstrap_disables_opencl_before_native_import(deployment):
-    assert probe(BOOTSTRAP_PROBE, "win32", deployment) == {
+def test_windows_bootstrap_sets_defaults_before_native_imports(deployment):
+    assert probe_bootstrap("win32", deployment) == {
         "runtime": "disabled",
+        "blas_threads": {"OPENBLAS_NUM_THREADS": "1"},
         "cv2_imported": False,
+        "numpy_imported": False,
     }
 
 
 @pytest.mark.parametrize("runtime", ["", "custom-opencl-runtime"])
 def test_windows_bootstrap_preserves_explicit_opencl_runtime(runtime):
-    assert probe(BOOTSTRAP_PROBE, "win32", "frozen", runtime=runtime) == {
-        "runtime": runtime,
-        "cv2_imported": False,
-    }
+    result = probe_bootstrap(
+        "win32", "frozen", overrides={"OPENCV_OPENCL_RUNTIME": runtime}
+    )
+    assert result["runtime"] == runtime
+
+
+@pytest.mark.parametrize("variable", BLAS_THREAD_VARIABLES)
+@pytest.mark.parametrize("value", ["", "3"])
+def test_windows_bootstrap_preserves_explicit_blas_thread_settings(variable, value):
+    settings = {variable: value}
+    result = probe_bootstrap("win32", "frozen", overrides=settings)
+    assert result["blas_threads"] == settings
 
 
 @pytest.mark.parametrize("platform", ["linux", "darwin"])
-def test_non_windows_bootstrap_preserves_opencl_default(platform):
-    assert probe(BOOTSTRAP_PROBE, platform, "frozen") == {
+def test_non_windows_bootstrap_leaves_native_defaults_to_the_libraries(platform):
+    assert probe_bootstrap(platform, "frozen") == {
         "runtime": None,
+        "blas_threads": {},
         "cv2_imported": False,
+        "numpy_imported": False,
     }
 
 

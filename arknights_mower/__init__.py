@@ -8,6 +8,18 @@ if sys.platform == "win32":
     # after application resources have already closed. Helpers inherit this.
     os.environ.setdefault("OPENCV_OPENCL_RUNTIME", "disabled")
 
+    # A single OpenBLAS thread avoids per-thread memory commits on Windows.
+    if not any(
+        name in os.environ
+        for name in (
+            "OPENBLAS_NUM_THREADS",
+            "OPENBLAS_DEFAULT_NUM_THREADS",
+            "GOTO_NUM_THREADS",
+            "OMP_NUM_THREADS",
+        )
+    ):
+        os.environ["OPENBLAS_NUM_THREADS"] = "1"
+
 __version__ = "4.1.6-alpha.14"
 __release_system__ = ""
 __release_arch__ = ""
