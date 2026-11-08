@@ -125,6 +125,7 @@ def test_final_members_keep_the_absolute_existing_gap_cap(restored_group):
         "later-coalesced",
         "ungrouped-only",
         "third-group",
+        "mastery-dependency",
     ],
 )
 def test_merged_independent_return_keeps_its_own_date(restored_group, kind):
@@ -238,8 +239,22 @@ def test_merged_independent_return_keeps_its_own_date(restored_group, kind):
         ]
     if kind == "ungrouped-only":
         task.plan = {room: ["银灰"]}
+    if kind == "mastery-dependency":
+        previous = SchedulerTask(
+            now,
+            {"central": ["令"]},
+            TaskTypes.SELF_CORRECTION,
+            meta_data="副表内存收敛",
+        )
+        start = SchedulerTask(now, task_type=TaskTypes.SKILL_UPGRADE)
+        start.mastery_backup_predecessors = (previous,)
+        solver.tasks.extend([previous, start])
     for _ in range(3):
         solver._prepare_shift_cycle(task)
+        if kind == "mastery-dependency":
+            assert all(queued is not previous for queued in solver.tasks)
+            assert len(start.mastery_backup_predecessors) == 1
+            assert start.mastery_backup_predecessors[0] is task
         returning = [
             queued
             for queued in solver.tasks

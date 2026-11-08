@@ -1123,14 +1123,14 @@ def _plan_label(plan) -> str:
 
 
 def discard_completed_mastery_tasks(solver):
-    """Drop completed-plan work on the scheduler thread without game operations."""
+    """按计划状态清理已完成任务及已离开开训阶段的副表依赖。"""
     from arknights_mower.utils.mastery_db import (
         get_completed_mastery_plan,
         get_plan_by_id,
     )
 
     completed = set()
-    checked = set()
+    checked = {}
     tasks = list(solver.tasks)
     current = getattr(solver, "task", None)
     if current is not None and all(current is not task for task in tasks):
@@ -1139,13 +1139,22 @@ def discard_completed_mastery_tasks(solver):
         if task.type not in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT):
             continue
         key = getattr(task, "plan_key", None)
-        if key is None or str(key) in checked:
+        if key is None:
+            task.__dict__.pop("mastery_backup_predecessors", None)
             continue
-        checked.add(str(key))
-        try:
-            plan = get_plan_by_id(int(key))
-        except (TypeError, ValueError):
-            continue
+        if str(key) not in checked:
+            try:
+                checked[str(key)] = get_plan_by_id(int(key))
+            except (TypeError, ValueError):
+                continue
+        plan = checked[str(key)]
+        if (
+            not config.conf.enable_mastery
+            or task.type != TaskTypes.SKILL_UPGRADE
+            or plan is None
+            or plan["status"] != "idle"
+        ):
+            task.__dict__.pop("mastery_backup_predecessors", None)
         if plan and plan["status"] == "completed":
             completed.add(str(key))
 
@@ -1262,6 +1271,9 @@ def _schedule_collect(solver, plan, execute_time, tier=None):
     _upsert_skill_upgrade_task(
         solver, execute_time, meta_data=label, plan_key=str(plan["id"])
     )
+    task = _find_plan_task(solver, str(plan["id"]))
+    if task is not None:
+        task.__dict__.pop("mastery_backup_predecessors", None)
 
 
 def _schedule_scan_start(solver, plan, step_level=None):

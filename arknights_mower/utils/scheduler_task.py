@@ -118,6 +118,38 @@ class TaskScope(Enum):
     REPLAN = "replan"
 
 
+def retain_mastery_backup_tasks(tasks):
+    """补回尚未解除的副表前置，返回过期清理须保留的原任务身份。"""
+    predecessors = {
+        id(previous): previous
+        for task in list(tasks)
+        for previous in getattr(task, "mastery_backup_predecessors", ())
+    }
+    pending_ids = {id(task) for task in tasks}
+    tasks.extend(
+        previous for key, previous in predecessors.items() if key not in pending_ids
+    )
+    return set(predecessors)
+
+
+def resolve_mastery_backup_tasks(tasks, predecessors, replacement=None):
+    """仅在前置完成或其工作被合并时，解除依赖或转交给最终换人任务。"""
+    resolved = {id(previous) for previous in predecessors}
+    for task in tasks:
+        previous = getattr(task, "mastery_backup_predecessors", ())
+        remaining = tuple(item for item in previous if id(item) not in resolved)
+        if len(previous) == len(remaining):
+            continue
+        if replacement is not None and all(
+            item is not replacement for item in remaining
+        ):
+            remaining += (replacement,)
+        if remaining:
+            task.mastery_backup_predecessors = remaining
+        else:
+            task.__dict__.pop("mastery_backup_predecessors", None)
+
+
 def replan_update_tasks(saved):
     """更新重启保留专项任务、未完成操作和依赖，再用空任务重建普通安排。"""
     if not saved:
@@ -156,6 +188,7 @@ def replan_update_tasks(saved):
     )
     result = dict(saved)
     tasks = list(saved.get("tasks", ()))
+    retain_mastery_backup_tasks(tasks)
     retained = [
         task
         for task in tasks
@@ -188,17 +221,13 @@ def task_view(tasks, scope, op_data=None):
         return list(tasks)
     if scope == TaskScope.DISPATCH:
         blocked = blocked_run_order_ids(tasks, op_data)
-        pending_ids = {id(task) for task in tasks}
         return [
             task
             for task in tasks
             if not getattr(task, "execution_failure", None)
             and not getattr(task, "startup_observation_pending", False)
             and not getattr(task, "maintenance_preparation_pending", False)
-            and not any(
-                id(previous) in pending_ids
-                for previous in getattr(task, "mastery_backup_predecessors", ())
-            )
+            and not getattr(task, "mastery_backup_predecessors", ())
             and id(task) not in blocked
         ]
     if scope == TaskScope.REPLAN:
