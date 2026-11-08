@@ -8,15 +8,17 @@ import numpy as np
 
 from arknights_mower.data import stage_data_full
 from arknights_mower.utils import config, rapidocr
-from arknights_mower.utils.activity_stage import (
-    resolve_activity_stage as resolve_stage,
-)
 from arknights_mower.utils.path import resolve_config_path
 from arknights_mower.utils.scene import Scene
 
 
 def normalize_activity_text(text):
     return re.sub(r"\s+", "", str(text))
+
+
+def chapter_kind(stage):
+    parts = stage.upper().split("-")
+    return "ex" if "EX" in parts else "s" if "S" in parts else "normal"
 
 
 def activity_shop(activity):
@@ -30,7 +32,34 @@ def activity_shop(activity):
 
 
 def resolve_activity_stage(target):
-    return resolve_stage(target, stage_data_full, activity_shop)
+    stages = list(stage_data_full)
+    exact = next((s for s in stages if target in (s.get("id"), s.get("name"))), None)
+    if exact is not None:
+        return exact
+    match = re.fullmatch(r"([A-Z0-9]+)-(EX|S)-\d+", target)
+    if match is None:
+        return None
+    related = [
+        s
+        for s in stages
+        if s.get("stageType") == "ACTIVITY"
+        and (s.get("id") or "").startswith(match[1] + "-")
+    ]
+    activities = {s.get("zoneNameSecond") for s in related}
+    if len(activities) != 1:
+        return None
+    activity = next(iter(activities))
+    title = activity_shop(activity).get("chapters", {}).get(chapter_kind(target))
+    if not title:
+        return None
+    return {
+        "id": target,
+        "name": target,
+        "stageType": "ACTIVITY",
+        "zoneNameSecond": activity,
+        "subTitle": title,
+        "endTs": related[0].get("endTs"),
+    }
 
 
 class ActivityNavigation:

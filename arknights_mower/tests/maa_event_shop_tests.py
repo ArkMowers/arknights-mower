@@ -1,6 +1,5 @@
 import json
 from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import MagicMock, call
 
 import pytest
@@ -57,78 +56,6 @@ def test_automatic_plan_selection_and_legacy_settings(navigation, manager):
     assert shop.select_shop(manager, 150) == ENTRY
     navigation.unlink()
     assert shop.activity_shops(150) == []
-
-
-@pytest.fixture
-def ss_chapter_plan(navigation, manager, monkeypatch):
-    current = json.loads(
-        (Path(__file__).parents[1] / "data/event_shop.json").read_text("utf-8")
-    )[0]
-    current = {**current, "start_ts": 100, "end_ts": 200}
-    navigation.write_text(json.dumps([current]))
-    stages = [
-        {"id": "TL-1", "stageType": "ACTIVITY", "zoneNameSecond": current["activity"]}
-    ]
-    monkeypatch.setattr(shop, "stage_data_full", stages)
-
-    def select(code):
-        data = yaml.safe_load(manager.WEEKLY_PLANS_FILE.read_text())
-        data["plans"]["活动"] = [{"weekday": "周一", "stage": [code]}]
-        manager.WEEKLY_PLANS_FILE.write_text(yaml.safe_dump(data, allow_unicode=True))
-
-    return current, stages, select
-
-
-@pytest.mark.parametrize("code", ["TL-1", "TL-EX-1", "TL-S-1"])
-def test_only_current_ss_chapter_stage_qualifies_without_its_stage_row(
-    ss_chapter_plan, manager, code
-):
-    current, _, select = ss_chapter_plan
-    select(code)
-    assert shop.select_shop(manager, 150) == current
-    assert shop.weekly_plan_uses_activity(manager, current["activity"])
-    assert shop.select_shop(manager, 200) is None
-
-
-@pytest.mark.parametrize(
-    "fault", ["unrelated", "ambiguous", "missing_chapter", "other_owner"]
-)
-def test_unresolved_chapter_stage_does_not_qualify(
-    ss_chapter_plan, navigation, manager, fault
-):
-    current, stages, select = ss_chapter_plan
-    select("OTHER-EX-1" if fault == "unrelated" else "TL-EX-1")
-    if fault == "ambiguous":
-        stages.append({**stages[0], "id": "TL-2", "zoneNameSecond": "其他活动"})
-    elif fault == "missing_chapter":
-        current["chapters"].pop("ex")
-        navigation.write_text(json.dumps([current]))
-    elif fault == "other_owner":
-        stages.append({**stages[0], "id": "TL-EX-1", "zoneNameSecond": "其他活动"})
-    assert shop.select_shop(manager, 150) is None
-
-
-def test_stage_code_without_id_still_qualifies(ss_chapter_plan, manager):
-    current, stages, select = ss_chapter_plan
-    stages[0]["code"] = stages[0].pop("id")
-    select("TL-1")
-    assert shop.select_shop(manager, 150) == current
-
-
-@pytest.mark.parametrize("code", ["TL-EX-1", "TL-S-1"])
-def test_chapter_only_plan_passes_admission_again_before_maa_submission(
-    ss_chapter_plan, scheduler, monkeypatch, code
-):
-    current, _, select = ss_chapter_plan
-    select(code)
-    setup_shop(scheduler)
-    navigate = MagicMock(return_value=True)
-    monkeypatch.setattr(EventShopNavigation, "run", navigate)
-    scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=2))
-    navigate.assert_called_once_with(current)
-    scheduler.MAA.append_task.assert_called_once_with(
-        "Custom", shop.shop_params(base_schedule.config.conf.maa_event_shop)
-    )
 
 
 @pytest.mark.parametrize(
@@ -553,3 +480,37 @@ def test_legacy_shop_is_classified_only_from_matching_selected_stage_data(
     legacy["start_ts"] = 90
     navigation.write_text(json.dumps([legacy]))
     assert shop.activity_shops(150) == []
+
+
+@pytest.mark.parametrize("code", ["TL-EX-1", "TL-S-1"])
+def test_unrecorded_chapter_plan_does_not_start_shop(
+    navigation, manager, scheduler, monkeypatch, code
+):
+    from pathlib import Path
+
+    current = json.loads(
+        (Path(__file__).parents[1] / "data/event_shop.json").read_text("utf-8")
+    )[0]
+    current = {**current, "start_ts": 100, "end_ts": 200}
+    navigation.write_text(json.dumps([current]))
+    monkeypatch.setattr(
+        shop,
+        "stage_data_full",
+        [
+            {
+                "id": "TL-1",
+                "stageType": "ACTIVITY",
+                "zoneNameSecond": current["activity"],
+            }
+        ],
+    )
+    data = yaml.safe_load(manager.WEEKLY_PLANS_FILE.read_text())
+    data["plans"]["活动"] = [{"weekday": "周一", "stage": [code]}]
+    manager.WEEKLY_PLANS_FILE.write_text(yaml.safe_dump(data, allow_unicode=True))
+    assert shop.select_shop(manager, 150) is None
+    setup_shop(scheduler)
+    navigate = MagicMock(return_value=True)
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
+    scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=1))
+    navigate.assert_not_called()
+    scheduler.MAA.append_task.assert_not_called()
