@@ -385,6 +385,26 @@ function recruitmentCopyIndices(node) {
   return key != null ? items.value.find((item) => item.key === key)?.recruitSlot?.indices : null
 }
 
+function logCopyBounds(node) {
+  const bounds = document.createRange()
+  bounds.selectNodeContents(node)
+  if (node.getAttribute('data-log-display-substitution') != null) {
+    const time = node.querySelector('.log-stamp__time')
+    if (time) bounds.setStart(time, 0)
+  }
+  return bounds
+}
+
+function isCompleteLogText(node, text) {
+  return (
+    node &&
+    (node.textContent === text ||
+      (node.getAttribute('data-log-display-substitution') != null &&
+        document.createRange &&
+        logCopyBounds(node).toString() === text))
+  )
+}
+
 function copyScopedSelection(selection, range, fragment) {
   const selectedRecruitment = Array.from(
     fragment.querySelectorAll?.('[data-recruit-copy]') ?? []
@@ -447,9 +467,11 @@ function copyScopedSelection(selection, range, fragment) {
   const live = new Map(
     Array.from(output.value.querySelectorAll?.('[data-log-key][data-log-source]') ?? [], (node) => [
       node.getAttribute('data-log-key'),
-      node.textContent
+      node
     ])
   )
+  const isComplete = (node) =>
+    isCompleteLogText(live.get(node.getAttribute('data-log-key')), node.textContent)
   const recruitSummaries = new Map(
     selectedRecruitment.length
       ? Array.from(output.value.querySelectorAll('[data-recruit-copy]'), (node) => [
@@ -481,7 +503,7 @@ function copyScopedSelection(selection, range, fragment) {
   const partialDetails = new Set()
   const partialKeys = new Set(
     Array.from(fragment.querySelectorAll?.('[data-log-rescue-mirror]') ?? [])
-      .filter((node) => node.textContent !== live.get(node.getAttribute('data-log-key')))
+      .filter((node) => !isComplete(node))
       .map((node) => node.getAttribute('data-log-rescue-mirror'))
   )
   const full = new Map(),
@@ -542,7 +564,7 @@ function copyScopedSelection(selection, range, fragment) {
       return
     }
     const copyIndices = facilityCopyIndices(node)
-    if (copyIndices && node.textContent === live.get(node.getAttribute('data-log-key'))) {
+    if (copyIndices && isComplete(node)) {
       for (const index of copyIndices) add(byIndex[index])
       return
     }
@@ -552,7 +574,7 @@ function copyScopedSelection(selection, range, fragment) {
         (ownedKeys.has(key) || partialKeys.has(key) || partialRecruitSources.has(key))
       )
         return
-      if (node.textContent === live.get(node.getAttribute('data-log-key'))) add(key)
+      if (isComplete(node)) add(key)
       else pieces.push({ index: catalog.get(key).index, order: pieces.length, text: plain(node) })
       return
     }
@@ -566,10 +588,7 @@ function copyScopedSelection(selection, range, fragment) {
         })
       return
     }
-    if (
-      node.classList?.contains('log-reset-group') &&
-      node.textContent === live.get(node.getAttribute('data-log-key'))
-    ) {
+    if (node.classList?.contains('log-reset-group') && isComplete(node)) {
       for (const record of node.querySelectorAll?.('[data-log-key]') ?? [])
         add(record.getAttribute('data-log-key'))
       return
@@ -603,15 +622,10 @@ function copySourceText(event) {
   )
   let coversComplete = complete && selection.toString() === complete.textContent
   if (complete && !coversComplete && range.compareBoundaryPoints && document.createRange) {
-    const bounds = document.createRange()
-    bounds.selectNodeContents(complete)
-    const time =
-      complete.getAttribute('data-log-display-substitution') != null
-        ? complete.querySelector('.log-stamp__time')
-        : null
-    if (time) bounds.setStart(time, 0)
+    const bounds = logCopyBounds(complete)
     coversComplete =
-      (time && selection.toString() === bounds.toString()) ||
+      (complete.getAttribute('data-log-display-substitution') != null &&
+        selection.toString() === bounds.toString()) ||
       (range.compareBoundaryPoints(0, bounds) <= 0 && range.compareBoundaryPoints(2, bounds) >= 0)
   }
   if (coversComplete) {
@@ -674,15 +688,12 @@ function copySourceText(event) {
     'log-sr',
     'log-inventory__toggle'
   ]
-  const completeForecasts = new Map(
+  const sourceNodes = new Map(
     Array.from(
       output.value?.querySelectorAll?.(
         '.log-line[data-log-source], .log-reset-group[data-log-source], .log-inventory[data-log-source], .log-arrangement[data-log-source], .log-facility-heading[data-log-source]'
       ) ?? []
-    ).map((line) => [
-      line.getAttribute('data-log-key'),
-      { text: line.textContent, source: line.getAttribute('data-log-source') }
-    ])
+    ).map((line) => [line.getAttribute('data-log-key'), line])
   )
   function plainText(node) {
     if (node.nodeType === 3) return node.textContent
@@ -696,8 +707,9 @@ function copySourceText(event) {
       partialDetailKeys.has(node.getAttribute?.('data-log-key'))
     )
       return ''
-    const forecast = completeForecasts.get(node.getAttribute?.('data-log-key'))
-    if (forecast && node.textContent === forecast.text) return `${forecast.source}\n`
+    const source = sourceNodes.get(node.getAttribute?.('data-log-key'))
+    if (isCompleteLogText(source, node.textContent))
+      return `${source.getAttribute('data-log-source')}\n`
     if (
       ignored.some(
         (name) =>

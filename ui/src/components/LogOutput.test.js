@@ -1853,6 +1853,7 @@ describe('explicit grouped observations', () => {
       const operator = '凯尔希·思衡托'
       const product = { name: '家具零件_碳', item: '家具零件' }
       const source = `2026-11-05 14:00:00 INFO [[operator:${operator}]]加工${product.name}${detail}`
+      const nextSource = '2026-11-05 14:00:01 INFO 确认库存'
       const metadata =
         event.type === 'workshop-material'
           ? { ...event, ...product }
@@ -1866,9 +1867,9 @@ describe('explicit grouped observations', () => {
               ]
             }
       const page = mount({
-        lines: [{ text: source, room: 'factory', agents: [operator], event: metadata }]
+        lines: [{ text: source, room: 'factory', agents: [operator], event: metadata }, nextSource]
       })
-      const row = page.rows()[0]
+      const [row, nextRow] = page.rows()
       const recipeItems = all(row).filter(
         (entry) =>
           hasClass(entry, 'log-token--item') && !hasClass(entry, 'log-token--inventory-change')
@@ -1944,6 +1945,49 @@ describe('explicit grouped observations', () => {
       copy(eventCopy)
       expect(eventCopy.clipboardData.setData).not.toHaveBeenCalled()
       expect(eventCopy.preventDefault).not.toHaveBeenCalled()
+
+      const container = { nodeType: 1, closest: () => null }
+      const nextDomRow = {
+        nodeType: 1,
+        textContent: text(nextRow),
+        getAttribute: (name) => nextRow.props[name] ?? null
+      }
+      root.contains = (candidate) => candidate === container
+      root.querySelectorAll = () => [domRow, nextDomRow]
+      vi.stubGlobal('getSelection', () => ({
+        rangeCount: 1,
+        isCollapsed: false,
+        toString: () => `${selectedText}\n${nextDomRow.textContent}`,
+        getRangeAt: () => ({
+          commonAncestorContainer: container,
+          cloneContents: () => ({
+            nodeType: 11,
+            querySelector: () => ({}),
+            childNodes: [
+              {
+                ...domRow,
+                textContent: selectedText,
+                childNodes: [{ nodeType: 3, textContent: selectedText }],
+                classList: { contains: (name) => name === 'log-line' }
+              },
+              nextDomRow
+            ]
+          })
+        })
+      }))
+      copy(eventCopy)
+      expect(eventCopy.clipboardData.setData).toHaveBeenCalledExactlyOnceWith(
+        'text/plain',
+        `碳 → 家具零件\n${nextSource}`
+      )
+
+      selectedText = textFromStamp
+      eventCopy.clipboardData.setData.mockClear()
+      copy(eventCopy)
+      expect(eventCopy.clipboardData.setData).toHaveBeenCalledExactlyOnceWith(
+        'text/plain',
+        `${source}\n${nextSource}`
+      )
     }
   )
 
