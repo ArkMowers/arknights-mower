@@ -16,7 +16,7 @@ export function planMowerAlphaMetadata(actual:MowerSchedulingData,queue:MowerTas
  actual.refreshIdleDormSearch()
  const locked=queue.tasks.filter(t=>t.productShiftLocked),names=new Set(locked.flatMap(t=>[...t.productLockNames])),slots=new Set(locked.flatMap(t=>[...t.productLockSlots]))
  const groups=new Set([...names].map(n=>actual.operators[n]?.group??'').filter(Boolean)),existing:MowerReturnTargets={}
- if(actual.planConditions.some(Boolean))for(const task of queue.tasks)if(task.type===T.SHIFT_ON)for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{if(!['Current','Free',''].includes(name))existing[name]=[room,index]})
+ if(actual.planConditions.some(Boolean))for(const task of queue.tasks)if(task.type===T.SHIFT_ON)for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&(!room.startsWith('dorm')||actual.operators[name]?.room.startsWith('dorm')))existing[name]=[room,index]})
  queue.removeDerived(true)
  const reserved=new Set(queue.tasks.filter(t=>t.type!==T.FILL_DORM).flatMap(t=>[...mowerArrangementResources(t.plan).slots].filter(s=>s.startsWith('dorm'))))
  const vacancies=new Set(actual.dorms.filter(b=>!b.name&&!reserved.has(alphaPosition(...b.position))&&actual.effectiveFreeSlot(b)&&!actual.currentOperator(...b.position)).map(b=>alphaPosition(...b.position)))

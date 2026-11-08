@@ -1,10 +1,23 @@
 import {mowerRetainedBedAllowsReturn,mowerRetainedRecoveryMayReturn} from './mowerRetainedRecovery'
 // Metadata may rebuild ordinary tasks, but retained physical work owns its remaining resources.
 import type {MowerSchedulingData} from './mowerSchedulingData'
-import {MOWER_TASK_TYPES as T,type MowerTask} from './mowerTaskQueue'
+import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {alphaPosition} from './mowerAlphaDorm'
 
 export type MowerDependencyReturnAdmission=(data:MowerSchedulingData,retained:MowerTask,candidate:MowerTask,pending:readonly MowerTask[])=>boolean
+
+function removeDependentMigrations(data:MowerSchedulingData,plan:MowerTaskPlan,removed:Set<string>):void {
+ let changed=true
+ while(changed){
+  changed=false
+  for(const [room,row] of Object.entries(plan))row.forEach((name,index)=>{
+   if(['Current','Free',''].includes(name))return
+   const op=data.operators[name],sourceOwner=op?.currentRoom&&(!op.currentRoom.startsWith('dorm')||room.startsWith('dorm'))&&(op.currentRoom!==room||op.currentIndex!==index)?data.plan[op.currentRoom]?.[op.currentIndex]:undefined
+   if(sourceOwner&&removed.has(sourceOwner)){row[index]='Current';removed.add(name);changed=true}
+  })
+ }
+ for(const [room,row] of Object.entries(plan))if(row.every(name=>name==='Current'||name===''))delete plan[room]
+}
 
 /** Admit only derived moves independent of failed or resumed remaining arrangements. */
 export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly MowerTask[],candidates:MowerTask[],dependencyReturn?:MowerDependencyReturnAdmission):MowerTask[]{
@@ -18,16 +31,7 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
     if(actor&&(data.waitingRecoveryNames.has(actor)||waitingGroups.has(data.operators[actor]?.group))){row[index]='Current';removed.add(actor)}
    })
   }
-  let changed=true
-  while(changed){
-   changed=false
-   for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
-    if(['Current','Free',''].includes(name))return
-    const op=data.operators[name],sourceOwner=op?.currentRoom&&!op.currentRoom.startsWith('dorm')&&(op.currentRoom!==room||op.currentIndex!==index)?data.plan[op.currentRoom]?.[op.currentIndex]:undefined
-    if(sourceOwner&&removed.has(sourceOwner)){row[index]='Current';removed.add(name);changed=true}
-   })
-  }
-  for(const [room,row] of Object.entries(task.plan))if(row.every(name=>name==='Current'||name===''))delete task.plan[room]
+  removeDependentMigrations(data,task.plan,removed)
   return Object.keys(task.plan).length>0
  })
  const retained=pending.filter(task=>task.retainsExecution)
@@ -61,7 +65,7 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
   }))):new Set<string>()
   const memberGroups=new Map<string,string[]>()
   for(const group of returningGroups)for(const name of data.shiftGroupMembers(group))memberGroups.set(name,[...(memberGroups.get(name)??[]),group])
-  const blockedGroups=new Set<string>()
+  const blockedGroups=new Set<string>(),removed=new Set<string>()
   for(const [room,row] of Object.entries(task.plan)){
    row.forEach((name,index)=>{
     if(name==='Current'||name==='')return
@@ -73,15 +77,16 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
      if(task.type===T.SHIFT_ON&&returning&&name===actor&&room===returning.room&&index===returning.index&&mowerRetainedBedAllowsReturn(data,retained,actor))return false
      return !(actor!==undefined&&memberGroups.get(actor)?.some(group=>mowerRetainedRecoveryMayReturn(data,retained,group)))
     })
-    if(conflict){row[index]='Current';for(const group of memberGroups.get(actor??'')??[])blockedGroups.add(group)}
+    if(conflict){row[index]='Current';if(actor)removed.add(actor);for(const group of memberGroups.get(actor??'')??[])blockedGroups.add(group)}
    })
    if(row.every(name=>name==='Current'||name===''))delete task.plan[room]
   }
   // A partial return must not escape the same group's recovery constraints.
   if(blockedGroups.size)for(const [room,row] of Object.entries(task.plan)){
-   row.forEach((name,index)=>{const actor=name==='Free'?releasedBySlot.get(alphaPosition(room,index))??data.currentOperator(room,index)?.name:name;if(actor&&memberGroups.get(actor)?.some(group=>blockedGroups.has(group)))row[index]='Current'})
+   row.forEach((name,index)=>{const actor=name==='Free'?releasedBySlot.get(alphaPosition(room,index))??data.currentOperator(room,index)?.name:name;if(actor&&memberGroups.get(actor)?.some(group=>blockedGroups.has(group))){row[index]='Current';removed.add(actor)}})
    if(row.every(name=>name==='Current'||name===''))delete task.plan[room]
   }
+  removeDependentMigrations(data,task.plan,removed)
   // The proof covers the complete candidate, so another reservation cannot trim it.
   if(releasedDependencies.size&&JSON.stringify(task.plan)!==JSON.stringify(originalPlan)){task.plan=originalPlan;return false}
   if(task.type===T.RELEASE_DORM){

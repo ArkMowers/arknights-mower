@@ -54,7 +54,7 @@ export function planMowerMetadata(data:MowerSchedulingData,queue:MowerTaskQueue,
  if(data.alpha){planMowerAlphaMetadata(data,queue,planMowerMoodLimitReleases(data,queue.tasks),dependencyReturn);return}
  if(data.policy.experimentalDormLogic)throw new Error('Experimental product locks and dorm projection require their source port')
  const existingTargets:MowerReturnTargets={}
- if(data.planConditions.some(Boolean))for(const task of queue.tasks)if(task.type===T.SHIFT_ON)for(const [room,names] of Object.entries(task.plan))for(const [index,name] of names.entries())if(!['Current','Free',''].includes(name))existingTargets[name]=[room,index]
+ if(data.planConditions.some(Boolean))for(const task of queue.tasks)if(task.type===T.SHIFT_ON)for(const [room,names] of Object.entries(task.plan))for(const [index,name] of names.entries())if(!['Current','Free',''].includes(name)&&(!room.startsWith('dorm')||data.operators[name]?.room.startsWith('dorm')))existingTargets[name]=[room,index]
  queue.removeDerived()
  const limited=planMowerMoodLimitReleases(data),now=data.nowMicros
  let minimumRest=Infinity

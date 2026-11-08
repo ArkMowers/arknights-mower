@@ -2079,7 +2079,8 @@ def generate_plan_by_drom(
                     if existing_targets and agent in existing_targets:
                         t_room, t_index = existing_targets[agent]
                         if (
-                            t_room in op_data.plan
+                            (not t_room.startswith("dorm") or o.room.startswith("dorm"))
+                            and t_room in op_data.plan
                             and t_index < len(op_data.plan[t_room])
                             and (
                                 t_room not in plan
@@ -2279,6 +2280,11 @@ def plan_metadata(
                 for room, agents in t.plan.items():
                     for idx, name in enumerate(agents):
                         if name not in ("Current", "Free", ""):
+                            op = op_data.operators.get(name)
+                            if room.startswith("dorm") and (
+                                op is None or not op.room.startswith("dorm")
+                            ):
+                                continue
                             existing_targets[name] = (room, idx)
     previous_returns = {}
     for task in tasks:
