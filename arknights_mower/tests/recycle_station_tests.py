@@ -173,6 +173,9 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver.performance_profile = SimpleNamespace(
         transition_timeout=1, screenshot_interval=100
     )
+    solver._arrange_room.side_effect = MethodType(
+        BaseSchedulerSolver._arrange_room, solver
+    )
     solver._complete_room_arrangement.side_effect = MethodType(
         BaseSchedulerSolver._complete_room_arrangement, solver
     )

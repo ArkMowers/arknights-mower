@@ -214,6 +214,7 @@ def test_arrangement_gate_blocks_both_slots_only_for_current_observation(
     solver._train_mastery_active.return_value = False
     solver._train_protected.return_value = False
     for method in (
+        "_arrange_room",
         "_protected_training_slots",
         "_protected_training_names",
         "_suppress_train_arrangement",

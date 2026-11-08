@@ -75,9 +75,13 @@ def test_accept_order_debounce_when_initial_frame_has_buff():
 @pytest.mark.parametrize(
     ("room", "label"), [("room_1_1", "B101"), ("room_bad", "room_bad")]
 )
-def test_accept_order_passes_known_room_and_device_to_order_recognition(room, label):
+@pytest.mark.parametrize("last_room", [None, "room_2_1"])
+def test_accept_order_passes_known_room_and_device_to_order_recognition(
+    room, label, last_room
+):
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.task = SimpleNamespace(type=TaskTypes.RUN_ORDER, meta_data=room)
+    solver.last_room = last_room
     solver.device = object()
     solver._cache_facility_state_from_current_page = MagicMock()
     solver.order_reader = TradingOrder()

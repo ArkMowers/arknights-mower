@@ -18450,16 +18450,19 @@ class BaseSchedulerSolver(
             self._cache_facility_state_from_current_page(task.meta_data, "trade")
             if room is None:
                 room = task.meta_data
-        if not isinstance(room, str) or not re.fullmatch(r"room_[1-3]_[1-3]", room):
-            room = getattr(self, "last_room", "")
+        log_room = room
+        if not isinstance(log_room, str) or not re.fullmatch(
+            r"room_[1-3]_[1-3]", log_room
+        ):
+            log_room = getattr(self, "last_room", "")
         label = (
-            facility_label(room, getattr(self, "op_data", None))
-            if isinstance(room, str) and re.fullmatch(r"room_[1-3]_[1-3]", room)
+            facility_label(log_room, getattr(self, "op_data", None))
+            if isinstance(log_room, str) and re.fullmatch(r"room_[1-3]_[1-3]", log_room)
             else "贸易站"
         )
         log_extra = (
-            {"log_room": room}
-            if isinstance(room, str) and re.fullmatch(r"room_[1-3]_[1-3]", room)
+            {"log_room": log_room}
+            if isinstance(log_room, str) and re.fullmatch(r"room_[1-3]_[1-3]", log_room)
             else {}
         )
         wait = 0

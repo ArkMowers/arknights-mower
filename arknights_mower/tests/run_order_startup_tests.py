@@ -2,8 +2,9 @@
 
 import copy
 import pickle
+from contextlib import ExitStack
 from datetime import timedelta
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 
@@ -179,10 +180,14 @@ def test_initial_mood_scan_reuses_only_unchanged_strict_startup_observation(
 
     solver.get_agent_from_room.side_effect = low_mood
     solver._check_startup_run_orders()
-    assert solver.get_agent_from_room.call_args_list[0].kwargs == {
+    read_options = solver.get_agent_from_room.call_args_list[0].kwargs
+    assert read_options == {
         "force_mood": True,
         "strict_observation": True,
+        "facility_observation": {},
+        "facility_observation_scope": ANY,
     }
+    assert isinstance(read_options["facility_observation_scope"], ExitStack)
     operator = solver.op_data.operators["孑"]
     if changed:
         operator.current_room = ""

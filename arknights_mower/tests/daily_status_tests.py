@@ -364,9 +364,11 @@ class DailyStatusTests(unittest.TestCase):
             activity = self.get()["activities"]
             self.assertEqual(activity["clue"]["scheduled_count"], 2)
             self.assertEqual(activity["clue"]["blocked_count"], 1)
-            self.assertEqual(activity["clue"]["next_task_at"], first.time.isoformat())
             self.assertEqual(
-                activity["recruit"]["last_checked_at"], checked.isoformat()
+                datetime.fromisoformat(activity["clue"]["next_task_at"]), first.time
+            )
+            self.assertEqual(
+                datetime.fromisoformat(activity["recruit"]["last_checked_at"]), checked
             )
             self.assertNotIn("done", activity["recruit"].values())
             self.assertNotIn("last_checked_at", activity["stage-plan"])

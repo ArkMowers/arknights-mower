@@ -443,6 +443,7 @@ def test_original_target_conflict_completes_without_delaying_queue(
     solver.op_data.plan = {"dormitory_1": [SimpleNamespace(agent="")]}
     solver.op_data.get_current_operator = lambda room, index: actual
     solver.op_data.group_is_resting = lambda group: True
+    solver.op_data.shift_group_members = lambda group: ["银灰"]
     solver.op_data.commit_group_shifts = Mock()
     solver.op_data.is_dynamic_dorm_position = lambda *args, **kwargs: False
     solver._resume_waiting_group_shifts = Mock()
