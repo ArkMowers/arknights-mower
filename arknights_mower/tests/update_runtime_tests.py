@@ -523,13 +523,18 @@ class RuntimeRegistrationTests(unittest.TestCase):
     ):
         initial = runtime.read_json(self.registration.path)
         failed = threading.Event()
+        retry_allowed = threading.Event()
         recovered = threading.Event()
         real_replace = os.replace
 
         def replace(source, destination):
-            if Path(destination) == self.registration.path and not failed.is_set():
+            if Path(destination) != self.registration.path:
+                return real_replace(source, destination)
+            if not failed.is_set():
                 failed.set()
                 raise OSError("registration disk temporarily unavailable")
+            if not retry_allowed.wait(10):
+                raise TimeoutError("test did not release heartbeat publication")
             real_replace(source, destination)
             recovered.set()
 
@@ -538,9 +543,15 @@ class RuntimeRegistrationTests(unittest.TestCase):
             patch.object(threading, "excepthook"),
             self.assertLogs("arknights_mower.utils.log", level="ERROR") as logged,
         ):
-            self.assertTrue(failed.wait(3), "heartbeat never attempted publication")
-            self.assertEqual(runtime.read_json(self.registration.path), initial)
-            self.assertTrue(recovered.wait(3), "heartbeat did not retry publication")
+            # 心跳保留真实文件同步，先核验旧登记，再放行重试发布。
+            try:
+                self.assertTrue(
+                    failed.wait(10), "heartbeat never attempted publication"
+                )
+                self.assertEqual(runtime.read_json(self.registration.path), initial)
+            finally:
+                retry_allowed.set()
+            self.assertTrue(recovered.wait(10), "heartbeat did not retry publication")
         self.assertTrue(self.registration.thread.is_alive())
         self.assertGreater(
             runtime.read_json(self.registration.path)["heartbeat"], initial["heartbeat"]
