@@ -365,6 +365,12 @@ function freeCandidateNames(s:RuntimeState,data:MowerSchedulingData,forbidden:Se
  const unseen=(data.useDormFillers?[]:s.config.availableIdleOperators??[]).filter(name=>OPERATOR_MAP.has(name)&&!data.operators[name]&&!forbidden.has(name))
  return [...known.map(op=>op.name),...unseen].sort((a,b)=>(s.morale[a]??24)-(s.morale[b]??24))
 }
+/** Neutral padding belongs to the destination place, even when every filler is already resident. */
+function takeMowerFreeCandidate(data:MowerSchedulingData,free:string[],room:string,index:number):string|undefined {
+ const name=data.useDormFillers&&room.startsWith('dorm')?(free.find(name=>!isMowerDormFiller(name))??mowerDormFillerId(room,index)):free[0]
+ const selected=name?free.indexOf(name):-1;if(selected>=0)free.splice(selected,1)
+ return name
+}
 function recordMowerAlphaDormCard(s:RuntimeState,data:MowerSchedulingData,task:MowerTask,room:string,name:string):void {
  if(!data.alpha||!room.startsWith('dorm'))return
  const peers=mowerAlphaDormCandidates(data).filling
@@ -380,7 +386,7 @@ function selectConcreteNames(s:RuntimeState,room:string,names:string[],task:Mowe
  const trainee=data.currentOperator('train',0)?.name;if(trainee)forbidden.add(trainee)
  const free=freeCandidateNames(s,data,forbidden,room)
  for(const [index,name] of selected.entries())if(name==='Free'){
-  const card=data.useDormFillers&&room.startsWith('dorm')?(free.find(name=>!isMowerDormFiller(name))??mowerDormFillerId(room,index)):free[0];if(card&&free.includes(card))free.splice(free.indexOf(card),1);if(!card)throw new MowerArrangementError('Mower Free selection needs an owned idle operator: '+room+'_'+index)
+  const card=takeMowerFreeCandidate(data,free,room,index);if(!card)throw new MowerArrangementError('Mower Free selection needs an owned idle operator: '+room+'_'+index)
   selected[index]=card
  }
  if(data.useDormFillers&&room.startsWith('dorm'))selected.forEach((name,index)=>{if(isMowerDormFiller(name))selected[index]=mowerDormFillerId(room,index)})
@@ -475,7 +481,7 @@ function* arrangeRoom(s:RuntimeState,rates:RuntimeRates,room:string,names:string
  if(trainee)refreshedForbidden.add(trainee)
  free=freeCandidateNames(s,data,refreshedForbidden,room)
  for(const [index,name] of resolved.entries())if(name==='Free'){
-  const card=free.shift()
+  const card=takeMowerFreeCandidate(data,free,room,index)
   if(!card)throw new MowerArrangementError('Mower Free selection needs an owned idle operator: '+room+'_'+index)
   recordMowerAlphaDormCard(s,data,task,room,card)
   resolved[index]=card

@@ -1,3 +1,5 @@
+import {buildRiicGlobalContext} from '../engine/globalContext'
+import {simulateSchedule} from '../simulator/scheduleSimulation'
 import {runScheduleSimulationBridge} from '../workbench/scheduleSimulationBridge'
 import {mowerAlphaDormCandidates} from './mowerAlphaCandidates'
 import {getOperatorName,getOperatorAvatarUrl} from '../workbench/operatorHelpers'
@@ -128,4 +130,54 @@ it('counts neutral occupied places for an explicit roommate-count skill without 
  const recovery=evaluateDormitoryRecovery(c,0,new Map([[provider,12],...fillers.map(id=>[id,24] as [string,number])]),5000)
  expect(recovery.rates.get(provider)).toBeCloseTo(4.9)
  expect(fillers.every(id=>!recovery.rates.has(id))).toBe(true)
+})
+
+
+it('counts neutral occupants for Virtuosa resonance and the resulting dormitory recovery',()=>{
+ const c=createDefaultConfig(),provider='char_245_cello',fang='char_123_fang',fillers=[2,3,4].map(i=>mowerDormFillerId('dormitory_1',i))
+ c.controlOperatorIds=[];c.facilities.dormitories=[5];c.facilityOperatorIds.dormitories=[[provider,fang,...fillers]];c.dormitoryOccupantCount=5
+ const context=buildRiicGlobalContext(c),moods=new Map([[provider,24],[fang,12],...fillers.map(id=>[id,24] as [string,number])])
+ expect(context.silentResonance.derived).toBe(5)
+ const recovery=evaluateDormitoryRecovery(c,0,moods,5000)
+ expect(recovery.rates.get(fang)).toBeCloseTo(4.21,8)
+ expect(fillers.every(id=>!recovery.rates.has(id)&&!context.presentOperators.some(op=>op.charId===id))).toBe(true)
+})
+
+it.each(['mower-default','mower-alpha'] as const)('completes 48 hours with five Free beds and neutral occupants in %s',schedulingModel=>{
+ const ws=createDefaultWorkspace()
+ ws.mainPlan.facilities.room_1_1.type='trading';ws.mainPlan.facilities.room_1_1.product='money';ws.mainPlan.facilities.room_1_1.level=3
+ ws.mainPlan.facilities.room_1_1.slots=[{occupant:{kind:'operator',operatorId:'芬'},groupId:null,replacements:['雷蛇']}]
+ ws.mainPlan.facilities.dormitory_1.level=5
+ ws.mainPlan.facilities.dormitory_1.slots=Array.from({length:5},()=>({occupant:{kind:'free'},groupId:null,replacements:[]}))
+ const report=simulateSchedule(compileRosterSchedule(ws),{schedulingModel,sampleHours:48,maxEvents:5000,recordSegments:true})
+ expect(report.success,JSON.stringify(report.diagnostics.slice(-6))).toBe(true)
+ expect(report.observedHours).toBeCloseTo(48,8)
+ expect(report.operators.find(op=>op.operatorId==='char_123_fang')!.restHours).toBeGreaterThan(0)
+ expect(report.events.filter(event=>event.type==='shift-off').length).toBeGreaterThan(1)
+ expect(report.diagnostics.some(d=>d.code==='SIMULATION_EVENT_LIMIT'||/Free selection/.test(d.message))).toBe(false)
+ const fillers=report.operators.filter(op=>isMowerDormFiller(op.operatorId))
+ expect(fillers.reduce((sum,op)=>sum+op.restHours,0)).toBeGreaterThan(0)
+ expect(fillers.every(op=>op.workHours===0&&op.exhaustedHours===0)).toBe(true)
+})
+
+
+it('propagates actual neutral dorm occupancy into perception, thought chain, resonance and fireworks',()=>{
+ const ws=createDefaultWorkspace()
+ const occupant=(operatorId:string)=>({occupant:{kind:'operator' as const,operatorId},groupId:null,replacements:[]})
+ const rows=[['room_1_1','manufacture','char_391_rosmon'],['room_1_2','trading','char_4046_ebnhlz'],['room_1_3','trading','char_455_nothin']] as const
+ for(const [room,type,operator] of rows){Object.assign(ws.mainPlan.facilities[room],{type,product:type==='manufacture'?'gold':'money',level:3,slots:[occupant(operator)]})}
+ ws.mainPlan.conf.workaholic=rows.map(([, ,operator])=>operator)
+ ws.mainPlan.facilities.dormitory_1.level=5
+ ws.mainPlan.facilities.dormitory_1.slots=[occupant('char_245_cello'),occupant('char_123_fang'),...Array.from({length:3},()=>({occupant:{kind:'free' as const},groupId:null,replacements:[]}))]
+ const observed:number[][]=[]
+ const report=simulateSchedule(compileRosterSchedule(ws),{schedulingModel:'mower-alpha',sampleHours:1,maxEvents:2000,observeInterval:config=>{
+  const ids=config.facilityOperatorIds.dormitories[0]??[]
+  if(!ids.some(isMowerDormFiller))return
+  const global=buildRiicGlobalContext(config)
+  observed.push([ids.length,config.dormitoryOccupantCount,global.perceptionInformation.derived,global.thoughtChain.derived,global.silentResonance.derived,global.worldlyFireworks])
+  expect(global.presentOperators.some(op=>isMowerDormFiller(op.charId))).toBe(false)
+ }})
+ expect(report.success,JSON.stringify(report.diagnostics.slice(-6))).toBe(true)
+ expect(observed.length).toBeGreaterThan(0)
+ expect(observed.every(values=>JSON.stringify(values)===JSON.stringify([5,5,10,10,15,5]))).toBe(true)
 })

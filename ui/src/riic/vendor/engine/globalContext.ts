@@ -20,7 +20,7 @@ export interface EffectivePowerStations {
 }
 
 export interface RiicGlobalContext {
-  /** Physical presence, including exhausted occupants; use assignedOperators for active providers. */
+  /** Identified real occupants, including exhausted ones; neutral occupants enter physical headcounts only. Use assignedOperators for active providers. */
   presentOperators: readonly OperatorRecord[]
   assignedOperators: readonly OperatorRecord[]
   perceptionInformation: GlobalResourceValue
@@ -96,7 +96,7 @@ function deriveDirectSilentResonance(config: AppConfig, activeOperatorIds?: Read
   const details: string[] = []
   for (const ids of config.facilityOperatorIds.dormitories) {
     if (ids.includes('char_245_cello') && isActive('char_245_cello', config, activeOperatorIds)) {
-      const amount = selectedOperators(config, [...new Set(ids)]).length
+      const amount = new Set(ids.filter(Boolean)).size
       value += amount
       details.push(`塑心 +${amount}`)
     }
