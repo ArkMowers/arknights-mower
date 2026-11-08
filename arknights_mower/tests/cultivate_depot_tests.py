@@ -169,6 +169,127 @@ def test_sync_uses_each_items_latest_scan_across_partial_scan_files(
     assert stock_db.get_inventory_counts()["龙门币"] == 100
 
 
+def test_later_independent_sync_updates_scan_only_item(
+    syncer, stock_db, monkeypatch, tmp_path
+):
+    import csv
+
+    monkeypatch.setattr(module, "time", lambda: 800)
+    with (tmp_path / "depotresult.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        csv.writer(stream).writerows(
+            [
+                ["Timestamp", "Data", "json"],
+                [
+                    110,
+                    json.dumps({"龙门币": 100}),
+                    json.dumps(
+                        {"_mower_scan_started_at": 100, "_mower_scan_observed_at": 110}
+                    ),
+                ],
+            ]
+        )
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": "4001", "count": "105"}],
+        },
+    }
+    monkeypatch.setattr(
+        module,
+        "request_with_retry",
+        lambda *args, **kwargs: SimpleNamespace(json=lambda: payload),
+    )
+
+    assert syncer.start(force_inventory=True)
+    assert stock_db.get_inventory_counts()["龙门币"] == 105
+
+
+@pytest.mark.parametrize("partial", [False, True])
+@pytest.mark.parametrize(
+    "scanned,cloud,expected", [(3_000_000, 2_000_000, 2_000_000), (105, 100, 105)]
+)
+def test_scan_after_recent_sync_uses_comparison_through_real_warehouse_reader(
+    syncer, stock_db, monkeypatch, tmp_path, partial, scanned, cloud, expected
+):
+    import csv
+
+    from arknights_mower.utils import depot
+
+    clock = iter([100, 110])
+    monkeypatch.setattr(module, "time", lambda: next(clock))
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": "4001", "count": str(cloud)}],
+        },
+    }
+    monkeypatch.setattr(
+        module,
+        "request_with_retry",
+        lambda *args, **kwargs: SimpleNamespace(json=lambda: payload),
+    )
+    assert syncer.start(force_inventory=True)
+    saved = json.loads(syncer.record_path.read_text(encoding="utf-8"))
+    assert saved["_mower_inventory_observed_at"] == 100
+    assert saved["_mower_inventory_finished_at"] == 110
+    rows = [
+        ["Timestamp", "Data", "json"],
+        [
+            130,
+            json.dumps({"龙门币": scanned}),
+            json.dumps({"_mower_scan_started_at": 120, "_mower_scan_observed_at": 130}),
+        ],
+    ]
+    if partial:
+        rows.append(
+            [
+                150,
+                json.dumps({"赤金": 10}),
+                json.dumps(
+                    {"_mower_scan_started_at": 140, "_mower_scan_observed_at": 150}
+                ),
+            ]
+        )
+    with (tmp_path / "depotresult.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as stream:
+        csv.writer(stream).writerows(rows)
+    for _ in range(2):
+        depot.读取仓库()
+        assert stock_db.get_inventory_counts()["龙门币"] == expected
+
+
+@pytest.mark.parametrize(("scanned", "expected"), [(110, 110), (200, 100)])
+def test_scan_during_sync_uses_existing_difference_rule_in_actual_refresh(
+    syncer, stock_db, monkeypatch, scanned, expected
+):
+    clock = iter([100, 130])
+    monkeypatch.setattr(module, "time", lambda: next(clock))
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [{"id": "char_2027_wang", "evolvePhase": 2}],
+            "items": [{"id": "4001", "count": "100"}],
+        },
+    }
+
+    def respond(*args, **kwargs):
+        if "/cultivate/player" in str(args[1]):
+            scan = {"龙门币": scanned}
+            stock_db.save_inventory_counts(
+                scan, scanned_counts=scan, scanned_at=105, scanned_finished_at=120
+            )
+        return SimpleNamespace(json=lambda: payload)
+
+    monkeypatch.setattr(module, "request_with_retry", respond)
+    assert syncer.start(force_inventory=True)
+    assert stock_db.get_inventory_counts()["龙门币"] == expected
+
+
 @pytest.mark.parametrize("mutation", ["consume", "invalidate"])
 def test_change_during_scan_is_not_overwritten_by_the_scan_or_delayed_sync(
     syncer, stock_db, monkeypatch, tmp_path, mutation

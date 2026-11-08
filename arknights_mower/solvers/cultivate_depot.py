@@ -50,6 +50,7 @@ class cultivate:
                     ingame,
                     headers=get_sign_header(ingame, "get", body, self.sign_token),
                 ).json()
+                finished_at = time()
 
                 if isinstance(resp, dict) and resp.get("code") != 0:
                     raise ValueError(resp.get("message") or "森空岛返回的干员数据无效")
@@ -90,7 +91,11 @@ class cultivate:
                     if not valid_inventory_items(items):
                         raise ValueError("森空岛返回的库存数据无效")
                     # Use request start, not completion: a concurrent craft must win.
-                    resp = {**resp, "_mower_inventory_observed_at": observed_at}
+                    resp = {
+                        **resp,
+                        "_mower_inventory_observed_at": observed_at,
+                        "_mower_inventory_finished_at": finished_at,
+                    }
 
                 from arknights_mower.utils.growth import (
                     completed_manual_goals,
@@ -170,6 +175,7 @@ class cultivate:
                         scanned_observations=scanned_observations,
                         cloud_counts=counts,
                         cloud_at=inventory_at,
+                        cloud_finished_at=finished_at,
                         cloud_explicit_names=cloud_explicit_inventory_names(resp),
                         force_cloud=force_inventory or calibrate,
                         invalidate_missing=calibrate,

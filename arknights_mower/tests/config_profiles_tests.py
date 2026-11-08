@@ -219,41 +219,41 @@ def test_inventory_scan_observations_follow_the_inventory_profile(storage):
         conn.execute(
             "CREATE TABLE inventory_scan_observations ("
             "item_name TEXT PRIMARY KEY, count INTEGER, observed_at REAL NOT NULL, "
-            "invalidated_at REAL NOT NULL)"
+            "invalidated_at REAL NOT NULL, finished_at REAL)"
         )
         conn.execute(
-            "INSERT INTO inventory_scan_observations VALUES ('iron',17,100.5,0)"
+            "INSERT INTO inventory_scan_observations VALUES ('iron',17,100.5,0,101.5)"
         )
         conn.execute(
             "CREATE TABLE inventory_cloud_observations ("
             "item_name TEXT PRIMARY KEY, count INTEGER NOT NULL, "
-            "observed_at REAL NOT NULL, explicit INTEGER NOT NULL)"
+            "observed_at REAL NOT NULL, explicit INTEGER NOT NULL, finished_at REAL)"
         )
         conn.execute(
-            "INSERT INTO inventory_cloud_observations VALUES ('iron',18,99.5,1)"
+            "INSERT INTO inventory_cloud_observations VALUES ('iron',18,99.5,1,100)"
         )
     original = profiles.list_profiles()["active_id"]
     new = _create("第二套", ["inventory"])
     with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn, conn:
         conn.execute(
-            "UPDATE inventory_scan_observations SET count=42, observed_at=200.5"
+            "UPDATE inventory_scan_observations SET count=42, observed_at=200.5, finished_at=201.5"
         )
         conn.execute(
-            "UPDATE inventory_cloud_observations SET count=43, observed_at=199.5"
+            "UPDATE inventory_cloud_observations SET count=43, observed_at=199.5, finished_at=200"
         )
     _activate(original)
     assert _read_table(storage, "inventory_scan_observations") == [
-        ("iron", 17, 100.5, 0)
+        ("iron", 17, 100.5, 0, 101.5)
     ]
     assert _read_table(storage, "inventory_cloud_observations") == [
-        ("iron", 18, 99.5, 1)
+        ("iron", 18, 99.5, 1, 100)
     ]
     _activate(new["active_id"])
     assert _read_table(storage, "inventory_scan_observations") == [
-        ("iron", 42, 200.5, 0)
+        ("iron", 42, 200.5, 0, 201.5)
     ]
     assert _read_table(storage, "inventory_cloud_observations") == [
-        ("iron", 43, 199.5, 1)
+        ("iron", 43, 199.5, 1, 200)
     ]
 
 
@@ -1125,6 +1125,7 @@ def test_partial_cultivate_snapshot_separates_inventory_and_operators(storage):
                     "characters": [{"id": "amiya"}],
                 },
                 "_mower_inventory_observed_at": 123,
+                "_mower_inventory_finished_at": 124,
                 "_mower_player": "local",
             }
         ),
@@ -1135,6 +1136,7 @@ def test_partial_cultivate_snapshot_separates_inventory_and_operators(storage):
     assert data == {
         "data": {"items": [{"id": "iron", "count": 17}]},
         "_mower_inventory_observed_at": 123,
+        "_mower_inventory_finished_at": 124,
     }
     from arknights_mower.utils.schedule_roster import _read_roster
 
@@ -1154,6 +1156,7 @@ def test_operator_only_selection_can_be_read_by_real_depot_reader(storage, monke
                     "characters": [{"id": "amiya"}],
                 },
                 "_mower_inventory_observed_at": 123,
+                "_mower_inventory_finished_at": 124,
             }
         ),
         encoding="utf-8",
@@ -1164,7 +1167,10 @@ def test_operator_only_selection_can_be_read_by_real_depot_reader(storage, monke
     monkeypatch.setattr(depot, "get_inventory_counts", lambda: {})
     result = depot.读取仓库()
     assert isinstance(result[0], dict)
-    assert json.loads(snapshot.read_text(encoding="utf-8"))["data"]["items"] == []
+    saved = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert saved["data"]["items"] == []
+    assert "_mower_inventory_observed_at" not in saved
+    assert "_mower_inventory_finished_at" not in saved
 
 
 @pytest.mark.parametrize(

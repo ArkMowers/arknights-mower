@@ -302,7 +302,10 @@ def _merge_cultivate(incoming, current, selected):
             if key == "data":
                 continue
             group = (
-                "inventory" if key == "_mower_inventory_observed_at" else "operators"
+                "inventory"
+                if key
+                in {"_mower_inventory_observed_at", "_mower_inventory_finished_at"}
+                else "operators"
             )
             if (index == 1) == (group in selected):
                 result[key] = copy.deepcopy(value)

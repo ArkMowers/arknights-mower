@@ -2,6 +2,7 @@
 import collections
 import copy
 import json
+import math
 import pickle
 import sqlite3
 import traceback
@@ -68,10 +69,10 @@ _DB_TABLE_STMTS = (
     "item_name TEXT PRIMARY KEY, observed_at REAL NOT NULL)",
     "CREATE TABLE IF NOT EXISTS inventory_scan_observations ("
     "item_name TEXT PRIMARY KEY, count INTEGER, observed_at REAL NOT NULL DEFAULT 0,"
-    "invalidated_at REAL NOT NULL DEFAULT 0)",
+    "invalidated_at REAL NOT NULL DEFAULT 0, finished_at REAL)",
     "CREATE TABLE IF NOT EXISTS inventory_cloud_observations ("
     "item_name TEXT PRIMARY KEY, count INTEGER NOT NULL, observed_at REAL NOT NULL,"
-    "explicit INTEGER NOT NULL)",
+    "explicit INTEGER NOT NULL, finished_at REAL)",
     "CREATE TABLE IF NOT EXISTS workshop_inventory_pending ("
     "item_name TEXT PRIMARY KEY, baseline INTEGER NOT NULL, directions INTEGER NOT NULL DEFAULT 3)",
     "CREATE TABLE IF NOT EXISTS log (time INTEGER,task TEXT,level TEXT,message TEXT)",
@@ -1141,6 +1142,18 @@ def export_recycling_history(start_date, end_date):
 
 
 INVENTORY_COMPARISON_WINDOW = 30 * 60
+INVENTORY_CLOUD_DELAY_WINDOW = 5 * 60
+LMD_INCREASE_COMPARISON_LIMIT = 1_000_000
+
+
+def _inventory_finished_at(started_at, finished_at):
+    if (
+        type(finished_at) in (int, float)
+        and math.isfinite(finished_at)
+        and finished_at >= started_at > 0
+    ):
+        return finished_at
+    return None
 
 
 def save_inventory_counts(
@@ -1148,14 +1161,18 @@ def save_inventory_counts(
     *,
     scanned_counts=None,
     scanned_at=0,
+    scanned_finished_at=None,
     scanned_observations=None,
     cloud_counts=None,
     cloud_at=0,
+    cloud_finished_at=None,
     cloud_explicit_names=None,
     force_cloud=False,
     invalidate_missing=False,
     invalidation_scope=None,
 ):
+    from arknights_mower.data import key_mapping
+
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
         effective = dict(inventorys)
@@ -1178,24 +1195,39 @@ def save_inventory_counts(
         if scanned_counts is not None and scanned_at > 0:
             for name, count in scanned_counts.items():
                 if name not in scan_values or scanned_at > scan_values[name][1]:
-                    scan_values[name] = (count, scanned_at)
+                    scan_values[name] = (
+                        count,
+                        scanned_at,
+                        _inventory_finished_at(scanned_at, scanned_finished_at),
+                    )
         if scan_values:
             conn.executemany(
-                "INSERT INTO inventory_scan_observations (item_name, count, observed_at) "
-                "VALUES (?, ?, ?) ON CONFLICT(item_name) DO UPDATE SET "
-                "count = excluded.count, observed_at = excluded.observed_at "
-                "WHERE excluded.observed_at > inventory_scan_observations.observed_at "
+                "INSERT INTO inventory_scan_observations "
+                "(item_name, count, observed_at, finished_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(item_name) DO UPDATE SET "
+                "count = excluded.count, observed_at = excluded.observed_at, "
+                "finished_at = excluded.finished_at "
+                "WHERE (excluded.observed_at > inventory_scan_observations.observed_at "
+                "OR (excluded.observed_at = inventory_scan_observations.observed_at "
+                "AND excluded.count = inventory_scan_observations.count "
+                "AND inventory_scan_observations.finished_at IS NULL "
+                "AND excluded.finished_at IS NOT NULL)) "
                 "AND excluded.observed_at > inventory_scan_observations.invalidated_at",
                 [
-                    (name, count, timestamp)
-                    for name, (count, timestamp) in scan_values.items()
+                    (
+                        name,
+                        count,
+                        timestamp,
+                        _inventory_finished_at(timestamp, finished_at),
+                    )
+                    for name, (count, timestamp, finished_at) in scan_values.items()
                     if type(count) is int and count >= 0 and timestamp > 0
                 ],
             )
         scans = {
-            name: (count, timestamp, invalidated_at)
-            for name, count, timestamp, invalidated_at in conn.execute(
-                "SELECT item_name, count, observed_at, invalidated_at "
+            name: (count, timestamp, invalidated_at, finished_at)
+            for name, count, timestamp, invalidated_at, finished_at in conn.execute(
+                "SELECT item_name, count, observed_at, invalidated_at, finished_at "
                 "FROM inventory_scan_observations"
             )
             if count is not None and timestamp > invalidated_at
@@ -1208,20 +1240,31 @@ def save_inventory_counts(
         if cloud_at > 0:
             conn.executemany(
                 "INSERT INTO inventory_cloud_observations "
-                "(item_name, count, observed_at, explicit) VALUES (?, ?, ?, ?) "
+                "(item_name, count, observed_at, explicit, finished_at) VALUES (?, ?, ?, ?, ?) "
                 "ON CONFLICT(item_name) DO UPDATE SET count = excluded.count, "
-                "observed_at = excluded.observed_at, explicit = excluded.explicit "
-                "WHERE excluded.observed_at > inventory_cloud_observations.observed_at",
+                "observed_at = excluded.observed_at, explicit = excluded.explicit, "
+                "finished_at = excluded.finished_at "
+                "WHERE excluded.observed_at > inventory_cloud_observations.observed_at "
+                "OR (excluded.observed_at = inventory_cloud_observations.observed_at "
+                "AND excluded.count = inventory_cloud_observations.count "
+                "AND inventory_cloud_observations.finished_at IS NULL "
+                "AND excluded.finished_at IS NOT NULL)",
                 [
-                    (name, count, cloud_at, name in explicit_cloud)
+                    (
+                        name,
+                        count,
+                        cloud_at,
+                        name in explicit_cloud,
+                        _inventory_finished_at(cloud_at, cloud_finished_at),
+                    )
                     for name, count in (cloud_counts or {}).items()
                     if type(count) is int and count >= 0
                 ],
             )
         clouds = {
-            name: (count, timestamp, bool(explicit))
-            for name, count, timestamp, explicit in conn.execute(
-                "SELECT item_name, count, observed_at, explicit "
+            name: (count, timestamp, bool(explicit), finished_at)
+            for name, count, timestamp, explicit, finished_at in conn.execute(
+                "SELECT item_name, count, observed_at, explicit, finished_at "
                 "FROM inventory_cloud_observations"
             )
         }
@@ -1280,10 +1323,11 @@ def save_inventory_counts(
                 cloud_observation = (
                     clouds.get(name) if name in (cloud_counts or {}) else None
                 )
-                cloud, cloud_time, cloud_is_explicit = cloud_observation or (
+                cloud, cloud_time, cloud_is_explicit, cloud_end = cloud_observation or (
                     (cloud_counts or {}).get(name),
                     cloud_at,
                     name in explicit_cloud,
+                    _inventory_finished_at(cloud_at, cloud_finished_at),
                 )
                 if (
                     cloud_counts is not None
@@ -1295,6 +1339,28 @@ def save_inventory_counts(
                     from_cloud = True
                 comparison = False
                 scan = scans.get(name)
+                entry = key_mapping.get(name)
+                scan_category = entry is not None and entry[3] in {"NORMAL", "CONSUME"}
+                known_intervals = (
+                    scan is not None and scan[3] is not None and cloud_end is not None
+                )
+                use_original_comparison = (
+                    not scan_category
+                    or not known_intervals
+                    or (
+                        scan[1] <= cloud_end + INVENTORY_CLOUD_DELAY_WINDOW
+                        and cloud_time <= scan[3] + INVENTORY_CLOUD_DELAY_WINDOW
+                    )
+                )
+                if (
+                    scan_category
+                    and known_intervals
+                    and cloud_is_explicit
+                    and scan[1] > cloud_end + INVENTORY_CLOUD_DELAY_WINDOW
+                ):
+                    scanned = scan[0]
+                    source_at = scan[1]
+                    from_cloud = False
                 if (
                     scan is not None
                     and name in (cloud_counts or {})
@@ -1307,6 +1373,7 @@ def save_inventory_counts(
                     comparison = True
                 if (
                     scan is not None
+                    and use_original_comparison
                     and cloud_is_explicit
                     and type(cloud) is int
                     and cloud >= 0
@@ -1319,6 +1386,11 @@ def save_inventory_counts(
                     from_cloud = difference >= 10 and difference * 2 >= max(
                         scan[0], cloud
                     )
+                    if (
+                        name == "龙门币"
+                        and scan[0] - cloud >= LMD_INCREASE_COMPARISON_LIMIT
+                    ):
+                        from_cloud = True
                     scanned = cloud if from_cloud else scan[0]
                     source_at = max(scan[1], cloud_time)
                     comparison = True
@@ -1403,7 +1475,7 @@ def save_inventory_counts(
         if scanned_counts is None:
             observed = dict.fromkeys(effective, datetime.now().timestamp())
         elif not battle_inventory_active.is_set():
-            for name, (count, timestamp, _) in scans.items():
+            for name, (count, timestamp, _, _) in scans.items():
                 if name in effective and effective[name] == count:
                     observed[name] = max(timestamp, observed.get(name, 0))
             for name in cloud_counts or {}:

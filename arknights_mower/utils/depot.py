@@ -61,6 +61,20 @@ def cloud_explicit_inventory_names(payload):
     }
 
 
+def cloud_inventory_finished_at(payload):
+    started_at = payload.get("_mower_inventory_observed_at")
+    finished_at = payload.get("_mower_inventory_finished_at")
+    if (
+        type(started_at) in (int, float)
+        and type(finished_at) in (int, float)
+        and math.isfinite(started_at)
+        and math.isfinite(finished_at)
+        and 0 < started_at <= finished_at
+    ):
+        return finished_at
+    return None
+
+
 def restore_cached_inventory():
     """Reuse timestamped local files after sync failure without claiming a fresh scan."""
     from arknights_mower.solvers.record import restore_cached_inventory_counts
@@ -375,7 +389,7 @@ def _解析快照行(row):
     return at, payload
 
 
-def _扫描开始时刻(row, completed_at):
+def _扫描区间(row, completed_at):
     if len(row) > 2:
         try:
             started_at = json.loads(row[2]).get("_mower_scan_started_at")
@@ -384,10 +398,14 @@ def _扫描开始时刻(row, completed_at):
                 and math.isfinite(started_at)
                 and 0 < started_at <= completed_at
             ):
-                return started_at
+                return started_at, completed_at
         except (TypeError, ValueError, AttributeError):
             pass
-    return completed_at
+    return completed_at, None
+
+
+def _扫描开始时刻(row, completed_at):
+    return _扫描区间(row, completed_at)[0]
 
 
 def _最后有效扫描(rows):
@@ -395,8 +413,9 @@ def _最后有效扫描(rows):
         parsed = _解析快照行(row)
         if parsed is not None:
             at, items = parsed
-            return at, items, _扫描开始时刻(row, at)
-    return None, None, 0
+            started_at, finished_at = _扫描区间(row, at)
+            return at, items, started_at, finished_at
+    return None, None, 0, None
 
 
 def 最后有效快照(rows):
@@ -406,7 +425,7 @@ def 最后有效快照(rows):
     depotinfo[-1]，一行坏数据就能让 /depot/readdepot 整个 500，而这页其实只需要一条
     能用的记录。找不到时返回 (None, None)，调用方按"还没有历史"处理。
     """
-    at, items, _ = _最后有效扫描(rows)
+    at, items, _, _ = _最后有效扫描(rows)
     return at, items
 
 
@@ -419,7 +438,7 @@ def _扫描物品观测(rows, cloud_at, *, invalidation_scope=()):
         if parsed is None:
             continue
         completed_at, items = parsed
-        observed_at = _扫描开始时刻(row, completed_at)
+        observed_at, finished_at = _扫描区间(row, completed_at)
         if observed_at <= 0:
             continue
         nearby = abs(observed_at - cloud_at) <= INVENTORY_COMPARISON_WINDOW
@@ -430,7 +449,7 @@ def _扫描物品观测(rows, cloud_at, *, invalidation_scope=()):
             if not nearby and name not in invalidation_scope:
                 continue
             if name not in observations or observed_at > observations[name][1]:
-                observations[name] = (count, observed_at)
+                observations[name] = (count, observed_at, finished_at)
     return observations
 
 
@@ -455,6 +474,7 @@ def 读取仓库(记录快照时刻=None):
     with open(path, "r", encoding="utf-8") as f:
         depotinfo = json.load(f)
     cloud_counts, cloud_at = cloud_inventory_snapshot(depotinfo)
+    cloud_finished_at = cloud_inventory_finished_at(depotinfo)
     cloud_explicit_names = cloud_explicit_inventory_names(depotinfo)
     物品数量 = depotinfo["data"]["items"]
     新物品1 = {}
@@ -483,7 +503,7 @@ def 读取仓库(记录快照时刻=None):
         depotinfo = []
 
     # 取出最后一条可用记录中的物品信息并进行合并
-    最后一行时刻, 最后一行物品, 扫描开始时刻 = _最后有效扫描(depotinfo)
+    最后一行时刻, 最后一行物品, 扫描开始时刻, 扫描完成时刻 = _最后有效扫描(depotinfo)
     if 最后一行物品 is None:
         logger.warning("仓库扫描: 没有可用的历史快照，仅使用本次扫描结果")
         最后一行时刻 = int(datetime.now().timestamp())
@@ -512,9 +532,11 @@ def 读取仓库(记录快照时刻=None):
         db_dict,
         scanned_counts=scanned_counts,
         scanned_at=扫描开始时刻,
+        scanned_finished_at=扫描完成时刻,
         scanned_observations=_扫描物品观测(depotinfo, cloud_at),
         cloud_counts=cloud_counts,
         cloud_at=cloud_at,
+        cloud_finished_at=cloud_finished_at,
         cloud_explicit_names=cloud_explicit_names,
     )
     快照物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
