@@ -1435,6 +1435,21 @@ class Worker:
             "请检查正在执行的任务后重试"
         )
 
+    def released_recovery_records(self):
+        released = []
+        blocked = 0
+        for record in self.stopped:
+            if record["kind"] not in {"instance", "manager"}:
+                continue
+            try:
+                wait_for_supervisor_release(record, time.monotonic())
+            except (OSError, RuntimeError):
+                traceback.print_exc()
+                blocked += 1
+            else:
+                released.append(record)
+        return released, blocked
+
     def install_source(self):
         # Recheck after shutdown: the checkout may have been edited during fetch.
         force = self.job.get("force", False)
@@ -1846,7 +1861,13 @@ class Worker:
                     if self.original or self.switched or self.replacements:
                         self.rollback()
                         self.close_progress_servers()
-                        self.restart(self.stopped, recovery=True)
+                        records, blocked = self.released_recovery_records()
+                        if blocked:
+                            message = (
+                                f"{message.rstrip('。')}。{blocked} 个实例的配置空间"
+                                "尚未确认释放，已跳过恢复启动"
+                            )
+                        self.restart(records, recovery=True)
                 except Exception as recovery_error:
                     traceback.print_exc()
                     message += f"；恢复需要处理：{recovery_error}"

@@ -76,6 +76,8 @@ The native manager also offers online software-update checks, version/restart co
 
 Cancellation and timeout terminate only the owned command tree. Successful root-process completion also requires the Job to become empty. Cleanup failure remains an error; it never establishes successful installation or permits stopping unrelated instances.
 
+Before replacing program files, the update worker waits for registered processes to exit. For an instance with registered supervision information, it also checks that both the supervisor and instance child have released their configuration-space locks within the same 90-second shutdown budget. If the update fails and rollback can proceed, the worker checks each stopped application's applicable locks once before restarting it. The failure message reports how many applications were skipped because the worker could not confirm release of their locks.
+
 [Command tree cleanup](../../.agents/notes/implemented/bug-fix/2026-10-02-update-command-tree-cleanup.md) records implementation and focused verification.
 
 <a id="source-dependency-environments"></a>
