@@ -132,7 +132,9 @@ def test_invalid_info_port_reports_configuration_without_fallback(port):
     instances, errors = MuMuDiscoveryIO(run=run, platform="windows")._instances(
         Path("MuMuManager.exe"), 3
     )
-    assert instances == []
+    assert len(instances) == 1
+    assert instances[0]["instance_id"] == "0"
+    assert instances[0]["serial"] == ""
     assert errors[0].code == "mumu_endpoint_unavailable"
     assert "检查" in errors[0].message
     assert len(calls) == 1
@@ -208,7 +210,9 @@ def test_unavailable_address_has_port_guidance_without_reusing_saved_address(add
     instances, errors = MuMuDiscoveryIO(run=run, platform="windows")._instances(
         Path("MuMuManager.exe"), 3
     )
-    assert instances == []
+    assert len(instances) == 1
+    assert instances[0]["instance_id"] == "0"
+    assert instances[0]["serial"] == ""
     assert errors[0].code == "mumu_endpoint_unavailable"
 
 

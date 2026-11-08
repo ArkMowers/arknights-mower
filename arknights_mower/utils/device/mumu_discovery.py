@@ -17,6 +17,7 @@ from arknights_mower.utils.device.manager_io import (
 )
 from arknights_mower.utils.device.mumu_info import (
     MuMuEndpointUnavailable,
+    mumu_created_timestamp,
     mumu_endpoint_with_fallback,
     mumu_entries,
 )
@@ -58,7 +59,15 @@ def _confirmed_name(entry, key, saved_name, require_name):
 
 
 def parse_mumu_instances(
-    output, selected_id=None, instance_name=None, *, manager="", run=None
+    output,
+    selected_id=None,
+    instance_name=None,
+    *,
+    manager="",
+    run=None,
+    manual_serial="",
+    expected_created="",
+    require_endpoint=True,
 ):
     """Return valid observations plus individual parse failures.
 
@@ -102,16 +111,46 @@ def parse_mumu_instances(
             ):
                 raise ValueError(f"MuMu 实例 {key} 没有明确的运行状态。")
             name = _confirmed_name(entry, key, saved_name, not binding)
+            created = mumu_created_timestamp(entry)
+            if expected_created and created != expected_created:
+                raise InstanceBindingError(
+                    "binding_changed",
+                    f"MuMu 实例 {key} 的创建时间已变化或无法读取，请重新选择实例并确认地址。",
+                    ["instance_id", "instance_name"],
+                )
             state = "stopped" if not process else "running" if android else "starting"
             serial = ""
-            if process and (entry.get("adb_port") or state == "running"):
-                serial = mumu_endpoint_with_fallback(entry, key, manager, run)
+            if (
+                require_endpoint
+                and process
+                and not ((manual_serial or expected_created) and state == "starting")
+                and (entry.get("adb_port") or state == "running")
+            ):
+                try:
+                    serial = mumu_endpoint_with_fallback(
+                        entry,
+                        key,
+                        manager,
+                        run,
+                        manual_serial,
+                        verify_conflicts=bool(expected_created),
+                    )
+                except MuMuEndpointUnavailable as exc:
+                    if selected_id is not None:
+                        exc.mumu_created_timestamp = created
+                        raise
+                    errors.append(
+                        PreflightError(
+                            exc.code, str(exc), action="manual", fields=exc.fields
+                        )
+                    )
             instances.append(
                 {
                     "instance_id": key,
                     "instance_name": name.strip() or f"MuMu 实例 {key}",
                     "state": state,
                     "serial": serial,
+                    "mumu_created_timestamp": created,
                 }
             )
         except ValueError as exc:

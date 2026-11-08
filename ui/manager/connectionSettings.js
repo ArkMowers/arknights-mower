@@ -29,6 +29,8 @@ export function idleOptions(values) {
 export function connectionFields(fields, values) {
   return fields.flatMap((field) => {
     const key = field.key
+    if (key === 'device.mumu_manual_serial' && values['device.preset_id'] !== 'windows.mumu12')
+      return []
     if (['exit_game_when_idle', 'return_home_when_idle'].includes(key)) return []
     if (key === 'close_simulator_when_idle')
       return [

@@ -21,6 +21,7 @@ from arknights_mower.utils.config.plan import (
     parse_plan_document,
     retire_rescue_backups,
 )
+from arknights_mower.utils.device_compatibility import omit_empty_mumu_binding_fields
 from arknights_mower.utils.log import frontend_log_queue, logger
 from arknights_mower.utils.manager_common import launch_snapshot
 from arknights_mower.utils.network_settings import apply_http_proxy
@@ -130,20 +131,21 @@ manager_inherited_settings = frozenset()
 
 
 def persistent_conf(data):
-    if os.environ.get("MOWER_MANAGED") != "1" or not manager_inherited_settings:
-        return data
-    with conf_path.open("r", encoding="utf-8") as stream:
-        saved = yaml.load(stream, Loader=CoreLoader)
-    if not isinstance(saved, dict):
-        raise ValueError("本实例配置必须包含配置对象")
-    Conf(**saved)
-    result = dict(data)
-    for key in manager_inherited_settings:
-        if key in saved:
-            result[key] = saved[key]
-        else:
-            result.pop(key, None)
-    return result
+    result = data
+    if os.environ.get("MOWER_MANAGED") == "1" and manager_inherited_settings:
+        with conf_path.open("r", encoding="utf-8") as stream:
+            saved = yaml.load(stream, Loader=CoreLoader)
+        if not isinstance(saved, dict):
+            raise ValueError("本实例配置必须包含配置对象")
+        Conf(**saved)
+        result = dict(data)
+        for key in manager_inherited_settings:
+            if key in saved:
+                result[key] = saved[key]
+            else:
+                result.pop(key, None)
+    # Released versions reject unknown DeviceProfile fields; omit unused options.
+    return omit_empty_mumu_binding_fields(result)
 
 
 def save_conf():

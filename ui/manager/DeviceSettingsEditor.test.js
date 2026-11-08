@@ -28,6 +28,8 @@ beforeEach(async () => {
       screenshot_backend: 'droidcast',
       touch_backend: 'scrcpy',
       last_serial: 'saved',
+      mumu_manual_serial: '',
+      mumu_created_timestamp: '',
       instance_uuid: 'saved-uuid',
       topology_fingerprint: 'saved-fingerprint'
     },
@@ -57,6 +59,8 @@ beforeEach(async () => {
         { key: 'device.screenshot_backend', group: '截图', kind: 'select' },
         { key: 'device.touch_backend', group: '截图', kind: 'select' },
         { key: 'device.last_serial', group: '设备', kind: 'text' },
+        { key: 'device.mumu_manual_serial', group: '设备', kind: 'text' },
+        { key: 'device.mumu_created_timestamp', group: '设备', kind: 'text', read_only: true },
         { key: 'device.instance_uuid', group: '设备', kind: 'text', read_only: true },
         { key: 'device.topology_fingerprint', group: '设备', kind: 'text', read_only: true },
         { key: 'custom_screenshot.command', group: '截图', kind: 'text' },
@@ -87,9 +91,52 @@ afterEach(() => {
   scope.stop()
 })
 
+it('confirms a per-instance manual MuMu address before saving', async () => {
+  component.draft.value['device.preset_id'] = 'windows.mumu12'
+  component.initial.value['device.preset_id'] = 'windows.mumu12'
+  component.draft.value['device.mumu_manual_serial'] = ''
+  component.initial.value['device.mumu_manual_serial'] = ''
+  component.edit('device.mumu_manual_serial', '127.0.0.1:16384')
+  await component.save()
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+  expect(component.manualConfirmation.value).not.toBeNull()
+  await component.confirmManual()
+  expect(api.update_device_settings).toHaveBeenCalledOnce()
+  expect(api.update_device_settings.mock.calls[0][1]['device.mumu_manual_serial']).toBe(
+    '127.0.0.1:16384'
+  )
+})
+
+it('requires a fresh confirmation if the manual MuMu address changes', async () => {
+  component.draft.value['device.preset_id'] = 'windows.mumu12'
+  component.initial.value['device.preset_id'] = 'windows.mumu12'
+  component.edit('device.mumu_manual_serial', '127.0.0.1:16384')
+  await component.save()
+  component.edit('device.mumu_manual_serial', '127.0.0.1:16448')
+  await component.confirmManual()
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+  expect(component.error.value).toContain('重新确认')
+})
+
+it('keeps a slow device-settings save pending until the manager responds', async () => {
+  vi.useFakeTimers()
+  let finish
+  api.update_device_settings.mockImplementation(() => new Promise((resolve) => (finish = resolve)))
+  component.edit('custom_screenshot.command', 'slow-save')
+  const saving = component.save()
+  await vi.advanceTimersByTimeAsync(16000)
+  expect(component.pending.value).toBe(true)
+  expect(component.error.value).toBe('')
+  finish({ ok: true })
+  await saving
+  expect(emit).toHaveBeenCalledWith('saved')
+  vi.useRealTimers()
+})
+
 it('keeps detected identity metadata out of manual edits', () => {
   component.edit('device.instance_uuid', 'forged')
   component.edit('device.topology_fingerprint', 'forged')
+  component.edit('device.mumu_created_timestamp', 'forged')
   expect(component.changes.value).toEqual({})
 })
 

@@ -6,7 +6,11 @@ import ntpath
 import os
 
 # Keep legacy inputs in the same boundary as their Device Profile equivalents.
-DERIVED_IDENTITY_FIELDS = ("instance_uuid", "topology_fingerprint")
+DERIVED_IDENTITY_FIELDS = (
+    "instance_uuid",
+    "topology_fingerprint",
+    "mumu_created_timestamp",
+)
 
 MAA_UPDATE_SETTINGS = (
     "maa_mirrorchyan_token",
@@ -313,6 +317,8 @@ def fields():
             "device.instance_uuid": "实例 UUID",
             "device.topology_fingerprint": "实例拓扑指纹",
             "device.last_serial": "ADB 连接地址",
+            "device.mumu_manual_serial": "MuMu 手动连接地址",
+            "device.mumu_created_timestamp": "MuMu 实例创建时间",
             "device.game_package": "游戏包名",
             "simulator.wait_time": "模拟器启动等待（秒）",
         },
@@ -408,3 +414,11 @@ def fields():
                     field[target] = schema[source]
             result.append(field)
     return result
+
+
+def inspect_mumu_identity(profile):
+    from .device.session_io import ProductionSimulator
+
+    if profile.preset_id != "windows.mumu12":
+        raise ValueError("请先选择 MuMu 12 实例")
+    return ProductionSimulator().inspect(profile, profile.manager_query_timeout)

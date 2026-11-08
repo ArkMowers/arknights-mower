@@ -53,6 +53,7 @@ class PreflightError:
     fields: list[str] = field(default_factory=list)
     backend: str = ""
     alternatives: list[dict[str, str]] = field(default_factory=list)
+    mumu_created_timestamp: str = ""
 
 
 def mumu_pro_manual_error() -> PreflightError:
@@ -76,6 +77,7 @@ class PreflightResult:
     packages: list[str] = field(default_factory=list)
     candidates: list[dict[str, str]] = field(default_factory=list)
     observations: dict = field(default_factory=dict)
+    profile_patch: dict = field(default_factory=dict)
     error: PreflightError | None = None
 
     def to_dict(self) -> dict:

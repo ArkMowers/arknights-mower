@@ -687,7 +687,8 @@ class DeviceControl(Generic[D]):
         ``launch`` is the product's own controller step. A preset whose manager the
         session drives passes ``None``, because the session starts its own stopped
         instance on the way to readiness. One monotonic budget covers the whole
-        transaction, and only the manager's own report may name the endpoint.
+        transaction; MuMu can also use an explicitly entered address when its
+        manager cannot provide one and reports no conflicting endpoint.
         """
         self._session.bind(profile, startup_wait=startup_wait)
         clock = self._session.clock
@@ -720,12 +721,21 @@ class DeviceControl(Generic[D]):
             )
             ready = self._session.ensure_ready(deadline=deadline)
             verified = profile.model_copy(update={"last_serial": ready.serial})
-            return self._preflight.check(
+            checked = self._preflight.check(
                 verified,
                 confirmed_package=confirmed_package,
                 resolved_adb=adb_path,
                 prepare_capture=self._prepare_capture,
             )
+            if (
+                checked.ok
+                and profile.preset_id == "windows.mumu12"
+                and profile.mumu_manual_serial
+            ):
+                checked.profile_patch["mumu_created_timestamp"] = (
+                    ready.mumu_created_timestamp
+                )
+            return checked
 
     @staticmethod
     def _launch_error(product: str, exc: Exception) -> "PreflightError":
@@ -750,7 +760,11 @@ class DeviceControl(Generic[D]):
                 ("genymotion_", "manager_", "discovery_")
             ):
                 return genymotion_repair(InstanceBindingError(code, str(exc), []))
-            return PreflightError(code, str(exc))
+            return PreflightError(
+                code,
+                str(exc),
+                mumu_created_timestamp=exc.observation.mumu_created_timestamp,
+            )
         if isinstance(exc, (TimeoutError, subprocess.TimeoutExpired)):
             return PreflightError(f"{product}_start_timeout", str(exc))
         return PreflightError(f"{product}_start_failed", str(exc))
@@ -1971,6 +1985,13 @@ class DeviceControl(Generic[D]):
             self._last_error = exc.to_dict()
         else:
             self._last_error = {"code": code, "message": str(exc) or type(exc).__name__}
+            if (
+                isinstance(exc, SessionFailure)
+                and exc.observation.mumu_created_timestamp
+            ):
+                self._last_error["mumu_created_timestamp"] = (
+                    exc.observation.mumu_created_timestamp
+                )
         return DeviceResult(
             False,
             self._state,

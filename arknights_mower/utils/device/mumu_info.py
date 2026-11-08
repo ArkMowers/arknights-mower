@@ -90,6 +90,21 @@ def normalize_mumu_endpoint(serial):
     return host, int(port)
 
 
+def mumu_created_timestamp(entry):
+    value = entry.get("created_timestamp")
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        return ""
+    value = str(value)
+    if (
+        not value.isascii()
+        or not value.isdecimal()
+        or len(value) > 20
+        or int(value) <= 0
+    ):
+        return ""
+    return str(int(value))
+
+
 class MuMuEndpointUnavailable(InstanceBindingError):
     def __init__(self, instance_id, detail=""):
         super().__init__(
@@ -97,48 +112,85 @@ class MuMuEndpointUnavailable(InstanceBindingError):
             f"无法确认 MuMu 实例 {instance_id} 的 ADB 端口或连接地址。"
             f"{detail}"
             "请检查 MuMu 的 ADB 端口及管理程序配置后重新检测；"
-            "也可确认目标地址后手动连接。手动模式不支持自动启停及 MuMu IPC。",
-            ["manager_path", "last_serial"],
+            "也可选择实例后手动填写地址。手动地址无法自动核验归属，不能使用 MuMu IPC。",
+            ["manager_path", "mumu_manual_serial"],
         )
 
 
-def mumu_endpoint_with_fallback(entry, instance_id, manager, run):
-    """Use the manager's per-instance query only when info omitted its port."""
+def _parse_mumu_address(output):
+    if isinstance(output, bytes):
+        output = output.decode("utf-8")
+    if len(output) > 512:
+        raise ValueError("MuMu ADB 地址输出过长")
+    match = re.fullmatch(r"(\[[^\]\r\n]+\]|[^:\s]+):([0-9]{1,5})", output.strip())
+    if not match:
+        raise ValueError("MuMu ADB 地址输出无效")
+    return mumu_endpoint(
+        {"adb_host_ip": match.group(1).strip("[]"), "adb_port": match.group(2)}
+    )
+
+
+def validate_mumu_manual_serial(manual_serial, instance_id):
+    if not manual_serial:
+        return ""
+    try:
+        return _parse_mumu_address(manual_serial)
+    except (ValueError, TypeError) as exc:
+        raise MuMuEndpointUnavailable(instance_id, "手动填写的地址无效。") from exc
+
+
+def mumu_endpoint_with_fallback(
+    entry, instance_id, manager, run, manual_serial="", *, verify_conflicts=False
+):
+    """Resolve the selected instance, using an explicit manual address last."""
+    manual_endpoint = validate_mumu_manual_serial(manual_serial, instance_id)
+
+    def require_manual_match(endpoint):
+        if manual_endpoint and normalize_mumu_endpoint(
+            endpoint
+        ) != normalize_mumu_endpoint(manual_endpoint):
+            raise MuMuEndpointUnavailable(
+                instance_id, "手动地址与管理器报告的地址不一致。"
+            )
+        return endpoint
+
     port = entry.get("adb_port")
     missing = not isinstance(port, bool) and port in (None, "", 0, "0")
     if not missing:
         try:
-            return mumu_endpoint(entry)
+            endpoint = require_manual_match(mumu_endpoint(entry))
+        except MuMuEndpointUnavailable:
+            raise
         except (ValueError, TypeError) as exc:
             raise MuMuEndpointUnavailable(instance_id) from exc
-    if (
-        entry.get("is_process_started") is not True
-        or entry.get("is_android_started") is not True
-    ):
-        raise MuMuEndpointUnavailable(instance_id)
+        if not manual_endpoint and not verify_conflicts:
+            return endpoint
+    else:
+        if (
+            entry.get("is_process_started") is not True
+            or entry.get("is_android_started") is not True
+        ):
+            raise MuMuEndpointUnavailable(instance_id)
+        if run is None:
+            raise MuMuEndpointUnavailable(instance_id)
+        try:
+            endpoint = _parse_mumu_address(run([manager, "adb", "-v", instance_id]))
+        except (
+            ValueError,
+            UnicodeError,
+            subprocess.SubprocessError,
+            FileNotFoundError,
+            PermissionError,
+            RuntimeError,
+        ) as exc:
+            if not manual_endpoint:
+                raise MuMuEndpointUnavailable(instance_id) from exc
+            endpoint = manual_endpoint
+        else:
+            endpoint = require_manual_match(endpoint)
+
     if run is None:
         raise MuMuEndpointUnavailable(instance_id)
-    try:
-        output = run([manager, "adb", "-v", instance_id])
-        if isinstance(output, bytes):
-            output = output.decode("utf-8")
-        if len(output) > 512:
-            raise ValueError("MuMu ADB 地址输出过长")
-        match = re.fullmatch(r"(\[[^\]\r\n]+\]|[^:\s]+):([0-9]{1,5})", output.strip())
-        if not match:
-            raise ValueError("MuMu ADB 地址输出无效")
-        endpoint = mumu_endpoint(
-            {"adb_host_ip": match.group(1).strip("[]"), "adb_port": match.group(2)}
-        )
-    except (
-        ValueError,
-        UnicodeError,
-        subprocess.SubprocessError,
-        FileNotFoundError,
-        PermissionError,
-        RuntimeError,
-    ) as exc:
-        raise MuMuEndpointUnavailable(instance_id) from exc
 
     # The index can be reused while the query runs. Re-read the inventory before
     # trusting this address, and reject an address already reported by another VM.

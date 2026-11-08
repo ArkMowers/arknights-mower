@@ -93,12 +93,24 @@ export function editDeviceDraft(profile, key, value) {
     ['preset_id', 'installation_path', 'manager_path', 'config_path', 'instance_id'].includes(key)
   ) {
     draft.last_serial = ''
+    if ('mumu_manual_serial' in draft) draft.mumu_manual_serial = ''
+    if ('mumu_created_timestamp' in draft) draft.mumu_created_timestamp = ''
     draft.instance_name = ''
     draft.instance_uuid = ''
     draft.topology_fingerprint = ''
     draft.game_package_confirmed = false
   }
   if (['preset_id', 'installation_path', 'manager_path'].includes(key)) draft.config_path = ''
+  if (key === 'instance_name') {
+    if ('mumu_manual_serial' in draft) draft.mumu_manual_serial = ''
+    if ('mumu_created_timestamp' in draft) draft.mumu_created_timestamp = ''
+    draft.last_serial = ''
+    draft.game_package_confirmed = false
+  }
+  if (key === 'mumu_manual_serial') {
+    draft.last_serial = ''
+    draft.game_package_confirmed = false
+  }
   if (key === 'last_serial') draft.game_package_confirmed = false
   if (key === 'screenshot_backend') {
     if (value === 'mumu_ipc') draft.touch_backend = 'mumu_ipc'
@@ -115,13 +127,23 @@ export function editDeviceDraft(profile, key, value) {
   return draft
 }
 
-export function manualDeviceDraft(profile, preset) {
+export function manualDeviceDraft(profile, preset, observedMumuCreated = '') {
   const backends = nativeCapturePresets[profile.screenshot_backend]
     ? {
         screenshot_backend: 'droidcast',
         touch_backend: profile.touch_backend === 'mumu_ipc' ? 'scrcpy' : profile.touch_backend
       }
     : {}
+  if (preset === 'windows.mumu12') {
+    return {
+      ...profile,
+      ...backends,
+      mumu_manual_serial: '',
+      mumu_created_timestamp: profile.mumu_created_timestamp || observedMumuCreated || '',
+      last_serial: '',
+      game_package_confirmed: false
+    }
+  }
   return {
     ...profile,
     ...backends,
@@ -133,6 +155,8 @@ export function manualDeviceDraft(profile, preset) {
     instance_name: '',
     instance_uuid: '',
     topology_fingerprint: '',
+    ...('mumu_manual_serial' in profile ? { mumu_manual_serial: '' } : {}),
+    ...('mumu_created_timestamp' in profile ? { mumu_created_timestamp: '' } : {}),
     last_serial: '',
     game_package_confirmed: false
   }
@@ -279,7 +303,9 @@ async function saveDeviceBinding(config, profile, confirmation = null) {
         'config_path',
         'instance_id',
         'instance_uuid',
-        'topology_fingerprint'
+        'topology_fingerprint',
+        'mumu_manual_serial',
+        'mumu_created_timestamp'
       ].some((key) => previous[key] !== profile[key])
     ) {
       // Conf clears an unchanged endpoint when its binding changes. Save the
@@ -308,6 +334,8 @@ export async function saveDiscoveredDevice({ config, profile, result, key }) {
     config_path: '',
     instance_uuid: '',
     topology_fingerprint: '',
+    ...('mumu_manual_serial' in profile ? { mumu_manual_serial: '' } : {}),
+    ...('mumu_created_timestamp' in profile ? { mumu_created_timestamp: '' } : {}),
     ...candidate.binding,
     last_serial: '',
     game_package_confirmed: false
@@ -371,6 +399,7 @@ const fieldLabels = {
   instance_id: '多开实例序号',
   instance_name: '多开实例名称',
   last_serial: '连接地址',
+  mumu_manual_serial: '手动连接地址',
   screenshot_backend: '截图后端',
   touch_backend: '触控后端',
   game_package: '游戏服务器'
@@ -383,7 +412,8 @@ const presetPlaceholders = {
     adb_path: '例如：D:\\MuMuPlayer-12.0\\shell\\adb.exe',
     instance_id: '0',
     instance_name: '选填',
-    last_serial: '例如：127.0.0.1:16384'
+    last_serial: '例如：127.0.0.1:16384',
+    mumu_manual_serial: '例如：127.0.0.1:16384'
   },
   'windows.ldplayer9': {
     installation_path: '例如：C:\\leidian\\LDPlayer9',
@@ -492,6 +522,8 @@ const fieldHelpTexts = {
   instance_name: '多开实例的自定义名称（仅用于界面展示与日志标识）。选填。',
   last_serial:
     '模拟器的 ADB 调试连接地址与端口号（如 127.0.0.1:16384 或 127.0.0.1:5555）。通常可在模拟器多开器或设置中查看。已绑定实例会核验并读取当前端口；手动连接模式需填写。',
+  mumu_manual_serial:
+    '仅在管理器无法获取端口时使用。请确认地址属于当前 MuMu 实例；更换实例或端口后需重新填写。',
   screenshot_backend:
     '用于捕获游戏画面的方式。MuMu 截图增强适用于 Windows MuMu 12，LD 截图增强适用于 Windows 雷电 9 和 14。LD 可搭配 scrcpy 或 MaaTouch 触控。',
   touch_backend: '用于向模拟器发送点击与滑动指令的方式。可选 scrcpy、MaaTouch 或 MuMu 自带触控。',
@@ -616,6 +648,8 @@ export function deviceSettingsState({
     (avd && boundAvd && profile.preset_id === `${presetPrefix}.avd`) ||
     (presetPrefix === 'linux' && ((redroid && boundRedroid) || (genymotion && boundGenymotion)))
   const manualTarget = profile.preset_id?.startsWith('manual.') && Boolean(profile.last_serial)
+  const manualMumu =
+    profile.preset_id === 'windows.mumu12' && (manual || Boolean(profile.mumu_manual_serial))
   const discover =
     !manual &&
     !manualTarget &&
@@ -637,7 +671,9 @@ export function deviceSettingsState({
     const capability = touchCapabilities.find((item) => item.backend === option.value)
     const presetReason =
       option.value === 'mumu_ipc'
-        ? capturePresetReason('mumu_ipc', profile.preset_id, host ? presetPrefix : undefined)
+        ? manualMumu
+          ? '手动连接地址无法核验实例归属'
+          : capturePresetReason('mumu_ipc', profile.preset_id, host ? presetPrefix : undefined)
         : ''
     const reason =
       capability?.available === false
@@ -651,11 +687,10 @@ export function deviceSettingsState({
     }
   })
   const screenshotOptions = backendOptions.screenshot_backend.map((option) => {
-    const reason = capturePresetReason(
-      option.value,
-      profile.preset_id,
-      host ? presetPrefix : undefined
-    )
+    const reason =
+      manualMumu && option.value === 'mumu_ipc'
+        ? '手动连接地址无法核验实例归属'
+        : capturePresetReason(option.value, profile.preset_id, host ? presetPrefix : undefined)
     return {
       ...option,
       label: reason ? `${option.label}（${reason}）` : option.label,
@@ -698,7 +733,7 @@ export function deviceSettingsState({
     : errors.length
       ? repairFields
       : manual
-        ? ['last_serial']
+        ? [manualMumu ? 'mumu_manual_serial' : 'last_serial']
         : []
   const needsConfigPath =
     ['windows.bluestacks5', 'linux.waydroid', 'linux.redroid'].includes(profile.preset_id) ||
@@ -709,6 +744,8 @@ export function deviceSettingsState({
     !(discovery && instances.options.length && key === 'instance_id') &&
     !(mumuPro && !profile.topology_fingerprint && ['instance_id', 'instance_name'].includes(key)) &&
     !(air && ['manager_path', 'config_path', 'instance_id', 'instance_name'].includes(key)) &&
+    !(key === 'mumu_manual_serial' && !manualMumu) &&
+    !(key === 'last_serial' && manualMumu) &&
     !(key === 'config_path' && !needsConfigPath)
   const buildField = (key) => {
     const options =
@@ -811,6 +848,9 @@ export function deviceSettingsState({
               ? '连接正常'
               : '尚未检测',
     message: messages.join('\n'),
+    manualMumuWarning: manualMumu
+      ? '请确认手动地址属于当前 MuMu 实例。端口可能在重启后变化或被其他实例复用；地址错误时任务可能操作其他账号。若管理器未提供或复用实例创建时间，也无法识别同名实例被替换。MuMu IPC 暂不可用。'
+      : '',
     screenshotAlternativeMessage: screenshotAlternatives.length
       ? `可选截图后端：${screenshotAlternatives.join('、')}。如需更换，请手动选择截图后端并重新检测。`
       : '',
@@ -859,10 +899,15 @@ export function deviceSettingsState({
     actions: {
       manualFallback: {
         visible:
-          mumuPortUnavailable ||
+          (mumuPortUnavailable && profile.preset_id === 'windows.mumu12' && boundInstance) ||
           ((mumuPro || redroid || genymotion) && errors.some((error) => error.action === 'manual')),
         disabled: locked,
-        preset: mumuPro ? 'macos.mumu_pro' : 'manual.other',
+        preset:
+          mumuPortUnavailable && profile.preset_id === 'windows.mumu12' && boundInstance
+            ? 'windows.mumu12'
+            : mumuPro
+              ? 'macos.mumu_pro'
+              : 'manual.other',
         label: mumuPro || mumuPortUnavailable ? '手动填写连接地址' : '进入高级手动配置'
       },
       startBound: {

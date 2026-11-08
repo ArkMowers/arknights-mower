@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { effectScope, nextTick } from 'vue'
+import { effectScope, nextTick, reactive } from 'vue'
 import { createDeviceConnectionNavigation } from '@/composables/deviceConnectionNavigation'
 import DeviceSettings from './DeviceSettings.vue'
 
@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   unmounted: [],
   client: null,
   config: null,
+  dialog: null,
   connectionNavigation: null
 }))
 vi.mock('vue', async (original) => ({
@@ -18,7 +19,7 @@ vi.mock('vue', async (original) => ({
   onMounted: (callback) => state.mounted.push(callback),
   onUnmounted: (callback) => state.unmounted.push(callback)
 }))
-vi.mock('naive-ui', () => ({ useDialog: () => ({}), useMessage: () => ({}) }))
+vi.mock('naive-ui', () => ({ useDialog: () => state.dialog, useMessage: () => ({}) }))
 vi.mock('@/stores/config', () => ({
   useConfigStore: () => state.config
 }))
@@ -31,6 +32,7 @@ beforeEach(() => {
   state.mounted = []
   state.unmounted = []
   state.connectionNavigation = null
+  state.dialog = { warning: vi.fn() }
   state.client = { get: vi.fn(async () => ({ data: {} })) }
   state.config = {
     simulator: { wait_time: 75 },
@@ -52,6 +54,137 @@ beforeEach(() => {
   scope.run(() => {
     component = DeviceSettings.setup({}, { expose: () => {} })
   })
+})
+
+it('confirms the risks before keeping MuMu control with a manual address', () => {
+  component.draft.value = {
+    preset_id: 'windows.mumu12',
+    installation_path: 'C:/MuMu',
+    manager_path: 'C:/MuMu/MuMuManager.exe',
+    instance_id: '0',
+    instance_name: '主号',
+    last_serial: '127.0.0.1:16384',
+    screenshot_backend: 'mumu_ipc',
+    touch_backend: 'mumu_ipc'
+  }
+  component.metadata.value = { host_platform: 'windows' }
+  component.result.value = {
+    ok: false,
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '111' }
+  }
+  const original = { ...component.draft.value }
+  component.enterManual('windows.mumu12', true)
+  expect(state.dialog.warning).toHaveBeenCalledOnce()
+  expect(component.draft.value).toEqual(original)
+  const dialog = state.dialog.warning.mock.calls[0][0]
+  expect(dialog.content).toContain('其他实例')
+  dialog.onPositiveClick()
+  expect(component.draft.value).toMatchObject({
+    preset_id: 'windows.mumu12',
+    manager_path: 'C:/MuMu/MuMuManager.exe',
+    instance_id: '0',
+    mumu_manual_serial: '',
+    mumu_created_timestamp: '111',
+    last_serial: '',
+    screenshot_backend: 'droidcast',
+    touch_backend: 'scrcpy'
+  })
+  expect(component.state.value.actions.startBound.visible).toBe(true)
+  expect(component.state.value.manualMumuWarning).toContain('其他实例')
+})
+
+it('does not reuse a previous instance error timestamp for a different target', () => {
+  component.draft.value = {
+    preset_id: 'windows.mumu12',
+    installation_path: 'C:/MuMu',
+    instance_id: '1',
+    instance_name: '小号',
+    screenshot_backend: 'droidcast',
+    touch_backend: 'scrcpy'
+  }
+  component.metadata.value = {
+    host_platform: 'windows',
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '111' }
+  }
+  component.result.value = {
+    ok: false,
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '' }
+  }
+  component.enterManual('windows.mumu12', true)
+  state.dialog.warning.mock.calls[0][0].onPositiveClick()
+  expect(component.draft.value.mumu_created_timestamp).toBe('')
+})
+
+it('requires a new MuMu check after changing the instance identity', () => {
+  const saved = {
+    preset_id: 'windows.mumu12',
+    installation_path: 'C:/MuMu',
+    instance_id: '0',
+    instance_name: '主号',
+    screenshot_backend: 'droidcast',
+    touch_backend: 'scrcpy'
+  }
+  state.config.device_profile = { ...saved }
+  component.draft.value = { ...saved }
+  component.metadata.value = {
+    host_platform: 'windows',
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '111' }
+  }
+  component.result.value = {
+    ok: false,
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '111' }
+  }
+  component.edit('instance_id', '1')
+  expect(component.result.value).toBeNull()
+  expect(component.state.value.actions.manualFallback.visible).toBe(false)
+  component.enterManual('windows.mumu12', true)
+  expect(state.dialog.warning).not.toHaveBeenCalled()
+  expect(component.requestError.value).toContain('先测试')
+})
+
+it('clears an old preflight result when reloaded configuration changes the instance', async () => {
+  scope.stop()
+  state.config = reactive({
+    ...state.config,
+    device_profile: {
+      preset_id: 'windows.mumu12',
+      installation_path: 'C:/MuMu',
+      instance_id: '0',
+      instance_name: '主号',
+      screenshot_backend: 'droidcast',
+      touch_backend: 'scrcpy'
+    }
+  })
+  scope = effectScope()
+  scope.run(() => {
+    component = DeviceSettings.setup({}, { expose: () => {} })
+  })
+  component.metadata.value = {
+    host_platform: 'windows',
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '111' }
+  }
+  component.result.value = {
+    ok: false,
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '111' }
+  }
+  state.config.device_profile = {
+    ...state.config.device_profile,
+    instance_id: '1',
+    instance_name: '小号'
+  }
+  await nextTick()
+  expect(component.draft.value.instance_id).toBe('1')
+  expect(component.result.value).toBeNull()
+  component.enterManual('windows.mumu12', true)
+  expect(state.dialog.warning).not.toHaveBeenCalled()
+  expect(component.requestError.value).toContain('先测试')
+  component.result.value = {
+    ok: false,
+    error: { code: 'mumu_endpoint_unavailable', mumu_created_timestamp: '111' }
+  }
+  state.config.device_profile = { ...state.config.device_profile, mumu_created_timestamp: '222' }
+  await nextTick()
+  expect(component.result.value).toBeNull()
 })
 
 function mountConnectionNavigation(pending = null, props = {}) {

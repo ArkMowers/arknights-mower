@@ -44,10 +44,23 @@ const confirmedPackage = ref(null)
 const requestError = ref('')
 const statusError = ref('')
 const preparationNotice = ref('')
+const bindingIdentityKeys = [
+  'preset_id',
+  'installation_path',
+  'manager_path',
+  'config_path',
+  'instance_id',
+  'instance_name'
+]
+const sameBinding = (left, right) =>
+  [...bindingIdentityKeys, 'mumu_created_timestamp', 'mumu_manual_serial', 'last_serial'].every(
+    (key) => (left?.[key] ?? '') === (right?.[key] ?? '')
+  )
+const matchingSavedBinding = computed(() => sameBinding(draft.value, config.device_profile))
 const state = computed(() =>
   deviceSettingsState({
     profile: draft.value,
-    metadata: metadata.value,
+    metadata: matchingSavedBinding.value ? metadata.value : { ...metadata.value, error: null },
     result: result.value,
     busy: busy.value,
     advanced: showAdvanced.value,
@@ -87,7 +100,16 @@ const savedHint = ref(false)
 watch(
   () => config.device_profile,
   (profile) => {
-    if (!dirty.value && !busy.value) draft.value = { ...profile }
+    if (!dirty.value && !busy.value) {
+      if (!sameBinding(draft.value, profile)) {
+        detectionRevision += 1
+        result.value = null
+        manual.value = false
+        selectedKey.value = null
+        confirmedPackage.value = null
+      }
+      draft.value = { ...profile }
+    }
   },
   { deep: true }
 )
@@ -106,6 +128,7 @@ watch(
         'instance_uuid',
         'topology_fingerprint',
         'last_serial',
+        'mumu_manual_serial',
         'game_package'
       ].map((key) => draft.value[key])
     ),
@@ -125,6 +148,7 @@ function flashSaved() {
 
 function edit(key, value) {
   if (state.value.locked || managerOwned.value) return
+  const identityChanged = bindingIdentityKeys.includes(key) && draft.value[key] !== value
   if (key === 'game_package') confirmedPackage.value = value
   else if (
     isImmediateDeviceField(key) &&
@@ -153,26 +177,52 @@ function edit(key, value) {
         'manager_path',
         'config_path',
         'instance_id',
-        'last_serial'
+        'instance_name',
+        'last_serial',
+        'mumu_manual_serial'
       ].includes(key)
     ) {
       confirmedPackage.value = null
     }
   }
   dirty.value = true
-  if (result.value?.ok) result.value = null
+  if (identityChanged) {
+    result.value = null
+    if (draft.value.preset_id === 'windows.mumu12') manual.value = false
+  } else if (result.value?.ok) result.value = null
 }
 
 function enterManual(preset, showAdvanced = false) {
   if (state.value.locked) return
-  draft.value = manualDeviceDraft(draft.value, preset)
-  confirmedPackage.value = null
-  dirty.value = true
-  manual.value = true
-  advanced.value = showAdvanced
-  result.value = null
-  selectedKey.value = null
-  requestError.value = ''
+  const original = { ...draft.value }
+  if (preset === 'windows.mumu12' && !draft.value.mumu_created_timestamp && !result.value) {
+    requestError.value = '请先测试当前 MuMu 实例，再填写手动连接地址。'
+    return
+  }
+  const observedMumuCreated = result.value?.error?.mumu_created_timestamp || ''
+  const apply = () => {
+    if (state.value.locked || !sameDeviceProfile(draft.value, original)) {
+      requestError.value = '设备设置已变化，请重新确认手动连接。'
+      return
+    }
+    draft.value = manualDeviceDraft(draft.value, preset, observedMumuCreated)
+    confirmedPackage.value = null
+    dirty.value = true
+    manual.value = true
+    advanced.value = showAdvanced
+    result.value = null
+    selectedKey.value = null
+    requestError.value = ''
+  }
+  if (preset !== 'windows.mumu12') return apply()
+  dialog.warning({
+    title: '确认手动填写 MuMu 地址',
+    content:
+      'Mower 无法自动确认手动地址是否属于所选实例。地址错误或被其他实例复用时，任务可能操作其他账号；模拟器重启后也请检查端口。管理器未提供或复用创建时间时，无法识别同名实例被替换。启停仍按所选实例执行，手动地址不能使用 MuMu IPC。',
+    positiveText: '我已了解',
+    negativeText: '取消',
+    onPositiveClick: apply
+  })
 }
 
 const testingBossKey = ref(false)
@@ -567,6 +617,14 @@ onUnmounted(() => {
       </n-alert>
       <n-alert v-if="state.message" type="warning" class="device-notice" :show-icon="false">
         {{ state.message }}
+      </n-alert>
+      <n-alert
+        v-if="state.manualMumuWarning"
+        type="warning"
+        class="device-notice"
+        :show-icon="false"
+      >
+        {{ state.manualMumuWarning }}
       </n-alert>
       <n-alert
         v-if="state.screenshotAlternativeMessage"

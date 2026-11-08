@@ -23,6 +23,7 @@ const pending = ref(false)
 const error = ref('')
 const discovery = ref(null)
 const confirmedSerial = ref(null)
+const manualConfirmation = ref(null)
 const preflightResult = computed(() => discovery.value?.kind === 'preflight')
 const candidateOptions = computed(() =>
   (discovery.value?.candidates || []).map((item) =>
@@ -51,9 +52,14 @@ const initialIndependentConfiguration = ref(false)
 const instanceFields = new Set([
   'device.instance_id',
   'device.instance_name',
+  'device.mumu_manual_serial',
   'device.game_package'
 ])
-const derivedIdentityFields = new Set(['device.instance_uuid', 'device.topology_fingerprint'])
+const derivedIdentityFields = new Set([
+  'device.instance_uuid',
+  'device.topology_fingerprint',
+  'device.mumu_created_timestamp'
+])
 const templateFields = [
   'device.preset_id',
   'device.installation_path',
@@ -323,6 +329,10 @@ function selectCandidate(key) {
     draft.value['device.instance_name'] = ''
   draft.value['device.instance_uuid'] = ''
   draft.value['device.topology_fingerprint'] = ''
+  if (Object.hasOwn(draft.value, 'device.mumu_manual_serial'))
+    draft.value['device.mumu_manual_serial'] = ''
+  if (Object.hasOwn(draft.value, 'device.mumu_created_timestamp'))
+    draft.value['device.mumu_created_timestamp'] = ''
   for (const [field, value] of Object.entries(binding)) {
     if (Object.hasOwn(draft.value, `device.${field}`) && patchField(`device.${field}`))
       draft.value[`device.${field}`] = value
@@ -349,12 +359,36 @@ async function browse(field) {
 
 async function save() {
   if (disabled.value || !hasChanges.value) return
+  if (changes.value['device.mumu_manual_serial']?.trim()) {
+    manualConfirmation.value = JSON.stringify({ changes: changes.value, policy: requestPolicy() })
+    return
+  }
+  await performSave()
+}
+
+async function confirmManual() {
+  const previous = manualConfirmation.value
+  manualConfirmation.value = null
+  if (
+    !previous ||
+    disabled.value ||
+    previous !== JSON.stringify({ changes: changes.value, policy: requestPolicy() })
+  ) {
+    error.value = '设备配置已变化，请重新确认手动地址。'
+    return
+  }
+  await performSave()
+}
+
+async function performSave() {
   pending.value = true
   error.value = ''
   try {
     const args = [props.idx, { ...changes.value }, props.target, original.value]
     if (policySupported.value) args.push(requestPolicy())
-    const result = await managerCall(() => props.api.update_device_settings(...args))
+    // A frontend timeout cannot cancel an in-flight save; keep editing locked
+    // until the manager reports the actual outcome.
+    const result = await props.api.update_device_settings(...args)
     if (result?.ok === false) throw new Error(result.message)
     if (!disposed) emit('saved')
   } catch (reason) {
@@ -376,6 +410,11 @@ onUnmounted(() => {
       >修改
       {{ target.name }}
       的连接与启动配置，保存后下次启动生效。自定义截图命令会在主机上执行，请确认命令来源。
+    </n-alert>
+    <n-alert v-if="draft['device.mumu_manual_serial']" type="warning" :show-icon="false">
+      请确认手动地址属于当前 MuMu
+      实例。端口可能变化或被其他实例复用，地址错误时任务可能操作其他账号。管理器未提供或复用创建时间时，无法识别同名实例被替换；手动地址不能使用
+      MuMu IPC。
     </n-alert>
     <n-alert v-if="error" type="error"
       >{{ error
@@ -522,6 +561,20 @@ onUnmounted(() => {
         >保存连接与启动配置</n-button
       >
     </div>
+    <n-modal
+      :show="!!manualConfirmation"
+      preset="dialog"
+      title="确认手动填写 MuMu 地址"
+      positive-text="我已了解"
+      negative-text="取消"
+      @positive-click="confirmManual"
+      @negative-click="manualConfirmation = null"
+      @close="manualConfirmation = null"
+    >
+      Mower
+      无法自动确认手动地址是否属于所选实例。地址错误或被其他实例复用时，任务可能操作其他账号；模拟器重启后也请检查端口。管理器未提供或复用创建时间时，无法识别同名实例被替换。启停仍按所选实例执行，手动地址不能使用
+      MuMu IPC。
+    </n-modal>
   </div>
 </template>
 

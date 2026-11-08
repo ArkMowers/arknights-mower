@@ -24,6 +24,7 @@ from arknights_mower.utils.device.ldplayer_endpoint import LDPlayerEndpointResol
 from arknights_mower.utils.device.manager_io import run_command, run_manager_command
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 from arknights_mower.utils.device.mumu_discovery import parse_mumu_instances
+from arknights_mower.utils.device.mumu_info import validate_mumu_manual_serial
 from arknights_mower.utils.device.mumu_pro import MUMU_PRO_PRESET, MuMuProController
 from arknights_mower.utils.device.nox_endpoint import NoxBindingReader
 from arknights_mower.utils.device.preflight_io import ProductionPreflightIO
@@ -376,7 +377,7 @@ class _MuMuManager(_InstanceManager):
 
     def act(self, start):
         if not start:
-            self.inspect()
+            self.inspect(require_endpoint=False)
         # A lifecycle action, not a query: MuMu hands the instance to a player
         # that is still cold-booting, so the command gets the transaction time.
         output = self.command(
@@ -391,8 +392,10 @@ class _MuMuManager(_InstanceManager):
         )
         return _manager_succeeded(output, self.profile.instance_id)
 
-    def inspect(self):
+    def inspect(self, *, require_endpoint=True):
         profile = self.profile
+        if require_endpoint:
+            validate_mumu_manual_serial(profile.mumu_manual_serial, profile.instance_id)
         query_timeout = getattr(profile, "manager_query_timeout", QUERY_TIMEOUT)
         deadline = self.window._monotonic() + min(
             query_timeout, self.window.remaining()
@@ -412,6 +415,9 @@ class _MuMuManager(_InstanceManager):
                 profile.instance_name,
                 manager=self.manager,
                 run=run,
+                manual_serial=profile.mumu_manual_serial,
+                expected_created=profile.mumu_created_timestamp,
+                require_endpoint=require_endpoint,
             )
         except ValueError as exc:
             if isinstance(exc, InstanceBindingError):
@@ -424,7 +430,11 @@ class _MuMuManager(_InstanceManager):
                 ["instance_id", "instance_name"],
             ) from exc
         instance = instances[0]
-        return InstanceObservation(instance["state"], instance["serial"] or None)
+        return InstanceObservation(
+            instance["state"],
+            instance["serial"] or None,
+            instance["mumu_created_timestamp"],
+        )
 
 
 class _LDPlayerManager(_InstanceManager):

@@ -45,6 +45,7 @@ Readiness = Literal["absent", "offline", "booting", "ready"]
 class InstanceObservation:
     state: Literal["unknown", "stopped", "running", "starting"]
     serial: str | None = None
+    mumu_created_timestamp: str = ""
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class ReadinessResult:
     instance_state: str = "unknown"
     code: str = ""
     message: str = ""
+    mumu_created_timestamp: str = ""
 
 
 DEFAULT_RECOVERY_ATTEMPTS: int = 3
@@ -596,7 +598,12 @@ class DeviceSession:
             return self.last
         except InstanceBindingError as exc:
             self.last = ReadinessResult(
-                "offline", "", self.adb_path, code=exc.code, message=str(exc)
+                "offline",
+                "",
+                self.adb_path,
+                code=exc.code,
+                message=str(exc),
+                mumu_created_timestamp=getattr(exc, "mumu_created_timestamp", ""),
             )
             return self.last
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
@@ -666,13 +673,24 @@ class DeviceSession:
                             prepare_target(self.adb_path, serial)
                         self._remaining(deadline)
                     return self._confirm_display(
-                        serial, instance.state, deadline, frame_probe
+                        serial,
+                        instance.state,
+                        deadline,
+                        frame_probe,
+                        instance.mumu_created_timestamp,
                     )
         self._remaining(deadline)
         self.last = ReadinessResult(state, serial, self.adb_path, instance.state, code)
         return self.last
 
-    def _confirm_display(self, serial, instance_state, deadline, frame_probe=None):
+    def _confirm_display(
+        self,
+        serial,
+        instance_state,
+        deadline,
+        frame_probe=None,
+        mumu_created_timestamp="",
+    ):
         """The decoded frame decides readiness; the reported size only informs.
 
         A tablet presentation or a not-yet-rotated game can report a portrait
@@ -687,7 +705,13 @@ class DeviceSession:
             )
             return self.last
         self.last = ReadinessResult(
-            "ready", serial, self.adb_path, instance_state, "", ""
+            "ready",
+            serial,
+            self.adb_path,
+            instance_state,
+            "",
+            "",
+            mumu_created_timestamp,
         )
         return self.last
 

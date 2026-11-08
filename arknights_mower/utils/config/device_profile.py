@@ -98,6 +98,8 @@ class DeviceProfile(BaseModel):
     instance_uuid: str = ""
     topology_fingerprint: str = ""
     last_serial: str = ""
+    mumu_manual_serial: str = ""
+    mumu_created_timestamp: str = ""
     game_package: GamePackage = "com.hypergryph.arknights"
     game_package_confirmed: bool = False
     screenshot_backend: ScreenshotBackend = "droidcast"
@@ -128,6 +130,18 @@ class DeviceProfile(BaseModel):
             self.touch_backend == "mumu_ipc"
         ):
             raise ValueError("MuMu IPC 必须同时用于截图与触控")
+        if self.mumu_manual_serial and self.preset_id != "windows.mumu12":
+            raise ValueError("手动 MuMu 连接地址仅适用于 MuMu 12")
+        if self.mumu_manual_serial and self.screenshot_backend == "mumu_ipc":
+            raise ValueError("手动填写 MuMu 连接地址时不能使用 MuMu IPC")
+        if self.mumu_created_timestamp and self.preset_id != "windows.mumu12":
+            raise ValueError("MuMu 实例创建时间仅适用于 MuMu 12")
+        if self.mumu_created_timestamp and (
+            not self.mumu_created_timestamp.isascii()
+            or not self.mumu_created_timestamp.isdecimal()
+            or len(self.mumu_created_timestamp) > 20
+        ):
+            raise ValueError("MuMu 实例创建时间无效")
         return self
 
 

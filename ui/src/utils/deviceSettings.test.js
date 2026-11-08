@@ -45,8 +45,11 @@ it('offers an explicit manual connection when MuMu cannot determine the instance
   const bound = {
     ...profile,
     preset_id: 'windows.mumu12',
+    installation_path: 'C:/MuMu',
+    manager_path: 'C:/MuMu/MuMuManager.exe',
     adb_path: 'C:/MuMu/adb.exe',
     instance_id: '0',
+    instance_name: '主号',
     last_serial: '127.0.0.1:16384',
     screenshot_backend: 'mumu_ipc',
     touch_backend: 'mumu_ipc'
@@ -59,13 +62,17 @@ it('offers an explicit manual connection when MuMu cannot determine the instance
   })
   expect(state.actions.manualFallback).toMatchObject({
     visible: true,
-    preset: 'manual.other',
+    preset: 'windows.mumu12',
     label: '手动填写连接地址'
   })
   expect(manualDeviceDraft(bound, state.actions.manualFallback.preset)).toMatchObject({
-    preset_id: 'manual.other',
+    preset_id: 'windows.mumu12',
+    installation_path: 'C:/MuMu',
+    manager_path: 'C:/MuMu/MuMuManager.exe',
     adb_path: 'C:/MuMu/adb.exe',
-    instance_id: '',
+    instance_id: '0',
+    instance_name: '主号',
+    mumu_manual_serial: '',
     last_serial: '',
     screenshot_backend: 'droidcast',
     touch_backend: 'scrcpy'
@@ -238,6 +245,112 @@ describe('selected screenshot backend failure', () => {
       expect(selected.screenshot_backend).toBe('adb_gzip')
     }
   )
+})
+
+it('shows the manual MuMu address and prevents mismatched IPC after the user enters it', () => {
+  const bound = {
+    ...profile,
+    preset_id: 'windows.mumu12',
+    installation_path: 'C:/MuMu',
+    instance_id: '0',
+    mumu_manual_serial: '127.0.0.1:16384'
+  }
+  const state = deviceSettingsState({
+    profile: bound,
+    metadata: { host_platform: 'windows' },
+    advanced: true,
+    manual: true
+  })
+  expect(state.fields.map((field) => field.key)).toContain('mumu_manual_serial')
+  expect(state.fields.map((field) => field.key)).not.toContain('last_serial')
+  expect(state.actions.startBound.visible).toBe(true)
+  expect(
+    connectionField(state, 'screenshot_backend').options.find((o) => o.value === 'mumu_ipc')
+      .disabled
+  ).toBe(true)
+  expect(
+    connectionField(state, 'touch_backend').options.find((o) => o.value === 'mumu_ipc').disabled
+  ).toBe(true)
+  expect(editDeviceDraft(bound, 'instance_id', '1').mumu_manual_serial).toBe('')
+})
+
+it('requires selecting a detected MuMu instance before entering its manual address', () => {
+  const error = { code: 'mumu_endpoint_unavailable', message: '请检查 MuMu 端口。' }
+  const state = deviceSettingsState({
+    profile,
+    metadata: { host_platform: 'windows' },
+    result: {
+      kind: 'discovery',
+      error,
+      candidates: [
+        { key: 'mumu-0', preset_id: 'windows.mumu12', instance_id: '0', instance_name: '主号' }
+      ]
+    }
+  })
+  expect(state.instances.options).toHaveLength(1)
+  expect(state.actions.manualFallback.visible).toBe(false)
+})
+
+it('saves a manual MuMu address with its verified endpoint in two steps', async () => {
+  const previous = {
+    ...profile,
+    preset_id: 'windows.mumu12',
+    manager_path: 'C:/MuMu/MuMuManager.exe',
+    instance_id: '0',
+    instance_name: '主号',
+    last_serial: '127.0.0.1:16384',
+    mumu_manual_serial: '',
+    mumu_created_timestamp: ''
+  }
+  const draft = {
+    ...previous,
+    last_serial: '',
+    mumu_manual_serial: '127.0.0.1:16384'
+  }
+  const snapshots = []
+  const config = {
+    device_profile: previous,
+    flush_config_saves: vi.fn(async () => {}),
+    save_config: vi.fn(async () => snapshots.push({ ...config.device_profile }))
+  }
+  const saved = await savePreflightDevice({
+    config,
+    profile: draft,
+    result: {
+      ok: true,
+      serial: '127.0.0.1:16384',
+      game_package: 'com.hypergryph.arknights',
+      profile_patch: { mumu_created_timestamp: '111' }
+    }
+  })
+  expect(snapshots).toHaveLength(2)
+  expect(snapshots[0]).toMatchObject({
+    mumu_manual_serial: '127.0.0.1:16384',
+    mumu_created_timestamp: '111',
+    last_serial: ''
+  })
+  expect(snapshots[1]).toMatchObject({
+    preset_id: 'windows.mumu12',
+    instance_id: '0',
+    mumu_manual_serial: '127.0.0.1:16384',
+    mumu_created_timestamp: '111',
+    last_serial: '127.0.0.1:16384'
+  })
+  expect(saved).toMatchObject(snapshots[1])
+})
+
+it('retains the recorded MuMu creation time while replacing the manual address', () => {
+  const saved = {
+    ...profile,
+    preset_id: 'windows.mumu12',
+    mumu_manual_serial: '127.0.0.1:16384',
+    mumu_created_timestamp: '111'
+  }
+  const emptied = editDeviceDraft(saved, 'mumu_manual_serial', '')
+  const changed = editDeviceDraft(emptied, 'mumu_manual_serial', '127.0.0.1:16448')
+  expect(changed.mumu_created_timestamp).toBe('111')
+  expect(manualDeviceDraft(saved, 'windows.mumu12').mumu_created_timestamp).toBe('111')
+  expect(devicePreflightRequest(saved, changed).device.mumu_created_timestamp).not.toBe('')
 })
 
 describe('selected touch backend failure', () => {
