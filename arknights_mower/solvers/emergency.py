@@ -427,10 +427,14 @@ class EmergencyRecoveryMixin:
             return
         self.backup_plan_solver()
         self._finish_emergency_startup()
-        reconciled = self._reconcile_initial_staffing()
-        self._emergency_save()
-        if reconciled or getattr(self, "_initial_staffing_pending", False):
+        self._emergency_admit()
+        if self._emergency_active():
             return
+        self._reconcile_initial_staffing()
+        self._emergency_save()
+
+    def _emergency_admit(self):
+        """用初始化观测预演普通轮休，在普通驻员纠错前完成救急判断。"""
         if not config.conf.automatic_rescue_enable:
             return
         if any(
@@ -574,6 +578,7 @@ class EmergencyRecoveryMixin:
             )
         ]
         state["observed_at"] = datetime.now()
+        self._initial_staffing_pending = False
         self._emergency_save()
 
     def _emergency_validate_state(self):
