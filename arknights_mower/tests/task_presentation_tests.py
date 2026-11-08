@@ -886,3 +886,19 @@ def test_explicit_workstation_departure_does_not_claim_dorm_rest(solver):
         {"kind": "operator", "subject": "陈", "action": "上班"},
         {"kind": "operator", "subject": A, "action": "下班"},
     ]
+
+
+@pytest.mark.parametrize("target", ["", "_", "Current", "Free"])
+def test_unresolved_workstation_target_does_not_claim_departure(solver, target):
+    data = solver.op_data
+    data.operators[A].group = ""
+    task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={"meeting": [target, "Current"]}
+    )
+    task.group_shift_transitions = {}
+
+    result = build_task_presentation(task, data)
+
+    assert result["title"] == task.display_name
+    assert result["actions"] == []
+    assert result["rooms"][0]["agents"] == [target, "Current"]

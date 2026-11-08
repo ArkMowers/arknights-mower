@@ -312,7 +312,7 @@ def _individual_actions(
             continue
         targets = plan.get(current, ())
         # 只有明确替换已确认的工作岗位，且没有其他去向，才称为撤岗下班。
-        if index < len(targets) and targets[index] not in ("Current", "Free", name):
+        if index < len(targets) and targets[index] not in _PLACEHOLDERS:
             departing.append(_action("operator", name, "下班"))
     result = []
     cleared = (
