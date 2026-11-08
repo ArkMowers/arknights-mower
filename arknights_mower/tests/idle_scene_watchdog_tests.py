@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from threading import Event, RLock
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
+from weakref import ref
 
 import numpy as np
 import pytest
@@ -32,6 +33,7 @@ from arknights_mower.utils.news_checker import MaintenanceInfo  # noqa: E402
 from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
+from arknights_mower.utils.screenshot import ScreenshotStore  # noqa: E402
 
 
 @pytest.fixture
@@ -52,6 +54,8 @@ def idle_scheduler(monkeypatch, offline_maintenance):
     monkeypatch.setattr(config, "maintenance_recheck", Event())
     monkeypatch.setattr(record, "workshop_inventory_changed", Event())
     monkeypatch.setattr(base, "refresh_resource_at_boundary", MagicMock())
+    release_ocr = MagicMock()
+    monkeypatch.setattr(base.rapidocr, "release_idle_local_model", release_ocr)
     solver = object.__new__(base.BaseSchedulerSolver)
     solver._simulator_closed_for_idle = False
     solver._idle_observation_pending = False
@@ -99,7 +103,7 @@ def idle_scheduler(monkeypatch, offline_maintenance):
 
     for module in (base, main, solver_module, recovery):
         monkeypatch.setattr(module, "csleep", advance)
-    return SimpleNamespace(solver=solver, clock=Clock)
+    return SimpleNamespace(solver=solver, clock=Clock, release_ocr=release_ocr)
 
 
 @pytest.fixture
@@ -291,6 +295,102 @@ def test_idle_resume_restarts_observation_and_preserves_active_watchdog(
     assert_active_watchdog(solver, clock)
 
 
+def test_long_idle_releases_frame_once_and_keeps_preview_on_wakeup(
+    idle_scheduler, monkeypatch, tmp_path
+):
+    solver, clock = idle_scheduler.solver, idle_scheduler.clock
+    started = clock.now()
+    frames = ref(solver.recog._img), ref(solver.recog._gray)
+    store = ScreenshotStore(tmp_path, lambda: 0, logger=MagicMock())
+    try:
+        store.submit(b"latest encoded screenshot")
+        latest = store.latest()
+        waits = []
+
+        def sleep(seconds):
+            waits.append(seconds)
+            assert solver.sleeping
+            assert all(frame() is None for frame in frames)
+            assert solver.recog._screencap is None
+            assert solver.recog._matcher is None
+            assert solver.recog.scene == solver.recog.last_scene == Scene.INFRA_MAIN
+            assert solver.recog.last_scene_time == started
+            assert solver.recog.loading_time == 6
+            assert store.latest() is latest
+            solver.device.screencap.assert_not_called()
+            clock.current += timedelta(seconds=seconds)
+            if len(waits) == 2:
+                config.wake_scheduler.set()
+
+        monkeypatch.setattr(base, "csleep", sleep)
+        solver._idle_sleep(301)
+
+        assert waits == [1, 1]
+        assert not solver.sleeping
+        assert not config.wake_scheduler.is_set()
+        idle_scheduler.release_ocr.assert_called_once_with()
+        assert store.latest() is latest
+        assert solver.recog.last_scene_time == started + timedelta(seconds=2)
+        assert solver.recog.last_scene is None
+        assert solver.recog.loading_time == 0
+        solver.device.screencap.assert_not_called()
+        assert solver.scene() == Scene.INFRA_MAIN
+        solver.device.screencap.assert_called_once_with()
+    finally:
+        store.close(timeout=0)
+
+
+def test_idle_at_long_wait_boundary_retains_frame_until_wakeup(
+    idle_scheduler, monkeypatch
+):
+    solver, clock = idle_scheduler.solver, idle_scheduler.clock
+    frame = ref(solver.recog._img)
+
+    def sleep(seconds):
+        assert frame() is solver.recog._img
+        assert frame() is not None
+        clock.current += timedelta(seconds=seconds)
+        config.wake_scheduler.set()
+
+    monkeypatch.setattr(base, "csleep", sleep)
+    solver._idle_sleep(300)
+
+    idle_scheduler.release_ocr.assert_not_called()
+    assert frame() is None
+
+
+@pytest.mark.parametrize("interruption", ["wakeup", "cancel", "stop"])
+def test_immediate_idle_interruption_skips_memory_release(
+    idle_scheduler, monkeypatch, interruption
+):
+    solver = idle_scheduler.solver
+    release_frame = MagicMock(wraps=solver.recog.release_frame)
+    monkeypatch.setattr(solver.recog, "release_frame", release_frame)
+    sleep = MagicMock(side_effect=MowerExit)
+    monkeypatch.setattr(base, "csleep", sleep)
+
+    if interruption == "wakeup":
+        config.wake_scheduler.set()
+        solver._idle_sleep(600)
+    elif interruption == "cancel":
+        solver._idle_sleep(600, allow_wakeup=False, cancelled=lambda: True)
+    else:
+        config.stop_mower.set()
+        with pytest.raises(MowerExit):
+            solver._idle_sleep(600)
+
+    idle_scheduler.release_ocr.assert_not_called()
+    assert not solver.sleeping
+    solver.device.screencap.assert_not_called()
+    if interruption == "stop":
+        release_frame.assert_not_called()
+        sleep.assert_called_once_with(1)
+    else:
+        # Only the existing successful-resume reset clears the frame.
+        release_frame.assert_called_once_with()
+        sleep.assert_not_called()
+
+
 def test_cancelled_idle_preserves_stop_and_does_not_resume_recognition(
     idle_scheduler, monkeypatch
 ):
@@ -322,7 +422,7 @@ def test_maintenance_recheck_does_not_resume_closed_simulator(
     solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
     started = clock.now()
     duration = 600 if entry == "round_end" else 2
-    cached_frame = solver.recog._img
+    cached_frame = ref(solver.recog._img)
     tasks = list(solver.tasks)
     original_times = [task.time for task in tasks]
     config.conf.close_simulator_when_idle = True
@@ -350,7 +450,13 @@ def test_maintenance_recheck_does_not_resume_closed_simulator(
     assert not solver.sleeping
     assert config.maintenance_recheck.is_set()
     assert not config.wake_scheduler.is_set()
-    assert solver.recog._img is cached_frame
+    if entry == "round_end":
+        assert cached_frame() is solver.recog._img is None
+    else:
+        assert cached_frame() is solver.recog._img is not None
+    assert solver.recog.last_scene == Scene.INFRA_MAIN
+    assert solver.recog.last_scene_time == started
+    assert solver.recog.loading_time == 6
     assert solver.tasks == tasks
     assert [task.time for task in tasks] == original_times
     solver.device.reconnect.assert_not_called()
@@ -380,7 +486,7 @@ def test_maintenance_timer_defers_device_start_until_real_entry_time(
     monkeypatch.setattr(main, "Timer", timer_class)
     tasks = list(solver.tasks)
     times = [task.time for task in tasks]
-    cached_frame = solver.recog._img
+    cached_frame = ref(solver.recog._img)
     fired = False
     failures, checkpoint = [object()], object()
     monkeypatch.setattr(solver, "_run_order_restoration_failures", lambda: failures)
@@ -408,7 +514,10 @@ def test_maintenance_timer_defers_device_start_until_real_entry_time(
         assert clock.now() == info.start
         restart.assert_called_once_with(start=False)
         assert solver._simulator_closed_for_idle
-        assert solver.recog._img is cached_frame
+        assert cached_frame() is solver.recog._img is None
+        assert solver.recog.last_scene == Scene.INFRA_MAIN
+        assert solver.recog.last_scene_time == started
+        assert solver.recog.loading_time == 6
         solver.device.check_current_focus.assert_not_called()
         solver.device.reconnect.assert_not_called()
         restore.assert_not_called()
@@ -525,7 +634,7 @@ def test_failed_idle_resume_restarts_observation_after_main_recovery(
     scheduler = production_idle_scheduler
     solver, clock = scheduler.solver, scheduler.clock
     started = clock.now()
-    old_frame = solver.recog._img
+    old_frame = ref(solver.recog._img)
     config.conf.close_simulator_when_idle = True
     restart = MagicMock(side_effect=[True, failure != "start", True])
     monkeypatch.setattr(base, "restart_simulator", restart)
@@ -549,7 +658,8 @@ def test_failed_idle_resume_restarts_observation_after_main_recovery(
 
     assert clock.now() == started + timedelta(seconds=600)
     assert not solver.sleeping
-    assert solver.recog._img is old_frame
+    assert old_frame() is solver.recog._img is None
+    assert solver.recog.scene == Scene.INFRA_MAIN
     assert solver.recog.last_scene == Scene.INFRA_MAIN
     assert solver.recog.last_scene_time == started
     assert solver.recog.loading_time == 6
@@ -649,7 +759,7 @@ def test_idle_observation_resumes_only_after_successful_device_recovery(
 ):
     scheduler = production_idle_scheduler
     solver, clock = scheduler.solver, scheduler.clock
-    old_frame = solver.recog._img
+    old_frame = ref(solver.recog._img)
     config.conf.close_simulator_when_idle = True
     monkeypatch.setattr(base, "restart_simulator", MagicMock(return_value=True))
     solver.device.reconnect.side_effect = ConnectionError("offline")
@@ -661,7 +771,8 @@ def test_idle_observation_resumes_only_after_successful_device_recovery(
     def recover():
         if scheduler.control.recover.call_count == 1:
             reset.assert_not_called()
-            assert solver.recog._img is old_frame
+            assert old_frame() is solver.recog._img is None
+            assert solver.recog.last_scene == Scene.INFRA_MAIN
             if cancel_recovery:
                 config.stop_mower.set()
                 raise MowerExit
@@ -673,7 +784,7 @@ def test_idle_observation_resumes_only_after_successful_device_recovery(
         with pytest.raises(MowerExit):
             main._resume_device_dispatch(solver, ConnectionError("offline"))
         reset.assert_not_called()
-        assert solver.recog._img is old_frame
+        assert old_frame() is solver.recog._img is None
         assert not solver.sleeping
         solver.device.screencap.assert_not_called()
         return

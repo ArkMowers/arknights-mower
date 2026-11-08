@@ -44,7 +44,9 @@ date: 2026-10-08
 
 [休眠观测测试](../../../../arknights_mower/tests/idle_scene_watchdog_tests.py)在正常到期、提前唤醒与维护等待后，使用模拟标准画面帧执行生产识别和按需截图。恢复时排除 298.417708 秒休眠区间。活动期观测恰好达到 270 秒时允许该场景，达到 271 秒时退出游戏；`Recognizer.update` 与 `BaseSolver.sleep` 刷新画面后仍遵守该规则。
 
-同一测试还执行 `rest_until_next_task` 与 `__main__._handle_maintenance`，经过 600 秒等待、启动或重连失败、`_resume_device_dispatch` 和 `BaseSchedulerSolver.run`。首次生产观测取得新画面，不退出游戏。恢复尝试失败及取消时不改动识别状态，设备成功恢复后才完成复位；后续活动期恢复保留观测时间戳。在审查提交 `f2a99d312c1a714384a12473a05b68761a6e82ca` 上，这些新增用例产生五项失败；修复待完成边界后，全部十一项休眠观测用例通过。
+同一测试还执行 `rest_until_next_task` 与 `__main__._handle_maintenance`，经过 600 秒等待、启动或重连失败、`_resume_device_dispatch` 和 `BaseSchedulerSolver.run`。首次生产观测取得新画面，不退出游戏。恢复尝试失败或取消时，场景和加载观测仍待复位，直到设备成功恢复。后续活动期恢复保留观测时间戳。在审查提交 `f2a99d312c1a714384a12473a05b68761a6e82ca` 上，这些新增用例产生五项失败。修复待完成边界后，全部十一项休眠观测用例通过。
+
+当前的[休眠观测边界](../../../../docs/subsystems/base-scheduler.md#idle-observation-boundary)还会在长时间等待开始时释放缓存的标准画面帧。测试确认释放画面后仍保留场景与加载观测，也覆盖维护重检中断等待以及模拟器启动或重连失败的情况。
 
 现有模拟器生命周期、MAA 交接与[设备恢复监督测试](../../../../arknights_mower/tests/device_recovery_supervision_tests.py)覆盖恢复顺序、常规截图刷新、有限重试预算及停止传播。
 

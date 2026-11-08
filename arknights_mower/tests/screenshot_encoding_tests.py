@@ -272,6 +272,63 @@ class ScreenshotEncodingTests(unittest.TestCase):
         self.assertEqual(len(bank.remaining_workers()), 1)
         self.assertIsNone(bank._slots[1]._process)
 
+    def test_idle_primary_releases_worker_without_losing_preview(self):
+        bank, commands = self.bank(primary_idle_timeout=0.25)
+        with tempfile.TemporaryDirectory() as folder:
+            store = ScreenshotStore(Path(folder), lambda: 0, logger=Mock())
+            store._encoding_workers = bank
+            try:
+                store.start()
+                first = store.submit_frame(self.rgb())
+                wait_until(
+                    lambda: (
+                        store.latest() is not None and store.latest().filename == first
+                    )
+                )
+                latest = store.latest()
+                primary = self.children[0]
+                mapping = bank._slots[0]._mapping_path
+                self.assertIsNotNone(mapping)
+                wait_until(lambda: bank._slots[0]._mapping_path is None)
+                self.assertIsNotNone(primary.poll())
+                self.assertFalse(mapping.exists())
+                self.assertEqual(bank.remaining_workers(), [])
+                self.assertIs(store.latest(), latest)
+
+                second = store.submit_frame(self.rgb())
+                wait_until(lambda: store.latest().filename == second)
+                self.assertEqual(store.latest().data, latest.data)
+                self.assertEqual(commands.calls, 2)
+                self.assertNotEqual(self.children[-1].pid, primary.pid)
+            finally:
+                result = store.close()
+                self.assertEqual(result["remaining_threads"], [])
+                self.assertEqual(bank.remaining_workers(), [])
+
+    def test_first_encode_respects_deadline_when_reaper_start_is_busy(self):
+        bank, commands = self.bank()
+        finished = Event()
+        errors = []
+
+        def encode():
+            try:
+                bank.encode(self.rgb(), deadline=time.monotonic() + 0.05)
+            except Exception as exc:
+                errors.append(exc)
+            finally:
+                finished.set()
+
+        thread = Thread(target=encode)
+        try:
+            with bank._reaper_lock:
+                thread.start()
+                self.assertTrue(finished.wait(1))
+        finally:
+            thread.join(1)
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], TimeoutError)
+        self.assertEqual(commands.calls, 0)
+
     def test_idle_auxiliary_is_reaped_without_new_frames_and_restarts_on_demand(self):
         bank, commands = self.bank(mode="hang", timeout=5, auxiliary_idle_timeout=0.1)
         errors = []
@@ -308,7 +365,7 @@ class ScreenshotEncodingTests(unittest.TestCase):
         self.assertEqual(len(errors), 1)
         self.assertTrue(all(child.poll() is not None for child in self.children))
 
-    def test_idle_reaper_does_not_interrupt_an_active_auxiliary_frame(self):
+    def test_idle_reaper_does_not_interrupt_active_frames(self):
         def command(path, port, token):
             return [
                 sys.executable,
@@ -322,6 +379,7 @@ class ScreenshotEncodingTests(unittest.TestCase):
 
         bank = ScreenshotEncoding(
             timeout=5,
+            primary_idle_timeout=0.05,
             auxiliary_idle_timeout=0.05,
             process_factory=self.start_process,
             command_factory=command,
@@ -342,9 +400,12 @@ class ScreenshotEncodingTests(unittest.TestCase):
             wait_until(lambda: bank._slots[0]._channel is not None)
             preview.start()
             wait_until(lambda: bank._slots[1]._channel is not None)
+            primary = bank._slots[0]._process
             auxiliary = bank._slots[1]._process
             Event().wait(0.2)
+            self.assertTrue(history.is_alive())
             self.assertTrue(preview.is_alive())
+            self.assertIsNone(primary.poll())
             self.assertIsNone(auxiliary.poll())
             self.assertEqual(len(bank.remaining_workers()), 2)
         finally:

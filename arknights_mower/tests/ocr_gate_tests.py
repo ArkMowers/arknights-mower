@@ -32,6 +32,9 @@ def engines(monkeypatch):
             self.score = score
             record.local.append(self)
 
+        def ensure_model_loaded(self):
+            pass
+
     class Shared:
         def __init__(self, score):
             self.score = score
@@ -191,6 +194,107 @@ def test_local_engine_accepts_shared_client_call_options(monkeypatch):
         engine(image, text_score=2)
     with pytest.raises(ValueError, match="开关"):
         engine(image, use_det="yes")
+
+
+def test_idle_local_model_rebuilds_with_original_score_after_failure(monkeypatch):
+    attempts, models = [], []
+
+    def factory(score):
+        attempts.append(score)
+        if len(attempts) == 2:
+            raise RuntimeError("model unavailable")
+
+        def infer(image, *, text_score, **options):
+            return image, text_score
+
+        models.append(weakref.ref(infer))
+        return infer
+
+    monkeypatch.setenv(rapidocr.OCR_MODE_ENV, "local")
+    monkeypatch.setattr(rapidocr, "create_engine", factory)
+    rapidocr.initialize_ocr(0.4)
+    engine = rapidocr.engine
+    image = object()
+
+    assert attempts == [0.4]
+    assert engine(image, text_score=0.7) == (image, 0.7)
+    rapidocr.release_idle_local_model()
+
+    assert rapidocr.engine is engine
+    assert models[0]() is None
+    with pytest.raises(ValueError, match="开关"):
+        engine(image, use_det="yes")
+    assert attempts == [0.4]
+    with pytest.raises(RuntimeError, match="model unavailable"):
+        engine(image)
+    assert rapidocr.engine is engine
+    assert engine(image) == (image, 0.4)
+    assert attempts == [0.4, 0.4, 0.4]
+
+
+def test_explicit_initialization_rebuilds_released_local_model(monkeypatch):
+    scores = []
+
+    def factory(score):
+        scores.append(score)
+        return lambda image, **options: image
+
+    monkeypatch.setenv(rapidocr.OCR_MODE_ENV, "local")
+    monkeypatch.setattr(rapidocr, "create_engine", factory)
+    rapidocr.initialize_ocr(0.4)
+    engine = rapidocr.engine
+    rapidocr.release_idle_local_model()
+
+    rapidocr.initialize_ocr(0.5)
+
+    assert rapidocr.engine is engine
+    assert scores == [0.4, 0.4]
+
+
+def test_idle_release_does_not_wait_for_or_drop_active_inference(monkeypatch):
+    entered, finish = Event(), Event()
+    builds = []
+
+    def factory(score):
+        builds.append(score)
+
+        def infer(image, **options):
+            entered.set()
+            assert finish.wait(5)
+            return image
+
+        return infer
+
+    monkeypatch.setenv(rapidocr.OCR_MODE_ENV, "local")
+    monkeypatch.setattr(rapidocr, "create_engine", factory)
+    rapidocr.initialize_ocr()
+    image = object()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        inference = pool.submit(rapidocr.engine, image)
+        try:
+            assert entered.wait(2)
+            pool.submit(rapidocr.release_idle_local_model).result(timeout=2)
+            assert not inference.done()
+        finally:
+            finish.set()
+        assert inference.result(timeout=3) is image
+
+    assert rapidocr.engine(image) is image
+    assert builds == [rapidocr.DEFAULT_TEXT_SCORE]
+    rapidocr.release_idle_local_model()
+    assert rapidocr.engine(image) is image
+    assert builds == [rapidocr.DEFAULT_TEXT_SCORE] * 2
+
+
+def test_idle_release_keeps_shared_client(monkeypatch, engines):
+    monkeypatch.setenv(rapidocr.OCR_MODE_ENV, "shared")
+    rapidocr.initialize_ocr()
+
+    rapidocr.release_idle_local_model()
+
+    assert rapidocr.engine is engines.shared[0]
+    assert not engines.local
 
 
 def test_failed_initialization_can_retry(monkeypatch):
@@ -361,6 +465,9 @@ def test_concurrent_initialization_builds_one_engine(monkeypatch):
             created.append(self)
             entered.set()
             assert release.wait(3)
+
+        def ensure_model_loaded(self):
+            pass
 
     monkeypatch.setattr(rapidocr, "_LocalOCREngine", Local)
     monkeypatch.setattr(rapidocr, "_live_mower_instance_count", lambda: 1)
