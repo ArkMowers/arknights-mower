@@ -54,13 +54,7 @@ class MaintenanceInfo:
     @property
     def is_server_maintenance(self) -> bool:
         return (
-            self.update_type == "major"
-            or not self.manual
-            and (
-                "停机维护" in self.title
-                or self.is_flash_update
-                and self.end - self.start >= timedelta(minutes=10)
-            )
+            self.update_type == "major" or not self.manual and "停机维护" in self.title
         )
 
     @property

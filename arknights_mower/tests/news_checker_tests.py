@@ -96,6 +96,35 @@ class NewsCheckerTests(unittest.TestCase):
         self.assertEqual(info.update_type, "hot")
         self.assertEqual(info.resume_at, datetime(2026, 9, 12, 17))
 
+    def test_november_server_maintenance_triggers_backup_without_client_stop(self):
+        item = {
+            "cid": "4915",
+            "title": "[明日方舟]11月08日16:00服务器停机维护公告",
+            "brief": "2026年11月08日16:00 ~ 17:00开启服务器停机维护。",
+        }
+        info = NewsChecker._parse_maintenance(
+            item,
+            "维护期间玩家将无法登录游戏，请在维护前提前结束关卡，并关闭游戏。",
+            datetime(2026, 11, 8, 12, tzinfo=ZoneInfo("Asia/Shanghai")),
+            ZoneInfo("Asia/Shanghai"),
+        )
+        self.assertEqual(info.update_type, "hot")
+        self.assertTrue(info.is_server_maintenance)
+        self.assertFalse(info.is_flash_update)
+        self.assertEqual(info.resume_at, datetime(2026, 11, 8, 16, 30))
+        with patch.object(NewsChecker, "get_maintenance", return_value=info):
+            self.assertIs(
+                NewsChecker.get_major_maintenance(datetime(2026, 11, 8, 15)), info
+            )
+            self.assertEqual(NewsChecker.get_update_time(), (info.start, info.end))
+            with patch.object(mower_main, "_stop_for_major_update") as stop:
+                scheduler = Mock(tasks=[])
+                self.assertFalse(
+                    mower_main._handle_maintenance(info, scheduler, info.start)
+                )
+                scheduler._idle_sleep.assert_called_once_with(1800, allow_wakeup=False)
+                stop.assert_not_called()
+
     def test_24_hour_end_rolls_into_next_day(self):
         item = {
             "cid": "1",
@@ -173,9 +202,59 @@ class NewsCheckerTests(unittest.TestCase):
                 )
                 self.assertEqual(info.resume_at, start + timedelta(seconds=elapsed))
 
-    def test_flash_duration_selects_wait_and_retry_policy_without_client_stop(self):
+    def test_announcement_selects_maintenance_policy_regardless_of_duration(self):
         start = datetime(2026, 11, 8, 16)
-        for minutes, wait in ((9, 540), (10, 300), (60, 1800), (360, 18000)):
+        for title, downtime in (("服务器停机维护公告", True), ("闪断更新公告", False)):
+            for minutes, downtime_wait in (
+                (9, 270),
+                (10, 300),
+                (60, 1800),
+                (360, 18000),
+            ):
+                with self.subTest(title=title, minutes=minutes):
+                    info = MaintenanceInfo(
+                        start,
+                        start + timedelta(minutes=minutes),
+                        "hot",
+                        title,
+                        "",
+                        f"announcement-{title}-{minutes}",
+                    )
+                    scheduler = Mock(tasks=[])
+                    with (
+                        patch.object(NewsChecker, "get_maintenance", return_value=info),
+                        patch.object(mower_main, "_stop_for_major_update") as stop,
+                    ):
+                        self.assertFalse(
+                            mower_main._handle_maintenance(info, scheduler, start)
+                        )
+                    wait = downtime_wait if downtime else minutes * 60
+                    scheduler._idle_sleep.assert_called_once_with(
+                        wait, allow_wakeup=False
+                    )
+                    stop.assert_not_called()
+                    self.assertEqual(info.is_server_maintenance, downtime)
+                    self.assertEqual(info.allows_early_login, downtime)
+                    if downtime:
+                        self.assertNotIn(
+                            info.announcement_id, mower_main._flash_probe_ids
+                        )
+                        with (
+                            patch.object(
+                                NewsChecker, "get_maintenance", return_value=info
+                            ),
+                            patch.object(mower_main, "csleep") as sleep,
+                        ):
+                            self.assertTrue(
+                                mower_main._wait_before_early_login_retry(
+                                    info.resume_at
+                                )
+                            )
+                        sleep.assert_called_once_with(270 if minutes == 9 else 300)
+
+    def test_flash_probe_stays_single_attempt_for_long_announcements(self):
+        start = datetime(2026, 11, 8, 16)
+        for minutes in (10, 60, 360):
             with self.subTest(minutes=minutes):
                 info = MaintenanceInfo(
                     start,
@@ -183,30 +262,26 @@ class NewsCheckerTests(unittest.TestCase):
                     "hot",
                     "闪断更新公告",
                     "",
-                    f"duration-{minutes}",
+                    f"flash-{minutes}",
                 )
-                scheduler = Mock(tasks=[])
-                with (
-                    patch.object(NewsChecker, "get_maintenance", return_value=info),
-                    patch.object(mower_main, "_stop_for_major_update") as stop,
-                ):
+                scheduler = Mock(
+                    tasks=[SimpleNamespace(time=start + timedelta(minutes=3))]
+                )
+                with patch.object(NewsChecker, "get_maintenance", return_value=info):
                     self.assertFalse(
                         mower_main._handle_maintenance(info, scheduler, start)
                     )
-                scheduler._idle_sleep.assert_called_once_with(wait, allow_wakeup=False)
-                stop.assert_not_called()
-                self.assertEqual(info.is_server_maintenance, minutes >= 10)
-                self.assertEqual(info.allows_early_login, minutes >= 10)
-                if minutes >= 10:
-                    self.assertNotIn(info.announcement_id, mower_main._flash_probe_ids)
-                    with (
-                        patch.object(NewsChecker, "get_maintenance", return_value=info),
-                        patch.object(mower_main, "csleep") as sleep,
-                    ):
+                    scheduler._idle_sleep.assert_called_once_with(
+                        120, allow_wakeup=False
+                    )
+                    self.assertIn(info.announcement_id, mower_main._flash_probe_ids)
+                    with patch.object(mower_main, "csleep") as sleep:
                         self.assertTrue(
-                            mower_main._wait_before_early_login_retry(info.resume_at)
+                            mower_main._wait_before_early_login_retry(
+                                start + timedelta(minutes=2)
+                            )
                         )
-                    sleep.assert_called_once_with(300)
+                    sleep.assert_called_once_with(minutes * 60 - 120)
 
     def test_repeated_maintenance_entry_failures_preserve_task_until_success(self):
         class Clock(datetime):
@@ -228,9 +303,9 @@ class NewsCheckerTests(unittest.TestCase):
                     datetime(2026, 11, 8, 16),
                     datetime(2026, 11, 8, 17),
                     "hot",
-                    "闪断更新公告",
+                    "服务器停机维护公告",
                     "",
-                    "long-flash-retry",
+                    "server-maintenance-retry",
                 )
                 task = SchedulerTask(time=datetime(2026, 11, 8, 16, 1))
                 scheduler = Mock(tasks=[task])

@@ -54,6 +54,9 @@ def test_major_maintenance_remaining_hours_and_expression(monkeypatch):
     [
         None,
         maintenance(update_type="hot", title="闪断更新", minutes=9),
+        maintenance(update_type="hot", title="闪断更新", minutes=10),
+        maintenance(update_type="hot", title="闪断更新", minutes=60),
+        maintenance(update_type="hot", title="闪断更新", minutes=360),
     ],
 )
 def test_non_major_or_flash_maintenance_does_not_trigger(monkeypatch, info):
@@ -68,8 +71,8 @@ def test_non_major_or_flash_maintenance_does_not_trigger(monkeypatch, info):
     )
 
 
-@pytest.mark.parametrize("title", ["闪断更新公告", "服务器停机维护公告"])
-@pytest.mark.parametrize("minutes", [10, 60, 360])
+@pytest.mark.parametrize("title", ["服务器停机维护公告"])
+@pytest.mark.parametrize("minutes", [9, 10, 60, 360])
 def test_hot_downtime_uses_full_duration_and_schedules_backup_threshold(
     monkeypatch, title, minutes
 ):
