@@ -137,7 +137,6 @@ export const useMowerStore = defineStore('mower', () => {
               return true
             })
           : data.records
-        // 结构化记录：每条记录的 msg 字段组合为文本行；旧式 data.data 文本作回退。
         let lines
         if (Array.isArray(records) && (synchronized || records.length > 0)) {
           lines = records.map((r) => {
@@ -145,13 +144,21 @@ export const useMowerStore = defineStore('mower', () => {
             const level = r.level ?? ''
             const msg = r.msg ?? ''
             const text = t && level ? `${t} ${level} ${msg}` : msg
-            // 附加结构化字段：group, room 和 agents（都是可选的）；
-            // id 与 at 让日志行的 key 和等待时长在缓冲区淘汰后仍然稳定。
+            const header =
+              synchronized &&
+              typeof t === 'string' &&
+              t &&
+              typeof level === 'string' &&
+              level &&
+              typeof msg === 'string'
+                ? { t, level, msg }
+                : null
             return {
               id: synchronized ? `${logStreamId}:${r.seq}` : ++nextLogId,
               ...(synchronized ? { seq: r.seq } : {}),
               at: Number.isFinite(r.at) ? r.at : parseLogTime(t),
               text,
+              ...header,
               group: r.group ?? null,
               room: r.room ?? null,
               agents: r.agents ?? null,

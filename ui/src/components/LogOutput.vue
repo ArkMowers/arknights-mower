@@ -14,28 +14,18 @@ import DetailChevron from '@vicons/ionicons5/es/ChevronDownOutline'
 import logSheen from '@/assets/log/progress-sheen.svg?inline'
 import LogOperator from '@/components/LogOperator.vue'
 import LogInventory from '@/components/LogInventory.vue'
+import LogItemToken from '@/components/LogItemToken.vue'
 import LogStage from '@/components/LogStage.vue'
 import TaskActionSubjects from '@/components/TaskActionSubjects.vue'
 import { formatFacilityLabel } from '@/utils/base_facilities'
-import { groupMeta } from '@/utils/logGroups'
-import { createLogPresenter } from '@/utils/logPresentation'
-import {
-  facilityLogDetails,
-  lifecycleKey,
-  rescueGroups,
-  logLifecycles,
-  orderCollectionCompleted,
-  operationLogDetails,
-  recruitmentSlotDetails,
-  idleResetName,
-  inventoryItems,
-  trainingPositions
-} from '@/utils/logStructured'
-import { backupChangeText, taskPresentation } from '@/utils/taskPresentation'
+import { createLogRowPresenter } from '@/utils/logPresentation'
+import { normalizeLogSource } from '@/utils/logSource'
+import { lifecycleKey, trainingPositions } from '@/utils/logStructured'
+import { analyzeLogTimeline, buildLogTimeline } from '@/utils/logTimeline'
 import { WAIT_DISPLAY_DELAY, formatWaitDuration, scanSceneWaits } from '@/utils/logScenes'
-import { captureLogScroll, restoreLogScroll, scrollLogToBottom } from '@/utils/logScrolling'
 import { logLayoutZoom } from '@/utils/logLayout'
 import { useLogSheen } from '@/composables/logSheen'
+import { useLogViewport } from '@/composables/logViewport'
 
 const props = defineProps({
   lines: { type: Array, default: () => [] },
@@ -49,27 +39,38 @@ const props = defineProps({
   running: Boolean
 })
 
-// 首段和技术来源默认至少两行才显示分隔，明确的业务切换另行标出。
-const MIN_GROUP_LINES = 2
 // 一次追加超过这个行数多半是首屏历史或重连回放，不逐行播放淡入。
 const MAX_BATCH_ANIMATION = 8
 
 const output = ref(null)
 const { filters: sheenFilters, refresh: refreshSheen } = useLogSheen(output)
 const nowMs = ref(Date.now())
-const stickyGroup = ref(null)
 const expandedDetails = ref(new Set())
 const collapsedDetails = ref(new Set())
 const leavingDetails = ref(new Set())
 const detailAnimations = new Map()
 let nowTimer = null
-let scrollContainer = null
-let stickyFrame = 0
-let scrollSnapshot = null
-let readingSnapshot = null
-let resizeObserver = null
-let detailScrollSnapshot = null
-let detailScrollTop = 0
+const {
+  stickyGroup,
+  preserveInventoryPosition: resizeInventory,
+  startDetailResize,
+  updateDetailResize,
+  finishDetailResize,
+  interruptDetailResize
+} = useLogViewport(output, {
+  autoScroll: () => props.autoScroll,
+  renderInputs: () => [
+    props.lines,
+    props.operatorNames,
+    props.facilityPlan,
+    props.compact,
+    props.concise,
+    props.running,
+    expandedDetails.value,
+    collapsedDetails.value,
+    leavingDetails.value
+  ]
+})
 
 function detailsExpanded(key) {
   return props.concise || key.startsWith('operation:')
@@ -116,10 +117,7 @@ async function toggleDetails(key, animateHeight = false) {
     animateHeight &&
     typeof output.value?.animate === 'function' &&
     !globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-  if (animate && !detailScrollSnapshot) {
-    detailScrollSnapshot = captureLogScroll(scrollContainer)
-    detailScrollTop = detailScrollSnapshot?.scrollTop ?? 0
-  }
+  if (animate) startDetailResize()
   const detailNodes = () =>
     [...(output.value?.querySelectorAll('[data-log-detail-owner]') ?? [])].filter(
       (element) => element.dataset.logDetailOwner === key
@@ -154,7 +152,7 @@ async function toggleDetails(key, animateHeight = false) {
     for (const [node, from, to] of frames) {
       animations.push(node.animate([from, to], { duration: 200, easing: 'ease', fill: 'both' }))
     }
-    if (!resizeObserver) restoreReadingPosition()
+    updateDetailResize()
     await Promise.allSettled(animations.map((animation) => animation.finished))
     if (detailAnimations.get(key) !== animations) return
     leavingDetails.value.delete(key)
@@ -163,120 +161,13 @@ async function toggleDetails(key, animateHeight = false) {
     for (const animation of animations) animation.cancel()
   }
   detailAnimations.delete(key)
-  if (!detailAnimations.size && detailScrollSnapshot) {
-    const snapshot = detailScrollSnapshot
-    detailScrollSnapshot = null
-    restoreReadingPosition(snapshot)
-  }
-}
-
-function resizeInventory() {
-  const snapshot = captureLogScroll(scrollContainer)
-  nextTick(() => {
-    if (props.autoScroll && snapshot?.atBottom) scrollLogToBottom(scrollContainer)
-    else restoreLogScroll(scrollContainer, snapshot, false)
-    readingSnapshot = captureLogScroll(scrollContainer)
-    updateStickyGroup()
-  })
-}
-
-// 滚动时把当前所在分组的名字钉在日志顶栏，对应编辑器里的 sticky scroll。
-function readScrollContainer() {
-  return output.value?.querySelector?.('.n-scrollbar-container') ?? null
-}
-
-function updateStickyGroup() {
-  if (!scrollContainer) {
-    stickyGroup.value = null
-    return
-  }
-  const containerTop = scrollContainer.getBoundingClientRect?.().top ?? 0
-  const dividers = scrollContainer.querySelectorAll?.('.log-group[data-group]') ?? []
-  let current = null
-  for (const divider of dividers) {
-    const bottom = divider.getBoundingClientRect?.().bottom ?? Infinity
-    if (bottom > containerTop + 1) break
-    current = divider.getAttribute('data-group')
-  }
-  const meta = current ? groupMeta(current) : null
-  stickyGroup.value = meta ? meta.label : null
-}
-
-function handleScroll() {
-  const position = scrollContainer?.scrollTop
-  if (detailScrollSnapshot) {
-    const maxScrollTop = Math.max(0, scrollContainer.scrollHeight - scrollContainer.clientHeight)
-    if (Math.abs(position - Math.min(detailScrollTop, maxScrollTop)) <= 0.5) return
-    readingSnapshot = detailScrollSnapshot = captureLogScroll(scrollContainer)
-    detailScrollTop = position
-  } else if (readingSnapshot?.scrollTop !== position) {
-    // A resize can deliver the previous restoration's scroll event after geometry changes.
-    readingSnapshot = captureLogScroll(scrollContainer)
-  }
-  if (stickyFrame) return
-  const raf = globalThis.requestAnimationFrame ?? ((callback) => setTimeout(callback, 16))
-  stickyFrame = raf(() => {
-    stickyFrame = 0
-    updateStickyGroup()
-  })
-}
-
-function restoreReadingPosition(snapshot = readingSnapshot) {
-  restoreLogScroll(scrollContainer, detailScrollSnapshot ?? snapshot, props.autoScroll)
-  if (detailScrollSnapshot) detailScrollTop = scrollContainer?.scrollTop ?? 0
-  else readingSnapshot = captureLogScroll(scrollContainer)
-}
-
-function bindScrollContainer() {
-  const container = readScrollContainer()
-  if (container === scrollContainer) {
-    updateStickyGroup()
-    return
-  }
-  scrollContainer?.removeEventListener?.('scroll', handleScroll)
-  resizeObserver?.disconnect()
-  scrollContainer = container
-  scrollContainer?.addEventListener?.('scroll', handleScroll, { passive: true })
-  readingSnapshot = captureLogScroll(scrollContainer)
-  if (scrollContainer && globalThis.ResizeObserver) {
-    resizeObserver = new globalThis.ResizeObserver(() => {
-      restoreReadingPosition()
-      updateStickyGroup()
-    })
-    resizeObserver.observe(scrollContainer)
-    const lines = output.value?.querySelector?.('.log-output__lines')
-    if (lines) resizeObserver.observe(lines)
-  }
-  updateStickyGroup()
+  if (!detailAnimations.size) finishDetailResize()
 }
 
 // 日志行可能是旧格式字符串，也可能是 store 的结构化记录。
-const normalizedLines = computed(() =>
-  props.lines.map((lineData) => {
-    const isObject = typeof lineData === 'object' && lineData !== null
-    return {
-      id: isObject && lineData.id !== undefined ? lineData.id : null,
-      at: isObject && Number.isFinite(lineData.at) ? lineData.at : null,
-      text: String((isObject ? lineData.text : lineData) ?? ''),
-      group: (isObject ? lineData.group : null) ?? null,
-      room: (isObject ? lineData.room : null) ?? null,
-      agents: (isObject ? lineData.agents : null) ?? null,
-      task: (isObject ? lineData.task : null) ?? null,
-      backups: (isObject ? lineData.backups : null) ?? null,
-      recruitment: (isObject ? lineData.recruitment : null) ?? null,
-      event: (isObject ? lineData.event : null) ?? null,
-      inventory: (isObject ? lineData.inventory : null) ?? null,
-      parent: (isObject ? lineData.parent : null) ?? null
-    }
-  })
-)
+const normalizedLines = computed(() => props.lines.map(normalizeLogSource))
 
-const lifecycles = computed(() => logLifecycles(normalizedLines.value))
-const rescueState = computed(() => rescueGroups(normalizedLines.value, lifecycles.value))
-const facilityDetails = computed(() => facilityLogDetails(normalizedLines.value, lifecycles.value))
-const operationDetails = computed(() =>
-  operationLogDetails(normalizedLines.value, lifecycles.value)
-)
+const timelineAnalysis = computed(() => analyzeLogTimeline(normalizedLines.value))
 const interruptedRescueStarts = new Map()
 const rescueStartMarker = (lines, key) => {
   const record = [...lines]
@@ -301,7 +192,7 @@ watch(
       for (const id of retainedRecruitment) interruptedRecruitmentIds.add(id)
     }
     if (!running) {
-      interruptedLifecycleKeys.value = lifecycles.value.pendingKeys
+      interruptedLifecycleKeys.value = timelineAnalysis.value.lifecycle.pendingKeys
       interruptedRescueStarts.clear()
       for (const key of interruptedLifecycleKeys.value) {
         if (key.startsWith('["rescue-staffing",'))
@@ -377,7 +268,9 @@ watch(
 
 function facilityCopyIndices(node) {
   const anchor = node.getAttribute?.('data-facility-copy')
-  return anchor != null ? facilityDetails.value.byAnchor.get(Number(anchor))?.indices : null
+  return anchor != null
+    ? timelineAnalysis.value.facility.byAnchor.get(Number(anchor))?.indices
+    : null
 }
 
 function recruitmentCopyIndices(node) {
@@ -385,23 +278,23 @@ function recruitmentCopyIndices(node) {
   return key != null ? items.value.find((item) => item.key === key)?.recruitSlot?.indices : null
 }
 
-function logCopyBounds(node) {
+function isCompleteLogText(node, text, range) {
+  if (!node) return false
+  if (node.textContent === text) return true
+  if (!document.createRange) return false
+  const time =
+    node.getAttribute('data-log-copy-line') != null
+      ? node.querySelector?.('.log-stamp__time')
+      : null
+  if (!time && !range?.compareBoundaryPoints) return false
   const bounds = document.createRange()
   bounds.selectNodeContents(node)
-  if (node.getAttribute('data-log-display-substitution') != null) {
-    const time = node.querySelector('.log-stamp__time')
-    if (time) bounds.setStart(time, 0)
-  }
-  return bounds
-}
-
-function isCompleteLogText(node, text) {
+  if (time) bounds.setStart(time, 0)
   return (
-    node &&
-    (node.textContent === text ||
-      (node.getAttribute('data-log-display-substitution') != null &&
-        document.createRange &&
-        logCopyBounds(node).toString() === text))
+    (time && bounds.toString() === text) ||
+    (range?.compareBoundaryPoints &&
+      range.compareBoundaryPoints(0, bounds) <= 0 &&
+      range.compareBoundaryPoints(2, bounds) >= 0)
   )
 }
 
@@ -411,7 +304,7 @@ function copyScopedSelection(selection, range, fragment) {
   ).filter((node) => node.getAttribute?.('data-recruit-copy') != null)
   if (
     !selectedRecruitment.length &&
-    !rescueState.value.groups.size &&
+    !timelineAnalysis.value.rescue.groups.size &&
     !props.concise &&
     !collapsedDetails.value.size
   )
@@ -421,16 +314,8 @@ function copyScopedSelection(selection, range, fragment) {
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement
   const inside = element?.closest?.('.log-rescue-block')
-  const catalog = new Map()
-  const byIndex = []
-  const occurrences = new Map()
-  normalizedLines.value.forEach((line, index) => {
-    const occurrence = occurrences.get(line.text) ?? 0
-    occurrences.set(line.text, occurrence + 1)
-    const key = line.id !== null ? `id:${line.id}` : `${line.text}\u0000${occurrence}`
-    catalog.set(key, { key, index, text: line.text })
-    byIndex.push(key)
-  })
+  const records = presentedLines.value
+  const catalog = new Map(records.map((record) => [record.key, record]))
   const rescueBlocks = new Map(
     blocks.value.filter((block) => block.parent).map((block) => [block.parent.rescue.id, block])
   )
@@ -485,7 +370,7 @@ function copyScopedSelection(selection, range, fragment) {
       .filter(
         (node) => node.textContent !== recruitSummaries.get(node.getAttribute('data-recruit-copy'))
       )
-      .flatMap((node) => (recruitmentCopyIndices(node) ?? []).map((index) => byIndex[index]))
+      .flatMap((node) => (recruitmentCopyIndices(node) ?? []).map((index) => records[index].key))
   )
   const liveDetails = new Map(
     Array.from(output.value.querySelectorAll?.('[data-log-detail-key]') ?? [], (node) => [
@@ -519,6 +404,7 @@ function copyScopedSelection(selection, range, fragment) {
   ]
   const plain = (node) => {
     if (node.nodeType === 3) return node.textContent
+    if (node.classList?.contains('log-hidden')) return node.getAttribute('data-log-copy-gap') ?? ''
     if (ignored.some((name) => node.classList?.contains(name))) return ''
     return Array.from(node.childNodes ?? [], plain).join('')
   }
@@ -531,7 +417,7 @@ function copyScopedSelection(selection, range, fragment) {
     if (recruitSummaries.has(recruit)) {
       const indices = recruitmentCopyIndices(node)
       if (node.textContent === recruitSummaries.get(recruit)) {
-        for (const index of indices ?? []) add(byIndex[index])
+        for (const index of indices ?? []) add(records[index].key)
       } else if (indices?.length) {
         pieces.push({ index: indices[0], order: pieces.length, text: node.textContent })
       }
@@ -565,7 +451,7 @@ function copyScopedSelection(selection, range, fragment) {
     }
     const copyIndices = facilityCopyIndices(node)
     if (copyIndices && isComplete(node)) {
-      for (const index of copyIndices) add(byIndex[index])
+      for (const index of copyIndices) add(records[index].key)
       return
     }
     if (catalog.has(key)) {
@@ -598,7 +484,7 @@ function copyScopedSelection(selection, range, fragment) {
   walk(fragment)
   const selected = [...full.values()]
     .filter((entry) => !partialDetails.has(entry.key))
-    .map((entry) => ({ ...entry, order: -1 }))
+    .map(({ index, line }) => ({ index, text: line.text, order: -1 }))
   selected.push(...pieces)
   if (!selected.length) return selection.toString()
   return selected
@@ -617,18 +503,11 @@ function copySourceText(event) {
   if (!output.value?.contains?.(range.commonAncestorContainer)) return
   const ancestor = range.commonAncestorContainer
   const element = ancestor.nodeType === 1 ? ancestor : ancestor.parentElement
+  const selectedText = selection.toString()
   const complete = element?.closest?.(
-    '.log-inventory, .log-line--inventory, .log-reset-group, .log-arrangement, .log-forecast[data-log-source], .log-facility-heading[data-log-source], [data-recruit-copy], [data-log-detail-source], .log-line[data-log-display-substitution][data-log-source]'
+    '.log-inventory, .log-line--inventory, .log-reset-group, .log-arrangement, .log-forecast[data-log-source], .log-facility-heading[data-log-source], [data-recruit-copy], [data-log-detail-source], .log-line[data-log-copy-line][data-log-source]'
   )
-  let coversComplete = complete && selection.toString() === complete.textContent
-  if (complete && !coversComplete && range.compareBoundaryPoints && document.createRange) {
-    const bounds = logCopyBounds(complete)
-    coversComplete =
-      (complete.getAttribute('data-log-display-substitution') != null &&
-        selection.toString() === bounds.toString()) ||
-      (range.compareBoundaryPoints(0, bounds) <= 0 && range.compareBoundaryPoints(2, bounds) >= 0)
-  }
-  if (coversComplete) {
+  if (isCompleteLogText(complete, selectedText, range)) {
     const indices = facilityCopyIndices(complete) ?? recruitmentCopyIndices(complete)
     const source = indices
       ? indices.map((index) => normalizedLines.value[index].text).join('\n')
@@ -640,7 +519,7 @@ function copySourceText(event) {
   }
   if (complete?.getAttribute?.('data-recruit-copy') != null) return
   const selectedRoom = element?.closest?.('[data-room-id]')
-  if (selectedRoom && selection.toString() === selectedRoom.textContent) {
+  if (selectedRoom && selectedText === selectedRoom.textContent) {
     event.clipboardData.setData(
       'text/plain',
       selectedRoom.getAttribute('data-source-text') ?? selectedRoom.getAttribute('data-room-id')
@@ -710,6 +589,7 @@ function copySourceText(event) {
     const source = sourceNodes.get(node.getAttribute?.('data-log-key'))
     if (isCompleteLogText(source, node.textContent))
       return `${source.getAttribute('data-log-source')}\n`
+    if (node.classList?.contains('log-hidden')) return node.getAttribute('data-log-copy-gap') ?? ''
     if (
       ignored.some(
         (name) =>
@@ -718,8 +598,6 @@ function copySourceText(event) {
       )
     )
       return ''
-    const roomId = node.getAttribute?.('data-room-id')
-    if (roomId) return node.getAttribute?.('data-source-text') ?? roomId
     const text = Array.from(node.childNodes ?? [], plainText).join('')
     return node.classList?.contains('log-line') || node.classList?.contains('log-facility-heading')
       ? `${text}\n`
@@ -732,29 +610,7 @@ function copySourceText(event) {
 
 onMounted(() => {
   globalThis.document?.addEventListener('copy', copySourceText)
-  nextTick(() => {
-    bindScrollContainer()
-    if (props.autoScroll) scrollLogToBottom(scrollContainer)
-    readingSnapshot = captureLogScroll(scrollContainer)
-  })
 })
-watch(
-  () => [
-    props.lines,
-    props.operatorNames,
-    props.facilityPlan,
-    props.compact,
-    props.concise,
-    props.running,
-    expandedDetails.value,
-    collapsedDetails.value,
-    leavingDetails.value
-  ],
-  () => {
-    if (!detailScrollSnapshot) scrollSnapshot = captureLogScroll(scrollContainer)
-  },
-  { deep: true, flush: 'pre' }
-)
 watch(
   () => props.concise,
   () => {
@@ -763,38 +619,11 @@ watch(
     }
     detailAnimations.clear()
     leavingDetails.value.clear()
-    if (detailScrollSnapshot) {
-      scrollSnapshot = detailScrollSnapshot
-      detailScrollSnapshot = null
-    }
+    interruptDetailResize()
   },
   { flush: 'pre' }
 )
-watch(
-  () => props.autoScroll,
-  (enabled, previous) => {
-    if (enabled && !previous)
-      nextTick(() => {
-        bindScrollContainer()
-        scrollSnapshot = null
-        scrollLogToBottom(scrollContainer)
-        readingSnapshot = captureLogScroll(scrollContainer)
-        if (detailScrollSnapshot) {
-          detailScrollSnapshot = readingSnapshot
-          detailScrollTop = readingSnapshot?.scrollTop ?? 0
-        }
-      })
-  }
-)
-onUpdated(() => {
-  bindScrollContainer()
-  refreshSheen()
-  if (scrollSnapshot) {
-    restoreReadingPosition(scrollSnapshot)
-    scrollSnapshot = null
-    updateStickyGroup()
-  }
-})
+onUpdated(refreshSheen)
 onBeforeUnmount(() => {
   globalThis.document?.removeEventListener('copy', copySourceText)
   for (const animations of detailAnimations.values()) {
@@ -805,126 +634,17 @@ onBeforeUnmount(() => {
     clearInterval(nowTimer)
     nowTimer = null
   }
-  scrollContainer?.removeEventListener?.('scroll', handleScroll)
-  resizeObserver?.disconnect()
-  resizeObserver = null
-  scrollContainer = null
-  if (stickyFrame) {
-    const cancel = globalThis.cancelAnimationFrame ?? clearTimeout
-    cancel(stickyFrame)
-    stickyFrame = 0
-  }
 })
 
-const groupNames = computed(() =>
-  Object.values(props.facilityPlan).flatMap((room) =>
-    (Array.isArray(room?.plans) ? room.plans : []).flatMap((slot) => [
-      slot.group,
-      ...(slot.group_bindings ?? []).map((binding) => binding.group)
-    ])
-  )
-)
-const presentationPlan = computed(() =>
-  Object.fromEntries(
-    Object.entries(props.facilityPlan).map(([room, facility]) => [room, { name: facility?.name }])
-  )
-)
-const presenter = computed(() =>
-  createLogPresenter(props.operatorNames, presentationPlan.value, groupNames.value)
-)
-let previousPresenter
-let previousLines = new Map()
-
-const presentedLines = computed(() => {
-  const present = presenter.value
-  if (previousPresenter !== present) previousLines.clear()
-
-  const sourceLines = normalizedLines.value
-  const rows = []
-  const nextLines = new Map()
-  const occurrences = new Map()
-  for (let index = 0; index < sourceLines.length; index += 1) {
-    const line = sourceLines[index]
-    const cacheKey = JSON.stringify([
-      line.text,
-      line.room,
-      line.agents,
-      line.group,
-      line.task,
-      line.backups,
-      line.recruitment,
-      line.event
-    ])
-    let row = nextLines.get(cacheKey) ?? previousLines.get(cacheKey)
-    if (!row) {
-      row = present(
-        line.text,
-        line.room,
-        line.agents,
-        line.group,
-        line.recruitment,
-        line.backups,
-        line.event
-      )
-      const forecast = taskPresentation(line.task, true)
-      if (forecast) {
-        const actions = forecast.actions ?? []
-        const forecastPresenter = createLogPresenter(
-          [
-            ...props.operatorNames,
-            ...actions
-              .filter((action) => action.kind === 'operator')
-              .map((action) => action.subject)
-          ],
-          presentationPlan.value,
-          actions.length
-            ? actions.filter((action) => action.kind === 'group').map((action) => action.subject)
-            : groupNames.value,
-          {
-            structuredGroups: actions.length > 0,
-            backupNames: forecast.backups.map((entry) => entry.name)
-          }
-        )
-        const titleAt =
-          actions.length && forecast.title ? forecast.header.indexOf(forecast.title) : -1
-        row.forecast = {
-          ...forecast,
-          tokens: forecastPresenter(forecast.header, line.room, line.agents).tokens,
-          actionPrefix:
-            titleAt >= 0
-              ? forecastPresenter(forecast.header.slice(0, titleAt), line.room, line.agents).tokens
-              : null,
-          actionSuffix:
-            titleAt >= 0
-              ? forecastPresenter(
-                  forecast.header.slice(titleAt + forecast.title.length),
-                  line.room,
-                  line.agents
-                ).tokens
-              : null,
-          activated: backupChangeText(forecast.backups, true),
-          deactivated: backupChangeText(forecast.backups, false)
-        }
-      }
-    }
-    const occurrence = occurrences.get(line.text) ?? 0
-    occurrences.set(line.text, occurrence + 1)
-    const key = line.id !== null ? `id:${line.id}` : `${line.text}\u0000${occurrence}`
-    nextLines.set(cacheKey, row)
-    rows.push({ index, line, row, key })
-  }
-  previousPresenter = present
-  previousLines = nextLines
-  return rows
-})
+const rowPresenter = computed(() => createLogRowPresenter(props.operatorNames, props.facilityPlan))
+const presentedLines = computed(() => rowPresenter.value.presentLines(normalizedLines.value))
 
 // 只有首次渲染之后真正新增的行才播放淡入；首屏历史和重连回放保持静止。
 const seenLineKeys = new Set()
 const animatedLineKeys = new Set()
 let renderPrimed = false
 
-const items = computed(() => {
-  const present = presenter.value
+const timeline = computed(() => {
   const rows = presentedLines.value
   const retainedKeys = new Set(rows.map((entry) => entry.key))
   const freshKeys = [...retainedKeys].filter((key) => !seenLineKeys.has(key))
@@ -940,586 +660,27 @@ const items = computed(() => {
   }
   renderPrimed = true
 
-  let knownDate = null
-  const rowDates = rows.map((entry) => {
-    knownDate = entry.row.stamp?.date ?? knownDate
-    return knownDate
+  const result = buildLogTimeline(timelineAnalysis.value, {
+    rows,
+    present: rowPresenter.value.present,
+    facilityPlan: props.facilityPlan,
+    compact: props.compact,
+    concise: props.concise,
+    running: props.running,
+    detailsVisible,
+    waitDurations: sceneWaits.value.durations,
+    waitingIndex: showWait.value ? activeWait.value?.index : undefined,
+    interruptedLifecycleKeys: interruptedLifecycleKeys.value,
+    interruptedRecruitmentIds,
+    animatedLineKeys
   })
-  const details = facilityDetails.value
-  const scopedDetails = operationDetails.value
-  const facilityOwner = (index) => {
-    const owner = details.members.get(index)
-    return owner !== undefined && owner < index && rowDates[owner] === rowDates[index]
-      ? owner
-      : undefined
-  }
-  const isTechnicalGroup = (group) => ['recognition', 'device-control'].includes(group)
-  const isOrdinary = (entry) => !['WARNING', 'ERROR', 'CRITICAL'].includes(entry.row.level)
-  const displayGroup = (entry) => {
-    const { group } = entry.line
-    if (!isOrdinary(entry)) return group
-    const owner = facilityOwner(entry.index) ?? scopedDetails.members.get(entry.index)
-    return rows[owner]?.line.group ?? group
-  }
-  const isTechnicalObservation = (entry) =>
-    isTechnicalGroup(displayGroup(entry)) &&
-    isOrdinary(entry) &&
-    !entry.line.room &&
-    !entry.line.task &&
-    !entry.line.recruitment &&
-    !entry.line.backups
-
-  // 显式关联的普通详情沿用设施摘要的业务分组，其余技术记录只在同日同业务之间穿插。
-  // 同一业务的警告仍能确认业务上下文，技术异常和实际业务切换保留各自的分段。
-  const effectiveGroups = new Array(rows.length)
-  const bridgedObservations = new Set()
-  let businessContext = null
-  for (let index = 0; index < rows.length;) {
-    const entry = rows[index]
-    if (index && rowDates[index] !== rowDates[index - 1]) businessContext = null
-    if (isTechnicalObservation(entry)) {
-      let end = index + 1
-      while (
-        end < rows.length &&
-        rowDates[end] === rowDates[index] &&
-        isTechnicalObservation(rows[end])
-      )
-        end += 1
-      const following = rows[end]
-      const bridged =
-        businessContext &&
-        following &&
-        displayGroup(following) === businessContext &&
-        rowDates[end] === rowDates[index]
-      for (let current = index; current < end; current += 1) {
-        effectiveGroups[current] = bridged ? businessContext : displayGroup(rows[current])
-        if (bridged) bridgedObservations.add(current)
-      }
-      if (!bridged) businessContext = null
-      index = end
-      continue
-    }
-    const group = displayGroup(entry)
-    effectiveGroups[index] = group
-    businessContext = isTechnicalGroup(group) ? null : group
-    index += 1
-  }
-
-  const waits = sceneWaits.value
-  const lifecycle = lifecycles.value
-  const rescue = rescueState.value
-  const recruitment = recruitmentSlotDetails(rows, rowDates)
-  const recruitKey = (group) => `recruit-slot:${rows[group.index].key}`
-  const operationKey = (entry) => `operation:${entry.key}`
-  const recruitDetailKey = (group) =>
-    group.startPhase === 'started' ? `operation:${recruitKey(group)}` : recruitKey(group)
-  const latestRecruit = [...recruitment.byAnchor.values()].findLast(
-    (group) => group.startPhase === 'started'
-  )
-  const foldableDetail = (index) =>
-    rows[index]?.row.level === 'INFO' &&
-    !lifecycle.sourceOnly.has(index) &&
-    !details.idleResults.has(index) &&
-    !recruitment.terminals.has(index)
-  const detailOwner = (index) => {
-    if (!foldableDetail(index) || (showWait.value && activeWait.value?.index === index))
-      return undefined
-    const slot = recruitment.members.get(index)
-    if (slot && !slot.important.has(index)) return recruitDetailKey(slot)
-    const owner = rows[facilityOwner(index) ?? scopedDetails.members.get(index)]
-    return owner ? operationKey(owner) : undefined
-  }
-  const latestHiddenDetail = (indices, key, anchor, prefix) => {
-    if (detailsVisible(key)) return null
-    const index = indices?.findLast((source) => source > anchor && detailOwner(source) === key)
-    if (index === undefined) return null
-    return previewLog(rows[index], (tokens) => prefix(index, tokens))
-  }
-  const hiddenDetail = (entry) => {
-    const owner = detailOwner(entry.index)
-    return (
-      details.idleResults.has(entry.index) ||
-      (owner !== undefined && !detailsVisible(owner)) ||
-      (props.concise &&
-        rowDates[entry.index] === rowDates[entry.index + 1] &&
-        orderCollectionCompleted(entry, rows[entry.index + 1]))
-    )
-  }
-  const activeRescue = [...rescue.groups.values()]
-    .filter((group) => group.event.phase === 'started')
-    .sort((a, b) => Math.max(...a.indices) - Math.max(...b.indices))
-    .at(-1)?.event.id
-  const arrangementStarts = new Map(
-    [...lifecycle.anchors].map(([index, event]) => [
-      index,
-      {
-        ...event,
-        inProgress:
-          (event.type === 'rescue-staffing'
-            ? event.phase === 'started' && event.id === activeRescue
-            : ['started', 'waiting', 'updated'].includes(event.phase) &&
-              lifecycleKey(event) === lifecycle.latestKey) &&
-          !interruptedLifecycleKeys.value.has(lifecycleKey(event))
-      }
-    ])
-  )
-  const facilityRuns = new Map()
-  const facilityLabel = (entry) => {
-    if (
-      !isOrdinary(entry) ||
-      lifecycle.sourceOnly.has(entry.index) ||
-      rescue.members.has(entry.index) ||
-      facilityOwner(entry.index) !== undefined ||
-      hiddenDetail(entry)
-    )
-      return null
-    if (arrangementStarts.has(entry.index)) {
-      const event = arrangementStarts.get(entry.index)
-      return ['order-read', 'rescue-staffing', 'mood-calculation', 'depot-scan'].includes(
-        event.type
-      )
-        ? null
-        : event.label
-    }
-    if (typeof entry.line.room !== 'string') return null
-    const forecast = entry.row.forecast
-    if (
-      forecast &&
-      (forecast.rooms.length !== 1 ||
-        forecast.rooms[0].id !== entry.line.room ||
-        forecast.targets.some((target) => target.id !== entry.line.room))
-    )
-      return null
-    const label =
-      forecast?.rooms[0].label ?? formatFacilityLabel(entry.line.room, props.facilityPlan)
-    if (label === entry.line.room || /^B[1-3]0[1-3]$/u.test(label)) return null
-    return label
-  }
-  for (let first = 0; first < rows.length; first += 1) {
-    const label = facilityLabel(rows[first])
-    if (!label) continue
-    const room = rows[first].line.room
-    let last = first
-    let count = 1
-    for (let index = first + 1; index < rows.length; index += 1) {
-      const entry = rows[index]
-      if (!isOrdinary(entry)) break
-      if (lifecycle.sourceOnly.has(index)) continue
-      if (arrangementStarts.has(index)) break
-      if (effectiveGroups[index] !== effectiveGroups[first]) break
-      if (rowDates[first] && rowDates[index] && rowDates[first] !== rowDates[index]) break
-      if (entry.line.room === room && facilityLabel(entry) === label) {
-        count += 1
-        last = index
-        continue
-      }
-      const incidental = bridgedObservations.has(index)
-      if (!incidental) break
-    }
-    if (count < 2) continue
-    for (let index = first; index <= last; index += 1)
-      facilityRuns.set(index, { room, label, first: index === first })
-    first = last
-  }
-  const result = []
-  const dateRuns = new Map()
-  let currentDate = null
-  let sectionGroup = null
-  let sectionDate = null
-  let cursor = 0
-  while (cursor < rows.length) {
-    let end = cursor + 1
-    while (
-      end < rows.length &&
-      effectiveGroups[end] === effectiveGroups[cursor] &&
-      rowDates[end] === rowDates[cursor]
-    )
-      end += 1
-    const group = effectiveGroups[cursor]
-    const businessSwitch =
-      cursor > 0 &&
-      group &&
-      !isTechnicalGroup(group) &&
-      rows[cursor].line.group === group &&
-      effectiveGroups[cursor - 1] &&
-      effectiveGroups[cursor - 1] !== group
-    const framed =
-      group !== null &&
-      (end - cursor >= MIN_GROUP_LINES || businessSwitch || !isOrdinary(rows[cursor])) &&
-      rows
-        .slice(cursor, end)
-        .some(
-          (entry) =>
-            recruitment.byAnchor.has(entry.index) ||
-            (!lifecycle.sourceOnly.has(entry.index) &&
-              !rescue.members.has(entry.index) &&
-              (facilityOwner(entry.index) === undefined || !isOrdinary(entry)) &&
-              !hiddenDetail(entry))
-        )
-    if (sectionDate !== rowDates[cursor]) sectionGroup = null
-    if (framed && sectionGroup !== group) {
-      // 分组用一条淡淡的隔断线标出，线上只写业务或技术来源名。
-      result.push({
-        key: `group:${group}:${rows[cursor].key}`,
-        groupBar: group,
-        meta: groupMeta(group)
-      })
-    }
-    if (framed) {
-      sectionGroup = group
-      sectionDate = rowDates[cursor]
-    } else if (rows.slice(cursor, end).some((entry) => !isTechnicalObservation(entry))) {
-      // 无标题的普通技术观察不重复隔开同一段；未知来源和实际业务仍保留边界。
-      sectionGroup = null
-    }
-    for (let index = cursor; index < end; index += 1) {
-      const entry = rows[index]
-      const date = entry.row.stamp?.date
-      if (!props.compact && date && date !== currentDate) {
-        const run = dateRuns.get(date) ?? 0
-        dateRuns.set(date, run + 1)
-        result.push({ key: `\u0001date\u0000${date}\u0000${run}`, date })
-      }
-      if (date) currentDate = date
-      const recruit = recruitment.byAnchor.get(index)
-      if (recruit) {
-        const recruitActive =
-          props.running &&
-          recruit === latestRecruit &&
-          recruit.phase === 'started' &&
-          !interruptedRecruitmentIds.has(recruit.id)
-        const key = recruitKey(recruit)
-        const detailKey = recruitDetailKey(recruit)
-        result.push({
-          key,
-          detailKey,
-          recruitSlot: recruit,
-          recruitActive,
-          recruitStatus: recruitmentStatus(recruit, recruitActive),
-          headingStamp: entry.row.stamp,
-          expandable: recruit.indices.some((member) => detailOwner(member) === detailKey),
-          lifecycleDetail: recruitActive
-            ? latestHiddenDetail(recruit.indices, detailKey, index, (source) =>
-                recruit.prefixes.get(source)
-              )
-            : null
-        })
-      }
-      if (
-        lifecycle.sourceOnly.has(index) ||
-        recruitment.terminals.has(index) ||
-        hiddenDetail(entry)
-      ) {
-        animatedLineKeys.delete(entry.key)
-        result.push({ key: entry.key, row: entry.row, sourceIndex: index, sourceOnly: true })
-        continue
-      }
-      const arrangement = arrangementStarts.get(index)
-      if (arrangement) {
-        const detail = details.byAnchor.get(index)
-        const scoped = scopedDetails.byAnchor.get(index)
-        const scopedOperation = Boolean(
-          scoped || lifecycleKey(entry.line.parent) === lifecycleKey(arrangement)
-        )
-        const detailIndices = detail?.indices ?? scoped
-        const observation = arrangement.type === 'facility-observation' ? arrangement : null
-        const calculation = arrangement.type === 'mood-calculation' ? arrangement : null
-        const depot = arrangement.type === 'depot-scan' ? arrangement : null
-        const detailKey = operationKey(entry)
-        const customSummary =
-          arrangement.type === 'facility-arrangement' &&
-          arrangement.summary &&
-          (!['started', 'updated'].includes(arrangement.phase) ||
-            (arrangement.inProgress && props.running))
-        result.push({
-          key: entry.key,
-          detailKey,
-          row: entry.row,
-          sourceIndex: index,
-          facilityCopy: detail?.indices.length > 1 ? index : null,
-          expandable: detailIndices?.some((source) => detailOwner(source) === detailKey),
-          idleNames: props.concise ? detail?.idle : undefined,
-          rescue: arrangement.type === 'rescue-staffing' ? arrangement : null,
-          facilityHeading:
-            calculation || depot
-              ? null
-              : ['order-read', 'rescue-staffing'].includes(arrangement.type)
-                ? arrangement.rooms.map((room) => room.label).join('、')
-                : arrangement.label,
-          headingStamp: entry.row.stamp,
-          arrangement: arrangement.type === 'facility-arrangement' ? arrangement : null,
-          arrangementTokens: customSummary
-            ? present(
-                arrangement.summary,
-                arrangement.room,
-                arrangement.agents,
-                null,
-                null,
-                null,
-                arrangement
-              ).tokens
-            : null,
-          production: arrangement.type === 'production-switch' ? arrangement : null,
-          orderRead: arrangement.type === 'order-read' ? arrangement : null,
-          observation,
-          calculation,
-          depot,
-          observationTokens: observation
-            ? present(
-                observation.phase === 'started' && !(observation.inProgress && props.running)
-                  ? `${observation.label}：干员心情读取尚未完成`
-                  : observation.summary,
-                observation.room,
-                observation.agents,
-                null,
-                null,
-                null,
-                observation
-              ).tokens
-            : null,
-          orderTokens:
-            arrangement.type === 'order-read'
-              ? orderReadTokens(arrangement, scopedOperation)
-              : null,
-          productionTokens:
-            arrangement.type === 'production-switch'
-              ? productionTokens(arrangement, scopedOperation)
-              : null,
-          lifecycleDetail:
-            arrangement.detail && !scopedOperation
-              ? {
-                  key: rows[lifecycle.details.get(index)].key,
-                  text: arrangement.detail,
-                  tokens: present(arrangement.detail).tokens
-                }
-              : arrangement.inProgress && props.running
-                ? latestHiddenDetail(detailIndices, detailKey, index, (_, tokens) =>
-                    facilityPrefix(tokens, arrangement.room)
-                  )
-                : null
-        })
-        continue
-      }
-      const parts = stampParts(entry.row)
-      const tokens = parts ? entry.row.message : entry.row.tokens
-      const facility = facilityRuns.get(index)
-      if (facility?.first)
-        result.push({
-          key: `facility:${entry.key}`,
-          facilityHeading: facility.label,
-          headingStamp: entry.row.stamp
-        })
-      const recruitGroup = recruitment.members.get(index)
-      const forecastTokens = entry.row.forecast?.actionPrefix ?? entry.row.forecast?.tokens
-      const owner = facilityOwner(index)
-      const facilityRoom = rows[owner]?.line.event?.room ?? facility?.room
-      const roomPrefix = facilityRoom
-        ? facilityPrefix(forecastTokens ?? tokens, facilityRoom)
-        : null
-      const hiddenPrefix = recruitGroup?.prefixes.get(index) ?? roomPrefix
-      const sourceTokens = hiddenPrefix ? skipTokenText(tokens, hiddenPrefix.length) : tokens
-      const displayTokens = expandDisplayTokens(sourceTokens)
-      result.push({
-        key: entry.key,
-        row: entry.row,
-        sourceIndex: index,
-        detailOwner: detailOwner(index),
-        inventory: inventoryItems(entry.line, entry.row),
-        resetName: rescue.members.has(index) ? null : idleResetName(entry.line, entry.row),
-        resetContext: JSON.stringify([entry.line.group, entry.line.room, rowDates[index], owner]),
-        parts,
-        hiddenPrefix,
-        facility: facility?.room ?? null,
-        nested:
-          Boolean(trainingPositions(entry.line.event)) ||
-          Boolean(facilityRoom || recruitGroup || scopedDetails.members.has(index)),
-        displayTokens,
-        displaySubstituted: displayTokens !== sourceTokens,
-        forecastTokens:
-          roomPrefix && forecastTokens
-            ? skipTokenText(forecastTokens, roomPrefix.length)
-            : forecastTokens,
-        waitMs: waits.durations.get(index) ?? null,
-        sceneWaiting: showWait.value && activeWait.value?.index === index,
-        animate: animatedLineKeys.has(entry.key)
-      })
-    }
-    cursor = end
-  }
-  for (let first = 0; first < result.length; first += 1) {
-    const entry = result[first]
-    if (!entry.resetName) continue
-    let end = first + 1
-    while (result[end]?.resetName && result[end].resetContext === entry.resetContext) end += 1
-    if (end - first < 2) continue
-    const records = result.slice(first, end)
-    result.splice(first, end - first, {
-      key: `reset:${entry.key}`,
-      row: entry.row,
-      resetRows: records,
-      nested: records.every((record) => record.nested),
-      detailOwner: records.every((record) => record.detailOwner === entry.detailOwner)
-        ? entry.detailOwner
-        : undefined,
-      source: records.map((record) => record.row.text).join('\n')
-    })
-  }
-  // 日期分隔属于整天，排在分组名之前，避免分组名像是贴在日期上面。
-  for (let index = 0; index < result.length - 1; index += 1) {
-    if (result[index].groupBar && result[index + 1]?.date) {
-      const dateItem = result[index + 1]
-      result.splice(index, 2, dateItem, result[index])
-      index += 1
-    }
+  for (const item of result.items) {
+    if (item.sourceOnly) animatedLineKeys.delete(item.key)
   }
   return result
 })
-
-const blocks = computed(() => {
-  const state = rescueState.value
-  const byIndex = new Map(
-    items.value
-      .filter((item) => item.sourceIndex !== undefined)
-      .map((item) => [item.sourceIndex, item])
-  )
-  const plain = (index) => {
-    const item = byIndex.get(index)
-    if (!item) return null
-    if (!item.sourceOnly && !item.arrangement && !item.rescue) return item
-    const parts = stampParts(item.row)
-    return {
-      key: item.key,
-      row: item.row,
-      sourceIndex: index,
-      parts,
-      inventory: inventoryItems(normalizedLines.value[index], item.row),
-      displayTokens: expandDisplayTokens(parts ? item.row.message : item.row.tokens),
-      forecastTokens: item.row.forecast?.actionPrefix ?? item.row.forecast?.tokens,
-      waitMs: sceneWaits.value.durations.get(index) ?? null,
-      sceneWaiting: showWait.value && activeWait.value?.index === index
-    }
-  }
-  const mirror = (item, history = false) =>
-    item && {
-      ...item,
-      key: `rescue-display:${item.key}`,
-      sourceKey: item.key,
-      mirror: true,
-      history,
-      nested: !item.arrangement,
-      animate: false
-    }
-  const result = []
-  for (const item of items.value) {
-    if (item.rescue) {
-      const group = state.groups.get(item.rescue.id)
-      const content = []
-      for (const index of group.indices) {
-        const event = normalizedLines.value[index].event
-        if (event?.type !== 'rescue-staffing' || event.phase !== 'failed') continue
-        const record = plain(index)
-        if (event.detail) {
-          record.row = { ...record.row, forecast: null }
-          record.displayTokens = presenter.value(event.detail).tokens
-        }
-        content.push(mirror(record, item.rescue.phase !== 'failed'))
-      }
-      for (const room of item.rescue.rooms) {
-        content.push({
-          key: `rescue-room:${item.rescue.id}:${room.room}`,
-          rescueRoom: room,
-          staticParentKey: item.key,
-          sourceIndex: item.sourceIndex
-        })
-        const attempts = [...group.attempts.values()]
-          .filter((attempt) => attempt.room === room.room)
-          .sort((a, b) => a.index - b.index)
-        const current = attempts.at(-1)
-        if (current) {
-          const entry = byIndex.get(current.index)
-          content.push(
-            mirror({
-              ...entry,
-              arrangement: {
-                ...entry.arrangement,
-                inProgress: item.rescue.inProgress && entry.arrangement.inProgress
-              }
-            })
-          )
-        }
-        for (const attempt of attempts) {
-          if (attempt !== current)
-            content.push(
-              mirror(
-                {
-                  ...byIndex.get(attempt.index),
-                  arrangement: { ...attempt.event, inProgress: false }
-                },
-                true
-              )
-            )
-          for (const index of attempt.indices) {
-            if (index === attempt.index) continue
-            const record = byIndex.get(index)
-            if (record?.sourceOnly) {
-              if (['WARNING', 'WARN', 'ERROR', 'CRITICAL'].includes(record.row.level))
-                content.push(mirror(plain(index), attempt !== current))
-            } else content.push(mirror(record, attempt !== current))
-          }
-        }
-        for (const index of group.unanchored.get(room.room) ?? [])
-          content.push(mirror(plain(index)))
-      }
-      for (const index of group.roots) content.push(mirror(plain(index)))
-      const expanded = detailsVisible(item.detailKey)
-      const previewIndex =
-        !expanded && item.rescue.inProgress && props.running
-          ? [...group.indices].reverse().find((index) => {
-              const record = byIndex.get(index)
-              return (
-                index > item.sourceIndex &&
-                record?.row.level === 'INFO' &&
-                !normalizedLines.value[index].event &&
-                !(showWait.value && activeWait.value?.index === index)
-              )
-            })
-          : undefined
-      const preview =
-        previewIndex === undefined
-          ? []
-          : [{ key: `${item.key}:preview`, lifecycleDetail: previewLog(plain(previewIndex)) }]
-      const sources = [...group.indices]
-        .sort((a, b) => a - b)
-        .map((index) => ({
-          key: byIndex.get(index)?.key,
-          index,
-          text: normalizedLines.value[index].text
-        }))
-        .filter((entry) => entry.key)
-      result.push({
-        key: `rescue:${item.rescue.id}`,
-        parent: item,
-        items: [
-          ...preview,
-          ...content.filter(
-            (record) =>
-              record &&
-              (expanded ||
-                record.sceneWaiting ||
-                ['WARNING', 'WARN', 'ERROR', 'CRITICAL'].includes(record.row?.level))
-          )
-        ],
-        sources
-      })
-    } else if (state.members.has(item.sourceIndex)) {
-      result.push({
-        key: item.key,
-        items: [{ key: item.key, row: item.row, sourceIndex: item.sourceIndex, sourceOnly: true }]
-      })
-    } else result.push({ key: item.key, items: [item] })
-  }
-  return result
-})
+const items = computed(() => timeline.value.items)
+const blocks = computed(() => timeline.value.blocks)
 
 function rescueHeader(event) {
   if (event.phase === 'queued') return '已生成救急换班任务，等待执行'
@@ -1530,89 +691,6 @@ function rescueHeader(event) {
 
 function hasForecastDetails(forecast) {
   return Boolean(forecast.rooms.length || forecast.targets.length || forecast.backups.length)
-}
-
-function orderReadTokens(event, scoped) {
-  const names = (rooms) =>
-    rooms.flatMap((room, index) => [
-      ...(index ? [{ type: 'text', text: '、' }] : []),
-      { type: 'order-room', text: room.label }
-    ])
-  const prefix = event.after_switch ? [{ type: 'text', text: '产物切换和驻员安排已完成，' }] : []
-  if (event.rooms.some((room) => room.status !== 'pending') || event.phase === 'failed') {
-    const read = event.rooms.filter((room) => room.status === 'read')
-    const paused = event.rooms.filter((room) => room.status === 'paused')
-    const pending = event.rooms.filter((room) => room.status === 'pending')
-    const outcomes = []
-    if (read.length)
-      outcomes.push([
-        { type: 'text', text: '已读取' },
-        ...names(read),
-        { type: 'text', text: ' 的订单倒计时' }
-      ])
-    if (paused.length) outcomes.push([...names(paused), { type: 'text', text: ' 的订单暂停获取' }])
-    if (pending.length)
-      outcomes.push([
-        { type: 'text', text: event.inProgress && props.running ? '正在读取' : '尚未完成读取' },
-        ...names(pending),
-        { type: 'text', text: ' 的订单倒计时' }
-      ])
-    return [
-      ...prefix,
-      ...outcomes.flatMap((tokens, index) => [
-        ...(index ? [{ type: 'text', text: '；' }] : []),
-        ...tokens
-      ]),
-      ...(scoped && event.phase === 'failed' && event.detail
-        ? [{ type: 'text', text: `。原因：${event.detail}` }]
-        : [])
-    ]
-  }
-  return [
-    ...prefix,
-    { type: 'text', text: event.inProgress && props.running ? '正在读取' : '尚未完成读取' },
-    ...names(event.rooms),
-    { type: 'text', text: ' 的订单倒计时' }
-  ]
-}
-
-function productionTokens(event, scoped) {
-  const room = { type: 'production-room', text: event.label }
-  const target = presenter.value(event.product).tokens
-  const subject = event.facility === 'trade' ? '订单类型' : '产物'
-  if (event.phase === 'completed')
-    return [
-      { type: 'text', text: '已将' },
-      room,
-      { type: 'text', text: ` 的${subject}切换为` },
-      ...target
-    ]
-  if (!event.inProgress || !props.running)
-    return [
-      { type: 'text', text: '尚未完成将' },
-      room,
-      { type: 'text', text: ` 的${subject}切换为` },
-      ...target,
-      ...(scoped && event.phase === 'failed' && event.detail
-        ? [{ type: 'text', text: `。原因：${event.detail}` }]
-        : [])
-    ]
-  const waiting = scoped && event.phase === 'waiting'
-  return event.previous
-    ? [
-        { type: 'text', text: waiting ? '等待切换' : '正在切换' },
-        room,
-        { type: 'text', text: ` 的${subject} ` },
-        ...presenter.value(event.previous).tokens,
-        { type: 'text', text: ' → ' },
-        ...target
-      ]
-    : [
-        { type: 'text', text: waiting ? '等待将' : '正在将' },
-        room,
-        { type: 'text', text: ` 的${subject}切换为` },
-        ...target
-      ]
 }
 
 function operationSummary(event) {
@@ -1627,80 +705,8 @@ function arrangementPrefix(event) {
   return '尚未确认'
 }
 
-function skipTokenText(tokens, length) {
-  const result = []
-  for (const token of tokens) {
-    if (length >= token.text.length) length -= token.text.length
-    else {
-      result.push(length ? { ...token, text: token.text.slice(length) } : token)
-      length = 0
-    }
-  }
-  return result
-}
-
-function expandDisplayTokens(tokens) {
-  return tokens.some((token) => token.displayTokens)
-    ? tokens.flatMap((token) => token.displayTokens ?? [token])
-    : tokens
-}
-
-function facilityPrefix(tokens, room) {
-  return tokens[0]?.type === 'room' &&
-    (tokens[0].roomId ?? tokens[0].text) === room &&
-    /^[：:]/u.test(tokens[1]?.text ?? '')
-    ? tokens[0].text + tokens[1].text[0]
-    : null
-}
-
-// 行首拆成隐藏与可见片段，依次拼接仍是原文。
-function stampParts(row) {
-  const stamp = row.stamp
-  if (!stamp) return null
-  const level = stamp.level ?? ''
-  const quiet = !level || level === 'INFO'
-  return {
-    head: (stamp.date ?? '') + stamp.dateGap,
-    time: stamp.time,
-    tail: stamp.fraction + stamp.levelGap,
-    quiet: quiet ? level + stamp.gap : '',
-    label: quiet ? '' : level,
-    gap: quiet ? '' : stamp.gap
-  }
-}
-
-function previewLog(entry, prefix = () => null) {
-  const tokens = entry.row.forecast?.tokens ?? entry.row.message
-  const newline = tokens.findIndex((token) => /[\r\n]/u.test(token.text))
-  const firstLine =
-    newline < 0
-      ? tokens
-      : [
-          ...tokens.slice(0, newline),
-          { ...tokens[newline], text: tokens[newline].text.split(/[\r\n]/u, 1)[0] }
-        ]
-  const hiddenPrefix = prefix(firstLine)
-  return {
-    key: entry.key,
-    row: entry.row,
-    parts: stampParts(entry.row),
-    tokens: expandDisplayTokens(
-      hiddenPrefix ? skipTokenText(firstLine, hiddenPrefix.length) : firstLine
-    ),
-    preview: true
-  }
-}
-
 function stampTitle(stamp) {
   return [stamp.date, stamp.time + stamp.fraction].filter(Boolean).join(' ')
-}
-
-function recruitmentStatus(slot, active) {
-  if (slot.phase === 'started') return active ? '检查中' : '检查结果未确认'
-  if (slot.phase === 'completed' && !slot.operator && !slot.decision) return '检查完成'
-  if (slot.phase === 'failed') return '检查未完成'
-  if (slot.phase === 'stopped') return '已停止检查'
-  return null
 }
 
 function forecastWaitTitle(forecast) {
@@ -1712,10 +718,6 @@ function forecastWaitTitle(forecast) {
 function levelName(level) {
   if (level === 'WARN') return 'warning'
   return level ? level.toLowerCase() : 'info'
-}
-
-function itemStyle(token) {
-  return { '--log-item-light': token.lightColor, '--log-item-dark': token.darkColor }
 }
 
 function lineClasses(row) {
@@ -1799,6 +801,7 @@ function lineClasses(row) {
       </svg>
       <!-- 当前分组随滚动更新，标题位于正文滚动区之外。 -->
       <div
+        v-if="!compact || running || $slots.title || stickyGroup"
         class="log-sticky"
         :class="{
           'log-sticky--titled': compact || $slots.title,
@@ -1807,7 +810,7 @@ function lineClasses(row) {
         :aria-hidden="$slots.title ? undefined : true"
       >
         <slot v-if="$slots.title" name="title" />
-        <span v-else-if="compact" class="log-sticky__title">运行日志</span>
+        <span v-else-if="compact" class="log-sticky__title">{{ running ? '运行日志' : '' }}</span>
         <span v-else class="log-sticky__lead" aria-hidden="true"></span>
         <span
           v-if="!showAlternateView && (!compact || stickyGroup)"
@@ -1842,6 +845,7 @@ function lineClasses(row) {
                 'log-heading--unstamped': !block.parent.headingStamp
               }"
               :data-log-key="block.parent.key"
+              :data-log-anchor="block.parent.key"
               :data-log-source="block.parent.row.text"
               :data-log-source-index="block.parent.sourceIndex"
             >
@@ -1910,6 +914,7 @@ function lineClasses(row) {
                   <div
                     class="log-facility-heading"
                     :data-log-key="item.row ? item.key : undefined"
+                    :data-log-anchor="item.row ? item.key : undefined"
                     :data-log-source="item.row?.text"
                     :data-facility-copy="item.facilityCopy"
                     :data-log-rescue-mirror="item.mirror ? item.sourceKey : undefined"
@@ -1959,21 +964,11 @@ function lineClasses(row) {
                           :size="16"
                           show-name
                         />
-                        <span
+                        <log-item-token
                           v-else-if="token.type === 'item'"
-                          class="log-token log-token--item"
-                          :class="{
-                            'log-token--item-experience': /作战(?:记录|录像)/u.test(token.text)
-                          }"
-                          :style="itemStyle(token)"
-                          ><img
-                            :src="token.icon"
-                            width="16"
-                            height="16"
-                            alt=""
-                            aria-hidden="true"
-                          />{{ token.text }}</span
-                        >
+                          :token="token"
+                          mute-experience
+                        />
                         <span
                           v-else
                           class="log-token"
@@ -2092,6 +1087,7 @@ function lineClasses(row) {
                     'log-heading--unstamped': !item.headingStamp
                   }"
                   :data-log-key="item.key"
+                  :data-log-anchor="item.key"
                   :data-recruit-copy="item.key"
                   :data-recruit-phase="item.recruitSlot.phase"
                 >
@@ -2169,6 +1165,7 @@ function lineClasses(row) {
                     ><span
                       class="log-line log-reset-record"
                       :data-log-key="record.key"
+                      :data-log-anchor="record.key"
                       :data-log-source="record.row.text"
                       :data-log-level="record.row.level"
                       :title="record.row.stamp ? stampTitle(record.row.stamp) : undefined"
@@ -2194,20 +1191,23 @@ function lineClasses(row) {
                   ]"
                   :data-log-level="item.row.level"
                   :data-log-key="item.key"
+                  :data-log-anchor="item.key"
                   :data-log-source="item.row.text"
                   :data-log-rescue-mirror="item.mirror ? item.sourceKey : undefined"
                   :data-log-source-index="item.sourceIndex"
                   :data-log-detail-owner="item.detailOwner"
-                  :data-log-display-substitution="
-                    item.displaySubstituted && !item.mirror && !item.detailOwner ? true : undefined
-                  "
+                  :data-log-copy-line="!item.mirror ? true : undefined"
                 >
                   <template v-if="item.parts">
                     <span class="log-stamp" :title="stampTitle(item.row.stamp)"
                       ><span class="log-hidden">{{ item.parts.head }}</span
                       ><span class="log-stamp__time">{{ item.parts.time }}</span
                       ><span class="log-hidden">{{ item.parts.tail }}</span></span
-                    ><span v-if="item.parts.quiet" class="log-hidden">{{ item.parts.quiet }}</span
+                    ><span
+                      v-if="item.parts.quiet"
+                      class="log-hidden"
+                      :data-log-copy-gap="item.parts.quietGap"
+                      >{{ item.parts.quiet }}</span
                     ><span
                       v-if="item.parts.label"
                       class="log-level"
@@ -2246,27 +1246,11 @@ function lineClasses(row) {
                           :facility-plan="facilityPlan"
                           :size="16"
                         />
-                        <span
-                          v-else-if="token.type === 'order-operator'"
-                          class="log-token log-token--item log-token--order-operator"
-                          :style="itemStyle(token)"
-                          ><log-operator :name="token.name" show-name :size="16"
-                        /></span>
-                        <span
-                          v-else-if="token.type === 'item'"
-                          class="log-token log-token--item"
-                          :class="{
-                            'log-token--item-experience': /作战(?:记录|录像)/u.test(token.text)
-                          }"
-                          :style="itemStyle(token)"
-                          ><img
-                            :src="token.icon"
-                            width="16"
-                            height="16"
-                            alt=""
-                            aria-hidden="true"
-                          />{{ token.text }}</span
-                        >
+                        <log-item-token
+                          v-else-if="token.type === 'item' || token.type === 'order-operator'"
+                          :token="token"
+                          mute-experience
+                        />
                         <span v-else class="log-token" :class="`log-token--${token.type}`">{{
                           token.text
                         }}</span>
@@ -2289,24 +1273,10 @@ function lineClasses(row) {
                             :facility-plan="facilityPlan"
                             :size="16"
                           />
-                          <span
-                            v-else-if="token.type === 'order-operator'"
-                            class="log-token log-token--item log-token--order-operator"
-                            :style="itemStyle(token)"
-                            ><log-operator :name="token.name" show-name :size="16"
-                          /></span>
-                          <span
-                            v-else-if="token.type === 'item'"
-                            class="log-token log-token--item"
-                            :style="itemStyle(token)"
-                            ><img
-                              :src="token.icon"
-                              width="16"
-                              height="16"
-                              alt=""
-                              aria-hidden="true"
-                            />{{ token.text }}</span
-                          >
+                          <log-item-token
+                            v-else-if="token.type === 'item' || token.type === 'order-operator'"
+                            :token="token"
+                          />
                           <span v-else class="log-token" :class="`log-token--${token.type}`">{{
                             token.text
                           }}</span>
@@ -2430,27 +1400,11 @@ function lineClasses(row) {
                           @error="$event.target.hidden = true"
                         />{{ token.text }}</span
                       >
-                      <span
-                        v-else-if="token.type === 'order-operator'"
-                        class="log-token log-token--item log-token--order-operator"
-                        :style="itemStyle(token)"
-                        ><log-operator :name="token.name" show-name :size="16"
-                      /></span>
-                      <span
-                        v-else-if="token.type === 'item'"
-                        class="log-token log-token--item"
-                        :class="{
-                          'log-token--item-experience': /作战(?:记录|录像)/u.test(token.text)
-                        }"
-                        :style="itemStyle(token)"
-                        ><img
-                          :src="token.icon"
-                          width="16"
-                          height="16"
-                          alt=""
-                          aria-hidden="true"
-                        />{{ token.text }}</span
-                      >
+                      <log-item-token
+                        v-else-if="token.type === 'item' || token.type === 'order-operator'"
+                        :token="token"
+                        mute-experience
+                      />
                       <span
                         v-else-if="token.type === 'recruit-combinations'"
                         class="log-token log-recruit-tags log-recruit-combinations"
@@ -2541,14 +1495,8 @@ function lineClasses(row) {
                       :size="16"
                       show-name
                     />
-                    <span
-                      v-else-if="token.type === 'item'"
-                      class="log-token log-token--item"
-                      :style="itemStyle(token)"
-                      ><img :src="token.icon" width="16" height="16" alt="" aria-hidden="true" />{{
-                        token.text
-                      }}</span
-                    ><span v-else>{{ token.text }}</span>
+                    <log-item-token v-else-if="token.type === 'item'" :token="token" />
+                    <span v-else>{{ token.text }}</span>
                   </template>
                 </div>
               </template>
@@ -2785,28 +1733,6 @@ function lineClasses(row) {
 
 .log-token--backup {
   color: var(--log-room-ink);
-}
-.log-token--item {
-  --log-item-active: var(--log-item-light);
-  --log-item-mix: 70%;
-  color: color-mix(in srgb, var(--log-item-active) var(--log-item-mix), var(--log-ink));
-  white-space: nowrap;
-}
-.log-token--item-experience {
-  --log-item-mix: 35%;
-}
-.log-token--item > img {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  margin-right: 3px;
-  object-fit: contain;
-  vertical-align: -3px;
-}
-html[data-mower-theme='dark'] .log-token--item,
-html[data-window-shell-theme='dark'] .log-token--item {
-  --log-item-active: var(--log-item-dark);
-  --log-item-mix: 85%;
 }
 .log-recruit-slot,
 .log-facility-heading {

@@ -688,6 +688,7 @@ describe('log WebSocket access', () => {
     expect(store.log_lines.map((line) => line.text)).toEqual(
       retained.map((record) => `${record.t} ${record.level} ${record.msg}`)
     )
+    expect(store.log_lines).toMatchObject(retained.map(({ t, level, msg }) => ({ t, level, msg })))
     const live = await render()
     const nodes = (node) => [node, ...(node.children ?? []).flatMap(nodes)]
     const summaries = nodes(parseHtml(live)).filter(
@@ -744,6 +745,16 @@ describe('log WebSocket access', () => {
     send(Array.from({ length: 2100 }, (_, index) => ({ msg: `旧版记录 ${index}` })))
     expect(store.log_lines).toHaveLength(2000)
     expect(store.log_lines[0].text).toBe('旧版记录 100')
+    const t = '2026-11-01 00:00:00'
+    const largeRecords = Array.from({ length: 150 }, () => ({
+      t,
+      level: 'INFO',
+      msg: 'a'.repeat(16000)
+    }))
+    send(largeRecords)
+    expect(store.log_lines.filter((line) => line.text.startsWith(t))).toHaveLength(
+      largeRecords.length
+    )
     send(Array.from({ length: 300 }, () => ({ msg: '汉'.repeat(16000) })))
     expect(
       new TextEncoder().encode(JSON.stringify(store.log_lines)).byteLength

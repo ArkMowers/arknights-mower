@@ -47,32 +47,25 @@ function viewport(ids = Array.from({ length: 100 }, (_, index) => index + 1)) {
 }
 
 describe('log reading position', () => {
-  it.each(['log-facility-heading', 'log-recruit-slot'])(
-    'anchors visible %s summaries and excludes their hidden source records',
-    (className) => {
-      let summaryTop = 30
-      const heading = {
-        getAttribute: () => 'facility:1',
-        getBoundingClientRect: () => ({ top: summaryTop, bottom: summaryTop + 38 })
-      }
-      const hidden = {
-        getAttribute: () => 'terminal:1',
-        getBoundingClientRect: () => ({ top: 40, bottom: 41 })
-      }
-      const page = viewport()
-      page.container.querySelectorAll = (selector) => {
-        const rows = selector.includes(className) ? [heading] : []
-        if (!selector.includes(':not(.log-line--source-only)')) rows.push(hidden)
-        return rows
-      }
-      const snapshot = captureLogScroll(page.container)
-      expect(snapshot.anchors).toEqual([{ key: 'facility:1', offset: -10 }])
-      expect(snapshot.lastKey).toBe('facility:1')
-      summaryTop = 54
-      restoreLogScroll(page.container, snapshot)
-      expect(page.container.scrollTop).toBe(124)
+  it('uses the designated summary anchor and excludes its hidden source record', () => {
+    let summaryTop = 30
+    const heading = {
+      getAttribute: (name) => (name === 'data-log-anchor' ? 'facility:1' : null),
+      getBoundingClientRect: () => ({ top: summaryTop, bottom: summaryTop + 38 })
     }
-  )
+    const hidden = {
+      getAttribute: (name) => (name === 'data-log-key' ? 'terminal:1' : null),
+      getBoundingClientRect: () => ({ top: 40, bottom: 41 })
+    }
+    const page = viewport()
+    page.container.querySelectorAll = (selector) =>
+      [heading, hidden].filter((node) => node.getAttribute(selector.slice(1, -1)) !== null)
+    const snapshot = captureLogScroll(page.container)
+    expect(snapshot.anchors).toEqual([{ key: 'facility:1', offset: -10 }])
+    summaryTop = 54
+    restoreLogScroll(page.container, snapshot)
+    expect(page.container.scrollTop).toBe(124)
+  })
   it('keeps following the bottom when an in-place summary changes height without a new visible key', () => {
     const page = viewport()
     page.scroll(1800)

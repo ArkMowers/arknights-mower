@@ -1,22 +1,13 @@
 import { formatFacilityLabel } from './base_facilities.js'
 import { logItemMatches } from './logItems.js'
+import { LOG_DATE, LOG_LEVEL, LOG_TIME, normalizeLogSource } from './logSource.js'
 import { stageLogMatches } from './logStructured.js'
+import { backupChangeText, taskPresentation } from './taskPresentation.js'
 
-const DATE = String.raw`\d{4}-\d{2}-\d{2}`
-const TIME = String.raw`\d{2}:\d{2}:\d{2}(?:[,.]\d{1,6})?`
-const LEVEL = 'CRITICAL|ERROR|WARNING|WARN|INFO|DEBUG'
 const IDENTIFIER = String.raw`[\p{L}\p{N}_]`
 const SUBJECT_IDENTIFIER = String.raw`[\p{L}\p{N}_·]`
 const ROOM = String.raw`(?:room_\d+_\d+|(?:dormitory|gaming)_\d+)(?:_[A-Za-z0-9]+)*|central|meeting|factory|contact|train|recycle`
 const LEVEL_PRIORITY = { DEBUG: 10, INFO: 20, WARNING: 30, ERROR: 40, CRITICAL: 50 }
-const LOG_HEADER = new RegExp(
-  String.raw`^\s*(?:${DATE}\s+)?(?:${TIME}\s+)?(?:(?<source>\S+:\d+)\s+)?(?:${LEVEL})\s+`,
-  'u'
-)
-const STAMP = new RegExp(
-  String.raw`^(?:(?<date>${DATE})(?<dateGap>[ \t]+))?(?<time>\d{2}:\d{2}:\d{2})(?<fraction>[,.]\d{1,6})?(?![\d,.])(?:(?<levelGap>[ \t]+)(?<level>${LEVEL})(?!${IDENTIFIER}))?(?<gap>[ \t]*)`,
-  'u'
-)
 const NUMBER = String.raw`-?\d+(?:\.\d+)?`
 const POINT = String.raw`\(${NUMBER},\s*${NUMBER}\)`
 const PROFESSION = 'ALL|PIONEER|WARRIOR|TANK|SNIPER|CASTER|MEDIC|SUPPORT|SPECIAL'
@@ -65,23 +56,6 @@ function typedEntityPattern(text) {
   return fragments.length
     ? `(?<typedEntity>${[...new Set(fragments)].map(escapePattern).join('|')})`
     : null
-}
-
-// 行首的日期、时间和级别单独返回，拼接各字段即得到原文前缀。
-function readStamp(text) {
-  const match = STAMP.exec(text)
-  if (!match) return null
-  const { date, dateGap, time, fraction, levelGap, level, gap } = match.groups
-  return {
-    length: match[0].length,
-    date: date ?? null,
-    dateGap: dateGap ?? '',
-    time,
-    fraction: fraction ?? '',
-    levelGap: levelGap ?? '',
-    level: level ?? null,
-    gap
-  }
 }
 
 function tokensAfter(tokens, offset) {
@@ -138,13 +112,6 @@ function insertLogItems(tokens, text, event) {
   }
   append(cursor, text.length)
   tokens.splice(0, tokens.length, ...result)
-}
-
-function logMessage(text) {
-  const header = LOG_HEADER.exec(text)
-  if (!header) return text.trim()
-  const message = text.slice(header[0].length)
-  return header.groups.source ? message.replace(/^[A-Za-z_][\w.]*:\s*/u, '') : message
 }
 
 function validRecruitTags(tags, limit) {
@@ -238,9 +205,9 @@ export function createLogPresenter(
     .sort((left, right) => right.length - left.length)
   const groupPattern = groups.map(escapePattern).join('|')
   const patterns = [
-    String.raw`(?<date>(?<!\d)${DATE}(?!\d))`,
-    String.raw`(?<time>(?<!\d)${TIME}(?!\d|[,.]\d))`,
-    `(?<level>${bounded(LEVEL)})`,
+    String.raw`(?<date>(?<!\d)${LOG_DATE}(?!\d))`,
+    String.raw`(?<time>(?<!\d)${LOG_TIME}(?!\d|[,.]\d))`,
+    `(?<level>${bounded(LOG_LEVEL)})`,
     String.raw`(?<room>(?<![A-Za-z0-9_])(?:${ROOM})(?![A-Za-z0-9_]))`,
     `(?<group>${groups.length ? `${structuredGroups ? `${bounded(groupPattern, SUBJECT_IDENTIFIER)}|` : ''}${shiftSubject(groupPattern)}` : '(?!)'})`,
     `(?<operator>${operatorPattern(names)})`
@@ -249,18 +216,22 @@ export function createLogPresenter(
 
   return function presentLogLine(
     line,
-    structuredRoom = null,
-    structuredAgents = null,
-    structuredGroup = null,
-    structuredRecruitment = null,
-    structuredBackups = null,
-    structuredEvent = null
+    structuredRoom = line?.room ?? null,
+    structuredAgents = line?.agents ?? null,
+    structuredGroup = line?.group ?? null,
+    structuredRecruitment = line?.recruitment ?? null,
+    structuredBackups = line?.backups ?? null,
+    structuredEvent = line?.event ?? null
   ) {
-    const text = String(line ?? '')
+    const {
+      text,
+      stamp,
+      level: declaredLevel,
+      msg
+    } = line?.stamp === undefined ? normalizeLogSource(line) : line
     const typedEntities = typedEntityPattern(text)
     const recruitment = recruitmentPresentation(structuredRecruitment, text)
-    const stamp = readStamp(text)
-    const sourceLevel = stamp?.level === 'WARN' ? 'WARNING' : stamp?.level
+    const sourceLevel = declaredLevel === 'WARN' ? 'WARNING' : declaredLevel
     const tokens = []
     let cursor = 0
     let level = sourceLevel ?? null
@@ -362,8 +333,7 @@ export function createLogPresenter(
     if (cursor < text.length) tokens.push({ type: 'text', text: text.slice(cursor) })
     insertLogItems(tokens, text, structuredEvent)
     const detail =
-      (!level || LEVEL_PRIORITY[level] < LEVEL_PRIORITY.WARNING) &&
-      OPERATIONS.test(logMessage(text))
+      (!level || LEVEL_PRIORITY[level] < LEVEL_PRIORITY.WARNING) && OPERATIONS.test(msg.trimStart())
 
     const result = {
       text,
@@ -383,4 +353,93 @@ export function createLogPresenter(
 
     return result
   }
+}
+
+export function createLogRowPresenter(operatorNames, facilityPlan) {
+  const groupNames = Object.values(facilityPlan).flatMap((room) =>
+    (Array.isArray(room?.plans) ? room.plans : []).flatMap((slot) => [
+      slot.group,
+      ...(slot.group_bindings ?? []).map((binding) => binding.group)
+    ])
+  )
+  const presentationPlan = Object.fromEntries(
+    Object.entries(facilityPlan).map(([room, facility]) => [room, { name: facility?.name }])
+  )
+  const present = createLogPresenter(operatorNames, presentationPlan, groupNames)
+  let previousLines = new Map()
+
+  function presentLines(sourceLines) {
+    const rows = []
+    const nextLines = new Map()
+    const occurrences = new Map()
+    for (let index = 0; index < sourceLines.length; index += 1) {
+      const line = sourceLines[index]
+      const cacheKey = JSON.stringify([
+        line.text,
+        line.stamp?.length,
+        line.level,
+        line.room,
+        line.agents,
+        line.group,
+        line.task,
+        line.backups,
+        line.recruitment,
+        line.event
+      ])
+      let row = nextLines.get(cacheKey) ?? previousLines.get(cacheKey)
+      if (!row) {
+        row = present(line)
+        const forecast = taskPresentation(line.task, true)
+        if (forecast) {
+          const actions = forecast.actions ?? []
+          const forecastPresenter = createLogPresenter(
+            [
+              ...operatorNames,
+              ...actions
+                .filter((action) => action.kind === 'operator')
+                .map((action) => action.subject)
+            ],
+            presentationPlan,
+            actions.length
+              ? actions.filter((action) => action.kind === 'group').map((action) => action.subject)
+              : groupNames,
+            {
+              structuredGroups: actions.length > 0,
+              backupNames: forecast.backups.map((entry) => entry.name)
+            }
+          )
+          const titleAt =
+            actions.length && forecast.title ? forecast.header.indexOf(forecast.title) : -1
+          row.forecast = {
+            ...forecast,
+            tokens: forecastPresenter(forecast.header, line.room, line.agents).tokens,
+            actionPrefix:
+              titleAt >= 0
+                ? forecastPresenter(forecast.header.slice(0, titleAt), line.room, line.agents)
+                    .tokens
+                : null,
+            actionSuffix:
+              titleAt >= 0
+                ? forecastPresenter(
+                    forecast.header.slice(titleAt + forecast.title.length),
+                    line.room,
+                    line.agents
+                  ).tokens
+                : null,
+            activated: backupChangeText(forecast.backups, true),
+            deactivated: backupChangeText(forecast.backups, false)
+          }
+        }
+      }
+      const occurrence = occurrences.get(line.text) ?? 0
+      occurrences.set(line.text, occurrence + 1)
+      const key = line.id !== null ? `id:${line.id}` : `${line.text}\u0000${occurrence}`
+      nextLines.set(cacheKey, row)
+      rows.push({ index, line, row, key })
+    }
+    previousLines = nextLines
+    return rows
+  }
+
+  return { present, presentLines }
 }
