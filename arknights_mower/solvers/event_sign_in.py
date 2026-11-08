@@ -415,21 +415,29 @@ class EventSignInSolver(SceneGraphSolver):
         start_y = top if whole else top + (bottom - top) * 2 // 3
         band = cropimg(page.image, ((left, start_y), (right, bottom)))
         gray = cv2.cvtColor(band, cv2.COLOR_RGB2GRAY)
-        if whole:
-            return cv2.resize(gray, (96, 160))
-        # 按面板比例保留奖励细节，不把估算卡宽的差异拉伸到同一张小图。
-        return cv2.resize(
+        # 按面板比例保留细节，允许匹配时对齐有少量偏差的卡片裁剪区域。
+        signature = cv2.resize(
             gray, None, fx=1 / page.progress.scale, fy=1 / page.progress.scale
         )
+        if whole:
+            # 整卡比较使用图像梯度，减少大块相同底色对匹配结果的影响。
+            return cv2.merge(
+                (
+                    cv2.Sobel(signature, cv2.CV_32F, 1, 0),
+                    cv2.Sobel(signature, cv2.CV_32F, 0, 1),
+                )
+            )
+        return signature
 
     def _card_match_score(self, before, anchor, after, card, *, whole=False):
         signature = self._card_signature(before, anchor, whole=whole)
         candidate = self._card_signature(after, card, whole=whole)
         # 印章中心和日数网格会产生少量裁剪偏差，在保留细节的图上平移对齐。
-        margin = 1 if whole else 8
+        margin = 8
         template = signature[margin:-margin, margin:-margin]
         if any(
-            size > available for size, available in zip(template.shape, candidate.shape)
+            size > available
+            for size, available in zip(template.shape[:2], candidate.shape[:2])
         ):
             return 0.0
         scores = cv2.matchTemplate(

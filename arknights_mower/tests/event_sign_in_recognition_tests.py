@@ -292,12 +292,25 @@ def test_supplemental_reading_cannot_replace_an_overlapping_detected_identity():
 
 def test_supplemental_glyph_count_is_bounded_by_the_detected_activity_days():
     image, progress, color = glyph_panel()
-    for x in range(10, 1090, 135):
-        cv2.rectangle(image, (x, 13), (x + 50, 107), color, -1)
+    for x in range(140, 980, 105):
+        cv2.rectangle(image, (x, 13), (x + 40, 107), color, -1)
     recognize = Mock()
 
     assert supplement_day_numbers(image, progress, [], recognize) is None
     recognize.assert_not_called()
+
+
+def test_clipped_card_glyph_does_not_count_toward_the_supplemental_ocr_limit():
+    image, progress, color = glyph_panel()
+    for x in (10, *range(145, 946, 130)):
+        cv2.rectangle(image, (x, 13), (x + 50, 107), color, -1)
+    days = list(range(1, 8))
+    recognize = Mock(side_effect=[[[str(day), 0.99]] for day in days])
+
+    rows = supplement_day_numbers(image, progress, [], recognize)
+
+    assert list(day_positions(rows, progress)) == days
+    assert recognize.call_count == len(days)
 
 
 def test_confident_detected_numerals_do_not_receive_another_ocr_request():
@@ -596,6 +609,40 @@ def test_real_claimed_four_day_prefix_can_be_rechecked_without_reward_clicks(
     solver.tap.assert_not_called()
     assert solver.claimed_days == set()
     assert solver.attempted_days == set()
+
+
+def test_clipped_receipt_does_not_relabel_cards_when_paging_toward_day_one(
+    local_ocr, monkeypatch
+):
+    from arknights_mower.solvers.event_sign_in import EventSignInSolver
+    from arknights_mower.utils import config
+
+    solver = object.__new__(EventSignInSolver)
+    solver.deadline = time.monotonic() + 180
+    solver.activity_days = 10
+    solver.swipe_noinertia = Mock()
+    solver.sleep = Mock()
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+    solver.recog = SimpleNamespace(
+        img=frame("celebration_eight_claimed_right_20261108"),
+        check_announcement=lambda: (1870, 152),
+    )
+    before = solver._panel_states()
+    assert before is not None
+    assert before.first_day == 7
+    assert before.progress.unlocked_days == 8
+
+    after = frame("celebration_eight_claimed_middle_20261108")
+    solver.recog.update = lambda: setattr(solver.recog, "img", after)
+
+    moved = solver._move_page(before, 1)
+
+    assert moved is not None
+    page, changed = moved
+    assert changed
+    assert page.first_day == 5
+    assert [(card.day, card.claimed) for card in page.cards] == [(None, True)] * 3
 
 
 def test_real_claimed_six_day_prefix_keeps_overlap_despite_card_crop_rounding(
