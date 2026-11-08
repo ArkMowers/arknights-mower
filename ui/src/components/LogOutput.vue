@@ -12,6 +12,7 @@ import {
 } from 'vue'
 import { NScrollbar } from 'naive-ui'
 import DetailChevron from '@vicons/ionicons5/es/ChevronDownOutline'
+import logSheen from '@/assets/log/progress-sheen.svg?inline'
 import LogOperator from '@/components/LogOperator.vue'
 import LogInventory from '@/components/LogInventory.vue'
 import LogStage from '@/components/LogStage.vue'
@@ -1720,13 +1721,13 @@ function lineClasses(row) {
             primitiveUnits="objectBoundingBox"
             color-interpolation-filters="sRGB"
           >
-            <feFlood
+            <feImage
+              :href="logSheen"
               x="-0.3"
               y="0"
               width="0.18"
               height="1"
-              flood-color="white"
-              style="flood-opacity: var(--log-sheen-opacity)"
+              preserveAspectRatio="none"
               result="band"
             >
               <animate
@@ -1737,8 +1738,9 @@ function lineClasses(row) {
                 dur="3.5s"
                 repeatCount="indefinite"
               />
-            </feFlood>
-            <feGaussianBlur in="band" stdDeviation="0.02 0" x="0" y="0" width="1" height="1" />
+            </feImage>
+            <feFlood flood-color="white" style="flood-opacity: var(--log-sheen-opacity)" />
+            <feComposite in2="band" operator="in" />
             <feComposite in2="SourceAlpha" operator="in" />
             <feBlend in2="SourceGraphic" mode="screen" />
           </filter>
@@ -2524,7 +2526,7 @@ function lineClasses(row) {
   --log-error-tint: rgb(208 48 80 / 11%);
   --log-hover-tint: rgb(128 128 128 / 7%);
   --log-ink: var(--mower-text, #333639);
-  --log-sheen-opacity: 0.4;
+  --log-sheen-opacity: 0.82;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -3355,7 +3357,7 @@ html[data-window-shell-theme='dark'] .log-token--item {
 html[data-mower-theme='dark'] .log-output,
 html[data-window-shell-theme='dark'] .log-output {
   --log-ink: #e5e1d6;
-  --log-sheen-opacity: 0.55;
+  --log-sheen-opacity: 0.9;
   --log-muted-ink: #868d97;
   --log-detail-ink: #959ca6;
   --log-time-ink: #7cb8f2;
