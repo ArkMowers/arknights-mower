@@ -5,7 +5,7 @@ import {generateMowerDormTasks} from './mowerDormTasks'
 import {mowerRefreshDormTime,projectMowerArrangements} from './mowerObservations'
 import {mowerUnfinishedReturnMembers} from './mowerGroupRecovery'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
-import {MOWER_TASK_TYPES as T,toMowerMicros,MowerTask} from './mowerTaskQueue'
+import {MOWER_TASK_TYPES as T,MowerTask} from './mowerTaskQueue'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
 import type {MowerCoordinationRates} from './mowerReplacementCoordination'
@@ -24,7 +24,12 @@ export function mowerCoordinationReturn(data:MowerSchedulingData,units:readonly 
   op.timeStampMicros=trial.nowMicros
   op.dormRecoveryObservation=undefined
   if(op.mood>=op.upperLimit)bed.timeMicros=trial.nowMicros
-  else if(rate>0)mowerRefreshDormTime(trial,op.currentRoom,op.currentIndex,op.name,trial.nowMicros+toMowerMicros((24-op.mood)/rate))
+  else if(rate>0){
+   // A recovery deadline must not precede its target on the integer clock.
+   // Quantize the personal target directly, without a second rounding through 24.
+   mowerRefreshDormTime(trial,op.currentRoom,op.currentIndex,op.name,trial.nowMicros+Math.ceil((24-op.mood)/rate*3_600_000_000))
+   bed.timeMicros=trial.nowMicros+Math.ceil((op.upperLimit-op.mood)/rate*3_600_000_000)
+  }
  }
  const protectedNames=new Set([...trial.busyRestingNames,...trial.reservedProductReplacements,...options.reservedNames??[]])
  const slots=new Set([...trial.reservedProductBeds.keys(),...options.reservedSlots??[]])

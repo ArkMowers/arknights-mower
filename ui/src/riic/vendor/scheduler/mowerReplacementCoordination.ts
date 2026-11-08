@@ -9,7 +9,7 @@ import {projectMowerArrangements} from './mowerObservations'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {mowerRestingBindingGroups,mowerSharedReplacements,mowerSameGroupPrimaryReplacement} from './mowerSharedGroups'
-import {toMowerMicros,MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
+import {MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 
 export interface MowerCoordinationRates {work:Readonly<Record<string,number>>;recovery:Readonly<Record<string,number>>}
 function replacements(data:MowerSchedulingData,op:MowerOperatorState,required:ReadonlySet<string>=new Set(),requestNames:readonly string[]=[...required]):string[]{
@@ -192,11 +192,16 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
   for(const op of actors){
    const velocity=velocities.get(op.name)!
    if(velocity===0)continue
-   for(const value of boundaries(op).filter(value=>velocity>0?value>op.mood+1e-8:value<op.mood-1e-8))hours=Math.min(hours,(value-op.mood)/velocity)
+   for(const value of boundaries(op).filter(value=>velocity>0?value>op.mood:value<op.mood))hours=Math.min(hours,(value-op.mood)/velocity)
   }
   if(!Number.isFinite(hours)||hours<=0)return false
-  for(const op of actors){op.mood=Math.max(0,Math.min(24,op.mood+velocities.get(op.name)!*hours));op.timeStampMicros=shadow.nowMicros+toMowerMicros(hours)}
-  shadow.nowMicros+=toMowerMicros(hours)
+  // Time and mood share one elapsed interval. Rounding only the clock after
+  // integrating raw hours made successive recovery deadlines drift backwards.
+  const elapsedMicros=Math.ceil(hours*3_600_000_000)
+  if(!Number.isSafeInteger(elapsedMicros)||elapsedMicros<=0)return false
+  const elapsedHours=elapsedMicros/3_600_000_000,nextMicros=shadow.nowMicros+elapsedMicros
+  for(const op of actors){op.mood=Math.max(0,Math.min(24,op.mood+velocities.get(op.name)!*elapsedHours));op.timeStampMicros=nextMicros}
+  shadow.nowMicros=nextMicros
  }
 
  return false
