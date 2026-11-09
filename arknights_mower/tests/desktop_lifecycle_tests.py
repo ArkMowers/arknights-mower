@@ -195,6 +195,9 @@ class TrayRecoveryTests(unittest.TestCase):
                     patch.object(webview_ui, "exit_if_webview_backend_missing"),
                     patch.object(webview_ui, "close_child"),
                     patch.object(webview_ui, "start_http_server"),
+                    patch.object(
+                        webview_ui, "start_hud_local_server", return_value=Mock()
+                    ),
                     patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
                     patch.object(webview_ui, "start_desktop_child", side_effect=launch),
                     patch.object(software_update, "request_auto_check"),
@@ -285,6 +288,7 @@ class DesktopStartupTests(unittest.TestCase):
             server.maa_resource_update_job = {"status": "idle", "thread": None}
             server._job_running = task_server._job_running
             server.http_start = Mock()
+            server.hud_service = Mock()
             server.browser_open = Mock()
             tray_channel = Mock()
             commands = (
@@ -394,6 +398,11 @@ class DesktopStartupTests(unittest.TestCase):
                 patch.object(webview_ui, "exit_if_webview_backend_missing"),
                 patch.object(webview_ui, "close_child"),
                 patch.object(webview_ui, "start_http_server", server.http_start),
+                patch.object(
+                    webview_ui,
+                    "start_hud_local_server",
+                    return_value=server.hud_service,
+                ),
                 patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
                 patch.object(webview_ui, "start_desktop_child", server.desktop_child),
                 patch.object(software_update, "request_auto_check"),
@@ -414,6 +423,17 @@ class DesktopStartupTests(unittest.TestCase):
             if configure_startup is not None:
                 configure_startup(stack, task_server, server, config, events)
             webview_ui.run_desktop()
+            webview_ui.start_hud_local_server.assert_called_once()
+            self.assertIs(
+                webview_ui.start_hud_local_server.call_args.args[0], server.app
+            )
+            self.assertEqual(
+                len(webview_ui.start_hud_local_server.call_args.args[1]), 64
+            )
+            if webview_ui.start_hud_local_server.side_effect is None:
+                server.hud_service.close.assert_called_once()
+            else:
+                server.hud_service.close.assert_not_called()
             self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
             if cancel != "shutdown":
                 self.assertEqual(mocks[-1].call_count, commands.count("browser"))
@@ -428,6 +448,19 @@ class DesktopStartupTests(unittest.TestCase):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
         server.start.assert_called_once_with("0", automatic=True)
+
+    def test_hud_service_startup_failure_does_not_stop_mower(self):
+        import webview_ui
+
+        for error in (OSError("bind failed"), RuntimeError("thread failed")):
+            with self.subTest(error=type(error).__name__):
+
+                def fail_hud(*_args):
+                    webview_ui.start_hud_local_server.side_effect = error
+
+                events, server = self.launch(configure_startup=fail_hud)
+                self.assertEqual(events, [("start", "0")])
+                server.start.assert_called_once_with("0", automatic=True)
 
     def launch_during_maintenance(
         self, kind, *, cancel=None, handoff=False, waits=1, result="success"

@@ -95,6 +95,7 @@ def test_background_desktop_processes_show_requests_without_replacing_window(
     monkeypatch.setattr(network, "is_port_in_use", Mock(side_effect=[False, True]))
     monkeypatch.setattr(lifecycle, "shutdown", lifecycle.Shutdown())
     monkeypatch.setattr(webview_ui, "start_http_server", Mock())
+    monkeypatch.setattr(webview_ui, "start_hud_local_server", Mock())
     monkeypatch.setattr(webview_ui, "exit_if_webview_backend_missing", Mock())
     monkeypatch.setattr(webview_ui, "desktop_port", lambda *a: 58000)
     monkeypatch.setattr(webview_ui, "close_child", Mock())
