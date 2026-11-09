@@ -115,6 +115,13 @@ describe('authenticated diagnostic screenshots', () => {
     expect(page.imageUrl.value).toBe('')
     expect(createUrl).not.toHaveBeenCalled()
   })
+
+  it('triggers the in-app image preview when opening original image', () => {
+    const click = vi.fn()
+    page.shotImage.value = { click }
+    page.openImagePreview()
+    expect(click).toHaveBeenCalledOnce()
+  })
 })
 
 async function archiveBundle(message, withScreenshots = true) {

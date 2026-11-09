@@ -868,10 +868,8 @@ function lineClasses(row) {
         class="log-output__scroll"
         :class="{ 'log-output__scroll--hidden': showAlternateView }"
         :inert="showAlternateView || undefined"
-        :x-scrollable="!compact"
-        :container-style="
-          compact ? { overflowX: 'hidden', overscrollBehaviorX: 'none' } : undefined
-        "
+        :x-scrollable="false"
+        :container-style="{ overflowX: 'hidden', overscrollBehaviorX: 'none' }"
         @wheel.passive="noteScrollInput"
         @touchmove.passive="noteScrollInput"
         @keydown="noteScrollInput"
@@ -1601,8 +1599,8 @@ function lineClasses(row) {
   --log-body-weight: 400;
   --log-label-weight: 600;
   --log-alert-weight: 700;
-  --log-sheen-opacity: 0.38;
-  --log-sheen-protection: 0;
+  --log-sheen-opacity: 0.75;
+  --log-sheen-protection: 0.15;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -2517,8 +2515,8 @@ html[data-window-shell-theme='dark'] .log-output {
   --log-body-weight: 375;
   --log-label-weight: 500;
   --log-alert-weight: 600;
-  --log-sheen-opacity: 0.88;
-  --log-sheen-protection: 0.8;
+  --log-sheen-opacity: 1;
+  --log-sheen-protection: 0.2;
   --log-muted-ink: #868d97;
   --log-detail-ink: #959ca6;
   --log-time-ink: #7cb8f2;

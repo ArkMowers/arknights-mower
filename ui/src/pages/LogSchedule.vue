@@ -27,6 +27,11 @@ const screenshots = ref([])
 const imageIndex = ref(0)
 const imageFailed = ref(false)
 const imageUrl = ref('')
+const shotImage = ref(null)
+
+function openImagePreview() {
+  shotImage.value?.click?.()
+}
 const searchText = ref('')
 const levelFilter = ref('all')
 const exporting = ref(false)
@@ -841,12 +846,15 @@ onMounted(() => {
           </div>
           <div v-else-if="imageFailed" class="image-empty">截图文件暂时无法读取</div>
           <div v-else-if="!imageUrl" class="image-empty">正在读取画面…</div>
-          <img
+          <n-image
             v-else
             :key="imagePath"
+            ref="shotImage"
             class="shot-image"
             :src="imageUrl"
             alt="所选时间的游戏截图"
+            object-fit="contain"
+            show-toolbar-tooltip
             @error="imageFailed = true"
           />
         </div>
@@ -868,15 +876,14 @@ onMounted(() => {
             下一张
           </n-button>
         </div>
-        <a
+        <button
           v-if="imageUrl"
+          type="button"
           class="open-image"
-          :href="imageUrl"
-          target="_blank"
-          rel="noopener noreferrer"
+          @click="openImagePreview"
         >
           打开原图 ↗
-        </a>
+        </button>
       </section>
     </div>
 
@@ -992,6 +999,13 @@ h2 {
   color: var(--mower-primary);
   text-decoration: none;
   white-space: nowrap;
+}
+.open-image {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
 }
 .back-link {
   flex-shrink: 0;

@@ -22,6 +22,8 @@ export function useLogViewport(root, { autoScroll, renderInputs }) {
   let detailResize = null
   let scrollInputUntil = -Infinity
   let stopScrollbarDrag = null
+  let lastLineCount = 0
+  let lastLineKey = null
   let disposed = false
 
   function updateStickyGroup() {
@@ -72,18 +74,19 @@ export function useLogViewport(root, { autoScroll, renderInputs }) {
     }
   }
 
-  function shouldHoldTail() {
-    return (
-      autoScroll() &&
-      (detailResize?.snapshot ?? readingPosition)?.atBottom &&
-      !stopScrollbarDrag &&
-      performance.now() > scrollInputUntil
-    )
+  function shouldHoldTail(hasNewLines = false) {
+    if (!autoScroll() || stopScrollbarDrag || performance.now() <= scrollInputUntil) {
+      return false
+    }
+    if (hasNewLines) {
+      return true
+    }
+    return Boolean((detailResize?.snapshot ?? readingPosition)?.atBottom)
   }
 
-  function captureBeforeLayout() {
+  function captureBeforeLayout(hasNewLines = false) {
     const snapshot = capturePosition()
-    if (snapshot && shouldHoldTail()) snapshot.atBottom = true
+    if (snapshot && shouldHoldTail(hasNewLines)) snapshot.atBottom = true
     return snapshot
   }
 
@@ -202,14 +205,26 @@ export function useLogViewport(root, { autoScroll, renderInputs }) {
     nextTick(() => {
       if (disposed) return
       bindContainer()
+      const lines = renderInputs?.()?.[0] ?? []
+      lastLineCount = lines.length
+      lastLineKey =
+        lastLineCount > 0
+          ? (lines[lastLineCount - 1]?.id ?? lines[lastLineCount - 1]?.text ?? lastLineCount)
+          : null
       if (autoScroll()) jumpToLatest()
       else updateStickyGroup()
     })
   })
   watch(
     renderInputs,
-    () => {
-      if (!detailResize) beforeUpdate = captureBeforeLayout()
+    (current) => {
+      const lines = current?.[0] ?? []
+      const count = lines.length
+      const latestKey = count > 0 ? (lines[count - 1]?.id ?? lines[count - 1]?.text ?? count) : null
+      const hasNewLines = count > lastLineCount || (count > 0 && latestKey !== lastLineKey)
+      lastLineCount = count
+      lastLineKey = latestKey
+      if (!detailResize) beforeUpdate = captureBeforeLayout(hasNewLines)
     },
     { deep: true, flush: 'pre' }
   )
