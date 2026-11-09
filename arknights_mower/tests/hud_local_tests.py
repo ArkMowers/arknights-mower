@@ -268,6 +268,20 @@ def test_close_applies_its_deadline_when_server_shutdown_stalls(local_hud, monke
         release.set()
 
 
+def test_close_releases_listener_if_socket_shutdown_is_unsupported(
+    local_hud, monkeypatch
+):
+    service, _ = local_hud
+
+    def unsupported_shutdown(_socket, _how):
+        raise OSError("shutdown unsupported")
+
+    monkeypatch.setattr(socket.socket, "shutdown", unsupported_shutdown)
+    service.close()
+    with pytest.raises(OSError):
+        socket.create_connection(("127.0.0.1", service.port), timeout=1)
+
+
 def test_concurrent_snapshot_requests_are_bounded(local_hud, monkeypatch):
     service, _ = local_hud
     entered = threading.Event()

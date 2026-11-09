@@ -229,6 +229,10 @@ def start_hud_local_server(app, instance_id, mower_port, name):
                 stopper.start()
                 stopper.join(max(0, deadline - monotonic()))
             finally:
+                try:
+                    server.socket.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
                 server.server_close()
             worker.join(max(0, deadline - monotonic()))
             if stopper.is_alive() or worker.is_alive():
