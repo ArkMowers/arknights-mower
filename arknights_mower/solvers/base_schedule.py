@@ -7214,7 +7214,6 @@ class BaseSchedulerSolver(
         if scan_moods:
             self._read_missing_calculated_moods()
         # 准备数据
-        logger.debug(self.op_data.print())
         # 根据剩余心情排序
         self.total_agent = list(
             v
@@ -7224,7 +7223,7 @@ class BaseSchedulerSolver(
         )
         self.total_agent.sort(key=lambda x: x.current_mood(), reverse=False)
         # 目前有换班的计划后面改
-        logger.debug(f"当前基地数据--> {self.total_agent}")
+        logger.debug("主班恢复候选：%d 名干员", len(self.total_agent))
         new_plan = {}
         try:
             # 重新排序

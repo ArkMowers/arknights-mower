@@ -230,9 +230,6 @@ def base(
             else:
                 dormitory = get_poly(x1 + 158 * alpha, x2, y1, y2)
             ret[f"dormitory_{i}"] = dormitory
-            logger.debug(
-                f"Dormitory {i} Length: {abs(ret[f'dormitory_{i}'][2][0] - ret[f'dormitory_{i}'][0][0]) / alpha}"
-            )
         x1, y1 = ret["dormitory_1"][0]
         x2, y2 = ret["dormitory_1"][2]
         # 根据1号宿舍计算出加工站
@@ -327,7 +324,6 @@ def base(
             plt.imshow(img)
             plt.show()
 
-        logger.debug(f"segment.base: {ret}")
         return ret
 
     except Exception as e:

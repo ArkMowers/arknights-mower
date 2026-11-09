@@ -226,8 +226,6 @@ def operator_list(img, draw=False, full_scan=True):
         for y in name_y:
             name_p.append(tuple(zip(x, y)))
 
-    logger.debug(name_p)
-
     op_name = []
     # 名字只占两条横带；遮罩分割后的 line1 不可用于名字识别。
     gray_rows = (
@@ -267,7 +265,6 @@ def operator_list(img, draw=False, full_scan=True):
 
     with ThreadPoolExecutor() as executor:
         op_name = list(executor.map(process_name_region, name_p))
-        logger.debug(op_name)
 
     if draw:
         display = img.copy()
