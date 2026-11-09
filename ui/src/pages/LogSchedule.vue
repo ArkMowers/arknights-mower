@@ -876,12 +876,7 @@ onMounted(() => {
             下一张
           </n-button>
         </div>
-        <button
-          v-if="imageUrl"
-          type="button"
-          class="open-image"
-          @click="openImagePreview"
-        >
+        <button v-if="imageUrl" type="button" class="open-image" @click="openImagePreview">
           打开原图 ↗
         </button>
       </section>
@@ -1318,14 +1313,23 @@ h2 {
   opacity: 0.6;
 }
 .shot-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 100%;
+  max-height: min(56vh, 600px);
+}
+.shot-image :deep(img) {
   display: block;
   max-width: 100%;
   max-height: min(56vh, 600px);
+  width: auto;
+  height: auto;
   object-fit: contain;
   border-radius: 4px;
   outline: 1px solid rgba(0, 0, 0, 0.1);
 }
-:global(html[data-mower-theme='dark']) .shot-image {
+:global(html[data-mower-theme='dark']) .shot-image :deep(img) {
   outline-color: rgba(255, 255, 255, 0.1);
 }
 .image-navigation {

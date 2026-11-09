@@ -1753,7 +1753,10 @@ async function db_delete(keys) {
             @click="toggle_log_view(option)"
           >
             <template #icon>
-              <span :class="{ 'view-toggle-icon': !option.activeIcon }">
+              <span
+                class="view-toggle-icon"
+                :class="{ 'view-toggle-icon--slashed': !option.activeIcon }"
+              >
                 <n-icon :component="(option.state.value && option.activeIcon) || option.icon" />
               </span>
             </template>
@@ -1812,7 +1815,10 @@ async function db_delete(keys) {
               @click="toggle_log_view(option)"
             >
               <template #icon>
-                <span :class="{ 'view-toggle-icon': !option.activeIcon }">
+                <span
+                  class="view-toggle-icon"
+                  :class="{ 'view-toggle-icon--slashed': !option.activeIcon }"
+                >
                   <n-icon :component="(option.state.value && option.activeIcon) || option.icon" />
                 </span>
               </template>
@@ -2327,19 +2333,18 @@ async function db_delete(keys) {
   }
 
   .task-time-label {
-    position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    gap: 4px;
 
     &::before {
       content: '';
-      position: absolute;
-      inset-inline-start: -7px;
-      top: 50%;
+      display: inline-block;
       width: 3px;
       height: 0.9em;
       border-radius: 1px;
       background: var(--lg-primary);
-      transform: translateY(-50%);
     }
   }
 
@@ -2888,7 +2893,7 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   height: 20px;
 }
 
-.view-toggle-icon::after {
+.view-toggle-icon--slashed::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -2902,7 +2907,7 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   pointer-events: none;
 }
 
-.view-toggle[aria-pressed='false'] .view-toggle-icon::after {
+.view-toggle[aria-pressed='false'] .view-toggle-icon--slashed::after {
   opacity: 1;
 }
 
@@ -3483,7 +3488,7 @@ html[data-window-shell-theme='dark'] .home-container {
     transition: background-color var(--log-feedback-time) var(--log-feedback-ease);
   }
 
-  .view-toggle-icon::after {
+  .view-toggle-icon--slashed::after {
     transition: opacity var(--log-feedback-time) var(--log-feedback-ease);
   }
 }
