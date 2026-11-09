@@ -3,6 +3,7 @@ import { parse } from '@vue/compiler-sfc'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { compile, createRenderer, h, nextTick, reactive, ssrContextKey } from 'vue'
 import { NPopover, NScrollbar } from 'naive-ui'
+import ArrowDown from '@vicons/ionicons5/es/ArrowDownOutline'
 import DetailChevron from '@vicons/ionicons5/es/ChevronDownOutline'
 import LogOperator from './LogOperator.vue'
 import LogInventory from './LogInventory.vue'
@@ -73,6 +74,7 @@ const clientOutput = {
   ...LogOutput,
   components: {
     NScrollbar,
+    ArrowDown,
     DetailChevron,
     LogOperator,
     TaskActionSubjects: clientSubjects,
@@ -2595,6 +2597,11 @@ const visibleText = (element) =>
     ? ''
     : element.text + element.children.map(visibleText).join('')
 
+function wheelLogUp(page) {
+  const scroll = page.all().find((element) => hasClass(element, 'log-output__scroll'))
+  scroll.props.onWheelPassive({ type: 'wheel', deltaY: -100 })
+}
+
 function mount(overrides = {}, slots) {
   const props = reactive({ lines: [], operatorNames: [], ...overrides })
   const warnings = []
@@ -3324,9 +3331,13 @@ describe('running log output', () => {
     }))
     const page = mount({ lines, autoScroll: false })
     let position = 40
+    let viewportHeight = 40
+    let scrolled
     const writes = []
     const container = {
-      clientHeight: 40,
+      get clientHeight() {
+        return viewportHeight
+      },
       get scrollHeight() {
         return page.rows().length * 20
       },
@@ -3338,7 +3349,9 @@ describe('running log output', () => {
         writes.push(value)
       },
       getBoundingClientRect: () => ({ top: 0 }),
-      addEventListener() {},
+      addEventListener(type, listener) {
+        if (type === 'scroll') scrolled = listener
+      },
       removeEventListener() {},
       querySelectorAll: (selector) =>
         selector === '[data-log-anchor]'
@@ -3371,14 +3384,22 @@ describe('running log output', () => {
     await nextTick()
     expect(position).toBe(180)
 
+    wheelLogUp(page)
     position = 40
+    scrolled()
     page.props.lines = [...page.props.lines, { id: 12, text: 'INFO 记录12' }]
     await nextTick()
     expect(position).toBe(40)
     position = 200
+    scrolled()
     page.props.lines = [...page.props.lines, { id: 13, text: 'INFO 记录13' }]
     await nextTick()
     expect(position).toBe(220)
+
+    viewportHeight = 20
+    page.props.lines = [...page.props.lines, { id: 14, text: 'INFO 记录14' }]
+    await nextTick()
+    expect(position).toBe(260)
   })
 
   it.each([false, true])(
@@ -3440,6 +3461,7 @@ describe('running log output', () => {
       page.props.autoScroll = true
       await nextTick()
       await nextTick()
+      if (!atTail) wheelLogUp(page)
       position = atTail ? 160 : 65
       expect(container.scrollHeight).toBe(200)
       page.props.lines = [
@@ -3548,9 +3570,35 @@ describe('running log output', () => {
         expect(position).toBe(170)
 
         container.clientHeight = 20
+        position = 175
         scrolled()
         resized()
         expect(position).toBe(180)
+
+        container.clientHeight = 10
+        wheelLogUp(page)
+        position = 150
+        scrolled()
+        resized()
+        expect(position).toBe(150)
+
+        await nextTick()
+        const jump = page.all().find((entry) => hasClass(entry, 'log-jump-latest'))
+        jump.props.onClick({ currentTarget: jump })
+        expect(position).toBe(190)
+
+        container.clientHeight = 70
+        position = 130
+        container.clientHeight = 10
+        scrolled()
+        expect(position).toBe(190)
+
+        container.clientHeight = 70
+        position = 130
+        container.clientHeight = 10
+        page.props.lines = [...page.props.lines, { id: 11, text: 'INFO 新日志' }]
+        await nextTick()
+        expect(position).toBe(210)
       } else {
         lineHeight = 30
         resized()
@@ -4027,6 +4075,59 @@ describe('running log output', () => {
     expect(sticky()).toBeUndefined()
     expect(page.all()).toContain(region)
     expect(visibleText(region)).toContain('已保留的日志')
+  })
+
+  it('hands off the sticky group to an approaching divider without removing the header', async () => {
+    vi.useFakeTimers()
+    const page = mount({
+      autoScroll: false,
+      compact: true,
+      lines: [
+        { text: 'INFO 安排干员', group: 'base-scheduler' },
+        { text: 'INFO 进驻完成', group: 'base-scheduler' },
+        { text: 'INFO 检查线索', group: 'clue' },
+        { text: 'INFO 赠送线索', group: 'clue' }
+      ]
+    })
+    const root = page.all().find((element) => hasClass(element, 'log-output'))
+    const sticky = () => page.all().find((element) => hasClass(element, 'log-sticky'))
+    const dividers = page.all().filter((element) => hasClass(element, 'log-group'))
+    let onScroll
+    const container = {
+      clientHeight: 40,
+      scrollHeight: 160,
+      scrollTop: 0,
+      getBoundingClientRect: () => ({ top: 0 }),
+      addEventListener: (_type, listener) => (onScroll = listener),
+      querySelectorAll: (selector) =>
+        selector === '.log-group[data-group]'
+          ? dividers.map((divider, index) => ({
+              getAttribute: (name) => divider.props[name],
+              getBoundingClientRect() {
+                const top = index * 90 - container.scrollTop
+                return { top, bottom: top + 20, height: 20 }
+              }
+            }))
+          : []
+    }
+    root.querySelector = (selector) => (selector === '.n-scrollbar-container' ? container : null)
+    await nextTick()
+
+    expect(dividers).toHaveLength(2)
+    const header = sticky()
+    for (const [position, label] of [
+      [30, '基建排班'],
+      [80, ''],
+      [100, ''],
+      [110, '线索'],
+      [70, '基建排班']
+    ]) {
+      container.scrollTop = position
+      onScroll()
+      await vi.advanceTimersByTimeAsync(20)
+      expect(sticky()).toBe(header)
+      expect(visibleText(header)).toBe(label)
+    }
   })
 
   it('places an optional header above the scrolling log region and outside it', () => {
@@ -5286,5 +5387,56 @@ describe('log grouping, folding and scene waits', () => {
     expect(page.rows()).toHaveLength(3)
     expect(page.rows()[0]).toBe(initial[1])
     expect(page.rows()[1]).toBe(initial[2])
+  })
+})
+
+describe('runtime log navigation', () => {
+  it('jumps once without enabling follow and hides the control at the latest position', async () => {
+    const page = mount({ autoScroll: false, lines: [logLine(1, 'INFO 记录')] })
+    const container = {
+      scrollTop: 0,
+      scrollHeight: 600,
+      clientHeight: 200,
+      getBoundingClientRect: () => ({ top: 0 }),
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn()
+    }
+    page.all().find((entry) => hasClass(entry, 'log-output')).querySelector = () => container
+    await nextTick()
+    await nextTick()
+    const jumpControl = () => page.all().find((entry) => hasClass(entry, 'log-jump-latest'))
+    const [eventName, onScroll] = container.addEventListener.mock.calls[0]
+    expect(eventName).toBe('scroll')
+    jumpControl().props.onClick({ currentTarget: jumpControl() })
+    await nextTick()
+    expect(container.scrollTop).toBe(400)
+    expect(jumpControl()).toBeUndefined()
+    expect(page.props.autoScroll).toBe(false)
+
+    container.scrollTop = 397
+    onScroll()
+    await nextTick()
+    expect(jumpControl()).toBeUndefined()
+
+    container.scrollTop = 396
+    onScroll()
+    await nextTick()
+    expect(jumpControl()).toBeDefined()
+    page.props.showAlternateView = true
+    await nextTick()
+    expect(jumpControl()).toBeUndefined()
+  })
+
+  it('offers the time of a warning or error with a usable timestamp', () => {
+    const at = 1794226000000
+    const history = vi.fn(({ at }) => h('a', { class: 'log-history-link', 'data-at': at }))
+    const lines = [
+      { ...logLine(1, '2026-11-09 15:00:00 INFO 等待'), at },
+      { ...logLine(2, '2026-11-09 15:00:01 ERROR 无法确认场景'), at: at + 1000 },
+      logLine(3, '2026-11-09 15:00:02 WARNING 缺少时间')
+    ]
+    const page = mount({ lines }, { history })
+    const links = page.all().filter((entry) => hasClass(entry, 'log-history-link'))
+    expect(links.map((entry) => entry.props['data-at'])).toEqual([at + 1000])
   })
 })

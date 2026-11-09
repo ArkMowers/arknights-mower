@@ -1,8 +1,11 @@
 <script setup>
-import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
+import { routeLocationKey } from 'vue-router'
+import { logLayoutZoom } from '@/utils/logLayout'
 
 const axios = inject('axios')
+const route = inject(routeLocationKey, null)
 const themeVars = useThemeVars()
 const deleteDialogStyle = computed(() => ({
   width: 'min(440px, calc(100vw - 32px))',
@@ -25,6 +28,11 @@ const screenshots = ref([])
 const imageIndex = ref(0)
 const imageFailed = ref(false)
 const imageUrl = ref('')
+const imageReady = ref(false)
+const imageStage = ref(null)
+const shotImage = ref(null)
+const imageZoom = shallowRef(null)
+const maxImageScale = 4
 const searchText = ref('')
 const levelFilter = ref('all')
 const exporting = ref(false)
@@ -62,6 +70,20 @@ const archiveBusy = computed(() => deleting.value || exporting.value)
 
 const activeEvent = computed(() => events.value.find((event) => event.id === activeEventId.value))
 const imagePath = computed(() => screenshots.value[imageIndex.value] || '')
+const historyAt = computed(() => {
+  const at = route?.query?.at
+  if (typeof at !== 'string' || !at || /\D/.test(at)) return null
+  const timestamp = Number(at)
+  return Number.isSafeInteger(timestamp) && timestamp <= Date.now() + 3600000 ? timestamp : null
+})
+const imageCaption = computed(() => {
+  if (!imagePath.value) return '当前窗口没有可读取的截图'
+  const time = imageTime(imagePath.value)
+  return browseMode.value === 'time' && loadedAt.value === historyAt.value
+    ? `所选时间附近的截图 · ${time}`
+    : time
+})
+const imageScale = computed(() => imageZoom.value?.scale ?? 1)
 const canExport = computed(
   () => !logLoading.value && !logError.value && (browseMode.value === 'time' || !!activeEvent.value)
 )
@@ -276,6 +298,75 @@ function onImageSeek() {
   imageFailed.value = false
 }
 
+function resetImageZoom() {
+  imageZoom.value = null
+  const stage = imageStage.value
+  if (stage) {
+    stage.scrollLeft = 0
+    stage.scrollTop = 0
+  }
+}
+
+function handleImageError() {
+  imageFailed.value = true
+  imageReady.value = false
+  resetImageZoom()
+}
+
+async function changeImageZoom(factor, pointer) {
+  const stage = imageStage.value
+  const image = shotImage.value
+  if (!imageReady.value || !stage || !image) return
+
+  const scale = Math.min(maxImageScale, Math.max(1, imageScale.value * factor))
+  if (scale === imageScale.value) return
+  if (scale === 1) return resetImageZoom()
+
+  const bounds = stage.getBoundingClientRect()
+  const oldImage = image.getBoundingClientRect()
+  if (!oldImage.width || !oldImage.height) return
+  const layoutZoom = logLayoutZoom(stage)
+  const x = pointer?.clientX ?? bounds.left + (stage.clientWidth * layoutZoom) / 2
+  const y = pointer?.clientY ?? bounds.top + (stage.clientHeight * layoutZoom) / 2
+  const anchorX = Math.max(0, Math.min(1, (x - oldImage.left) / oldImage.width))
+  const anchorY = Math.max(0, Math.min(1, (y - oldImage.top) / oldImage.height))
+  const zoom = {
+    width: imageZoom.value?.width ?? image.offsetWidth,
+    height: imageZoom.value?.height ?? stage.clientHeight,
+    scale
+  }
+  imageZoom.value = zoom
+
+  await nextTick()
+  if (imageZoom.value !== zoom || shotImage.value !== image) return
+  const newImage = image.getBoundingClientRect()
+  stage.scrollLeft += (newImage.left + newImage.width * anchorX - x) / layoutZoom
+  stage.scrollTop += (newImage.top + newImage.height * anchorY - y) / layoutZoom
+}
+
+function zoomImageWithWheel(event) {
+  if (!event.ctrlKey || !event.deltaY || !imageReady.value) return
+  event.preventDefault()
+  const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 100 : 1
+  return changeImageZoom(Math.exp(-event.deltaY * unit * 0.003), event)
+}
+
+function zoomImageWithKeyboard(event) {
+  if (!imageReady.value) return
+  if (event.key === '+' || event.key === '=') {
+    event.preventDefault()
+    return changeImageZoom(1.25)
+  }
+  if (event.key === '-') {
+    event.preventDefault()
+    return changeImageZoom(0.8)
+  }
+  if (imageZoom.value && (event.key === '0' || event.key === 'Escape')) {
+    event.preventDefault()
+    resetImageZoom()
+  }
+}
+
 function jumpToNow() {
   return loadWindow(Date.now())
 }
@@ -475,6 +566,8 @@ onMounted(() => {
     async (path, _, onCleanup) => {
       imageUrl.value = ''
       imageFailed.value = false
+      imageReady.value = false
+      resetImageZoom()
       if (!path) return
       const controller = new AbortController()
       let url = ''
@@ -498,7 +591,13 @@ onMounted(() => {
     { immediate: true }
   )
   loadEvents()
-  loadWindow()
+  watch(
+    historyAt,
+    (at) => {
+      if (!route || route.name === 'log_schedule') loadWindow(at ?? Date.now())
+    },
+    { immediate: true }
+  )
 })
 </script>
 
@@ -812,10 +911,19 @@ onMounted(() => {
             {{ imageIndex + 1 }} / {{ screenshots.length }}
           </span>
         </div>
-        <p class="panel-intro">
-          {{ imagePath ? imageTime(imagePath) : '当前窗口没有可读取的截图' }}
-        </p>
-        <div class="image-stage">
+        <p class="panel-intro">{{ imageCaption }}</p>
+        <div
+          ref="imageStage"
+          class="image-stage"
+          :class="{ 'image-stage--zoomed': imageZoom }"
+          :style="imageZoom && { height: `${imageZoom.height}px` }"
+          role="group"
+          aria-label="截图预览"
+          :title="imageReady ? '按住 Ctrl 并滚动滚轮缩放截图' : undefined"
+          :tabindex="imageReady ? 0 : undefined"
+          @wheel="zoomImageWithWheel"
+          @keydown="zoomImageWithKeyboard"
+        >
           <div v-if="!imagePath" class="image-empty">
             <strong>{{ logLoading ? '正在读取画面…' : '暂无截图' }}</strong>
             <span>普通截图可能已过期清理，异常归档单独保留。</span>
@@ -825,10 +933,13 @@ onMounted(() => {
           <img
             v-else
             :key="imagePath"
+            ref="shotImage"
             class="shot-image"
             :src="imageUrl"
+            :style="imageZoom && { width: `${imageZoom.width * imageScale}px` }"
             alt="所选时间的游戏截图"
-            @error="imageFailed = true"
+            @load="imageReady = true"
+            @error="handleImageError"
           />
         </div>
         <div v-if="screenshots.length" class="image-navigation">
@@ -849,15 +960,26 @@ onMounted(() => {
             下一张
           </n-button>
         </div>
-        <a
-          v-if="imageUrl"
-          class="open-image"
-          :href="imageUrl"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          打开原图 ↗
-        </a>
+        <div v-if="imageUrl" class="image-actions">
+          <div v-if="imageReady" class="image-zoom-controls" role="group" aria-label="截图缩放">
+            <n-button
+              secondary
+              :disabled="imageScale >= maxImageScale"
+              @click="changeImageZoom(1.25)"
+            >
+              放大
+            </n-button>
+            <n-button secondary :disabled="imageScale <= 1" @click="changeImageZoom(0.8)">
+              缩小
+            </n-button>
+            <n-button secondary :disabled="imageScale <= 1" @click="resetImageZoom">
+              适应窗口
+            </n-button>
+          </div>
+          <a class="open-image" :href="imageUrl" target="_blank" rel="noopener noreferrer">
+            打开原图 ↗
+          </a>
+        </div>
       </section>
     </div>
 
@@ -1270,6 +1392,20 @@ h2 {
   border-radius: 10px;
   background: var(--mower-control-surface);
 }
+.image-stage:focus-visible {
+  outline: 2px solid var(--mower-primary);
+  outline-offset: 2px;
+}
+.image-stage--zoomed {
+  grid-template: minmax(0, 1fr) / minmax(0, 1fr);
+  place-items: safe center;
+  overflow: auto;
+  overflow-anchor: none;
+}
+.image-stage--zoomed .shot-image {
+  max-width: none;
+  max-height: none;
+}
 .image-empty {
   display: grid;
   gap: 6px;
@@ -1305,11 +1441,22 @@ h2 {
   min-height: 40px;
   accent-color: var(--mower-primary);
 }
+.image-actions,
+.image-zoom-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.image-actions {
+  margin-top: 10px;
+}
+.image-actions :is(:deep(.n-button), .open-image) {
+  min-height: 40px;
+}
 .open-image {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
-  margin-top: 10px;
 }
 
 @container main-content (max-width: 1160px) {

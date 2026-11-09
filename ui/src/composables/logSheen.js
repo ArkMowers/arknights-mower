@@ -1,20 +1,28 @@
 import { onBeforeUnmount, onMounted, shallowRef, useId, watch } from 'vue'
 
-function measureLines(element) {
+const coloredTokenSelector = '.log-operator, .log-token--room, .log-token--item'
+
+function measureSheen(element) {
   const bounds = element.getBoundingClientRect?.()
   const document = element.ownerDocument
-  if (!bounds?.width || !bounds.height || !document?.createRange) return []
+  if (!bounds?.width || !bounds.height || !document?.createRange) return null
   const range = document.createRange()
   const fragments = []
-  const collect = (node) => {
+  const protectedFragments = []
+  const collect = (node, protect = false) => {
     if (node.nodeType === 3) {
       if (!node.textContent?.trim()) return
       range.selectNodeContents(node)
-      fragments.push(...range.getClientRects())
+      const rects = range.getClientRects()
+      fragments.push(...rects)
+      if (protect) protectedFragments.push(...rects)
     } else if (['IMG', 'SVG', 'CANVAS'].includes(node.tagName?.toUpperCase())) {
-      fragments.push(node.getBoundingClientRect())
+      const rect = node.getBoundingClientRect()
+      fragments.push(rect)
+      protectedFragments.push(rect)
     } else {
-      for (const child of node.childNodes ?? []) collect(child)
+      const protectChildren = protect || node.matches?.(coloredTokenSelector)
+      for (const child of node.childNodes ?? []) collect(child, protectChildren)
     }
   }
   collect(element)
@@ -37,7 +45,7 @@ function measureLines(element) {
   const totalWidth = rows.reduce((sum, row) => sum + row.right - row.left, 0)
   let consumedWidth = 0
   const number = (value) => Number(value.toFixed(6))
-  return rows.map((row, index) => {
+  const lines = rows.map((row, index) => {
     const width = (row.right - row.left) / bounds.width
     const left = (row.left - bounds.left) / bounds.width
     const top = index ? (rows[index - 1].bottom + row.top) / 2 : bounds.top
@@ -57,6 +65,15 @@ function measureLines(element) {
       keyTimes: start ? `0;${start};${end};1` : `0;${end};1`
     }
   })
+  const protectedRegions = protectedFragments
+    .filter((rect) => rect.width > 0 && rect.height > 0)
+    .map((rect) => ({
+      x: number((rect.left - bounds.left) / bounds.width),
+      y: number((rect.top - bounds.top) / bounds.height),
+      width: number(rect.width / bounds.width),
+      height: number(rect.height / bounds.height)
+    }))
+  return { lines, protectedRegions }
 }
 
 export function useLogSheen(root) {
@@ -83,18 +100,18 @@ export function useLogSheen(root) {
       }
     }
     for (const element of active) {
-      const lines = measureLines(element)
-      if (!lines.length) {
+      const geometry = measureSheen(element)
+      if (!geometry?.lines.length) {
         element.style?.removeProperty('--log-sheen-filter')
         entries.delete(element)
         continue
       }
-      const signature = JSON.stringify(lines)
+      const signature = JSON.stringify(geometry)
       let entry = entries.get(element)
       if (entry?.signature === signature) continue
       entry = {
         id: entry?.id ?? `${prefix}-${++nextId}`,
-        lines,
+        ...geometry,
         signature,
         begin: `${beganAt}s`
       }
@@ -124,6 +141,12 @@ export function useLogSheen(root) {
     if (lines && globalThis.MutationObserver) {
       mutations = new MutationObserver(refresh)
       mutations.observe(lines, { childList: true, characterData: true, subtree: true })
+      const themeRoot = root.value.ownerDocument?.documentElement
+      if (themeRoot)
+        mutations.observe(themeRoot, {
+          attributes: true,
+          attributeFilter: ['data-mower-theme', 'data-window-shell-theme']
+        })
     }
     refresh()
   }

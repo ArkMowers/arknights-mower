@@ -92,12 +92,33 @@ function imageFailed(event) {
   margin-inline-start: 4px;
 }
 
-html[data-mower-theme='dark'] .log-operator--placeholder .log-operator__avatar,
-html[data-window-shell-theme='dark'] .log-operator--placeholder .log-operator__avatar {
+:is(html[data-mower-theme='dark'], html[data-window-shell-theme='dark'])
+  .log-operator--placeholder[data-operator-name='Empty']
+  .log-operator__avatar {
   border-color: rgba(0, 0, 0, 0.2);
   background-color: #fff;
   box-shadow: none;
   filter: invert(1);
+}
+
+.log-operator:is([data-operator-name='Current'], [data-operator-name='Free']) .log-operator__avatar {
+  --log-placeholder-ring: color-mix(in srgb, var(--mower-text, #30343a) 20%, transparent);
+  border: 0;
+  padding: 1px;
+  background-color: color-mix(in srgb, var(--mower-surface, #fff) 62%, transparent);
+  box-shadow: inset 0 0 0 var(--log-hairline, 1px) var(--log-placeholder-ring);
+}
+
+:is(html[data-mower-theme='dark'], html[data-window-shell-theme='dark'])
+  .log-operator:is([data-operator-name='Current'], [data-operator-name='Free'])
+  .log-operator__avatar {
+  --log-placeholder-ring: rgb(0 0 0 / 20%);
+  background-color: rgb(255 255 255 / 62%);
+  filter: invert(0.86);
+}
+
+.log-operator:is([data-operator-name='Current'], [data-operator-name='Free']) .log-operator__name {
+  color: var(--mower-text-muted, #6b7280);
 }
 
 .log-operator:focus-visible {

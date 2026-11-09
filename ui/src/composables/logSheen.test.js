@@ -19,6 +19,7 @@ const rect = (left, top, width, height) => ({
 function fixture() {
   const fontListeners = new Set()
   const document = {
+    documentElement: {},
     fonts: {
       addEventListener: (_event, listener) => fontListeners.add(listener),
       removeEventListener: (_event, listener) => fontListeners.delete(listener)
@@ -157,9 +158,32 @@ describe('running log sheen', () => {
       keyTimes: '0;0.533333;0.8;1',
       yValues: '-2;0.52;-2;-2'
     })
+    expect(filter.protectedRegions).toEqual([{ x: 0.275, y: 0, width: 0.1, height: 0.4 }])
     expect(sample.properties.get('--log-sheen-filter')).toBe(`url(#${filter.id})`)
     expect(sample.heading.childNodes[0]).toBe(sample.text)
     expect(sample.heading.childNodes[1].childNodes[0]).toBe(sample.image)
+  })
+
+  it('protects each fragment of a wrapped colored token without treating neutral text as protected', async () => {
+    const sample = fixture()
+    const room = {
+      tagName: 'SPAN',
+      matches: (selector) => selector.includes('.log-token--room'),
+      childNodes: [
+        {
+          nodeType: 3,
+          textContent: '贸易站 B101',
+          rects: [rect(200, 22, 40, 18), rect(40, 52, 32, 18)]
+        }
+      ]
+    }
+    sample.heading.childNodes.push(room)
+    const sheen = await mount(sample.root)
+    expect(sheen.filters.value[0].protectedRegions).toEqual([
+      { x: 0.275, y: 0, width: 0.1, height: 0.4 },
+      { x: 0.8, y: 0.04, width: 0.2, height: 0.36 },
+      { x: 0, y: 0.64, width: 0.16, height: 0.36 }
+    ])
   })
 
   it('keeps an unchanged filter so unrelated updates do not restart its animation', async () => {
@@ -221,6 +245,10 @@ describe('running log sheen', () => {
       childList: true,
       characterData: true,
       subtree: true
+    })
+    expect(mutations[0].observe).toHaveBeenCalledWith(sample.document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-mower-theme', 'data-window-shell-theme']
     })
     sample.heading.childNodes = [sample.text]
     sample.text.rects = [rect(40, 22, 180, 18), rect(40, 52, 120, 18)]
