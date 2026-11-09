@@ -1182,8 +1182,7 @@ def save_screenshot(img: bytes, sub_folder=None) -> None:
     store = _store()
     if store is None:
         return
-    filename = store.submit(img, sub_folder)
-    logger.debug(filename)
+    store.submit(img, sub_folder)
 
 
 def save_screenshot_frame(
@@ -1201,7 +1200,7 @@ def save_screenshot_frame(
     if store is None:
         return
     try:
-        filename = store.submit_frame(
+        store.submit_frame(
             img,
             sub_folder,
             capture_ms=capture_ms,
@@ -1213,7 +1212,6 @@ def save_screenshot_frame(
     except MemoryError as exc:
         store._report_error("截图快照内存不足，本帧不保存", str(exc))
         return
-    logger.debug(filename)
 
 
 def get_log_by_time(target_time, time_range=1):

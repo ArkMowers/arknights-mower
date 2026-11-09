@@ -2320,7 +2320,6 @@ class Operators:
         if name not in self.operators:
             return None, None
         _op = self.operators[name]
-        logger.debug(name)
         for idx, dorm in enumerate(self.all_dorms()):
             if (
                 dorm.position[0] == _op.current_room
@@ -2329,8 +2328,6 @@ class Operators:
                     dorm, name, group_transitions=group_transitions
                 )
             ):
-                logger.debug(idx)
-                logger.debug(dorm)
                 return idx, dorm
         return None, None
 
@@ -2343,9 +2340,6 @@ class Operators:
         operator.rest_in_full = self.config.is_rest_in_full(operator.name)
         operator.workaholic = self.config.is_workaholic(operator.name)
         operator.refresh_order_room = self.config.is_refresh_trading(operator.name)
-        logger.debug(
-            f"设置 {operator.name} 刷新交易房间: {operator.refresh_order_room}"
-        )
         operator.refresh_drained = self.config.is_refresh_drained(operator.name)
         if operator.name in agent_arrange_order:
             operator.arrange_order = agent_arrange_order[operator.name]
