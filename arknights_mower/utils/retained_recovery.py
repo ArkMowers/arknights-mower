@@ -15,6 +15,116 @@ def _unstarted_failed_task(task):
     )
 
 
+def pending_return_allows_recovery(op_data, task, name):
+    """未开始的普通回班姓名预约允许其成员先完成必要恢复。"""
+    request = getattr(task, "backup_group_request", None)
+    ordinary_request = (
+        isinstance(request, (tuple, list))
+        and len(request) == 4
+        and tuple(request[2:]) == ("on", "once")
+    )
+    if (
+        getattr(getattr(task, "type", None), "name", "") != "SHIFT_ON"
+        or getattr(task, "meta_data", "")
+        or any(
+            getattr(task, flag, False)
+            for flag in (
+                "mood_physical_started",
+                "derived_correction_started",
+                "group_shift_expected",
+                "backup_shift_active",
+                "product_shift_locked",
+                "product_switched_before_arrangement",
+                "strict_mood_limit",
+                "exhaust_support",
+                "ordinary_coordination",
+                "preferred_replacement_restore",
+                "advance_support_swap",
+                "fia_return_target",
+                "backup_explicit_slots",
+                "product_lock_names",
+                "product_lock_slots",
+                "dorm_recovery_restore",
+                "urgent_recovery_request_names",
+                "urgent_recovery_support_names",
+                "urgent_recovery_reserved_names",
+                "urgent_recovery_reserved_slots",
+                "coordination_request_names",
+                "coordination_admission_plan",
+            )
+        )
+        or any(
+            hasattr(task, flag)
+            for flag in (
+                "arrangement_retry_room",
+                "arrangement_retry_due_at",
+                "arrangement_retry_count",
+            )
+        )
+        or request
+        and not ordinary_request
+        or name in getattr(op_data, "reserved_product_replacements", ())
+        or name in getattr(op_data, "emergency_reserved_agents", ())
+    ):
+        return False
+    from arknights_mower.utils.resting_correction import (
+        off_duty_full_recovery_members,
+    )
+
+    if name not in off_duty_full_recovery_members(op_data):
+        return False
+    op = op_data.operators[name]
+    from arknights_mower.utils.backup_group_tasks import forced_work_groups
+    from arknights_mower.utils.group_recovery import group_recovery_workers
+
+    if (
+        op.group in forced_work_groups(op_data)
+        or ordinary_request
+        and name not in (op_data.shift_group_members(request[1]))
+    ):
+        return False
+    for plan in (task.plan, getattr(task, "backup_shift_intent", None) or task.plan):
+        for room, row in plan.items():
+            for index, target in enumerate(row):
+                if target == name and (room, index) != (op.room, op.index):
+                    return False
+    returning = {
+        target
+        for room, row in task.plan.items()
+        if not room.startswith("dorm")
+        for index, target in enumerate(row)
+        if (peer := op_data.operators.get(target)) is not None
+        and (room, index) == (peer.room, peer.index)
+    }
+    return (
+        name in returning
+        or bool(op.group)
+        and (
+            op in group_recovery_workers(op_data, op.group)
+            and any(
+                op_data.is_group_shift_anchor(op_data.operators[target], op.group)
+                for target in returning
+            )
+        )
+    )
+
+
+def pending_return_recovery_slots(op_data, task, name):
+    """只临时使用本人普通回班将清空、当前已空的合法恢复床。"""
+    if not pending_return_allows_recovery(op_data, task, name):
+        return set()
+    from arknights_mower.utils.dorm_candidates import vacant_dorm_slots
+
+    vacant = vacant_dorm_slots(op_data)
+    return {
+        (room, index)
+        for room, row in task.plan.items()
+        if room.startswith("dorm")
+        for index, target in enumerate(row)
+        if target == "Free" and (room, index) in vacant
+    }
+
+
 def completed_ordinary_rest_request(op_data, task):
     """实际入住已完成的普通下班请求不再占有未执行的附带安排。"""
     if (

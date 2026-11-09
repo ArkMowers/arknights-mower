@@ -1,3 +1,7 @@
+import {isMowerDormFiller} from './mowerDormFiller'
+import {mowerDormCandidateMood} from './mowerSchedulingMood'
+import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers} from './mowerGroupRecovery'
+import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {alphaPosition} from './mowerAlphaDorm'
@@ -76,4 +80,39 @@ export function reconcileMowerRetainedRecovery(data:MowerSchedulingData,task:Mow
  prune(task.plan)
  if(task.backupShiftIntent)prune(task.backupShiftIntent)
  prune(task.dormFillPlan)
+}
+
+/** Restore beds for off-duty primaries still bound by explicit or active group recovery. */
+export function mowerOffDutyFullRecoveryMembers(data:MowerSchedulingData):Set<string> {
+ const required=new Set<string>(),forced=mowerForcedWorkGroups(data)
+ if(data.alpha)for(const group of Object.keys(data.groupRecoveryFullMembers)){
+  if(data.groupShiftState[group]===false||forced.has(group))continue
+  mowerGroupRecoveryDeadline(data,group).requiredNames.forEach(name=>required.add(name))
+ }
+ return new Set(Object.values(data.operators).filter(op=>{
+  if(!data.alpha||!op.isHigh()||!op.restInFull&&!required.has(op.name)||op.workaholic||op.room.startsWith('dorm')||op.currentRoom&&!op.isResting()||data.restMoodComplete(op.name))return false
+  const mood=mowerDormCandidateMood(data,op.name)
+  return mood!==undefined&&mood<op.upperLimit
+ }).map(op=>op.name))
+}
+
+
+/** A normal return may use its own unfinished recovery as a prerequisite, without releasing other owners. */
+export function mowerPendingReturnAllowsRecovery(data:MowerSchedulingData,task:MowerTask,name:string,recovering:ReadonlySet<string>=mowerOffDutyFullRecoveryMembers(data)):boolean {
+ const request=task.backupGroupRequest,once=request?.action==='on'&&request.mode==='once'&&data.shiftGroupMembers(request.group).includes(name)
+ if(!recovering.has(name)||task.type!==T.SHIFT_ON||task.metadata&&!(once&&data.operators[task.metadata]&&data.isGroupShiftAnchor(data.operators[task.metadata]!,request!.group))||task.arrangementStarted||task.backupShiftActive||task.productShiftLocked||task.strictMoodLimit||task.exhaustSupport||task.ordinaryCoordination||task.preferredReplacementRestore||task.advanceSupportSwap||request&&!once||task.fiaReturnTarget||task.backupExplicitSlots.size||task.productLockNames.size||task.productLockSlots.size||task.dormRecoveryRestore.length||task.arrangementRetryRoom!==undefined||task.arrangementRetryDueMicros!==undefined||task.arrangementRetryCount!==undefined||task.urgentRecoveryRequestNames.length||task.urgentRecoverySupportNames.length||task.urgentRecoveryReservedNames.length||task.urgentRecoveryReservedSlots.length||task.coordinationRequestNames.length||task.coordinationAdmissionPlan)return false
+ const op=data.operators[name]!
+ if(data.reservedProductReplacements.has(name)||op.group&&mowerForcedWorkGroups(data).has(op.group))return false
+ for(const plan of [task.plan,task.backupShiftIntent])if(plan)for(const [room,row] of Object.entries(plan))for(const [index,target] of row.entries())if(target===name&&(room!==op.room||index!==op.index))return false
+ const required=!!op.group&&mowerGroupRecoveryWorkers(data,op.group).some(member=>member.name===name)
+ return Object.entries(task.plan).some(([room,row])=>!room.startsWith('dorm')&&row.some((target,index)=>{
+  const anchor=data.operators[target]
+  return !!anchor&&anchor.room===room&&anchor.index===index&&(target===name||!!op.group&&required&&data.isGroupShiftAnchor(anchor,op.group))
+ }))
+}
+
+/** Only the owner's currently vacant future clear slots can host its recovery prerequisite. */
+export function mowerPendingReturnRecoverySlots(data:MowerSchedulingData,task:MowerTask,name:string,recovering:ReadonlySet<string>=mowerOffDutyFullRecoveryMembers(data)):Set<string> {
+ if(!mowerPendingReturnAllowsRecovery(data,task,name,recovering))return new Set()
+ return new Set(data.dorms.filter(bed=>!bed.name&&data.effectiveFreeSlot(bed)&&(!data.currentOperator(...bed.position)||data.useDormFillers&&isMowerDormFiller(data.currentOperator(...bed.position)!.name))&&task.plan[bed.position[0]]?.[bed.position[1]]==='Free').map(bed=>alphaPosition(...bed.position)))
 }

@@ -154,12 +154,20 @@ def run_order_waits_for_staffing(task):
 
 
 def retained_task_reservations(
-    op_data, tasks, *, current_task=None, returning_groups=(), returning_names=()
+    op_data,
+    tasks,
+    *,
+    current_task=None,
+    returning_groups=(),
+    returning_names=(),
+    recovering_name=None,
 ):
     """保留执行预约目标、当前驻员和整组成员，规划与纠错共用。"""
     tasks = [task for task in tasks if not unstarted_product_wait(task)]
-    if returning_groups or returning_names:
+    if returning_groups or returning_names or recovering_name:
         from arknights_mower.utils.retained_recovery import (
+            pending_return_allows_recovery,
+            pending_return_recovery_slots,
             retained_bed_allows_return,
             retained_recovery_may_return,
         )
@@ -195,6 +203,13 @@ def retained_task_reservations(
                     (op.room, op.index),
                 )
             )
+            if recovering_name and pending_return_allows_recovery(
+                op_data, task, recovering_name
+            ):
+                task_names.discard(recovering_name)
+                task_slots.difference_update(
+                    pending_return_recovery_slots(op_data, task, recovering_name)
+                )
             names.update(task_names)
             slots.update(task_slots)
         return names, slots
@@ -290,8 +305,32 @@ def retained_task_reservations(
     return names, slots
 
 
-def dorm_task_reservations(op_data, tasks, excluded=(), *, reserve_dorm_targets=True):
+def dorm_task_reservations(
+    op_data, tasks, excluded=(), *, reserve_dorm_targets=True, recovering_name=None
+):
     """共享任务预约；加工可忽略普通入宿目标，未完成执行仍受保护。"""
+    if recovering_name:
+        from arknights_mower.utils.retained_recovery import (
+            pending_return_allows_recovery,
+            pending_return_recovery_slots,
+        )
+
+        names = (set(excluded) - {"", "Current", "Free"}) | set(
+            getattr(op_data, "emergency_reserved_agents", ())
+        )
+        slots = set()
+        for task in tasks:
+            task_names, task_slots = dorm_task_reservations(
+                op_data, [task], reserve_dorm_targets=reserve_dorm_targets
+            )
+            if pending_return_allows_recovery(op_data, task, recovering_name):
+                task_names.discard(recovering_name)
+                task_slots.difference_update(
+                    pending_return_recovery_slots(op_data, task, recovering_name)
+                )
+            names.update(task_names)
+            slots.update(task_slots)
+        return names, slots
     now = getattr(op_data, "_projection_now", None) or datetime.now()
     tasks = [task for task in tasks if not unstarted_product_wait(task)]
     recovering_tasks = [

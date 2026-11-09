@@ -3278,6 +3278,7 @@ class Operators:
         plan=None,
         isolation=True,
         use_configured_order=False,
+        preferred_slots=(),
     ):
         from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
         from arknights_mower.utils.dorm_skills import is_single_recovery_manager
@@ -3344,7 +3345,14 @@ class Operators:
                 -recovery_order,
             )
 
-        return min(candidates, key=takeover_cost, default=None)
+        return min(
+            candidates,
+            key=lambda index: (
+                self.dorm[index].position not in preferred_slots,
+                takeover_cost(index),
+            ),
+            default=None,
+        )
 
     def has_resting_anchor(self, group=None):
         """是否已有能为候补提供回班时机的必需恢复者。"""
@@ -3397,7 +3405,14 @@ class Operators:
         }
 
     def assign_dorm_group(
-        self, names, active_groups=None, plan=None, *, reserved_slots=()
+        self,
+        names,
+        active_groups=None,
+        plan=None,
+        *,
+        reserved_slots=(),
+        reserved_slots_by_name=None,
+        preferred_slots_by_name=None,
     ):
         """先保障必需床位；候补有床则休息，无床则随组离岗待命。"""
         # 保留干员随组离岗仍须有床；上限完成不能授权将其安排为空闲。
@@ -3427,8 +3442,17 @@ class Operators:
         )
         pending = copy.deepcopy(plan or {})
         for name in ordered_names:
+            blocked = used | {
+                index
+                for index, bed in enumerate(self.dorm)
+                if bed.position in (reserved_slots_by_name or {}).get(name, ())
+            }
             index = self._find_dorm_slot(
-                name, used, active_groups=active_groups, plan=pending
+                name,
+                blocked,
+                active_groups=active_groups,
+                plan=pending,
+                preferred_slots=(preferred_slots_by_name or {}).get(name, ()),
             )
             if index is None:
                 if name in optional:

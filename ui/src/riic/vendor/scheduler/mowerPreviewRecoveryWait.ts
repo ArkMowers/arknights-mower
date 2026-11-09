@@ -17,13 +17,17 @@ export interface MowerPreviewRecoveryWait {
  reservations?:string
 }
 interface RecoveryWaitState {data:MowerSchedulingData;queue:MowerTaskQueue;waitingRecovery?:MowerPreviewRecoveryWait[]}
+/** Read all current owners without admitting parked tasks into the dispatch queue. */
+export function mowerPendingRecoveryTasks(source:Pick<RecoveryWaitState,'queue'|'waitingRecovery'>):MowerTask[]{
+ return [...new Set([...source.queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)])]
+}
 function observations(data:MowerSchedulingData,names:readonly string[],rooms:readonly string[],previous?:string,conditionIndexes?:readonly number[],observedNames?:readonly string[]):string {
  const observed=new Map<string,number|null>(previous?JSON.parse(previous)[2].map((row:unknown[])=>[row[0],row[5]]):[])
  const groups=new Set(names.flatMap(name=>{const op=data.operators[name];return op?[op.group,...op.groupBindings.map(binding=>binding.group)]:[]}).filter(Boolean))
  return JSON.stringify([conditionIndexes?conditionIndexes.map(index=>data.planConditions[index]):data.planConditions,Object.fromEntries([...groups].map(group=>[group,data.groupShiftState[group]])),Object.values(data.operators).filter(op=>names.includes(op.name)||rooms.includes(op.currentRoom)).map(op=>[op.name,op.room,op.index,op.currentRoom,op.currentIndex,observedNames&&!observedNames.includes(op.name)?null:op.moodIsPrediction?(observed.get(op.name)??null):op.timeStampMicros??null]),data.allDorms().filter(bed=>rooms.includes(bed.position[0])).map(bed=>[bed.position,bed.name,bed.timeMicros])])
 }
 function reservations(source:RecoveryWaitState,task:MowerTask,names:readonly string[],rooms:readonly string[]):string {
- const pending=new Set([...source.queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)])
+ const pending=mowerPendingRecoveryTasks(source)
  const related=[...pending].filter(candidate=>candidate!==task&&Object.entries(candidate.plan).some(([room,row])=>rooms.includes(room)||row.some(name=>names.includes(name)))).map(candidate=>JSON.stringify([candidate.type.key,candidate.timeMicros,candidate.plan,candidate.arrangementStarted,candidate.productShiftLocked])).sort()
  return JSON.stringify([related,[...source.data.reservedProductBeds], [...source.data.reservedProductReplacements]])
 }
@@ -70,7 +74,7 @@ export function resumeMowerPreviewRecovery(source:RecoveryWaitState):boolean {
  for(const wait of resumed)if(!source.queue.tasks.includes(wait.task)){wait.task.executionRetained=true;source.queue.tasks.push(wait.task)}
  source.waitingRecovery=source.waitingRecovery?.filter(wait=>!resumed.includes(wait))
  names(source)
- for(const wait of resumed)refreshMowerDerivedCorrection(source.data,wait.task,source.queue.tasks)
+ for(const wait of resumed)refreshMowerDerivedCorrection(source.data,wait.task,mowerPendingRecoveryTasks(source))
  return resumed.length>0
 }
 export function nextMowerPreviewRecoveryObservation(source:RecoveryWaitState):number {

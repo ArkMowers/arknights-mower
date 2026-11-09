@@ -38,6 +38,8 @@ export class MowerTask {
  fiaReturnTarget?:string;fiaReturnMicros?:number;fiaChargeConfirmed=false;fiaReturnQueued=false
  /** Only observation-derived corrections may be rebuilt before physical execution. */
  derivedCorrection=false
+ /** Exact recovery members of an ordinary return prerequisite, absent on other tasks. */
+ returnRecoveryNames?:string[]
  initialStaffing=false
  workingReplacementCheck?:{room:string;index:number;owner:string;cover:string}
  workingReplacementSource?:string

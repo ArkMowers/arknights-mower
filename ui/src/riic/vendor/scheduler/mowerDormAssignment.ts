@@ -73,7 +73,7 @@ export function mowerStandbyCandidates(data:MowerSchedulingData,names:string[]):
 /** Alpha group admission follows Operators.assign_dorm_group at Mower
  * 617aef56f233381426107087437262fb6a802287: keep the ordered greedy choices;
  * a required member without a bed rejects the whole reservation atomically. */
-export function mowerAssignDormGroup(data:MowerSchedulingData,names:string[],activeGroups?:Set<string>,departingNames?:ReadonlySet<string>,plan:MowerTaskPlan={},reservedSlots:ReadonlySet<string>=new Set()):MowerDormState[]|undefined {
+export function mowerAssignDormGroup(data:MowerSchedulingData,names:string[],activeGroups?:Set<string>,departingNames?:ReadonlySet<string>,plan:MowerTaskPlan={},reservedSlots:ReadonlySet<string>=new Set(),reservedSlotsByName:ReadonlyMap<string,ReadonlySet<string>>=new Map(),preferredSlotsByName:ReadonlyMap<string,ReadonlySet<string>>=new Map()):MowerDormState[]|undefined {
  defaultOnly(data)
  const required=names.filter(n=>!data.restMoodComplete(n)||data.freeRoomExcluded(n)),optional=new Set([...mowerStandbyCandidates(data,names)].filter(n=>!data.freeRoomExcluded(n)))
  const ordered=[...required].sort((a,b)=>{
@@ -84,7 +84,14 @@ export function mowerAssignDormGroup(data:MowerSchedulingData,names:string[],act
  const pending=structuredClone(plan)
  const used=new Set<number>(),assignments:{name:string;index:number}[]=[]
  for(const name of ordered){
-  const index=data.alpha?alphaFindDormSlot(data,name,used,activeGroups,pending,reservedSlots):mowerFindDormSlot(data,name,used,true,departingNames)
+  const reserved=reservedSlotsByName.get(name)??reservedSlots,preferred=preferredSlotsByName.get(name)
+  let index:number|undefined
+  if(data.alpha&&preferred?.size){
+   const limited=new Set(used)
+   data.dorms.forEach((bed,index)=>{if(!preferred.has(bed.position[0]+'\0'+bed.position[1]))limited.add(index)})
+   index=alphaFindDormSlot(data,name,limited,activeGroups,pending,reserved)
+  }
+  index??=data.alpha?alphaFindDormSlot(data,name,used,activeGroups,pending,reserved):mowerFindDormSlot(data,name,used,true,departingNames)
   if(index===undefined){if(optional.has(name))continue;return undefined}
   used.add(index);assignments.push({name,index})
   const [room,position]=data.dorms[index]!.position

@@ -1,8 +1,8 @@
-import {mowerRetainedBedAllowsReturn,mowerRetainedRecoveryMayReturn} from './mowerRetainedRecovery'
+import {mowerRetainedBedAllowsReturn,mowerRetainedRecoveryMayReturn,mowerPendingReturnAllowsRecovery,mowerOffDutyFullRecoveryMembers,mowerPendingReturnRecoverySlots} from './mowerRetainedRecovery'
 // Metadata may rebuild ordinary tasks, but retained physical work owns its remaining resources.
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
-import {alphaPosition} from './mowerAlphaDorm'
+import {alphaPosition,alphaSlotTakable} from './mowerAlphaDorm'
 
 export type MowerDependencyReturnAdmission=(data:MowerSchedulingData,retained:MowerTask,candidate:MowerTask,pending:readonly MowerTask[])=>boolean
 
@@ -36,6 +36,7 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
  })
  const retained=pending.filter(task=>task.retainsExecution)
  if(!retained.length)return candidates
+ const recovering=mowerOffDutyFullRecoveryMembers(data)
  const claims=retained.map(task=>{
   const names=new Set<string>(),slots=new Set<string>(),groups=new Set<string>()
   const remember=(name:string|undefined)=>{
@@ -73,6 +74,7 @@ export function admitMowerDerivedTasks(data:MowerSchedulingData,pending:readonly
     const conflict=claims.some(({task:retained,names,slots,groups})=>{
      if(!(slots.has(slot)||current!==undefined&&names.has(current)||actor!==undefined&&(names.has(actor)||!!data.operators[actor]?.group&&groups.has(data.operators[actor]!.group))))return false
      if(releasedDependencies.has(retained))return false
+     if(room.startsWith('dorm')&&actor===name&&mowerPendingReturnAllowsRecovery(data,retained,name,recovering)){const own=mowerPendingReturnRecoverySlots(data,retained,name,recovering).has(slot),bed=data.allDorms().find(bed=>alphaPosition(...bed.position)===slot);if((!slots.has(slot)||own)&&(!current||!names.has(current)||own)&&bed&&alphaSlotTakable(data,bed,name,new Set([data.operators[name]!.group]),task.plan))return false}
      const returning=actor&&data.operators[actor]
      if(task.type===T.SHIFT_ON&&returning&&name===actor&&room===returning.room&&index===returning.index&&mowerRetainedBedAllowsReturn(data,retained,actor))return false
      return !(actor!==undefined&&memberGroups.get(actor)?.some(group=>mowerRetainedRecoveryMayReturn(data,retained,group)))

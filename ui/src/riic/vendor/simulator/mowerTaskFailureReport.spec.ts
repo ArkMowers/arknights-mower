@@ -7,6 +7,8 @@ import * as rosterRuntime from '../scheduler/rosterRuntime'
 import {getMowerSourceRuntime} from '../scheduler/mowerSourceRuntime'
 import {simulateSchedule} from './scheduleSimulation'
 import {OPERATORS} from '../domain/operators'
+import {MowerTask,MOWER_TASK_TYPES as T} from '../scheduler/mowerTaskQueue'
+import * as productionTimeline from './productionTimeline'
 
 function schedule(){
  const workspace=createDefaultWorkspace()
@@ -19,7 +21,95 @@ function schedule(){
 }
 afterEach(()=>vi.restoreAllMocks())
 
+function mandatoryRecoverySchedule(automatic=false){
+ const workspace=createDefaultWorkspace()
+ for(const room of Object.values(workspace.mainPlan.facilities)){room.level=0;room.slots=[]}
+ const manufacture=workspace.mainPlan.facilities.room_1_1
+ manufacture.level=3;manufacture.product='gold'
+ manufacture.slots=[{occupant:{kind:'operator',operatorId:'char_123_fang'},groupId:'recovery',replacements:['char_240_wyvern']}]
+ workspace.mainPlan.conf.rest_in_full=automatic?[]:['char_123_fang']
+ const dorm=workspace.mainPlan.facilities.dormitory_1;dorm.level=5
+ dorm.slots=[{occupant:{kind:'operator',operatorId:'char_501_durin'},groupId:null,replacements:[]},{occupant:{kind:'free'},groupId:null,replacements:[]}]
+ return compileRosterSchedule(workspace,{idleOperators:[]})
+}
+
+function captureMandatoryReturn(kind:'return'|'release',automatic:boolean){
+ const create=rosterRuntime.createRosterRuntime
+ let runtime:rosterRuntime.RuntimeState|undefined
+ const task=new MowerTask(kind==='return'?{type:T.SHIFT_ON,time:0,plan:{room_1_1:['char_123_fang']}}:{type:T.RELEASE_DORM,time:0,plan:{dormitory_1:['Current','Free']},metadata:'char_123_fang'})
+ // A started return must preserve its remaining workplace instead of being rebuilt.
+ task.arrangementStarted=kind==='return'
+ vi.spyOn(rosterRuntime,'createRosterRuntime').mockImplementation(config=>{
+  const state=runtime=create(config),source=getMowerSourceRuntime(state),data=source.data
+  source.initial=false;source.firstInit=false
+  state.occupants.room_1_1_0='char_240_wyvern'
+  const bed=state.config.beds[0]!
+  state.bedOccupants[bed.id]='char_123_fang';state.morale.char_123_fang=10
+  Object.assign(data.operators.char_123_fang!,{currentRoom:bed.roomId,currentIndex:Number(bed.id.split('_').at(-1)),mood:10,timeStampMicros:0})
+  Object.assign(data.operators.char_240_wyvern!,{currentRoom:'room_1_1',currentIndex:0,mood:24,timeStampMicros:0})
+  data.dorms[0]!.name='char_123_fang';data.dorms[0]!.timeMicros=undefined
+  data.groupShiftState.recovery=true
+  if(automatic){data.groupRecoveryFullMembers.recovery=['char_123_fang'];data.groupRecoveryReturnMicros.recovery=0}
+  source.queue.tasks=[task]
+  return state
+ })
+ return {task,runtime:()=>runtime!}
+}
+
+const mandatoryWaits=[['return',false],['release',false],['return',true],['release',true]] as const
+
 describe('unresolved native task failures in the final income report',()=>{
+ it.each(mandatoryWaits)('completes the sampling horizon while the real %s check waits for recovery, automatic=%s',(kind,automatic)=>{
+  const captured=captureMandatoryReturn(kind,automatic),originalPlan=structuredClone(captured.task.plan)
+  const create=productionTimeline.createProductionTimeline
+  let controller:ReturnType<typeof create>|undefined
+  vi.spyOn(productionTimeline,'createProductionTimeline').mockImplementation((...args)=>{
+   controller=create(...args);vi.spyOn(controller,'finalize');return controller
+  })
+  const report=simulateSchedule(mandatoryRecoverySchedule(automatic),{schedulingModel:'mower-alpha',sampleHours:2,maxEvents:2000,consumptionOverrides:{char_240_wyvern:0},recoveryOverrides:{char_123_fang:0},production:{outputMode:'potential',droneTarget:'none',expectationMode:true,theoreticalMode:true}})
+  const state=captured.runtime(),source=getMowerSourceRuntime(state)
+  expect(report.elapsedHours,JSON.stringify(report.diagnostics)).toBe(2)
+  expect(report.success,JSON.stringify(report.diagnostics)).toBe(true)
+  expect(report.production?.success).toBe(true)
+  expect(report.production!.sample.completed.gold).toBeGreaterThan(0)
+  expect(controller!.finalize).toHaveBeenCalledOnce()
+  expect(source.queue.tasks).toContain(captured.task)
+  expect(source.queue.tasks.filter(task=>task===captured.task)).toHaveLength(1)
+  expect(captured.task.timeMicros).toBe(0)
+  expect(captured.task.plan).toEqual(originalPlan)
+  expect(captured.task.executionFailure?.kind).toBe('resource-wait')
+  expect(captured.task.executionFailure?.reason).toContain('组员尚未确认回满心情')
+  expect(state.occupants.room_1_1_0).toBe('char_240_wyvern')
+  expect(Object.values(state.bedOccupants)).toContain('char_123_fang')
+  expect(source.data.operators.char_123_fang!.timeStampMicros).toBe(0)
+  expect(report.diagnostics).toContainEqual(expect.objectContaining({code:'MOWER_PENDING_RESOURCE_WAIT'}))
+  expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE')).toBe(false)
+ })
+ it.each(mandatoryWaits)('resumes the same real %s after a new full recovery observation, automatic=%s',(kind,automatic)=>{
+  const captured=captureMandatoryReturn(kind,automatic),originalTime=captured.task.timeMicros
+  let observed=false,failure:unknown
+  const report=simulateSchedule(mandatoryRecoverySchedule(automatic),{schedulingModel:'mower-alpha',sampleHours:4,maxEvents:2000,consumptionOverrides:{char_123_fang:0,char_240_wyvern:0},recoveryOverrides:{char_123_fang:0},production:{outputMode:'potential',droneTarget:'none',expectationMode:true,theoreticalMode:true}},progress=>{
+   if(observed||progress.elapsedHours<1||!captured.task.executionFailure)return
+   observed=true;failure=captured.task.executionFailure
+   const state=captured.runtime(),data=getMowerSourceRuntime(state).data
+   expect(data.operators.char_123_fang!.timeStampMicros).toBe(0)
+   expect(captured.task.timeMicros).toBe(originalTime)
+   state.morale.char_123_fang=24
+   Object.assign(data.operators.char_123_fang!,{mood:24,timeStampMicros:Math.round(state.time*3_600_000_000),moodIsPrediction:false})
+   data.dorms[0]!.timeMicros=Math.round(state.time*3_600_000_000)
+  })
+  const state=captured.runtime(),source=getMowerSourceRuntime(state)
+  expect(observed).toBe(true)
+  expect(failure).toBeDefined()
+  expect(report.success,JSON.stringify(report.diagnostics)).toBe(true)
+  expect(report.observedHours).toBeCloseTo(4,7)
+  expect(report.production?.success).toBe(true)
+  expect(state.occupants.room_1_1_0).toBe('char_123_fang')
+  expect(source.queue.tasks).not.toContain(captured.task)
+  expect(captured.task.timeMicros).toBe(originalTime)
+  expect(captured.task.executionFailure).toBeUndefined()
+  expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE'||d.code==='MOWER_PENDING_RESOURCE_WAIT')).toBe(false)
+ })
  it('completes ordinary replacement contention without creating a failed placeholder task',()=>{
   const id=(name:string)=>OPERATORS.find(op=>op.name===name)!.charId
   const workspace=createDefaultWorkspace()
