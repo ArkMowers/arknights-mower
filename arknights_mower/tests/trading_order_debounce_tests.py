@@ -68,7 +68,9 @@ def test_accept_order_debounce_when_initial_frame_has_buff():
 
     solver.sleep.assert_not_called()
     solver.recog.save_screencap.assert_called_once_with("run_order")
-    solver.order_reader.save.assert_called_once_with(solver.recog.img)
+    solver.order_reader.save.assert_called_once_with(
+        solver.recog.img, log_group="base-scheduler"
+    )
     solver.tap.assert_called_once()
 
 
@@ -95,7 +97,10 @@ def test_accept_order_passes_known_room_and_device_to_order_recognition(
     solver.accept_order()
 
     solver.order_reader.save.assert_called_once_with(
-        solver.recog.img, room=label, screenshot_source=solver.device
+        solver.recog.img,
+        room=label,
+        screenshot_source=solver.device,
+        log_group="base-scheduler",
     )
 
 
@@ -114,7 +119,10 @@ def test_accept_order_accepts_drone_room_without_run_order_task():
     solver.accept_order(room="room_2_1")
 
     solver.order_reader.save.assert_called_once_with(
-        solver.recog.img, room="B201", screenshot_source=solver.device
+        solver.recog.img,
+        room="B201",
+        screenshot_source=solver.device,
+        log_group="base-scheduler",
     )
 
 
@@ -174,7 +182,9 @@ def test_accept_order_debounce_when_scores_stabilize():
 
     solver.sleep.assert_called_once_with(0.15)
     solver.recog.save_screencap.assert_called_once_with("run_order")
-    solver.order_reader.save.assert_called_once_with(solver.recog.img)
+    solver.order_reader.save.assert_called_once_with(
+        solver.recog.img, log_group="base-scheduler"
+    )
     solver.tap.assert_called_once()
 
 
@@ -205,7 +215,9 @@ def test_accept_order_debounce_when_initially_none_then_buff_ready():
 
     solver.sleep.assert_called_once_with(0.15)
     solver.recog.save_screencap.assert_called_once_with("run_order")
-    solver.order_reader.save.assert_called_once_with(solver.recog.img)
+    solver.order_reader.save.assert_called_once_with(
+        solver.recog.img, log_group="base-scheduler"
+    )
     solver.tap.assert_called_once()
 
 

@@ -341,7 +341,7 @@ function createPreviewLogs() {
   for (const block of blocks) {
     for (const [group, level, msg, extra] of block) {
       const at = now - 120000 + logs.length * 1900
-      logs.push({ t: previewLogTime(at), level, msg, group, ...(extra ?? {}) })
+      logs.push({ at, t: previewLogTime(at), level, msg, group, ...(extra ?? {}) })
     }
   }
   const tail = [
@@ -383,7 +383,7 @@ function createPreviewLogs() {
   ]
   let at = now - 28000
   for (const [group, level, msg, extra] of tail) {
-    logs.push({ t: previewLogTime(at), level, msg, group, ...(extra ?? {}) })
+    logs.push({ at, t: previewLogTime(at), level, msg, group, ...(extra ?? {}) })
     at += 1900
   }
   return logs
@@ -516,6 +516,12 @@ function unavailableDevicePreview() {
 }
 
 export function createPreviewAdapter(data, requests = []) {
+  const diagnosticFrames = new Map(
+    data.logs
+      .filter(({ level }) => level === 'WARNING' || level === 'ERROR')
+      .map(({ at }) => [at, `preview/${BigInt(at) * 1000000n}.png`])
+  )
+  const previewFramePaths = new Set(diagnosticFrames.values())
   const networkSettings = { http_proxy: '', github_proxy: '', github_token: '' }
   const softwareVersion = '4.1.6-preview'
   const softwareChannels = [
@@ -870,12 +876,32 @@ export function createPreviewAdapter(data, requests = []) {
       '/gui/depot': () => ({ depot: clone(data.depotPreferences) }),
       '/gui/appearance': () => clone(data.appearance),
       '/db-admin/stats': () => ({ log: 64, task: 5 }),
+      '/diagnostics/errors': () => ({ events: [] }),
+      '/diagnostics/timeline': () => {
+        const at = Number(config.params?.at ?? requestUrl.searchParams.get('at'))
+        const logs = data.logs.filter((entry) => Math.abs(entry.at - at) <= 300000)
+        return {
+          logs: logs.map((entry) => ({
+            time: entry.t.split(',')[0],
+            message: `${entry.t} preview:1 ${entry.level} preview: ${entry.msg}`,
+            screenshot: diagnosticFrames.get(entry.at)
+          })),
+          screenshots: logs.flatMap(({ at }) => diagnosticFrames.get(at) ?? []),
+          truncated: false
+        }
+      },
       '/screenshot/latest': () => new Blob([screenshot], { type: 'image/svg+xml' })
     }
     if (path.startsWith('/config-profiles') && method !== 'GET' && data.status === 'running')
       fail(config, '请先停止 Mower 后操作示例配置', 423)
     if (method === 'GET' && reads[path]) result = reads[path]()
-    else if (method === 'GET' && path === '/config-profiles/export') {
+    else if (
+      method === 'GET' &&
+      previewFramePaths.has(path.slice('/screenshots/'.length)) &&
+      path.startsWith('/screenshots/')
+    ) {
+      result = new Blob([screenshot], { type: 'image/svg+xml' })
+    } else if (method === 'GET' && path === '/config-profiles/export') {
       const writer = new ZipWriter(new BlobWriter('application/zip'), {
         useWebWorkers: false,
         level: 0

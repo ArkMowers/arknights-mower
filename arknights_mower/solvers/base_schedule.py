@@ -19017,9 +19017,10 @@ class BaseSchedulerSolver(
                         self.recog.img,
                         room=room_label,
                         screenshot_source=getattr(self, "device", None),
+                        log_group="base-scheduler",
                     )
                 else:
-                    self.order_reader.save(self.recog.img)
+                    self.order_reader.save(self.recog.img, log_group="base-scheduler")
                 not_take = False
             if not collected:
                 logger.info(f"{label}：正在收取订单", extra=log_extra)

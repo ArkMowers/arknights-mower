@@ -511,7 +511,7 @@ describe('log page', () => {
 
   it('updates the mounted background immediately when shared settings change', async () => {
     const { find } = mountWorkspace()
-    const layer = find((target) => target.props.class === 'log-bg')
+    const layer = find((target) => target.props.class?.split(' ').includes('log-bg'))
     expect(layer.props.style.backgroundImage).toBe("url('/bg.webp')")
     const background = useLogBackgroundStore()
     background.customUrl = 'blob:custom-image'
@@ -2249,24 +2249,27 @@ describe('log page', () => {
     }
   )
 
-  function deferViewTransitions() {
+  function deferViewTransitions({ holdAnimation = false } = {}) {
     vi.stubGlobal('CSS', { supports: () => true })
     const skipTransition = vi.fn()
     const callbacks = []
+    const finishAnimations = []
     document.startViewTransition = vi.fn(({ update }) => {
       const completion = Promise.withResolvers()
+      const animation = holdAnimation ? Promise.withResolvers() : completion
       callbacks.push(async () => {
         await update()
         completion.resolve()
       })
+      finishAnimations.push(animation.resolve)
       return {
         ready: Promise.resolve(),
         updateCallbackDone: completion.promise,
-        finished: completion.promise,
+        finished: animation.promise,
         skipTransition
       }
     })
-    return { callbacks, skipTransition }
+    return { callbacks, finishAnimations, skipTransition }
   }
 
   it.each([
@@ -2301,11 +2304,12 @@ describe('log page', () => {
       const { find, page } = mountWidePane()
       onMounted.mock.lastCall[0]()
 
+      const closingTypes = reduced ? types : [...types, 'mower-log-collapse']
       const task = viewControl(find, '任务列表')
       task.props.onClick()
       expect(document.startViewTransition).toHaveBeenLastCalledWith({
         update: expect.any(Function),
-        types
+        types: closingTypes
       })
       await callbacks[0]()
       expect(task.props['aria-pressed']).toBe(false)
@@ -2328,7 +2332,7 @@ describe('log page', () => {
       expect(document.startViewTransition).toHaveBeenCalledTimes(3)
       expect(document.startViewTransition).toHaveBeenLastCalledWith({
         update: expect.any(Function),
-        types
+        types: closingTypes
       })
       await callbacks[2]()
       expect(page.sc_blob).toBe('')
@@ -2343,24 +2347,108 @@ describe('log page', () => {
     }
   )
 
-  it('keeps the latest task visibility when a transition is interrupted', async () => {
+  it('settles rapid task toggles after the visible transition without skipping its animation', async () => {
     state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
-    const { callbacks, skipTransition } = deferViewTransitions()
+    const { callbacks, finishAnimations, skipTransition } = deferViewTransitions({
+      holdAnimation: true
+    })
     const { find } = mountWidePane()
     const toggle = viewControl(find, '任务列表')
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+
     toggle.props.onClick()
     toggle.props.onClick()
-    await callbacks[1]()
+    toggle.props.onClick()
+    expect(callbacks).toHaveLength(1)
+    expect(skipTransition).not.toHaveBeenCalled()
     await callbacks[0]()
-    expect(skipTransition).toHaveBeenCalledOnce()
+    expect(queue.style.display).toBe('none')
+    expect(toggle.props['aria-pressed']).toBe(false)
+    expect(localStorage.setItem).toHaveBeenCalledExactlyOnceWith('log_show_task_table', 'false')
+
+    toggle.props.onClick()
+    expect(callbacks).toHaveLength(1)
+    expect(skipTransition).not.toHaveBeenCalled()
+    expect(queue.style.display).toBe('none')
+    finishAnimations[0]()
+    await nextTick()
+    expect(callbacks).toHaveLength(2)
+    expect(queue.style.display).toBe('none')
+    await callbacks[1]()
+    expect(queue.style.display).not.toBe('none')
     expect(toggle.props['aria-pressed']).toBe(true)
     expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'true')
 
     toggle.props.onClick()
+    expect(callbacks).toHaveLength(2)
     onBeforeUnmount.mock.lastCall[0]()
     expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'false')
-    await callbacks[2]()
-    expect(skipTransition).toHaveBeenCalledTimes(2)
+    expect(skipTransition).toHaveBeenCalledOnce()
+    finishAnimations[1]()
+    await nextTick()
+    expect(callbacks).toHaveLength(2)
+  })
+
+  it('retains the queued task change when two screenshot clicks cancel each other', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
+    const { callbacks, finishAnimations, skipTransition } = deferViewTransitions({
+      holdAnimation: true
+    })
+    const { find, page } = mountWidePane()
+    page.sc_blob = 'blob:initial-frame'
+    page.apply_log_layout()
+    await nextTick()
+    const screenshot = viewControl(find, '预览截图')
+    const task = viewControl(find, '任务列表')
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+
+    screenshot.props.onClick()
+    await callbacks[0]()
+    expect(screenshot.props['aria-pressed']).toBe(false)
+    task.props.onClick()
+    screenshot.props.onClick()
+    screenshot.props.onClick()
+    expect(callbacks).toHaveLength(1)
+    expect(queue.style.display).not.toBe('none')
+
+    finishAnimations[0]()
+    await nextTick()
+    expect(callbacks).toHaveLength(2)
+    await callbacks[1]()
+    expect(queue.style.display).toBe('none')
+    expect(screenshot.props['aria-pressed']).toBe(false)
+    expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'false')
+
+    finishAnimations[1]()
+    await nextTick()
+    expect(callbacks).toHaveLength(2)
+    expect(skipTransition).not.toHaveBeenCalled()
+    expect(screenshot.props['aria-pressed']).toBe(false)
+    expect(state.preview.start).not.toHaveBeenCalled()
+  })
+
+  it('discards a queued first screenshot when the preview is turned off before it appears', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
+    const { callbacks, finishAnimations, skipTransition } = deferViewTransitions({
+      holdAnimation: true
+    })
+    const { find, page } = mountWidePane()
+    const screenshot = viewControl(find, '预览截图')
+    const task = viewControl(find, '任务列表')
+
+    task.props.onClick()
+    await callbacks[0]()
+    state.previewOptions.onChange('blob:queued-frame')
+    expect(page.sc_blob).toBe('')
+    screenshot.props.onClick()
+
+    finishAnimations[0]()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(callbacks).toHaveLength(1)
+    expect(skipTransition).not.toHaveBeenCalled()
+    expect(screenshot.props['aria-pressed']).toBe(false)
+    expect(page.sc_blob).toBe('')
+    expect(state.preview.stop).toHaveBeenCalledOnce()
   })
 
   it('reveals the linked task list after a pending hide without changing the saved preference', async () => {
@@ -2802,6 +2890,56 @@ describe('log page', () => {
     return { strip, items }
   }
 
+  it.each([false, true])(
+    'opens and closes the wide daily overview only when its visibility changes (reduced=%s)',
+    async (reduced) => {
+      vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
+      vi.stubGlobal('matchMedia', () => ({ matches: reduced }))
+      state.mower.refs.running.value = true
+      state.config.report_enable = true
+      let report = 'done'
+      mockDailyStatus(() => ({
+        game_day: '2026-11-08',
+        source: 'live',
+        records: { report }
+      }))
+      const { callbacks } = deferViewTransitions()
+      const workspace = mountWidePane()
+      const { strip, items } = dailyStrip(workspace)
+      onMounted.mock.lastCall[0]()
+      await vi.advanceTimersByTimeAsync(0)
+      const types = ['mower-log', 'mower-log-layout', 'mower-log-daily']
+      if (reduced) {
+        expect(callbacks).toHaveLength(0)
+      } else {
+        expect(strip()).toBeUndefined()
+        expect(document.startViewTransition).toHaveBeenLastCalledWith({
+          update: expect.any(Function),
+          types
+        })
+        await callbacks[0]()
+      }
+      expect(items()).toEqual([['读取基报', 'done']])
+
+      report = 'attempted'
+      await vi.advanceTimersByTimeAsync(30000)
+      expect(items()).toEqual([['读取基报', 'attempted']])
+      expect(callbacks).toHaveLength(reduced ? 0 : 1)
+
+      state.mower.refs.running.value = false
+      await nextTick()
+      if (!reduced) {
+        expect(document.startViewTransition).toHaveBeenLastCalledWith({
+          update: expect.any(Function),
+          types: [...types, 'mower-log-collapse']
+        })
+        await callbacks[1]()
+      }
+      expect(strip()).toBeUndefined()
+      onUnmounted.mock.lastCall[0]()
+    }
+  )
+
   it('applies a daily status reply without replaying the interrupted reveal after tab return', async () => {
     vi.setSystemTime(new Date('2026-11-08T05:00:00Z'))
     state.mower.refs.running.value = true
@@ -2860,6 +2998,7 @@ describe('log page', () => {
 
       const { callbacks, skipTransition } = deferViewTransitions()
       control.props.onClick()
+      await nextTick()
       expect(callbacks).toHaveLength(1)
       onBeforeUnmount.mock.lastCall[0]()
       app.unmount()

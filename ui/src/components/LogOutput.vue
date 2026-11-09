@@ -10,6 +10,7 @@ import {
   watch
 } from 'vue'
 import { NScrollbar } from 'naive-ui'
+import ArrowDown from '@vicons/ionicons5/es/ArrowDownOutline'
 import DetailChevron from '@vicons/ionicons5/es/ChevronDownOutline'
 import logSheen from '@/assets/log/progress-sheen.svg?inline'
 import LogOperator from '@/components/LogOperator.vue'
@@ -52,6 +53,10 @@ const detailAnimations = new Map()
 let nowTimer = null
 const {
   stickyGroup,
+  showJumpToLatest,
+  jumpToLatest,
+  noteScrollInput,
+  startScrollbarDrag,
   preserveInventoryPosition: resizeInventory,
   startDetailResize,
   updateDetailResize,
@@ -71,6 +76,13 @@ const {
     leavingDetails.value
   ]
 })
+
+function returnToLatest(event) {
+  if (event.currentTarget === globalThis.document?.activeElement) {
+    output.value?.querySelector('.log-output__lines')?.focus({ preventScroll: true })
+  }
+  jumpToLatest()
+}
 
 function detailsExpanded(key) {
   return props.concise || key.startsWith('operation:')
@@ -150,7 +162,13 @@ async function toggleDetails(key, animateHeight = false) {
       opening ? detailFrame(node) : collapsedDetailFrame
     ])
     for (const [node, from, to] of frames) {
-      animations.push(node.animate([from, to], { duration: 200, easing: 'ease', fill: 'both' }))
+      animations.push(
+        node.animate([from, to], {
+          duration: opening ? 200 : 160,
+          easing: opening ? 'cubic-bezier(0.2, 0.8, 0.2, 1)' : 'cubic-bezier(0.32, 0.72, 0, 1)',
+          fill: 'both'
+        })
+      )
     }
     updateDetailResize()
     await Promise.allSettled(animations.map((animation) => animation.finished))
@@ -400,6 +418,7 @@ function copyScopedSelection(selection, range, fragment) {
     'log-wait-duration',
     'log-wait-loader',
     'log-detail-toggle',
+    'log-history-link',
     'log-sr'
   ]
   const plain = (node) => {
@@ -564,6 +583,7 @@ function copySourceText(event) {
     'log-wait-loader',
     'log-wait-duration',
     'log-detail-toggle',
+    'log-history-link',
     'log-sr',
     'log-inventory__toggle'
   ]
@@ -720,6 +740,11 @@ function levelName(level) {
   return level ? level.toLowerCase() : 'info'
 }
 
+function historyTime(item) {
+  const at = normalizedLines.value[item.sourceIndex]?.at
+  if (Number.isSafeInteger(at) && at > 0) return at
+}
+
 function lineClasses(row) {
   return {
     'log-line--detail': row.detail,
@@ -792,8 +817,30 @@ function lineClasses(row) {
               height="1"
               result="soft-band"
             />
+            <template v-if="sheen.protectedRegions.length">
+              <feFlood
+                v-for="(region, index) in sheen.protectedRegions"
+                :key="index"
+                v-bind="region"
+                flood-color="white"
+                :result="`protected-${index}`"
+              />
+              <feMerge result="protected-shape">
+                <feMergeNode
+                  v-for="(_, index) in sheen.protectedRegions"
+                  :key="index"
+                  :in="`protected-${index}`"
+                />
+              </feMerge>
+              <feFlood flood-color="white" style="flood-opacity: var(--log-sheen-protection)" />
+              <feComposite in2="protected-shape" operator="in" result="protected-mask" />
+              <feComposite in="soft-band" in2="protected-mask" operator="out" result="muted-band" />
+            </template>
             <feFlood flood-color="white" style="flood-opacity: var(--log-sheen-opacity)" />
-            <feComposite in2="soft-band" operator="in" />
+            <feComposite
+              :in2="sheen.protectedRegions.length ? 'muted-band' : 'soft-band'"
+              operator="in"
+            />
             <feComposite in2="SourceAlpha" operator="in" />
             <feBlend in2="SourceGraphic" mode="screen" />
           </filter>
@@ -801,35 +848,35 @@ function lineClasses(row) {
       </svg>
       <!-- 当前分组随滚动更新，标题位于正文滚动区之外。 -->
       <div
-        v-if="!compact || running || $slots.title || stickyGroup"
+        v-if="!compact || running || $slots.title || items.some((item) => item.groupBar)"
         class="log-sticky"
         :class="{
           'log-sticky--titled': compact || $slots.title,
-          'log-sticky--idle': !compact && !$slots.title && !stickyGroup
+          'log-sticky--alternate': showAlternateView
         }"
         :aria-hidden="$slots.title ? undefined : true"
       >
         <slot v-if="$slots.title" name="title" />
         <span v-else-if="compact" class="log-sticky__title">{{ running ? '运行日志' : '' }}</span>
-        <span v-else class="log-sticky__lead" aria-hidden="true"></span>
-        <span
-          v-if="!showAlternateView && (!compact || stickyGroup)"
-          class="log-sticky__label"
-          aria-hidden="true"
-          >{{ stickyGroup ?? '' }}</span
-        >
-        <span v-if="!compact && !$slots.title" class="log-sticky__rule" aria-hidden="true"></span>
+        <template v-if="!showAlternateView && stickyGroup">
+          <span v-if="!compact && !$slots.title" class="log-sticky__lead" aria-hidden="true"></span>
+          <span class="log-sticky__label" aria-hidden="true">{{ stickyGroup }}</span>
+          <span v-if="!compact && !$slots.title" class="log-sticky__rule" aria-hidden="true"></span>
+        </template>
       </div>
       <n-scrollbar
         class="log-output__scroll"
         :class="{ 'log-output__scroll--hidden': showAlternateView }"
         :inert="showAlternateView || undefined"
-        :x-scrollable="!compact"
-        :container-style="
-          compact ? { overflowX: 'hidden', overscrollBehaviorX: 'none' } : undefined
-        "
+        :x-scrollable="false"
+        :container-style="{ overflowX: 'hidden', overscrollBehaviorX: 'none' }"
+        @wheel.passive="noteScrollInput"
+        @touchmove.passive="noteScrollInput"
+        @keydown="noteScrollInput"
+        @focusin="noteScrollInput"
+        @mousedown.capture="startScrollbarDrag"
       >
-        <div class="log-output__lines" role="region" aria-label="实时日志">
+        <div class="log-output__lines" role="region" aria-label="实时日志" tabindex="-1">
           <div
             v-for="block in blocks"
             :key="block.key"
@@ -1464,6 +1511,15 @@ function lineClasses(row) {
                     title="场景等待时长"
                     >等待 {{ formatWaitDuration(item.waitMs) }}</span
                   >
+                  <slot
+                    v-if="
+                      $slots.history &&
+                      ['WARN', 'WARNING', 'ERROR', 'CRITICAL'].includes(item.row.level) &&
+                      historyTime(item)
+                    "
+                    name="history"
+                    :at="historyTime(item)"
+                  />
                 </div>
                 <div
                   v-if="item.lifecycleDetail"
@@ -1505,6 +1561,15 @@ function lineClasses(row) {
           <p class="log-sr" role="status" aria-live="polite">{{ liveAnnouncement }}</p>
         </div>
       </n-scrollbar>
+      <button
+        v-if="showJumpToLatest && !showAlternateView"
+        type="button"
+        class="log-jump-latest"
+        @click="returnToLatest"
+      >
+        <ArrowDown aria-hidden="true" />
+        回到最新
+      </button>
       <div v-if="showAlternateView" class="log-output__alternate">
         <slot name="alternate" />
       </div>
@@ -1530,7 +1595,12 @@ function lineClasses(row) {
   --log-error-tint: rgb(208 48 80 / 11%);
   --log-hover-tint: rgb(128 128 128 / 7%);
   --log-ink: var(--mower-text, #333639);
-  --log-sheen-opacity: 0.22;
+  --log-group-rule: color-mix(in srgb, var(--log-ink) 16%, transparent);
+  --log-body-weight: 400;
+  --log-label-weight: 600;
+  --log-alert-weight: 700;
+  --log-sheen-opacity: 0.75;
+  --log-sheen-protection: 0.15;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1543,13 +1613,74 @@ function lineClasses(row) {
   --log-gutter: var(--log-compact-time-column, 64px);
 }
 
-/* 吸顶标题独占一小段高度，正文从文字与横线下方开始。 */
+/* 吸顶提示独占一小段高度，正文从渐隐带下方开始。 */
 .log-output__body {
   position: relative;
   display: grid;
   flex: 1 1 0;
   grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
   min-height: 0;
+}
+
+.log-jump-latest {
+  position: absolute;
+  z-index: 2;
+  inset-inline-end: 16px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: var(--log-hairline, 1px) solid var(--mower-divider);
+  border-radius: 7px;
+  background: var(--mower-surface);
+  color: var(--mower-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .log-jump-latest:hover {
+    background: color-mix(in srgb, var(--mower-surface), var(--mower-text) 6%);
+  }
+}
+
+.log-jump-latest:active {
+  background: color-mix(in srgb, var(--mower-surface), var(--mower-text) 10%);
+  transition-duration: var(--log-press-time, 60ms);
+}
+
+.log-jump-latest:focus-visible {
+  outline: 2px solid var(--lg-focus);
+  outline-offset: 2px;
+}
+
+.log-jump-latest svg {
+  width: 13px;
+  height: 13px;
+}
+
+.log-output--compact .log-jump-latest {
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .log-jump-latest {
+    animation: log-jump-in var(--log-feedback-time, 120ms) ease-out;
+    transition: background-color var(--log-feedback-time, 120ms) var(--log-feedback-ease, ease-out);
+  }
+
+  .log-jump-latest:focus-visible {
+    animation: none;
+  }
+}
+
+@keyframes log-jump-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .log-output__body > :deep(.log-output__scroll),
@@ -1571,11 +1702,10 @@ function lineClasses(row) {
   padding-bottom: 4px;
   font-family: var(--log-mono-font, monospace);
   font-size: 13px;
-  font-weight: 400;
+  font-weight: var(--log-body-weight);
   user-select: text;
 }
 
-/* 14px 标题文字下留 4px 间距，透明背景与文字圆角保持不变。 */
 .log-sticky {
   grid-area: 1 / 1;
   background: transparent;
@@ -1590,39 +1720,56 @@ function lineClasses(row) {
   color: var(--log-ink);
   font-size: 11px;
   line-height: 14px;
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
   letter-spacing: 0.06em;
   pointer-events: none;
   user-select: none;
-  animation: log-sticky-in 120ms ease-out;
 }
 
-.log-sticky--idle {
-  visibility: hidden;
-}
-
-.log-sticky__lead {
-  flex: 0 0 calc(var(--log-gutter) - 8px);
-  height: 1px;
-  margin-top: 7px;
-  background: color-mix(in srgb, var(--log-ink) 16%, transparent);
+.log-sticky:not(.log-sticky--alternate)::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset-inline: 0;
+  inset-block-end: 0;
+  height: 12px;
+  background: color-mix(in srgb, var(--mower-surface) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  mask-image: linear-gradient(transparent, #000 40%, transparent);
 }
 
 .log-sticky__label {
-  background: transparent;
-  border-radius: 4px;
   flex: none;
   max-width: 50%;
+  color: var(--log-detail-ink);
+  font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.log-sticky__lead {
+  flex: 0 0 calc(var(--log-gutter) - 8px);
+}
+
 .log-sticky__rule {
   flex: 1 1 auto;
-  height: 1px;
-  margin-top: 7px;
-  background: color-mix(in srgb, var(--log-ink) 16%, transparent);
+}
+
+.log-sticky__lead,
+.log-sticky__rule {
+  height: var(--log-hairline, 1px);
+  margin-block-start: 7px;
+  background: var(--log-group-rule);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .log-sticky__lead,
+  .log-sticky__label,
+  .log-sticky__rule {
+    animation: log-sticky-in 120ms ease-out;
+  }
 }
 
 @keyframes log-sticky-in {
@@ -1685,9 +1832,17 @@ function lineClasses(row) {
 .log-forecast > .log-detail-toggle {
   margin-inline-end: calc(-1 * (var(--log-detail-toggle-width) + var(--log-detail-toggle-gap)));
 }
-.log-detail-toggle:hover {
+@media (hover: hover) and (pointer: fine) {
+  .log-detail-toggle:hover {
+    color: var(--log-ink);
+    background: var(--log-hover-tint);
+  }
+}
+
+.log-detail-toggle:active {
   color: var(--log-ink);
-  background: var(--log-hover-tint);
+  background: color-mix(in srgb, var(--log-ink) 12%, transparent);
+  transition-duration: var(--log-press-time, 60ms);
 }
 .log-detail-toggle:focus-visible {
   outline: 1px solid currentColor;
@@ -1696,21 +1851,27 @@ function lineClasses(row) {
   width: 14px;
   height: 14px;
   transform: rotate(-90deg);
-  transition: transform 200ms ease;
 }
 .log-detail-toggle[aria-expanded='true'] svg {
   transform: none;
 }
-@media (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: no-preference) {
+  .log-detail-toggle {
+    transition:
+      background-color var(--log-feedback-time, 120ms) var(--log-feedback-ease, ease-out),
+      color var(--log-feedback-time, 120ms) var(--log-feedback-ease, ease-out);
+  }
+
   .log-detail-toggle svg {
-    transition: none;
+    transition: transform var(--log-feedback-time, 120ms) var(--log-feedback-ease, ease-out);
   }
 }
 .log-forecast__details {
   display: block;
   margin-top: 4px;
   padding: 3px 0 4px 12px;
-  border-left: 1px solid color-mix(in srgb, var(--log-ink) 13%, transparent);
+  border-inline-start: var(--log-hairline, 1px) solid
+    color-mix(in srgb, var(--log-ink) 13%, transparent);
 }
 
 .log-forecast__details > :first-child {
@@ -1739,7 +1900,7 @@ function lineClasses(row) {
   margin: 5px 4px 1px;
   color: var(--log-ink);
   font-size: inherit;
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
 }
 .log-facility-heading {
   color: var(--log-room-ink);
@@ -1846,7 +2007,7 @@ function lineClasses(row) {
 
 /* 新日志只做极短的透明度淡入，不做位移，避免与自动滚动叠加成闪烁。 */
 .log-line--enter {
-  animation: log-line-in 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: log-line-in 180ms ease-out;
 }
 
 @keyframes log-line-in {
@@ -1864,15 +2025,13 @@ function lineClasses(row) {
   margin: 10px 4px 0;
   color: var(--log-muted-ink);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
   letter-spacing: 0.06em;
   user-select: none;
 }
 
 .log-group__lead {
   flex: 0 0 calc(var(--log-gutter) - 8px);
-  height: 1px;
-  background: color-mix(in srgb, var(--log-ink) 16%, transparent);
 }
 
 .log-group__label {
@@ -1885,8 +2044,12 @@ function lineClasses(row) {
 
 .log-group__rule {
   flex: 1 1 auto;
-  height: 1px;
-  background: color-mix(in srgb, var(--log-ink) 16%, transparent);
+}
+
+.log-group__lead,
+.log-group__rule {
+  height: var(--log-hairline, 1px);
+  background: var(--log-group-rule);
 }
 
 .log-sticky--titled {
@@ -1897,7 +2060,6 @@ function lineClasses(row) {
   margin-inline: var(--log-inset) var(--log-scroll-padding);
   padding-block: 3px 4px;
   letter-spacing: normal;
-  animation: none;
 }
 
 .log-sticky__title {
@@ -1908,8 +2070,6 @@ function lineClasses(row) {
 
 .log-sticky--titled .log-sticky__label {
   flex: 0 1 auto;
-  color: var(--log-detail-ink);
-  font-weight: 400;
 }
 
 .log-output--compact .log-group {
@@ -1967,8 +2127,11 @@ function lineClasses(row) {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .log-wait-loader__paint::after {
+  .log-wait-loader {
     display: none;
+  }
+
+  .log-wait-loader__paint::after {
     animation: none;
   }
 }
@@ -2051,7 +2214,7 @@ function lineClasses(row) {
 .log-level {
   margin-inline-end: 2px;
   font-size: 11px;
-  font-weight: 700;
+  font-weight: var(--log-alert-weight);
   letter-spacing: 0.04em;
 }
 
@@ -2100,7 +2263,7 @@ function lineClasses(row) {
 .log-date::after {
   content: '';
   flex: 1 1 auto;
-  height: 1px;
+  height: var(--log-hairline, 1px);
   background: linear-gradient(
     90deg,
     color-mix(in srgb, currentColor 35%, transparent),
@@ -2116,7 +2279,7 @@ function lineClasses(row) {
 
 .log-token--room {
   color: var(--log-room-ink);
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
   white-space: nowrap;
 }
 
@@ -2137,7 +2300,7 @@ function lineClasses(row) {
 
 .log-token--group {
   color: var(--log-room-ink);
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
 }
 
 .log-arrangement,
@@ -2146,7 +2309,7 @@ function lineClasses(row) {
 .log-order-read,
 .log-rescue-summary {
   color: var(--log-ink);
-  font-weight: 400;
+  font-weight: var(--log-body-weight);
 }
 .log-mood-calculation,
 .log-order-read--routine {
@@ -2171,6 +2334,7 @@ function lineClasses(row) {
   font-weight: 400;
 }
 .log-live-detail {
+  contain: inline-size;
   color: var(--log-ink);
   line-height: 1.6;
   overflow: hidden;
@@ -2298,7 +2462,7 @@ function lineClasses(row) {
 .log-recruit-tags[data-recruit-rarity],
 .log-recruit-combinations__group,
 .log-token--recruit-notice {
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
 }
 
 [data-recruit-rarity='1'] {
@@ -2319,13 +2483,13 @@ function lineClasses(row) {
 
 .log-token--warning {
   color: var(--log-warning-ink);
-  font-weight: 700;
+  font-weight: var(--log-alert-weight);
 }
 
 .log-token--error,
 .log-token--critical {
   color: var(--log-error-ink);
-  font-weight: 700;
+  font-weight: var(--log-alert-weight);
 }
 
 .log-line--detail {
@@ -2348,7 +2512,11 @@ function lineClasses(row) {
 html[data-mower-theme='dark'] .log-output,
 html[data-window-shell-theme='dark'] .log-output {
   --log-ink: #e5e1d6;
-  --log-sheen-opacity: 0.96;
+  --log-body-weight: 375;
+  --log-label-weight: 500;
+  --log-alert-weight: 600;
+  --log-sheen-opacity: 1;
+  --log-sheen-protection: 0.2;
   --log-muted-ink: #868d97;
   --log-detail-ink: #959ca6;
   --log-time-ink: #7cb8f2;

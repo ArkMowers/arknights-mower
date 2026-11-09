@@ -1,12 +1,17 @@
 """订单收取记录真实动作，未收取与中断不能宣告成功。"""
 
+import sqlite3
+from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from arknights_mower.solvers import record
+from arknights_mower.tests.business_log_groups_tests import live
 from arknights_mower.tests.raw_schedule_log_tests import base, capture
 from arknights_mower.utils.scheduler_task import TaskTypes
+from arknights_mower.utils.trading_order import TradingOrder
 
 
 @pytest.fixture
@@ -34,6 +39,49 @@ def messages(caplog):
     ]
 
 
+def test_live_order_save_keeps_its_observations_in_the_collection_group(
+    collector, caplog, monkeypatch, income_db
+):
+    capture(caplog, monkeypatch)
+    order = TradingOrder()
+    order.get_buff_scores = MagicMock(return_value={"佩佩": 85.0})
+    collector.order_reader = order
+    collector.find = MagicMock(side_effect=[True, True, None])
+
+    collector.accept_order()
+
+    entries = [live(record) for record in caplog.records if record.levelname == "INFO"]
+    assert entries[0]["msg"] == "当前为 佩佩 订单, 订单价值为: 1000"
+    assert entries[1]["msg"].startswith("储存订单信息至数据库 ")
+    assert [entry["msg"] for entry in entries[2:]] == [
+        "贸易站 B101：正在收取订单",
+        "贸易站 B101：已收取订单",
+    ]
+    assert [entry.get("group") for entry in entries] == ["base-scheduler"] * 4
+
+    caplog.clear()
+    order.save(collector.recog.img, datetime(2026, 1, 1))
+    historical = [
+        live(record) for record in caplog.records if record.levelname == "INFO"
+    ]
+    assert [entry.get("group") for entry in historical] == [None, None]
+
+
+def test_database_failure_keeps_the_collection_group(caplog, monkeypatch):
+    capture(caplog, monkeypatch)
+
+    def failing_connection():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(record, "_conn", failing_connection)
+    TradingOrder().save(None, datetime(2026, 1, 1), log_group="base-scheduler")
+
+    errors = [live(record) for record in caplog.records if record.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert errors[0]["msg"].startswith("SQLite error:")
+    assert errors[0].get("group") == "base-scheduler"
+
+
 @pytest.mark.parametrize("collect_only", [False, True])
 def test_collection_announces_real_taps_once_and_confirms_only_after_marker_disappears(
     collector, caplog, monkeypatch, collect_only
@@ -48,7 +96,10 @@ def test_collection_announces_real_taps_once_and_confirms_only_after_marker_disa
         collector.order_reader.save.assert_not_called()
     else:
         collector.order_reader.save.assert_called_once_with(
-            collector.recog.img, room="B101", screenshot_source=collector.device
+            collector.recog.img,
+            room="B101",
+            screenshot_source=collector.device,
+            log_group="base-scheduler",
         )
 
 

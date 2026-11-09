@@ -41,6 +41,7 @@ import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import StartSchedule from '@/components/StartSchedule.vue'
 import LogOutput from '@/components/LogOutput.vue'
 import LogOperator from '@/components/LogOperator.vue'
+import SessionLink from '@/components/SessionLink.vue'
 import TaskActionSubjects from '@/components/TaskActionSubjects.vue'
 import mastery0 from '@/assets/growth/mastery-0.png?url&no-inline'
 import mastery1 from '@/assets/growth/mastery-1.png?url&no-inline'
@@ -171,11 +172,12 @@ let screenshot_aspect = workspace.screenshot?.aspect || 16 / 9
 let mobile_screenshot_height = workspace.mobileScreenshotHeight
 let railWidthReveal
 let queueRevealAnimations = []
-const STARTUP_REVEAL = { duration: 240, easing: 'ease' }
+const STARTUP_REVEAL = { duration: 240, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
 const startupReveal = `${STARTUP_REVEAL.duration}ms ${STARTUP_REVEAL.easing}`
 let log_view_transition
+const pending_log_view_updates = new Map()
 let animate_next_screenshot = false
-let animate_next_daily_status = false
+let skip_next_daily_motion = false
 
 function reduced_log_motion() {
   return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -206,24 +208,42 @@ function cancel_log_entry_animations() {
   queueRevealAnimations = []
 }
 
-function finish_log_view_transition() {
-  if (!log_view_transition) return
-  const { transition, commit } = log_view_transition
-  log_view_transition = undefined
-  transition.skipTransition()
-  void commit()
+function schedule_log_view_update(key, update, toggle = false) {
+  if (!log_view_transition) {
+    update(false)
+  } else if (!toggle || !pending_log_view_updates.delete(key)) {
+    pending_log_view_updates.set(key, update)
+  }
 }
 
-function transition_log_view(update, { panel } = {}) {
-  finish_log_view_transition()
+function drain_log_view_updates(immediate) {
+  for (const [key, update] of pending_log_view_updates) {
+    if (log_view_transition) break
+    pending_log_view_updates.delete(key)
+    update(immediate)
+  }
+}
+
+function finish_log_view_transition() {
+  if (log_view_transition) {
+    const { transition, commit } = log_view_transition
+    log_view_transition = undefined
+    transition.skipTransition()
+    void commit()
+  }
+  drain_log_view_updates(true)
+}
+
+function transition_log_view(update, { panel, closing = false, immediate = false } = {}) {
   const pane = log_layout.value
   const target = !panel && pane?.startViewTransition ? pane : document
   const reduced = reduced_log_motion()
   if (
+    immediate ||
     !pane ||
     !target.startViewTransition ||
     document.hidden ||
-    (reduced && !panel) ||
+    (reduced && (!panel || panel === 'daily')) ||
     !globalThis.CSS?.supports('selector(:active-view-transition-type(mower-log))')
   ) {
     update()
@@ -242,17 +262,24 @@ function transition_log_view(update, { panel } = {}) {
     const types = ['mower-log']
     if (panel && !reduced) {
       types.push('mower-log-layout')
-      const changesRail =
-        panel === 'screenshot'
-          ? !task_table_visible.value
-          : !has_screenshot.value && task_list.value.length > 0
-      if (rail_layout.value && changesRail) types.push('mower-log-rail')
+      if (panel === 'daily') {
+        types.push('mower-log-daily')
+      } else {
+        const changesRail =
+          panel === 'screenshot'
+            ? !task_table_visible.value
+            : !has_screenshot.value && task_list.value.length > 0
+        if (rail_layout.value && changesRail) types.push('mower-log-rail')
+      }
+      if (closing) types.push('mower-log-collapse')
     }
     const transition = target.startViewTransition({ update: commit, types })
     log_view_transition = { transition, commit }
     void transition.ready.catch(() => {})
     const release = () => {
-      if (log_view_transition?.transition === transition) log_view_transition = undefined
+      if (log_view_transition?.transition !== transition) return
+      log_view_transition = undefined
+      drain_log_view_updates(false)
     }
     void transition.finished.then(release, release)
     return transition.updateCallbackDone.catch(() => {})
@@ -266,6 +293,7 @@ const rail_layout = ref(workspace.wideLayout && !mobile.value)
 const rail_active = computed(() => has_screenshot.value || task_table_visible.value)
 const rail_mode = computed(() => rail_layout.value && rail_active.value && !mobile.value)
 const rail_entry = use_panel_entry(rail_mode)
+const log_entry = use_panel_entry(computed(() => log_lines.value.length > 0))
 
 function apply_rail_layout(container) {
   const { width, height } = fitRailLayout(
@@ -508,15 +536,20 @@ const screenshotPreview = createScreenshotPreview({
   onChange: (url, aspect) => {
     if (aspect) screenshot_aspect = aspect
     latest_screenshot_url = url
-    if (url && animate_next_screenshot) {
-      animate_next_screenshot = false
-      transition_log_view(
-        () => {
-          if (sc_preview.value && !document.hidden && latest_screenshot_url === url)
-            sc_blob.value = url
-        },
-        { panel: 'screenshot' }
-      )
+    if (!url) {
+      pending_log_view_updates.delete('screenshot-frame')
+      sc_blob.value = ''
+    } else if (animate_next_screenshot || (log_view_transition && !sc_blob.value)) {
+      schedule_log_view_update('screenshot-frame', (immediate) => {
+        animate_next_screenshot = false
+        if (!sc_preview.value || document.hidden || !latest_screenshot_url) return
+        const update = () => {
+          if (sc_preview.value && !document.hidden) sc_blob.value = latest_screenshot_url
+        }
+        if (sc_blob.value) update()
+        else if (!pending_log_view_updates.has('screenshot-toggle'))
+          transition_log_view(update, { panel: 'screenshot', immediate })
+      })
     } else {
       sc_blob.value = url
     }
@@ -653,6 +686,36 @@ const daily_items = computed(() =>
     ? getDailyStatusItems(config_store, daily_status.value.records ?? {})
     : []
 )
+const daily_overview = shallowRef({ items: [], gameDay: null })
+watch(
+  [daily_status_always_visible, daily_items],
+  ([wide], [wasWide]) => {
+    const update = () => {
+      daily_overview.value = {
+        items: daily_status_always_visible.value ? daily_items.value : [],
+        gameDay: daily_status.value?.game_day
+      }
+    }
+    if (wide && wasWide && !skip_next_daily_motion) {
+      schedule_log_view_update('daily-overview', (immediate) => {
+        const visible = daily_items.value.length > 0
+        if (visible === daily_overview.value.items.length > 0) update()
+        else if (!visible || !pending_log_view_updates.has('daily-tasks-toggle'))
+          transition_log_view(update, { panel: 'daily', closing: !visible, immediate })
+      })
+    } else {
+      pending_log_view_updates.delete('daily-overview')
+      update()
+    }
+  },
+  { immediate: true }
+)
+const displayed_daily_items = computed(() =>
+  daily_view_visible.value ? daily_items.value : daily_overview.value.items
+)
+const displayed_daily_game_day = computed(() =>
+  daily_view_visible.value ? daily_status.value?.game_day : daily_overview.value.gameDay
+)
 // 日志上方的日期取最新一条日志行的日期，而不是游戏日。
 const log_date = computed(() => latestLogDate(log_lines.value))
 let dailyStatusTimer
@@ -681,16 +744,7 @@ async function refresh_daily_status() {
       timeout: 10000
     })
     if (controller.signal.aborted) return
-    const status = dailyStatusExpiry(data) === null ? null : data
-    if (animate_next_daily_status && status?.source === 'live') {
-      animate_next_daily_status = false
-      await transition_log_view(() => {
-        if (!controller.signal.aborted && daily_status_enabled.value && !document.hidden)
-          daily_status.value = dailyStatusExpiry(status) === null ? null : status
-      })
-    } else {
-      daily_status.value = status
-    }
+    daily_status.value = dailyStatusExpiry(data) === null ? null : data
   } catch {
     if (!controller.signal.aborted) daily_status.value = null
   } finally {
@@ -698,6 +752,11 @@ async function refresh_daily_status() {
       schedule_daily_status_expiry()
       dailyStatusController = undefined
       daily_status_loading.value = false
+      if (skip_next_daily_motion) {
+        nextTick(() => {
+          if (!document.hidden) skip_next_daily_motion = false
+        })
+      }
     }
   }
 }
@@ -733,7 +792,7 @@ function updatePageVisibility(event) {
   if (event && document.hidden) {
     startup_reveal.value = false
     animate_next_screenshot = false
-    animate_next_daily_status = false
+    skip_next_daily_motion = true
     cancel_log_entry_animations()
     finish_log_view_transition()
   }
@@ -819,6 +878,7 @@ import DailyDoneIcon from '@vicons/ionicons5/es/CheckmarkCircle'
 import DailyAttemptedIcon from '@vicons/ionicons5/es/AlertCircleOutline'
 import DailyPendingIcon from '@vicons/ionicons5/es/EllipseOutline'
 import DailyViewSwitchIcon from '@vicons/ionicons5/es/SwapHorizontalOutline'
+import HistoryIcon from '@vicons/ionicons5/es/TimeOutline'
 
 const log_view_options = [
   {
@@ -864,36 +924,57 @@ const log_view_options = [
   }
 ]
 
-function toggle_log_view({ className, state }) {
-  finish_log_view_transition()
+function apply_log_view_toggle({ className, state }, immediate) {
   const enabled = !state.value
   const update = () => {
-    if (className === 'screenshot-toggle' || className === 'task-table-toggle')
+    if (className === 'screenshot-toggle' || className === 'task-table-toggle') {
       startup_reveal.value = false
+      cancel_log_entry_animations()
+    }
     state.value = enabled
     if (className === 'task-table-toggle')
       localStorage.setItem('log_show_task_table', String(enabled))
   }
   if (className === 'screenshot-toggle') {
-    animate_next_screenshot = enabled
-    if (!enabled && has_screenshot.value) transition_log_view(update, { panel: 'screenshot' })
+    animate_next_screenshot = enabled && !immediate
+    if (!enabled && has_screenshot.value)
+      transition_log_view(update, { panel: 'screenshot', closing: true, immediate })
     else update()
   } else if (
     className === 'task-table-toggle' &&
     (task_list.value.length || plan_condition.value.length)
   ) {
-    transition_log_view(update, { panel: 'queue' })
+    transition_log_view(update, { panel: 'queue', closing: !enabled, immediate })
   } else if (className === 'daily-tasks-toggle') {
     const wide = daily_status_always_visible.value
     const available = running.value && hasDailyStatusTasks(config_store)
-    animate_next_daily_status = enabled && wide && available
-    if (daily_items.value.length || (!wide && available)) transition_log_view(update)
+    if (wide) skip_next_daily_motion = immediate
+    if (!wide && available) transition_log_view(update, { immediate })
     else update()
   } else update()
 }
 
+function toggle_log_view(option) {
+  const key = option.className
+  if (['screenshot-toggle', 'task-table-toggle', 'daily-tasks-toggle'].includes(key)) {
+    schedule_log_view_update(key, (immediate) => apply_log_view_toggle(option, immediate), true)
+  } else {
+    apply_log_view_toggle(option, false)
+  }
+}
+
 function toggle_daily_view() {
-  transition_log_view(() => (daily_view_selected.value = !daily_view_selected.value))
+  schedule_log_view_update(
+    'daily-view',
+    (immediate) => {
+      if (daily_toggle_available.value) {
+        transition_log_view(() => (daily_view_selected.value = !daily_view_selected.value), {
+          immediate
+        })
+      }
+    },
+    true
+  )
 }
 
 const daily_states = {
@@ -1195,6 +1276,10 @@ async function db_delete(keys) {
   >
     <div
       class="log-bg"
+      :class="{
+        'log-bg--reveal': startup_reveal && !mobile,
+        'log-bg--expand-rail': rail_entry === 'expand'
+      }"
       :style="{ backgroundImage: `url('${logBackground.url}')` }"
       aria-hidden="true"
     ></div>
@@ -1205,6 +1290,7 @@ async function db_delete(keys) {
         'with-screenshot': has_screenshot,
         'has-tasks': task_table_visible,
         'log-pane--rail': rail_mode,
+        'log-pane--reveal-content': log_entry,
         'log-pane--reveal-screenshot': screenshot_entry,
         'log-pane--expand-screenshot': screenshot_entry === 'expand',
         'log-pane--reveal-queue': queue_entry,
@@ -1464,6 +1550,16 @@ async function db_delete(keys) {
         :auto-scroll="auto_scroll"
         :show-alternate-view="daily_view_visible"
       >
+        <template #history="{ at }">
+          <SessionLink
+            class="log-history-link"
+            :to="{ name: 'log_schedule', query: { at: String(at) } }"
+            title="在日志调度中查看"
+            aria-label="在日志调度中查看这条记录"
+          >
+            <HistoryIcon aria-hidden="true" />
+          </SessionLink>
+        </template>
         <template v-if="daily_toggle_available" #title>
           <button
             class="log-daily-toggle"
@@ -1477,7 +1573,7 @@ async function db_delete(keys) {
             <DailyViewSwitchIcon aria-hidden="true" />
           </button>
         </template>
-        <template v-if="daily_view_visible || daily_items.length" #[daily_slot]>
+        <template v-if="daily_view_visible || displayed_daily_items.length" #[daily_slot]>
           <div
             class="daily-status"
             :class="{ 'daily-status--view': daily_view_visible }"
@@ -1485,17 +1581,21 @@ async function db_delete(keys) {
             :aria-label="daily_view_visible ? '今日任务' : '任务状态'"
             :tabindex="daily_view_visible ? 0 : undefined"
             :title="
-              daily_items.length
-                ? `游戏日 ${daily_status.game_day}，北京时间每日凌晨 4 点开始新的游戏日`
+              displayed_daily_items.length
+                ? `游戏日 ${displayed_daily_game_day}，北京时间每日凌晨 4 点开始新的游戏日`
                 : undefined
             "
           >
             <p v-if="!daily_view_visible && log_date" class="daily-status__date">
               {{ log_date }}
             </p>
-            <ul v-if="daily_items.length" class="daily-status__items" aria-label="任务概览">
+            <ul
+              v-if="displayed_daily_items.length"
+              class="daily-status__items"
+              aria-label="任务概览"
+            >
               <li
-                v-for="item in daily_items"
+                v-for="item in displayed_daily_items"
                 :key="item.id"
                 class="daily-status__item"
                 :class="`daily-status__item--${item.state}`"
@@ -1653,7 +1753,10 @@ async function db_delete(keys) {
             @click="toggle_log_view(option)"
           >
             <template #icon>
-              <span :class="{ 'view-toggle-icon': !option.activeIcon }">
+              <span
+                class="view-toggle-icon"
+                :class="{ 'view-toggle-icon--slashed': !option.activeIcon }"
+              >
                 <n-icon :component="(option.state.value && option.activeIcon) || option.icon" />
               </span>
             </template>
@@ -1712,7 +1815,10 @@ async function db_delete(keys) {
               @click="toggle_log_view(option)"
             >
               <template #icon>
-                <span :class="{ 'view-toggle-icon': !option.activeIcon }">
+                <span
+                  class="view-toggle-icon"
+                  :class="{ 'view-toggle-icon--slashed': !option.activeIcon }"
+                >
                   <n-icon :component="(option.state.value && option.activeIcon) || option.icon" />
                 </span>
               </template>
@@ -1829,6 +1935,38 @@ async function db_delete(keys) {
 </template>
 
 <style scoped lang="scss">
+.log-history-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-inline-start: 4px;
+  vertical-align: middle;
+  border-radius: 4px;
+  color: currentColor;
+  opacity: 0.74;
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .log-history-link:hover,
+  .log-daily-toggle:hover {
+    background: var(--mower-control-hover);
+    opacity: 1;
+  }
+}
+
+.log-history-link:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--lg-focus);
+}
+
+.log-history-link svg {
+  width: 14px;
+  height: 14px;
+}
+
 @property --log-screenshot-entry {
   syntax: '<number>';
   inherits: false;
@@ -1876,9 +2014,25 @@ async function db_delete(keys) {
   }
 }
 
+@keyframes reveal-log-layer {
+  from {
+    opacity: 0;
+  }
+}
+
+.home-container,
+.log-view-actions {
+  --log-press-time: 60ms;
+  --log-feedback-time: 120ms;
+  --log-feedback-ease: cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
 .home-container {
+  --log-startup-reveal: v-bind(startupReveal);
   /* 与 logLayout.js 的 RAIL_GAP 保持一致。 */
   --log-rail-gap: 24px;
+  --log-hairline: 1px;
+  --log-label-weight: 600;
   --log-stack-max-width: 480px;
   --log-stack-shot-max-height: min(45vh, 500px);
   --log-mono-font:
@@ -1895,8 +2049,19 @@ async function db_delete(keys) {
   isolation: isolate;
 }
 
+@media (min-resolution: 2dppx) {
+  .home-container {
+    --log-hairline: 0.5px;
+  }
+}
+
+@media (min-resolution: 3dppx) {
+  .home-container {
+    --log-hairline: 0.333333px;
+  }
+}
+
 .log-pane {
-  --log-startup-reveal: v-bind(startupReveal);
   --log-resizer-size: 8px;
   --log-screenshot-tracks: 0px 0px;
   --log-task-row: 0px;
@@ -1943,6 +2108,10 @@ async function db_delete(keys) {
 
 .log-pane--reveal-queue .task-table-scroll {
   animation: reveal-log-queue var(--log-startup-reveal);
+}
+
+.log-pane--reveal-content .log {
+  animation: reveal-log-layer var(--log-startup-reveal);
 }
 
 /* 宽屏右栏：截图在上，任务列表铺满下方，日志占左侧整列。 */
@@ -2054,9 +2223,9 @@ async function db_delete(keys) {
     left: 0;
     right: 0;
     top: 50%;
-    height: 1px;
+    height: var(--log-hairline);
     background: transparent;
-    transition: background-color 0.15s ease;
+    transition: background-color var(--log-feedback-time) var(--log-feedback-ease);
   }
 
   &:active::after {
@@ -2091,7 +2260,7 @@ async function db_delete(keys) {
     right: auto;
     bottom: 0;
     left: 50%;
-    width: 1px;
+    width: var(--log-hairline);
     height: auto;
   }
 }
@@ -2157,25 +2326,25 @@ async function db_delete(keys) {
     padding: 2px 8px 6px;
     color: var(--mower-text-muted, #8a9099);
     font-size: 12px;
-    font-weight: 600;
+    font-weight: var(--log-label-weight);
     letter-spacing: 0.06em;
-    border-bottom: 1px solid var(--log-rule) !important;
+    background: linear-gradient(var(--log-rule) 0 0) left bottom / 100% var(--log-hairline)
+      no-repeat !important;
   }
 
   .task-time-label {
-    position: relative;
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    gap: 4px;
 
     &::before {
       content: '';
-      position: absolute;
-      inset-inline-start: -7px;
-      top: 50%;
+      display: inline-block;
       width: 3px;
       height: 0.9em;
       border-radius: 1px;
       background: var(--lg-primary);
-      transform: translateY(-50%);
     }
   }
 
@@ -2186,7 +2355,7 @@ async function db_delete(keys) {
   }
 
   tbody tr.task-group-start:not(:first-child) td {
-    border-top: 1px solid var(--log-rule) !important;
+    background: linear-gradient(var(--log-rule) 0 0) left top / 100% var(--log-hairline) no-repeat !important;
   }
 }
 
@@ -2221,7 +2390,7 @@ async function db_delete(keys) {
 
 .task-heading {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
   line-height: 22px;
   overflow-wrap: anywhere;
 }
@@ -2441,7 +2610,7 @@ async function db_delete(keys) {
   margin: 0;
   color: var(--mower-text-muted, #8a9099);
   font-size: 11px;
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
   letter-spacing: 0.12em;
   font-variant-numeric: tabular-nums;
 }
@@ -2484,7 +2653,7 @@ async function db_delete(keys) {
   min-height: 36px;
   padding: 6px 0;
   border: 0;
-  border-bottom: 1px solid var(--log-rule);
+  border-bottom: var(--log-hairline) solid var(--log-rule);
   border-radius: 0;
   background: none;
   box-shadow: none;
@@ -2515,7 +2684,7 @@ async function db_delete(keys) {
   max-width: 100%;
   flex-shrink: 0;
   padding: 2px 9px 2px 6px;
-  border: 0.5px solid var(--lg-btn-line);
+  border: var(--log-hairline) solid var(--lg-btn-line);
   border-radius: 999px;
   color: var(--lg-btn-label);
   background-image: var(--lg-btn-sheen), var(--lg-btn-bg);
@@ -2691,7 +2860,7 @@ async function db_delete(keys) {
 
 .view-toggle-island,
 .view-options-anchor::before {
-  border: 0.5px solid rgba(24, 25, 28, 0.08);
+  border: var(--log-hairline) solid rgba(24, 25, 28, 0.08);
   border-radius: 999px;
   background: linear-gradient(145deg, var(--lg-surface-top), var(--lg-surface-bottom));
   box-shadow: 0 3px 12px -4px rgba(24, 25, 28, 0.16);
@@ -2724,7 +2893,7 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   height: 20px;
 }
 
-.view-toggle[aria-pressed='false'] .view-toggle-icon::after {
+.view-toggle-icon--slashed::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -2733,8 +2902,13 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   height: 26px;
   border-radius: 1px;
   background: currentColor;
+  opacity: 0;
   transform: translate(-50%, -50%) rotate(-45deg);
   pointer-events: none;
+}
+
+.view-toggle[aria-pressed='false'] .view-toggle-icon--slashed::after {
+  opacity: 1;
 }
 
 .home-container--mobile {
@@ -2920,8 +3094,10 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
 }
 
 .log-bg {
+  --log-rail-entry: 0;
+  --log-bg-mask: linear-gradient(90deg, #000 58%, rgb(0 0 0 / calc(1 - var(--log-rail-entry))));
   content: '';
-  width: 100%;
+  width: calc(100% - 26% * var(--log-rail-entry));
   height: 100%;
   position: absolute;
   z-index: 0;
@@ -2930,16 +3106,35 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   opacity: v-bind(bg_opacity);
   background-repeat: no-repeat;
   background-size: cover;
-  background-position: 65% 50%;
+  background-position: calc(65% - 15% * var(--log-rail-entry)) 50%;
+  -webkit-mask-image: var(--log-bg-mask);
+  mask-image: var(--log-bg-mask);
+  animation: var(--log-bg-reveal, none), var(--log-bg-rail, none);
   pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .log-bg {
+    transition: --log-rail-entry 180ms cubic-bezier(0.32, 0.72, 0, 1);
+  }
+
+  .log-bg--reveal {
+    --log-bg-reveal: reveal-log-layer var(--log-startup-reveal);
+  }
+
+  .home-container--rail .log-bg {
+    transition: --log-rail-entry var(--log-startup-reveal);
+  }
+
+  .home-container--rail .log-bg--expand-rail {
+    --log-bg-rail: reveal-log-rail var(--log-startup-reveal);
+    transition: none;
+  }
 }
 
 /* 右栏布局时立绘只铺在左侧日志区，向截图和任务列表一侧渐隐。 */
 .home-container--rail .log-bg {
-  width: 74%;
-  background-position: 50% 50%;
-  -webkit-mask-image: linear-gradient(90deg, #000 58%, transparent);
-  mask-image: linear-gradient(90deg, #000 58%, transparent);
+  --log-rail-entry: 1;
 }
 
 .db-admin-body {
@@ -3081,6 +3276,7 @@ html[data-window-shell-theme='dark'] .home-container {
   --lg-btn-error-label: #ffb3c2;
   --lg-btn-warning-label: #f8d794;
   --lg-btn-info-label: #b3def7;
+  --log-label-weight: 500;
   --log-rule: rgb(244 240 229 / 12%);
   --log-shot-shadow: 0 12px 30px -14px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(244, 240, 229, 0.06);
 }
@@ -3103,24 +3299,24 @@ html[data-window-shell-theme='dark'] .home-container {
   --n-text-color-pressed: var(--lg-btn-label);
   --n-text-color-focus: var(--lg-btn-label);
   --n-text-color-disabled: var(--lg-btn-neutral-label);
-  --n-border: 0.5px solid var(--lg-btn-line);
-  --n-border-hover: 0.5px solid var(--lg-btn-line);
-  --n-border-pressed: 0.5px solid var(--lg-btn-line);
-  --n-border-focus: 0.5px solid var(--lg-btn-line);
-  --n-border-disabled: 0.5px solid var(--lg-btn-neutral-line);
+  --n-border: var(--log-hairline) solid var(--lg-btn-line);
+  --n-border-hover: var(--n-border);
+  --n-border-pressed: var(--n-border);
+  --n-border-focus: var(--n-border);
+  --n-border-disabled: var(--log-hairline) solid var(--lg-btn-neutral-line);
   --n-border-radius: 10px;
   --n-height: 34px;
   --n-ripple-color: transparent;
   --n-opacity-disabled: 0.5;
   --lg-btn-label: var(--lg-btn-neutral-label);
   --lg-btn-line: var(--lg-btn-neutral-line);
-  font-weight: 600;
+  font-weight: var(--log-label-weight);
   box-shadow: none;
   transition:
-    transform 0.16s ease,
-    background-color 0.16s ease,
-    opacity 0.16s ease,
-    color 0.16s ease;
+    transform var(--log-feedback-time) var(--log-feedback-ease),
+    background-color var(--log-feedback-time) var(--log-feedback-ease),
+    opacity var(--log-feedback-time) var(--log-feedback-ease),
+    color var(--log-feedback-time) var(--log-feedback-ease);
 }
 
 .log-view-controls :deep(.n-button),
@@ -3173,6 +3369,7 @@ html[data-window-shell-theme='dark'] .home-container {
 .log-view-controls :deep(.n-button:active:not(.n-button--disabled))::before,
 .log-view-actions :deep(.n-button:active:not(.n-button--disabled))::before {
   background: var(--view-control-pressed-bg);
+  transition-duration: var(--log-press-time);
 }
 
 .log-view-controls :deep(.view-toggle[aria-pressed='true']),
@@ -3241,7 +3438,7 @@ html[data-window-shell-theme='dark'] .home-container {
   top: 8px;
   bottom: 8px;
   left: 0;
-  width: 1px;
+  width: var(--log-hairline);
   border-radius: 1px;
   background: var(--lg-btn-line);
   pointer-events: none;
@@ -3272,7 +3469,36 @@ html[data-window-shell-theme='dark'] .home-container {
       )
   ) {
   --lg-action-tint: 14%;
-  transform: translateY(0) scale(0.99);
+  @media (prefers-reduced-motion: no-preference) {
+    transform: scale(0.98);
+    transition-duration: var(--log-press-time);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .log-history-link,
+  .log-daily-toggle {
+    transition:
+      background-color var(--log-feedback-time) var(--log-feedback-ease),
+      opacity var(--log-feedback-time) var(--log-feedback-ease);
+  }
+
+  .log-view-controls :deep(.n-button)::before,
+  .log-view-actions :deep(.n-button)::before {
+    transition: background-color var(--log-feedback-time) var(--log-feedback-ease);
+  }
+
+  .view-toggle-icon--slashed::after {
+    transition: opacity var(--log-feedback-time) var(--log-feedback-ease);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .log-resizer::after,
+  .execution-control :deep(.n-button),
+  .action-container :deep(.n-button:is(.add-task-action, .database-action)) {
+    transition: none;
+  }
 }
 
 .execution-control :deep(.n-button:focus-visible),
@@ -3322,10 +3548,27 @@ html:active-view-transition-type(mower-log-layout) .log-pane {
   }
 }
 
+html:active-view-transition-type(mower-log-daily) .log-pane {
+  & :is(.log, .log-screenshot, .task-table-scroll, .plan-condition, .log-resizer) {
+    view-transition-name: none;
+  }
+
+  & .log-output__body {
+    view-transition-name: mower-log-content;
+  }
+
+  & .daily-status:not(.daily-status--view) {
+    view-transition-name: mower-log-overview;
+  }
+}
+
 html:active-view-transition-type(mower-log-layout) {
+  --mower-log-view-duration: 240ms;
+  --mower-log-view-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+
   &::view-transition-group(*) {
-    animation-duration: 240ms;
-    animation-timing-function: ease;
+    animation-duration: var(--mower-log-view-duration);
+    animation-timing-function: var(--mower-log-view-ease);
   }
 
   &::view-transition-image-pair(*) {
@@ -3346,13 +3589,18 @@ html:active-view-transition-type(mower-log-layout) {
   }
 
   &::view-transition-new(*):only-child {
-    animation: mower-log-panel-open 240ms ease both;
+    animation: mower-log-panel-open var(--mower-log-view-duration) var(--mower-log-view-ease) both;
   }
 
   &::view-transition-old(*):only-child {
     display: block;
-    animation: mower-log-panel-open 240ms ease reverse both;
+    animation: mower-log-panel-close var(--mower-log-view-duration) var(--mower-log-view-ease) both;
   }
+}
+
+html:active-view-transition-type(mower-log-collapse) {
+  --mower-log-view-duration: 180ms;
+  --mower-log-view-ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 html:active-view-transition-type(mower-log-rail) {
@@ -3372,6 +3620,16 @@ html:active-view-transition-type(mower-log-rail) {
   }
 }
 
+@keyframes mower-log-panel-close {
+  from {
+    clip-path: inset(0);
+  }
+
+  to {
+    clip-path: var(--log-panel-closed, inset(0 0 100% 0));
+  }
+}
+
 :is(html, .log-pane):active-view-transition-type(mower-log)::view-transition {
   pointer-events: none;
 }
@@ -3379,7 +3637,7 @@ html:active-view-transition-type(mower-log-rail) {
 :is(html, .log-pane):active-view-transition-type(mower-log)::view-transition-group(mower-log-pane) {
   animation-name: none;
   animation-duration: 240ms;
-  animation-timing-function: ease;
+  animation-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 html:active-view-transition-type(mower-log) .n-popover:has(.log-view-actions) {
