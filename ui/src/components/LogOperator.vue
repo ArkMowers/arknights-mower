@@ -101,7 +101,8 @@ function imageFailed(event) {
   filter: invert(1);
 }
 
-.log-operator:is([data-operator-name='Current'], [data-operator-name='Free']) .log-operator__avatar {
+.log-operator:is([data-operator-name='Current'], [data-operator-name='Free'])
+  .log-operator__avatar {
   --log-placeholder-ring: color-mix(in srgb, var(--mower-text, #30343a) 20%, transparent);
   border: 0;
   padding: 1px;

@@ -4128,6 +4128,21 @@ describe('running log output', () => {
       expect(sticky()).toBe(header)
       expect(visibleText(header)).toBe(label)
     }
+
+    const rules = () =>
+      all(header).filter(
+        (element) => hasClass(element, 'log-sticky__lead') || hasClass(element, 'log-sticky__rule')
+      )
+    expect(rules()).toHaveLength(0)
+    page.props.compact = false
+    await nextTick()
+    expect(rules()).toHaveLength(2)
+    expect(rules().every((rule) => rule.props['aria-hidden'] === 'true')).toBe(true)
+    container.scrollTop = 80
+    onScroll()
+    await vi.advanceTimersByTimeAsync(20)
+    expect(sticky()).toBe(header)
+    expect(rules()).toHaveLength(0)
   })
 
   it('places an optional header above the scrolling log region and outside it', () => {

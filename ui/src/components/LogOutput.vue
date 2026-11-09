@@ -858,12 +858,11 @@ function lineClasses(row) {
       >
         <slot v-if="$slots.title" name="title" />
         <span v-else-if="compact" class="log-sticky__title">{{ running ? '运行日志' : '' }}</span>
-        <span
-          v-if="!showAlternateView && stickyGroup"
-          class="log-sticky__label"
-          aria-hidden="true"
-          >{{ stickyGroup }}</span
-        >
+        <template v-if="!showAlternateView && stickyGroup">
+          <span v-if="!compact && !$slots.title" class="log-sticky__lead" aria-hidden="true"></span>
+          <span class="log-sticky__label" aria-hidden="true">{{ stickyGroup }}</span>
+          <span v-if="!compact && !$slots.title" class="log-sticky__rule" aria-hidden="true"></span>
+        </template>
       </div>
       <n-scrollbar
         class="log-output__scroll"
@@ -1717,6 +1716,7 @@ function lineClasses(row) {
   display: flex;
   flex: none;
   align-items: flex-start;
+  gap: 8px;
   height: 18px;
   margin: 0 4px;
   color: var(--log-ink);
@@ -1749,11 +1749,29 @@ function lineClasses(row) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  animation: log-sticky-in 120ms ease-out;
 }
 
-.log-sticky:not(.log-sticky--titled) .log-sticky__label {
-  margin-inline-start: var(--log-gutter);
+.log-sticky__lead {
+  flex: 0 0 calc(var(--log-gutter) - 8px);
+}
+
+.log-sticky__rule {
+  flex: 1 1 auto;
+}
+
+.log-sticky__lead,
+.log-sticky__rule {
+  height: var(--log-hairline, 1px);
+  margin-block-start: 7px;
+  background: var(--log-group-rule);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .log-sticky__lead,
+  .log-sticky__label,
+  .log-sticky__rule {
+    animation: log-sticky-in 120ms ease-out;
+  }
 }
 
 @keyframes log-sticky-in {
@@ -2139,8 +2157,7 @@ function lineClasses(row) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .log-line--enter,
-  .log-sticky__label {
+  .log-line--enter {
     animation: none;
   }
 }
