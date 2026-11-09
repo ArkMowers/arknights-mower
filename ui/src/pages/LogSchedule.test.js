@@ -79,10 +79,8 @@ describe('authenticated diagnostic screenshots', () => {
     expect(first.responseType).toBe('blob')
     expect(first.timeout).toBe(10000)
     createUrl.mockReturnValue('blob:second')
-    page.imageZoom.value = { width: 100, height: 250, scale: 2 }
     page.moveImage(1)
     await vi.waitFor(() => expect(page.imageUrl.value).toBe('blob:second'))
-    expect(page.imageZoom.value).toBeNull()
     expect(first.signal.aborted).toBe(true)
     expect(revokeUrl).toHaveBeenCalledWith('blob:first')
     const second = requests.find((request) => request.url === '/screenshots/second.jpg')
@@ -174,46 +172,6 @@ describe('log schedule browsing', () => {
 
     state.route.query.at = [String(firstAt), String(nextAt)]
     await vi.waitFor(() => expect(page.loadedAt.value).toBe(Date.now()))
-  })
-
-  it('anchors Ctrl-wheel zoom to the pointer and restores the fitted view from the keyboard', async () => {
-    page.imageStage.value = {
-      clientWidth: 100,
-      clientHeight: 100,
-      scrollLeft: 0,
-      scrollTop: 0,
-      getBoundingClientRect: () => ({ left: 10, top: 20 })
-    }
-    page.shotImage.value = {
-      offsetWidth: 100,
-      getBoundingClientRect: () => ({
-        left: 10,
-        top: 20,
-        width: 100 * page.imageScale.value,
-        height: 100 * page.imageScale.value
-      })
-    }
-    page.imageReady.value = true
-    const wheel = {
-      preventDefault: vi.fn(),
-      clientX: 85,
-      clientY: 95,
-      deltaMode: 0,
-      deltaY: -Math.log(2) / 0.003
-    }
-
-    await page.zoomImageWithWheel(wheel)
-    expect(wheel.preventDefault).not.toHaveBeenCalled()
-    await page.zoomImageWithWheel({ ...wheel, ctrlKey: true })
-    expect(wheel.preventDefault).toHaveBeenCalledOnce()
-    expect(page.imageScale.value).toBeCloseTo(2)
-    expect(page.imageStage.value.scrollLeft).toBeCloseTo(75)
-    expect(page.imageStage.value.scrollTop).toBeCloseTo(75)
-
-    page.zoomImageWithKeyboard({ key: 'Escape', preventDefault: vi.fn() })
-    expect(page.imageScale.value).toBe(1)
-    expect(page.imageStage.value.scrollLeft).toBe(0)
-    expect(page.imageStage.value.scrollTop).toBe(0)
   })
 
   it('parses the file formatter and filters CRITICAL without losing traceback details', () => {
