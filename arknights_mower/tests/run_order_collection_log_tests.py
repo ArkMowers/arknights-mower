@@ -1,11 +1,13 @@
 """订单收取记录真实动作，未收取与中断不能宣告成功。"""
 
+import sqlite3
 from datetime import datetime
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
+from arknights_mower.solvers import record
 from arknights_mower.tests.business_log_groups_tests import live
 from arknights_mower.tests.raw_schedule_log_tests import base, capture
 from arknights_mower.utils.scheduler_task import TaskTypes
@@ -63,6 +65,21 @@ def test_live_order_save_keeps_its_observations_in_the_collection_group(
         live(record) for record in caplog.records if record.levelname == "INFO"
     ]
     assert [entry.get("group") for entry in historical] == [None, None]
+
+
+def test_database_failure_keeps_the_collection_group(caplog, monkeypatch):
+    capture(caplog, monkeypatch)
+
+    def failing_connection():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(record, "_conn", failing_connection)
+    TradingOrder().save(None, datetime(2026, 1, 1), log_group="base-scheduler")
+
+    errors = [live(record) for record in caplog.records if record.levelname == "ERROR"]
+    assert len(errors) == 1
+    assert errors[0]["msg"].startswith("SQLite error:")
+    assert errors[0].get("group") == "base-scheduler"
 
 
 @pytest.mark.parametrize("collect_only", [False, True])

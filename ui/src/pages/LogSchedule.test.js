@@ -169,6 +169,10 @@ describe('log schedule browsing', () => {
     await vi.waitFor(() => expect(page.imagePath.value).toBe(firstImage))
     expect(page.queryAt.value).toBe(firstAt)
     expect(page.imageCaption.value).toContain('所选时间附近的截图')
+
+    page.moveImage(1)
+    expect(page.imageCaption.value).not.toContain('所选时间附近的截图')
+
     expect(state.client.get).toHaveBeenCalledWith('/diagnostics/timeline', {
       params: { at: firstAt }
     })

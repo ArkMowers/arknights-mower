@@ -755,6 +755,7 @@ def calculate_time_difference(start_time, end_time):
 
 def save_trading_info(func):
     def wrapper(*args, log_group=None, **kwargs):
+        log_extra = {"log_group": log_group} if log_group is not None else None
         try:
             result = None
             with _conn() as connection:
@@ -782,9 +783,6 @@ def save_trading_info(func):
                             result.price,
                         ),
                     )
-                    log_extra = (
-                        {"log_group": log_group} if log_group is not None else None
-                    )
                     logger.info(
                         f"当前为 {result.buff} 订单, 订单价值为: {result.price}",
                         extra=log_extra,
@@ -794,7 +792,7 @@ def save_trading_info(func):
                     )
                     connection.commit()
         except sqlite3.Error as e:
-            logger.error(f"SQLite error: {e}")
+            logger.error(f"SQLite error: {e}", extra=log_extra)
         return result
 
     return wrapper

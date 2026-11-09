@@ -78,7 +78,9 @@ const historyAt = computed(() => {
 const imageCaption = computed(() => {
   if (!imagePath.value) return '当前窗口没有可读取的截图'
   const time = imageTime(imagePath.value)
-  return browseMode.value === 'time' && loadedAt.value === historyAt.value
+  return browseMode.value === 'time' &&
+    loadedAt.value === historyAt.value &&
+    imageIndex.value === imageNearest(loadedAt.value)
     ? `所选时间附近的截图 · ${time}`
     : time
 })

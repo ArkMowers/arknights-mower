@@ -3324,7 +3324,7 @@ describe('running log output', () => {
     expect(all(summary).some((entry) => hasClass(entry, 'log-lifecycle-active'))).toBe(false)
   })
 
-  it('owns auto-follow without scrolling on equivalent refreshes or while reading earlier lines', async () => {
+  it('follows appended records at the tail and keeps equivalent refreshes in place', async () => {
     const lines = Array.from({ length: 10 }, (_, index) => ({
       id: index + 1,
       text: `INFO 记录${index + 1}`
@@ -3400,6 +3400,20 @@ describe('running log output', () => {
     page.props.lines = [...page.props.lines, { id: 14, text: 'INFO 记录14' }]
     await nextTick()
     expect(position).toBe(260)
+
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(1000)
+    wheelLogUp(page)
+    position = 40
+    scrolled()
+    page.props.lines = [...page.props.lines, { id: 15, text: 'INFO 记录15' }]
+    await nextTick()
+    expect(position).toBe(40)
+
+    clock.mockReturnValue(1200)
+    page.props.lines = [...page.props.lines, { id: 16, text: 'INFO 记录16' }]
+    await nextTick()
+    expect(position).toBe(300)
+    clock.mockRestore()
   })
 
   it.each([false, true])(
