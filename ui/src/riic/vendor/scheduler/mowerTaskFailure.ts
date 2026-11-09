@@ -1,3 +1,4 @@
+import {mowerPendingRecoveryTasks} from './mowerPreviewRecoveryWait'
 import {prepareMowerCorrectionRecovery,refreshMowerDerivedCorrection} from './mowerCorrection'
 import {mowerCompletedOrdinaryRestRequest,reconcileMowerRetainedRecovery} from './mowerRetainedRecovery'
 // Port of base_schedule task failure snapshots, Mower alpha 3ad69f15 (MIT).
@@ -56,7 +57,7 @@ export function resumeMowerFailedTasks(state:RuntimeState,data:MowerSchedulingDa
   if(!failure)continue
   if(mowerCompletedOrdinaryRestRequest(data,task)){queue.consume(task);changed=true;continue}
   if(task.workingReplacementCheck)continue
-  if((failure.reason.startsWith('组员尚未确认回满心情')||failure.reason.startsWith('需要回满的主班心情尚未满足要求'))&&prepareMowerCorrectionRecovery(data,task,queue.tasks)){
+  if((failure.reason.startsWith('组员尚未确认回满心情')||failure.reason.startsWith('需要回满的主班心情尚未满足要求'))&&prepareMowerCorrectionRecovery(data,task,mowerPendingRecoveryTasks({queue,waitingRecovery:state.mowerSource?.waitingRecovery}))){
    delete task.executionFailure;task.coordinationDependencyWait=false;task.executionRetained=false;changed=true
    continue
   }
@@ -64,7 +65,7 @@ export function resumeMowerFailedTasks(state:RuntimeState,data:MowerSchedulingDa
   // A prediction replacing a measurement does not constitute new evidence.
   for(const [name,observation] of Object.entries(failure.snapshot.observations))if(data.operators[name]?.moodIsPrediction)observation[2]=null
   if(JSON.stringify(snapshot(state,data,task,failure.rooms))===JSON.stringify(failure.snapshot))continue
-  refreshMowerDerivedCorrection(data,task,queue.tasks)
+  refreshMowerDerivedCorrection(data,task,mowerPendingRecoveryTasks({queue,waitingRecovery:state.mowerSource?.waitingRecovery}))
   delete task.executionFailure;task.coordinationDependencyWait=false;task.executionRetained=true;changed=true
  }
  return changed

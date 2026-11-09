@@ -3339,7 +3339,12 @@ class BaseSchedulerSolver(
         self._recovery_plan_dirty = False
 
     def _waiting_shift_reservations(
-        self, *, returning_groups=(), returning_names=(), current_task=None
+        self,
+        *,
+        returning_groups=(),
+        returning_names=(),
+        current_task=None,
+        recovering_name=None,
     ):
         """等待任务保留目标，但不阻止其依赖组回班释放替班。"""
         names, slots = set(), set()
@@ -3371,11 +3376,27 @@ class BaseSchedulerSolver(
                         == [name]
                     ):
                         released.add(name)
+            from arknights_mower.utils.retained_recovery import (
+                pending_return_allows_recovery,
+                pending_return_recovery_slots,
+            )
+
+            recovering = (
+                {recovering_name}
+                if recovering_name
+                and pending_return_allows_recovery(self.op_data, task, recovering_name)
+                else set()
+            )
+            recovery_slots = (
+                pending_return_recovery_slots(self.op_data, task, recovering_name)
+                if recovering
+                else set()
+            )
             names.update(
                 name
                 for row in task.plan.values()
                 for name in row
-                if name in self.op_data.operators and name not in released
+                if name in self.op_data.operators and name not in released | recovering
             )
             # 尚未离岗的干员同样占有目标床位，不能仅预约其当前源岗位。
             slots.update(
@@ -3383,7 +3404,9 @@ class BaseSchedulerSolver(
                 for room, row in task.plan.items()
                 if room.startswith("dorm")
                 for index, name in enumerate(row)
-                if name != "Current" and name not in released
+                if name != "Current"
+                and name not in released
+                and (room, index) not in recovery_slots
             )
             for position, name in getattr(task, "group_shift_expected", {}).items():
                 if name != "Current" and name not in released:
@@ -3398,20 +3421,30 @@ class BaseSchedulerSolver(
         return names, slots
 
     def _dorm_recovery_reservations(
-        self, tasks, *, op_data=None, returning_groups=(), current_task=None
+        self,
+        tasks,
+        *,
+        op_data=None,
+        returning_groups=(),
+        current_task=None,
+        recovering_name=None,
     ):
         """返回合并预约及等待队列预约，保留各规划阶段的释放边界。
 
         普通补床调用仅取后两项作为额外保护，由补床器自行读取主队列。
         """
         data = self.op_data if op_data is None else op_data
-        names, slots = dorm_task_reservations(data, tasks)
+        names, slots = dorm_task_reservations(
+            data, tasks, recovering_name=recovering_name
+        )
         view = self
         if data is not self.op_data:
             view = copy.copy(self)
             view.op_data = data
         waiting_names, waiting_slots = view._waiting_shift_reservations(
-            returning_groups=returning_groups, current_task=current_task
+            returning_groups=returning_groups,
+            current_task=current_task,
+            recovering_name=recovering_name,
         )
         names.update(waiting_names)
         slots.update(waiting_slots)
@@ -7600,21 +7633,33 @@ class BaseSchedulerSolver(
         ]
         if not missing:
             return True
-        reserved_names, occupied, _, _ = self._dorm_recovery_reservations(
-            [task for task in self.tasks if task is not getattr(self, "task", None)],
-            op_data=projected,
-            returning_groups=self._returning_groups_releasing_waits(
+        pending = [
+            task for task in self.tasks if task is not getattr(self, "task", None)
+        ]
+        reservation_options = {
+            "op_data": projected,
+            "returning_groups": self._returning_groups_releasing_waits(
                 getattr(self, "task", None)
             ),
-            current_task=getattr(self, "task", None),
+            "current_task": getattr(self, "task", None),
+        }
+        _, all_reserved_slots, _, _ = self._dorm_recovery_reservations(
+            pending, **reservation_options
         )
-        if reserved := reserved_names.intersection(missing):
-            if failure_reasons is not None:
-                failure_reasons.append(
-                    "副表离岗成员已被其他任务预约：" + "、".join(sorted(reserved))
-                )
-            return False
-        occupied.update(reserved_slots)
+        reservations, preferred = {}, {}
+        for name in missing:
+            reserved_names, occupied, _, _ = self._dorm_recovery_reservations(
+                pending,
+                **reservation_options,
+                recovering_name=name,
+            )
+            if name in reserved_names:
+                if failure_reasons is not None:
+                    failure_reasons.append("副表离岗成员已被其他任务预约：" + name)
+                return False
+            reservations[name] = occupied
+            preferred[name] = all_reserved_slots - occupied
+        occupied = set(reserved_slots)
         occupied.update(
             (room, index)
             for room, row in plan.items()
@@ -7622,11 +7667,15 @@ class BaseSchedulerSolver(
             for index, name in enumerate(row)
             if name != "Current"
         )
+        for positions in preferred.values():
+            positions.difference_update(occupied)
         beds = projected.assign_dorm_group(
             missing,
             active_groups={projected.operators[name].group for name in missing},
             plan=plan,
             reserved_slots=occupied,
+            reserved_slots_by_name=reservations,
+            preferred_slots_by_name=preferred,
         )
         if beds is None:
             if failure_reasons is not None:
@@ -10039,26 +10088,52 @@ class BaseSchedulerSolver(
 
     def _suppress_retained_arrangements(self, plan, *, returning_groups=()):
         """派生安排不重做保留任务，也不挪用其目标和当前驻员。"""
-        waiting_names, waiting_slots = self._waiting_shift_reservations(
-            returning_groups=returning_groups
-        )
-        names, slots = retained_task_reservations(
-            self.op_data,
-            self.tasks,
-            current_task=getattr(self, "task", None),
-            returning_groups=[
-                group
-                for group, resting in self.op_data.arrangement_group_transitions(
-                    plan
-                ).items()
-                if not resting
-            ],
-        )
-        names.update(waiting_names)
-        slots.update(waiting_slots)
+        returning = [
+            group
+            for group, resting in self.op_data.arrangement_group_transitions(
+                plan
+            ).items()
+            if not resting
+        ]
+
+        def reservations(recovering_name=None):
+            waiting_names, waiting_slots = self._waiting_shift_reservations(
+                returning_groups=returning_groups, recovering_name=recovering_name
+            )
+            names, slots = retained_task_reservations(
+                self.op_data,
+                self.tasks,
+                current_task=getattr(self, "task", None),
+                returning_groups=returning,
+                recovering_name=recovering_name,
+            )
+            return names | waiting_names, slots | waiting_slots
+
+        names, slots = reservations()
+        recovery = {}
         for room, row in list(plan.items()):
             for index, name in enumerate(row):
                 if (room, index) in slots or name in names:
+                    if room.startswith("dorm") and name in self.op_data.operators:
+                        if name not in recovery:
+                            recovery[name] = reservations(name)
+                        actor_names, actor_slots = recovery[name]
+                        if name not in actor_names and (room, index) not in actor_slots:
+                            bed = next(
+                                (
+                                    bed
+                                    for bed in self.op_data.all_dorms()
+                                    if bed.position == (room, index)
+                                ),
+                                None,
+                            )
+                            if bed is not None and self.op_data._slot_takable(
+                                bed,
+                                requester=name,
+                                active_groups={self.op_data.operators[name].group},
+                                plan=plan,
+                            ):
+                                continue
                     row[index] = "Current"
             if all(name == "Current" for name in row):
                 del plan[room]

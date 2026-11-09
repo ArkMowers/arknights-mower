@@ -5,7 +5,7 @@ import {mowerInitialStaffingBlocked} from './mowerInitialStaffing'
 import {isMowerFiammetta,mowerInitialMorale} from './mowerInitialMorale'
 import {MowerBackupRecoveryBlocked} from './mowerBackupDepartureRecovery'
 import {mowerHeldRestGroups,mowerForcedWorkGroups,syncMowerBackupGroupTasks,type MowerBackupGroupTaskState} from './mowerBackupGroupTasks'
-import {parkMowerBackupDepartureRecovery,parkMowerPreviewRecovery,resumeMowerPreviewRecovery,nextMowerPreviewRecoveryObservation,type MowerPreviewRecoveryWait} from './mowerPreviewRecoveryWait'
+import {mowerPendingRecoveryTasks,parkMowerBackupDepartureRecovery,parkMowerPreviewRecovery,resumeMowerPreviewRecovery,nextMowerPreviewRecoveryObservation,type MowerPreviewRecoveryWait} from './mowerPreviewRecoveryWait'
 import {mowerVerifiedRecoveryDependencyReturn} from './mowerRecoveryDependency'
 import {mowerOrdinaryCoordinationNeeded,mowerPendingExhaust,mowerPendingExhaustDeparture} from './mowerExhaustPolicy'
 import {hasSingleRecoverySkill} from '../engine/singleRecoveryEligibility'
@@ -45,7 +45,7 @@ import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,fromMowerMicros,isMowerRunOrderTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {executeMowerTaskArrangementSteps,type MowerRoomReturn,type MowerBackupResult} from './mowerTaskExecutor'
 import {projectMowerArrangements,invalidateMowerDormTime,mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood,mowerHasMeasuredDormDeparture} from './mowerObservations'
-import {mowerIsDormReplacement,planMowerCorrection,prepareMowerCorrectionRecovery} from './mowerCorrection'
+import {mowerIsDormReplacement,planMowerCorrection,prepareMowerCorrectionRecovery,planMowerReturnRecovery,refreshMowerDerivedCorrection} from './mowerCorrection'
 import {planMowerOrdinary,planMowerOrdinarySupportAdmission,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNearTask} from './mowerOrdinaryPlanning'
 import {planMowerMetadata,mowerRestUnitKey} from './mowerMetadata'
 import {mowerReplacementDependencyNames,mowerReplacementReservations,planMowerPreferredReplacementRestore,mowerCoordinationRequestFulfilled} from './mowerReplacementCoordination'
@@ -542,7 +542,7 @@ function* arrangeRoomSteps(s:RuntimeState,rates:RuntimeRates,room:string,names:s
  }
 }
 function scheduleFiaAndExhaust(s:RuntimeState,rates:RuntimeRates):void {
- const source=getMowerSourceRuntime(s),{data,queue}=source,fia=s.config.fiammetta,pending=[...new Set([...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)])]
+ const source=getMowerSourceRuntime(s),{data,queue}=source,fia=s.config.fiammetta,pending=mowerPendingRecoveryTasks(source)
  if(fia&&!queue.tasks.some(task=>task.type===T.FIAMMETTA)){
   const op=data.operators[fia.operatorId]
   if(op?.room.startsWith('dorm')){
@@ -636,7 +636,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
  const dependencyReturn=(data:MowerSchedulingData,retained:MowerTask,candidate:MowerTask,pending:readonly MowerTask[])=>!!s.mowerShiftModel&&mowerVerifiedRecoveryDependencyReturn(data,retained,candidate,pending,s.mowerShiftModel)
  // Older retained departures carry their request through urgent recovery ownership.
  const requestNames=(task:MowerTask|undefined)=>task?.ordinaryCoordination&&(task.coordinationRequestNames.length||task.type===T.EXHAUST_OFF)?mowerRemainingCoordinationRequests(task):task?.coordinationRequestNames.length?task.coordinationRequestNames:task?.type===T.EXHAUST_OFF?task.metadata.split(','):task?.type===T.SHIFT_OFF&&task.urgentRecoveryRequestNames.length?task.urgentRecoveryRequestNames:undefined
- const options=()=>({retainedTasks:queue.tasks.filter(task=>task!==source.activeTask&&task.retainsExecution),requestNames:requestNames(source.activeTask),coordinationMoods:rates.forecastMoods?.(s),tasks:[...new Set([...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)])].filter(task=>task!==source.activeTask),dependencyReturn,urgentRecoveryPendingSupporters:mowerUrgentPendingSupporters(queue.tasks),urgentExhaust:!!source.activeTask&&!source.activeTask.ordinaryCoordination&&(source.activeTask.type===T.EXHAUST_OFF||source.activeTask.exhaustSupport),...mowerReplacementReservations(getMowerSourceRuntime(s).data,queue.tasks.filter(task=>task!==source.activeTask),source.activeTask?.urgentRecoveryRequestNames),coordinationRates:(projected:MowerSchedulingData)=>{
+ const options=()=>({retainedTasks:queue.tasks.filter(task=>task!==source.activeTask&&task.retainsExecution),requestNames:requestNames(source.activeTask),coordinationMoods:rates.forecastMoods?.(s),tasks:mowerPendingRecoveryTasks(source).filter(task=>task!==source.activeTask),dependencyReturn,urgentRecoveryPendingSupporters:mowerUrgentPendingSupporters(queue.tasks),urgentExhaust:!!source.activeTask&&!source.activeTask.ordinaryCoordination&&(source.activeTask.type===T.EXHAUST_OFF||source.activeTask.exhaustSupport),...mowerReplacementReservations(getMowerSourceRuntime(s).data,queue.tasks.filter(task=>task!==source.activeTask),source.activeTask?.urgentRecoveryRequestNames),coordinationRates:(projected:MowerSchedulingData)=>{
   if(!rates.forecastRates)return undefined
   const occupants:Record<string,string>={},bedOccupants:Record<string,string>={},bedSlots=new Set(projected.allDorms().map(bed=>bed.position[0]+'_'+bed.position[1]))
   for(const op of Object.values(projected.operators))if(op.currentRoom)(bedSlots.has(op.currentRoom+'_'+op.currentIndex)?bedOccupants:occupants)[op.currentRoom+'_'+op.currentIndex]=op.name
@@ -687,6 +687,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
  // Recovery reads can release a retained dependency in this same run.
  // Admit it before dispatch so a next-action query cannot reveal overdue work.
  if(!source.execution&&!source.phaseExecution&&resumeMowerFailedTasks(s,source.data,queue))delete source.runReturn
+ if(!source.execution&&!source.phaseExecution){
+  const pending=mowerPendingRecoveryTasks(source),parked=new Set((source.waitingRecovery??[]).map(wait=>wait.task))
+  for(const owner of pending)if((owner.retainsExecution||parked.has(owner))&&planMowerReturnRecovery(source.data,queue,owner,(source.waitingRecovery??[]).map(wait=>wait.task)))delete source.runReturn
+ }
  const theoretical=s.config.mowerTheoreticalMode===true
  const clock=s.config.mowerRunLoopClock
  if(clock&&(!Number.isSafeInteger(clock.minimumClockStepMicros)||clock.minimumClockStepMicros<1||!Number.isSafeInteger(clock.notificationSleepMicros)||clock.notificationSleepMicros<0))throw new Error('Invalid Mower outer clock')
@@ -707,8 +711,8 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
   if(runningPhase&&runningPhase.wakeMicros>getMowerSourceRuntime(s).data.nowMicros)break
   if(running&&running.wakeMicros>getMowerSourceRuntime(s).data.nowMicros)break
   if(!running&&!runningPhase){
-   if(source.initialStaffingPending&&!mowerInitialStaffingBlocked([...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)],source.data.nowMicros)){
-    const correction=planMowerCorrection(getMowerSourceRuntime(s).data,queue,true,undefined,false,undefined,s.config.mowerTaskScheduling)
+   if(source.initialStaffingPending&&!mowerInitialStaffingBlocked(mowerPendingRecoveryTasks(source),source.data.nowMicros)){
+    const correction=planMowerCorrection(getMowerSourceRuntime(s).data,queue,true,undefined,false,undefined,s.config.mowerTaskScheduling,(source.waitingRecovery??[]).map(wait=>wait.task))
     if(correction)correction.initialStaffing=true
     source.initialStaffingPending=false
    }
@@ -771,7 +775,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      prepareMowerFiaReturn(data,task)
      if(task.timeMicros>data.nowMicros){queue.sort();delete source.activeTask;continue}
     }
-    if(!running&&data.alpha&&prepareMowerAlphaDormFill(data,task,[...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)],s.config.mowerTaskScheduling,(source.waitingRecovery??[]).map(wait=>wait.task))){
+    if(!running&&data.alpha&&prepareMowerAlphaDormFill(data,task,mowerPendingRecoveryTasks(source),s.config.mowerTaskScheduling,(source.waitingRecovery??[]).map(wait=>wait.task))){
      protectMowerAlphaDormFillDispatch(queue,data.nowMicros,s.config.mowerTaskScheduling)
      if(task.timeMicros>data.nowMicros||queue.find({ignoreRunOrders:s.config.mowerTaskScheduling?.adjustForRunOrders===false})!==task){delete source.activeTask;continue}
     }
@@ -779,9 +783,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      const model:MowerShiftModel=s.mowerShiftModel??{count:0,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
      const independentTasks:MowerTask[]=[]
      if(!task.initialStaffing){
-      prepareMowerCorrectionRecovery(data,task,queue.tasks)
+      if(task.type===T.SELF_CORRECTION&&task.returnRecoveryNames&&refreshMowerDerivedCorrection(data,task,mowerPendingRecoveryTasks(source))&&!Object.keys(task.plan).length){queue.consume(task);delete source.activeTask;continue}
+      prepareMowerCorrectionRecovery(data,task,mowerPendingRecoveryTasks(source))
       readMissingMowerReturnRecovery(s,rates,task)
-      prepareMowerCorrectionRecovery(data,task,queue.tasks)
+      prepareMowerCorrectionRecovery(data,task,mowerPendingRecoveryTasks(source))
       splitMowerRecoveryTask(data,task,independentTasks,mowerUnfinishedReturnMembers(data,task,s.config.mowerTaskScheduling))
      }
      const originalKeys=new Set(Object.keys(task)),original=cloneMowerShiftTask(task),pending=[...queue.tasks],fallbacks=new Map(Object.values(data.operators).map(op=>[op.name,op.dormMoodFallback]))
@@ -885,7 +890,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     queue.consume(task)
    }else if(!running&&task.type===T.EXHAUST_OFF&&!Object.keys(task.plan).length){
     const origins=requestNames(task)??[],members=[...new Set(origins.flatMap(name=>{const op=data.operators[name];return op?.group?data.shiftGroupMembers(op.group):op?[name]:[]}))],plan:MowerTaskPlan={}
-    const pending=[...new Set([...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)])]
+    const pending=mowerPendingRecoveryTasks(source)
     if(mowerPendingExhaustDeparture(data,pending,members,origins)){queue.consume(task);delete source.activeTask;continue}
     const pendingSupport=queue.tasks.find(other=>other!==task&&other.exhaustSupport&&other.coordinationRequestNames.some(name=>members.includes(name)))
     if(pendingSupport){
@@ -932,7 +937,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
       delete task.coordinationAdmissionPlan
      },
      metadata:()=>{planMowerMetadata(getMowerSourceRuntime(s).data,queue,dependencyReturn)},
-     corrections:()=>{readAgentMood(s,rates);const correction=planMowerCorrection(getMowerSourceRuntime(s).data,queue,true,task,false,skip,s.config.mowerTaskScheduling);return correction?[correction]:[]},
+     corrections:()=>{readAgentMood(s,rates);const correction=planMowerCorrection(getMowerSourceRuntime(s).data,queue,true,task,false,skip,s.config.mowerTaskScheduling,(source.waitingRecovery??[]).map(wait=>wait.task));return correction?[correction]:[]},
      prepareRelease:current=>{
       const actual=getMowerSourceRuntime(s).data,rooms=new Map<string,number[]>()
       for(const name of mowerMandatoryReleaseNames(actual,current)){
@@ -1015,6 +1020,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     if(error instanceof MowerShiftPreviewError){
      if(error instanceof MowerBackupRetentionBlocked)task.backupRetentionWait={names:error.names}
      retainMowerFailedTask(s,data,task,error.message,error instanceof MowerBackupRetentionBlocked?error.rooms:undefined,error instanceof MowerResourceWaitError?'resource-wait':undefined)
+     if(error instanceof MowerResourceWaitError)planMowerReturnRecovery(data,queue,task,(source.waitingRecovery??[]).map(wait=>wait.task))
      source.error=false
      delete source.activeTask
      continue
@@ -1048,7 +1054,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      for(const [room,indexes] of rooms)observeRoom(s,rates,room,undefined,indexes)
     }
     readAgentMood(s,rates)
-    if(!planMowerCorrection(getMowerSourceRuntime(s).data,queue,false,undefined,true,skip,s.config.mowerTaskScheduling)){
+    if(!planMowerCorrection(getMowerSourceRuntime(s).data,queue,false,undefined,true,skip,s.config.mowerTaskScheduling,(source.waitingRecovery??[]).map(wait=>wait.task))){
      let tailShouldRun=true
      if(rates.mowerRunOrderIO){
       const [state,seam]=mowerRunOrderContext(s)
@@ -1064,7 +1070,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
       if(current.freeRoom||!queue.find({time:s.time+5/60,ignoreRunOrders:s.config.mowerTaskScheduling?.adjustForRunOrders===false}))planMowerAlphaDormFill(current,queue,false,s.config.mowerTaskScheduling)
      }
      if(!mowerPlanningHasNearTask(getMowerSourceRuntime(s).data,queue,s.config.mowerTaskScheduling)){
-      readAgentMood(s,rates);if(!planMowerCorrection(getMowerSourceRuntime(s).data,queue,false,undefined,false,skip,s.config.mowerTaskScheduling))backup('END')
+      readAgentMood(s,rates);if(!planMowerCorrection(getMowerSourceRuntime(s).data,queue,false,undefined,false,skip,s.config.mowerTaskScheduling,(source.waitingRecovery??[]).map(wait=>wait.task)))backup('END')
      }
     }else skip()
     }catch(error){

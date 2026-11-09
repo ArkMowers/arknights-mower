@@ -193,10 +193,12 @@ def restored_group_recovery_deadline(
 
 def split_recovery_return(data, task, pending, unfinished):
     """普通回班按原目标岗位拆开，共享目标、驻员或组的部分一起等待。"""
+    from arknights_mower.utils.retained_recovery import pending_return_recovery_slots
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
     if task.type != TaskTypes.SHIFT_ON:
         return
+    unfinished = tuple(unfinished)
 
     def resources(names):
         result = set()
@@ -227,6 +229,10 @@ def split_recovery_return(data, task, pending, unfinished):
             if index < len(data.plan.get(room, ())):
                 names.add(data.plan[room][index].agent)
             involved[room, index] = resources(names)
+    for name in unfinished:
+        for position in pending_return_recovery_slots(data, task, name):
+            if position in involved:
+                involved[position].update(resources([name]))
     blocked, related = set(), resources(unfinished)
     while connected := [
         position

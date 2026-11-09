@@ -1,3 +1,4 @@
+import {mowerPendingReturnRecoverySlots} from './mowerRetainedRecovery'
 import {mowerHeldRestGroups,mowerForcedWorkGroups,mowerForcedWorkReturn} from './mowerBackupGroupTasks'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {generateMowerDormTasks} from './mowerDormTasks'
@@ -104,10 +105,12 @@ export function splitMowerRecoveryTask(data:MowerSchedulingData,task:MowerTask,p
   for(const name of names){const op=data.operators[name];if(!op)continue;result.add('operator:'+name);for(const group of splitBySlot&&op.isHigh()&&!op.room.startsWith('dorm')?data.shiftRequestGroups([name]):op.multiGroup?op.groupBindings.map(binding=>binding.group):[op.group])if(group)result.add('group:'+group)}
   return result
  }
+ const unfinishedNames=[...unfinished]
  const involved=new Map<string,Set<string>>(),keyFor=(room:string,index:number)=>splitBySlot?room+'\0'+index:room
  for(const [room,row] of Object.entries(task.plan))row.forEach((name,index)=>{
   if(name==='Current')return
   const names=new Set([name]),occupant=data.currentOperator(room,index),owner=data.plan[room]?.[index]
+  if(name==='Free')for(const actor of unfinishedNames)if(mowerPendingReturnRecoverySlots(data,task,actor).has(room+'\0'+index))names.add(actor)
   if(occupant)names.add(occupant.name)
   if(owner)names.add(owner)
   const moving=data.operators[name],sourceOwner=moving?.currentRoom&&!moving.currentRoom.startsWith('dorm')?data.plan[moving.currentRoom]?.[moving.currentIndex]:undefined
@@ -116,7 +119,7 @@ export function splitMowerRecoveryTask(data:MowerSchedulingData,task:MowerTask,p
   for(const resource of resources(names))related.add(resource)
   involved.set(key,related)
  })
- const blocked=new Set<string>(),related=resources(unfinished)
+ const blocked=new Set<string>(),related=resources(unfinishedNames)
  for(;;){const connected=[...involved].filter(([key,names])=>!blocked.has(key)&&[...names].some(name=>related.has(name)));if(!connected.length)break;for(const [key,names] of connected){blocked.add(key);for(const name of names)related.add(name)}}
  if(!blocked.size)return
  const part=(waiting:boolean)=>Object.fromEntries(Object.entries(task.plan).map(([room,row])=>[room,row.map((name,index)=>blocked.has(keyFor(room,index))===waiting?name:'Current')] as [string,string[]]).filter(([,row])=>row.some(name=>name!=='Current')))

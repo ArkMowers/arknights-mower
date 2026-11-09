@@ -1,3 +1,4 @@
+import {mowerPendingReturnAllowsRecovery,mowerPendingReturnRecoverySlots,mowerOffDutyFullRecoveryMembers} from './mowerRetainedRecovery'
 import {isMowerDormFiller,mowerDormFillerId} from './mowerDormFiller'
 import {mowerDormCapacityAllows} from './mowerDormCapacity'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
@@ -34,7 +35,16 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
  const filling=[...recovering,...full,...unknown].sort(compare),searchUnknown=unknown.filter(n=>(mowerDormCandidateMood(data,n)??0)<24)
  return {recovering,full,unknown:searchUnknown,estimatedRecovering:searchUnknown.filter(n=>{const mood=mowerDormCandidateMood(data,n);return mood!==undefined&&mood<(data.operators[n]?.upperLimit??24)}),filling}
 }
-export function mowerDormTaskReservations(data:MowerSchedulingData,pending:MowerTask[]){
+export function mowerDormTaskReservations(data:MowerSchedulingData,pending:MowerTask[],recoveringName?:string){
+ if(recoveringName!==undefined){
+  const names=new Set<string>(data.reservedProductReplacements),slots=new Set<string>(),recovering=mowerOffDutyFullRecoveryMembers(data)
+  for(const task of pending){
+   const owned=mowerDormTaskReservations(data,[task])
+   if(mowerPendingReturnAllowsRecovery(data,task,recoveringName,recovering)){owned.names.delete(recoveringName);mowerPendingReturnRecoverySlots(data,task,recoveringName,recovering).forEach(slot=>owned.slots.delete(slot))}
+   owned.names.forEach(name=>names.add(name));owned.slots.forEach(slot=>slots.add(slot))
+  }
+  return {names,slots}
+ }
  const names=new Set<string>(),slots=new Set<string>(),retainedSlots=new Set<string>()
  for(const task of pending){
   task.urgentRecoveryReservedNames.forEach(name=>names.add(name));task.urgentRecoveryReservedSlots.forEach(slot=>{slots.add(slot);retainedSlots.add(slot)})

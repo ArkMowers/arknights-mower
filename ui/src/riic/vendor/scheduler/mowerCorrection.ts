@@ -2,8 +2,9 @@ import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {mowerCoveredRecoveryPending} from './mowerBackupDepartureRecovery'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
 import {projectMowerArrangements} from './mowerObservations'
-import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete} from './mowerGroupRecovery'
-import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
+import {mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete} from './mowerGroupRecovery'
+import {mowerOffDutyFullRecoveryMembers,mowerPendingReturnAllowsRecovery} from './mowerRetainedRecovery'
+export {mowerOffDutyFullRecoveryMembers} from './mowerRetainedRecovery'
 import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {normalizeMowerSharedArrangement,mowerSameGroupPrimaryReplacement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
@@ -17,20 +18,6 @@ import {alphaCorrectGroupDorms,alphaPosition} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,fromMowerMicros,toMowerMicros,type MowerTaskPlan,type MowerTaskQueue} from './mowerTaskQueue'
 const placeholders=new Set(['','Current','Free'])
 const requested=(plan:MowerTaskPlan,room:string,index:number)=>plan[room]?.[index]??'Current'
-/** Restore beds for off-duty primaries still bound by explicit or active group recovery. */
-export function mowerOffDutyFullRecoveryMembers(data:MowerSchedulingData):Set<string> {
- const required=new Set<string>(),forced=mowerForcedWorkGroups(data)
- if(data.alpha)for(const group of Object.keys(data.groupRecoveryFullMembers)){
-  if(data.groupShiftState[group]===false||forced.has(group))continue
-  mowerGroupRecoveryDeadline(data,group).requiredNames.forEach(name=>required.add(name))
- }
- return new Set(Object.values(data.operators).filter(op=>{
-  if(!data.alpha||!op.isHigh()||!op.restInFull&&!required.has(op.name)||op.workaholic||op.room.startsWith('dorm')||op.currentRoom&&!op.isResting()||data.restMoodComplete(op.name))return false
-  const mood=mowerDormCandidateMood(data,op.name)
-  return mood!==undefined&&mood<op.upperLimit
- }).map(op=>op.name))
-}
-
 /** Complete departed recovery in an isolated projection; never commit a partial bed assignment. */
 function completeMowerDepartedRecovery(data:MowerSchedulingData,plan:MowerTaskPlan,names:ReadonlySet<string>,pending:readonly MowerTask[],reservedSlots:ReadonlySet<string>=new Set()):boolean {
  const projected=projectMowerArrangements(data,[plan])
@@ -43,14 +30,34 @@ function completeMowerDepartedRecovery(data:MowerSchedulingData,plan:MowerTaskPl
   return mood===undefined||mood<op.upperLimit
  })
  if(!missing.length)return true
- const reserved=mowerDormTaskReservations(projected,[...pending])
- if(missing.some(name=>reserved.names.has(name)))return false
- reservedSlots.forEach(slot=>reserved.slots.add(slot))
- for(const [room,row] of Object.entries(plan))if(room.startsWith('dorm'))row.forEach((name,index)=>{if(name!=='Current')reserved.slots.add(alphaPosition(room,index))})
- const beds=mowerAssignDormGroup(projected,missing,new Set(missing.map(name=>projected.operators[name]!.group)),undefined,plan,reserved.slots)
+ const byName=new Map<string,Set<string>>(),preferred=new Map<string,Set<string>>(),all=mowerDormTaskReservations(projected,[...pending]).slots
+ for(const name of missing){
+  const reserved=mowerDormTaskReservations(projected,[...pending],name)
+  if(reserved.names.has(name))return false
+  reservedSlots.forEach(slot=>reserved.slots.add(slot))
+  for(const [room,row] of Object.entries(plan))if(room.startsWith('dorm'))row.forEach((target,index)=>{if(target!=='Current')reserved.slots.add(alphaPosition(room,index))})
+  byName.set(name,reserved.slots)
+  preferred.set(name,new Set([...all].filter(slot=>!reserved.slots.has(slot))))
+ }
+ const beds=mowerAssignDormGroup(projected,missing,new Set(missing.map(name=>projected.operators[name]!.group)),undefined,plan,reservedSlots,byName,preferred)
  if(!beds)return false
  for(const bed of beds){const [room,index]=bed.position;(plan[room]??=Array(projected.plan[room]!.length).fill('Current'))[index]=bed.name}
  return true
+}
+/** Admit only the bed prerequisite owned by this still-unstarted ordinary return. */
+export function planMowerReturnRecovery(data:MowerSchedulingData,queue:MowerTaskQueue,owner:MowerTask,extraPending:readonly MowerTask[]=[]):MowerTask|undefined {
+ const required=mowerOffDutyFullRecoveryMembers(data)
+ const names=new Set([...required].filter(name=>!data.operators[name]!.currentRoom&&!data.busyRestingNames.has(name)&&mowerPendingReturnAllowsRecovery(data,owner,name,required)))
+ if(!names.size)return undefined
+ const pending=[...new Set([...queue.tasks,...extraPending])],plan:MowerTaskPlan={}
+ if(!completeMowerDepartedRecovery(data,plan,names,pending))return undefined
+ const task=new MowerTask({type:T.SELF_CORRECTION,plan,time:fromMowerMicros(data.nowMicros)})
+ task.derivedCorrection=true;task.returnRecoveryNames=[...names]
+ if(!admitMowerDerivedTasks(data,pending,[task]).includes(task))return undefined
+ const projected=projectMowerArrangements(data,[task.plan])
+ if([...names].some(name=>!projected.operators[name]!.isResting()))return undefined
+ queue.tasks.push(task)
+ return task
 }
 export function mowerNotValid(data:MowerSchedulingData,op:MowerOperatorState):boolean {
  if(!op.isHigh())return false
@@ -206,9 +213,9 @@ export function mowerCorrectionPlan(data:MowerSchedulingData,skipDorm=false,expl
  for(const [room,names] of Object.entries(plan))if(names.every(n=>n==='Current'))delete plan[room]
  return admitted()
 }
-export function planMowerCorrection(data:MowerSchedulingData,queue:MowerTaskQueue,force=false,currentTask?:MowerTask,skipDorm=false,onSkip?:()=>void,options:MowerTaskSchedulingOptions={}):MowerTask|undefined {
+export function planMowerCorrection(data:MowerSchedulingData,queue:MowerTaskQueue,force=false,currentTask?:MowerTask,skipDorm=false,onSkip?:()=>void,options:MowerTaskSchedulingOptions={},extraPending:readonly MowerTask[]=[]):MowerTask|undefined {
  if(queue.tasks.some(task=>task.backupShiftActive))return undefined
- const plan=mowerCorrectionPlan(data,skipDorm,new Set(),queue.tasks,currentTask);if(!Object.keys(plan).length)return undefined
+ const plan=mowerCorrectionPlan(data,skipDorm,new Set(),[...new Set([...queue.tasks,...extraPending])],currentTask);if(!Object.keys(plan).length)return undefined
  const next=queue.find({ignoreRunOrders:(options.adjustForRunOrders??data.adjustForRunOrders)===false}),off=queue.find({type:T.SHIFT_OFF})
  if(!force&&next&&Object.keys(plan).length*toMowerMicros(45/3600)>next.timeMicros-data.nowMicros||off&&!(force&&off===currentTask)){onSkip?.();return undefined}
  const duplicate=queue.tasks.find(task=>task!==currentTask&&task.type===T.SELF_CORRECTION&&Object.keys(task.plan).length===Object.keys(plan).length&&Object.entries(plan).every(([room,row])=>task.plan[room]?.length===row.length&&row.every((name,index)=>task.plan[room]![index]===name)))
@@ -236,7 +243,16 @@ export function prepareMowerCorrectionRecovery(data:MowerSchedulingData,task:Mow
 /** New observations invalidate a derived correction, but never an explicit or started arrangement. */
 export function refreshMowerDerivedCorrection(data:MowerSchedulingData,task:MowerTask,pending:readonly MowerTask[]):boolean {
  if(!task.derivedCorrection||task.type!==T.SELF_CORRECTION||task.arrangementStarted||task.backupShiftActive||task.backupShiftIntent||task.backupShiftConditions||task.backupRefreshRules||task.backupExplicitSlots.size||task.productShiftLocked||task.productLockNames.size||task.productLockSlots.size||task.exhaustSupport||task.ordinaryCoordination||task.preferredReplacementRestore||task.dormRecoveryRestore.length||task.coordinationRequestNames.length||task.strictMoodLimit||task.advanceSupportSwap||task.arrangementRetryDueMicros!==undefined||task.arrangementRetryRoom!==undefined||task.arrangementRetryCount!==undefined||task.metadata)return false
- task.plan=mowerCorrectionPlan(data,task.correctionSkipDorm,new Set(),pending,task)
+ if(task.returnRecoveryNames){
+  const required=mowerOffDutyFullRecoveryMembers(data),owners=pending.filter(owner=>owner!==task)
+  const names=new Set(task.returnRecoveryNames.filter(name=>required.has(name)&&!data.operators[name]!.currentRoom&&!data.busyRestingNames.has(name)&&owners.some(owner=>mowerPendingReturnAllowsRecovery(data,owner,name,required))))
+  const plan:MowerTaskPlan={}
+  if(names.size&&completeMowerDepartedRecovery(data,plan,names,owners)){
+   task.plan=plan
+   const admitted=admitMowerDerivedTasks(data,owners,[task]),projected=projectMowerArrangements(data,[task.plan])
+   if(!admitted.includes(task)||[...names].some(name=>!projected.operators[name]!.isResting()))task.plan={}
+  }else task.plan={}
+ }else task.plan=mowerCorrectionPlan(data,task.correctionSkipDorm,new Set(),pending,task)
  task.groupShiftTransitions={};task.dormFillPlan={}
  delete task.previewReturnVeto
  return true
