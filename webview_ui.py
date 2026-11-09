@@ -742,6 +742,12 @@ def run_desktop():
             raise SystemExit(INTENTIONAL_EXIT_CODE)
 
 
+def start_hud_local_server(app, instance_id, mower_port, name):
+    from arknights_mower.utils.hud_local import start_hud_local_server as start
+
+    return start(app, instance_id, mower_port, name)
+
+
 def start_http_server(app, host, port):
     from threading import Thread
 
@@ -947,6 +953,20 @@ def _run_desktop():
     url = f"http://127.0.0.1:{port}"
     url += f"?token={runtime_token}"
     start_http_server(server.app, host, port)
+    instance_path = path.get_path("@app", space=path.global_space).resolve()
+    identity = sha256(
+        (
+            os.path.normcase(str(runtime.installation_root().resolve()))
+            + "\0"
+            + os.path.normcase(str(instance_path))
+        ).encode("utf-8")
+    ).hexdigest()
+    try:
+        hud_service = start_hud_local_server(server.app, identity, port, instance_name)
+    except (OSError, RuntimeError):
+        logger.warning("本地 HUD 服务启动失败，Mower 将继续运行", exc_info=True)
+    else:
+        shutdown.own("local HUD server", hud_service.close, Phase.SERVER)
     ready_deadline = monotonic() + 15
     while not is_port_in_use(port):
         if shutdown.closing or monotonic() >= ready_deadline:

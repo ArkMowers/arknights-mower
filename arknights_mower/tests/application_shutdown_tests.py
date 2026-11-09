@@ -283,6 +283,9 @@ class DesktopExitTests(unittest.TestCase):
                     ),
                     patch.object(webview_ui, "exit_if_webview_backend_missing"),
                     patch.object(webview_ui, "start_http_server"),
+                    patch.object(
+                        webview_ui, "start_hud_local_server", return_value=Mock()
+                    ),
                     patch.object(webview_ui, "start_desktop_child", side_effect=launch),
                     patch.object(software_update, "request_auto_check"),
                     patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
