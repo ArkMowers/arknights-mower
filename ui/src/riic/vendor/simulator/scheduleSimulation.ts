@@ -555,7 +555,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  const pendingFailures=state.mowerSource?.queue.tasks.filter(task=>task.executionFailure)??[]
  const resourceWaits=pendingFailures.filter(task=>task.coordinationDependencyWait||task.executionFailure!.kind==='resource-wait')
  const unresolvedFailures=pendingFailures.filter(task=>!resourceWaits.includes(task))
- for(const task of resourceWaits)diagnostic('MOWER_PENDING_RESOURCE_WAIT',`统计结束仍有等待替班或床位的${task.type.displayValue}任务（${Object.keys(task.plan).join('、')}）：${task.executionFailure!.reason}；保留原任务和时间，收益按实际在岗情况计算`)
+ for(const task of resourceWaits)diagnostic('MOWER_PENDING_RESOURCE_WAIT',`统计结束仍有等待替班、床位或心情恢复的${task.type.displayValue}任务（${Object.keys(task.plan).join('、')}）：${task.executionFailure!.reason}；保留原任务和时间，收益按实际在岗情况计算`)
  for(const task of unresolvedFailures)diagnostic('MOWER_PENDING_TASK_FAILURE',`统计结束仍有未恢复的${task.type.displayValue}任务（${Object.keys(task.plan).join('、')}）：${task.executionFailure!.reason}；保留原任务和时间，本次收益演算未完整完成`)
  report.elapsedHours=state.time;report.success=!backupFailed&&!unresolvedFailures.length&&Math.abs(state.time-total)<EPS
  if(report.success)production?.finalize(frameAt(0))

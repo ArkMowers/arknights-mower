@@ -2,7 +2,8 @@ import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {mowerCoveredRecoveryPending} from './mowerBackupDepartureRecovery'
 import {mowerAssignDormGroup} from './mowerDormAssignment'
 import {projectMowerArrangements} from './mowerObservations'
-import {mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,mowerRecoveryMoodComplete} from './mowerGroupRecovery'
+import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import {mowerDormTaskReservations} from './mowerAlphaCandidates'
 import {normalizeMowerSharedArrangement,mowerSameGroupPrimaryReplacement,mowerArrangementGroupTransitions} from './mowerSharedGroups'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
@@ -16,10 +17,15 @@ import {alphaCorrectGroupDorms,alphaPosition} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,fromMowerMicros,toMowerMicros,type MowerTaskPlan,type MowerTaskQueue} from './mowerTaskQueue'
 const placeholders=new Set(['','Current','Free'])
 const requested=(plan:MowerTaskPlan,room:string,index:number)=>plan[room]?.[index]??'Current'
-/** Port of resting_correction.off_duty_full_recovery_members, Mower b1a7c951 (MIT). */
+/** Restore beds for off-duty primaries still bound by explicit or active group recovery. */
 export function mowerOffDutyFullRecoveryMembers(data:MowerSchedulingData):Set<string> {
+ const required=new Set<string>(),forced=mowerForcedWorkGroups(data)
+ if(data.alpha)for(const group of Object.keys(data.groupRecoveryFullMembers)){
+  if(data.groupShiftState[group]===false||forced.has(group))continue
+  mowerGroupRecoveryDeadline(data,group).requiredNames.forEach(name=>required.add(name))
+ }
  return new Set(Object.values(data.operators).filter(op=>{
-  if(!data.alpha||!op.isHigh()||!op.restInFull||op.workaholic||op.room.startsWith('dorm')||op.currentRoom&&!op.isResting()||data.restMoodComplete(op.name))return false
+  if(!data.alpha||!op.isHigh()||!op.restInFull&&!required.has(op.name)||op.workaholic||op.room.startsWith('dorm')||op.currentRoom&&!op.isResting()||data.restMoodComplete(op.name))return false
   const mood=mowerDormCandidateMood(data,op.name)
   return mood!==undefined&&mood<op.upperLimit
  }).map(op=>op.name))

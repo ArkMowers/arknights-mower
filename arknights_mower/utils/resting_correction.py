@@ -4,9 +4,11 @@ import copy
 from datetime import datetime
 from functools import cache
 
+from arknights_mower.utils.backup_group_tasks import forced_work_groups
 from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 from arknights_mower.utils.group_recovery import (
     completed_mood_limit_release,
+    group_recovery_deadline,
     group_recovery_workers,
     recovery_mood_complete,
 )
@@ -147,12 +149,20 @@ def covered_recovery_members(op_data):
 
 
 def off_duty_full_recovery_members(op_data):
-    """已离岗且有效心情未满的回满主班按下班处理，不依赖恢复期限。"""
+    """明确或本轮整组回满要求下，离岗未恢复主班先补床，不依赖恢复期限。"""
+    required = set()
+    forced = forced_work_groups(op_data)
+    states = getattr(op_data, "group_shift_state", {})
+    for group in list(getattr(op_data, "group_recovery_full_members", {})):
+        if states.get(group) is False or group in forced:
+            continue
+        members, _ = group_recovery_deadline(op_data, group)
+        required.update(members)
     return {
         name
         for name, op in op_data.operators.items()
         if op.is_high()
-        and op.rest_in_full
+        and (op.rest_in_full or name in required)
         and not op.workaholic
         and not op.room.startswith("dorm")
         and not op.is_working()

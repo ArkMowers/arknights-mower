@@ -3,7 +3,7 @@ import {mowerRecoveryMoodComplete} from './mowerGroupRecovery'
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
-import {MowerShiftPreviewError} from './mowerNativeErrors'
+import {MowerResourceWaitError} from './mowerNativeErrors'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
 export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask,options:MowerTaskSchedulingOptions={}):boolean {
@@ -13,7 +13,7 @@ export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueu
    const op=data.operators[name]!
    if(mowerRecoveryReady(data,op,options))continue
    const due=data.getDormByName(name)?.[1].timeMicros
-   if(due===undefined||due<=data.nowMicros)throw new MowerShiftPreviewError('组员尚未确认回满心情，保留释放任务并等待有效恢复观察：'+op.nativeName)
+   if(due===undefined||due<=data.nowMicros)throw new MowerResourceWaitError('组员尚未确认回满心情，保留释放任务并等待有效恢复观察：'+op.nativeName)
   }
   return prepareAlphaRelease(data,queue,task)
  }

@@ -1,5 +1,5 @@
 import {describe, expect, it} from 'vitest'
-import {mowerCorrectionPlan, prepareMowerCorrectionRecovery} from './mowerCorrection'
+import {mowerCorrectionPlan, mowerOffDutyFullRecoveryMembers, prepareMowerCorrectionRecovery} from './mowerCorrection'
 import {projectMowerArrangements} from './mowerObservations'
 import {MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData, MowerDormState} from './mowerSchedulingData'
@@ -7,6 +7,8 @@ import {retainMowerFailedTask, resumeMowerFailedTasks} from './mowerTaskFailure'
 import {MowerTask, MowerTaskQueue, MOWER_TASK_TYPES as T} from './mowerTaskQueue'
 import {createRosterRuntime, advanceRoster, nextRosterActionHours, settleRoster, type RuntimeConfig} from './rosterRuntime'
 import {getMowerSourceRuntime} from './mowerSourceRuntime'
+import {planMowerMetadata} from './mowerMetadata'
+import {mowerRecoveryReady} from './mowerGroupRecovery'
 
 function fixture() {
   const operators: Record<string, MowerOperatorState> = {}
@@ -39,7 +41,126 @@ function fixture() {
   return {data, task, queue, state}
 }
 
+function automaticFixture() {
+  const result = fixture(), {data} = result
+  Object.assign(data.operators.A!, {
+    mood: 21.45297546308452, upperLimit: 24, restMoodLimit: false,
+    restInFull: false, timeStampMicros: undefined,
+  })
+  data.policy.predictiveMoodControl = true
+  data.calculatedMoodSnapshot = {timeMicros: data.nowMicros, values: {A: 21.45297546308452, B: 24, K: 24, R: 24, S: 24}}
+  for (const op of Object.values(data.operators)) op.calculatedMoodSnapshot = data.calculatedMoodSnapshot
+  data.groupRecoveryFullMembers.g = ['A']
+  data.groupRecoveryReturnMicros.g = 0
+  return result
+}
+
 describe('off-duty primaries requiring full recovery', () => {
+  it('restores a lost bed for an automatic group recovery member using current physical mood', () => {
+    const {data} = automaticFixture()
+    const plan = mowerCorrectionPlan(data)
+    const projected = projectMowerArrangements(data, [plan])
+    expect(plan.central ?? []).not.toContain('A')
+    expect(projected.operators.A!.isResting()).toBe(true)
+    expect(projected.currentOperator('central', 0)?.name).toBe('R')
+    expect(data.operators.A!.currentRoom).toBe('')
+    expect(data.operators.A!.timeStampMicros).toBeUndefined()
+    expect(data.operators.A!.restInFull).toBe(false)
+    expect(data.dorms.every(bed => !bed.name)).toBe(true)
+    // 下一次房间观测确认恢复完成后，仍走正常整组回班规划。
+    projected.nowMicros = 3_600_000_000
+    Object.assign(projected.operators.A!, {mood: 24, timeStampMicros: projected.nowMicros, moodIsPrediction: false})
+    projected.calculatedMoodSnapshot = {timeMicros: projected.nowMicros, values: {...projected.calculatedMoodSnapshot!.values, A: 24}}
+    for (const op of Object.values(projected.operators)) op.calculatedMoodSnapshot = projected.calculatedMoodSnapshot
+    expect(mowerRecoveryReady(projected, projected.operators.A)).toBe(true)
+    const returns = new MowerTaskQueue()
+    planMowerMetadata(projected, returns)
+    expect(returns.tasks.some(task => task.type === T.SHIFT_ON && task.plan.central?.[0] === 'A')).toBe(true)
+  })
+
+  it.each([false, true])('rebuilds an automatic group recovery without replacing the retained request, restored=%s', restored => {
+    const {data, queue, state, task: original} = automaticFixture()
+    const task = restored ? Object.assign(new MowerTask(), structuredClone(original), {type: T.SELF_CORRECTION}) : original
+    if (restored) {
+      data.groupRecoveryFullMembers = JSON.parse(JSON.stringify(data.groupRecoveryFullMembers))
+      data.groupRecoveryReturnMicros = JSON.parse(JSON.stringify(data.groupRecoveryReturnMicros))
+    }
+    queue.tasks = [task]
+    retainMowerFailedTask(state, data, task, '组员尚未确认回满心情，保留回班任务并等待有效恢复观察：A')
+    const time = task.timeMicros
+    expect(resumeMowerFailedTasks(state, data, queue)).toBe(true)
+    expect(queue.tasks).toEqual([task])
+    expect(task.timeMicros).toBe(time)
+    expect(task.executionFailure).toBeUndefined()
+    expect(projectMowerArrangements(data, [task.plan]).operators.A!.isResting()).toBe(true)
+    const plan = structuredClone(task.plan)
+    for (let i = 0; i < 3; i++) expect(resumeMowerFailedTasks(state, data, queue)).toBe(false)
+    expect(task.plan).toEqual(plan)
+    expect(task.timeMicros).toBe(time)
+  })
+
+  it('keeps automatic group recovery atomic until enough beds become available', () => {
+    const {data} = automaticFixture()
+    Object.assign(data.operators.B!, {group: 'g', currentRoom: '', currentIndex: -1, mood: 12})
+    Object.assign(data.operators.S!, {currentRoom: 'meeting', currentIndex: 0})
+    data.calculatedMoodSnapshot = {timeMicros: 0, values: {...data.calculatedMoodSnapshot!.values, B: 12}}
+    for (const op of Object.values(data.operators)) op.calculatedMoodSnapshot = data.calculatedMoodSnapshot
+    data.groupRecoveryFullMembers.g = ['A', 'B']
+    const released = data.dorms.pop()!
+    const blocked = mowerCorrectionPlan(data)
+    expect(Object.values(blocked).flat()).not.toContain('A')
+    expect(Object.values(blocked).flat()).not.toContain('B')
+    expect(data.dorms.every(bed => !bed.name)).toBe(true)
+    data.dorms.push(released)
+    const admitted = projectMowerArrangements(data, [mowerCorrectionPlan(data)])
+    expect(admitted.operators.A!.isResting()).toBe(true)
+    expect(admitted.operators.B!.isResting()).toBe(true)
+    expect(admitted.currentOperator('central', 0)?.name).toBe('R')
+    expect(admitted.currentOperator('meeting', 0)?.name).toBe('S')
+  })
+
+  it.each(['capped', 'excluded', 'forced-work', 'group-working', 'standby', 'independent', 'working', 'full', 'unknown'] as const)(
+    'does not impose automatic group recovery after it becomes ineligible: %s', kind => {
+      const {data, task} = automaticFixture(), op = data.operators.A!
+      if (kind === 'capped') {
+        data.groupMoodGapMaxExtraWaitHours = 1
+        data.nowMicros = 2 * 3_600_000_000
+        data.calculatedMoodSnapshot = {...data.calculatedMoodSnapshot!, timeMicros: data.nowMicros}
+      }
+      if (kind === 'excluded') data.groupMoodGapExclusions = ['g']
+      if (kind === 'forced-work') {
+        data.backupGroupTasks = [[{group: 'g', action: 'on', mode: 'forced'}]]
+        data.planConditions = [true]
+      }
+      if (kind === 'group-working') data.groupShiftState.g = false
+      if (kind === 'standby') op.restingPriority = 'standby'
+      if (kind === 'independent') op.groupBindings = [{group: 'g', replacement: ['R']}, {group: '', replacement: ['R']}]
+      if (kind === 'working') {op.currentRoom = 'central'; op.currentIndex = 0}
+      if (kind === 'full') data.calculatedMoodSnapshot = {timeMicros: 0, values: {...data.calculatedMoodSnapshot!.values, A: 24}}
+      if (kind === 'unknown') data.calculatedMoodSnapshot = {timeMicros: 0, values: {}}
+      for (const worker of Object.values(data.operators)) worker.calculatedMoodSnapshot = data.calculatedMoodSnapshot
+      expect(mowerOffDutyFullRecoveryMembers(data).has('A')).toBe(false)
+      expect(prepareMowerCorrectionRecovery(data, task, [])).toBe(false)
+      expect(data.operators.A!.restInFull).toBe(false)
+    },
+  )
+
+  it('retains an existing automatic recovery after a legacy group loses all beds without confirmed duty state', () => {
+    const {data} = automaticFixture()
+    delete data.groupShiftState.g
+    expect(projectMowerArrangements(data, [mowerCorrectionPlan(data)]).operators.A!.isResting()).toBe(true)
+  })
+
+  it('keeps explicit full recovery binding when the automatic extra-wait cap expires', () => {
+    const {data} = automaticFixture()
+    data.operators.A!.restInFull = true
+    data.groupMoodGapMaxExtraWaitHours = 1
+    data.nowMicros = 2 * 3_600_000_000
+    data.calculatedMoodSnapshot = {...data.calculatedMoodSnapshot!, timeMicros: data.nowMicros}
+    for (const op of Object.values(data.operators)) op.calculatedMoodSnapshot = data.calculatedMoodSnapshot
+    expect(projectMowerArrangements(data, [mowerCorrectionPlan(data)]).operators.A!.isResting()).toBe(true)
+  })
+
   it.each([false, true])('assigns a bed below the personal limit without a recovery deadline, exhausted=%s', exhausted => {
     const {data} = fixture()
     data.operators.A!.exhaustRequire = exhausted
@@ -163,7 +284,7 @@ describe('off-duty primaries requiring full recovery', () => {
     },
   )
 
-  it('dispatches recovery before a stored ordinary correction can recall the idle primary', () => {
+  it.each(['explicit', 'automatic'] as const)('dispatches %s recovery before a stored ordinary correction can recall the idle primary', mode => {
     const config: RuntimeConfig = {
       mowerAlpha: true,
       positions: [
@@ -177,7 +298,7 @@ describe('off-duty primaries requiring full recovery', () => {
         central: [{agent: 'A', group: 'g', replacement: ['R']}],
         dormitory_1: [{agent: 'K', group: '', replacement: []}, {agent: 'Free', group: '', replacement: []}],
       },
-      mowerSourceRules: {workaholic: [], exhaustRequire: [], restInFull: ['A'], lowPriority: [], refreshDrained: [], lingMode: 0},
+      mowerSourceRules: {workaholic: [], exhaustRequire: [], restInFull: mode === 'explicit' ? ['A'] : [], lowPriority: [], refreshDrained: [], lingMode: 0},
       mowerTaskScheduling: {adjustForRunOrders: false}, mowerDeviceTiming: {roomReturnMicros: 500_000},
     }
     const state = createRosterRuntime(config), source = getMowerSourceRuntime(state)
@@ -186,6 +307,10 @@ describe('off-duty primaries requiring full recovery', () => {
     Object.assign(source.data.operators.A!, {currentRoom: '', currentIndex: -1, mood: 10.187, timeStampMicros: 0, upperLimit: 12, restMoodLimit: true})
     Object.assign(source.data.operators.R!, {currentRoom: 'central', currentIndex: 0, timeStampMicros: 0})
     source.data.groupShiftState.g = true
+    if (mode === 'automatic') {
+      source.data.groupRecoveryFullMembers.g = ['A']
+      source.data.groupRecoveryReturnMicros.g = 0
+    }
     const task = new MowerTask({type: T.SELF_CORRECTION, plan: {central: ['A']}})
     task.derivedCorrection = true
     source.queue.tasks = [task]

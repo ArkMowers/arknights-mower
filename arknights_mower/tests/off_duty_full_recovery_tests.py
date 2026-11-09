@@ -10,7 +10,8 @@ from arknights_mower.solvers import base_schedule
 from arknights_mower.tests.dorm_group_tests import apply_plan
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
-from arknights_mower.utils import dorm_candidates, resting_correction
+from arknights_mower.utils import dorm_candidates, group_recovery, resting_correction
+from arknights_mower.utils.plan import Plan, PlanConfig
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
@@ -48,6 +49,168 @@ def recovery(solver, monkeypatch):
         )[2]
     )
     return solver, op
+
+
+@pytest.fixture
+def automatic_recovery(recovery, monkeypatch):
+    solver, op = recovery
+    data = solver.op_data
+    data.runtime_conf = base_schedule.config.conf
+    monkeypatch.setattr(group_recovery, "datetime", Clock)
+    op.rest_in_full = op.exhaust_require = False
+    data.config.rest_in_full = data.config.exhaust_require = []
+    data.global_plan["default_plan"].config.rest_in_full = []
+    data.global_plan["default_plan"].config.exhaust_require = []
+    data.exhaust_agent = []
+    op.group = "恢复组"
+    data.groups[op.group] = [op.name]
+    data.plan[op.room][op.index].group = op.group
+    data.global_plan["default_plan"].plan[op.room][op.index].group = op.group
+    data.group_shift_state[op.group] = True
+    data.group_recovery_full_members[op.group] = [op.name]
+    data.group_recovery_return_time[op.group] = NOW - timedelta(minutes=20)
+    return solver, op
+
+
+@pytest.mark.parametrize("initial", [False, True])
+@pytest.mark.parametrize("restart", [False, True])
+@pytest.mark.parametrize("card_only", [False, True])
+def test_automatic_group_recovery_dispatches_missing_bed_before_recall(
+    automatic_recovery, initial, restart, card_only
+):
+    solver, op = automatic_recovery
+    if card_only:
+        op.mood, op.time_stamp = 24, None
+        solver.op_data.dorm_mood_estimates[op.name] = (
+            18,
+            Clock.fromtimestamp(NOW.timestamp()),
+        )
+    task = SchedulerTask(
+        time=NOW - timedelta(minutes=20),
+        task_type=TaskTypes.SELF_CORRECTION,
+        task_plan={op.room: [op.name]},
+    )
+    task.derived_correction, task.initial_staffing = True, initial
+    original_time = task.time
+    if restart:
+        solver._retain_failed_task(
+            task, "需要回满的主班心情尚未满足要求，且缺少有效恢复期限", []
+        )
+        task = pickle.loads(pickle.dumps(task))
+        solver.tasks = [task]
+        solver._resume_failed_tasks()
+        assert not getattr(task, "execution_failure", None)
+    solver.tasks, solver.task = [task], task
+    solver.infra_main()
+    assert solver.op_data.operators[op.name].is_resting()
+    assert solver.op_data.get_current_room(op.room, True) == [COVERS[0]]
+    assert not op.rest_in_full
+    assert task.time == original_time
+    assert task not in solver.tasks
+    solver._scan_card_moods.assert_not_called()
+
+
+def test_automatic_group_recovery_generated_correction_restores_bed(automatic_recovery):
+    solver, op = automatic_recovery
+    plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert op.name not in plan.get(op.room, [])
+    assert any(op.name in row for room, row in plan.items() if room.startswith("dorm"))
+    assert plan[op.room] == [COVERS[0]]
+    assert not op.current_room
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "capped",
+        "excluded",
+        "forced",
+        "working-group",
+        "standby",
+        "independent",
+        "working",
+        "full",
+        "unknown",
+    ],
+)
+def test_automatic_group_recovery_obeys_current_eligibility(automatic_recovery, kind):
+    solver, op = automatic_recovery
+    data = solver.op_data
+    if kind == "capped":
+        data.runtime_conf.group_mood_gap_max_extra_wait_hours = 1
+        data.group_recovery_return_time[op.group] = NOW - timedelta(hours=2)
+    elif kind == "excluded":
+        data.runtime_conf.group_mood_gap_exclusions = [op.group]
+    elif kind == "forced":
+        data.backup_plans.append(
+            Plan(
+                {},
+                PlanConfig("", "", ""),
+                group_tasks=[{"group": op.group, "action": "on", "mode": "forced"}],
+            )
+        )
+        data.plan_condition = [True]
+    elif kind == "working-group":
+        data.group_shift_state[op.group] = False
+    elif kind == "standby":
+        op.resting_priority = "standby"
+    elif kind == "independent":
+        op.group_bindings = [
+            {"group": op.group, "replacement": op.replacement},
+            {"group": "", "replacement": op.replacement},
+        ]
+    elif kind == "working":
+        op._current_room, op.current_index = op.room, op.index
+    elif kind == "full":
+        op.mood = op.upper_limit
+    elif kind == "unknown":
+        op.time_stamp = None
+    assert op.name not in resting_correction.off_duty_full_recovery_members(data)
+
+
+def test_automatic_group_recovery_preserves_episode_without_duty_cache(
+    automatic_recovery,
+):
+    solver, op = automatic_recovery
+    del solver.op_data.group_shift_state[op.group]
+    plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert any(op.name in row for room, row in plan.items() if room.startswith("dorm"))
+    assert op.name not in plan.get(op.room, [])
+
+
+def test_explicit_recovery_remains_required_after_automatic_wait_cap(
+    automatic_recovery,
+):
+    solver, op = automatic_recovery
+    data = solver.op_data
+    op.rest_in_full = True
+    data.runtime_conf.group_mood_gap_max_extra_wait_hours = 1
+    data.group_recovery_return_time[op.group] = NOW - timedelta(hours=2)
+    assert op.name in resting_correction.off_duty_full_recovery_members(data)
+
+
+def test_automatic_group_recovery_waits_for_capacity_then_uses_released_bed(
+    automatic_recovery,
+):
+    solver, op = automatic_recovery
+    data = solver.op_data
+    for bed, name in zip(data.dorm, PRIMARY[1:]):
+        resident = data.operators[name]
+        resident._current_room, resident.current_index = bed.position
+        resident.rest_in_full = True
+        resident.mood = 10
+        bed.name, bed.time = name, NOW + timedelta(hours=3)
+    blocked = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert op.name not in [name for row in blocked.values() for name in row]
+    assert not op.current_room
+    bed = data.dorm[0]
+    resident = data.operators[bed.name]
+    resident._current_room, resident.current_index = "", -1
+    resident.mood, resident.time_stamp = 24, NOW
+    bed.reset()
+    plan = solver.agent_get_mood(read_rooms=False, return_plan=True)
+    assert any(op.name in row for room, row in plan.items() if room.startswith("dorm"))
+    assert op.name not in plan.get(op.room, [])
 
 
 @pytest.mark.parametrize("initial", [False, True])

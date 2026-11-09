@@ -31,7 +31,7 @@ import {initializeMowerAlphaMoodLimits} from './mowerMoodLimits'
 import {scheduleMowerTasks,protectMowerSupportSwaps} from './mowerTaskScheduling'
 import {deferMowerAlphaDorm} from './mowerAlphaTaskProtection'
 import {mowerAlphaDormCandidates,planMowerAlphaDormFill} from './mowerAlphaCandidates'
-import {fillMowerAlphaEmptyDorms} from './mowerAlphaDormPlanning'
+import {fillMowerAlphaEmptyDorms,prepareMowerAlphaDormFill,protectMowerAlphaDormFillDispatch} from './mowerAlphaDormPlanning'
 import {deferMowerArrangementRetry} from './mowerArrangementRetry'
 import {mowerRefreshTradingSpec,refreshMowerRunOrderTime} from './mowerRunOrderRefresh'
 import {MowerArrangementError} from './mowerArrangementError'
@@ -303,7 +303,7 @@ function confirmMowerGroupReturn(s:RuntimeState,rates:RuntimeRates,task:MowerTas
    const due=op?.isResting()?mowerObservedRecoveryDeadline(data,op):undefined
    if(due===undefined||due<=data.nowMicros){
     if(!op?.restInFull&&recovery.timeMicros!==undefined&&recovery.timeMicros>data.nowMicros){deadline=Math.max(deadline,recovery.timeMicros);continue}
-    throw new MowerShiftPreviewError('组员尚未确认回满心情，保留回班任务并等待有效恢复观察：'+(op?.nativeName??name))
+    throw new MowerResourceWaitError('组员尚未确认回满心情，保留回班任务并等待有效恢复观察：'+(op?.nativeName??name))
    }
    deadline=Math.max(deadline,Math.min(due,recovery.timeMicros??due))
   }
@@ -770,6 +770,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     if(!running&&task.type===T.SHIFT_ON&&task.fiaReturnTarget){
      prepareMowerFiaReturn(data,task)
      if(task.timeMicros>data.nowMicros){queue.sort();delete source.activeTask;continue}
+    }
+    if(!running&&data.alpha&&prepareMowerAlphaDormFill(data,task,[...queue.tasks,...(source.waitingRecovery??[]).map(wait=>wait.task)],s.config.mowerTaskScheduling,(source.waitingRecovery??[]).map(wait=>wait.task))){
+     protectMowerAlphaDormFillDispatch(queue,data.nowMicros,s.config.mowerTaskScheduling)
+     if(task.timeMicros>data.nowMicros||queue.find({ignoreRunOrders:s.config.mowerTaskScheduling?.adjustForRunOrders===false})!==task){delete source.activeTask;continue}
     }
     if(!running&&data.alpha&&[T.SHIFT_ON,T.SHIFT_OFF,T.EXHAUST_OFF,T.SELF_CORRECTION,T.RE_ORDER].includes(task.type)&&Object.keys(task.plan).length){
      const model:MowerShiftModel=s.mowerShiftModel??{count:0,evaluate:d=>d.planConditions,swap:d=>d,transition:()=>({}),activate:()=>{}}
