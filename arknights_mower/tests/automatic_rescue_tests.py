@@ -658,6 +658,108 @@ def test_multiple_low_groups_competing_for_current_beds_enter(solver):
     solver._emergency_schedule_staffing.assert_not_called()
 
 
+@pytest.mark.parametrize("pending_shift", [False, True])
+def test_initial_staffing_cannot_skip_rescue_admission(
+    solver, monkeypatch, pending_shift
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    solver._initial_staffing_pending = True
+    solver.defer_backup_plan_until_mood_read = True
+    data = solver.op_data
+    primary = data.operators[PRIMARY[0]]
+    primary._current_room, primary.current_index = "", -1
+    cover = data.operators[COVERS[0]]
+    cover._current_room, cover.current_index = primary.room, primary.index
+    if pending_shift:
+        pending = SchedulerTask(
+            time=NOW,
+            task_type=TaskTypes.SELF_CORRECTION,
+            task_plan={primary.room: [primary.name]},
+        )
+        pending.execution_failure = {"reason": "waiting"}
+        solver.tasks.append(pending)
+    before = {
+        name: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for name, op in data.operators.items()
+    }
+    saved = []
+
+    def save():
+        saved.append(
+            (
+                solver._initial_staffing_pending,
+                copy.deepcopy(getattr(solver, "emergency_state", None)),
+            )
+        )
+        return True
+
+    monkeypatch.setattr(emergency, "save_current_state", save)
+    solver._check_startup_run_orders = MagicMock()
+    solver._refresh_observed_recovery_tasks = MagicMock()
+    solver._emergency_tick = MagicMock()
+
+    solver._initialize_startup_facilities()
+
+    assert solver._emergency_active()
+    assert not solver._initial_staffing_pending
+    assert not solver._emergency_startup_pending
+    assert saved[-1][0] is False
+    assert saved[-1][1]["phase"] == "staffing"
+    assert not any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
+    assert {
+        name: (op.current_room, op.current_index, op.mood, op.time_stamp)
+        for name, op in data.operators.items()
+    } == before
+    solver._read_agent_mood.assert_called_once()
+    solver._read_initial_card_mood.assert_called_once()
+    solver._emergency_tick.assert_called_once()
+    solver._initialize_startup_facilities()
+    solver._read_agent_mood.assert_called_once()
+    solver._read_initial_card_mood.assert_called_once()
+    solver._emergency_tick.assert_called_once()
+    solver.enter_room.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "decision", ["disabled", "native", "unknown", "invalid", "single"]
+)
+def test_initial_correction_runs_when_rescue_does_not_start(
+    solver, monkeypatch, decision
+):
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = decision != "disabled"
+    solver._initial_staffing_pending = True
+    data = solver.op_data
+    primary = data.operators[PRIMARY[0]]
+    primary._current_room, primary.current_index = "", -1
+    cover = data.operators[COVERS[0]]
+    cover._current_room, cover.current_index = primary.room, primary.index
+    if decision in ("native", "single"):
+        for name in PRIMARY[2 if decision == "native" else 1 :]:
+            data.operators[name].mood = 24
+    elif decision == "unknown":
+        monkeypatch.setattr(
+            emergency,
+            "native_opportunity",
+            lambda *a, **k: NativeProjection(None, False, "unknown"),
+        )
+    elif decision == "invalid":
+        config.rescue_plan = config.PlanModel()
+
+    solver._emergency_startup()
+
+    assert not solver._emergency_active()
+    assert not solver._initial_staffing_pending
+    assert not solver._emergency_startup_pending
+    correction = next(t for t in solver.tasks if t.type == TaskTypes.SELF_CORRECTION)
+    assert correction.initial_staffing
+    assert correction.plan[primary.room] == [primary.name]
+    solver._read_agent_mood.assert_called_once()
+    solver._read_initial_card_mood.assert_called_once()
+    solver.enter_room.assert_not_called()
+
+
 def test_low_resting_group_counts_when_waiting_group_cannot_get_beds(solver):
     setup_startup(solver)
     config.conf.automatic_rescue_enable = True
