@@ -108,14 +108,7 @@ export function defaultEstimateSelection(group) {
   return [...group.accessory]
 }
 
-export function estimateGroup(
-  group,
-  selection,
-  input = {},
-  items = [],
-  maxLevel = false,
-  unownedMaxLevel = false
-) {
+export function estimateGroup(group, selection, input = {}, items = [], maxLevel = false) {
   const fields = estimateFields(group)
   const options = Object.fromEntries(
     fields.map((field) => {
@@ -140,8 +133,7 @@ export function estimateGroup(
   const selected = new Set(selection.filter((name) => members.includes(name)))
   const active = new Set([...selected].filter((name) => !group.accessory.includes(name)))
   const roster = new Map(items.map((item) => [item.avatar, item]))
-  const assumeUnowned = (name) =>
-    (maxLevel || unownedMaxLevel) && roster.get(name)?.ownership === 'unowned'
+  const assumeUnowned = (name) => roster.get(name)?.ownership === 'unowned'
   const jayeRoster = roster.get('孑')
   const syncedJayeSkills =
     jayeRoster?.ownership === 'owned' &&
@@ -171,13 +163,7 @@ export function estimateGroup(
   }
   if (!result.hasSelection) return result
   for (const name of active) {
-    const item = roster.get(name)
-    if (item?.ownership === 'unowned' && !assumeUnowned(name) && name !== '孑') {
-      result.warnings.push(`${name}未拥有，无法按实际练度计算`)
-    } else if (
-      !skillsFor(name)?.length ||
-      skillsFor(name).some((skill) => skill.status === 'unknown')
-    ) {
+    if (!skillsFor(name)?.length || skillsFor(name).some((skill) => skill.status === 'unknown')) {
       result.warnings.push(
         name === '孑'
           ? '孑缺少森空岛练度，请同步或手选精英阶段'
@@ -198,9 +184,7 @@ export function estimateGroup(
   )
   if (assumedNames.length) result.details.push(`未拥有干员按满练度计算：${assumedNames.join('、')}`)
   // Accessories supply roster conditions only, including explicit hypothetical ownership.
-  const present = (name) =>
-    selected.has(name) &&
-    (maxLevel || assumeUnowned(name) || roster.get(name)?.ownership !== 'unowned')
+  const present = (name) => selected.has(name)
   const count = (names, predicate = on) => names.filter(predicate).length
   const familyCount = (names, prefix) =>
     names
