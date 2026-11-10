@@ -26,7 +26,7 @@ const props = defineProps({
   pickSort: { type: String, default: 'mastery' },
   rosterStats: {
     type: Object,
-    default: () => ({ owned: 0, elite2: 0, masteries: 0, modules: 0 })
+    default: () => ({ owned: 0, elite2: 0, elite2_eligible: 0, masteries: 0, modules: 0 })
   },
   workshopStatusRevision: { type: Number, default: 0 },
   workshopLoading: Boolean,
@@ -60,8 +60,8 @@ const resourceMissing = computed(() =>
 )
 const percent = computed(() => Math.round(props.materialStats.percent || 0))
 const elitePercent = computed(() =>
-  props.rosterStats.owned
-    ? Math.round((props.rosterStats.elite2 / props.rosterStats.owned) * 100)
+  props.rosterStats.elite2_eligible
+    ? Math.round((props.rosterStats.elite2 / props.rosterStats.elite2_eligible) * 100)
     : 0
 )
 const pickDescription = computed(

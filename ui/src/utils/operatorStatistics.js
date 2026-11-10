@@ -13,6 +13,7 @@ const countKeys = [
 
 export function sumPersonalStatistics(statistics, rarities) {
   const result = Object.fromEntries(countKeys.map((key) => [key, 0]))
+  result.elite2_eligible = 0
   result.skills = { 1: 0, 2: 0, 3: 0 }
   result.modules = { 1: 0, 2: 0, 3: 0 }
   result.incomplete = []
@@ -22,6 +23,7 @@ export function sumPersonalStatistics(statistics, rarities) {
     const row = statistics?.rarities?.[rarity]
     if (!row) continue
     for (const key of countKeys) result[key] += row[key] || 0
+    if (row.max_phase >= 2) result.elite2_eligible += row.owned || 0
     for (const level of [1, 2, 3]) {
       result.skills[level] += row.skills?.[level] || 0
       result.modules[level] += row.modules?.[level] || 0

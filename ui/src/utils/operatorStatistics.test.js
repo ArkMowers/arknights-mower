@@ -8,6 +8,7 @@ describe('个人干员统计', () => {
         owned: 2,
         available: 4,
         elite2: 1,
+        max_phase: 2,
         sanity: 120,
         module_blocks: 4,
         consumed_exp: 500,
@@ -25,6 +26,7 @@ describe('个人干员统计', () => {
         owned: 1,
         available: 5,
         elite2: 1,
+        max_phase: 2,
         sanity: 150,
         module_blocks: 2,
         materials: [{ id: 'a', name: '材料A', count: 3, value: 10, sanity: 30 }],
@@ -37,6 +39,7 @@ describe('个人干员统计', () => {
     expect(total).toMatchObject({
       owned: 3,
       available: 9,
+      elite2_eligible: 3,
       sanity: 270,
       module_blocks: 6,
       consumed_exp: 500,
@@ -54,6 +57,7 @@ describe('个人干员统计', () => {
     expect(sumPersonalStatistics(statistics, [])).toMatchObject({
       owned: 0,
       available: 0,
+      elite2_eligible: 0,
       sanity: 0,
       ranking: [],
       materials: []
@@ -66,6 +70,32 @@ describe('个人干员统计', () => {
     expect(rows[0].skills[3]).toBe(3)
     expect(rows[1].owned).toBe(2)
   })
+})
+
+it('精二分母仅包含所选星级中支持精二的已拥有干员', () => {
+  const statistics = {
+    rarities: {
+      6: { owned: 3, available: 8, elite2: 2, max_phase: 2 },
+      5: { owned: 1, available: 6, elite2: 1, max_phase: 2 },
+      4: { owned: 2, available: 7, elite2: 0, max_phase: 2 },
+      3: { owned: 5, available: 9, elite2: 0, max_phase: 1 },
+      2: { owned: 4, available: 5, elite2: 0, max_phase: 0 },
+      1: { owned: 3, available: 4, elite2: 0, max_phase: 0 }
+    }
+  }
+  expect(sumPersonalStatistics(statistics, [6, 5, 4, 3, 2, 1])).toMatchObject({
+    owned: 18,
+    available: 39,
+    elite2: 3,
+    elite2_eligible: 6
+  })
+  expect(sumPersonalStatistics(statistics, [6, 3])).toMatchObject({
+    owned: 8,
+    elite2: 2,
+    elite2_eligible: 3
+  })
+  expect(sumPersonalStatistics(statistics, [3, 2, 1]).elite2_eligible).toBe(0)
+  expect(sumPersonalStatistics(null, [6, 5, 4, 3, 2, 1]).elite2_eligible).toBe(0)
 })
 
 it('所有星级按高到低列出，保留低星实际能力字段', () => {

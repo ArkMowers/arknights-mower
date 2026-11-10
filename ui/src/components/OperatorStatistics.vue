@@ -29,7 +29,7 @@
             <span>精二干员</span>
             <strong class="gp-num"
               >{{ format(totals.elite2)
-              }}<small>{{ percent(totals.elite2, totals.owned) }}</small></strong
+              }}<small>{{ percent(totals.elite2, totals.elite2_eligible) }}</small></strong
             >
           </div>
           <div class="stat-kpi">
@@ -59,6 +59,7 @@
           <p>
             招募分母为当前资源收录的所选星级干员，包含尚未获得的干员，并非历史抽取次数。阿米娅各形态共用等级，仅计一位干员；各形态独立技能和模组分别统计。
           </p>
+          <p>精二率分母为所选星级中可精二的已拥有干员，不包含无法精二或尚未获得的干员。</p>
           <p>
             技能和模组列按当前恰好达到的等级分别计数。满练为 6 / 5 / 4 星精二 90 / 80 / 70 级，3
             星精一 55 级，1 / 2 星精零 30 级；模组开启等级为精二 ≥60 / 50 / 40
