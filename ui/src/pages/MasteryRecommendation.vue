@@ -2120,6 +2120,7 @@ const rosterStats = computed(() => {
   return {
     owned: totals.owned,
     elite2: totals.elite2,
+    elite2_eligible: totals.elite2_eligible,
     masteries: totals.skills[3],
     modules: totals.modules[1] + totals.modules[2] + totals.modules[3]
   }

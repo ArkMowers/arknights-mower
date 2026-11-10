@@ -641,9 +641,18 @@ describe('养成工作区派生数据', () => {
       { char_id: 'char_1037_amiya3', name: '阿米娅', elite: 2, recommendations: [], modules: [] }
     ]
     store.personalStatistics = {
-      rarities: { 5: { owned: 1, elite2: 1, skills: { 3: 5 }, modules: { 1: 1, 3: 2 } } }
+      rarities: {
+        5: { owned: 1, elite2: 1, max_phase: 2, skills: { 3: 5 }, modules: { 1: 1, 3: 2 } },
+        3: { owned: 2, elite2: 0, max_phase: 1 }
+      }
     }
-    expect(page.rosterStats.value).toEqual({ owned: 1, elite2: 1, masteries: 5, modules: 3 })
+    expect(page.rosterStats.value).toEqual({
+      owned: 3,
+      elite2: 1,
+      elite2_eligible: 1,
+      masteries: 5,
+      modules: 3
+    })
   })
 
   it('构建训练队列、进行中训练与材料备齐度', async () => {
