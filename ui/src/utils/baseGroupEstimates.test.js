@@ -41,6 +41,46 @@ function value(result, label) {
 }
 
 describe('基建组合效率估算', () => {
+  it('未拥有默认按满练估算，保留已拥有实际练度且不修改快照', () => {
+    const names = ['能天使', '蕾缪安']
+    const items = roster(names, { 能天使: 0 })
+    items[1].ownership = 'unowned'
+    items[1].childSkill = []
+    const previous = JSON.stringify(items)
+    const result = estimateGroup(group('exusiai'), names, {}, items)
+    expect(result.valid).toBe(true)
+    expect(value(result, '贸易订单效率')).toBe(65)
+    expect(result.details).toContain('未拥有干员按满练度计算：蕾缪安')
+    expect(JSON.stringify(items)).toBe(previous)
+    expect(estimateGroup(group('exusiai'), names, {}, []).valid).toBe(false)
+  })
+  it('未拥有的孑按满练计算，手选阶段优先，已拥有孑仍跟随森空岛', () => {
+    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
+    const items = roster(names)
+    items[0].ownership = 'unowned'
+    items[0].childSkill = []
+    const result = estimateGroup(group('karlan'), names, {}, items)
+    expect(result.valid).toBe(true)
+    expect(value(result, '贸易订单效率')).toBe(129)
+    expect(result.details).toContain('孑精一及以上，使用未拥有满练度假设')
+    const manual = estimateGroup(group('karlan'), names, { jayeStage: '未精英化' }, items)
+    expect(value(manual, '贸易订单效率')).toBe(145)
+    expect(manual.details).toContain('孑未精英化，使用手动选择')
+    expect(manual.details.some((line) => line.includes('未拥有干员按满练度计算：孑'))).toBe(false)
+    const owned = estimateGroup(group('karlan'), names, {}, roster(names, { 孑: 0 }))
+    expect(value(owned, '贸易订单效率')).toBe(145)
+    expect(owned.details).toContain('孑未精英化，使用森空岛练度')
+  })
+  it('未拥有的挂件默认提供阵营人数，不叠加自身技能', () => {
+    const names = ['结城理', '埃癸斯', '岳羽由加莉', '虎狼丸']
+    const items = roster(names)
+    items[2].ownership = 'unowned'
+    items[2].childSkill = []
+    const result = estimateGroup(group('makoto'), names, {}, items)
+    expect(value(result, 'S.E.E.S.在岗人数')).toBe(4)
+    expect(value(result, '通用制造生产力')).toBe(40)
+    expect(value(result, '无人机充能速度')).toBe(20)
+  })
   it('默认20人宿舍，挂件默认勾选，其余干员不选，不修改预置', () => {
     const previous = JSON.stringify(builtinGroups)
     for (const item of builtinGroups) {
@@ -138,7 +178,7 @@ describe('基建组合效率估算', () => {
     expect(filled).not.toHaveProperty('dormLevel')
     expect(current.trade).toBe(2)
   })
-  it('挂件只提供阵营条件，不产生自身技能效率，已知未拥有挂件不计人数', () => {
+  it('挂件只提供阵营条件，不产生自身技能效率，已知未拥有挂件计入人数', () => {
     const names = ['结城理', '埃癸斯', '岳羽由加莉', '虎狼丸']
     const result = estimate('makoto', names)
     expect(value(result, '通用制造生产力')).toBe(40)
@@ -150,7 +190,7 @@ describe('基建组合效率估算', () => {
     ])
     const items = roster(names)
     items[1].ownership = 'unowned'
-    expect(estimateGroup(group('makoto'), names, {}, items).valid).toBe(false)
+    expect(estimateGroup(group('makoto'), names, {}, items).valid).toBe(true)
     expect(value(estimate('makoto', ['结城理', '岳羽由加莉', '虎狼丸']), '通用制造生产力')).toBe(35)
     const elite = estimate('tianmao', [
       '凯尔希·思衡托',
@@ -203,7 +243,7 @@ describe('基建组合效率估算', () => {
     expect(zero.details).toContain('孑未精英化，使用手动选择')
   })
   it.each(
-    ['missing', 'unknown', 'unowned', 'incomplete'].flatMap((state) =>
+    ['missing', 'unknown', 'incomplete'].flatMap((state) =>
       [false, true].map((maxLevel) => [state, maxLevel])
     )
   )('孑练度%s时提示手选阶段，满练度模式%s', (state, maxLevel) => {
@@ -237,6 +277,16 @@ describe('基建组合效率估算', () => {
     expect(value(promoted, '贸易订单效率')).toBe(129)
     expect(promoted.details).toContain('孑精一及以上，使用手动选择')
     expect(JSON.stringify(items)).toBe(before)
+  })
+  it('全员满练模式也将确认未拥有的孑按精一及以上计算', () => {
+    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
+    const items = roster(names)
+    items[0].ownership = 'unowned'
+    items[0].childSkill = []
+    const result = estimateGroup(group('karlan'), names, {}, items, true)
+    expect(result.valid).toBe(true)
+    expect(value(result, '贸易订单效率')).toBe(129)
+    expect(result.details).toContain('孑精一及以上，使用未拥有满练度假设')
   })
   it('森蚺只能选一处设施，制造站模式不同时提供中枢的虚拟发电站', () => {
     const names = ['森蚺', '温蒂', '清流', '承曦格雷伊', 'Lancet-2']
@@ -283,7 +333,7 @@ describe('基建组合效率估算', () => {
     expect(value(estimate('tianmao', ['真言', '迷迭香']), '贸易订单效率')).toBe(29)
     const items = roster(names)
     items.find((item) => item.avatar === '迷迭香').ownership = 'unowned'
-    expect(value(estimateGroup(group('tianmao'), names, {}, items), '精英干员设施')).toBe(6)
+    expect(value(estimateGroup(group('tianmao'), names, {}, items), '精英干员设施')).toBe(7)
     expect(estimateFields(group('tianmao')).some((field) => field.key === 'eliteRooms')).toBe(false)
   })
   it('时长控件已移除，时间技能按统一三十小时周期取平均', () => {
