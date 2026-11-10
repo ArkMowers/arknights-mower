@@ -265,7 +265,14 @@ class ProductionSessionADB:
         deadline = time.monotonic() + max(0.0, timeout)
         with device_io_budget(lambda: max(0.0, deadline - time.monotonic())):
             io = self._preflight_io(timeout, frame=True)
-            frame = validate_frame(io.capture_frame(adb_path, serial, self._profile))
+            try:
+                frame = validate_frame(
+                    io.capture_frame(adb_path, serial, self._profile)
+                )
+            except Exception as exc:
+                if io.mumu_created_timestamp:
+                    exc.mumu_created_timestamp = io.mumu_created_timestamp
+                raise
             return FrameObservation(
                 (frame.shape[1], frame.shape[0]), io.mumu_created_timestamp
             )

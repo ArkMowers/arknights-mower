@@ -161,7 +161,7 @@ def test_discovery_retains_creation_time_first_reported_by_recheck():
     assert instances[0]["mumu_created_timestamp"] == "111"
 
 
-def test_failed_capture_clears_previous_successful_identity():
+def test_binding_rejection_clears_previous_capture_identity():
     io = ProductionPreflightIO()
     selected = profile("manager")
     original = selected.model_dump()
@@ -194,6 +194,32 @@ def test_failed_capture_clears_previous_successful_identity():
             )
         assert io.mumu_created_timestamp == ""
     assert selected.model_dump() == original
+
+
+def test_preparation_failure_does_not_reuse_previous_capture_identity():
+    io = PreflightIO()
+    io.host, io.boot = "windows", "1"
+    io.installed.add("manager")
+    io.paths.add("verified-adb")
+    io.targets = [("127.0.0.1:16384", "device")]
+    io.installed_packages = ["com.hypergryph.arknights"]
+    io.mumu_created_timestamp = "111"
+    io.capture_frame = Mock(side_effect=AssertionError("capture must not start"))
+    selected = profile("manager").model_copy(
+        update={
+            "adb_path": "verified-adb",
+            "last_serial": "127.0.0.1:16384",
+            "screenshot_backend": "mumu_ipc",
+            "touch_backend": "mumu_ipc",
+        }
+    )
+    result = PreflightService(io).check(
+        selected, prepare_capture=Mock(side_effect=RuntimeError("preparation failed"))
+    )
+    assert not result.ok
+    assert result.error.code == "frame_failed"
+    assert "mumu_created_timestamp" not in result.observations
+    io.capture_frame.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -367,6 +393,136 @@ def test_successful_first_capture_keeps_its_first_observed_identity(
     assert session.actions == 0
     assert adb.actions == []
     assert all(call[0] != "api" for call in calls)
+
+
+@pytest.mark.parametrize("path", ["session", "preflight", "start_bound"])
+@pytest.mark.parametrize("creation_source", ["primary", "recheck"])
+@pytest.mark.parametrize("failure_kind", ["worker_exit", "frame_timeout"])
+@pytest.mark.parametrize("next_created", [111, 222, None])
+def test_failed_native_frame_keeps_manager_verified_identity(
+    tmp_path, path, creation_source, failure_kind, next_created
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    changed = False
+    capture_queries = 0
+    native_identities = []
+    joins = 0
+
+    def run(argv, **kwargs):
+        nonlocal capture_queries
+        if argv[1] == "adb":
+            output = serial.encode()
+        else:
+            assert argv[1] == "info"
+            data = entry(adb_port=16384)
+            if changed:
+                data["created_timestamp"] = next_created
+            elif argv[-1] == "all":
+                capture_queries += 1
+                if creation_source == "recheck" and capture_queries == 1:
+                    data["adb_port"] = 0
+                else:
+                    data["created_timestamp"] = 111
+            output = json.dumps({"0": data}).encode()
+        return subprocess.CompletedProcess(argv, 0, output, b"")
+
+    selected = profile(manager).model_copy(
+        update={"screenshot_backend": "mumu_ipc", "touch_backend": "mumu_ipc"}
+    )
+    conf = Conf(device=selected.model_dump())
+    original = conf.model_dump()
+    capture_adb = ProductionSessionADB(run=run, monotonic=clock.monotonic)
+    adb.bind = capture_adb.bind
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    fake_io, io = PreflightIO(), ProductionPreflightIO()
+    fake_io.host, fake_io.boot = "windows", "1"
+    fake_io.installed.add(str(manager))
+    fake_io.paths.add("verified-adb")
+    fake_io.targets = [(serial, "device")]
+    fake_io.installed_packages = ["com.hypergryph.arknights"]
+    for name, value in PreflightIO.__dict__.items():
+        if callable(value) and not name.startswith("_") and name != "capture_frame":
+            setattr(io, name, getattr(fake_io, name))
+    with (
+        patch.object(ProductionPreflightIO, "host_platform", return_value="windows"),
+        patch(
+            "arknights_mower.utils.device.preflight_io.resolve_mumu_paths",
+            return_value=("root", str(manager)),
+        ),
+        patch.object(io, "_run", side_effect=lambda argv: run(argv, timeout=10).stdout),
+        patch(
+            "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
+        ) as context,
+        patch.object(
+            session, "_report_observation", wraps=session._report_observation
+        ) as report,
+    ):
+        process = configure_mumu_capture(context.return_value)
+        write_frame = process.start.side_effect
+
+        def start():
+            nonlocal joins
+            joins = 0
+            native_identities.append(next_created if changed else 111)
+            process.exitcode = (
+                1
+                if len(native_identities) == 1 and failure_kind == "worker_exit"
+                else 0
+            )
+            process.is_alive.return_value = (
+                len(native_identities) == 1 and failure_kind == "frame_timeout"
+            )
+            write_frame()
+
+        def join(**kwargs):
+            nonlocal changed, joins
+            joins += 1
+            if len(native_identities) == 1:
+                changed = True
+                if joins == 1:
+                    clock.now += 2
+                else:
+                    process.is_alive.return_value = False
+
+        process.start.side_effect, process.join.side_effect = start, join
+        if path == "session":
+            session.bind(selected)
+            if next_created == 111:
+                assert (
+                    session.ensure_ready(frame_probe=capture_adb.frame_size).serial
+                    == serial
+                )
+            else:
+                with pytest.raises(SessionFailure) as failure:
+                    session.ensure_ready(frame_probe=capture_adb.frame_size)
+                assert failure.value.observation.code == "binding_changed"
+            assert report.call_args_list[0].args[0].code == "frame_failed"
+        else:
+            control = DeviceControl(
+                lambda: conf, Adapter(), session=session, preflight=PreflightService(io)
+            )
+            result = (
+                control.start_bound(conf) if path == "start_bound" else control.start()
+            )
+            assert result.ok == (next_created == 111)
+            if not result.ok:
+                assert result.error.code == "binding_changed"
+        assert native_identities == ([111, 111] if next_created == 111 else [111])
+        assert session.profile.mumu_created_timestamp == "111"
+        assert capture_adb._profile.mumu_created_timestamp == "111"
+        assert 2 <= clock.now < 60
+        assert session.actions == (1 if path == "session" else 0)
+        assert adb.actions == ([serial] if path == "session" else [])
+    assert conf.model_dump() == original
 
 
 @pytest.mark.parametrize("missing_port", [{}, {"adb_port": 0}, {"adb_port": ""}])

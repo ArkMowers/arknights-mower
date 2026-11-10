@@ -385,6 +385,8 @@ class ProductionPreflightIO:
             raise MuMuEndpointUnavailable(
                 actual_instance_id, "MuMu IPC 实例端点与已选择设备的连接地址不一致。"
             )
+        # 身份已经核验，后续截图失败仍保留本次实例的创建时间。
+        self.mumu_created_timestamp = created
         context = multiprocessing.get_context("spawn")
         frame_buffer = context.RawArray(ctypes.c_ubyte, 1920 * 1080 * 3)
         succeeded = context.RawValue(ctypes.c_bool, False)
@@ -413,7 +415,6 @@ class ProductionPreflightIO:
                 message = error.value.decode("utf-8", "replace")
                 raise RuntimeError(message or "MuMu IPC 首帧工作进程未成功完成")
             frame = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3).copy()
-            self.mumu_created_timestamp = created
             return frame
         finally:
             close_process(process, owner_pid)

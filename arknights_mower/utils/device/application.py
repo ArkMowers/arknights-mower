@@ -1206,10 +1206,11 @@ class DeviceControl(Generic[D]):
                         raise
                     fail_after_budget(last_timeout, exc)
                 raise
-            if result.ok and self._session is not None:
-                self._session.pin_mumu_creation_time(
-                    profile, result.observations.get("mumu_created_timestamp", "")
-                )
+            if self._session is not None:
+                created = result.observations.get("mumu_created_timestamp", "")
+                if not created and result.error is not None:
+                    created = result.error.mumu_created_timestamp
+                profile = self._session.pin_mumu_creation_time(profile, created)
             if (
                 result.ok
                 or result.error is None
@@ -1218,9 +1219,6 @@ class DeviceControl(Generic[D]):
                 or self._session is None
             ):
                 return result
-            profile = self._session.pin_mumu_creation_time(
-                profile, result.error.mumu_created_timestamp
-            )
             last_timeout = result
             wait_after_timeout(result)
 

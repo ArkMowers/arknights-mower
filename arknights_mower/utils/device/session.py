@@ -842,19 +842,19 @@ class DeviceSession:
             return False, "frame_failed", "无法取得有效首帧，请确认目标设备画面后重试。"
         try:
             size = probe(self.adb_path, serial, self._remaining(deadline))
-        except (MowerExit, SessionFailure):
-            raise
-        except ManagerQueryTimeout as exc:
+        except Exception as exc:
             self.pin_mumu_creation_time(
                 self.profile, getattr(exc, "mumu_created_timestamp", "")
             )
-            return False, "manager_timeout", str(exc)
-        except InstanceBindingError as exc:
-            self.last = ReadinessResult(
-                "offline", "", self.adb_path, code=exc.code, message=str(exc)
-            )
-            raise SessionFailure(self.last, str(exc)) from exc
-        except Exception as exc:
+            if isinstance(exc, (MowerExit, SessionFailure)):
+                raise
+            if isinstance(exc, ManagerQueryTimeout):
+                return False, "manager_timeout", str(exc)
+            if isinstance(exc, InstanceBindingError):
+                self.last = ReadinessResult(
+                    "offline", "", self.adb_path, code=exc.code, message=str(exc)
+                )
+                raise SessionFailure(self.last, str(exc)) from exc
             return False, "frame_failed", str(exc) or "无法取得有效首帧。"
         created = ""
         if isinstance(size, FrameObservation):
