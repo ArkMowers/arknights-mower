@@ -48,12 +48,12 @@ def test_depot_scan_describes_every_confirmed_item_without_a_python_dictionary(
         record for record in infos(caplog) if "已识别2种物品" in record.getMessage()
     )
     assert result.getMessage() == (
-        "仓库扫描：已识别2种物品\n应急理智顶液：3\n龙门币：100000000"
+        "仓库扫描：已识别2种物品\n应急理智顶液：3\n合成玉：100000000"
     )
     assert "已保存" not in result.getMessage()
     with scan.path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream))
-    assert json.loads(rows[-1][1]) == {"应急理智顶液": 3, "龙门币": 100000000}
+    assert json.loads(rows[-1][1]) == {"应急理智顶液": 3, "合成玉": 100000000}
     assert not any("{'" in text for text in messages(caplog))
 
 
@@ -62,7 +62,7 @@ def test_confirmed_empty_depot_is_readable_without_inventing_items(scan, caplog)
 
     assert scan.solver.run() is True
 
-    assert "仓库扫描：两个分类均为空，未发现物品" in messages(caplog)
+    assert "仓库扫描：未发现需要额外识别的物品" in messages(caplog)
     assert scan.solver.结果字典 == {}
 
 

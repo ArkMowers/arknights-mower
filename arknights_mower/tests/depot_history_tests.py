@@ -48,8 +48,10 @@ def test_common_resources_include_gold_and_orundum_shards(tmp_path, monkeypatch)
     }
     monkeypatch.setattr(module, "get_path", lambda key: paths[key])
     inventory = {}
+    scan_sources = []
 
-    def save(counts, **_):
+    def save(counts, **sources):
+        scan_sources.append(sources["scanned_counts"])
         inventory.update(counts)
         return counts
 
@@ -70,6 +72,7 @@ def test_common_resources_include_gold_and_orundum_shards(tmp_path, monkeypatch)
     assert "赤金" not in categories["K未分类"]
     assert "源石碎片" not in categories["K未分类"]
     assert categories["A常用"]["额外+碎片"]["number"] == 1.1
+    assert scan_sources == [{"合成玉": 600}]
 
 
 def test_missing_file_returns_empty(history_path):

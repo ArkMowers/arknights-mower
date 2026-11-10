@@ -14,6 +14,30 @@ from arknights_mower.utils.csv_utils import (
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
 
+# 已由森空岛库存返回的基础物品；未返回的消耗品、抽卡资源仍由游戏内扫描补充。
+SKLAND_BASIC_ITEM_IDS = frozenset(
+    {
+        "3141",
+        "4001",
+        "3003",
+        "4006",
+        "STORY_REVIEW_COIN",
+        "3105",
+        "3401",
+        "3133",
+        "3132",
+        "3131",
+        "3114",
+        "3113",
+        "3112",
+    }
+)
+
+
+def is_skland_only_item(name):
+    entry = key_mapping.get(name)
+    return entry is not None and entry[0] in SKLAND_BASIC_ITEM_IDS
+
 
 def cloud_material_names():
     """Return local material names initialized by a Skland snapshot."""
@@ -403,7 +427,7 @@ def 读取仓库(记录快照时刻=None):
     scanned_counts = {
         key_mapping[name][2]: count
         for name, count in 最后一行物品.items()
-        if name in key_mapping
+        if name in key_mapping and not is_skland_only_item(name)
     }
     db_dict = save_inventory_counts(
         db_dict,

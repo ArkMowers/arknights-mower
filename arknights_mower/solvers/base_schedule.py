@@ -22687,7 +22687,7 @@ class BaseSchedulerSolver(
         log_status(
             f"已更新库存，识别 {item_count} 种物品"
             if item_count
-            else "已更新库存，两个分类均为空",
+            else "已更新库存，无需额外数量扫描",
             phase="completed",
         )
         self._auto_schedule_mastery_after_scan()

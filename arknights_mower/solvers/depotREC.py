@@ -3,15 +3,13 @@ import lzma
 import os
 import pickle
 import re
-import unicodedata
 from datetime import datetime
-from decimal import Decimal
 from time import monotonic
 
 import cv2
 import numpy as np
 
-from arknights_mower.utils import config, depot, rapidocr, vision_np
+from arknights_mower.utils import config, depot, vision_np
 from arknights_mower.utils.graph import SceneGraphSolver
 
 from .. import __rootdir__
@@ -147,39 +145,6 @@ class depotREC(SceneGraphSolver):
         格式化数字 = int(float("".join(matches)) * (10000 if "万" in 物品个数 else 1))
         return 格式化数字
 
-    def 读取龙门币数字(self, 数字图片):
-        """Read a complete LMD amount, including its displayed unit."""
-        try:
-            # 标准画面帧中数字位于这段高度内，图标笔画延伸到上下边界。
-            # 保留整行宽度，只去除与上下边界连通的图标和背景。
-            _, 数字图片 = cv2.threshold(数字图片[12:46, :], 180, 255, cv2.THRESH_BINARY)
-            _, 连通区域 = cv2.connectedComponents(数字图片)
-            边界区域 = np.unique(np.concatenate((连通区域[0], 连通区域[-1])))
-            数字图片[np.isin(连通区域, 边界区域)] = 0
-            if rapidocr.engine is None:
-                rapidocr.initialize_ocr()
-            result, _ = rapidocr.engine(
-                cv2.resize(数字图片, None, fx=2, fy=2),
-                use_det=False,
-                use_cls=False,
-                use_rec=True,
-            )
-        except Exception:
-            logger.exception("仓库扫描: 龙门币数量 OCR 失败")
-            return None
-        if not result or len(result) != 1:
-            return None
-        text, confidence = result[0]
-        if not 0.90 <= confidence <= 1:
-            return None
-        text = re.sub(r"\s+", "", unicodedata.normalize("NFKC", text))
-        match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([万亿]?)", text)
-        if match is None:
-            return None
-        number, unit = match.groups()
-        amount = Decimal(number) * {"": 1, "万": 10000, "亿": 100000000}[unit]
-        return int(amount) if amount == amount.to_integral_value() else None
-
     def 匹配物品一次(self, 物品, 物品灰, knn模型: vision_np.Knn1Model):
         物品特征 = 提取特征点(物品)
         predicted_label = vision_np.knn1_predict(
@@ -189,13 +154,10 @@ class depotREC(SceneGraphSolver):
             knn模型["classes"],
         )
 
-        数字区域 = 物品灰[160:210, 30:210]  # 多加了一次裁切，把数字区域单独裁出来
-        物品数字 = (
-            self.读取龙门币数字(数字区域)
-            if predicted_label == "龙门币"
-            else self.读取物品数字(数字区域)
-        )
-        return [predicted_label, 物品数字]
+        if depot.is_skland_only_item(predicted_label):
+            return [predicted_label, None]
+        数字区域 = 物品灰[160:210, 30:210]
+        return [predicted_label, self.读取物品数字(数字区域)]
 
     def run(self, *, report_progress=None) -> bool:
         self._game_restart_used = False
@@ -274,7 +236,8 @@ class depotREC(SceneGraphSolver):
                 (1298, self.knn模型_NORMAL, "基础物品"),
             ]
 
-            有非空分类 = False
+            有非空分类 = 0
+            森空岛已覆盖分类 = 0
             for 任务 in 任务组:
                 self.tap((任务[0], 70))
                 if not self._wait_for_depot_ready():
@@ -282,9 +245,9 @@ class depotREC(SceneGraphSolver):
                 if report_progress is not None:
                     report_progress(f"正在识别{任务[2]}")
                 if not self.find("depot_empty"):
-                    有非空分类 = True
+                    有非空分类 += 1
                     start_time = monotonic()
-                    self.分类扫描(任务[1])
+                    森空岛已覆盖分类 += self.分类扫描(任务[1])
                     logger.debug(
                         "仓库扫描：识别%s用时 %.2f 秒",
                         任务[2],
@@ -292,7 +255,7 @@ class depotREC(SceneGraphSolver):
                     )
                 else:
                     logger.debug("仓库扫描：%s分类为空", 任务[2])
-            if 有非空分类 and not self.结果字典:
+            if not self.结果字典 and 有非空分类 != 森空岛已覆盖分类:
                 logger.warning("仓库扫描: 未确认任何物品数量，本次扫描失败")
                 return False
             logger.debug("仓库扫描结果：%s", self.结果字典)
@@ -332,7 +295,7 @@ class depotREC(SceneGraphSolver):
                 },
             )
         else:
-            logger.info("仓库扫描：两个分类均为空，未发现物品")
+            logger.info("仓库扫描：未发现需要额外识别的物品")
         return True
 
     def 对比截图(self, image1, image2):
@@ -353,10 +316,15 @@ class depotREC(SceneGraphSolver):
         切图列表 = self.切图主程序(拼接好的图片)
         logger.debug("仓库扫描：待识别物品格 %s 个", len(切图列表))
 
+        已覆盖物品数 = 0
         for [物品, 物品灰, id] in 切图列表:
             [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, knn模型)
+            if depot.is_skland_only_item(物品名称):
+                已覆盖物品数 += 1
+                continue
             if 物品数字 is None:
                 logger.warning(f"仓库扫描: 无法识别 {物品名称} 的数量，跳过")
                 continue
             logger.debug([物品名称, 物品数字])
             self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
+        return bool(切图列表) and 已覆盖物品数 == len(切图列表)

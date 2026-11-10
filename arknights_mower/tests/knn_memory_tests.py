@@ -166,7 +166,6 @@ def test_depot_uses_real_hog_and_keeps_the_confirmed_quantity():
     samples[32] = feature
     solver = depotREC.__new__(depotREC)
     solver.读取物品数字 = Mock(return_value=42)
-    solver.读取龙门币数字 = Mock(side_effect=AssertionError("unexpected OCR"))
     gray = np.zeros((260, 260), dtype=np.uint8)
     assert solver.匹配物品一次(
         image,
