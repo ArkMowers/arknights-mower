@@ -1004,6 +1004,7 @@ class DeviceControl(Generic[D]):
                 self._state = "starting"
                 self._session.bind(
                     profile,
+                    preserve_identity=recovering,
                     startup_wait=getattr(
                         getattr(configuration, "simulator", None), "wait_time", 30
                     ),
@@ -1205,6 +1206,10 @@ class DeviceControl(Generic[D]):
                         raise
                     fail_after_budget(last_timeout, exc)
                 raise
+            if result.ok and self._session is not None:
+                self._session.pin_mumu_creation_time(
+                    profile, result.observations.get("mumu_created_timestamp", "")
+                )
             if (
                 result.ok
                 or result.error is None

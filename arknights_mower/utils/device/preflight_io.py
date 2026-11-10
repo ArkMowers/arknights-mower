@@ -128,6 +128,7 @@ class ProductionPreflightIO:
                 return config.conf
 
         self._read_configuration = read_configuration
+        self.mumu_created_timestamp = ""
 
     def host_platform(self) -> str:
         return {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}.get(
@@ -322,6 +323,7 @@ class ProductionPreflightIO:
         ]
 
     def capture_frame(self, adb_path: str, serial: str, profile) -> np.ndarray:
+        self.mumu_created_timestamp = ""
         if reason := capture_compatibility_error(
             profile.preset_id, profile.screenshot_backend, self.host_platform()
         ):
@@ -347,6 +349,7 @@ class ProductionPreflightIO:
         raise ValueError(f"截图后端尚不可用：{profile.screenshot_backend}")
 
     def _capture_mumu(self, profile, serial: str) -> np.ndarray:
+        self.mumu_created_timestamp = ""
         if not is_tcp_serial(serial):
             raise ValueError("MuMu IPC 必须绑定经过验证的模拟器实例端点")
         root, manager = resolve_mumu_paths(
@@ -372,7 +375,7 @@ class ProductionPreflightIO:
                 "binding_changed", str(exc), ["instance_id", "instance_name"]
             ) from exc
         try:
-            endpoint, _ = mumu_endpoint_with_fallback(
+            endpoint, created = mumu_endpoint_with_fallback(
                 entry, actual_instance_id, manager, self._run
             )
         except ManagerQueryTimeout as exc:
@@ -409,7 +412,9 @@ class ProductionPreflightIO:
             if process.exitcode != 0 or not succeeded.value:
                 message = error.value.decode("utf-8", "replace")
                 raise RuntimeError(message or "MuMu IPC 首帧工作进程未成功完成")
-            return np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3).copy()
+            frame = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3).copy()
+            self.mumu_created_timestamp = created
+            return frame
         finally:
             close_process(process, owner_pid)
 

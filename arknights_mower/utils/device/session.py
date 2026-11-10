@@ -17,7 +17,7 @@ from arknights_mower.utils.device.endpoint_identity import (
     ManagerQueryTimeout,
 )
 from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
-from arknights_mower.utils.device.preflight import parse_display_size
+from arknights_mower.utils.device.preflight import FrameObservation, parse_display_size
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
     UIUnresponsiveError,
@@ -110,7 +110,7 @@ class SessionADB(Protocol):
     def display_size(self, adb_path: str, serial: str, timeout: float) -> str: ...
     def frame_size(
         self, adb_path: str, serial: str, timeout: float
-    ) -> tuple[int, int] | None: ...
+    ) -> tuple[int, int] | FrameObservation | None: ...
     def standard_frame_size(
         self, adb_path: str, serial: str, timeout: float
     ) -> tuple[int, int] | None: ...
@@ -216,11 +216,12 @@ class DeviceSession:
         self.actions = 0
         return deadline
 
-    def _restart_binding(self):
-        if self.profile is None:
+    def _restart_binding(self, profile=None):
+        profile = self.profile if profile is None else profile
+        if profile is None:
             return None
         return tuple(
-            getattr(self.profile, field)
+            getattr(profile, field)
             for field in (
                 "preset_id",
                 "installation_path",
@@ -409,9 +410,32 @@ class DeviceSession:
         resolved_adb: str | None = None,
         policy: RecoveryPolicy | None = None,
         startup_wait: float = 30.0,
+        preserve_identity: bool = False,
     ) -> None:
         if self._shutdown.is_set():
             raise MowerExit("设备会话正在关闭")
+        if (
+            preserve_identity
+            and self.profile is not None
+            and self.profile.preset_id == "windows.mumu12"
+            and self.profile.mumu_created_timestamp
+        ):
+            created = self.profile.mumu_created_timestamp
+            candidate = profile.model_copy(update={"mumu_created_timestamp": created})
+            if (
+                profile.mumu_created_timestamp not in {"", created}
+                or self._restart_binding(candidate) != self._restart_binding()
+                or candidate.mumu_manual_serial != self.profile.mumu_manual_serial
+            ):
+                self.last = ReadinessResult(
+                    "offline",
+                    "",
+                    self.adb_path,
+                    code="binding_changed",
+                    message="恢复目标与原实例绑定不一致，请重新检测并启动。",
+                )
+                raise SessionFailure(self.last, self.last.message)
+            profile = candidate
         if self.profile is None or any(
             getattr(self.profile, field) != getattr(profile, field)
             for field in (
@@ -832,12 +856,16 @@ class DeviceSession:
             raise SessionFailure(self.last, str(exc)) from exc
         except Exception as exc:
             return False, "frame_failed", str(exc) or "无法取得有效首帧。"
+        created = ""
+        if isinstance(size, FrameObservation):
+            created, size = size.mumu_created_timestamp, size.dimensions
         if not isinstance(size, (list, tuple)) or list(size) != REQUIRED_DISPLAY_SIZE:
             return (
                 False,
                 "frame_failed",
                 "截图实际帧不是横屏 1920×1080，请修正显示设置后重试。",
             )
+        self.pin_mumu_creation_time(self.profile, created)
         return True, "", ""
 
     def ensure_ready(

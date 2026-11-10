@@ -27,6 +27,7 @@ from arknights_mower.utils.device.mumu_discovery import parse_mumu_instances
 from arknights_mower.utils.device.mumu_info import validate_mumu_manual_serial
 from arknights_mower.utils.device.mumu_pro import MUMU_PRO_PRESET, MuMuProController
 from arknights_mower.utils.device.nox_endpoint import NoxBindingReader
+from arknights_mower.utils.device.preflight import FrameObservation
 from arknights_mower.utils.device.preflight_io import ProductionPreflightIO
 from arknights_mower.utils.device.redroid import REDROID_PRESET, RedroidController
 from arknights_mower.utils.device.screenshot import capture_adb_frame
@@ -265,7 +266,9 @@ class ProductionSessionADB:
         with device_io_budget(lambda: max(0.0, deadline - time.monotonic())):
             io = self._preflight_io(timeout, frame=True)
             frame = validate_frame(io.capture_frame(adb_path, serial, self._profile))
-            return (frame.shape[1], frame.shape[0])
+            return FrameObservation(
+                (frame.shape[1], frame.shape[0]), io.mumu_created_timestamp
+            )
 
     def recover(self, adb_path: str, serial: str, timeout: float) -> bool:
         if not serial.strip():

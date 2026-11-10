@@ -4,11 +4,11 @@ Authoritative specification of the Device Control Subsystem, defining discovery,
 
 ## Start with the affected operation
 
-| Operation | Implementation entry | Focused offline verification |
-| :--- | :--- | :--- |
-| Save or change the selected device | [`/conf`](../../server.py), [`Conf.updated`](../../arknights_mower/utils/config/conf.py), [`DeviceProfile`](../../arknights_mower/utils/config/device_profile.py) | [`device_config_tests.py`](../../arknights_mower/tests/device_config_tests.py) checks validation, endpoint clearance and save/reload. |
-| Discover, test or start an instance | [`DeviceControl`](../../arknights_mower/utils/device/application.py) dispatches to [`DiscoveryService`](../../arknights_mower/utils/device/discovery.py), [`PreflightService`](../../arknights_mower/utils/device/preflight.py) and [`DeviceSession`](../../arknights_mower/utils/device/session.py). | [`device_discovery_tests.py`](../../arknights_mower/tests/device_discovery_tests.py), [`device_preflight_tests.py`](../../arknights_mower/tests/device_preflight_tests.py), [`device_session_tests.py`](../../arknights_mower/tests/device_session_tests.py) substitute vendor, ADB and clock observations. |
-| Capture or recover after input failure | [`DeviceControl.capture`](../../arknights_mower/utils/device/application.py), [`ScreenshotSession`](../../arknights_mower/utils/device/screenshot_backend.py), [`Device.screencap`](../../arknights_mower/utils/device/device.py) | [`device_screenshot_runtime_tests.py`](../../arknights_mower/tests/device_screenshot_runtime_tests.py), [`device_session_caller_tests.py`](../../arknights_mower/tests/device_session_caller_tests.py) exercise the application callers and failure handling. |
+| Operation                              | Implementation entry                                                                                                                                                                                                                                                                                  | Focused offline verification                                                                                                                                                                                                                                                                                |
+| :------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Save or change the selected device     | [`/conf`](../../server.py), [`Conf.updated`](../../arknights_mower/utils/config/conf.py), [`DeviceProfile`](../../arknights_mower/utils/config/device_profile.py)                                                                                                                                     | [`device_config_tests.py`](../../arknights_mower/tests/device_config_tests.py) checks validation, endpoint clearance and save/reload.                                                                                                                                                                       |
+| Discover, test or start an instance    | [`DeviceControl`](../../arknights_mower/utils/device/application.py) dispatches to [`DiscoveryService`](../../arknights_mower/utils/device/discovery.py), [`PreflightService`](../../arknights_mower/utils/device/preflight.py) and [`DeviceSession`](../../arknights_mower/utils/device/session.py). | [`device_discovery_tests.py`](../../arknights_mower/tests/device_discovery_tests.py), [`device_preflight_tests.py`](../../arknights_mower/tests/device_preflight_tests.py), [`device_session_tests.py`](../../arknights_mower/tests/device_session_tests.py) substitute vendor, ADB and clock observations. |
+| Capture or recover after input failure | [`DeviceControl.capture`](../../arknights_mower/utils/device/application.py), [`ScreenshotSession`](../../arknights_mower/utils/device/screenshot_backend.py), [`Device.screencap`](../../arknights_mower/utils/device/device.py)                                                                     | [`device_screenshot_runtime_tests.py`](../../arknights_mower/tests/device_screenshot_runtime_tests.py), [`device_session_caller_tests.py`](../../arknights_mower/tests/device_session_caller_tests.py) exercise the application callers and failure handling.                                               |
 
 Run only the relevant files from the repository root, for example:
 
@@ -91,6 +91,7 @@ classDiagram
 The diagram selects current callable interfaces from [`application.py`](../../arknights_mower/utils/device/application.py), [`session.py`](../../arknights_mower/utils/device/session.py) and [`preflight.py`](../../arknights_mower/utils/device/preflight.py). `ReadinessResult.state` belongs to a session observation; `PreflightResult.status` and `error.action` belong to connection testing. Capture and resource closure belong to `DeviceControl`.
 
 ### 1.1 Persisted Configuration (`DeviceProfile`)
+
 - An omitted ADB path uses the shared platform default and prefers Mower's bundled executable. Explicit custom paths and empty values remain selected. The [bundled ADB default decision](../../.agents/notes/implemented/bug-fix/2026-10-07-bundled-adb-default.md) records the configuration boundary.
 - Runtime package and endpoint observations belong to the session's profile copy. Startup, recovery and unrelated settings saves preserve the persisted user's selections, including when helper initialization fails.
 - MuMu idle shutdown disconnects the owned client's verified endpoint. A closed session or released client skips transport cleanup without substituting the saved endpoint or starting recovery.
@@ -99,6 +100,7 @@ The diagram selects current callable interfaces from [`application.py`](../../ar
 - [IPC Pair Cohesion](../../CODING_STANDARDS.md#ipc-pair-cohesion): IPC capture and touch backends operate as an indivisible pair.
 
 ### 1.2 Session Lifecycle (`DeviceSession`)
+
 - `DeviceControl.run(defer_cancel_close=True)` retains the current session after operation cancellation so its owner can perform bounded compensation before scope exit closes it. The selection performance test uses this option; ordinary runs retain immediate cancellation close. Shutdown and device closure still reject further operations.
 - [Failure Preserves Target Identity](../../CODING_STANDARDS.md#failure-preserves-target-identity): The session binds to a verified instance identity. If the target is absent, offline, or unresponsive, recovery attempts target that instance only, without silent fallback to other online devices on the host.
 - [Shared ADB Guard](../../CODING_STANDARDS.md#shared-adb-guard): ADB operations route through [`guard_adb`](../../arknights_mower/utils/device/adb_client/server.py), verifying socket server availability without issuing implicit `kill-server` commands.
@@ -106,6 +108,7 @@ The diagram selects current callable interfaces from [`application.py`](../../ar
 - The session reports one user-visible line per connection state change — the selected device, the instance launch, the ADB connect and the successful connection — and keeps attempt counters, budgets and observation snapshots in the debug log.
 
 ### 1.3 Bound Instance Start (`DeviceControl.start_bound`)
+
 - An explicit start request launches only the bound instance through its preset's own multi-instance manager and verifies the connection inside the session's single monotonic budget. It selects no other instance on the host.
 - `MANAGED_INSTANCE_PRESETS` names the presets whose manager can launch the bound instance (`windows.mumu12`, `windows.ldplayer9`, `windows.ldplayer14`, `windows.nox`, `macos.mumu_pro`, `linux.waydroid`). Every other preset reports `start_unsupported` and keeps the manual launch.
 - The request itself is the explicit launch consent: the manager can only launch the profile's own instance, and the endpoint it reports is verified before the profile is saved. The AVD, ReDroid and Genymotion routes keep their additional `confirmed_instance` token because their controllers start a target named in the request.
@@ -124,6 +127,7 @@ Selection page gestures use an endpoint callback on the selected input helper. T
 `DeviceControl.capture_once()` retains the session's effective screenshot backend, including standard ADB after DroidCast degradation, within the caller's input deadline. It performs no readiness recovery, helper rebuild or task-cancellation cleanup while touch remains held. The input boundary retains ownership until release; capture errors propagate through the existing gesture boundary.
 
 <a id="game-foreground-observation"></a>
+
 ### 1.5 Game Foreground Observation
 
 Normal `Recognizer.start()` acquisition checks the game foreground before collecting a new Capture Frame. A successful restore clears cached frames, matching results, scenes and scene-wait timers before capture. Supplied image bytes, cached frame reads and held-gesture frames do not initiate foreground recovery. Restoring an existing game keeps the current ADB foreground command; launching an absent game honors the configured launch mode. The foreground is checked again after restoration or launch, and an unconfirmed result prevents capture.
@@ -150,23 +154,24 @@ For a confirmed UI failure, application recovery releases its owned capture and 
 
 The subsystem integrates platform-specific emulators through deterministic discovery mechanisms:
 
-| Platform / Vendor | Discovery Mechanism | Identity Verification |
-| :--- | :--- | :--- |
-| **Windows MuMu 12** | Registry query + `MuMuManager.exe info -v all` | Index binding, canvas frame check |
-| **Windows LDPlayer 9 / 14** | Registry query + `ldconsole.exe list2` | Process PID cross-referenced with TCP listening port |
-| **Windows Nox** | `NoxConsole.exe list` + `.vbox` VM configuration | VM machine UUID, `topology_fingerprint` |
-| **Windows BlueStacks 5** | Registry query + `bluestacks.conf` | `bst.instance.<key>.status.adb_port` |
-| **macOS MuMu Pro** | Bundled `mumutool info all` lists instances; manual ADB serial remains available | Selected index and VM path fingerprint, current ADB port, standard preflight gate |
-| **macOS / Linux AVD** | `ANDROID_SDK_ROOT` + `emulator -list-avds` | AVD name, owned process lifecycle tracking |
-| **Linux Genymotion** | `gmtool version` + `gmtool --format json admin list` | Instance UUID, ADB serial binding |
-| **Linux ReDroid** | Local Docker socket (`/var/run/docker.sock`) | Immutable container ID, host port mapping |
-| **Linux Waydroid** | `waydroid status` session inspection | Session IP endpoint, port 5555 verification |
+| Platform / Vendor           | Discovery Mechanism                                                              | Identity Verification                                                             |
+| :-------------------------- | :------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------- |
+| **Windows MuMu 12**         | Registry query + `MuMuManager.exe info -v all`                                   | Index binding, canvas frame check                                                 |
+| **Windows LDPlayer 9 / 14** | Registry query + `ldconsole.exe list2`                                           | Process PID cross-referenced with TCP listening port                              |
+| **Windows Nox**             | `NoxConsole.exe list` + `.vbox` VM configuration                                 | VM machine UUID, `topology_fingerprint`                                           |
+| **Windows BlueStacks 5**    | Registry query + `bluestacks.conf`                                               | `bst.instance.<key>.status.adb_port`                                              |
+| **macOS MuMu Pro**          | Bundled `mumutool info all` lists instances; manual ADB serial remains available | Selected index and VM path fingerprint, current ADB port, standard preflight gate |
+| **macOS / Linux AVD**       | `ANDROID_SDK_ROOT` + `emulator -list-avds`                                       | AVD name, owned process lifecycle tracking                                        |
+| **Linux Genymotion**        | `gmtool version` + `gmtool --format json admin list`                             | Instance UUID, ADB serial binding                                                 |
+| **Linux ReDroid**           | Local Docker socket (`/var/run/docker.sock`)                                     | Immutable container ID, host port mapping                                         |
+| **Linux Waydroid**          | `waydroid status` session inspection                                             | Session IP endpoint, port 5555 verification                                       |
 
 Windows MuMu 12 discovery and IPC share the manager locations `shell/`, `nx_main/`, `temp/main`, `temp/shell` and the installation root. Root resolution recognizes `temp/<pair>` and `.backup/<pair>` before root-level directories, preserves explicit manager paths and deduplicates installation sources. Location resolution runs no manager commands. The [layout decision](../../.agents/notes/implemented/bug-fix/2026-10-07-mumu-runtime-layout-manager.md) defines these rules.
 
 ---
 
 ## 3. Subsystem Invariants
+
 - <a id="held-swipe-capture"></a>**Held Swipe Capture**: Selection page swipes acquire one Capture Frame during a shared 400 ms minimum endpoint hold, release the owned touch before reporting capture failure or cancellation, and never recover or replay input while held.
 - <a id="performance-observation-isolation"></a>**Performance Observation Isolation**: Connection testing reads resource information only from its verified ready target through bounded read-only commands; unavailable information preserves readiness, cancellation propagates, and resource readings never recommend or modify modes or timing settings.
 
@@ -224,6 +229,8 @@ Connection testing returns transient CPU and memory fields under `observations.p
 - Windows MuMu 12 discovery and selected-instance checks use the manager's reported ADB endpoint. When a running instance has no reported port, they query the same manager with `adb -v <index>` within the existing query deadline, then recheck its identity, state and reported port against the current inventory. An address also reported by another running instance is rejected. A confirmed instance without an address remains available for explicit selection; an incomplete discovery never selects it automatically.
 - A user can enter a manual address for the selected MuMu instance after acknowledging that port reuse can target a different device. The address is used only when the manager cannot provide one and is rejected if it conflicts with a reported address. It cannot be independently verified when the manager has no port. Selecting a MuMu instance records its creation time when available; a port failure on an existing binding carries that time into the manual draft. The multi-instance manager checks the selected instance before saving its address. Later startup and shutdown reject a changed or missing recorded creation time. When the manager does not report a creation time, or reuses one, replacement with the same index and name cannot be detected. The saved instance binding retains automatic startup and shutdown; shutdown checks manager identity without requiring an ADB port. Changing the binding clears the manual address. MuMu IPC is unavailable while that address is configured because its instance cannot be matched to the ADB target. The multi-instance manager exposes the address per instance, not as a shared setting.
 - Empty manual address fields are omitted when saving configuration, so released versions that reject unknown Device Profile fields can read profiles that never used them. Before returning to such a version after selecting a MuMu instance with a reported creation time or saving a manual address, remove `mumu_manual_serial` and `mumu_created_timestamp`, if present, from the `device` configuration; the older version cannot use those options.
+
+- A successful MuMu IPC first-frame check retains the verified creation time even when the preceding readiness query did not report one. The frame observation carries dimensions and creation time together; successful preflight observations carry the same identity. Runtime connection and bound startup pin it to the session copy and subsequent capture profile before returning success, without writing configuration. If helper initialization fails before a device handle exists, recovery of the same binding retains the session's verified time instead of replacing it with an empty persisted value; a changed binding, explicit creation time or manual address is rejected. An explicit new startup establishes a new observation. Later missing or changed creation times reject recovery before lifecycle commands. Reusing capture I/O clears the previous capture identity before another attempt.
 
 - <a id="mumu-pro-verified-selection"></a>**MuMu Pro Verified Selection**: MuMu Pro discovery reads bounded `mumutool info all` output and exposes each distinct instance for explicit selection. The selected Device Profile saves the instance index and a Topology Fingerprint of its VM path. Connection and recovery query that index again; a changed path, malformed output, or duplicate ADB port fails before any fallback. The current port is used only for the confirmed instance. Start and stop verify the index and saved fingerprint before one literal single-index `open` or `close` command. Validation and command execution share a deadline; uncertain commands are not replayed. Manual serial profiles cannot start or stop instances.
 - The [MuMu Pro instance selection decision](../../.agents/notes/implemented/feature/2026-09-30-mumu-pro-instance-selection.md) records output validation and multi-instance coverage.
@@ -314,13 +321,16 @@ The [Recoverable Device Cleanup decision](../../.agents/notes/implemented/bug-fi
 ## 5. Readiness Classification & Bounded Recovery
 
 ### 5.1 Readiness Classification
+
 The session classifies device health into deterministic verdicts via [`ReadinessResult`](../../arknights_mower/utils/device/session.py):
+
 - `absent`: Simulator process not running or executable missing.
 - `offline`: Process active but ADB daemon unresponsive.
 - `booting`: ADB connected but `sys.boot_completed != 1`.
 - `ready`: Device fully booted and canvas frame matches `(1080, 1920, 3)`.
 
 ### 5.2 Bounded Recovery Execution
+
 The default `manager_query_timeout` is ten seconds in new Device Profiles, legacy
 migration and the settings form. Explicit saved values survive unrelated edits
 and configuration round trips. The production MuMu 12 `info` query uses this
@@ -348,6 +358,7 @@ timeouts return an unconfirmed stop and never record successful shutdown. The
 records the rationale and focused verification.
 
 When a device becomes unresponsive or disconnected:
+
 1. `DeviceSession` evaluates the configurable [`RecoveryPolicy`](../../arknights_mower/utils/device/session.py).
 2. Attempts reconnection up to `recovery_attempts` within the monotonic budget `recovery_timeout`.
 3. Observes readiness for up to `recovery_local_wait` after a local reconnect, stopping the wait as soon as the target is ready.
@@ -359,6 +370,7 @@ When a device becomes unresponsive or disconnected:
 ## 6. Architectural References
 
 This subsystem implements architectural decisions detailed in the following records:
+
 - [Device Settings Save Scope and Start-and-Test Action](../../.agents/notes/implemented/feature/2026-09-28-device-settings-save-scope-and-start-and-test.md)
 - [MuMu Native Back Dispatch and Input Transport Attribution](../../.agents/notes/implemented/bug-fix/2026-09-28-mumu-native-back-dispatch.md)
 - [Device Configuration Compatibility & Session Architecture](../../.agents/notes/implemented/architecture/2026-09-26-device-configuration-and-session-architecture.md)

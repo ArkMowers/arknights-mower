@@ -161,6 +161,214 @@ def test_discovery_retains_creation_time_first_reported_by_recheck():
     assert instances[0]["mumu_created_timestamp"] == "111"
 
 
+def test_failed_capture_clears_previous_successful_identity():
+    io = ProductionPreflightIO()
+    selected = profile("manager")
+    original = selected.model_dump()
+    with (
+        patch(
+            "arknights_mower.utils.device.preflight_io.resolve_mumu_paths",
+            return_value=("root", "manager"),
+        ),
+        patch.object(
+            io,
+            "_run",
+            return_value=json.dumps(
+                {"0": entry(adb_port=16384, created_timestamp=111)}
+            ).encode(),
+        ) as run,
+        patch(
+            "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
+        ) as context,
+    ):
+        configure_mumu_capture(context.return_value)
+        io._capture_mumu(selected, "127.0.0.1:16384")
+        assert io.mumu_created_timestamp == "111"
+        run.return_value = json.dumps(
+            {"0": entry(adb_port=16384, created_timestamp=222)}
+        ).encode()
+        with pytest.raises(InstanceBindingError):
+            io._capture_mumu(
+                selected.model_copy(update={"mumu_created_timestamp": "111"}),
+                "127.0.0.1:16384",
+            )
+        assert io.mumu_created_timestamp == ""
+    assert selected.model_dump() == original
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"instance_id": "1"},
+        {"mumu_created_timestamp": "222"},
+        {"mumu_manual_serial": "127.0.0.1:16448"},
+    ],
+)
+def test_recovery_binding_rejects_changed_target_with_pinned_identity(changes):
+    selected = profile("manager")
+    session = DeviceSession(ADB(), Simulator(), clock=Clock())
+    session.bind(selected)
+    session.pin_mumu_creation_time(selected, "111")
+    with pytest.raises(SessionFailure) as failure:
+        session.bind(selected.model_copy(update=changes), preserve_identity=True)
+    assert failure.value.observation.code == "binding_changed"
+    assert session.profile.mumu_created_timestamp == "111"
+    assert session.profile.instance_id == "0"
+
+
+def test_explicit_new_binding_starts_a_new_identity_observation():
+    selected = profile("manager")
+    session = DeviceSession(ADB(), Simulator(), clock=Clock())
+    session.bind(selected)
+    session.pin_mumu_creation_time(selected, "111")
+    session.bind(selected)
+    assert session.profile.mumu_created_timestamp == ""
+    assert selected.mumu_created_timestamp == ""
+
+
+@pytest.mark.parametrize(
+    "path,operation,replacement_created",
+    [
+        (path, operation, created)
+        for path, operation in [
+            ("session", "observe"),
+            ("session", "restart"),
+            ("preflight", "observe"),
+            ("preflight", "restart"),
+            ("preflight", "recover"),
+            ("start_bound", "observe"),
+            ("start_bound", "restart"),
+        ]
+        for created in (222, None)
+    ]
+    + [("preflight", "recover", 111)],
+)
+@pytest.mark.parametrize("creation_source", ["primary", "recheck"])
+def test_successful_first_capture_keeps_its_first_observed_identity(
+    tmp_path, path, creation_source, operation, replacement_created
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    replacement = False
+    capture_queries = 0
+    calls = []
+
+    def run(argv, **kwargs):
+        nonlocal capture_queries
+        calls.append(argv[1:])
+        if argv[1] == "adb":
+            output = serial.encode()
+        elif argv[-1] == "all":
+            capture_queries += 1
+            if creation_source == "recheck" and capture_queries == 1:
+                data = entry(adb_port=0)
+            else:
+                data = entry(
+                    adb_port=16384,
+                    created_timestamp=replacement_created if replacement else 111,
+                )
+            output = json.dumps({"0": data}).encode()
+        else:
+            assert argv[1] == "info"
+            data = entry(adb_port=16384)
+            if replacement:
+                data["created_timestamp"] = replacement_created
+            output = json.dumps({"0": data}).encode()
+        return subprocess.CompletedProcess(argv, 0, output, b"")
+
+    selected = profile(manager).model_copy(
+        update={"screenshot_backend": "mumu_ipc", "touch_backend": "mumu_ipc"}
+    )
+    conf = Conf(device=selected.model_dump())
+    before = conf.model_dump()
+    capture_adb = ProductionSessionADB(run=run, monotonic=clock.monotonic)
+    adb.bind = capture_adb.bind
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    fake_io, io = PreflightIO(), ProductionPreflightIO()
+    fake_io.host, fake_io.boot = "windows", "1"
+    fake_io.installed.add(str(manager))
+    fake_io.paths.add("verified-adb")
+    fake_io.targets = [(serial, "device")]
+    fake_io.installed_packages = ["com.hypergryph.arknights"]
+    for name, value in PreflightIO.__dict__.items():
+        if callable(value) and not name.startswith("_") and name != "capture_frame":
+            setattr(io, name, getattr(fake_io, name))
+    with (
+        patch.object(ProductionPreflightIO, "host_platform", return_value="windows"),
+        patch(
+            "arknights_mower.utils.device.preflight_io.resolve_mumu_paths",
+            return_value=("root", str(manager)),
+        ),
+        patch.object(io, "_run", side_effect=lambda argv: run(argv, timeout=10).stdout),
+        patch(
+            "arknights_mower.utils.device.preflight_io.multiprocessing.get_context"
+        ) as context,
+    ):
+        configure_mumu_capture(context.return_value)
+        if path == "session":
+            session.bind(selected)
+            assert (
+                session.ensure_ready(frame_probe=capture_adb.frame_size).serial
+                == serial
+            )
+        else:
+            adapter = Adapter()
+            if operation == "recover":
+                open_verified = adapter.open_verified
+
+                def open_after_failure(configuration, result):
+                    if not replacement:
+                        raise ConnectionError("helper initialization failed")
+                    return open_verified(configuration, result)
+
+                adapter.open_verified = Mock(side_effect=open_after_failure)
+            control = DeviceControl(
+                lambda: conf, adapter, session=session, preflight=PreflightService(io)
+            )
+            result = (
+                control.start_bound(conf) if path == "start_bound" else control.start()
+            )
+            if operation == "recover":
+                assert not result.ok
+                assert control._device is None
+            else:
+                assert result.ok, result.error
+        assert session.profile.mumu_created_timestamp == "111"
+        assert capture_adb._profile.mumu_created_timestamp == "111"
+        replacement = True
+        if operation == "recover":
+            result = control.recover()
+            assert result.ok == (replacement_created == 111)
+            if not result.ok:
+                assert result.error.code == "binding_changed"
+            assert session.profile.mumu_created_timestamp == "111"
+            assert adapter.open_verified.call_count == (2 if result.ok else 1)
+        elif operation == "observe":
+            with pytest.raises(SessionFailure) as rejected:
+                session.ensure_ready(frame_probe=capture_adb.frame_size)
+        else:
+            failure = UIUnresponsiveError()
+            session.record_ui_failure(failure)
+            with pytest.raises(SessionFailure) as rejected:
+                session.restart(failure, deadline=session.begin_budget())
+            assert not failure.stop_requested
+            assert not failure.start_requested
+        if operation != "recover":
+            assert rejected.value.observation.code == "binding_changed"
+    assert conf.model_dump() == before
+    assert session.actions == 0
+    assert adb.actions == []
+    assert all(call[0] != "api" for call in calls)
+
+
 @pytest.mark.parametrize("missing_port", [{}, {"adb_port": 0}, {"adb_port": ""}])
 def test_discovery_and_session_query_the_selected_instance(missing_port):
     information = {"0": entry(**missing_port)}

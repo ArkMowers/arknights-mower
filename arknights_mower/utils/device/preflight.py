@@ -49,6 +49,12 @@ class PreflightIO(Protocol):
 
 
 @dataclass(frozen=True)
+class FrameObservation:
+    dimensions: tuple[int, int]
+    mumu_created_timestamp: str = ""
+
+
+@dataclass(frozen=True)
 class PreflightError:
     code: str
     message: str
@@ -407,6 +413,9 @@ class PreflightService:
             result.error = PreflightError(**detail)
             return result
         result.observations["frame"] = [frame.shape[1], frame.shape[0]]
+        created = getattr(self._io, "mumu_created_timestamp", "")
+        if created and capture_profile.preset_id == "windows.mumu12":
+            result.observations["mumu_created_timestamp"] = created
         result.ok, result.status = True, "ready"
         return result
 

@@ -11,6 +11,7 @@ from arknights_mower.tests.device_session_tests import ADB, Clock
 from arknights_mower.utils.config.device_profile import DeviceProfile
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
+from arknights_mower.utils.device.preflight import FrameObservation
 from arknights_mower.utils.device.session import (
     DeviceSession,
     InstanceObservation,
@@ -327,7 +328,10 @@ class DisplayProbeTests(unittest.TestCase):
             "capture_adb_frame",
             return_value=np.zeros((1080, 1920, 3), dtype=np.uint8),
         ):
-            self.assertEqual(adapter.frame_size("chosen-adb", "USB-A", 5), (1920, 1080))
+            self.assertEqual(
+                adapter.frame_size("chosen-adb", "USB-A", 5),
+                FrameObservation((1920, 1080)),
+            )
 
     def test_frame_probe_rejects_a_frame_that_is_not_landscape_1920_by_1080(self):
         from arknights_mower.utils.device import preflight_io
@@ -1118,7 +1122,8 @@ class SessionCommandChannelTests(unittest.TestCase):
         ):
             configure_mumu_capture(context.return_value)
             self.assertEqual(
-                adapter.frame_size("chosen-adb", "127.0.0.1:16384", 5), (1920, 1080)
+                adapter.frame_size("chosen-adb", "127.0.0.1:16384", 5),
+                FrameObservation((1920, 1080)),
             )
 
     def test_frame_probe_keeps_manager_errors_and_contains_adb_errors(self):
