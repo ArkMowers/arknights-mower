@@ -18966,9 +18966,11 @@ class BaseSchedulerSolver(
         self._confirm_facility_arrangement_log(
             room, targets, observed, unconfirmed=unconfirmed
         )
-        if getattr(
-            self.op_data, "idle_dorm_release_suspended", False
-        ) and room in getattr(self.task, "idle_dorm_search_names", {}):
+        if (
+            room.startswith("dorm")
+            and getattr(self.op_data, "idle_dorm_release_suspended", False)
+            and room in getattr(self.task, "idle_dorm_search_names", {})
+        ):
             # 本次保留或补位自己的读回属于暂停收尾，不能用来立即解除暂停。
             self.op_data.idle_dorm_release_observations = dict(
                 self.op_data.room_observations

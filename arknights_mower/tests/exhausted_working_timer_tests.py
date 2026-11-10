@@ -41,6 +41,7 @@ def room_reader():
             plan={room: [SimpleNamespace(agent="Free")]},
             true_exhaust_room={"central"},
             dorm=[],
+            room_observations={},
             get_dorm_by_name=MagicMock(return_value=(None, None)),
             config=SimpleNamespace(free_room=False),
         )
