@@ -41,6 +41,56 @@ function value(result, label) {
 }
 
 describe('基建组合效率估算', () => {
+  it('未拥有满练开关独立于已拥有练度，不修改持有快照', () => {
+    const names = ['能天使', '蕾缪安']
+    const items = roster(names, { 能天使: 0 })
+    items[1].ownership = 'unowned'
+    items[1].childSkill = []
+    const previous = JSON.stringify(items)
+    expect(estimateGroup(group('exusiai'), names, {}, items).valid).toBe(false)
+    const result = estimateGroup(group('exusiai'), names, {}, items, false, true)
+    expect(result.valid).toBe(true)
+    expect(value(result, '贸易订单效率')).toBe(65)
+    expect(result.details).toContain('未拥有干员按满练度计算：蕾缪安')
+    expect(JSON.stringify(items)).toBe(previous)
+    expect(estimateGroup(group('exusiai'), names, {}, [], false, true).valid).toBe(false)
+    expect(estimateGroup(group('exusiai'), names, {}, items).valid).toBe(false)
+  })
+  it('未拥有的孑按满练计算，手选阶段优先，已拥有孑仍跟随森空岛', () => {
+    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
+    const items = roster(names)
+    items[0].ownership = 'unowned'
+    items[0].childSkill = []
+    const result = estimateGroup(group('karlan'), names, {}, items, false, true)
+    expect(result.valid).toBe(true)
+    expect(value(result, '贸易订单效率')).toBe(129)
+    expect(result.details).toContain('孑精一及以上，使用未拥有满练度假设')
+    const manual = estimateGroup(
+      group('karlan'),
+      names,
+      { jayeStage: '未精英化' },
+      items,
+      false,
+      true
+    )
+    expect(value(manual, '贸易订单效率')).toBe(145)
+    expect(manual.details).toContain('孑未精英化，使用手动选择')
+    expect(manual.details.some((line) => line.includes('未拥有干员按满练度计算：孑'))).toBe(false)
+    const owned = estimateGroup(group('karlan'), names, {}, roster(names, { 孑: 0 }), false, true)
+    expect(value(owned, '贸易订单效率')).toBe(145)
+    expect(owned.details).toContain('孑未精英化，使用森空岛练度')
+  })
+  it('未拥有的挂件开启假设后提供阵营人数，不叠加自身技能', () => {
+    const names = ['结城理', '埃癸斯', '岳羽由加莉', '虎狼丸']
+    const items = roster(names)
+    items[2].ownership = 'unowned'
+    items[2].childSkill = []
+    expect(value(estimateGroup(group('makoto'), names, {}, items), 'S.E.E.S.在岗人数')).toBe(3)
+    const result = estimateGroup(group('makoto'), names, {}, items, false, true)
+    expect(value(result, 'S.E.E.S.在岗人数')).toBe(4)
+    expect(value(result, '通用制造生产力')).toBe(40)
+    expect(value(result, '无人机充能速度')).toBe(20)
+  })
   it('默认20人宿舍，挂件默认勾选，其余干员不选，不修改预置', () => {
     const previous = JSON.stringify(builtinGroups)
     for (const item of builtinGroups) {
@@ -204,7 +254,9 @@ describe('基建组合效率估算', () => {
   })
   it.each(
     ['missing', 'unknown', 'unowned', 'incomplete'].flatMap((state) =>
-      [false, true].map((maxLevel) => [state, maxLevel])
+      [false, true]
+        .filter((maxLevel) => state !== 'unowned' || !maxLevel)
+        .map((maxLevel) => [state, maxLevel])
     )
   )('孑练度%s时提示手选阶段，满练度模式%s', (state, maxLevel) => {
     const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
@@ -237,6 +289,16 @@ describe('基建组合效率估算', () => {
     expect(value(promoted, '贸易订单效率')).toBe(129)
     expect(promoted.details).toContain('孑精一及以上，使用手动选择')
     expect(JSON.stringify(items)).toBe(before)
+  })
+  it('全员满练模式也将确认未拥有的孑按精一及以上计算', () => {
+    const names = ['孑', '银灰', '琳琅诗怀雅', '灵知']
+    const items = roster(names)
+    items[0].ownership = 'unowned'
+    items[0].childSkill = []
+    const result = estimateGroup(group('karlan'), names, {}, items, true)
+    expect(result.valid).toBe(true)
+    expect(value(result, '贸易订单效率')).toBe(129)
+    expect(result.details).toContain('孑精一及以上，使用未拥有满练度假设')
   })
   it('森蚺只能选一处设施，制造站模式不同时提供中枢的虚拟发电站', () => {
     const names = ['森蚺', '温蒂', '清流', '承曦格雷伊', 'Lancet-2']

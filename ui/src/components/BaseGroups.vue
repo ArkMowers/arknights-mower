@@ -21,6 +21,7 @@ const search = ref('')
 const facility = ref(null)
 const ownership = ref(null)
 const maxLevel = ref(false)
+const unownedMaxLevel = ref(false)
 const selections = ref(
   Object.fromEntries(groups.map((group) => [group.id, defaultEstimateSelection(group)]))
 )
@@ -49,7 +50,8 @@ const estimates = computed(() =>
         selections.value[group.id],
         conditions.value[group.id],
         props.items,
-        maxLevel.value
+        maxLevel.value,
+        unownedMaxLevel.value
       )
     ])
   )
@@ -108,6 +110,9 @@ function ownershipSummary(group) {
         基建组合 <span>{{ visibleGroups.length }}</span>
       </h2>
       <label class="estimate-mode"><input v-model="maxLevel" type="checkbox" />按满练度计算</label>
+      <label class="estimate-mode"
+        ><input v-model="unownedMaxLevel" type="checkbox" />未拥有干员按满练度计算</label
+      >
     </div>
     <div class="group-filters">
       <n-input

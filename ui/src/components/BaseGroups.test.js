@@ -17,6 +17,60 @@ function setup(items = [], baseConditions = {}) {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('基建组合只读浏览', () => {
+  it('未拥有干员自由勾选，独立满练开关更新效率且保留实际练度和选择', async () => {
+    const { page, scope, props } = setup([
+      {
+        avatar: '能天使',
+        ownership: 'owned',
+        childSkill: [{ skill_key: 0, skill_level: 0, status: 'active' }]
+      },
+      { avatar: '蕾缪安', ownership: 'unowned', childSkill: [] }
+    ])
+    const group = page.groups.find((group) => group.id === 'builtin-exusiai')
+    const previous = JSON.stringify(props.items)
+    expect(page.unownedMaxLevel.value).toBe(false)
+    for (const name of group.core) page.toggleMember(group, name)
+    await nextTick()
+    expect(page.estimates.value[group.id].valid).toBe(false)
+    page.unownedMaxLevel.value = true
+    await nextTick()
+    expect(page.maxLevel.value).toBe(false)
+    expect(page.estimates.value[group.id].metrics).toContainEqual({
+      label: '贸易订单效率',
+      value: 65,
+      unit: '%'
+    })
+    expect(page.ownershipSummary(group)).toBe('已拥有 1 / 2')
+    expect(JSON.stringify(props.items)).toBe(previous)
+    page.unownedMaxLevel.value = false
+    await nextTick()
+    expect(page.estimates.value[group.id].valid).toBe(false)
+    expect(page.selections.value[group.id]).toEqual(group.core)
+    scope.stop()
+  })
+  it('核心、备选、挂件都可反复勾选，筛选与开关保留选择', async () => {
+    const { page, scope } = setup()
+    const group = page.groups.find((group) => group.id === 'builtin-automation')
+    page.unownedMaxLevel.value = true
+    for (const section of page.memberSections(group)) {
+      for (const member of section.members) {
+        const selected = page.selections.value[group.id].includes(member.name)
+        page.toggleMember(group, member.name)
+        expect(page.selections.value[group.id].includes(member.name)).toBe(!selected)
+        page.toggleMember(group, member.name)
+        expect(page.selections.value[group.id].includes(member.name)).toBe(selected)
+      }
+    }
+    page.toggleMember(group, group.core[0])
+    const selected = [...page.selections.value[group.id]]
+    page.search.value = '能天使'
+    page.unownedMaxLevel.value = false
+    await nextTick()
+    page.search.value = ''
+    await nextTick()
+    expect(page.selections.value[group.id]).toEqual(selected)
+    scope.stop()
+  })
   it('设施快照自动填充，后续同步立即更新，跑单干员不参与勾选', async () => {
     const { page, scope, props } = setup([], { power: 3, factories: 4, recruits: 0, dormLevel: 2 })
     const smoke = page.groups.find((group) => group.title === '人间烟火')
@@ -46,6 +100,7 @@ describe('基建组合只读浏览', () => {
     page.toggleMember(page.groups[1], '桑葚')
     page.conditions.value[page.groups[1].id].dorm = 10
     page.maxLevel.value = true
+    page.unownedMaxLevel.value = true
     await nextTick()
     expect(page.visibleGroups.value).toHaveLength(3)
     expect(page.visibleGroups.value.every((group) => group.facility === '金属')).toBe(true)

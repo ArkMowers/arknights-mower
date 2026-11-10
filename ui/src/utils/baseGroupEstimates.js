@@ -108,7 +108,14 @@ export function defaultEstimateSelection(group) {
   return [...group.accessory]
 }
 
-export function estimateGroup(group, selection, input = {}, items = [], maxLevel = false) {
+export function estimateGroup(
+  group,
+  selection,
+  input = {},
+  items = [],
+  maxLevel = false,
+  unownedMaxLevel = false
+) {
   const fields = estimateFields(group)
   const options = Object.fromEntries(
     fields.map((field) => {
@@ -133,6 +140,8 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
   const selected = new Set(selection.filter((name) => members.includes(name)))
   const active = new Set([...selected].filter((name) => !group.accessory.includes(name)))
   const roster = new Map(items.map((item) => [item.avatar, item]))
+  const assumeUnowned = (name) =>
+    (maxLevel || unownedMaxLevel) && roster.get(name)?.ownership === 'unowned'
   const jayeRoster = roster.get('孑')
   const syncedJayeSkills =
     jayeRoster?.ownership === 'owned' &&
@@ -144,11 +153,13 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
   const skillsFor = (name) =>
     name === '孑'
       ? followJayeProgression
-        ? syncedJayeSkills
+        ? assumeUnowned(name)
+          ? maxSkills.get(name)
+          : syncedJayeSkills
         : maxSkills
             .get(name)
             .filter((entry) => entry.skill_key === 0 || options.jayeStage === '精一及以上')
-      : maxLevel
+      : maxLevel || assumeUnowned(name)
         ? maxSkills.get(name)
         : roster.get(name)?.childSkill
   const result = {
@@ -161,7 +172,7 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
   if (!result.hasSelection) return result
   for (const name of active) {
     const item = roster.get(name)
-    if (item?.ownership === 'unowned' && !maxLevel && name !== '孑') {
+    if (item?.ownership === 'unowned' && !assumeUnowned(name) && name !== '孑') {
       result.warnings.push(`${name}未拥有，无法按实际练度计算`)
     } else if (
       !skillsFor(name)?.length ||
@@ -182,9 +193,14 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
   const has = (name, key = 0) => Boolean(skill(name, key))
   const tier = (name, key = 0) => skill(name, key)?.skill_level ?? -1
   const on = (name) => active.has(name)
-  // Accessories supply roster conditions only; known unowned accessories do not count.
+  const assumedNames = [...selected].filter(
+    (name) => assumeUnowned(name) && (name !== '孑' || followJayeProgression)
+  )
+  if (assumedNames.length) result.details.push(`未拥有干员按满练度计算：${assumedNames.join('、')}`)
+  // Accessories supply roster conditions only, including explicit hypothetical ownership.
   const present = (name) =>
-    selected.has(name) && (maxLevel || roster.get(name)?.ownership !== 'unowned')
+    selected.has(name) &&
+    (maxLevel || assumeUnowned(name) || roster.get(name)?.ownership !== 'unowned')
   const count = (names, predicate = on) => names.filter(predicate).length
   const familyCount = (names, prefix) =>
     names
@@ -500,10 +516,14 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       const jaye = has('孑') ? cap * 4 : 0
       metric('订单上限', cap, '笔')
       tradeMetric(peers + jaye)
-      if (has('孑'))
-        detail(
-          `孑${has('孑', 1) ? '精一及以上' : '未精英化'}，使用${followJayeProgression ? '森空岛练度' : '手动选择'}`
-        )
+      if (has('孑')) {
+        const source = followJayeProgression
+          ? assumeUnowned('孑')
+            ? '未拥有满练度假设'
+            : '森空岛练度'
+          : '手动选择'
+        detail(`孑${has('孑', 1) ? '精一及以上' : '未精英化'}，使用${source}`)
+      }
       detail(`其他干员 ${peers}% + 孑 ${jaye}%，按空单状态估算`)
       detail(`订单上限增加${positiveCap}，锏减少${negativeCap}，孑减少${reduction}，上限至少1`)
       if (has('琳琅诗怀雅', 1) || has('锏', 1))
