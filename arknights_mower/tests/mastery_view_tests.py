@@ -1,7 +1,10 @@
+import json
 import sys
 import types
 import unittest
 from datetime import datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -265,6 +268,131 @@ class TestMasteryPlanView(unittest.TestCase):
             [(c.args[1], c.args[3]) for c in add.call_args_list],
             list(forms.items()),
         )
+
+    @patch(
+        "arknights_mower.utils.mastery_recommendation.get_mastery_requirement_error",
+        return_value=None,
+    )
+    @patch("arknights_mower.views.mastery._add_or_reuse_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_bundled_amiya_forms_pass_plan_validation(
+        self, get_skill, add, requirement
+    ):
+        resource = Path(__file__).resolve().parents[1] / "data/skill_data.json"
+        get_skill.return_value = json.loads(resource.read_text(encoding="utf-8"))
+        forms = {
+            "char_002_amiya": ["战术咏唱·γ型", "精神爆发", "奇美拉"],
+            "char_1001_amiya2": ["影霄·奔夜", "影霄·绝影"],
+            "char_1037_amiya3": ["哀恸共情", "慈悲愿景"],
+        }
+        add.return_value = ({"status": "existing"}, None, False)
+        response = self.client.post(
+            "/mastery-plan",
+            json={
+                "planning": True,
+                "items": [
+                    {"char_id": cid, "name": "阿米娅", "skill_index": index}
+                    for cid, skills in forms.items()
+                    for index in range(len(skills))
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [result["status"] for result in response.get_json()["results"]],
+            ["existing"] * 7,
+        )
+        self.assertEqual(
+            [(call.args[1], call.args[2], call.args[3]) for call in add.call_args_list],
+            [
+                (cid, index, skill)
+                for cid, skills in forms.items()
+                for index, skill in enumerate(skills)
+            ],
+        )
+
+    def _assert_legacy_amiya_plans_use_caster(self, *, flat):
+        from arknights_mower.utils import mastery_db
+
+        resource = Path(__file__).resolve().parents[1] / "data/skill_data.json"
+        data = json.loads(resource.read_text(encoding="utf-8"))
+        roster = {
+            cid: {
+                "id": cid,
+                "evolvePhase": 2,
+                "mainSkillLevel": 7,
+                "skills": [{"level": 0} for _ in range(count)],
+            }
+            for cid, count in (
+                ("char_002_amiya", 3),
+                ("char_1001_amiya2", 2),
+                ("char_1037_amiya3", 2),
+            )
+        }
+        self.client.application.token = "current-token"
+        connect = mastery_db._conn
+        for has_box in (False, True):
+            with self.subTest(has_box=has_box), TemporaryDirectory() as directory:
+                db_path = str(Path(directory) / "mastery.db")
+                with (
+                    patch.object(
+                        mastery_db, "_conn", lambda path=None: connect(db_path)
+                    ),
+                    patch(
+                        "arknights_mower.views.mastery.get_skill_data",
+                        return_value=data,
+                    ),
+                    patch(
+                        "arknights_mower.utils.mastery_recommendation.get_skill_data",
+                        return_value=data,
+                    ),
+                    patch(
+                        "arknights_mower.utils.mastery_recommendation.get_cultivate_characters",
+                        return_value=roster if has_box else None,
+                    ),
+                    patch(
+                        "arknights_mower.views.mastery._dispatch_new_plans_immediately"
+                    ),
+                    patch(
+                        "arknights_mower.views.mastery.refresh_workshop_after_plan_change"
+                    ),
+                ):
+                    statuses = []
+                    for index in range(3):
+                        body = (
+                            {"阿米娅": index}
+                            if flat
+                            else {
+                                "planning": True,
+                                "items": [{"name": "阿米娅", "skill_index": index}],
+                            }
+                        )
+                        response = self.client.post(
+                            "/mastery-plan",
+                            json=body,
+                            headers={"token": "current-token"},
+                        )
+                        self.assertEqual(response.status_code, 200)
+                        statuses.append(response.get_json()["results"][0]["status"])
+                    self.assertEqual(statuses, ["added"] * 3)
+                    plans = mastery_db.get_all_plans()
+                    self.assertEqual(
+                        [
+                            (p["char_id"], p["skill_index"], p["skill_name"])
+                            for p in plans
+                        ],
+                        [
+                            ("char_002_amiya", 0, "一技能·战术咏唱·γ型"),
+                            ("char_002_amiya", 1, "二技能·精神爆发"),
+                            ("char_002_amiya", 2, "三技能·奇美拉"),
+                        ],
+                    )
+
+    def test_legacy_name_only_items_keep_caster_amiya(self):
+        self._assert_legacy_amiya_plans_use_caster(flat=False)
+
+    def test_legacy_flat_request_keeps_caster_amiya(self):
+        self._assert_legacy_amiya_plans_use_caster(flat=True)
 
     @patch("arknights_mower.views.mastery._add_or_reuse_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")

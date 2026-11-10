@@ -980,9 +980,8 @@ class Arknights数据处理器:
         # Amiya's Guard and Medic forms live in char_patch_table.patchChars,
         # not character_table. Keep their char_ids so each form retains its
         # own skill indices and mastery materials.
-        for char_id, char_info in (
-            self.干员表 | self.干员形态表.get("patchChars", {})
-        ).items():
+        all_characters = self.干员表 | self.干员形态表.get("patchChars", {})
+        for char_id, char_info in all_characters.items():
             # Summons and rogue-only operators cannot enter training-room
             # mastery even when the game resources include skill definitions.
             if not char_id.startswith("char_") or char_id in UNTRAINABLE_CHAR_IDS:
@@ -1096,14 +1095,14 @@ class Arknights数据处理器:
             "characters": characters,
             "items": items,
             "composite": composite,
-            "training": compile_training_data(self.干员表, self.基建表),
+            "training": compile_training_data(all_characters, self.基建表),
             "workshop": compile_workshop_data(self.干员表, self.基建表),
         }
 
         from arknights_mower.utils.growth_data import compile_growth_data
 
         output["growth"] = compile_growth_data(
-            self.干员表 | self.干员形态表.get("patchChars", {}),
+            all_characters,
             self.加载json("./ArknightsGameResource/gamedata/excel/uniequip_table.json"),
             self.游戏变量,
             self.干员形态表.get("infos", {}),

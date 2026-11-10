@@ -78,10 +78,9 @@ describe('阿米娅专精升变提示', () => {
     page.plan.value.char_1001_amiya2_0 = true
     await nextTick()
     expect(page.crossFormWarning.value).toContain('术师、近卫')
-    expect(page.crossFormWarning.value).toContain('Mower 不会自动切换升变')
-    expect(page.crossFormWarning.value).toContain('在轮到对应形态训练前及时在游戏内手动切换升变')
-    expect(page.crossFormWarning.value).toContain('后续仍会进房检查')
-    expect(page.crossFormWarning.value).not.toContain('关闭')
+    expect(page.crossFormWarning.value).toBe(
+      '已选择阿米娅的术师、近卫形态专精，请在训练前确认当前形态与计划一致。'
+    )
     expect(state.feedback.warning).toHaveBeenCalledWith(page.crossFormWarning.value, {
       duration: 10000
     })

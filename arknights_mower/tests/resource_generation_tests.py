@@ -10,6 +10,61 @@ import pytest
 from auto_get_res_new import Arknights数据处理器
 
 
+def test_mastery_generation_includes_patch_forms_in_training_metadata(
+    tmp_path, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
+    processor = Arknights数据处理器.__new__(Arknights数据处理器)
+    forms = {
+        "char_002_amiya": ("CASTER", "corecaster", "精神爆发"),
+        "char_1001_amiya2": ("WARRIOR", "artsfghter", "影霄·绝影"),
+        "char_1037_amiya3": ("MEDIC", "incantationmedic", "哀恸共情"),
+    }
+    characters = {
+        cid: {
+            "name": "阿米娅",
+            "profession": profession,
+            "subProfessionId": branch,
+            "phases": [],
+            "skills": [
+                {
+                    "skillId": cid,
+                    "levelUpCostCond": [{"levelUpCost": [], "lvlUpTime": 28800}],
+                }
+            ],
+        }
+        for cid, (profession, branch, _) in forms.items()
+    }
+    processor.干员表 = {"char_002_amiya": characters.pop("char_002_amiya")}
+    processor.干员形态表 = {"patchChars": characters}
+    processor.基建表 = {"buffs": {}, "chars": {}}
+    processor.物品表 = {"items": {}}
+    processor.技能表 = {
+        cid: {"levels": [{"name": skill}]} for cid, (_, _, skill) in forms.items()
+    }
+    processor.游戏变量 = {
+        "characterExpMap": [],
+        "characterUpgradeCostMap": [],
+        "evolveGoldCost": [],
+    }
+    monkeypatch.setattr(processor, "加载json", lambda _: {})
+
+    processor.提取专精数据()
+
+    data = json.loads((tmp_path / "arknights_mower/data/skill_data.json").read_text())
+    for cid, (profession, branch, skill) in forms.items():
+        assert data["characters"][cid]["skills"][0]["name"] == skill
+        assert data["training"]["operators"][cid] == {
+            "name": "阿米娅",
+            "profession": profession,
+            "subProfessionId": branch,
+            "groupId": None,
+            "nationId": None,
+            "teamId": None,
+            "groups": [],
+        }
+
+
 @pytest.mark.parametrize(
     ("room", "expected"),
     [("RECYCLE", "回收站"), ("TRAINING", "训练室"), ("FUTURE_ROOM", "FUTURE_ROOM")],
