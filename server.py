@@ -2296,7 +2296,7 @@ def _start_mower(
             if recovery_state is not None
             else ({} if start_type == "2" else (load_state() or {}))
         )
-        if start_type == "1":
+        if start_type == "1" and saved_state:
             saved_state["tasks"] = []
         elif start_type == "3":
             from arknights_mower.utils.scheduler_task import replan_update_tasks
