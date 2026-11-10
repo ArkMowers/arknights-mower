@@ -62,7 +62,7 @@ def scan(monkeypatch, tmp_path):
         entries=0,
         unstable_at=None,
         empty_tabs=set(),
-        quantities={"consume": ("应急理智顶液", 3), "normal": ("龙门币", 100000000)},
+        quantities={"consume": ("应急理智顶液", 3), "normal": ("合成玉", 100000000)},
     )
     solver = object.__new__(module.depotREC)
     solver.仓库输出 = path
@@ -216,7 +216,7 @@ def restarting_scan(scan, monkeypatch):
         state.scene = scene.LOGIN_START
         state.quantities = {
             "consume": ("应急理智顶液", 1),
-            "normal": ("龙门币", 50),
+            "normal": ("合成玉", 50),
         }
 
     scan.solver.back_to_index = Mock(side_effect=navigate_home)
@@ -254,7 +254,7 @@ def test_game_restart_completes_login_and_rescans_both_categories_once(
     with scan.path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream))
     assert len(rows) == 3
-    assert json.loads(rows[-1][1]) == {"应急理智顶液": 1, "龙门币": 50}
+    assert json.loads(rows[-1][1]) == {"应急理智顶液": 1, "合成玉": 50}
     completed_at = int(scan.clock.now().timestamp())
     assert int(rows[-1][0]) == completed_at
     scan.merge.assert_called_once_with(记录快照时刻=completed_at)
@@ -399,7 +399,7 @@ def test_graph_restart_and_scene_wait_share_one_restart_budget(
         with scan.path.open(encoding="utf-8", newline="") as stream:
             rows = list(csv.reader(stream))
         assert len(rows) == 3
-        assert json.loads(rows[-1][1]) == {"应急理智顶液": 1, "龙门币": 50}
+        assert json.loads(rows[-1][1]) == {"应急理智顶液": 1, "合成玉": 50}
         assert [call.args[2] for call in scan.solver.匹配物品一次.call_args_list] == [
             "consume",
             "normal",
@@ -554,14 +554,14 @@ def test_success_commits_both_categories_once_with_actual_completion_time(scan, 
     assert observation.log_inventory == {
         "items": [
             {"name": "应急理智顶液", "count": 3},
-            {"name": "龙门币", "count": 100000000},
+            {"name": "合成玉", "count": 100000000},
         ]
     }
 
     with scan.path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream))
     assert len(rows) == 3
-    assert json.loads(rows[-1][1]) == {"应急理智顶液": 3, "龙门币": 100000000}
+    assert json.loads(rows[-1][1]) == {"应急理智顶液": 3, "合成玉": 100000000}
     completed_at = int(scan.clock.now().timestamp())
     assert completed_at > started_at
     assert int(rows[-1][0]) == completed_at
@@ -656,7 +656,7 @@ def test_explicitly_empty_category_is_accepted_without_recognizing_items(scan):
     with scan.path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream))
     assert len(rows) == 3
-    assert json.loads(rows[-1][1]) == {"龙门币": 100000000}
+    assert json.loads(rows[-1][1]) == {"合成玉": 100000000}
     scan.solver.匹配物品一次.assert_called_once_with(None, None, "normal")
     assert result is True
 
@@ -678,14 +678,14 @@ def test_both_explicitly_empty_categories_are_valid_observations(scan):
 def test_reusing_solver_does_not_accumulate_the_previous_scan(scan):
     assert scan.solver.run() is True
     scan.state.tab = scan.state.entries = 0
-    scan.state.quantities = {"consume": ("应急理智顶液", 1), "normal": ("龙门币", 50)}
+    scan.state.quantities = {"consume": ("应急理智顶液", 1), "normal": ("合成玉", 50)}
 
     result = scan.solver.run()
 
     with scan.path.open(encoding="utf-8", newline="") as stream:
         rows = list(csv.reader(stream))
     assert len(rows) == 4
-    assert json.loads(rows[-1][1]) == {"应急理智顶液": 1, "龙门币": 50}
+    assert json.loads(rows[-1][1]) == {"应急理智顶液": 1, "合成玉": 50}
     assert result is True
     assert scan.merge.call_count == scan.cleanup.call_count == 2
 
@@ -696,7 +696,7 @@ def test_nonempty_categories_with_no_confirmed_quantity_do_not_write_empty_succe
     module, solver = scheduler.module, scheduler.solver
     scan.state.quantities = {
         "consume": ("应急理智顶液", None),
-        "normal": ("龙门币", None),
+        "normal": ("合成玉", None),
     }
     inventory_sync = Mock()
     inventory_sync.start.return_value = True
@@ -716,7 +716,7 @@ def test_nonempty_categories_with_no_confirmed_quantity_do_not_write_empty_succe
     ]
     assert [record.getMessage() for record in warnings] == [
         "仓库扫描: 无法识别 应急理智顶液 的数量，跳过",
-        "仓库扫描: 无法识别 龙门币 的数量，跳过",
+        "仓库扫描: 无法识别 合成玉 的数量，跳过",
         "仓库扫描: 未确认任何物品数量，本次扫描失败",
     ]
     assert all(
@@ -725,6 +725,23 @@ def test_nonempty_categories_with_no_confirmed_quantity_do_not_write_empty_succe
         for record in warnings
     )
     assert caplog.records.index(warnings[-1]) < caplog.records.index(terminal)
+
+
+def test_only_skland_items_need_no_extra_quantity_scan(scan):
+    scan.state.empty_tabs = {1}
+    scan.state.quantities["normal"] = ("龙门币", None)
+    assert scan.solver.run() is True
+    assert scan.solver.结果字典 == {}
+    scan.merge.assert_called_once()
+
+
+def test_skland_items_do_not_hide_failed_scan_only_quantities(scan):
+    scan.state.quantities = {
+        "consume": ("应急理智顶液", None),
+        "normal": ("龙门币", None),
+    }
+    assert scan.solver.run() is False
+    assert_preserved(scan)
 
 
 def test_category_recognition_uses_the_frame_that_passed_depot_confirmation(scan):

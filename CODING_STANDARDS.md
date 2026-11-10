@@ -1,6 +1,7 @@
 # Coding Standards & Review Contracts
 
 <a id="1-core-invariants"></a>
+
 ## 1. Core Contracts
 
 ### Transient vs Persisted Isolation
@@ -27,15 +28,15 @@ Socket-level protocol negotiation must verify shared ADB server state before run
 
 Changes affecting scheduling, device control or configuration assess domain-concept names, meanings, boundaries and relationships. Changed concepts require synchronized definitions in `CONTEXT.md` and `CONTEXT.zh.md` after [explicit glossary approval](AGENTS.md#4-global-execution-constraints); unchanged concepts complete this check without glossary edits. Behavioral rules and implementation contracts follow the [documentation routing rules](.agents/skills/mower-doc/references/doc-hierarchy.md#routing-rules).
 
-
 <a id="2-subsystem-invariants"></a>
+
 ## 2. Subsystem Contracts
 
 Backup transitions follow [Backup Refresh Continuity](docs/subsystems/base-scheduler.md#backup-refresh-continuity), preserving applicable refresh rules until the physical arrangement completes.
 
 MAA updates follow **MirrorChyan No Update** in the [MAA integration description](docs/subsystems/maa-integration.md#mirrorchyan-no-update), preserving the current installation and loaded core when no newer release is available.
 
-- **[INV-REC-07] Complete LMD Amount**: Depot LMD quantities retain the complete recognized amount and its 万 or 亿 multiplier; malformed or low-confidence OCR returns an unconfirmed count without digit-template fallback. See the [depot recognition description](docs/subsystems/depot-recognition.md).
+- **[INV-REC-07] Complete LMD Amount**: Depot LMD quantities use the complete integer count returned by Skland; game-side quantity OCR is not used for LMD. See the [depot recognition description](docs/subsystems/depot-recognition.md).
 
 Business rules are defined once in their owning [subsystem contracts](docs/subsystems/), with behavior names, stable links and focused tests. Use the [task entry points](docs/architecture.md#2-find-the-implementation-and-verification) to locate the relevant source and verification boundary.
 
@@ -81,11 +82,11 @@ Python modules that emit application logs use `logger` from `arknights_mower.uti
 
 Assign a level to each log call by what the line records and who reads it. The rule follows the MAA Integration Subsystem convention in the [Arknights Mower System Architecture](docs/architecture.md): task-chain transitions and whitelisted milestones reach the runtime log; recurring telemetry stays at DEBUG.
 
-| Level | Records | Reader |
-| --- | --- | --- |
-| DEBUG | Recurring telemetry, repeated identical scenes, procedural steps, parameters and internal identifiers. | Developers, in runtime.log. |
-| INFO | Progress and outcomes the user cares about, in Chinese prose: a task starts or ends, the schedule really advances, the scene changes. | Users, in the WebUI live log; also runtime.log. |
-| WARNING | An abnormal situation that the program recovers from or skips, and that the user should notice. Identical repeats are rate-limited. A call site can opt into screenshot archiving. | Users and developers. |
-| ERROR | A task or flow failed. On a visual path the record archives screenshots before and after the failure. | Users and developers. |
+| Level   | Records                                                                                                                                                                            | Reader                                          |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| DEBUG   | Recurring telemetry, repeated identical scenes, procedural steps, parameters and internal identifiers.                                                                             | Developers, in runtime.log.                     |
+| INFO    | Progress and outcomes the user cares about, in Chinese prose: a task starts or ends, the schedule really advances, the scene changes.                                              | Users, in the WebUI live log; also runtime.log. |
+| WARNING | An abnormal situation that the program recovers from or skips, and that the user should notice. Identical repeats are rate-limited. A call site can opt into screenshot archiving. | Users and developers.                           |
+| ERROR   | A task or flow failed. On a visual path the record archives screenshots before and after the failure.                                                                              | Users and developers.                           |
 
 A message that only a developer can act on never logs above DEBUG, even when it is in Chinese. When the frontend needs the room or the operator list, the call passes them in `extra` (`log_room`, `log_agents`), delivered as `room` and `agents`, rather than leaving the frontend to parse them from `msg`. The message text may still name the operators and the room's display name for readers, for example `安排干员：但书 → B101`. The [Web Access subsystem description](docs/subsystems/web-access.md#live-log-records) defines the record fields.
