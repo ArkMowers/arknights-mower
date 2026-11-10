@@ -392,6 +392,7 @@ class Operators:
         self.displaced_dorms = []
         self.group_dorm = []
         self.idle_dorm_search_exhausted = False
+        self.idle_dorm_release_suspended = False
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
         self.recall_recovery_rates = {}
@@ -1068,7 +1069,8 @@ class Operators:
         )
 
     def stop_idle_dorm_search(self, now=None):
-        """最低候选实读也已满时关闭共享搜索；重复读数不延长等待。"""
+        """合格候选已满时暂停普通清退，下一轮心情检测取得新观测后恢复。"""
+        self.idle_dorm_release_suspended = True
         if not self.idle_dorm_search_exhausted:
             self.idle_dorm_search_exhausted = True
             self.idle_dorm_search_stopped_at = now or datetime.now()
@@ -1119,7 +1121,11 @@ class Operators:
         )
 
     def skip_idle_dorm_release(self, name):
-        return self.is_free_room_excluded(name) or self.is_full_dorm_fallback(name)
+        return (
+            getattr(self, "idle_dorm_release_suspended", False)
+            or self.is_free_room_excluded(name)
+            or self.is_full_dorm_fallback(name)
+        )
 
     def idle_rest_checked(self, name):
         """同批最低者也达到上限后，空闲期间不重复试住；不伪造缓存心情。"""

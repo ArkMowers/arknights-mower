@@ -931,6 +931,9 @@ def simulate(saved):
             base_scheduler.op_data.idle_dorm_search_exhausted = saved.get(
                 "idle_dorm_search_exhausted", False
             )
+            base_scheduler.op_data.idle_dorm_release_suspended = saved.get(
+                "idle_dorm_release_suspended", False
+            )
             base_scheduler.op_data.idle_dorm_search_stopped_at = saved.get(
                 "idle_dorm_search_stopped_at"
             )
