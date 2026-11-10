@@ -174,6 +174,8 @@ def main_runtime(monkeypatch, scheduler):
     runtime.op_data.group_recovery_return_time = {}
     runtime.op_data.urgent_recovery_supporters = {}
     runtime.op_data.idle_dorm_search_exhausted = False
+    runtime.op_data.idle_dorm_release_suspended = False
+    runtime.op_data.idle_dorm_release_observations = None
     runtime.op_data.idle_dorm_search_stopped_at = None
     runtime.op_data.party_time = None
     runtime.waiting_group_shifts = []

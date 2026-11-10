@@ -559,6 +559,9 @@ def selection_solver(monkeypatch, residents=None):
     solver.op_data.arrangement_group_transitions = lambda plan, **kwargs: (
         Operators.arrangement_group_transitions(solver.op_data, plan, **kwargs)
     )
+    solver._cancel_unchanged_dorm_selection = MagicMock(
+        side_effect=lambda: selected.__setitem__(slice(None), current)
+    )
     solver.last_room = ""
     solver.choose_error = set()
     solver.preserve_resting_crafters = MagicMock()

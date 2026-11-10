@@ -5362,8 +5362,26 @@ class BaseSchedulerSolver(
         ``return_plan=True`` 返回差异而不把纠错任务塞进队列。
         ``explicit_slots`` 保留预演中已应用的副表显式驻员，优先于普通纠错。
         """
-        if read_rooms and self._read_agent_mood() is False:
-            return {} if return_plan else None
+        if read_rooms:
+            observations = getattr(self.op_data, "idle_dorm_release_observations", None)
+            if (
+                getattr(self.op_data, "idle_dorm_release_suspended", False)
+                and observations is None
+            ):
+                # 旧运行状态没有暂停时的观测版本，从当前版本等待后续新观测。
+                observations = dict(self.op_data.room_observations)
+                self.op_data.idle_dorm_release_observations = observations
+            if self._read_agent_mood() is False:
+                return {} if return_plan else None
+            if getattr(self.op_data, "idle_dorm_release_suspended", False) and any(
+                revision != observations.get(room)
+                for room, revision in self.op_data.room_observations.items()
+            ):
+                self.op_data.idle_dorm_release_suspended = False
+                self.op_data.idle_dorm_release_observations = None
+                self.op_data.refresh_idle_dorm_search(
+                    reason="心情检测已取得新的房间观测"
+                )
         if self._emergency_frozen():
             return {} if return_plan else None
         plan = self.op_data.plan
@@ -16095,10 +16113,8 @@ class BaseSchedulerSolver(
         choose_error=0,
         dorm_mood_candidates=None,
         recovery_padding=False,
-    ) -> None:
-        """
-        :param order: ArrangeOrder, 选择干员时右上角的排序功能
-        """
+    ) -> bool | None:
+        """选择并校验目标名单；无需换人且已放弃暂选时返回 False。"""
         max_swipe = 50
         if getattr(getattr(self, "task", None), "emergency_staffing", False):
             fast_mode = False
@@ -16559,15 +16575,28 @@ class BaseSchedulerSolver(
                         and (estimate := estimates.get(visible[0])) is not None
                         and estimate[0] >= 24
                     ):
-                        free_list = [
-                            name
-                            for name in retainable
-                            if name in free_list and name not in agents
-                        ][:free_num]
+                        self.op_data.stop_idle_dorm_search()
+                        resolved = agents.copy()
+                        for index, name in enumerate(resolved):
+                            current = self.op_data.get_current_operator(room, index)
+                            if (
+                                name == "Free"
+                                and current is not None
+                                and current.name in retainable
+                                and current.name in free_list
+                                and current.name not in resolved
+                            ):
+                                resolved[index] = current.name
+                        if resolved == self.op_data.get_current_room(room, True):
+                            agents[:] = resolved
+                            self._cancel_unchanged_dorm_selection()
+                            pending = getattr(self.task, "idle_dorm_search_names", {})
+                            pending.setdefault(room, set()).update(retainable)
+                            self.task.idle_dorm_search_names = pending
+                            logger.info("候选均已满心情，放弃暂选并保留原驻员")
+                            return False
+                        # 同房仍需换人时直接选当前页的合格候选，不再找回原住者。
                         screening = False
-                        previous_page = None
-                        right_swipe = self.swipe_left(right_swipe, last_special_filter)
-                        logger.info("选人页合格候选已是满条，保留实读满心情住客")
                         continue
                 selected.extend(selected_name)
                 if mood_fallback or idle_fallback:
@@ -16728,6 +16757,23 @@ class BaseSchedulerSolver(
                 if peer != name and peer in self.op_data.operators
             }
             logger.info(f"按心情升序补入{name}；读满后停止连续试住，个人上限仍强制离宿")
+
+    def _cancel_unchanged_dorm_selection(self):
+        """放弃未提交的暂选，确认返回房间后再由调用者核对实际驻员。"""
+        for _ in range(8):
+            self.recog.update()
+            scene = self.scene()
+            if scene in (Scene.INFRA_DETAILS, Scene.CTRLCENTER_ASSISTANT):
+                return
+            if scene == Scene.INFRA_ARRANGE_ORDER:
+                self.back(interval=0.5)
+            elif scene == Scene.INFRA_ARRANGE_CONFIRM:
+                self.tap((self.recog.w // 3, self.recog.h - 10), interval=0.5)
+            elif scene in self.waiting_scene:
+                self.sleep(0.5)
+            else:
+                raise AgentSelectionNotReady("放弃宿舍暂选时未确认房间界面")
+        raise AgentSelectionNotReady("放弃宿舍暂选后未在有限次数内返回房间")
 
     def reset_room_time(self, room):
         for _operator in self.op_data.operators.keys():
@@ -18184,6 +18230,7 @@ class BaseSchedulerSolver(
         while not finished:
             confirmation_pending = False
             selection_attempted = False
+            selection_changed = True
             final_observation = None
             room_revision = getattr(self.op_data, "room_observations", {}).get(room, 0)
             try:
@@ -18683,29 +18730,25 @@ class BaseSchedulerSolver(
                             )
                             self.task.run_order_restore_pending = True
                         selection_attempted = True
-                        if recovery_ordered:
+                        selection_changed = (
                             self.choose_agent(
                                 plan[room],
                                 room,
                                 fast_mode=choose_error <= 0,
-                                preserve_dorm_occupants=True,
+                                preserve_dorm_occupants=recovery_ordered,
                                 choose_error=choose_error,
                                 dorm_mood_candidates=dorm_mood_candidates,
                             )
-                        else:
-                            self.choose_agent(
-                                plan[room],
-                                room,
-                                fast_mode=choose_error <= 0,
-                                choose_error=choose_error,
-                                dorm_mood_candidates=dorm_mood_candidates,
-                            )
-                        confirmation_pending = True
-                        self._prepare_run_order_confirmation(room, plan[room])
-                        self.tap_confirm(room, new_plan)
+                            is not False
+                        )
+                        if selection_changed:
+                            confirmation_pending = True
+                            self._prepare_run_order_confirmation(room, plan[room])
+                            self.tap_confirm(room, new_plan)
                     if room.startswith("dorm") and not fia_arrangement:
-                        # 换人也会改变未移动住客的同住加成，最终阵容全部重新计时。
-                        self.op_data.invalidate_dorm_time(room)
+                        # 放弃暂选不改变同住加成，保留现有恢复计时。
+                        if selection_changed:
+                            self.op_data.invalidate_dorm_time(room)
                         read_time_index = self.op_data.get_refresh_index(
                             room,
                             plan[room],
@@ -18923,6 +18966,15 @@ class BaseSchedulerSolver(
         self._confirm_facility_arrangement_log(
             room, targets, observed, unconfirmed=unconfirmed
         )
+        if (
+            room.startswith("dorm")
+            and getattr(self.op_data, "idle_dorm_release_suspended", False)
+            and room in getattr(self.task, "idle_dorm_search_names", {})
+        ):
+            # 本次保留或补位自己的读回属于暂停收尾，不能用来立即解除暂停。
+            self.op_data.idle_dorm_release_observations = dict(
+                self.op_data.room_observations
+            )
         del plan[room]
 
     def _wait_for_room_entry_before_exit(self, room, *, deadline):

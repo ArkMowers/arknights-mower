@@ -11,7 +11,8 @@ import pytest
 
 from arknights_mower.solvers import base_mixin, record
 from arknights_mower.solvers.base_mixin import BaseMixin
-from arknights_mower.tests import dorm_empty_release_tests
+from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+from arknights_mower.tests import dorm_empty_release_tests, dorm_recovery_tests
 from arknights_mower.tests.choose_agent_filter_tests import RESIDENTS, selection_solver
 from arknights_mower.utils import resting_priority
 from arknights_mower.utils.character_recognize import estimate_agent_mood
@@ -19,10 +20,17 @@ from arknights_mower.utils.dorm_candidates import dorm_candidate_mood, dorm_cand
 from arknights_mower.utils.dorm_recovery import DormRecoveryPaddingUnavailable
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.resting_priority import has_resting_mood
-from arknights_mower.utils.scheduler_task import try_add_release_dorm
+from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scheduler_task import (
+    SchedulerTask,
+    TaskTypes,
+    plan_metadata,
+    try_add_release_dorm,
+)
 
 solver = dorm_empty_release_tests.solver
 op_data = dorm_empty_release_tests.op_data
+arrangement_solver = dorm_recovery_tests.solver
 ROOM = dorm_empty_release_tests.ROOM
 FIXTURES = Path(__file__).parent / "fixtures" / "selection"
 SCOPE = ((0, 32), (189, 64))
@@ -361,6 +369,79 @@ def test_unknown_card_screening_preserves_full_resident_only_without_lower_card(
     assert data.operators["红"].time_stamp is None
 
 
+@pytest.mark.parametrize("mode", ["high", "medium"])
+@pytest.mark.parametrize("verified", [False, True])
+def test_full_resident_retention_cancels_selection_and_stops_release_cycle(
+    solver, monkeypatch, mode, verified
+):
+    instance, selected = solver
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    data = instance.op_data
+    data.operators["红"].time_stamp = None
+    plan = instance.task.plan[ROOM]
+    expected = selected.copy()
+    scan = instance.scan_agent.side_effect
+    set_filter = instance.profession_filter.side_effect
+    profession = "ALL"
+    screened = False
+
+    def filter_cards(value=None):
+        nonlocal profession
+        profession = value or "ALL"
+        set_filter(value)
+
+    def scan_page(names, **kwargs):
+        nonlocal screened
+        if kwargs.get("skip_full_mood"):
+            screened = True
+            kwargs["mood_estimates"]["红"] = (24, datetime.now())
+            return [], (("红", None),)
+        # 原住者取消选择后位于全部职业列表的后段；职业筛选才能就近找回。
+        if screened and profession == "ALL" and "空爆" in names:
+            visible = [name for name in names if name != "空爆"]
+            found, page = scan(visible, **kwargs)
+            for name in found:
+                names.remove(name)
+            return found, page
+        return scan(names, **kwargs)
+
+    instance.profession_filter.side_effect = filter_cards
+    instance.scan_agent.side_effect = scan_page
+
+    if not verified:
+        instance._cancel_unchanged_dorm_selection.side_effect = (
+            base_mixin.AgentSelectionNotReady("未返回房间")
+        )
+        with pytest.raises(base_mixin.AgentSelectionNotReady, match="未返回房间"):
+            instance.choose_agent(plan, ROOM)
+        assert plan == expected
+        assert data.operators["空爆"].dorm_mood_fallback == ""
+        return
+
+    assert instance.choose_agent(plan, ROOM) is False
+
+    assert screened
+    assert selected == plan == expected
+    instance.swipe_agent_page.assert_not_called()
+    instance._cancel_unchanged_dorm_selection.assert_called_once()
+    assert data.idle_dorm_release_suspended
+    assert data.config.free_room
+    # 连续调度不能重建同一清退；独立回班仍可执行，新的低心情观测仍可补位。
+    data.operators["银灰"]._current_room = ""
+    data.operators["红"]._current_room = "meeting"
+    for _ in range(3):
+        tasks = plan_metadata(data, [])
+        try_add_release_dorm({}, None, data, tasks)
+        assert [(task.type, task.plan) for task in tasks] == [
+            (TaskTypes.SHIFT_ON, {"meeting": ["银灰"]})
+        ]
+    data.operators["银灰"]._current_room = "meeting"
+    data.update_detail("红", 6, "", -1, True)
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    assert [task.plan for task in tasks] == [{ROOM: ["Current"] * 4 + ["红"]}]
+
+
 @pytest.mark.parametrize("estimate", [None, 6, 20, 24])
 def test_personal_limit_candidate_requires_valid_low_scheduling_mood(solver, estimate):
     instance, _ = solver
@@ -470,3 +551,124 @@ def test_invalid_estimate_cannot_override_numeric_mood(solver, estimate):
     op.mood, op.time_stamp, op.depletion_rate = 6, datetime.now(), 0
     data.dorm_mood_estimates[op.name] = (estimate, datetime.now())
     assert dorm_candidate_mood(data, op.name) == 6
+
+
+@pytest.mark.parametrize("resident", ["空爆", "但书"])
+def test_other_room_changes_use_visible_full_filler_instead_of_old_resident(
+    solver, resident
+):
+    instance, selected = solver
+    data = instance.op_data
+    old = data.operators.pop("空爆")
+    old.name = resident
+    data.operators[resident] = old
+    data.dorm[0].name = resident
+    instance.task.meta_data = resident
+    data.operators["红"].time_stamp = None
+    plan = data.get_current_room(ROOM, True)
+    plan[0], plan[1] = plan[1], plan[0]
+    plan[-1] = "Free"
+    instance.task.plan[ROOM] = plan
+    scan = instance.scan_agent.side_effect
+
+    def scan_page(names, **kwargs):
+        if kwargs.get("skip_full_mood"):
+            kwargs["mood_estimates"]["红"] = (24, datetime.now())
+            return [], (("红", None),)
+        visible = [name for name in names if name != resident]
+        found, page = scan(visible, **kwargs)
+        for name in found:
+            names.remove(name)
+        return found, page
+
+    instance.scan_agent.side_effect = scan_page
+    instance.choose_agent(plan, ROOM, False, dorm_mood_candidates=["红", resident])
+
+    assert selected == plan
+    assert plan[-1] == "红"
+    assert resident not in selected
+    assert data.idle_dorm_release_suspended
+    assert instance.task.idle_dorm_search_names == {ROOM: {"红"}}
+    instance._cancel_unchanged_dorm_selection.assert_not_called()
+    instance.swipe_agent_page.assert_not_called()
+
+
+@pytest.mark.parametrize("finished", [False, True])
+def test_cancel_unchanged_selection_discards_pending_staffing(finished):
+    instance = object.__new__(BaseSchedulerSolver)
+    instance.recog = SimpleNamespace(w=1920, h=1080, update=MagicMock())
+    instance.scene = MagicMock(
+        side_effect=[
+            Scene.INFRA_ARRANGE_ORDER,
+            Scene.CONNECTING,
+            Scene.INFRA_ARRANGE_CONFIRM,
+            Scene.INFRA_DETAILS,
+        ]
+        if finished
+        else [Scene.INFRA_ARRANGE_ORDER] * 8
+    )
+    instance.back = MagicMock()
+    instance.tap = MagicMock()
+    instance.sleep = MagicMock()
+    if finished:
+        instance._cancel_unchanged_dorm_selection()
+        instance.back.assert_called_once_with(interval=0.5)
+        instance.tap.assert_called_once_with((640, 1070), interval=0.5)
+    else:
+        with pytest.raises(base_mixin.AgentSelectionNotReady, match="有限次数"):
+            instance._cancel_unchanged_dorm_selection()
+        assert instance.back.call_count == 8
+        instance.tap.assert_not_called()
+
+
+def test_cancelled_selection_reads_back_without_submit_or_timer_reset(
+    arrangement_solver,
+):
+    instance = arrangement_solver
+    actual = instance.physical.copy()
+    instance.task.plan = {ROOM: actual[:4] + ["Free"]}
+    instance.prepare_dorm_selection = MagicMock(return_value=[])
+    instance.ensure_dorm_recovery_order = MagicMock(return_value=False)
+    instance.op_data.invalidate_dorm_time = MagicMock()
+    independent = SchedulerTask(task_plan={"meeting": ["黑角"]})
+    instance.tasks.append(independent)
+
+    read = instance.get_agent_from_room.side_effect
+
+    def observe(room, *args, **kwargs):
+        result = read(room, *args, **kwargs)
+        instance.op_data.room_observations[room] = (
+            instance.op_data.room_observations.get(room, 0) + 1
+        )
+        return result
+
+    def cancel(agents, *args, **kwargs):
+        agents[:] = actual
+        instance.op_data.stop_idle_dorm_search()
+        instance.task.idle_dorm_search_names = {ROOM: {actual[-1]}}
+        return False
+
+    instance.choose_agent.side_effect = cancel
+    instance.get_agent_from_room.side_effect = observe
+    instance.agent_arrange_room({}, ROOM, instance.task.plan)
+
+    assert instance.task.plan == {}
+    assert instance.physical == actual
+    instance.tap_confirm.assert_not_called()
+    instance.op_data.invalidate_dorm_time.assert_not_called()
+    assert instance.get_agent_from_room.call_count >= 1
+    assert independent.plan == {"meeting": ["黑角"]}
+    assert independent in instance.tasks
+    assert instance.op_data.idle_dorm_release_suspended
+    assert instance.op_data.idle_dorm_release_observations == (
+        instance.op_data.room_observations
+    )
+    instance.op_data.runtime_conf = SimpleNamespace(test_mood_calculation=True)
+    instance.defer_backup_plan_until_mood_read = False
+    instance._initial_mood_refresh_rooms = set()
+    instance._emergency_frozen = MagicMock(return_value=True)
+    instance.agent_get_mood()
+    assert instance.op_data.idle_dorm_release_suspended
+    instance.op_data.room_observations["meeting"] = 1
+    instance.agent_get_mood()
+    assert not instance.op_data.idle_dorm_release_suspended

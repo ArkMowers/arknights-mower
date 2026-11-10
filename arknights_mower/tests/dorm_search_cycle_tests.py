@@ -1,6 +1,7 @@
 """空闲者搜索跨宿舍共享，实际轮休／协助位释放和超时才开放新一轮。"""
 
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,7 +32,7 @@ room_reader = exhausted_working_timer_tests.room_reader
 ROOM = dorm_empty_release_tests.ROOM
 
 
-def test_timeout_reopens_release_and_clears_checks_without_changing_beds(solver):
+def test_timeout_refreshes_candidates_but_keeps_release_suspended(solver):
     instance, _ = solver
     data = instance.op_data
     resident = data.operators["空爆"]
@@ -53,7 +54,8 @@ def test_timeout_reopens_release_and_clears_checks_without_changing_beds(solver)
     assert peer.idle_rest_check is None
     assert data.dorm[0].time == bed_time
     assert resident.current_room == ROOM
-    assert any(t.type == TaskTypes.RELEASE_DORM for t in tasks)
+    assert data.idle_dorm_release_suspended
+    assert all(t.type != TaskTypes.RELEASE_DORM for t in tasks)
     # 后续规划不反复清空刚写入的全满保护。
     resident.dorm_mood_fallback = ROOM
     plan_metadata(data, tasks)
@@ -260,8 +262,9 @@ def test_actual_training_read_reopens_once_without_workshop_configuration(
         assert data.idle_dorm_search_exhausted
 
 
+@pytest.mark.parametrize("legacy", [False, True])
 def test_restart_preserves_search_deadline_and_full_resident_protection(
-    solver, monkeypatch
+    solver, monkeypatch, legacy
 ):
     import copy
     import pickle
@@ -273,6 +276,7 @@ def test_restart_preserves_search_deadline_and_full_resident_protection(
     instance, _ = solver
     data = instance.op_data
     stopped = datetime.now() - timedelta(hours=1)
+    data.room_observations["meeting"] = 4
     data.stop_idle_dorm_search(stopped)
     data.operators["空爆"].dorm_mood_fallback = ROOM
     peer = data.operators["红"]
@@ -288,9 +292,16 @@ def test_restart_preserves_search_deadline_and_full_resident_protection(
     monkeypatch.setattr(main, "base_scheduler", instance)
     saved = pickle.loads(pickle.dumps(current_state()))
     assert saved["idle_dorm_search_stopped_at"] == stopped
+    assert saved["idle_dorm_release_suspended"]
+    assert saved["idle_dorm_release_observations"] == data.room_observations
+    if legacy:
+        saved.pop("idle_dorm_release_suspended")
+        saved.pop("idle_dorm_release_observations")
 
     fresh = copy.deepcopy(data)
     fresh.refresh_idle_dorm_search(reason="模拟重启前的新对象")
+    fresh.idle_dorm_release_suspended = False
+    fresh.idle_dorm_release_observations = {"meeting": 99}
     restarted = object.__new__(BaseSchedulerSolver)
     restarted.tasks = []
     restarted.op_data = fresh
@@ -310,7 +321,105 @@ def test_restart_preserves_search_deadline_and_full_resident_protection(
         main.simulate(saved)
     assert fresh.idle_dorm_search_exhausted
     assert fresh.idle_dorm_search_stopped_at == stopped
+    assert fresh.idle_dorm_release_suspended is not legacy
+    assert fresh.idle_dorm_release_observations == (
+        None if legacy else data.room_observations
+    )
     assert fresh.is_full_dorm_fallback("空爆")
     assert fresh.idle_rest_checked("红")
     assert not fresh.refresh_idle_dorm_search(now=stopped + timedelta(minutes=59))
     assert fresh.refresh_idle_dorm_search(now=stopped + timedelta(minutes=60))
+
+
+@pytest.mark.parametrize("observation", ["cached", "unchanged", "failed", "new"])
+def test_release_suspension_ends_only_after_mood_check_observes_a_room(
+    solver, observation
+):
+    instance, _ = solver
+    data = instance.op_data
+    data.room_observations["meeting"] = 1
+    data.stop_idle_dorm_search()
+    instance._emergency_frozen = MagicMock(return_value=True)
+
+    def read():
+        if observation in ("failed", "new"):
+            data.room_observations["meeting"] += 1
+        return False if observation == "failed" else None
+
+    instance._read_agent_mood = MagicMock(side_effect=read)
+    instance.agent_get_mood(read_rooms=observation != "cached")
+
+    assert data.idle_dorm_release_suspended == (observation != "new")
+    assert data.idle_dorm_search_exhausted == (observation != "new")
+    assert data.config.free_room
+    if observation == "cached":
+        instance._read_agent_mood.assert_not_called()
+
+
+def test_group_refresh_does_not_resume_ordinary_release_before_mood_check(solver):
+    instance, _ = solver
+    data = instance.op_data
+    data.stop_idle_dorm_search()
+    data.refresh_idle_dorm_search(reason="工作组换班完成", names={"红"})
+    assert data.idle_dorm_release_suspended
+    assert data.skip_idle_dorm_release("红")
+    assert data.config.free_room
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_suspended_idle_release_preserves_personal_limit_departure(solver, strict):
+    instance, _ = solver
+    data = instance.op_data
+    data.plan["meeting"][0].replacement.append("空爆")
+    data.config.operator_mood_limits["空爆"] = {"lower": 0, "upper": 24}
+    data.stop_idle_dorm_search()
+    task = SchedulerTask(
+        task_plan={ROOM: ["Current"] * 4 + ["Free"]},
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data="空爆",
+        strict_mood_limit=strict,
+        mood_limit=24 if strict else None,
+    )
+
+    instance.prepare_release_dorm(task)
+
+    assert bool(task.plan) is strict
+    assert data.idle_dorm_release_suspended
+    assert data.config.free_room
+
+
+@pytest.mark.parametrize("baseline_saved", [False, True])
+def test_calculated_mood_check_consumes_observation_since_pause_without_new_scan(
+    solver, baseline_saved
+):
+    instance, _ = solver
+    data = instance.op_data
+    data.runtime_conf = SimpleNamespace(test_mood_calculation=True)
+    instance._state_restore_complete = True
+    instance.defer_backup_plan_until_mood_read = False
+    instance._initial_mood_refresh_rooms = set()
+    instance._read_room_mood = MagicMock()
+    instance._emergency_frozen = MagicMock(return_value=True)
+    data.room_observations["meeting"] = 1
+    data.stop_idle_dorm_search()
+    if not baseline_saved:
+        data.idle_dorm_release_observations = None
+    independent = SchedulerTask(task_plan={"meeting": ["银灰"]})
+    instance.tasks.append(independent)
+    original_time = independent.time
+    for _ in range(3):
+        instance.agent_get_mood()
+        assert data.idle_dorm_release_suspended
+        assert instance.tasks == [independent]
+        assert independent.time == original_time
+    data.room_observations["meeting"] = 2
+    data.refresh_idle_dorm_search(reason="普通换人已完成", names={"红"})
+    instance.agent_get_mood(read_rooms=False)
+    assert data.idle_dorm_release_suspended
+
+    for _ in range(3):
+        instance.agent_get_mood()
+        assert not data.idle_dorm_release_suspended
+        assert instance.tasks == [independent]
+        assert independent.time == original_time
+    instance._read_room_mood.assert_not_called()

@@ -79,6 +79,14 @@ def test_registered_low_card_replaces_full_resident_without_measured_sample(
             task_plan={ROOM: ["Current"] * 4 + ["Free"]},
             meta_data="空爆",
         )
+        if stopped:
+            # 暂停期间不执行普通清退；未登记候选仍等下一轮有效心情检查。
+            assert instance.prepare_release_dorm(instance.task) is False
+            assert instance.task.plan == {}
+            assert data.idle_dorm_release_suspended
+            assert data.operators["空爆"].current_room.startswith("dormitory")
+            assert name not in data.operators
+            return
         assert instance.prepare_release_dorm(instance.task)
     if not registered:
         screen_only(instance, [name])
@@ -177,6 +185,14 @@ def test_dorm_three_execution_does_not_skip_low_card_replacement(
             meta_data="空爆",
         )
         instance.tasks = [instance.task]
+        if stopped:
+            # 暂停期间不执行普通清退；未登记候选仍等下一轮有效心情检查。
+            assert instance.prepare_release_dorm(instance.task) is False
+            assert instance.task.plan == {}
+            assert data.idle_dorm_release_suspended
+            assert data.operators["空爆"].current_room.startswith("dormitory")
+            assert name not in data.operators
+            return
         assert instance.prepare_release_dorm(instance.task)
     if not registered:
         screen_only(instance, [name])
