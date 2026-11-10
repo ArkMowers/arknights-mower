@@ -309,15 +309,18 @@ class MasteryPlanView(MethodView):
         skill_data = get_skill_data()
         char_table = skill_data.get("characters", {})
         training_operators = skill_data.get("training", {}).get("operators")
-        name_to_id = {
-            info.get("name", ""): cid
-            for cid, info in char_table.items()
+        name_to_id = {}
+        for cid, info in char_table.items():
+            name = info.get("name", "")
             # Older resource packages may contain summons. Only playable
             # operators can be trainees or appear in the BOX.
-            if info.get("name")
-            and cid.startswith("char_")
-            and (training_operators is None or cid in training_operators)
-        }
+            if (
+                name
+                and cid.startswith("char_")
+                and (training_operators is None or cid in training_operators)
+            ):
+                # Legacy name-only requests keep the original playable identity.
+                name_to_id.setdefault(name, cid)
 
         results = []
         added_plan_ids = []
