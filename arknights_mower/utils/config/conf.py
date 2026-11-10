@@ -1146,11 +1146,6 @@ class Conf(
             for key in legacy_fields:
                 profile[key] = legacy_profile[key]
         profile.update(explicit_profile)
-        profile = DeviceProfile.model_validate(profile).model_dump()
-        if reason := capture_compatibility_error(
-            profile["preset_id"], profile["screenshot_backend"]
-        ):
-            raise ValueError(reason)
         identity_fields = (
             "preset_id",
             "installation_path",
@@ -1158,6 +1153,26 @@ class Conf(
             "config_path",
             "instance_id",
         )
+        identity_changed = any(
+            profile[key] != getattr(self.device, key)
+            for key in (*identity_fields, "instance_name")
+        )
+        if identity_changed:
+            profile["mumu_manual_serial"] = ""
+            profile["mumu_created_timestamp"] = (
+                explicit_profile.get(
+                    "mumu_created_timestamp", self.device.mumu_created_timestamp
+                )
+                if profile["preset_id"] == "windows.mumu12"
+                else ""
+            )
+        elif profile["mumu_manual_serial"] and self.device.mumu_created_timestamp:
+            profile["mumu_created_timestamp"] = self.device.mumu_created_timestamp
+        profile = DeviceProfile.model_validate(profile).model_dump()
+        if reason := capture_compatibility_error(
+            profile["preset_id"], profile["screenshot_backend"]
+        ):
+            raise ValueError(reason)
         if "config_path" not in explicit_profile and any(
             profile[key] != getattr(self.device, key)
             for key in ("preset_id", "installation_path", "manager_path")
@@ -1173,6 +1188,14 @@ class Conf(
             for key in ("instance_uuid", "topology_fingerprint"):
                 if key not in explicit_profile:
                     profile[key] = ""
+        if (
+            any(
+                profile[key] != getattr(self.device, key)
+                for key in ("mumu_manual_serial", "mumu_created_timestamp")
+            )
+            and profile["last_serial"] == self.device.last_serial
+        ):
+            profile["last_serial"] = ""
         if profile["preset_id"] != self.device.preset_id:
             if "manager_path" not in explicit_profile:
                 profile["manager_path"] = ""
@@ -1181,7 +1204,12 @@ class Conf(
                     data["simulator"]["name"] = ""
         target_changed = any(
             profile[key] != getattr(self.device, key)
-            for key in (*identity_fields, "last_serial")
+            for key in (
+                *identity_fields,
+                "last_serial",
+                "mumu_manual_serial",
+                "mumu_created_timestamp",
+            )
         )
         if target_changed:
             profile["game_package_confirmed"] = False

@@ -20,14 +20,20 @@ from arknights_mower.utils.config.device_profile import capture_compatibility_er
 from arknights_mower.utils.device.adb_client.core import is_tcp_serial
 from arknights_mower.utils.device.adb_client.server import run_adb
 from arknights_mower.utils.device.droidcast import DroidCastSession
+from arknights_mower.utils.device.endpoint_identity import (
+    InstanceBindingError,
+    ManagerQueryTimeout,
+)
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.ldplayer_capture import LDCaptureSession
 from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 from arknights_mower.utils.device.mumu_info import (
-    mumu_endpoint,
+    MuMuEndpointUnavailable,
+    mumu_endpoint_with_fallback,
     normalize_mumu_endpoint,
     select_mumu_instance,
+    verify_mumu_created_timestamp,
 )
 from arknights_mower.utils.device.owned import close_process
 from arknights_mower.utils.device.screenshot import capture_adb_frame
@@ -123,6 +129,7 @@ class ProductionPreflightIO:
                 return config.conf
 
         self._read_configuration = read_configuration
+        self.mumu_created_timestamp = ""
 
     def host_platform(self) -> str:
         return {"Windows": "windows", "Darwin": "macos", "Linux": "linux"}.get(
@@ -317,6 +324,7 @@ class ProductionPreflightIO:
         ]
 
     def capture_frame(self, adb_path: str, serial: str, profile) -> np.ndarray:
+        self.mumu_created_timestamp = ""
         if reason := capture_compatibility_error(
             profile.preset_id, profile.screenshot_backend, self.host_platform()
         ):
@@ -342,19 +350,44 @@ class ProductionPreflightIO:
         raise ValueError(f"截图后端尚不可用：{profile.screenshot_backend}")
 
     def _capture_mumu(self, profile, serial: str) -> np.ndarray:
+        self.mumu_created_timestamp = ""
         if not is_tcp_serial(serial):
             raise ValueError("MuMu IPC 必须绑定经过验证的模拟器实例端点")
         root, manager = resolve_mumu_paths(
             profile.installation_path, profile.manager_path
         )
-        actual_instance_id, entry = select_mumu_instance(
-            self._run([manager, "info", "-v", "all"]),
-            profile.instance_id,
-            profile.instance_name,
-        )
-        endpoint = mumu_endpoint(entry)
+        try:
+            actual_instance_id, entry = select_mumu_instance(
+                self._run([manager, "info", "-v", "all"]),
+                profile.instance_id,
+                profile.instance_name,
+            )
+            created = verify_mumu_created_timestamp(
+                entry, actual_instance_id, profile.mumu_created_timestamp
+            )
+        except ManagerQueryTimeout:
+            raise
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            raise ManagerQueryTimeout("MuMu 管理程序查询超时，请稍后重试。") from exc
+        except InstanceBindingError:
+            raise
+        except ValueError as exc:
+            raise InstanceBindingError(
+                "binding_changed", str(exc), ["instance_id", "instance_name"]
+            ) from exc
+        try:
+            endpoint, created = mumu_endpoint_with_fallback(
+                entry, actual_instance_id, manager, self._run
+            )
+        except ManagerQueryTimeout as exc:
+            exc.mumu_created_timestamp = created
+            raise
         if normalize_mumu_endpoint(endpoint) != normalize_mumu_endpoint(serial):
-            raise ValueError("MuMu IPC 实例端点与已选择设备 serial 不一致，请重新绑定")
+            raise MuMuEndpointUnavailable(
+                actual_instance_id, "MuMu IPC 实例端点与已选择设备的连接地址不一致。"
+            )
+        # 身份已经核验，后续截图失败仍保留本次实例的创建时间。
+        self.mumu_created_timestamp = created
         context = multiprocessing.get_context("spawn")
         frame_buffer = context.RawArray(ctypes.c_ubyte, 1920 * 1080 * 3)
         succeeded = context.RawValue(ctypes.c_bool, False)
@@ -382,7 +415,8 @@ class ProductionPreflightIO:
             if process.exitcode != 0 or not succeeded.value:
                 message = error.value.decode("utf-8", "replace")
                 raise RuntimeError(message or "MuMu IPC 首帧工作进程未成功完成")
-            return np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3).copy()
+            frame = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3).copy()
+            return frame
         finally:
             close_process(process, owner_pid)
 

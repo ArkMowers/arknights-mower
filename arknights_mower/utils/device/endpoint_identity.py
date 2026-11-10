@@ -32,6 +32,10 @@ class InstanceBindingError(ValueError):
         self.fields = ["last_serial"] if fields is None else fields
 
 
+class ManagerQueryTimeout(TimeoutError):
+    """A read-only manager query exhausted its own command window."""
+
+
 class InstanceEndpointPending(InstanceBindingError):
     """VM identity is confirmed; no endpoint is yet safe to connect or recover."""
 

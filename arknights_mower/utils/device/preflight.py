@@ -12,6 +12,10 @@ from arknights_mower.utils.config.device_profile import (
     capture_compatibility_error,
 )
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.endpoint_identity import (
+    InstanceBindingError,
+    ManagerQueryTimeout,
+)
 from arknights_mower.utils.device.screenshot_backend import (
     ScreenshotFailure,
     ScreenshotSession,
@@ -45,6 +49,12 @@ class PreflightIO(Protocol):
 
 
 @dataclass(frozen=True)
+class FrameObservation:
+    dimensions: tuple[int, int]
+    mumu_created_timestamp: str = ""
+
+
+@dataclass(frozen=True)
 class PreflightError:
     code: str
     message: str
@@ -52,6 +62,7 @@ class PreflightError:
     fields: list[str] = field(default_factory=list)
     backend: str = ""
     alternatives: list[dict[str, str]] = field(default_factory=list)
+    mumu_created_timestamp: str = ""
 
 
 def mumu_pro_manual_error() -> PreflightError:
@@ -75,6 +86,7 @@ class PreflightResult:
     packages: list[str] = field(default_factory=list)
     candidates: list[dict[str, str]] = field(default_factory=list)
     observations: dict = field(default_factory=dict)
+    profile_patch: dict = field(default_factory=dict)
     error: PreflightError | None = None
 
     def to_dict(self) -> dict:
@@ -357,6 +369,33 @@ class PreflightService:
             ):
                 raise RuntimeError("截图失败后目标设备不再 ready，请检查连接后重试")
 
+        created = ""
+
+        def capture():
+            nonlocal created, capture_profile
+            observed = ""
+            try:
+                return self._io.capture_frame(
+                    result.adb_path, result.serial, capture_profile
+                )
+            except Exception as exc:
+                observed = getattr(exc, "mumu_created_timestamp", "")
+                raise
+            finally:
+                created = (
+                    created
+                    or observed
+                    or getattr(self._io, "mumu_created_timestamp", "")
+                )
+                if (
+                    created
+                    and capture_profile.preset_id == "windows.mumu12"
+                    and not capture_profile.mumu_created_timestamp
+                ):
+                    capture_profile = capture_profile.model_copy(
+                        update={"mumu_created_timestamp": created}
+                    )
+
         try:
             # Only runtime start supplies preparation. Read-only preflight never
             # installs a helper, and an invalid target or display never reaches it.
@@ -367,15 +406,26 @@ class PreflightService:
             # Backend degradation belongs to the ongoing device session, not to
             # this one-shot read-only capture.
             frame = ScreenshotSession(capture_profile, result.host_platform).capture(
-                lambda: self._io.capture_frame(
-                    result.adb_path, result.serial, capture_profile
-                ),
+                capture,
                 lambda: None,
                 ready_for_retry,
                 None,
             )
         except MowerExit:
             raise
+        except ManagerQueryTimeout as exc:
+            result.serial = ""
+            result.error = PreflightError(
+                "manager_timeout",
+                str(exc),
+                fields=["manager_path"],
+                mumu_created_timestamp=getattr(exc, "mumu_created_timestamp", ""),
+            )
+            return result
+        except InstanceBindingError as exc:
+            result.serial = ""
+            result.error = PreflightError(exc.code, str(exc), fields=exc.fields)
+            return result
         except Exception as exc:
             failure = (
                 exc
@@ -387,6 +437,9 @@ class PreflightService:
                 detail["code"] = "frame_failed"
             result.error = PreflightError(**detail)
             return result
+        finally:
+            if created and capture_profile.preset_id == "windows.mumu12":
+                result.observations["mumu_created_timestamp"] = created
         result.observations["frame"] = [frame.shape[1], frame.shape[0]]
         result.ok, result.status = True, "ready"
         return result

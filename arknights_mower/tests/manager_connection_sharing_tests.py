@@ -78,6 +78,7 @@ def test_common_schema_excludes_instance_binding_and_includes_connection_command
         "device.instance_uuid",
         "device.topology_fingerprint",
         "device.last_serial",
+        "device.mumu_manual_serial",
         "device.game_package",
     ):
         assert key not in fields
@@ -95,6 +96,48 @@ def test_common_schema_excludes_instance_binding_and_includes_connection_command
     ):
         assert fields[key]["shared_connection"] is True
         assert key in schema["values"]
+
+
+def test_manual_mumu_address_is_per_instance_in_shared_mode(
+    manager, tmp_path, monkeypatch
+):
+    from arknights_mower.utils.device.session import InstanceObservation
+
+    add_instance(
+        manager,
+        tmp_path,
+        "first",
+        {"device": {"instance_id": "0", "instance_name": "主号"}},
+    )
+    _, second = add_instance(
+        manager,
+        tmp_path,
+        "second",
+        {"device": {"instance_id": "1", "instance_name": "小号"}},
+    )
+    edit_common(
+        manager,
+        **{
+            "device.preset_id": "windows.mumu12",
+            "device.manager_path": "C:/MuMu/MuMuManager.exe",
+        },
+    )
+    target, state = editor(manager)
+    assert not state["independent_configuration"]
+    monkeypatch.setattr(
+        managed_device,
+        "inspect_mumu_identity",
+        lambda profile: InstanceObservation("running", None, "111"),
+    )
+    manager.update_device_settings(
+        0, {"device.mumu_manual_serial": "127.0.0.1:16384"}, target, state["values"]
+    )
+    _, saved = editor(manager)
+    assert saved["values"]["device"]["mumu_manual_serial"] == "127.0.0.1:16384"
+    assert saved["values"]["device"]["mumu_created_timestamp"] == "111"
+    other = yaml.safe_load(second.read_text(encoding="utf-8"))
+    assert "mumu_manual_serial" not in other.get("device", {})
+    assert "mumu_created_timestamp" not in other.get("device", {})
 
 
 def test_migration_uses_one_coherent_baseline_and_retains_explicit_conflicting_instances(

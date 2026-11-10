@@ -552,6 +552,91 @@ def test_manager_saves_device_and_performance_without_replacing_private_fields(m
     assert saved["theme"] == "dark"
 
 
+def test_manager_device_save_omits_unused_mumu_manual_fields(manager):
+    manager.update_settings(0, {"token": "private", "port": None})
+    target = manager.instances[0].copy()
+    settings = manager.get_device_settings(0, target)
+    manager.update_device_settings(
+        0, {"device.instance_name": "chosen"}, target, settings["values"]
+    )
+    saved = read_conf(manager)
+    assert "mumu_manual_serial" not in saved["device"]
+    assert "mumu_created_timestamp" not in saved["device"]
+
+
+def test_manager_saves_manual_mumu_address_for_one_instance(manager, monkeypatch):
+    from arknights_mower.utils import managed_device
+    from arknights_mower.utils.device.session import InstanceObservation
+
+    manager.update_settings(0, {"token": "private", "port": None})
+    target = manager.instances[0].copy()
+    settings = manager.get_device_settings(0, target)
+    manager.update_device_settings(
+        0,
+        {
+            "device.preset_id": "windows.mumu12",
+            "device.manager_path": "C:/MuMu/MuMuManager.exe",
+            "device.instance_id": "0",
+            "device.instance_name": "主号",
+        },
+        target,
+        settings["values"],
+        {
+            "independent_configuration": True,
+            "original_policy": settings["original_policy"],
+        },
+    )
+    settings = manager.get_device_settings(0, target)
+    assert "device.mumu_manual_serial" in {field["key"] for field in settings["fields"]}
+    created_field = next(
+        field
+        for field in settings["fields"]
+        if field["key"] == "device.mumu_created_timestamp"
+    )
+    assert created_field["read_only"]
+    binding = {
+        "preset_id": "windows.mumu12",
+        "manager_path": "C:/MuMu/MuMuManager.exe",
+        "instance_id": "0",
+        "instance_name": "主号",
+        "mumu_created_timestamp": "111",
+    }
+    monkeypatch.setattr(
+        managed_device,
+        "discover",
+        lambda configuration: {
+            "candidates": [{"binding": binding, "preset_id": "windows.mumu12"}]
+        },
+    )
+    manager.update_device_settings(
+        0, {"device.mumu_created_timestamp": "111"}, target, settings["values"]
+    )
+    assert read_conf(manager)["device"]["mumu_created_timestamp"] == "111"
+    settings = manager.get_device_settings(0, target)
+    identity = Mock(return_value=InstanceObservation("running", None, "111"))
+    monkeypatch.setattr(
+        managed_device, "inspect_mumu_identity", identity, raising=False
+    )
+    manager.update_device_settings(
+        0, {"device.mumu_manual_serial": "127.0.0.1:16384"}, target, settings["values"]
+    )
+    saved = read_conf(manager)["device"]
+    assert saved["preset_id"] == "windows.mumu12"
+    assert saved["mumu_manual_serial"] == "127.0.0.1:16384"
+    assert saved["mumu_created_timestamp"] == "111"
+    identity.assert_called_once()
+    settings = manager.get_device_settings(0, target)
+    before = (Path(target["path"]) / "config/conf.yml").read_bytes()
+    with pytest.raises(ValueError, match="先选择并保存"):
+        manager.update_device_settings(
+            0,
+            {"device.instance_id": "1", "device.mumu_manual_serial": "127.0.0.1:16384"},
+            target,
+            settings["values"],
+        )
+    assert (Path(target["path"]) / "config/conf.yml").read_bytes() == before
+
+
 @pytest.mark.parametrize(
     "preset",
     ["macos.bluestacks_air", "macos.mumu_pro", "manual.other", "manual.physical"],

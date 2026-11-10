@@ -14,9 +14,10 @@ from arknights_mower.utils.device.endpoint_identity import (
     VERIFIED_ENDPOINT_PRESETS,
     InstanceBindingError,
     InstanceEndpointPending,
+    ManagerQueryTimeout,
 )
 from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
-from arknights_mower.utils.device.preflight import parse_display_size
+from arknights_mower.utils.device.preflight import FrameObservation, parse_display_size
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
     UIUnresponsiveError,
@@ -45,6 +46,7 @@ Readiness = Literal["absent", "offline", "booting", "ready"]
 class InstanceObservation:
     state: Literal["unknown", "stopped", "running", "starting"]
     serial: str | None = None
+    mumu_created_timestamp: str = ""
 
 
 @dataclass(frozen=True)
@@ -55,6 +57,7 @@ class ReadinessResult:
     instance_state: str = "unknown"
     code: str = ""
     message: str = ""
+    mumu_created_timestamp: str = ""
 
 
 DEFAULT_RECOVERY_ATTEMPTS: int = 3
@@ -107,7 +110,7 @@ class SessionADB(Protocol):
     def display_size(self, adb_path: str, serial: str, timeout: float) -> str: ...
     def frame_size(
         self, adb_path: str, serial: str, timeout: float
-    ) -> tuple[int, int] | None: ...
+    ) -> tuple[int, int] | FrameObservation | None: ...
     def standard_frame_size(
         self, adb_path: str, serial: str, timeout: float
     ) -> tuple[int, int] | None: ...
@@ -213,11 +216,12 @@ class DeviceSession:
         self.actions = 0
         return deadline
 
-    def _restart_binding(self):
-        if self.profile is None:
+    def _restart_binding(self, profile=None):
+        profile = self.profile if profile is None else profile
+        if profile is None:
             return None
         return tuple(
-            getattr(self.profile, field)
+            getattr(profile, field)
             for field in (
                 "preset_id",
                 "installation_path",
@@ -227,6 +231,7 @@ class DeviceSession:
                 "instance_name",
                 "instance_uuid",
                 "topology_fingerprint",
+                "mumu_created_timestamp",
             )
         )
 
@@ -304,23 +309,52 @@ class DeviceSession:
                 self.last, "无法确认界面故障原实例的完整重启权限，请手动恢复所选设备。"
             )
 
+        created_before = self.profile.mumu_created_timestamp
+        try:
+            return self._restart_bound(
+                failure,
+                deadline,
+                frame_probe=frame_probe,
+                prepare_target=prepare_target,
+            )
+        finally:
+            if not created_before and self.profile.mumu_created_timestamp:
+                # 补全创建时间仍指向原实例，同一故障的后续恢复沿用该身份。
+                failure.restart_binding = self._restart_binding()
+
+    def _restart_bound(
+        self, failure, deadline, *, frame_probe=None, prepare_target=None
+    ):
         if not failure.stop_requested:
-            try:
-                with device_io_budget(lambda: self._remaining(deadline)):
-                    instance = self.simulator.inspect(
-                        self.profile, self._remaining(deadline)
+            while True:
+                try:
+                    with device_io_budget(lambda: self._remaining(deadline)):
+                        instance = self.inspect_instance(
+                            self.profile, self._remaining(deadline)
+                        )
+                    break
+                except (MowerExit, DeviceRecoveryError):
+                    raise
+                except (TimeoutError, subprocess.TimeoutExpired) as exc:
+                    self.last = ReadinessResult(
+                        "offline",
+                        "",
+                        self.adb_path,
+                        code="manager_timeout",
+                        message=str(exc),
                     )
-            except (MowerExit, DeviceRecoveryError):
-                raise
-            except Exception as exc:
-                self.last = ReadinessResult(
-                    "offline",
-                    self.last.serial,
-                    self.adb_path,
-                    code=getattr(exc, "code", "manager_output"),
-                    message=str(exc),
-                )
-                raise SessionFailure(self.last, str(exc)) from exc
+                    self.clock.sleep(
+                        min(self.policy.poll_interval, self._remaining(deadline))
+                    )
+                except Exception as exc:
+                    self.last = ReadinessResult(
+                        "offline",
+                        self.last.serial,
+                        self.adb_path,
+                        code=getattr(exc, "code", "manager_output"),
+                        message=str(exc),
+                    )
+                    raise SessionFailure(self.last, str(exc)) from exc
             if instance.state not in {"running", "starting", "stopped"}:
                 raise SessionFailure(self.last, "无法确认原实例状态，已拒绝自动重启。")
 
@@ -376,9 +410,32 @@ class DeviceSession:
         resolved_adb: str | None = None,
         policy: RecoveryPolicy | None = None,
         startup_wait: float = 30.0,
+        preserve_identity: bool = False,
     ) -> None:
         if self._shutdown.is_set():
             raise MowerExit("设备会话正在关闭")
+        if (
+            preserve_identity
+            and self.profile is not None
+            and self.profile.preset_id == "windows.mumu12"
+            and self.profile.mumu_created_timestamp
+        ):
+            created = self.profile.mumu_created_timestamp
+            candidate = profile.model_copy(update={"mumu_created_timestamp": created})
+            if (
+                profile.mumu_created_timestamp not in {"", created}
+                or self._restart_binding(candidate) != self._restart_binding()
+                or candidate.mumu_manual_serial != self.profile.mumu_manual_serial
+            ):
+                self.last = ReadinessResult(
+                    "offline",
+                    "",
+                    self.adb_path,
+                    code="binding_changed",
+                    message="恢复目标与原实例绑定不一致，请重新检测并启动。",
+                )
+                raise SessionFailure(self.last, self.last.message)
+            profile = candidate
         if self.profile is None or any(
             getattr(self.profile, field) != getattr(profile, field)
             for field in (
@@ -556,6 +613,33 @@ class DeviceSession:
         if human_text:
             logger.info(human_text)
 
+    def pin_mumu_creation_time(self, profile, created):
+        """仅在会话副本中固定已核验的首次创建时间。"""
+        if profile.preset_id != "windows.mumu12" or profile.mumu_created_timestamp:
+            return profile
+        created = self.profile.mumu_created_timestamp or created
+        if not created:
+            return profile
+        if not self.profile.mumu_created_timestamp:
+            self.profile = self.profile.model_copy(
+                update={"mumu_created_timestamp": created}
+            )
+            propagate = getattr(self.adb, "bind", None)
+            if propagate is not None:
+                propagate(self.profile)
+        return profile.model_copy(update={"mumu_created_timestamp": created})
+
+    def inspect_instance(self, profile, timeout):
+        try:
+            instance = self.simulator.inspect(profile, timeout)
+        except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            self.pin_mumu_creation_time(
+                profile, getattr(exc, "mumu_created_timestamp", "")
+            )
+            raise
+        self.pin_mumu_creation_time(profile, instance.mumu_created_timestamp)
+        return instance
+
     def _observe(
         self, deadline: float | None = None, *, frame_probe=None, prepare_target=None
     ) -> ReadinessResult:
@@ -579,7 +663,7 @@ class DeviceSession:
                     return self.last
             profile = profile.model_copy(update={"adb_path": self.adb_path})
         try:
-            instance = self.simulator.inspect(profile, self._remaining(deadline))
+            instance = self.inspect_instance(profile, self._remaining(deadline))
         except (MowerExit, SessionFailure, SharedADBError):
             raise
         except InstanceEndpointPending as exc:
@@ -596,16 +680,23 @@ class DeviceSession:
             return self.last
         except InstanceBindingError as exc:
             self.last = ReadinessResult(
-                "offline", "", self.adb_path, code=exc.code, message=str(exc)
+                "offline",
+                "",
+                self.adb_path,
+                code=exc.code,
+                message=str(exc),
+                mumu_created_timestamp=getattr(exc, "mumu_created_timestamp", ""),
             )
             return self.last
         except (TimeoutError, subprocess.TimeoutExpired) as exc:
+            created = getattr(exc, "mumu_created_timestamp", "")
             self.last = ReadinessResult(
                 "offline",
                 "",
                 self.adb_path,
                 code="manager_timeout",
                 message=str(exc),
+                mumu_created_timestamp=created,
             )
             return self.last
         except Exception as exc:
@@ -613,6 +704,7 @@ class DeviceSession:
                 "offline", "", self.adb_path, code="binding_failed", message=str(exc)
             )
             return self.last
+        profile = self.profile
         serial = (
             instance.serial or ""
             if instance.state != "unknown"
@@ -666,13 +758,24 @@ class DeviceSession:
                             prepare_target(self.adb_path, serial)
                         self._remaining(deadline)
                     return self._confirm_display(
-                        serial, instance.state, deadline, frame_probe
+                        serial,
+                        instance.state,
+                        deadline,
+                        frame_probe,
+                        instance.mumu_created_timestamp,
                     )
         self._remaining(deadline)
         self.last = ReadinessResult(state, serial, self.adb_path, instance.state, code)
         return self.last
 
-    def _confirm_display(self, serial, instance_state, deadline, frame_probe=None):
+    def _confirm_display(
+        self,
+        serial,
+        instance_state,
+        deadline,
+        frame_probe=None,
+        mumu_created_timestamp="",
+    ):
         """The decoded frame decides readiness; the reported size only informs.
 
         A tablet presentation or a not-yet-rotated game can report a portrait
@@ -681,13 +784,31 @@ class DeviceSession:
         """
         self._observe_display(serial, deadline)
         ok, code, message = self._frame_ready(serial, deadline, frame_probe)
+        if self.profile.preset_id == "windows.mumu12":
+            mumu_created_timestamp = self.profile.mumu_created_timestamp
         if not ok:
-            self.last = ReadinessResult(
-                "booting", serial, self.adb_path, instance_state, code, message
-            )
+            if code == "manager_timeout":
+                self.last = ReadinessResult(
+                    "offline",
+                    "",
+                    self.adb_path,
+                    code=code,
+                    message=message,
+                    mumu_created_timestamp=mumu_created_timestamp,
+                )
+            else:
+                self.last = ReadinessResult(
+                    "booting", serial, self.adb_path, instance_state, code, message
+                )
             return self.last
         self.last = ReadinessResult(
-            "ready", serial, self.adb_path, instance_state, "", ""
+            "ready",
+            serial,
+            self.adb_path,
+            instance_state,
+            "",
+            "",
+            mumu_created_timestamp,
         )
         return self.last
 
@@ -721,16 +842,30 @@ class DeviceSession:
             return False, "frame_failed", "无法取得有效首帧，请确认目标设备画面后重试。"
         try:
             size = probe(self.adb_path, serial, self._remaining(deadline))
-        except (MowerExit, SessionFailure):
-            raise
         except Exception as exc:
+            self.pin_mumu_creation_time(
+                self.profile, getattr(exc, "mumu_created_timestamp", "")
+            )
+            if isinstance(exc, (MowerExit, SessionFailure)):
+                raise
+            if isinstance(exc, ManagerQueryTimeout):
+                return False, "manager_timeout", str(exc)
+            if isinstance(exc, InstanceBindingError):
+                self.last = ReadinessResult(
+                    "offline", "", self.adb_path, code=exc.code, message=str(exc)
+                )
+                raise SessionFailure(self.last, str(exc)) from exc
             return False, "frame_failed", str(exc) or "无法取得有效首帧。"
+        created = ""
+        if isinstance(size, FrameObservation):
+            created, size = size.mumu_created_timestamp, size.dimensions
         if not isinstance(size, (list, tuple)) or list(size) != REQUIRED_DISPLAY_SIZE:
             return (
                 False,
                 "frame_failed",
                 "截图实际帧不是横屏 1920×1080，请修正显示设置后重试。",
             )
+        self.pin_mumu_creation_time(self.profile, created)
         return True, "", ""
 
     def ensure_ready(
@@ -973,7 +1108,7 @@ class DeviceSession:
         while True:
             self._remaining(deadline)
             try:
-                state = self.simulator.inspect(
+                state = self.inspect_instance(
                     self.profile, self._remaining(deadline)
                 ).state
             except (MowerExit, SessionFailure):

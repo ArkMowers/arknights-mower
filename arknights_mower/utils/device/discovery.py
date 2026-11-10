@@ -206,7 +206,14 @@ class DiscoveryService:
                     if redroid
                     else genymotion_repair(exc)
                     if genymotion
-                    else PreflightError(exc.code, str(exc), fields=exc.fields)
+                    else PreflightError(
+                        exc.code,
+                        str(exc),
+                        fields=exc.fields,
+                        mumu_created_timestamp=getattr(
+                            exc, "mumu_created_timestamp", ""
+                        ),
+                    )
                 )
                 return result
             result.error = PreflightError(
@@ -252,12 +259,21 @@ class DiscoveryService:
             )
             return result
         current = profile.model_copy(update={"last_serial": instance.serial})
-        return preflight.check(
+        checked = preflight.check(
             current,
             confirmed_package=confirmed_package,
             resolved_adb=resolved_adb,
             **capture_options,
         )
+        if (
+            checked.ok
+            and profile.preset_id == "windows.mumu12"
+            and profile.mumu_manual_serial
+        ):
+            checked.profile_patch["mumu_created_timestamp"] = (
+                instance.mumu_created_timestamp
+            )
+        return checked
 
     def discover(
         self, profile: DeviceProfile, host: str, preflight=None
@@ -376,6 +392,12 @@ class DiscoveryService:
                     "last_serial": "",
                     "game_package_confirmed": False,
                 }
+                if binding["preset_id"] == "windows.mumu12" and instance.get(
+                    "mumu_created_timestamp"
+                ):
+                    binding["mumu_created_timestamp"] = instance[
+                        "mumu_created_timestamp"
+                    ]
                 if binding["preset_id"] in {"windows.nox", MUMU_PRO_PRESET}:
                     binding["topology_fingerprint"] = instance["topology_fingerprint"]
                 if binding["preset_id"] == "windows.nox":

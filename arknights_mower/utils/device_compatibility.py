@@ -6,6 +6,25 @@ NATIVE_CAPTURE_PRESETS = {
 }
 
 
+def omit_empty_mumu_binding_fields(data):
+    """Keep unused manual MuMu settings out of saved device profiles."""
+    device = data.get("device")
+    if not isinstance(device, dict):
+        return data
+    unused = {
+        key
+        for key in ("mumu_manual_serial", "mumu_created_timestamp")
+        if device.get(key) == ""
+    }
+    if not unused:
+        return data
+    result = dict(data)
+    result["device"] = {
+        key: value for key, value in device.items() if key not in unused
+    }
+    return result
+
+
 def capture_compatibility_error(preset, backend, host=None):
     required = NATIVE_CAPTURE_PRESETS.get(backend)
     if required and (

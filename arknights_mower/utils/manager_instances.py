@@ -19,6 +19,7 @@ from yamlcore import CoreDumper, CoreLoader
 
 from . import manager_common
 from . import update_runtime as runtime
+from .device_compatibility import omit_empty_mumu_binding_fields
 from .manager_tools import ManagerTools
 from .path import get_path
 
@@ -639,7 +640,11 @@ class InstanceController(ManagerTools):
     def _write_config(self, destination, raw):
         self._write_config_bytes(
             destination,
-            yaml.dump(raw, Dumper=CoreDumper, allow_unicode=True).encode("utf-8"),
+            yaml.dump(
+                omit_empty_mumu_binding_fields(raw),
+                Dumper=CoreDumper,
+                allow_unicode=True,
+            ).encode("utf-8"),
         )
 
     def _write_config_bytes(self, destination, content):
@@ -853,10 +858,24 @@ class InstanceController(ManagerTools):
             ):
                 patch["device"]["last_serial"] = ""
                 for name in derived:
-                    patch["device"].setdefault(name, "")
+                    if name != "mumu_created_timestamp":
+                        patch["device"].setdefault(name, "")
             selected = self._with_explicit_device_serial(
                 baseline.updated(patch), explicit_serial
             )
+            manual_serial = patch.get("device", {}).get("mumu_manual_serial")
+            if manual_serial:
+                if selected.device.mumu_manual_serial != manual_serial:
+                    raise ValueError("请先选择并保存 MuMu 实例，再填写手动连接地址")
+                if manual_serial != baseline.device.mumu_manual_serial:
+                    identity = managed_device.inspect_mumu_identity(selected.device)
+                    selected = selected.updated(
+                        {
+                            "device": {
+                                "mumu_created_timestamp": identity.mumu_created_timestamp
+                            }
+                        }
+                    )
             proposed = self._settings_snapshot(selected)
             if submitted_identity:
                 ordinary_patch = copy.deepcopy(patch)
