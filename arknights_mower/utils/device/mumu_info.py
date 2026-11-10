@@ -156,7 +156,7 @@ def validate_mumu_manual_serial(manual_serial, instance_id):
 def mumu_endpoint_with_fallback(
     entry, instance_id, manager, run, manual_serial="", *, verify_conflicts=False
 ):
-    """Resolve the selected instance, using an explicit manual address last."""
+    """返回所选实例的地址和已核验的创建时间，手动地址只作为最后选择。"""
     manual_endpoint = validate_mumu_manual_serial(manual_serial, instance_id)
 
     def require_manual_match(endpoint):
@@ -178,7 +178,7 @@ def mumu_endpoint_with_fallback(
         except (ValueError, TypeError) as exc:
             raise MuMuEndpointUnavailable(instance_id) from exc
         if not manual_endpoint and not verify_conflicts:
-            return endpoint
+            return endpoint, mumu_created_timestamp(entry)
     else:
         if (
             entry.get("is_process_started") is not True
@@ -271,4 +271,4 @@ def mumu_endpoint_with_fallback(
         RuntimeError,
     ) as exc:
         raise MuMuEndpointUnavailable(instance_id) from exc
-    return endpoint
+    return endpoint, mumu_created_timestamp(fresh)

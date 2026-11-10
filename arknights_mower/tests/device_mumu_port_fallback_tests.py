@@ -89,6 +89,78 @@ def profile(manager):
     )
 
 
+@pytest.mark.parametrize("operation", ["observe", "restart"])
+@pytest.mark.parametrize("replacement_created", [222, None])
+def test_creation_time_first_reported_by_recheck_rejects_later_replacement(
+    tmp_path, operation, replacement_created
+):
+    manager = tmp_path / "MuMuManager.exe"
+    manager.touch()
+    clock, adb = Clock(), ADB()
+    serial = "127.0.0.1:16384"
+    adb.rows, adb.boot = [(serial, "device")], "1"
+    initial = True
+    calls = []
+
+    def run(argv, **kwargs):
+        nonlocal initial
+        calls.append(argv[1:])
+        if argv[1] == "adb":
+            output = serial.encode()
+        elif argv[-1] == "all":
+            initial = False
+            output = json.dumps(
+                {"0": entry(adb_port=16384, created_timestamp=111)}
+            ).encode()
+        elif initial:
+            output = json.dumps({"0": entry(adb_port=0)}).encode()
+        else:
+            output = json.dumps(
+                {"0": entry(adb_port=16384, created_timestamp=replacement_created)}
+            ).encode()
+        return subprocess.CompletedProcess(argv, 0, output, b"")
+
+    selected = profile(manager)
+    before = selected.model_dump()
+    session = DeviceSession(
+        adb,
+        ProductionSimulator(run=run, monotonic=clock.monotonic),
+        clock=clock,
+        policy=RecoveryPolicy(timeout=60, poll_interval=1),
+    )
+    session.bind(selected)
+    assert session.ensure_ready().serial == serial
+    assert session.profile.mumu_created_timestamp == "111"
+    if operation == "observe":
+        with pytest.raises(SessionFailure) as rejected:
+            session.ensure_ready()
+    else:
+        failure = UIUnresponsiveError()
+        session.record_ui_failure(failure)
+        with pytest.raises(SessionFailure) as rejected:
+            session.restart(failure, deadline=session.begin_budget())
+        assert not failure.stop_requested
+        assert not failure.start_requested
+    assert rejected.value.observation.code == "binding_changed"
+    assert selected.model_dump() == before
+    assert session.actions == 0
+    assert adb.actions == []
+    assert all(call[0] != "api" for call in calls)
+
+
+def test_discovery_retains_creation_time_first_reported_by_recheck():
+    run, _ = vendor(
+        {"0": entry(adb_port=0)},
+        fresh={"0": entry(adb_port=16384, created_timestamp="00111")},
+    )
+    instances, errors = MuMuDiscoveryIO(run=run, platform="windows")._instances(
+        Path("MuMuManager.exe"), 3
+    )
+    assert not errors
+    assert instances[0]["serial"] == "127.0.0.1:16384"
+    assert instances[0]["mumu_created_timestamp"] == "111"
+
+
 @pytest.mark.parametrize("missing_port", [{}, {"adb_port": 0}, {"adb_port": ""}])
 def test_discovery_and_session_query_the_selected_instance(missing_port):
     information = {"0": entry(**missing_port)}
@@ -754,7 +826,7 @@ def test_mumu_frame_probe_retries_manager_timeout_without_reconnecting(
     )
 
     def frame_probe(adb_path, serial, timeout):
-        endpoint = mumu_endpoint_with_fallback(
+        endpoint, _ = mumu_endpoint_with_fallback(
             entry(),
             "0",
             str(manager),

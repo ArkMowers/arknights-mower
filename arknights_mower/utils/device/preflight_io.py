@@ -372,7 +372,7 @@ class ProductionPreflightIO:
                 "binding_changed", str(exc), ["instance_id", "instance_name"]
             ) from exc
         try:
-            endpoint = mumu_endpoint_with_fallback(
+            endpoint, _ = mumu_endpoint_with_fallback(
                 entry, actual_instance_id, manager, self._run
             )
         except ManagerQueryTimeout as exc:

@@ -124,7 +124,7 @@ def parse_mumu_instances(
                 and (entry.get("adb_port") or state == "running")
             ):
                 try:
-                    serial = mumu_endpoint_with_fallback(
+                    serial, created = mumu_endpoint_with_fallback(
                         entry,
                         key,
                         manager,
