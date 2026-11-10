@@ -581,6 +581,81 @@ def configure_simulate(offline, monkeypatch, solver):
     solver.op_data.validate_backup_plans = Mock(return_value={"success": True})
 
 
+@pytest.mark.parametrize("start_type", ["0", "1", "2", "3"])
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_start_modes_require_token_before_starting(
+    offline, monkeypatch, start_type, method
+):
+    start = Mock(return_value=True)
+    validate = Mock(return_value=True)
+    monkeypatch.setattr(offline.server, "_start_mower", start)
+    monkeypatch.setattr(offline.server, "_valid_preparation_serial", validate)
+    client = offline.server.app.test_client()
+    payload = {"json": {"preparation_serial": "USB-test"}} if method == "POST" else {}
+    for headers in ({}, {"token": "invalid"}):
+        response = client.open(
+            f"/start/{start_type}", method=method, headers=headers, **payload
+        )
+        assert response.status_code == 403
+        start.assert_not_called()
+        validate.assert_not_called()
+    response = client.open(
+        f"/start/{start_type}",
+        method=method,
+        headers={"token": "crash-test"},
+        **payload,
+    )
+    assert response.status_code == 200 and response.data == b"true"
+    if method == "POST":
+        validate.assert_called_once_with("USB-test")
+        start.assert_called_once_with(start_type, "USB-test")
+    else:
+        validate.assert_not_called()
+        start.assert_called_once_with(start_type)
+    offline.io.assert_not_called()
+
+
+@pytest.mark.parametrize("start_type", ["0", "1", "2", "3"])
+def test_start_without_snapshot_keeps_fresh_initialization(
+    offline, notice, observed_scheduler, monkeypatch, tmp_path, start_type
+):
+    runtime.write_json(notice, {"active": False, "phase": "resolved"})
+    assert offline.record.load_state() is None
+    worker = Mock()
+    worker.is_alive.return_value = False
+    create = Mock(return_value=worker)
+    monkeypatch.setattr(offline.server, "Thread", create)
+    monkeypatch.setattr(offline.server, "get_path", lambda value: tmp_path)
+    monkeypatch.setattr(offline.server.resource_update, "running", lambda: False)
+    monkeypatch.setattr(supervisor, "task_intent", Mock())
+
+    assert offline.server._start_mower(start_type)
+    saved = create.call_args.kwargs["args"][0]
+    assert saved == {}
+    if start_type == "2":
+        offline.io.assert_not_called()
+        return
+
+    solver = observed_scheduler
+    configure_simulate(offline, monkeypatch, solver)
+    solver.backup_plan_solver = Mock()
+    exceptions = Mock()
+    monkeypatch.setattr(offline.main.logger, "exception", exceptions)
+
+    def dispatch():
+        assert solver._initial_staffing_pending
+        assert solver.defer_backup_plan_until_mood_read
+        solver.backup_plan_solver.assert_not_called()
+        exceptions.assert_not_called()
+        raise MowerExit
+
+    boundary = Mock(side_effect=dispatch)
+    monkeypatch.setattr(offline.main, "refresh_resource_at_boundary", boundary)
+    offline.main.simulate(saved)
+    boundary.assert_called_once()
+    offline.io.assert_not_called()
+
+
 @pytest.mark.parametrize("checkpoint_failure", [False, True])
 def test_queue_reset_start_keeps_mode_until_its_first_checkpoint(
     offline, notice, observed_scheduler, monkeypatch, tmp_path, checkpoint_failure
