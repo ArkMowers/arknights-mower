@@ -278,3 +278,90 @@ def test_previous_order_miss_includes_known_room_and_visual_source():
         archive_screenshots=True,
         screenshot_source=source,
     )
+
+
+def test_trading_order_proviso_2500_not_misidentified_as_tequila(monkeypatch):
+    """但书产出 2500 订单时，即使龙舌兰采样区域亮度更高，也必须优先判定为但书并匹配出 2500 金额。"""
+    order = TradingOrder()
+    scores = {
+        "佩佩": 0.0,
+        "但书": 80.0,
+        "可露希尔": 0.0,
+        "龙舌兰": 95.0,
+        "源石": 0.0,
+    }
+    order.get_buff_scores = MagicMock(return_value=scores)
+    order._match_price = MagicMock(return_value=2500)
+    monkeypatch.setattr("arknights_mower.solvers.record._conn", MagicMock())
+
+    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    order.save(img)
+
+    assert order.buff == "但书"
+    assert order.price == 2500
+
+
+def test_trading_order_proviso_2000_order(monkeypatch):
+    """但书产出 2000 订单时，判定为但书并匹配出 2000 金额。"""
+    order = TradingOrder()
+    scores = {
+        "佩佩": 0.0,
+        "但书": 85.0,
+        "可露希尔": 0.0,
+        "龙舌兰": 0.0,
+        "源石": 0.0,
+    }
+    order.get_buff_scores = MagicMock(return_value=scores)
+    order._match_price = MagicMock(return_value=2000)
+    monkeypatch.setattr("arknights_mower.solvers.record._conn", MagicMock())
+
+    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    order.save(img)
+
+    assert order.buff == "但书"
+    assert order.price == 2000
+
+
+def test_trading_order_tequila_2500_when_no_proviso_tag(monkeypatch):
+    """无但书标签但金额为 2500 时，判定为龙舌兰订单。"""
+    order = TradingOrder()
+    scores = {
+        "佩佩": 0.0,
+        "但书": 0.0,
+        "可露希尔": 0.0,
+        "龙舌兰": 90.0,
+        "源石": 0.0,
+    }
+    order.get_buff_scores = MagicMock(return_value=scores)
+    order._match_price = MagicMock(return_value=2500)
+    monkeypatch.setattr("arknights_mower.solvers.record._conn", MagicMock())
+
+    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    order.save(img)
+
+    assert order.buff == "龙舌兰"
+    assert order.price == 2500
+
+
+def test_trading_order_regular_order_is_missed_order(monkeypatch):
+    """无任何干员专属标签且金额为常规值时，判定为漏单。"""
+    order = TradingOrder()
+    scores = {
+        "佩佩": 0.0,
+        "但书": 0.0,
+        "可露希尔": 0.0,
+        "龙舌兰": 0.0,
+        "源石": 0.0,
+    }
+    order.get_buff_scores = MagicMock(return_value=scores)
+    order._match_price = MagicMock(return_value=2000)
+    monkeypatch.setattr("arknights_mower.solvers.record._conn", MagicMock())
+    monkeypatch.setattr("arknights_mower.utils.trading_order.save_log", MagicMock())
+    monkeypatch.setattr("arknights_mower.utils.trading_order.send_message", MagicMock())
+
+    img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    order.save(img, time=datetime.now())
+
+    assert order.buff == "漏单"
+    assert order.price == 2000
+

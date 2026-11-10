@@ -59,6 +59,18 @@ class TradingOrder:
             max(abs(curr_scores[k] - prev_scores[k]) for k in curr_scores) < threshold
         )
 
+    def _match_price(self, img):
+        gray = cv2.cvtColor(img[705:790, 575:735], cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        match_results = {}
+        for name, template in self.templates.items():
+            result = cv2.matchTemplate(thresh, template, cv2.TM_SQDIFF_NORMED)
+            min_val, _, _, _ = cv2.minMaxLoc(result)
+            match_results[name] = min_val
+        best_match = min(match_results, key=match_results.get)
+        logger.debug(f"Best match score:{match_results}")
+        return best_match
+
     @save_trading_info
     def save(self, img, time=None, *, room=None, screenshot_source=None):
         try:
@@ -69,23 +81,30 @@ class TradingOrder:
             scores = self.get_buff_scores(img)
             # 判断是否有“可交付”
             if scores is not None:
-                # 取亮度最高的区域对应的订单类型和价值作为输出
                 logger.debug(f"亮度均值: {scores}")
-                match = max(scores, key=scores.get)
-                if scores[match] > self.BUFF_THRESHOLD:
-                    self.buff = match
-                    self.price = self.BUFF_PRICES[match]
-                if self.buff in ["漏单", "但书"]:
-                    gray = cv2.cvtColor(img[705:790, 575:735], cv2.COLOR_BGR2GRAY)
-                    _, img = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-                    match_results = {}
-                    for name, template in self.templates.items():
-                        result = cv2.matchTemplate(img, template, cv2.TM_SQDIFF_NORMED)
-                        min_val, _, _, _ = cv2.minMaxLoc(result)
-                        match_results[name] = min_val
-                    best_match = min(match_results, key=match_results.get)
-                    logger.debug(f"Best match score:{match_results}")
-                    self.price = best_match
+                tag_candidates = {
+                    k: scores[k]
+                    for k in ["佩佩", "但书", "可露希尔"]
+                    if scores.get(k, 0) > self.BUFF_THRESHOLD
+                }
+                if tag_candidates:
+                    best_tag = max(tag_candidates, key=tag_candidates.get)
+                    self.buff = best_tag
+                    if best_tag == "但书":
+                        self.price = self._match_price(img)
+                    else:
+                        self.price = self.BUFF_PRICES[best_tag]
+                elif scores.get("源石", 0) > self.BUFF_THRESHOLD:
+                    self.buff = "源石"
+                    self.price = 20
+                else:
+                    matched_price = self._match_price(img)
+                    if matched_price == 2500:
+                        self.buff = "龙舌兰"
+                        self.price = 2500
+                    else:
+                        self.buff = "漏单"
+                        self.price = matched_price
                 if self.buff == "漏单" and not time:
                     message = (
                         f"检测到上一个订单漏单：{room}。"
