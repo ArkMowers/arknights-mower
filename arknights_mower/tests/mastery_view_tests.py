@@ -1,7 +1,9 @@
+import json
 import sys
 import types
 import unittest
 from datetime import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from flask import Flask
@@ -264,6 +266,48 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(
             [(c.args[1], c.args[3]) for c in add.call_args_list],
             list(forms.items()),
+        )
+
+    @patch(
+        "arknights_mower.utils.mastery_recommendation.get_mastery_requirement_error",
+        return_value=None,
+    )
+    @patch("arknights_mower.views.mastery._add_or_reuse_plan")
+    @patch("arknights_mower.views.mastery.get_skill_data")
+    def test_bundled_amiya_forms_pass_plan_validation(
+        self, get_skill, add, requirement
+    ):
+        resource = Path(__file__).resolve().parents[1] / "data/skill_data.json"
+        get_skill.return_value = json.loads(resource.read_text(encoding="utf-8"))
+        forms = {
+            "char_002_amiya": ["战术咏唱·γ型", "精神爆发", "奇美拉"],
+            "char_1001_amiya2": ["影霄·奔夜", "影霄·绝影"],
+            "char_1037_amiya3": ["哀恸共情", "慈悲愿景"],
+        }
+        add.return_value = ({"status": "existing"}, None, False)
+        response = self.client.post(
+            "/mastery-plan",
+            json={
+                "planning": True,
+                "items": [
+                    {"char_id": cid, "name": "阿米娅", "skill_index": index}
+                    for cid, skills in forms.items()
+                    for index in range(len(skills))
+                ],
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [result["status"] for result in response.get_json()["results"]],
+            ["existing"] * 7,
+        )
+        self.assertEqual(
+            [(call.args[1], call.args[2], call.args[3]) for call in add.call_args_list],
+            [
+                (cid, index, skill)
+                for cid, skills in forms.items()
+                for index, skill in enumerate(skills)
+            ],
         )
 
     @patch("arknights_mower.views.mastery._add_or_reuse_plan")
