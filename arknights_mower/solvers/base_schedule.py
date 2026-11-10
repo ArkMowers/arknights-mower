@@ -5363,7 +5363,14 @@ class BaseSchedulerSolver(
         ``explicit_slots`` 保留预演中已应用的副表显式驻员，优先于普通纠错。
         """
         if read_rooms:
-            observations = dict(getattr(self.op_data, "room_observations", {}))
+            observations = getattr(self.op_data, "idle_dorm_release_observations", None)
+            if (
+                getattr(self.op_data, "idle_dorm_release_suspended", False)
+                and observations is None
+            ):
+                # 旧运行状态没有暂停时的观测版本，从当前版本等待后续新观测。
+                observations = dict(self.op_data.room_observations)
+                self.op_data.idle_dorm_release_observations = observations
             if self._read_agent_mood() is False:
                 return {} if return_plan else None
             if getattr(self.op_data, "idle_dorm_release_suspended", False) and any(
@@ -5371,6 +5378,7 @@ class BaseSchedulerSolver(
                 for room, revision in self.op_data.room_observations.items()
             ):
                 self.op_data.idle_dorm_release_suspended = False
+                self.op_data.idle_dorm_release_observations = None
                 self.op_data.refresh_idle_dorm_search(
                     reason="心情检测已取得新的房间观测"
                 )
@@ -16582,6 +16590,9 @@ class BaseSchedulerSolver(
                         if resolved == self.op_data.get_current_room(room, True):
                             agents[:] = resolved
                             self._cancel_unchanged_dorm_selection()
+                            pending = getattr(self.task, "idle_dorm_search_names", {})
+                            pending.setdefault(room, set()).update(retainable)
+                            self.task.idle_dorm_search_names = pending
                             logger.info("候选均已满心情，放弃暂选并保留原驻员")
                             return False
                         # 同房仍需换人时直接选当前页的合格候选，不再找回原住者。
@@ -18955,6 +18966,13 @@ class BaseSchedulerSolver(
         self._confirm_facility_arrangement_log(
             room, targets, observed, unconfirmed=unconfirmed
         )
+        if getattr(
+            self.op_data, "idle_dorm_release_suspended", False
+        ) and room in getattr(self.task, "idle_dorm_search_names", {}):
+            # 本次保留或补位自己的读回属于暂停收尾，不能用来立即解除暂停。
+            self.op_data.idle_dorm_release_observations = dict(
+                self.op_data.room_observations
+            )
         del plan[room]
 
     def _wait_for_room_entry_before_exit(self, room, *, deadline):

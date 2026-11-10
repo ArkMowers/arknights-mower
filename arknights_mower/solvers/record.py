@@ -318,6 +318,9 @@ def current_state():
         "idle_dorm_release_suspended": getattr(
             data, "idle_dorm_release_suspended", False
         ),
+        "idle_dorm_release_observations": copy.deepcopy(
+            getattr(data, "idle_dorm_release_observations", None)
+        ),
         "idle_dorm_search_stopped_at": getattr(
             data, "idle_dorm_search_stopped_at", None
         ),

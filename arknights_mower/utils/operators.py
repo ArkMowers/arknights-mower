@@ -393,6 +393,7 @@ class Operators:
         self.group_dorm = []
         self.idle_dorm_search_exhausted = False
         self.idle_dorm_release_suspended = False
+        self.idle_dorm_release_observations = None
         self.idle_dorm_search_stopped_at = None
         self.dorm_mood_estimates = {}
         self.recall_recovery_rates = {}
@@ -1071,6 +1072,7 @@ class Operators:
     def stop_idle_dorm_search(self, now=None):
         """合格候选已满时暂停普通清退，下一轮心情检测取得新观测后恢复。"""
         self.idle_dorm_release_suspended = True
+        self.idle_dorm_release_observations = dict(self.room_observations)
         if not self.idle_dorm_search_exhausted:
             self.idle_dorm_search_exhausted = True
             self.idle_dorm_search_stopped_at = now or datetime.now()

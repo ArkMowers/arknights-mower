@@ -633,11 +633,23 @@ def test_cancelled_selection_reads_back_without_submit_or_timer_reset(
     independent = SchedulerTask(task_plan={"meeting": ["黑角"]})
     instance.tasks.append(independent)
 
+    read = instance.get_agent_from_room.side_effect
+
+    def observe(room, *args, **kwargs):
+        result = read(room, *args, **kwargs)
+        instance.op_data.room_observations[room] = (
+            instance.op_data.room_observations.get(room, 0) + 1
+        )
+        return result
+
     def cancel(agents, *args, **kwargs):
         agents[:] = actual
+        instance.op_data.stop_idle_dorm_search()
+        instance.task.idle_dorm_search_names = {ROOM: {actual[-1]}}
         return False
 
     instance.choose_agent.side_effect = cancel
+    instance.get_agent_from_room.side_effect = observe
     instance.agent_arrange_room({}, ROOM, instance.task.plan)
 
     assert instance.task.plan == {}
@@ -647,3 +659,16 @@ def test_cancelled_selection_reads_back_without_submit_or_timer_reset(
     assert instance.get_agent_from_room.call_count >= 1
     assert independent.plan == {"meeting": ["黑角"]}
     assert independent in instance.tasks
+    assert instance.op_data.idle_dorm_release_suspended
+    assert instance.op_data.idle_dorm_release_observations == (
+        instance.op_data.room_observations
+    )
+    instance.op_data.runtime_conf = SimpleNamespace(test_mood_calculation=True)
+    instance.defer_backup_plan_until_mood_read = False
+    instance._initial_mood_refresh_rooms = set()
+    instance._emergency_frozen = MagicMock(return_value=True)
+    instance.agent_get_mood()
+    assert instance.op_data.idle_dorm_release_suspended
+    instance.op_data.room_observations["meeting"] = 1
+    instance.agent_get_mood()
+    assert not instance.op_data.idle_dorm_release_suspended
