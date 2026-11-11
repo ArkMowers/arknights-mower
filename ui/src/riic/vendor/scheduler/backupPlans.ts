@@ -1,3 +1,4 @@
+import {mowerArrangementGroupTransitions} from './mowerSharedGroups'
 import {mowerInitialMorale} from './mowerInitialMorale'
 import {mowerExhaustTaskSignatures,invalidateMowerExhaustTasks} from './mowerExhaustReservations'
 import {readBackupGroups,readBackupMembership,selectBackupPlans,sameBackupGroups,type BackupGroupState} from './backupGroups'
@@ -243,7 +244,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     evaluate(data){return alphaModel.select!(data).conditions},
     swap(data,conditions,groupId){const {config}=alphaConfiguration(conditions,groupId??data.backupGroup);const next=makeMowerSchedulingData({...state,time:data.nowMicros/3_600_000_000,config,morale:{...state.morale},initialMorale:{...state.initialMorale}},{data});next.planConditions=[...conditions];next.backupGroup=groupId??data.backupGroup;validateMowerGroupTasks(next);return next},
     transition(previous,next,original,conditions,recovery=previous,pendingTasks,intent={}){
-      const transition:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>(),joiningResting=new Set<string>()
+      const transition:Record<string,string[]>={},entry:Record<string,string[]>={},groupPositions=new Set<string>(),replacementPositions:[string,number][]=[],restored=new Set<string>(),joiningResting=new Set<string>()
       const protectedTraining=new Set([...previous.busyRestingNames,...next.busyRestingNames])
       plans.forEach((p,i)=>{if(original[i]&&!conditions[i])for(const [room,names] of Object.entries(p.task))names.forEach((name,index)=>{if(name!=='Current')restored.add(alphaPosition(room,index))})})
       for(const [room,names] of Object.entries(next.plan))names.forEach((name,index)=>{
@@ -267,8 +268,10 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
         // Explicit tasks run on activation; completed tasks do not constrain later overlays.
         assertMowerBackupTaskRooms(alphaConfiguration(conditions,next.backupGroup).compiled.sourceWorkspace,p.task)
         mergeMowerPlanOverlay(transition,p.task,next)
+        mergeMowerPlanOverlay(entry,p.task,next)
         for(const [room,names] of Object.entries(p.task))names.forEach((name,index)=>{if(name!=='Current')groupPositions.delete(alphaPosition(room,index))})
       })
+      const groupTransitions={...mowerArrangementGroupTransitions(next,intent),...mowerArrangementGroupTransitions(next,entry)}
       if(groupPositions.size)alphaCorrectGroupDorms(next,transition,groupPositions)
       if(joiningResting.size?!preserveMowerBackupRestingJoins(next,transition,replacementPositions,recovery.dorms,joiningResting,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),protectedTraining):!preserveMowerBackupReplacements(next,transition,replacementPositions,recovery.dorms))throw new MowerShiftPreviewError('副表替班或恢复床位不可用，暂缓切表')
       const retentionExplicitNames=new Set([...Object.values(transition).flat(),...Object.values(intent).flat()].filter(name=>!['Current','Free',''].includes(name)))
@@ -277,7 +280,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       const slots=new Set(Object.entries(transition).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[alphaPosition(room,index)]:[])))
       const signature=(data:MowerSchedulingData)=>JSON.stringify([data.dormOrder,data.dorms.map(b=>[b.position,data.plan[b.position[0]]?.[b.position[1]],data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group,data.effectiveFreeSlot(b),b.name])])
       if(signature(recovery)!==signature(next)){
-        const migration=projectMowerArrangements(next,[transition])
+        const migration=projectMowerArrangements(next,[transition],groupTransitions)
         if(orderChanged){
           const source=getMowerSourceRuntime(state),pending=pendingTasks??source.queue.tasks.filter(task=>task!==source.activeTask)
           const reservations=mowerDormTaskReservations(next,pending.filter(task=>task.type!==T.SHIFT_ON||task.retainsExecution||task.backupShiftActive||task.productShiftLocked||task.dormRecoveryRestore.length))
@@ -288,7 +291,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       }
       for(const [room,names] of Object.entries(transition))if(room.startsWith('dorm'))names.forEach((name,index)=>{if(!['Current','Free',''].includes(name)&&next.restMoodComplete(name)&&!next.freeRoomExcluded(name)&&next.currentOperator(room,index)?.name!==name)names[index]='Current'})
       const changed=original.some((value,index)=>value!==conditions[index])||!sameBackupGroups(previous.backupGroup,next.backupGroup)
-      const reconciled=changed?reconcileMowerBackupRetention(previous,next,transition,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),retentionExplicitNames):transition
+      const reconciled=changed?reconcileMowerBackupRetention(previous,next,transition,pendingTasks??getMowerSourceRuntime(state).queue.tasks.filter(task=>task!==getMowerSourceRuntime(state).activeTask),retentionExplicitNames,groupTransitions):transition
       return stripMowerCurrent(orderChanged||changed?planMowerDormIsolation(next,reconciled,slots,reserved,orderChanged?new Set(recovery.dorms.map(b=>b.name).filter(Boolean)):new Set()):reconciled)
     },
     activate(conditions,task){

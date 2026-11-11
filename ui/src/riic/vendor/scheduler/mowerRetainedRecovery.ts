@@ -5,7 +5,7 @@ import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {alphaPosition} from './mowerAlphaDorm'
-import {mowerCoordinationRequestFulfilled} from './mowerReplacementCoordination'
+import {mowerCoordinationRecoveryMembers,mowerCoordinationRequestFulfilled} from './mowerReplacementCoordination'
 
 const unstartedFailed=(task:MowerTask)=>!!task.executionFailure&&!task.backupShiftActive&&!task.arrangementStarted&&!task.productShiftLocked&&!task.dormRecoveryRestore.length
 
@@ -17,8 +17,8 @@ export function mowerRemainingCoordinationRequests(task:MowerTask):string[]{
 /** A completed admission remains completed after that group's ordinary return. */
 export function recordMowerCoordinationProgress(data:MowerSchedulingData,tasks:readonly MowerTask[]):void {
  for(const task of tasks){
-  if(!task.ordinaryCoordination||task.arrangementStarted||task.backupShiftActive||task.productShiftLocked||task.backupExplicitSlots.size||task.backupGroupRequest||task.dormRecoveryRestore.length)continue
-  const completed=mowerRemainingCoordinationRequests(task).filter(name=>mowerCoordinationRequestFulfilled(data,[name]))
+  if(!task.ordinaryCoordination||task.exhaustSupport||task.arrangementStarted||task.backupShiftActive||task.productShiftLocked||task.backupExplicitSlots.size||task.backupGroupRequest||task.dormRecoveryRestore.length)continue
+  const completed=mowerRemainingCoordinationRequests(task).filter(name=>mowerCoordinationRequestFulfilled(data,[name],true))
   if(completed.length)task.coordinationCompletedRequestNames=[...new Set([...(task.coordinationCompletedRequestNames??[]),...completed])]
  }
 }
@@ -30,9 +30,7 @@ export function mowerCompletedOrdinaryRestRequest(data:MowerSchedulingData,task:
  const requested=mowerRemainingCoordinationRequests(task)
  if(!requested.length)return true
  if(requested.some(name=>!data.operators[name]))return false
- const groups=new Set(data.shiftRequestGroups(requested))
- const names=new Set([...groups].flatMap(group=>data.shiftGroupMembers(group)).concat(requested.filter(name=>!data.operators[name]!.group)))
- const required=[...names].map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&!data.canStandby(op)&&(!op.multiGroup||!!op.shiftGroup&&groups.has(op.shiftGroup)||requested.includes(op.name)&&op.independentRest))
+ const required=mowerCoordinationRecoveryMembers(data,requested,true)
  return required.length>0&&required.every(op=>op.isResting()&&data.currentOperator(op.currentRoom,op.currentIndex)===op)
 }
 

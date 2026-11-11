@@ -7,7 +7,10 @@ export class MowerAttributeError extends Error {}
 /** Native infra_main catches this recoverable preview failure and retains the task. */
 export class MowerShiftPreviewError extends Error {override name='MowerShiftPreviewError'}
 /** A valid arrangement waits for a cover, recovery bed or mandatory recovery observation. */
-export class MowerResourceWaitError extends MowerShiftPreviewError {override name='MowerResourceWaitError'}
+export class MowerResourceWaitError extends MowerShiftPreviewError {
+ override name='MowerResourceWaitError'
+ constructor(message:string,readonly observationNames:readonly string[]=[]){super(message)}
+}
 /** Native alpha keeps the current task and retries its remaining rooms later. */
 export class MowerRoomArrangementDeferred extends Error {
  override name='RoomArrangementDeferred'

@@ -81,15 +81,15 @@ export function mowerCorrectDorm(data:MowerSchedulingData):void {
   else if(bed.timeMicros!==undefined&&bed.timeMicros<data.nowMicros){if(data.alpha&&op.timeStampMicros!==undefined&&op.mood>=op.upperLimit){op.depletionRate=0;continue}op.mood=op.upperLimit;op.timeStampMicros=bed.timeMicros;op.depletionRate=0;if(data.alpha)op.moodIsPrediction=true}
  }
 }
-export function projectMowerArrangements(data:MowerSchedulingData,plans:MowerTaskPlan[]):MowerSchedulingData {
+export function projectMowerArrangements(data:MowerSchedulingData,plans:MowerTaskPlan[],groupTransitions:Record<string,boolean>={}):MowerSchedulingData {
  const projected=new MowerSchedulingData({...data,pendingGroupTransitions:{},groupDorms:data.groupDorms.map(b=>new MowerDormState([...b.position],b.name,b.timeMicros)),operators:Object.fromEntries(Object.entries(data.operators).map(([n,o])=>[n,o.copyForProjection()])),dorms:data.dorms.map(b=>new MowerDormState([...b.position],b.name,b.timeMicros,b.autoFree))})
  for(const plan of plans){
-  const groupTransitions=mowerArrangementGroupTransitions(projected,plan)
+  const transitions={...mowerArrangementGroupTransitions(projected,plan),...groupTransitions}
   const changed=new Set(Object.entries(plan).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[room+'\0'+index]:[])))
   const timers=new Map(projected.allDorms().filter(b=>b.name).map(b=>[b.name,{position:b.position,time:b.timeMicros}]))
   for(const op of Object.values(projected.operators))if(changed.has(op.currentRoom+'\0'+op.currentIndex)){if(data.alpha)op.setProjectedPosition('',-1);else{op.currentRoom='';op.currentIndex=-1}}
   for(const [room,names] of Object.entries(plan))for(const [index,name] of names.entries()){const op=projected.operators[name];if(op){if(data.alpha){op.setProjectedPosition(room,index);op.restMoodReleaseLimit=undefined}else{op.currentRoom=room;op.currentIndex=index}}}
-  if(data.alpha)commitMowerGroupShifts(projected,groupTransitions)
+  if(data.alpha)commitMowerGroupShifts(projected,transitions)
   if(data.alpha)for(const op of Object.values(projected.operators))if(!op.isResting())op.temporaryDormFill=false
   for(const bed of projected.allDorms()){
    const op=projected.currentOperator(...bed.position)

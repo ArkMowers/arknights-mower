@@ -63,8 +63,8 @@ export function recordMowerBackupRetention(previous:MowerSchedulingData,next:Mow
 }
 
 /** Reconcile final retention policy in a copy, preserving unfinished recovery and named arrangements. */
-export function reconcileMowerBackupRetention(previous:MowerSchedulingData,next:MowerSchedulingData,plan:MowerTaskPlan,pending:readonly MowerTask[]=[],explicitNames:ReadonlySet<string>=new Set()):MowerTaskPlan {
- const result=structuredClone(plan),projected=projectMowerArrangements(next,[result])
+export function reconcileMowerBackupRetention(previous:MowerSchedulingData,next:MowerSchedulingData,plan:MowerTaskPlan,pending:readonly MowerTask[]=[],explicitNames:ReadonlySet<string>=new Set(),groupTransitions:Record<string,boolean>={}):MowerTaskPlan {
+ const result=structuredClone(plan),projected=projectMowerArrangements(next,[result],groupTransitions)
  const reserved=mowerDormTaskReservations(projected,mowerBackupRetentionPending(next,pending).filter(task=>task.type!==T.SHIFT_ON||task.retainsExecution||task.backupShiftActive||task.productShiftLocked||task.dormRecoveryRestore.length))
  const rooms=[...new Set(projected.dorms.map(bed=>bed.position[0]))]
  const fail=(names:string[]):never=>{throw new MowerBackupRetentionBlocked(names,rooms)}
@@ -77,7 +77,7 @@ export function reconcileMowerBackupRetention(previous:MowerSchedulingData,next:
   if(reserved.names.has(name)||reserved.slots.has(position)||projected.reservedProductBeds.has(position))fail([name])
   ;(result[op.currentRoom]??=Array(projected.plan[op.currentRoom]!.length).fill('Current'))[op.currentIndex]=''
  }
- const released=projectMowerArrangements(next,[result])
+ const released=projectMowerArrangements(next,[result],groupTransitions)
  const required=next.freeRoomExclusions.filter(name=>{
   const op=released.operators[name]
   return next.freeRoomExcluded(name)&&!!op&&!op.room&&!op.currentRoom&&!explicitNames.has(name)

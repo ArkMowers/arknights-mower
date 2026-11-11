@@ -2,11 +2,13 @@ import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,MowerTaskQueue,type MowerTask} from './mowerTaskQueue'
 import {mowerArrangementGroupTransitions,normalizeMowerSharedArrangement,commitMowerGroupShifts,mowerRestingBindingGroups,mowerSharedReplacements} from './mowerSharedGroups'
 import {projectMowerArrangements} from './mowerObservations'
-import {cloneMowerShiftTask,prepareMowerShiftCycle,type MowerShiftModel} from './mowerShiftCycle'
+import {cloneMowerShiftTask,prepareMowerShiftCycle,mergeMowerShiftTransition,type MowerShiftModel} from './mowerShiftCycle'
 import {alphaPosition} from './mowerAlphaDorm'
 import {MowerShiftPreviewError} from './mowerNativeErrors'
+import {MowerBackupRetentionBlocked} from './mowerBackupRetention'
+import {mowerHeldRestGroups} from './mowerBackupGroupTasks'
 
-/** Admit a due normal return only after proving the retained arrangement becomes feasible. */
+/** A legal normal return can release a shared dependency before the successor obtains every bed. */
 export function mowerVerifiedRecoveryDependencyReturn(data:MowerSchedulingData,retained:MowerTask,candidate:MowerTask,pending:readonly MowerTask[],model:MowerShiftModel):boolean {
  if(!retained.executionFailure||retained.arrangementStarted||retained.backupShiftActive||retained.productShiftLocked||retained.dormRecoveryRestore.length||candidate.type!==T.SHIFT_ON||candidate.timeMicros>data.nowMicros)return false
  const returning=new Set(Object.entries(mowerArrangementGroupTransitions(data,candidate.plan)).filter(([group,resting])=>!resting&&data.groupIsResting(group)).map(([group])=>group))
@@ -46,7 +48,26 @@ export function mowerVerifiedRecoveryDependencyReturn(data:MowerSchedulingData,r
   if(!changedOwners&&!releasedBinding)return false
   if(!normalizeMowerSharedArrangement(projected,failed.plan,failed.groupShiftTransitions,failed.backupExplicitSlots))return false
   queue.tasks=queue.tasks.filter(task=>task!==next);queue.tasks.push(failed)
-  prepareMowerShiftCycle(projected,failed,queue,model)
+  let retentionProof:{rules:MowerSchedulingData;intent:typeof failed.plan;conditions:boolean[]}|undefined
+  const proofModel:MowerShiftModel={...model,transition(...args){
+   try{return model.transition(...args)}catch(error){
+    if(error instanceof MowerBackupRetentionBlocked)retentionProof={rules:args[1],intent:structuredClone(args[6]??failed.plan),conditions:[...args[3]]}
+    throw error
+   }
+  }}
+  try{prepareMowerShiftCycle(projected,failed,queue,proofModel)}catch(error){
+   if(!(error instanceof MowerBackupRetentionBlocked))throw error
+   if(!releasedBinding||!retentionProof)return false
+   const {rules,intent,conditions}=retentionProof,explicit:typeof failed.plan={}
+   // The successor's entry tasks must not revoke the return or restore its shared conflict.
+   for(const [index,active] of conditions.entries())if(active&&!projected.planConditions[index])mergeMowerShiftTransition(explicit,model.explicitTasks?.[index]??{},rules)
+   mergeMowerShiftTransition(intent,explicit,rules)
+   const transitions={...failed.groupShiftTransitions,...mowerArrangementGroupTransitions(rules,explicit)},held=mowerHeldRestGroups(rules)
+   if([...returning].some(group=>rules.groupIsResting(group)||transitions[group]===true||held.has(group)))return false
+   if(error.names.some(name=>[...returning].some(group=>rules.shiftGroupMembers(group).includes(name))))return false
+   const explicitSlots=new Set([...failed.backupExplicitSlots,...model.explicitSlots?.(projected.planConditions,conditions)??[]])
+   return normalizeMowerSharedArrangement(rules,intent,transitions,explicitSlots)
+  }
   const finalRules=model.swap(projectMowerArrangements(projected,[]),failed.backupShiftConditions??projected.planConditions,failed.backupGroup)
   return normalizeMowerSharedArrangement(finalRules,failed.plan,failed.groupShiftTransitions,failed.backupExplicitSlots)
  }catch(error){if(error instanceof MowerShiftPreviewError)return false;throw error}

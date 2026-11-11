@@ -185,7 +185,7 @@ describe('sample endpoint production collection',()=>{
   expect(report.production!.sample.inflows.gold).toBe(0)
   expect(captured.controller().finalize).not.toHaveBeenCalled()
  })
- it('does not collect at the horizon when an execution failure remains unresolved',()=>{
+ it('collects completed output at the horizon while preserving an unresolved execution failure',()=>{
   const captured=captureController(),workspace=fixture('gold')
   workspace.mainPlan.facilities.room_1_1.slots=[{occupant:{kind:'operator',operatorId:'char_123_fang'},groupId:null,replacements:['char_240_wyvern']}]
   workspace.mainPlan.conf.workaholic=['char_123_fang','char_240_wyvern']
@@ -193,9 +193,17 @@ describe('sample endpoint production collection',()=>{
   vi.spyOn(shiftCycle,'prepareMowerShiftCycle').mockImplementation(()=>{throw new MowerShiftPreviewError('terminal collection failure fixture')})
   const report=simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[],operatorMorale:{char_501_durin:0,char_212_ansel:0}}),{schedulingModel:'mower-alpha',sampleHours:4,production,consumptionOverrides:{char_123_fang:5}})
   expect(report.elapsedHours).toBe(4)
-  expect(report.success).toBe(false)
+  expect(report.success).toBe(true)
+  expect(report.production!.success).toBe(true)
   expect(report.diagnostics.some(d=>d.code==='MOWER_PENDING_TASK_FAILURE')).toBe(true)
-  expect(captured.controller().finalize).not.toHaveBeenCalled()
+  expect(captured.controller().finalize).toHaveBeenCalledOnce()
+  const before=captured.before().production,pending=before.manufacturing[0]!.pendingItems
+  expect(pending).toBeGreaterThan(0)
+  expect(report.production!.manufacturing[0]!.pendingItems).toBe(0)
+  expect(report.production!.sample.closing.gold).toBe(before.sample.closing.gold+pending)
+  expect(report.production!.events).toContainEqual({time:4,type:'collect-manufacture:room_1_1',delta:{gold:pending}})
+  expect(captured.runtimeSnapshot()).toBe(captured.before().runtime)
+  expect(getMowerSourceRuntime(captured.clock()).queue.tasks.some(task=>task.executionFailure?.reason==='terminal collection failure fixture')).toBe(true)
  })
  it('retains ordinary warmup accounting with continuous inventory and no initial-stock income',()=>{
   const {report}=run('exp',{warmupHours:1,sampleHours:2,production:{initialResources:{exp:9000}}})

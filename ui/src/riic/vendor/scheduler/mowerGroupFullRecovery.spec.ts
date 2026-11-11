@@ -5,7 +5,7 @@ import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
 import {projectMowerArrangements,mowerRefreshDormTime,invalidateMowerDormTime,mowerUpdateDetail} from './mowerObservations'
 import {commitMowerGroupShifts} from './mowerSharedGroups'
-import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,splitMowerRecoveryTask} from './mowerGroupRecovery'
+import {mowerGroupRecoveryDeadline,mowerGroupRecoveryWorkers,mowerRecoveryReady,splitMowerRecoveryTask} from './mowerGroupRecovery'
 
 type Resident={name:string;hours?:number;options?:Partial<MowerOperatorOptions>}
 function fixture(rows:Resident[],gap=false,maxWait=0){
@@ -16,6 +16,18 @@ function returnTask(data:MowerSchedulingData){const queue=new MowerTaskQueue();p
 function releaseFull(data:MowerSchedulingData,name:string){const op=data.operators[name]!;data.dorms.find(b=>b.name===name)!.reset();op.currentRoom='';op.currentIndex=-1;op.mood=op.upperLimit;op.timeStampMicros=data.nowMicros;op.depletionRate=0}
 
 describe('strict grouped recovery in the alpha simulator',()=>{
+ it.each([false,true].flatMap(predictive=>['complete','missing-marker','wrong-marker','new-card','new-room'].map(evidence=>({predictive,evidence}))))('checks actual personal-limit completion with predictive=$predictive and evidence=$evidence',({predictive,evidence})=>{
+  const data=fixture([{name:'A',hours:0,options:{mood:24}},{name:'B',hours:0,options:{mood:12,upperLimit:12,restMoodLimit:true}}]),op=data.operators.B!
+  releaseFull(data,'A');releaseFull(data,'B')
+  op.mood=11.925;op.restMoodReleaseLimit=evidence==='missing-marker'?undefined:evidence==='wrong-marker'?24:12
+  data.nowMicros=toMowerMicros(2)
+  if(evidence==='new-room')mowerUpdateDetail(data,'B',11.925,'dormitory_1',1,true)
+  if(evidence==='new-card')data.dormMoodEstimates.set('B',[11.925,data.nowMicros])
+  data.policy.predictiveMoodControl=predictive
+  if(predictive){data.calculatedMoodSnapshot={timeMicros:data.nowMicros,values:{A:24,B:11.925}};op.calculatedMoodSnapshot=data.calculatedMoodSnapshot}
+  expect(mowerRecoveryReady(data,op)).toBe(evidence==='complete')
+  expect(op.mood).toBe(11.925)
+ })
  it.each([undefined,24,12])('uses only a matching observed personal-limit departure marker (%s)',marker=>{
   const data=fixture([{name:'A',hours:0,options:{mood:24}},{name:'B',hours:0,options:{mood:12,upperLimit:12,restMoodLimit:true}}])
   releaseFull(data,'A');releaseFull(data,'B')

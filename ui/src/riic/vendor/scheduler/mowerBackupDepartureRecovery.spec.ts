@@ -210,6 +210,34 @@ function blockedRuntime(){
  return {state,source,data,task}
 }
 describe('backup bed dependencies through real dispatch',()=>{
+ it('admits a parked departure released by completed queue work before the next-action query',()=>{
+  const {state,source,task}=blockedRuntime(),rates={workRate:()=>1,recoveryRate:()=>4}
+  state.config.mowerRunLoopClock={minimumClockStepMicros:1,notificationSleepMicros:1_000_000}
+  const independent=new MowerTask({type:T.NOT_SPECIFIC,plan:{central:['Current']}}),time=task.timeMicros,plan=structuredClone(task.plan)
+  source.queue.tasks.push(independent)
+  settleRoster(state,rates)
+  expect(source.queue.tasks).not.toContain(independent)
+  expect(source.trace.some(entry=>entry.plan.central?.[0]==='Current')).toBe(true)
+  expect(source.queue.tasks).toContain(task)
+  expect(task.timeMicros).toBe(time);expect(task.plan).toEqual(plan)
+  const pending=[...source.queue.tasks],waiting=[...source.waitingRecovery??[]]
+  const next=nextRosterActionHours(state,rates)
+  expect(next).toBeGreaterThan(0)
+  expect(source.queue.tasks).toEqual(pending);expect(source.waitingRecovery).toEqual(waiting)
+  for(let step=0;step<10&&!source.waitingRecovery?.some(wait=>wait.task===task);step++){
+   advanceRoster(state,nextRosterActionHours(state,rates),rates)
+   settleRoster(state,rates)
+  }
+  expect(source.waitingRecovery?.map(wait=>wait.task)).toContain(task)
+  for(let repeat=0;repeat<3;repeat++){
+   settleRoster(state,rates)
+   const queued=[...source.queue.tasks],parked=source.waitingRecovery?.map(wait=>wait.task)
+   expect(nextRosterActionHours(state,rates)).toBeGreaterThan(0)
+   expect(source.queue.tasks).toEqual(queued);expect(source.waitingRecovery?.map(wait=>wait.task)).toEqual(parked)
+   expect([...queued,...parked??[]]).toContain(task)
+   expect(task.timeMicros).toBe(time)
+  }
+ })
  it('preserves an unexecuted task while waiting on a measured bed and resumes the same request after recovery',()=>{
   const {state,source,data,task}=blockedRuntime(),rates={workRate:()=>1,recoveryRate:()=>4}
   settleRoster(state,rates)

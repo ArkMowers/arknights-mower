@@ -2,7 +2,7 @@ import {parkMowerPreviewRecovery,resumeMowerPreviewRecovery} from './mowerPrevie
 import {planMowerCorrection} from './mowerCorrection'
 import {cloneMowerShiftTask} from './mowerShiftCycle'
 import {describe,it,expect} from 'vitest'
-import {createRosterRuntime} from './rosterRuntime'
+import {createRosterRuntime,nextRosterActionHours} from './rosterRuntime'
 import {MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros} from './mowerTaskQueue'
@@ -20,6 +20,32 @@ function fixture(){
 }
 
 describe('native task failures retain work and release dispatch',()=>{
+ it.each(['ordinary-queued','ordinary-parked','retention-queued','retention-parked'])('keeps %s reservations stable across queue storage and real clock advances',kind=>{
+  const {state,data,task,queue}=fixture(),retention=kind.startsWith('retention'),initiallyParked=kind.endsWith('parked')
+  const owner=new MowerTask({type:T.SHIFT_OFF,time:-1,plan:{dormitory_1:['R']}})
+  owner.executionRetained=true
+  if(retention)task.backupRetentionWait={names:['A']}
+  else{owner.productShiftLocked=true;owner.productLockNames.add('R');owner.productLockSlots.add('room_1_1\0'+0)}
+  const wait={task:owner,reason:'backup-veto' as const,conditionIndexes:[],observedNames:[],observation:'[[],{},[],[]]',deadlines:{},names:[],rooms:[]}
+  const source=state.mowerSource={data,queue,config:state.config,initial:false,firstInit:false,trace:[],waitingRecovery:initiallyParked?[wait]:[]}
+  if(!initiallyParked)queue.tasks.push(owner)
+  retainMowerFailedTask(state,data,task,'reservation still held')
+  const failure=task.executionFailure,time=task.timeMicros,ownerTime=owner.timeMicros
+  for(let attempt=0;attempt<6;attempt++){
+   const parked=attempt%2===0?!initiallyParked:initiallyParked
+   queue.tasks=[task,...parked?[]:[owner]];source.waitingRecovery=parked?[wait]:[]
+   state.time+=1/60;data.nowMicros=toMowerMicros(state.time)
+   expect(resumeMowerFailedTasks(state,data,queue)).toBe(false)
+   nextRosterActionHours(state,{workRate:()=>1,recoveryRate:()=>4})
+   expect(task.executionFailure).toBe(failure);expect(task.timeMicros).toBe(time)
+   expect(owner.timeMicros).toBe(ownerTime);expect(queue.tasks).toContain(task)
+  }
+  if(retention)owner.plan={}
+  else{owner.productLockNames.clear();owner.productLockSlots.clear()}
+  expect(resumeMowerFailedTasks(state,data,queue)).toBe(true)
+  expect(task.executionFailure).toBeUndefined();expect(task.executionRetained).toBe(true)
+  expect(queue.tasks).toContain(task);expect(task.timeMicros).toBe(time);expect(owner.timeMicros).toBe(ownerTime)
+ })
  it('does not resume from clock advancement or predictions and preserves the original deadline',()=>{
   const {state,data,task,queue}=fixture()
   state.time=4;data.nowMicros=toMowerMicros(4)

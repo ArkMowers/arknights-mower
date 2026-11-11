@@ -34,6 +34,11 @@ function reservations(source:RecoveryWaitState,task:MowerTask,names:readonly str
 function names(source:RecoveryWaitState):void {
  source.data.waitingRecoveryNames=new Set(source.waitingRecovery?.flatMap(wait=>Object.values(wait.task.plan).flat().filter(name=>!!source.data.operators[name]))??[])
 }
+export function consumeMowerPendingRecoveryTask(source:RecoveryWaitState,task:MowerTask):void {
+ source.queue.consume(task)
+ source.waitingRecovery=source.waitingRecovery?.filter(wait=>wait.task!==task)
+ names(source)
+}
 /** Retain empty returns on observed recovery or a proven explicit backup veto. */
 export function parkMowerPreviewRecovery(source:RecoveryWaitState,task:MowerTask,original:MowerTask,pending:MowerTask[],conditionNames:readonly string[]=[]):boolean {
  const {data}=source

@@ -168,15 +168,29 @@ describe('unresolved native task failures in the final income report',()=>{
   expect(report.production?.success).toBe(false)
   expect(report.diagnostics.some(d=>d.code==='SIMULATION_EVENT_LIMIT')).toBe(true)
  })
- it('continues the full production clock while reporting a retained unresolved task as incomplete',()=>{
-  vi.spyOn(shiftCycle,'prepareMowerShiftCycle').mockImplementation(()=>{throw new MowerShiftPreviewError('test exhausted preview')})
+ it('completes the full production clock while preserving an unresolved task and its diagnostic',()=>{
+  const create=rosterRuntime.createRosterRuntime
+  let runtime:rosterRuntime.RuntimeState|undefined
+  vi.spyOn(rosterRuntime,'createRosterRuntime').mockImplementation(config=>runtime=create(config))
+  let retained:MowerTask|undefined,originalPlan:unknown,originalTime:number|undefined,calls=0
+  vi.spyOn(shiftCycle,'prepareMowerShiftCycle').mockImplementation((_data,task)=>{
+   calls++;retained=task;originalPlan=structuredClone(task.plan);originalTime=task.timeMicros
+   throw new MowerShiftPreviewError('test exhausted preview')
+  })
   const report=simulateSchedule(schedule(),{schedulingModel:'mower-alpha',warmupHours:0,sampleHours:4,maxEvents:2000,consumptionOverrides:{char_123_fang:5},production:{outputMode:'potential',droneTarget:'none',seed:42}})
   expect(report.elapsedHours).toBe(4)
   expect(report.observedHours).toBeCloseTo(4,7)
-  expect(report.success).toBe(false)
-  expect(report.production?.success).toBe(false)
+  expect(report.success).toBe(true)
+  expect(report.production?.success).toBe(true)
   expect(report.production!.sample.completed.gold).toBeGreaterThan(0)
+  expect(calls).toBe(1)
+  expect(getMowerSourceRuntime(runtime!).queue.tasks.filter(task=>task===retained)).toHaveLength(1)
+  expect(retained!.timeMicros).toBe(originalTime)
+  expect(retained!.plan).toEqual(originalPlan)
+  expect(retained!.executionFailure?.reason).toBe('test exhausted preview')
+  expect(runtime!.occupants.room_1_1_0).toBe('char_123_fang')
   expect(report.diagnostics).toContainEqual(expect.objectContaining({code:'MOWER_PENDING_TASK_FAILURE',message:expect.stringContaining('test exhausted preview')}))
+  expect(report.diagnostics).toContainEqual(expect.objectContaining({code:'MOWER_PENDING_TASK_FAILURE',message:expect.stringContaining('收益按实际在岗情况计算')}))
   expect(report.diagnostics.some(d=>d.code==='SIMULATION_EVENT_LIMIT'||d.code==='SIMULATION_SAME_TIME_ACTION')).toBe(false)
  })
  it('allows full success after a later observation releases and completes the retained task',()=>{

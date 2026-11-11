@@ -94,7 +94,7 @@ describe('observed recovery behind an empty return preview',()=>{
   const next=nextRosterActionHours(state,rates)
   expect(blocked.executionFailure).toBe(failure)
   expect(blocked.executionRetained).toBe(retained)
-  expect(next).toBe(0)
+  expect(next).toBe(state.config.mowerRunLoopClock!.minimumClockStepMicros/3_600_000_000)
   expect(source.queue.tasks).not.toContain(blocked)
   expect(blocked.timeMicros).toBe(originalTime)
   expect(source.queue.tasks.find(task=>task.type===T.SHIFT_OFF)?.plan).toEqual({recycle:['char_122_beagle'],dormitory_1:['Current',melantha,'Current','Current','Current']})
