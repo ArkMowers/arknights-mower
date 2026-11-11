@@ -19,7 +19,6 @@ import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/uti
 import { createIncomeSession } from '@/riic/incomeSession'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
-import { incomeHasTailor } from '@/riic/incomeTailor'
 import IncomeTimeline from './IncomeTimeline.vue'
 import IncomeActivity from './IncomeActivity.vue'
 import IncomeDiagnostics from './IncomeDiagnostics.vue'
@@ -35,9 +34,6 @@ const props = defineProps({ snapshot: Object, preparing: Boolean, prepareError: 
 const emit = defineEmits(['close'])
 const preferences = loadIncomePreferences()
 const settings = reactive({ ...defaultIncomeSettings(), ...preferences.settings })
-const hasTailor = computed(() =>
-  props.snapshot ? incomeHasTailor(props.snapshot.plan, settings) : false
-)
 const preferencesError = ref('')
 let cachedInventoryOverrides = preferences.cachedInventoryOverrides
 let cachedInventoryBaseline = null
@@ -524,12 +520,11 @@ onBeforeUnmount(() => {
             </p>
             <n-form-item label="理论期望模式">
               <n-switch
-                :value="settings.expectationMode && !hasTailor"
-                :disabled="hasTailor"
+                :value="settings.expectationMode"
                 @update:value="settings.expectationMode = $event"
               />
             </n-form-item>
-            <n-form-item v-if="!settings.expectationMode || hasTailor" label="固定种子">
+            <n-form-item v-if="!settings.expectationMode" label="固定种子">
               <n-input-number
                 v-model:value="settings.fixedSeed"
                 placeholder="留空时每次随机生成"
@@ -541,8 +536,8 @@ onBeforeUnmount(() => {
             </n-form-item>
             <p>
               {{
-                settings.expectationMode && !hasTailor
-                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力和当前目标分段计算，不受无人机库存、阈值及检查间隔限制。初始心情和轮换阶段仍会影响结果。'
+                settings.expectationMode
+                  ? '按换班、心情、技能和资源事件快算，忽略页面操作时间；各项产出与材料消耗累计小数期望，无人机按生成能力和当前目标分段计算，不受无人机库存、阈值及检查间隔限制。裁缝概率按工作满整小时等幅递增，不随机抽单；暖机、初始心情和轮换阶段仍会影响结果。'
                   : '按概率随机抽单；固定种子留空时每次随机生成，填写后使用指定种子。结果保留本次种子以供复现。'
               }}
             </p>

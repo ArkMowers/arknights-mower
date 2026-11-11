@@ -9,6 +9,7 @@ const CURVES: Record<string, readonly [number,number,number]> = {
  'power_rec_spd&addition[000]':[10,1,15], 'power_rec_spd&addition[001]':[15,1,20],
  'meet_spd_hast[000]':[20,2,30],
 }
+const modeledWorkHours=(hours:number,model:TimeContext['warmupModel'])=>model==='hourly'?Math.floor(hours):hours
 export function temporalSkillBonus(buffId:string, operatorId:string, context?:TimeContext):number|null {
  if (!context) return null
  const value=context.workHoursByOperator.get(operatorId)
@@ -16,7 +17,7 @@ export function temporalSkillBonus(buffId:string, operatorId:string, context?:Ti
  if(buffId==='manu_prod_cost_min[001]') return value>=12?10:0
  const curve=CURVES[buffId]; if(!curve)return null
  const [initial,slope,cap]=curve
- const hours=context.warmupModel==='hourly'?Math.floor(value):value
+ const hours=modeledWorkHours(value,context.warmupModel)
  return Math.min(cap,initial+slope*hours)
 }
 export function getTemporalSkillBoundaries(operatorId:string,context:OperatorContext={}):number[] {
@@ -37,13 +38,13 @@ export function qualitySkillWarmupHours(operatorId:string,context:OperatorContex
  if(names.some(name=>/裁缝·α|手工艺品·α|鉴定师的眼光|懂行|千金的眼光/.test(name)))return 3
  return 0
 }
-/** Linear approximation; keep the strongest current effect without inventing stacking. */
+/** Interpolate by the selected work-hour model; keep the strongest effect without stacking. */
 export function temporalTradeQuality(ids:readonly string[],fallback:QualityRule,operators:OperatorContext,time?:TimeContext,level=3):{quality:QualityRule;qualityWarmup:number} {
  let quality:QualityRule='normal',qualityWarmup=1,best=-1
  for(const id of ids){
   const cap=qualitySkillWarmupHours(id,operators)
   if(!cap)continue
-  const progress=time?Math.max(0,Math.min(1,(time.workHoursByOperator.get(id)??0)/cap)):1
+  const progress=time?Math.max(0,Math.min(1,modeledWorkHours(time.workHoursByOperator.get(id)??0,time.warmupModel)/cap)):1
   const strength=((cap===5?.85:.55)-(level===3?.2:0))*progress
   if(strength>best){best=strength;quality=cap===5?'beta':'alpha';qualityWarmup=progress}
  }

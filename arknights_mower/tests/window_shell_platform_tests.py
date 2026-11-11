@@ -44,6 +44,8 @@ class DesktopWindow:
             **{
                 name: Signal()
                 for name in (
+                    "initialized",
+                    "response_received",
                     "shown",
                     "loaded",
                     "resized",

@@ -1,5 +1,4 @@
 import { createCalculationBottleneckTracker } from './vendor/workbench/calculationBottlenecks'
-import { incomeHasTailor } from './incomeTailor'
 import { incomeSeed } from './income'
 
 // A run owns its worker and observations; completed results keep their input snapshot.
@@ -31,7 +30,6 @@ export function createIncomeSession({ createWorker, update, now = () => performa
       if (worker) return false
       input = JSON.parse(JSON.stringify({ plan, settings }))
       delete input.settings.masteryPlanPresent
-      if (incomeHasTailor(input.plan, input.settings)) input.settings.expectationMode = false
       if (!(input.settings.expectationMode ?? input.settings.seed === undefined))
         input.settings.seed = incomeSeed(input.settings)
       tracker = createCalculationBottleneckTracker()

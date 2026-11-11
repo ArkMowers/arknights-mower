@@ -98,15 +98,15 @@ it('carries unfinished warmup progress and stops in an empty room', () => {
   expect(observer.result().completed).toBe(2)
   expect(observer.result().progress).toBeCloseTo(0.24)
 })
-it('integrates Ines ramp through its cap and resets after leaving reception', () => {
+it('integrates Ines hourly steps through her cap and resets after leaving reception', () => {
   const observer = createClueObservation(0)
   const config = reception('char_4087_ines')
   observer.observe(config, 0, 10)
-  // Base 172%, plus 0.25 rate-hours for the first five hours and 0.5 thereafter.
-  expect(observer.result().progress).toBeCloseTo((17.2 + 0.75) / 20)
+  // Base 172%, plus 0.2 rate-hours for the first five hours and 0.5 thereafter.
+  expect(observer.result().progress).toBeCloseTo((17.2 + 0.7) / 20)
   observer.observe(reception(), 10, 11)
   observer.observe(config, 11, 12)
-  expect(observer.result().progress).toBeCloseTo((17.95 + 1.73) / 20)
+  expect(observer.result().progress).toBeCloseTo((17.9 + 1.72) / 20)
 })
 it('reports clue counts through the Worker without changing income, inventory or scheduling', () => {
   const plan = {
@@ -174,3 +174,65 @@ it('applies exchange speed in a complete income calculation', () => {
   expect(result.summary.clueCount).toBeCloseTo((24 * 1.74) / 20)
   expect(result.clueExchangeMode).toBe('always-on')
 })
+
+it('changes Ines efficiency only at completed work hours', () => {
+  const id = 'char_4087_ines',
+    config = reception(id)
+  for (const [hours, expected] of [
+    [0, 1.72],
+    [0.5, 1.72],
+    [0.999999, 1.72],
+    [1, 1.74],
+    [1.5, 1.74],
+    [4.999999, 1.8],
+    [5, 1.82],
+    [10, 1.82]
+  ]) {
+    expect(clueEfficiency(config, phases, new Map([[id, hours]]))).toBeCloseTo(expected, 9)
+  }
+})
+
+it.each([10, 0.37])(
+  'integrates hourly Ines across sampling and interval boundaries (step=%s)',
+  (step) => {
+    const observer = createClueObservation(2.5),
+      config = reception('char_4087_ines')
+    for (let start = 0; start < 6;) {
+      const end = Math.min(start + step, 6)
+      observer.observe(config, start, end)
+      start = end
+    }
+    // Sampling begins halfway through the third working hour.
+    expect(observer.result(true).completed).toBeCloseTo((0.5 * 1.76 + 1.78 + 1.8 + 1.82) / 20, 9)
+  }
+)
+
+it.each([true, false])(
+  'uses hourly Ines efficiency through the real Worker (expected=%s)',
+  (expectationMode) => {
+    const source = {
+      default: 'plan1',
+      conf: { workaholic: ['伊内丝'] },
+      backup_plans: [],
+      plan1: {
+        meeting: { plans: [{ agent: '伊内丝' }] },
+        room_1_1: { name: '制造站', product: 'gold', plans: [] },
+        room_1_3: { name: '发电站', plans: [] }
+      }
+    }
+    const result = calculateIncome(source, {
+      ...defaultIncomeSettings(),
+      expectationMode,
+      fixedSeed: 42,
+      operatorMode: 'maximum',
+      weightMode: 'custom',
+      finiteInventory: false,
+      warmupDays: 0,
+      sampleDays: 1
+    })
+    expect(result.success, result.error).toBe(true)
+    // This plan has no dorm ambience: 157% initially, reaching 167% after five hours.
+    const clues = (1.57 + 1.59 + 1.61 + 1.63 + 1.65 + 19 * 1.67) / 20
+    expect(result.summary.clueCount).toBeCloseTo(expectationMode ? clues : Math.floor(clues), 8)
+  }
+)
