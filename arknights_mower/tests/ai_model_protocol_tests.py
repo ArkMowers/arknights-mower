@@ -415,3 +415,95 @@ def test_responses_text_reaches_existing_consumers(serve, monkeypatch, consumer)
         assert json.loads(channel.send_bytes.call_args.args[0]) == {"text": answer}
         channel.close.assert_called_once()
     assert requests == ["/v1/responses"]
+
+
+@pytest.mark.parametrize("protocol", ["responses", "chat-completions"])
+@pytest.mark.parametrize(
+    "registered", [False, True], ids=["unknown-tool", "missing-progress-label"]
+)
+def test_tool_without_progress_label_keeps_stream_alive(
+    serve, monkeypatch, protocol, registered
+):
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", protocol)
+    name = "fixture_unlabelled_tool"
+    tool = Mock(return_value="tool result")
+    if registered:
+        monkeypatch.setitem(agent.tool_func_map, name, tool)
+    expected = "tool result" if registered else f"未知工具: {name}"
+    requests = []
+
+    def respond(path, body):
+        requests.append(body)
+        assert body["stream"]
+        first = len(requests) == 1
+        if protocol == "responses":
+            assert path == "/v1/responses"
+            if first:
+                return event_stream(
+                    {
+                        "type": "response.output_item.added",
+                        "output_index": 0,
+                        "item": {
+                            "type": "function_call",
+                            "id": "fc_unknown",
+                            "call_id": "call_unknown",
+                            "name": name,
+                            "arguments": "{}",
+                        },
+                    }
+                )
+            result = body["input"][-1]
+            assert result["type"] == "function_call_output"
+            assert result["call_id"] == "call_unknown" and result["output"] == expected
+            return event_stream(
+                {
+                    "type": "response.output_text.delta",
+                    "item_id": "msg_final",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "final answer",
+                }
+            )
+        assert path == "/v1/chat/completions"
+        if first:
+            delta = {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "type": "function",
+                        "id": "call_unknown",
+                        "function": {"name": name, "arguments": "{}"},
+                    }
+                ]
+            }
+        else:
+            result = body["messages"][-1]
+            assert result["role"] == "tool"
+            assert (
+                result["tool_call_id"] == "call_unknown"
+                and result["content"] == expected
+            )
+            delta = {"content": "final answer"}
+        return event_stream(
+            {
+                "id": "chatcmpl-fixture",
+                "object": "chat.completion.chunk",
+                "created": 1,
+                "model": "fixture-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"role": "assistant", **delta},
+                        "finish_reason": "tool_calls" if first else "stop",
+                    }
+                ],
+            }
+        )
+
+    serve(respond)
+    assert list(agent.ask_llm("Check tools", api_key="test-key")) == ["final answer"]
+    assert len(requests) == 2
+    if registered:
+        tool.assert_called_once_with()
+    else:
+        tool.assert_not_called()

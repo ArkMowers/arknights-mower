@@ -611,7 +611,7 @@ def ask_llm(user_input, context=None, api_key=None):
             if hasattr(message_chunk, "tool_calls") and message_chunk.tool_calls:
                 for call in message_chunk.tool_calls:
                     tool_name = call.get("name")
-                    if tool_name:
+                    if tool_name in tool_message_map:
                         yield f"Mower助手正在{tool_message_map[tool_name]}...\n"
             elif isinstance(message_chunk, AIMessage):
                 content = message_chunk.text()
