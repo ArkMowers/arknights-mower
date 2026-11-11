@@ -61,15 +61,18 @@ it('summarizes the actual failure and partial progress without concatenating ass
   expect(incomeFailureMessage({ error: '读取排班失败' }, [], {})).toBe('读取排班失败')
 })
 
-it('keeps pending shared replacement warnings visible without classifying them as failures', () => {
-  const warning = {
-    code: 'MOWER_PENDING_RESOURCE_WAIT',
-    message: '仍在等待替班；收益按实际在岗情况计算'
+it.each(['MOWER_PENDING_RESOURCE_WAIT', 'MOWER_PENDING_TASK_FAILURE'])(
+  'keeps %s visible without classifying retained tasks as calculation failures',
+  (code) => {
+    const warning = {
+      code,
+      message: '仍在等待替班；收益按实际在岗情况计算'
+    }
+    const groups = incomeDiagnosticGroups([warning])
+    expect(groups.failures).toEqual([])
+    expect(groups.records).toEqual([warning])
   }
-  const groups = incomeDiagnosticGroups([warning])
-  expect(groups.failures).toEqual([])
-  expect(groups.records).toEqual([warning])
-})
+)
 
 it('uses the neutral filler display name in captured task diagnostics', () => {
   const message = incomeDiagnosticMessage({
