@@ -5,6 +5,7 @@ from typing import TypeVar
 
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
 
 T = TypeVar("T")
@@ -43,14 +44,17 @@ def input_reconciliation_scope(mode):
 def wait_for_recovery(recover_once, *, retry_errors, cooldown=30.0):
     """Retain run intent while each recovery cycle has its own finite budget."""
     while not config.stop_mower.is_set():
+        io_timeout(0)
         try:
             result = recover_once()
             if config.stop_mower.is_set():
                 raise MowerExit
+            io_timeout(0)
             return result
         except retry_errors as exc:
-            logger.warning("设备恢复暂停，%.0f 秒后重新检查所选目标：%s", cooldown, exc)
-            csleep(max(1.0, cooldown))
+            delay = io_timeout(max(1.0, cooldown))
+            logger.warning("设备恢复暂停，%.0f 秒后重新检查所选目标：%s", delay, exc)
+            csleep(delay)
     raise MowerExit
 
 
