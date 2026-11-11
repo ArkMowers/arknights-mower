@@ -135,59 +135,82 @@ it('resets reception warmup after moving slots and keeps unmoved tenure', () => 
   expect(total(observer.result()) - total(beforeNext)).toBeCloseTo(2.11 / 20, 8)
 })
 
-it('restarts quality for later orders after a slot move without changing the active order', () => {
-  const orders = []
-  for (const move of [false, true]) {
-    const workspace = createDefaultWorkspace()
-    for (const room of Object.values(workspace.mainPlan.facilities)) {
-      room.level = 0
-      room.slots = []
-    }
-    const room = workspace.mainPlan.facilities.room_3_1
-    room.level = 3
-    room.product = 'gold'
-    room.slots = [bibeak, vanilla, spot].map((operatorId) => ({
-      occupant: { kind: 'operator', operatorId },
-      groupId: null,
-      replacements: []
-    }))
-    workspace.mainPlan.conf.workaholic = [bibeak, vanilla, spot]
-    if (move)
-      workspace.compatibility.backupPlans = [
-        {
-          name: 'tailor-slot',
-          trigger: 'True',
-          plan: {
-            room_3_1: {
-              plans: ['香草', '柏喙', '斑点'].map((agent) => ({
-                agent,
-                group: '',
-                replacement: []
-              }))
-            }
-          },
-          task: { room_3_1: ['香草', '柏喙', '斑点'] }
+it.each([false, true])(
+  'restarts quality for later orders after a slot move without changing the active order (theoretical=%s)',
+  (theoretical) => {
+    const orders = []
+    for (const move of [false, true]) {
+      const workspace = createDefaultWorkspace()
+      for (const room of Object.values(workspace.mainPlan.facilities)) {
+        room.level = 0
+        room.slots = []
+      }
+      const room = workspace.mainPlan.facilities.room_3_1
+      room.level = 3
+      room.product = 'gold'
+      room.slots = [bibeak, vanilla, spot].map((operatorId) => ({
+        occupant: { kind: 'operator', operatorId },
+        groupId: null,
+        replacements: []
+      }))
+      workspace.mainPlan.conf.workaholic = [bibeak, vanilla, spot]
+      if (move)
+        workspace.compatibility.backupPlans = [
+          {
+            name: 'tailor-slot',
+            trigger: 'True',
+            plan: {
+              room_3_1: {
+                plans: ['香草', '柏喙', '斑点'].map((agent) => ({
+                  agent,
+                  group: '',
+                  replacement: []
+                }))
+              }
+            },
+            task: { room_3_1: ['香草', '柏喙', '斑点'] }
+          }
+        ]
+      const report = simulateSchedule(compileRosterSchedule(workspace, { idleOperators: [] }), {
+        schedulingModel: 'mower-alpha',
+        sampleHours: 8,
+        warmupModel: 'hourly',
+        initialWorkHours: { [bibeak]: 10 },
+        consumptionOverrides: { [bibeak]: 0, [vanilla]: 0, [spot]: 0 },
+        production: {
+          outputMode: 'potential',
+          droneTarget: 'none',
+          seed: 14,
+          expectationMode: theoretical,
+          theoreticalMode: theoretical
         }
-      ]
-    const report = simulateSchedule(compileRosterSchedule(workspace, { idleOperators: [] }), {
-      schedulingModel: 'mower-alpha',
-      sampleHours: 8,
-      warmupModel: 'hourly',
-      initialWorkHours: { [bibeak]: 10 },
-      consumptionOverrides: { [bibeak]: 0, [vanilla]: 0, [spot]: 0 },
-      production: { outputMode: 'potential', droneTarget: 'none', seed: 14 }
-    })
-    expect(report.success, JSON.stringify(report.diagnostics)).toBe(true)
-    expect(report.diagnostics.some((d) => d.code === 'TRADE_QUALITY_WARMUP_MODEL')).toBe(true)
-    orders.push(
-      report.production.events
-        .filter((e) => e.type === 'order-completed')
-        .map((e) => e.order.goldCost)
-    )
+      })
+      expect(report.success, JSON.stringify(report.diagnostics)).toBe(true)
+      expect(report.diagnostics.some((d) => d.code === 'TRADE_QUALITY_WARMUP_MODEL')).toBe(true)
+      orders.push(
+        report.production.events.filter((e) => e.type === 'order-completed').map((e) => e.order)
+      )
+    }
+    if (theoretical) {
+      const probabilities = (order) =>
+        order.expectationComponents.map((component) => component.probability)
+      expect(probabilities(orders[0][0])).toEqual([0.05, 0.1, 0.85])
+      expect(probabilities(orders[1][0])).toEqual([0.05, 0.1, 0.85])
+      expect(probabilities(orders[0][1])).toEqual([0.05, 0.1, 0.85])
+      // The second acquisition follows the first completion, after the slot reset at time zero.
+      const progress = orders[1][0].completedAt / 5
+      probabilities(orders[1][1]).forEach((p, i) => {
+        expect(p).toBeCloseTo(
+          [0.3, 0.5, 0.2][i] * (1 - progress) + [0.05, 0.1, 0.85][i] * progress,
+          8
+        )
+      })
+    } else {
+      expect(orders[0].slice(0, 2).map((order) => order.goldCost)).toEqual([4, 4])
+      expect(orders[1].slice(0, 2).map((order) => order.goldCost)).toEqual([4, 3])
+    }
   }
-  expect(orders[0].slice(0, 2)).toEqual([4, 4])
-  expect(orders[1].slice(0, 2)).toEqual([4, 3])
-})
+)
 
 it('resets warmup when a backup moves a worker to another room', () => {
   const workspace = swapSchedule('same').sourceWorkspace

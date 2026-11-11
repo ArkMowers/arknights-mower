@@ -13,7 +13,6 @@ import {
 } from './vendor/domain/simulationInventory'
 import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
-import { incomeHasTailor } from './incomeTailor'
 import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
 
 export const CALCULATOR_REVISION = '5529403'
@@ -78,8 +77,8 @@ export function incomeRequest(plan, settings) {
       )
     }
   }
-  const requestedExpectation = settings.expectationMode ?? settings.seed === undefined
-  if (typeof requestedExpectation !== 'boolean') throw new Error('理论期望模式必须为开启或关闭')
+  const expectationMode = settings.expectationMode ?? settings.seed === undefined
+  if (typeof expectationMode !== 'boolean') throw new Error('理论期望模式必须为开启或关闭')
   const workspace = incomeWorkspace(plan)
   const droneRoom = plan.advanced_settings?.drone_room
   const target = droneFacilities(workspace).find((f) => f.roomId === droneRoom)
@@ -105,8 +104,6 @@ export function incomeRequest(plan, settings) {
       throw new Error(parsed.diagnostics.map((d) => d.message).join('；') || '请填写干员和练度')
     operators = parsed.entries
   } else if (settings.operatorMode !== 'maximum') throw new Error('干员练度选项无效')
-  const tailor = incomeHasTailor(plan, settings)
-  const expectationMode = requestedExpectation && !tailor
   const seed = expectationMode ? undefined : incomeSeed(settings)
   return {
     workspace,

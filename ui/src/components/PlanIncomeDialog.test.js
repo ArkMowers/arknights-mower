@@ -264,42 +264,43 @@ it('reads cached ownership and stock without writing configuration', async () =>
   expect(page.settings.mowerWeights).toMatchObject({ exp: 0.9568, gold: 0.76544, orders: 0.23456 })
   expect(io.client.put).not.toHaveBeenCalled()
 })
-it('uses the shared optional seed input when a trade tailor disables expectation mode', async () => {
-  page.settings.operatorMode = 'maximum'
-  props.snapshot.plan.plan1.room_1_1 = {
-    name: '贸易站',
-    product: 'lmd',
-    plans: [{ agent: '柏喙' }]
-  }
-  await nextTick()
-  expect(page.hasTailor.value).toBe(true)
-  expect(page.settings.fixedSeed).toBeNull()
-  page.settings.fixedSeed = 77
-  reopenDialog()
-  expect(page.hasTailor.value).toBe(true)
-  expect(page.settings.fixedSeed).toBe(77)
-})
-it('enables expectation mode when a tailor only belongs to a maintenance backup', async () => {
-  page.settings.operatorMode = 'maximum'
-  props.snapshot.plan.plan1.room_1_1 = {
-    name: '贸易站',
-    product: 'lmd',
-    plans: [{ agent: '芬' }]
-  }
-  props.snapshot.plan.backup_plans = [
-    {
-      name: '停服更新',
-      trigger: { left: 'op_data.major_maintenance_remaining_hours()', operator: '<', right: '4' },
-      task: { room_1_1: ['柏喙'] }
+it.each(['primary', 'active-backup', 'maintenance-backup'])(
+  'starts a theoretical run with a tailor in %s',
+  async (kind) => {
+    Object.assign(page.settings, {
+      operatorMode: 'maximum',
+      inventorySource: 'manual',
+      finiteInventory: false,
+      weightMode: 'custom'
+    })
+    props.snapshot.plan.plan1.room_1_1 = {
+      name: '贸易站',
+      product: 'lmd',
+      plans: [{ agent: kind === 'primary' ? '柏喙' : '芬' }]
     }
-  ]
-  await nextTick()
-  expect(page.hasTailor.value).toBe(false)
-  expect(page.settings.expectationMode).toBe(true)
-  props.snapshot.plan.backup_plans[0].trigger = 'True'
-  await nextTick()
-  expect(page.hasTailor.value).toBe(true)
-})
+    if (kind !== 'primary')
+      props.snapshot.plan.backup_plans = [
+        {
+          name: '裁缝副表',
+          trigger:
+            kind === 'active-backup'
+              ? 'True'
+              : {
+                  left: 'op_data.major_maintenance_remaining_hours()',
+                  operator: '<',
+                  right: '4'
+                },
+          task: { room_1_1: ['柏喙'] }
+        }
+      ]
+    await nextTick()
+    await page.start()
+    expect(workers).toHaveLength(1)
+    const input = workers[0].postMessage.mock.calls[0][0]
+    expect(input.settings.expectationMode).toBe(true)
+    expect(input.settings).not.toHaveProperty('seed')
+  }
+)
 it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
   await page.readWeights()
   io.client.put.mockImplementation(async (_, value) => ({ data: value }))
@@ -662,7 +663,7 @@ it.each([
   page.settings.inventorySource = 'manual'
   page.settings.finiteInventory = false
   page.settings.weightMode = 'custom'
-  page.settings.expectationMode = tailor
+  page.settings.expectationMode = false
   page.settings.fixedSeed = fixedSeed
   if (tailor)
     props.snapshot.plan.plan1.room_1_1 = {

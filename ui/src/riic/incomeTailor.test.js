@@ -1,8 +1,12 @@
 import { expect, it, vi } from 'vitest'
-import { incomeHasTailor } from './incomeTailor'
 import { defaultIncomeSettings, incomeRequest } from './income'
 import { calculateIncome } from './incomeWorker'
 import { createIncomeSession } from './incomeSession'
+import { createDefaultWorkspace } from './vendor/workbench/defaults'
+import { compileRosterSchedule } from './vendor/scheduler/compileRosterSchedule'
+import { simulateSchedule } from './vendor/simulator/scheduleSimulation'
+import { resolveOperatorCharId } from './vendor/domain/operatorIdentifiers'
+import { incomeOrderDistribution } from './incomeOrders'
 
 const plan = () => ({
   default: 'plan1',
@@ -25,7 +29,7 @@ const settings = () => ({
 })
 
 it.each(['primary', 'replacement', 'group', 'backup', 'task'])(
-  'disables theoretical mode while using the shared random policy for a trade %s candidate',
+  'supports theoretical mode for a trade %s candidate',
   (kind) => {
     const source = plan()
     const slot = source.plan1.room_1_1.plans[0]
@@ -45,10 +49,9 @@ it.each(['primary', 'replacement', 'group', 'backup', 'task'])(
     if (kind === 'task')
       source.backup_plans = [{ name: '裁缝', trigger: 'True', task: { room_1_1: ['柏喙'] } }]
     const original = structuredClone(source)
-    expect(incomeHasTailor(source, settings())).toBe(true)
     expect(incomeRequest(source, settings()).options.simulationOptions.production).toMatchObject({
-      expectationMode: false,
-      seed: expect.any(Number)
+      expectationMode: true,
+      theoreticalMode: true
     })
     expect(source).toEqual(original)
   }
@@ -86,48 +89,12 @@ it.each(inactiveTriggers)('ignores a tailor backup with an inactive condition %j
     }
   ]
   const original = structuredClone(source)
-  expect(incomeHasTailor(source, settings())).toBe(false)
   expect(incomeRequest(source, settings()).options.simulationOptions.production).toMatchObject({
     expectationMode: true,
     theoreticalMode: true
   })
   expect(source).toEqual(original)
 })
-
-it.each([
-  'True',
-  "not op_data.facility_has_mastery_plan('train')",
-  'op_data.major_maintenance_remaining_hours() < 4 or True',
-  "op_data.operators['芬'].current_mood() < 8",
-  "op_data.operators['芬'].current_index == 0",
-  "op_data.inventory_count('赤金') < 100",
-  "op_data.facility_product('room_1_1') == lmd"
-])('retains a possible tailor backup with condition %s', (trigger) => {
-  const source = plan()
-  source.backup_plans = [{ name: '可能触发', trigger, task: { room_1_1: ['柏喙'] } }]
-  expect(incomeHasTailor(source, settings())).toBe(true)
-})
-
-it.each([false, true])(
-  'checks every membership of a shared tailor backup (active=%s)',
-  (active) => {
-    const source = plan()
-    source.backup_groups = [
-      { id: 'maintenance', name: '停服更新', exclusive_with: [], trigger: inactiveTriggers[2] },
-      { id: 'ordinary', name: '普通', exclusive_with: [], trigger: active ? 'True' : 'False' }
-    ]
-    source.backup_plans = [
-      {
-        name: '共享副表',
-        group_ids: ['maintenance', 'ordinary'],
-        type: 'exclusive',
-        trigger: 'True',
-        task: { room_1_1: ['柏喙'] }
-      }
-    ]
-    expect(incomeHasTailor(source, settings())).toBe(active)
-  }
-)
 
 it('keeps maintenance-only tailors out of the session and real Worker order model', () => {
   const source = plan()
@@ -154,27 +121,6 @@ it('keeps maintenance-only tailors out of the session and real Worker order mode
   } finally {
     session.dispose()
   }
-})
-
-it('checks unlocked skills and ignores tailor operators outside trade rosters', () => {
-  const source = plan()
-  source.plan1.room_1_1.plans[0].agent = '贝娜'
-  expect(
-    incomeHasTailor(source, { ...settings(), operatorMode: 'custom', operatorText: '贝娜,0,1' })
-  ).toBe(false)
-  expect(
-    incomeHasTailor(source, { ...settings(), operatorMode: 'custom', operatorText: '贝娜,2,1' })
-  ).toBe(true)
-  expect(
-    incomeHasTailor(source, {
-      ...settings(),
-      operatorMode: 'cache',
-      cachedOperators: [{ operator: '贝娜', elitePhase: 0, level: 1 }]
-    })
-  ).toBe(false)
-  source.plan1.room_1_1.plans[0].agent = '芬'
-  source.plan1.factory = { plans: [{ agent: '柏喙', replacement: ['卡夫卡'] }] }
-  expect(incomeHasTailor(source, settings())).toBe(false)
 })
 
 it.each([false, true])(
@@ -215,7 +161,7 @@ it.each([false, true])(
 it('keeps the real Worker calculation on the sampled path for a tailor roster', () => {
   const source = plan()
   source.plan1.room_1_1.plans[0].agent = '柏喙'
-  const result = calculateIncome(source, { ...settings(), fixedSeed: 42 })
+  const result = calculateIncome(source, { ...settings(), expectationMode: false, fixedSeed: 42 })
   expect(result.success, result.error).toBe(true)
   expect(result.simulationReport.production.assumptions).toMatchObject({
     expectationMode: false,
@@ -227,3 +173,141 @@ it('keeps the real Worker calculation on the sampled path for a tailor roster', 
       .every((event) => !event.order.expectationComponents)
   ).toBe(true)
 })
+
+it.each(['巫恋', '柏喙'])('keeps expected Worker output independent of seeds for %s', (tailor) => {
+  const source = plan()
+  source.plan1.room_1_1.plans = [tailor, '但书', '龙舌兰'].map((agent) => ({
+    agent,
+    replacement: []
+  }))
+  const worker = { postMessage: vi.fn(), terminate: vi.fn() }
+  const session = createIncomeSession({ createWorker: () => worker, update: vi.fn() })
+  const random = vi.spyOn(crypto, 'getRandomValues')
+  try {
+    session.start(source, { ...settings(), fixedSeed: 42 })
+    const frozen = worker.postMessage.mock.calls[0][0]
+    expect(frozen.settings.expectationMode).toBe(true)
+    expect(frozen.settings).not.toHaveProperty('seed')
+    expect(random).not.toHaveBeenCalled()
+    const result = calculateIncome(frozen.plan, frozen.settings)
+    const other = calculateIncome(source, { ...settings(), seed: 999, fixedSeed: 999 })
+    expect(result.success, result.error).toBe(true)
+    expect(other.success, other.error).toBe(true)
+    expect(result.simulationReport.production.assumptions).toMatchObject({
+      expectationMode: true,
+      timingModel: 'theoretical-events-v1'
+    })
+    expect(result.simulationReport.production.assumptions).not.toHaveProperty('seed')
+    expect(result.simulationReport.production).toEqual(other.simulationReport.production)
+    expect(result.orderDistribution.expected).toBe(true)
+    expect(result.orderDistribution.rows.find((row) => row.gold === 4).count).toBeGreaterThan(0)
+    expect(
+      result.simulationReport.diagnostics.some((d) => d.code === 'TRADE_QUALITY_WARMUP_MODEL')
+    ).toBe(true)
+  } finally {
+    session.dispose()
+    random.mockRestore()
+  }
+})
+
+const tailorModels = [
+  ['巫恋', 3, [0.15, 0.3, 0.55]],
+  ['柏喙', 5, [0.05, 0.1, 0.85]]
+]
+function tailorSchedule(name, companions = []) {
+  const workspace = createDefaultWorkspace()
+  for (const room of Object.values(workspace.mainPlan.facilities)) {
+    room.level = 0
+    room.slots = []
+  }
+  const ids = [name, ...companions].map(resolveOperatorCharId)
+  Object.assign(workspace.mainPlan.facilities.room_3_1, {
+    level: 3,
+    product: 'money',
+    slots: ids.map((operatorId) => ({
+      occupant: { kind: 'operator', operatorId },
+      groupId: null,
+      replacements: []
+    }))
+  })
+  workspace.mainPlan.conf.workaholic = ids
+  return compileRosterSchedule(workspace, { idleOperators: [] })
+}
+const productionOptions = {
+  expectationMode: true,
+  theoreticalMode: true,
+  outputMode: 'potential',
+  droneTarget: 'none'
+}
+
+it.each(tailorModels)(
+  'freezes each %s order at its linear warmup acquisition probabilities',
+  (name, cap, peak) => {
+    const id = resolveOperatorCharId(name)
+    const report = simulateSchedule(tailorSchedule(name), {
+      schedulingModel: 'mower-alpha',
+      sampleHours: 16,
+      warmupModel: 'hourly',
+      consumptionOverrides: { [id]: 0 },
+      production: productionOptions
+    })
+    expect(report.success, JSON.stringify(report.diagnostics)).toBe(true)
+    const orders = report.production.events
+      .filter((event) => event.type === 'order-completed')
+      .map((event) => event.order)
+    expect(orders.length).toBeGreaterThanOrEqual(3)
+    orders.forEach((order, index) => {
+      const acquiredAt = index === 0 ? 0 : orders[index - 1].completedAt
+      const progress = Math.min(acquiredAt / cap, 1)
+      order.expectationComponents.forEach((component, tier) => {
+        expect(component.probability).toBeCloseTo(
+          [0.3, 0.5, 0.2][tier] * (1 - progress) + peak[tier] * progress,
+          9
+        )
+      })
+    })
+    expect(orders.at(-1).expectationComponents.map((component) => component.probability)).toEqual(
+      peak
+    )
+  }
+)
+
+it.each(tailorModels)(
+  'keeps fully warmed %s tier ratios and special premiums across efficiency changes',
+  (name, cap, peak) => {
+    const id = resolveOperatorCharId(name)
+    const reports = []
+    for (const companions of [[], ['但书', '龙舌兰']]) {
+      const schedule = tailorSchedule(name, companions)
+      const report = simulateSchedule(schedule, {
+        schedulingModel: 'mower-alpha',
+        sampleHours: 8,
+        warmupModel: 'hourly',
+        initialWorkHours: { [id]: cap },
+        consumptionOverrides: Object.fromEntries(
+          [name, ...companions].map((name) => [resolveOperatorCharId(name), 0])
+        ),
+        production: productionOptions
+      })
+      expect(report.success, JSON.stringify(report.diagnostics)).toBe(true)
+      reports.push(report)
+      const distribution = incomeOrderDistribution(report)
+      distribution.rows.forEach((row, index) =>
+        expect(row.count / distribution.total).toBeCloseTo(peak[index], 9)
+      )
+      const count = distribution.total
+      const expectedGold = companions.length
+        ? peak[0] * 4 + peak[1] * 5 + peak[2] * 4
+        : peak[0] * 2 + peak[1] * 3 + peak[2] * 4
+      const expectedLmd = companions.length
+        ? peak[0] * 2000 + peak[1] * 2500 + peak[2] * 2500
+        : expectedGold * 500
+      expect(report.production.expected.costs.gold).toBeCloseTo(count * expectedGold, 8)
+      expect(report.production.expected.output.orderLmd).toBeCloseTo(count * expectedLmd, 8)
+    }
+    expect(incomeOrderDistribution(reports[0]).total).not.toBeCloseTo(
+      incomeOrderDistribution(reports[1]).total,
+      2
+    )
+  }
+)
