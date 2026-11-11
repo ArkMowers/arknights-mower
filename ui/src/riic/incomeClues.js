@@ -4,6 +4,7 @@ import {
   fullCatalogIdleInventory
 } from './vendor/domain/operatorInventory'
 import { matchesRiicIdentity } from './vendor/domain/riicIdentity'
+import { temporalSkillBonus, getTemporalSkillBoundaries } from './vendor/engine/timeDependentSkills'
 import { buildRiicGlobalContext } from './vendor/engine/globalContext'
 import { isSupportOperatorWorking } from './vendor/engine/supportFacilities/conditions'
 
@@ -32,6 +33,14 @@ export function clueEfficiency(config, phases, tenure = new Map()) {
     bonus += 5
     for (const skill of operator.skills) {
       if (skill.roomType !== 'MEETING') continue
+      const temporal = temporalSkillBonus(skill.buffId, id, {
+        workHoursByOperator: new Map([[id, tenure.get(id) ?? 0]]),
+        warmupModel: 'hourly'
+      })
+      if (temporal !== null) {
+        bonus += temporal
+        continue
+      }
       const description = skill.description
       const fixed = description.match(/^进驻会客室时，线索搜集速度提升([\d.]+)%/)
       bonus += Number(fixed?.[1] ?? 0)
@@ -109,9 +118,6 @@ export function clueEfficiency(config, phases, tenure = new Map()) {
         case 'meet_spd&clue[000]':
           bonus += Math.max(0, config.facilities.office - 1) * 5
           break
-        case 'meet_spd_hast[000]':
-          bonus += Math.min(10, (tenure.get(id) ?? 0) * 2)
-          break
         case 'meet_spd_notOwned_P[000]':
           if (controlWorking('char_1048_orchd2')) bonus += 10
           break
@@ -145,12 +151,17 @@ export function createClueObservation(warmupHours, inventory = fullCatalogIdleIn
     for (const id of tenure.keys()) if (!awake.includes(id)) tenure.delete(id)
     const duration = end - start
     const midTenure = new Map(awake.map((id) => [id, (tenure.get(id) ?? 0) + duration / 2]))
-    // Split at Ines's five-hour cap so midpoint integration is exact on both linear pieces.
-    const ines = 'char_4087_ines'
-    const untilCap = 5 - (tenure.get(ines) ?? 0)
-    if (awake.includes(ines) && untilCap > 1e-9 && untilCap < duration - 1e-9) {
-      advance(config, start, start + untilCap)
-      advance(config, start + untilCap, end)
+    // Split at work-hour boundaries before integrating each constant-efficiency interval.
+    const nextBoundary = Math.min(
+      ...awake.flatMap((id) =>
+        getTemporalSkillBoundaries(id, config)
+          .map((hour) => hour - (tenure.get(id) ?? 0))
+          .filter((delay) => delay > 1e-9)
+      )
+    )
+    if (nextBoundary < duration - 1e-9) {
+      advance(config, start, start + nextBoundary)
+      advance(config, start + nextBoundary, end)
       return
     }
     progress += (clueEfficiency(config, phases, midTenure) * duration) / 20

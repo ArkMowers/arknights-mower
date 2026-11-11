@@ -43,6 +43,7 @@ it.each(['B202', 'B201', 'B201-standby'])(
       plan,
       {
         ...defaultIncomeSettings(),
+        expectationMode: false,
         seed: 546609889,
         warmupDays: longRun ? 3 : 0,
         sampleDays,

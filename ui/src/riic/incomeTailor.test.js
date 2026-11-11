@@ -240,16 +240,29 @@ const productionOptions = {
   droneTarget: 'none'
 }
 
-it.each(tailorModels)(
-  'freezes each %s order at its linear warmup acquisition probabilities',
-  (name, cap, peak) => {
+it.each(
+  tailorModels.flatMap((model) =>
+    [true, false].flatMap((expectationMode) =>
+      [0, 0.37].map((initial) => [...model, expectationMode, initial])
+    )
+  )
+)(
+  'freezes %s orders at hourly probabilities (cap=%s, peak=%j, expected=%s, initial=%s)',
+  (name, cap, peak, expectationMode, initial) => {
     const id = resolveOperatorCharId(name)
     const report = simulateSchedule(tailorSchedule(name), {
       schedulingModel: 'mower-alpha',
       sampleHours: 16,
+      maxStepHours: 0.37,
+      initialWorkHours: { [id]: initial },
       warmupModel: 'hourly',
       consumptionOverrides: { [id]: 0 },
-      production: productionOptions
+      production: {
+        ...productionOptions,
+        expectationMode,
+        theoreticalMode: expectationMode,
+        seed: 42
+      }
     })
     expect(report.success, JSON.stringify(report.diagnostics)).toBe(true)
     const orders = report.production.events
@@ -258,17 +271,20 @@ it.each(tailorModels)(
     expect(orders.length).toBeGreaterThanOrEqual(3)
     orders.forEach((order, index) => {
       const acquiredAt = index === 0 ? 0 : orders[index - 1].completedAt
-      const progress = Math.min(acquiredAt / cap, 1)
-      order.expectationComponents.forEach((component, tier) => {
+      const progress = Math.min(Math.floor(acquiredAt + initial) / cap, 1)
+      const components = order.expectationComponents ?? [order]
+      components.forEach((component) => {
+        const tier = component.goldCost - 2
         expect(component.probability).toBeCloseTo(
           [0.3, 0.5, 0.2][tier] * (1 - progress) + peak[tier] * progress,
           9
         )
       })
     })
-    expect(orders.at(-1).expectationComponents.map((component) => component.probability)).toEqual(
-      peak
-    )
+    if (expectationMode)
+      expect(orders.at(-1).expectationComponents.map((component) => component.probability)).toEqual(
+        peak
+      )
   }
 )
 

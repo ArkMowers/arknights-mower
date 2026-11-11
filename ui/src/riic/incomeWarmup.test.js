@@ -30,17 +30,21 @@ function quality(id, hours) {
 it.each([
   [shamare, 3, [0.15, 0.3, 0.55]],
   [bibeak, 5, [0.05, 0.1, 0.85]]
-])(
-  'uses continuous linear quality warmup for %s even with hourly efficiency curves',
-  (id, cap, peak) => {
-    expect(quality(id, 0)).toEqual([0.3, 0.5, 0.2])
-    quality(id, cap / 2).forEach((p, i) =>
-      expect(p).toBeCloseTo(([0.3, 0.5, 0.2][i] + peak[i]) / 2)
+])('uses whole-hour quality warmup for %s with hourly efficiency curves', (id, cap, peak) => {
+  expect(quality(id, 0)).toEqual([0.3, 0.5, 0.2])
+  quality(id, cap / 2).forEach((p, i) =>
+    expect(p).toBeCloseTo(
+      [0.3, 0.5, 0.2][i] + ((peak[i] - [0.3, 0.5, 0.2][i]) * Math.floor(cap / 2)) / cap
     )
-    expect(quality(id, cap)).toEqual(peak)
-    expect(quality(id, cap + 10)).toEqual(peak)
+  )
+  for (let hour = 0; hour < cap; hour++) {
+    expect(quality(id, hour + 0.5)).toEqual(quality(id, hour))
+    expect(quality(id, hour + 1 - 1e-6)).toEqual(quality(id, hour))
+    expect(quality(id, hour + 1)[2]).toBeGreaterThan(quality(id, hour)[2])
   }
-)
+  expect(quality(id, cap)).toEqual(peak)
+  expect(quality(id, cap + 10)).toEqual(peak)
+})
 it('retains stable static estimates and selects the strongest warmed effect without stacking', () => {
   expect(temporalTradeQuality([shamare], 'beta', {})).toEqual({
     quality: 'alpha',
@@ -129,10 +133,10 @@ it('resets reception warmup after moving slots and keeps unmoved tenure', () => 
   config.facilityOperatorIds.reception.reverse()
   observer.observe(config, 5, 6)
   const total = (r) => r.completed + r.progress
-  expect(total(observer.result()) - total(before)).toBeCloseTo(2.09 / 20, 8)
+  expect(total(observer.result()) - total(before)).toBeCloseTo(2.08 / 20, 8)
   const beforeNext = observer.result()
   observer.observe(config, 6, 7)
-  expect(total(observer.result()) - total(beforeNext)).toBeCloseTo(2.11 / 20, 8)
+  expect(total(observer.result()) - total(beforeNext)).toBeCloseTo(2.1 / 20, 8)
 })
 
 it.each([false, true])(
@@ -198,7 +202,7 @@ it.each([false, true])(
       expect(probabilities(orders[1][0])).toEqual([0.05, 0.1, 0.85])
       expect(probabilities(orders[0][1])).toEqual([0.05, 0.1, 0.85])
       // The second acquisition follows the first completion, after the slot reset at time zero.
-      const progress = orders[1][0].completedAt / 5
+      const progress = Math.floor(orders[1][0].completedAt) / 5
       probabilities(orders[1][1]).forEach((p, i) => {
         expect(p).toBeCloseTo(
           [0.3, 0.5, 0.2][i] * (1 - progress) + [0.05, 0.1, 0.85][i] * progress,
@@ -263,7 +267,7 @@ it('uses the shared session clock when a reception worker leaves and returns bet
   observer.observe(config, 5, 6, new Map([[ines, 0]]))
   const after = observer.result()
   expect(after.completed + after.progress - before.completed - before.progress).toBeCloseTo(
-    1.73 / 20
+    1.72 / 20
   )
 })
 
