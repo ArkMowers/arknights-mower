@@ -5,6 +5,7 @@ from itertools import count
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.application import RECOVERABLE_DEVICE_ERRORS
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
     input_reconciliation_scope,
@@ -607,7 +608,7 @@ class SceneGraphSolver(BaseSolver):
                     self.device.reconnect()
                     self.recog.update()
 
-                csleep(30)
+                csleep(io_timeout(30))
                 wait_for_recovery(
                     resume_navigation, retry_errors=RECOVERABLE_DEVICE_ERRORS
                 )

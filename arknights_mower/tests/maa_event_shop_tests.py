@@ -1,4 +1,5 @@
 import json
+import time
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, call
 
@@ -381,6 +382,73 @@ def test_stopping_shop_navigation_does_not_start_a_following_large_task(
     ]
     scheduler.initialize_maa.assert_called_once()
     assert manager.get_active_plan_key() == "活动"
+
+
+@pytest.mark.parametrize("ending", ["initial-wait", "recovery-wait", "cancel"])
+def test_shop_navigation_exits_recovery_when_its_task_ends(
+    scheduler, navigation, manager, monkeypatch, ending
+):
+    from arknights_mower.solvers import event_shop
+    from arknights_mower.utils import graph
+    from arknights_mower.utils.device import recovery
+    from arknights_mower.utils.device.io_budget import io_timeout
+    from arknights_mower.utils.device.touch_backend import TouchFailure
+    from arknights_mower.utils.scene import Scene
+
+    setup_shop(scheduler)
+    elapsed = 0.0
+    sleeps = []
+    monkeypatch.setattr(time, "monotonic", lambda: elapsed)
+    monkeypatch.setattr(event_shop.rapidocr, "engine", MagicMock())
+    monkeypatch.setattr(EventShopNavigation, "scene", lambda _: Scene.INDEX)
+    monkeypatch.setattr(EventShopNavigation, "check_current_focus", MagicMock())
+
+    def failed_touch(*args, **kwargs):
+        raise TouchFailure(
+            base_schedule.config.conf.device,
+            "darwin",
+            BrokenPipeError("touch connection lost"),
+            delivery_unknown=True,
+        )
+
+    tap = MagicMock(side_effect=failed_touch)
+    monkeypatch.setattr(EventShopNavigation, "tap_index_element", tap)
+
+    def sleep(seconds):
+        nonlocal elapsed
+        sleeps.append(seconds)
+        if len(sleeps) > 5:
+            pytest.fail("shop navigation kept waiting after its task ended")
+        elapsed += seconds
+        if ending == "cancel":
+            base_schedule.config.stop_maa.set()
+
+    def reconnect():
+        io_timeout(0)
+        raise TimeoutError("local connection timeout")
+
+    scheduler.device.reconnect.side_effect = reconnect
+    monkeypatch.setattr(graph, "csleep", sleep)
+    monkeypatch.setattr(recovery, "csleep", sleep)
+    monkeypatch.setattr(base_schedule, "logger", MagicMock())
+    budget = 20 if ending == "initial-wait" else 120
+    scheduler.run_maa_event_shop(
+        lambda: datetime.now() + timedelta(seconds=300 + budget)
+    )
+
+    assert elapsed == pytest.approx(30 if ending == "cancel" else budget, abs=0.1)
+    assert scheduler.device.reconnect.call_count == (
+        3 if ending == "recovery-wait" else 0
+    )
+    tap.assert_called_once()
+    scheduler.initialize_maa.assert_not_called()
+    scheduler.MAA.append_task.assert_not_called()
+    scheduler.device.launch.assert_not_called()
+    assert manager.get_active_plan_key() == "活动"
+    base_schedule.logger.warning.assert_called_once_with(
+        "活动商店导航超时或收到停止指令，跳过兑换",
+        extra={"log_group": "maa-integration"},
+    )
 
 
 @pytest.mark.parametrize("stages", [["1-7"], ["ACT-2"], ["UNKNOWN"], []])

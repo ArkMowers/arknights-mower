@@ -31,6 +31,7 @@ from arknights_mower.utils.device.application import (
     PreflightRejected,
 )
 from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.maatouch.session import MaaTouchCleanupError
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.device.scrcpy.core import ScrcpyCleanupError
@@ -113,6 +114,61 @@ def test_cancelled_success_never_resumes_dispatch(cancellation):
 
     with pytest.raises(MowerExit):
         recovery.wait_for_recovery(late_success, retry_errors=(DeviceRecoveryError,))
+
+
+@pytest.mark.parametrize("phase", ["before", "failure", "success", "cooldown"])
+@pytest.mark.parametrize("error_type", [TimeoutError, InterruptedError])
+def test_recovery_preserves_enclosing_task_deadline_and_cancellation(
+    monkeypatch, cancellation, phase, error_type
+):
+    active = True
+    failure = error_type("task ended")
+
+    def remaining():
+        if not active:
+            raise failure
+        return 5.0
+
+    def attempt():
+        nonlocal active
+        if recover.call_count > 1:
+            pytest.fail("recovery retried after the enclosing task ended")
+        if phase in ("failure", "success"):
+            active = False
+        if phase != "success":
+            raise TimeoutError("local connection timeout")
+        return "ready"
+
+    def cooldown(seconds):
+        nonlocal active
+        active = False
+
+    recover = Mock(side_effect=attempt)
+    sleep = Mock(side_effect=cooldown)
+    monkeypatch.setattr(recovery, "csleep", sleep)
+    with device_io_budget(remaining):
+        active = phase != "before"
+        try:
+            with pytest.raises(error_type) as caught:
+                recovery.wait_for_recovery(recover, retry_errors=(OSError,))
+        finally:
+            active = True
+
+    assert caught.value is failure
+    assert recover.call_count == (0 if phase == "before" else 1)
+    assert sleep.call_args_list == ([call(5.0)] if phase == "cooldown" else [])
+
+
+def test_local_timeout_remains_recoverable_with_active_task_budget(
+    monkeypatch, cancellation
+):
+    recover = Mock(side_effect=[TimeoutError("local connection timeout"), "ready"])
+    sleep = Mock()
+    monkeypatch.setattr(recovery, "csleep", sleep)
+    with device_io_budget(lambda: 60.0):
+        assert recovery.wait_for_recovery(recover, retry_errors=(OSError,)) == "ready"
+    assert recover.call_count == 2
+    sleep.assert_called_once_with(30.0)
 
 
 def test_runtime_recovery_preserves_scheduler_and_refreshes_capture(
