@@ -157,7 +157,10 @@ function addStageRow(value) {
   }
   const option = createStageOption(value)
   if (!availableStageOptions.value.some((item) => item.value === option.value)) {
+    const currentOptions = [...sortableStageOptions.value]
+    currentOptions.splice(1, 0, option)
     manuallyAddedOptions.value = [...manuallyAddedOptions.value, option]
+    sortableStageOptions.value = currentOptions
   }
   stageToAdd.value = null
 }
