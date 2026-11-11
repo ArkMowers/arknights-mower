@@ -3,6 +3,47 @@ import { resolveOperatorCharId } from './vendor/domain/operatorIdentifiers'
 import { compileOperatorInventory, parseOperatorInventory } from './vendor/domain/operatorInventory'
 import { inventoryOperatorRecords } from './vendor/domain/operatorContext'
 import { qualitySkillWarmupHours } from './vendor/engine/timeDependentSkills'
+import { compileBackupExpression } from './vendor/scheduler/backupExpression'
+import { readBackupGroups, readBackupMembership } from './vendor/scheduler/backupGroups'
+
+// Only fixed income assumptions are available before simulation. Reading any
+// changing state must keep the candidate instead of inventing an initial value.
+const fixedConditionState = new Proxy(
+  { config: {}, time: 0 },
+  {
+    get(target, key) {
+      if (Object.hasOwn(target, key)) return target[key]
+      throw new Error('Backup condition depends on simulation state')
+    }
+  }
+)
+
+function conditionMayActivate(trigger) {
+  try {
+    return Boolean(compileBackupExpression(trigger, new Set()).evaluate(fixedConditionState))
+  } catch {
+    // Invalid conditions remain the plan validator's responsibility.
+    return true
+  }
+}
+
+function possibleBackups(workspace) {
+  const backups = workspace.compatibility.backupPlans
+  try {
+    const groups = readBackupGroups(workspace)
+    const possibleGroups = new Set(
+      groups
+        .filter((group) => group.id === 'default' || conditionMayActivate(group.trigger))
+        .map((group) => group.id)
+    )
+    return backups.filter((backup) => {
+      const { groupIds } = readBackupMembership(backup, groups)
+      return groupIds.some((id) => possibleGroups.has(id)) && conditionMayActivate(backup.trigger)
+    })
+  } catch {
+    return backups
+  }
+}
 
 // Inspect possible trade rosters before choosing this run's order model.
 export function incomeHasTailor(plan, settings) {
@@ -11,6 +52,7 @@ export function incomeHasTailor(plan, settings) {
   const tradeRooms = Object.values(workspace.mainPlan.facilities).filter(
     (room) => room.type === 'trading'
   )
+  const backups = possibleBackups(workspace)
   const ids = new Set()
   const add = (name) => {
     if (typeof name === 'string') ids.add(resolveOperatorCharId(name))
@@ -29,7 +71,7 @@ export function incomeHasTailor(plan, settings) {
       for (const binding of slot.groupBindings ?? [])
         for (const name of binding.replacements) add(name)
     }
-    for (const backup of workspace.compatibility.backupPlans) {
+    for (const backup of backups) {
       for (const slot of list(backup?.plan?.[room.roomId]?.plans)) rawSlot(slot)
       for (const name of list(backup?.task?.[room.roomId])) add(name)
     }

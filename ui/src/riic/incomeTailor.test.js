@@ -36,14 +36,14 @@ it.each(['primary', 'replacement', 'group', 'backup', 'task'])(
       source.backup_plans = [
         {
           name: '裁缝',
-          trigger: 'False',
+          trigger: 'True',
           plan: {
             room_1_1: { plans: [{ agent: '巫恋', replacement: [] }] }
           }
         }
       ]
     if (kind === 'task')
-      source.backup_plans = [{ name: '裁缝', trigger: 'False', task: { room_1_1: ['柏喙'] } }]
+      source.backup_plans = [{ name: '裁缝', trigger: 'True', task: { room_1_1: ['柏喙'] } }]
     const original = structuredClone(source)
     expect(incomeHasTailor(source, settings())).toBe(true)
     expect(incomeRequest(source, settings()).options.simulationOptions.production).toMatchObject({
@@ -53,6 +53,108 @@ it.each(['primary', 'replacement', 'group', 'backup', 'task'])(
     expect(source).toEqual(original)
   }
 )
+
+const inactiveTriggers = [
+  'False',
+  {},
+  { left: 'op_data.major_maintenance_remaining_hours()', operator: '<', right: '4' },
+  "op_data.major_maintenance_remaining_hours('>=', 4) < 2",
+  "op_data.facility_has_crafting_plan('factory')",
+  "op_data.facility_has_mastery_plan('train')",
+  "op_data.facility_is_training('train')",
+  "op_data.facility_is_protected('train')"
+]
+
+it.each(inactiveTriggers)('ignores a tailor backup with an inactive condition %j', (trigger) => {
+  const source = plan()
+  source.backup_plans = [
+    {
+      name: '不触发的副表',
+      trigger,
+      plan: {
+        room_1_1: {
+          plans: [
+            {
+              agent: '巫恋',
+              replacement: ['卡夫卡'],
+              group_bindings: [{ group: '备用', replacement: ['折光'] }]
+            }
+          ]
+        }
+      },
+      task: { room_1_1: ['柏喙'] }
+    }
+  ]
+  const original = structuredClone(source)
+  expect(incomeHasTailor(source, settings())).toBe(false)
+  expect(incomeRequest(source, settings()).options.simulationOptions.production).toMatchObject({
+    expectationMode: true,
+    theoreticalMode: true
+  })
+  expect(source).toEqual(original)
+})
+
+it.each([
+  'True',
+  "not op_data.facility_has_mastery_plan('train')",
+  'op_data.major_maintenance_remaining_hours() < 4 or True',
+  "op_data.operators['芬'].current_mood() < 8",
+  "op_data.operators['芬'].current_index == 0",
+  "op_data.inventory_count('赤金') < 100",
+  "op_data.facility_product('room_1_1') == lmd"
+])('retains a possible tailor backup with condition %s', (trigger) => {
+  const source = plan()
+  source.backup_plans = [{ name: '可能触发', trigger, task: { room_1_1: ['柏喙'] } }]
+  expect(incomeHasTailor(source, settings())).toBe(true)
+})
+
+it.each([false, true])(
+  'checks every membership of a shared tailor backup (active=%s)',
+  (active) => {
+    const source = plan()
+    source.backup_groups = [
+      { id: 'maintenance', name: '停服更新', exclusive_with: [], trigger: inactiveTriggers[2] },
+      { id: 'ordinary', name: '普通', exclusive_with: [], trigger: active ? 'True' : 'False' }
+    ]
+    source.backup_plans = [
+      {
+        name: '共享副表',
+        group_ids: ['maintenance', 'ordinary'],
+        type: 'exclusive',
+        trigger: 'True',
+        task: { room_1_1: ['柏喙'] }
+      }
+    ]
+    expect(incomeHasTailor(source, settings())).toBe(active)
+  }
+)
+
+it('keeps maintenance-only tailors out of the session and real Worker order model', () => {
+  const source = plan()
+  source.backup_plans = [
+    {
+      name: '停服更新',
+      trigger: inactiveTriggers[2],
+      plan: { room_1_1: { plans: [{ agent: '柏喙', replacement: [] }] } }
+    }
+  ]
+  const worker = { postMessage: vi.fn(), terminate: vi.fn() }
+  const session = createIncomeSession({ createWorker: () => worker, update: vi.fn() })
+  try {
+    session.start(source, settings())
+    const frozen = worker.postMessage.mock.calls[0][0]
+    expect(frozen.settings.expectationMode).toBe(true)
+    const result = calculateIncome(frozen.plan, frozen.settings)
+    expect(result.success, result.error).toBe(true)
+    expect(result.simulationReport.production.assumptions).toMatchObject({
+      expectationMode: true,
+      timingModel: 'theoretical-events-v1'
+    })
+    expect(result.simulationReport.production.assumptions).not.toHaveProperty('seed')
+  } finally {
+    session.dispose()
+  }
+})
 
 it('checks unlocked skills and ignores tailor operators outside trade rosters', () => {
   const source = plan()
