@@ -6,6 +6,7 @@ import { parseProduct, serializeProduct } from '../domain/mowerProducts'
 import type {AppConfig} from '../domain/types'
 import {OPERATOR_MAP} from '../domain/operators'
 import {evaluateManufacturingCapacity,type OperatorEfficiencyResult} from '../engine/operatorRules'
+import {qualitySkillWarmupHours} from '../engine/timeDependentSkills'
 import {evaluateTradeOrderCapacity} from '../engine/orderCapacity'
 import type {CompiledSchedule} from '../scheduler/types'
 import type {RuntimeState} from '../scheduler/rosterRuntime'
@@ -288,6 +289,10 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
     }
    }
    const orderMode:OrderMode=t.product==='orundum'?'orundum':c.pepe?'pepe':c.closure?'closure':'gold'
+   if(orderMode==='gold'){
+    const tailors=room.operatorIds.filter(id=>frame.active.has(id)&&qualitySkillWarmupHours(id,frame.config)>0)
+    if(tailors.length>1)throw new Error(`${room.id}：暂不支持多名裁缝类干员同时影响订单概率（${tailors.map(id=>OPERATOR_MAP.get(id)?.name??id).join('、')}）；请调整排班后重新演算。`)
+   }
    if(orderMode==='pepe'&&target==='trading')diagnostic('PEPE_DRONE_UNVERIFIED',`${t.roomId}：佩佩订单无人机加速未核实；保留无人机库存，不计加速`)
    try{const distribution=getOrderDistribution(room.level,frame.evaluations[t.roomId]!.quality,orderMode,frame.evaluations[t.roomId]!.qualityWarmup),base=expectationMode?expectedBaseOrder(distribution):selectBaseOrder(distribution,rng(t));t.active=startOrder({id:`${t.roomId}:${t.completedOrders+1}`,startedAt:state.time,base});record('order-started',{roomId:t.roomId,orderId:t.active.id})}
    catch(error){t.disabled=true;unsupported('ORDER_DISTRIBUTION_UNSUPPORTED',`${t.roomId}：${String(error)}`)}

@@ -210,7 +210,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   checkTemporalSkills()
  }
  refreshSessions()
- if([...entered.keys()].some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0)||Object.keys(schedule.operators).some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0))diagnostic('TRADE_QUALITY_WARMUP_MODEL',`裁缝类订单概率采用${warmupModel==='hourly'?'满整小时等幅递增':'连续线性'}近似：α／β分别在原工位连续工作 3／5 小时达到峰值；移动工位或离岗后重新计时。同类效果不叠加，取当前四赤金概率最高者；中间曲线和叠加机制未经实测核验。`)
+ if([...entered.keys()].some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0)||Object.keys(schedule.operators).some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0))diagnostic('TRADE_QUALITY_WARMUP_MODEL',`裁缝类订单概率采用${warmupModel==='hourly'?'满整小时等幅递增':'连续线性'}近似：α／β分别在原工位连续工作 3／5 小时达到峰值；移动工位或离岗后重新计时。仅支持单名裁缝影响普通赤金订单概率；同站多名裁缝实际生效时不支持演算，不采用取最强或叠加近似。中间暖机曲线未经实测核验。`)
  const stats=new Map(Object.keys(state.morale).map(id=>[id,{operatorId:id,operatorName:isMowerDormFiller(id)?MOWER_DORM_FILLER_NAME:OPERATOR_MAP.get(id)?.name??id,mainWorkHours:0,substituteWorkHours:0,workHours:0,exhaustedHours:0,restHours:0,idleHours:0,permanentPrimaryOccupancyHours:0,workFraction:0,workRestRatio:null,initialMorale:initial[id]!,finalMorale:initial[id]!} as SimulatedOperator]))
  const roomStats=new Map(projectScheduleState(schedule,state).rooms.map(r=>[r.id,{roomId:r.id,roomType:r.type,averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]} as SimulatedRoom]))
  if(schedule.rooms.some(r=>r.type==='recycle'))roomStats.set('recycle',{roomId:'recycle',roomType:'recycle',averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]})
