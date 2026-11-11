@@ -1,17 +1,27 @@
 import { appendFileSync, writeFileSync } from 'node:fs'
 import process from 'node:process'
 import { expect, it } from 'vitest'
-import plan from './fixtures/income-342-smoke-products.json'
+import imagePlan from './fixtures/income-342-smoke-products.json'
 import { defaultIncomeSettings } from './income'
 import { calculateIncome } from './incomeWorker'
 
 const longRun = process.env.MOWER_SMOKE_LONG_TEST === '1'
 
 // Complete Scheduling Plan decoded from the supplied JPG, including all six backups.
-it(
-  'continues the supplied smoke rotation without discarding an unfinished departure',
-  () => {
+it.each(['B202', 'B201'])(
+  'continues the supplied smoke rotation with Vigil assigned to %s',
+  (vigilRoom) => {
+    const plan = structuredClone(imagePlan)
+    if (vigilRoom === 'B201') {
+      const smoke = plan.backup_plans.find((backup) => backup.name === '烟火下班')
+      smoke.task.room_2_1 = smoke.task.room_2_2
+      delete smoke.task.room_2_2
+    }
+    const sampleDays = longRun ? 28 : vigilRoom === 'B201' ? 3 : 2
     const original = structuredClone(plan)
+    const resultLog = process.env.MOWER_SMOKE_RESULT_LOG
+      ? `${process.env.MOWER_SMOKE_RESULT_LOG}.${vigilRoom}.json`
+      : undefined
     let lastProgress = -1
     const result = calculateIncome(
       plan,
@@ -19,7 +29,7 @@ it(
         ...defaultIncomeSettings(),
         seed: 546609889,
         warmupDays: longRun ? 3 : 0,
-        sampleDays: longRun ? 28 : 2,
+        sampleDays,
         operatorMode: 'maximum',
         inventorySource: 'manual',
         finiteInventory: false,
@@ -27,10 +37,10 @@ it(
       },
       (progress) => {
         const percent = Math.floor(progress.fraction * 100)
-        if (process.env.MOWER_SMOKE_RESULT_LOG && percent > lastProgress) {
+        if (resultLog && percent > lastProgress) {
           lastProgress = percent
           appendFileSync(
-            process.env.MOWER_SMOKE_RESULT_LOG + '.progress',
+            resultLog + '.progress',
             JSON.stringify({ percent, label: progress.label }) + '\n'
           )
         }
@@ -38,10 +48,12 @@ it(
     )
     expect(result.success, result.error).toBe(true)
     const report = result.simulationReport
-    if (process.env.MOWER_SMOKE_RESULT_LOG)
+    if (resultLog)
       writeFileSync(
-        process.env.MOWER_SMOKE_RESULT_LOG,
+        resultLog,
         JSON.stringify({
+          incomeSummary: result.summary,
+          production: report.production?.sample,
           observedHours: report.observedHours,
           elapsedHours: report.elapsedHours,
           operators: report.operators,
@@ -49,8 +61,8 @@ it(
           diagnostics: result.diagnostics
         })
       )
-    expect(report.observedHours).toBeCloseTo((longRun ? 28 : 2) * 24, 6)
-    expect(report.elapsedHours).toBeCloseTo((longRun ? 31 : 2) * 24, 6)
+    expect(report.observedHours).toBeCloseTo(sampleDays * 24, 6)
+    expect(report.elapsedHours).toBeCloseTo((sampleDays + (longRun ? 3 : 0)) * 24, 6)
     expect(report.production.assumptions.expectationMode).toBe(false)
     expect(report.production.assumptions.seed).toBe(546609889)
     expect(result.summary.totalScore82).toBeGreaterThan(0)
@@ -60,7 +72,7 @@ it(
       expect(operator.workHours, name).toBeGreaterThan(0)
       expect(operator.restHours, name).toBeGreaterThan(0)
     }
-    if (!longRun) {
+    if (!longRun && vigilRoom === 'B202') {
       const firstDeparture = report.events.find(
         (event) => event.type === 'shift-off' && event.operators.includes('char_2024_chyue')
       )
@@ -81,7 +93,7 @@ it(
             report.events.some(
               (event) =>
                 event.time >= start &&
-                event.time < start + (longRun ? 168 : 48) &&
+                event.time < start + (longRun ? 168 : sampleDays * 24) &&
                 event.type === type &&
                 event.operators.includes(id)
             ),

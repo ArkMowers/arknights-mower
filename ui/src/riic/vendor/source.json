@@ -535,12 +535,12 @@
       "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Verify departure-bed dependencies against the failed effective projection and retain same-slot mood rereads without recalling resting peers, from calculator 0b40f8bed3e8c07df848bed7eb1338ed9214c663. Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0. Compare the logical pending task set across the dispatch queue and recovery waits so parking alone cannot appear to release reservations; preserve task identity, time and actual reservation scope. Expose one read-only union of current dispatch and parked recovery tasks for correction planning and reservation checks."
     },
     "scheduler/mowerRecoveryDependency.spec.ts": {
-      "sha256": "276f1be97e9cb28e20a5b84fd19073f9621d108ca85c36135bc3baf593d6ef17",
-      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Support multiple backup group memberships, retained group and exclusive selection, and isolated scheduling previews with scoped default backups."
+      "sha256": "5a334e6b097ba0dfdc82d8411e053817c1c9be84b1f31e886c052e7c5fb1279e",
+      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Support multiple backup group memberships, retained group and exclusive selection, and isolated scheduling previews with scoped default backups. Allow a fully verified normal return to release a shared binding before an independent successor dormitory-retention capacity wait, while preserving effective backup rules, reservations, original tasks and unexpected errors."
     },
     "scheduler/mowerRecoveryDependency.ts": {
-      "sha256": "11bad8d3a10ca0fc139583822216438b97505da46b6b7bff773c354d0c31c16d",
-      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Support multiple backup group memberships, retained group and exclusive selection, and isolated scheduling previews with scoped default backups."
+      "sha256": "614b8efab0c62b0bddbb5bc1ebded50f2a6fe331c20a4f6eaf27192b66def5d9",
+      "reason": "Import this scheduler module or focused regression from calculator 32b9f0473b55f85a2f6b3e178a8c1993fefba67a for backup shift intent and recovery continuity. Support multiple backup group memberships, retained group and exclusive selection, and isolated scheduling previews with scoped default backups. Allow a fully verified normal return to release a shared binding before an independent successor dormitory-retention capacity wait, while preserving effective backup rules, reservations, original tasks and unexpected errors."
     },
     "scheduler/mowerRetainedCorrection.spec.ts": {
       "sha256": "c6209045c6496151f806ac0e4c3284c7c45b8c9011b28e4f86894f4847d86560",
