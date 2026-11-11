@@ -162,10 +162,25 @@ def build_llm(api_key, with_tools=False, *, timeout=90, max_retries=1):
     if ai_type == "deepseek" and model == "deepseek-v4-pro":
         kwargs["reasoning_effort"] = "high"
         kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
+    if ai_type == "custom-online" and base_url == "https://api.openai.com/v1":
+        kwargs.pop("temperature")
+        kwargs["use_responses_api"] = True
+        if not with_tools:
+            return _TextOnlyResponsesModel(**kwargs)
+        functions = [tool["function"] for tool in get_tools()]
+        return ChatOpenAI(**kwargs).bind_tools(functions, strict=False)
     llm = ChatOpenAI(**kwargs)
     if with_tools:
         return llm.bind_tools(tools=get_tools())
     return llm
+
+
+class _TextOnlyResponsesModel(ChatOpenAI):
+    """Keep response.content a string for Mower's text-only invoke callers."""
+
+    def invoke(self, *args, **kwargs):
+        reply = super().invoke(*args, **kwargs)
+        return reply.model_copy(update={"content": reply.text()})
 
 
 def build_workflow(api_key):
@@ -182,13 +197,11 @@ def build_workflow(api_key):
     def tool_node(state):
         messages = state
         last_message = messages[-1]
-        tool_calls = getattr(last_message, "additional_kwargs", {}).get(
-            "tool_calls", []
-        )
+        tool_calls = last_message.tool_calls
         tool_messages = []
         for tool_call in tool_calls:
-            tool_name = tool_call["function"]["name"]
-            tool_args = json.loads(tool_call["function"]["arguments"])
+            tool_name = tool_call["name"]
+            tool_args = tool_call["args"]
             if tool_name in tool_func_map:
                 result = tool_func_map[tool_name](**tool_args)
             else:
@@ -205,7 +218,7 @@ def build_workflow(api_key):
     def should_continue(state):
         messages = state
         last_message = messages[-1]
-        tool_calls = getattr(last_message, "additional_kwargs", {}).get("tool_calls")
+        tool_calls = last_message.tool_calls
         if tool_calls:
             return "action"
         return END
@@ -249,7 +262,7 @@ def _run_manual_tool_loop(messages, api_key):
                     ToolMessage(content=result, tool_call_id=tool_id)
                 )
             continue
-        content = response.content if hasattr(response, "content") else str(response)
+        content = response.text()
         if content:
             streamed.append(content)
         break
@@ -552,7 +565,7 @@ def ask_llm(user_input, context=None, api_key=None):
                     tool_name = call.get("name")
                     if tool_name:
                         yield f"Mower助手正在{tool_message_map[tool_name]}...\n"
-            elif hasattr(message_chunk, "content"):
-                content = message_chunk.content
+            elif isinstance(message_chunk, AIMessage):
+                content = message_chunk.text()
                 if content:
                     yield content
