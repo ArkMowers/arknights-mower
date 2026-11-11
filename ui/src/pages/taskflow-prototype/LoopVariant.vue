@@ -302,8 +302,7 @@ const [rcx, rcy] = center('right')
           :key="run.id + run.hour"
           :style="{ '--c': sections[run.section].color }"
         >
-          <time>{{ fmt(run.hour) }}</time
-          >{{ run.task?.name }}
+          <time>{{ fmt(run.hour) }}</time>{{ run.task?.name }}
         </li>
       </ol>
     </footer>

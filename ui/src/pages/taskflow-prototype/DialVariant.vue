@@ -177,8 +177,7 @@ const idleLabel = computed(
         :class="{ 'is-on': s.selected === 'pace' }"
         @click="pick('pace')"
       >
-        <span>{{ s.globals.pace.fields[0].value }}</span
-        ><small>ms</small>
+        <span>{{ s.globals.pace.fields[0].value }}</span><small>ms</small>
       </button>
       <button
         type="button"

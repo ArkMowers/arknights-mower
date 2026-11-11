@@ -611,8 +611,7 @@ onUnmounted(() => {
     >
       <n-collapse-item title="更新渠道与发布说明" name="channels">
         <p v-for="item in info?.channels || []" :key="item.value">
-          <strong>{{ item.label }}</strong
-          >：{{ item.description }}
+          <strong>{{ item.label }}</strong>：{{ item.description }}
         </p>
         <p>
           <a

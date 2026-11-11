@@ -350,8 +350,7 @@ onUnmounted(() => {
                         @error="failedIcons.add(name)"
                       /><span v-else>◇</span>
                     </div>
-                    <span>{{ name }}</span
-                    ><strong>× {{ count }}</strong>
+                    <span>{{ name }}</span><strong>× {{ count }}</strong>
                   </div>
                 </div>
                 <span v-else class="muted">材料未完整识别，请查看收取截图</span>
@@ -405,8 +404,7 @@ onUnmounted(() => {
                 class="quality-chart"
               />
               <div class="donut-center">
-                <strong>{{ number(quantity, 0) }}</strong
-                ><span>材料总数</span>
+                <strong>{{ number(quantity, 0) }}</strong><span>材料总数</span>
               </div>
             </div>
             <n-empty v-else description="等待首次收取" class="empty-chart" />

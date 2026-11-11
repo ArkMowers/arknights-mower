@@ -1851,8 +1851,7 @@ const orderOption = computed(() => {
                   </span>
                   <span
                     >{{ isOrders ? '已记录' : '完整读数' }}
-                    <b>{{ formatCount(selectedBucket?.count) }}</b
-                    >{{ isOrders ? ' 笔' : ' 天' }}
+                    <b>{{ formatCount(selectedBucket?.count) }}</b>{{ isOrders ? ' 笔' : ' 天' }}
                   </span>
                 </template>
                 <span class="chart-indicators__spacer"></span>
