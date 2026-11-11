@@ -200,8 +200,7 @@ const groups = computed(() => [
                           :class="{ 'is-open': open === t.id, 'is-off': !t.enabled }"
                           @click="toggle(t.id)"
                         >
-                          <span class="ns-idx">{{ i + 1 }}</span
-                          >{{ t.name }}
+                          <span class="ns-idx">{{ i + 1 }}</span>{{ t.name }}
                         </button>
                         <div v-if="open === t.id" class="ns-drawer ns-drawer--step">
                           <div class="ns-drawer-head">

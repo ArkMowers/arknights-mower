@@ -79,12 +79,11 @@ const lines = computed(() => {
     <header class="ls-head">
       <h1>任务配置</h1>
       <p>
-        现在 <b>{{ fmt(s.now) }}</b
-        >，下一项基建任务是 {{ gate?.name }}（{{ gate?.at }}），还有 {{ gate?.gap }} 分钟，
+        现在 <b>{{ fmt(s.now) }}</b>，下一项基建任务是 {{ gate?.name }}（{{ gate?.at }}），还有
+        {{ gate?.gap }} 分钟，
         <span :class="gate?.open ? 'ls-ok' : 'ls-wait'">{{
           gate?.open ? '闲时序列可以进入' : '闲时序列不进入'
-        }}</span
-        >。
+        }}</span>。
       </p>
     </header>
 
@@ -121,8 +120,8 @@ const lines = computed(() => {
               </template>
               <template v-else-if="line.key === 'pace'">
                 <span v-for="f in s.globals.pace.fields" :key="f.key" class="ls-pair">
-                  <span class="ls-dim">{{ f.label }}</span> <span class="ls-val">{{ f.value }}</span
-                  ><span class="ls-dim">{{ f.unit }}</span>
+                  <span class="ls-dim">{{ f.label }}</span>
+                  <span class="ls-val">{{ f.value }}</span><span class="ls-dim">{{ f.unit }}</span>
                 </span>
               </template>
               <template v-else>

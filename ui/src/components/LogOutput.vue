@@ -900,8 +900,7 @@ function lineClasses(row) {
                 v-if="block.parent.headingStamp"
                 class="log-stamp"
                 :title="stampTitle(block.parent.headingStamp)"
-                >{{ block.parent.headingStamp.time }}</span
-              ><span
+                >{{ block.parent.headingStamp.time }}</span><span
                 class="log-rescue-summary log-lifecycle-text"
                 :class="{ 'log-lifecycle-active': block.parent.rescue.inProgress && running }"
                 :data-rescue-phase="block.parent.rescue.phase"
@@ -938,8 +937,8 @@ function lineClasses(row) {
                   :data-log-static-parent="item.staticParentKey"
                   :data-log-source-index="item.sourceIndex"
                 >
-                  <span class="log-forecast__room-label">{{ item.rescueRoom.label }}</span
-                  ><span class="log-forecast__agents"
+                  <span class="log-forecast__room-label">{{ item.rescueRoom.label }}</span><span
+                    class="log-forecast__agents"
                     ><log-operator
                       v-for="(name, index) in item.rescueRoom.agents"
                       :key="index"
