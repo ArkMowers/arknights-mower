@@ -34,6 +34,8 @@ class _Window:
             **{
                 name: _Event()
                 for name in (
+                    "initialized",
+                    "response_received",
                     "maximized",
                     "minimized",
                     "restored",
