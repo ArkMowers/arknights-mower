@@ -14,6 +14,42 @@ Managed instance windows close directly and leave the instance running under the
 
 For standalone windows, Cocoa's native close request opens the same frontend close choice as an HTML close button. Cancelling or deferring that choice keeps the window and normal-size tracking active. A confirmed close or supervisor exit proceeds directly. Native requests received before the page is ready wait until the frontend installs its close listener and confirms readiness. The listener acknowledges each delivered close event synchronously; a missing listener after page reload or a failed dispatch retains the request for the next readiness confirmation or native close request, without polling. Closing the window prevents further delivery.
 
+## WebView2 response observation
+
+The desktop entry and offline preview register
+[`configure_response_observation`](../../arknights_mower/utils/webview_response.py)
+before starting pywebview. Its blocking `initialized` callback installs an
+EdgeChromium adapter after GUI selection and before native window creation.
+Other renderers retain their existing implementation.
+
+The adapter targets the pinned pywebview 6.2.1 backend. That backend subscribes to
+`WebResourceResponseReceived` during initialization even without Python response
+consumers. The adapter removes that subscription before the initial URL or HTML
+navigation when `window.events.response_received` is empty. Request observation,
+request-header changes, navigation, JavaScript bridging and downloads retain the
+upstream implementation. Screenshot requests retain their existing XHR transport
+and Blob URL cleanup.
+
+The response event forwards the existing event operations and synchronizes
+consumer additions and removals on the GUI thread. A registration completed
+before a new request enables observation for that response. GUI dispatch waits
+at most three seconds; failure undoes the handler change and raises an error,
+and a timed-out pending update is cancelled. A consumer added during an already
+in-flight request is not guaranteed that response, and no response is replayed.
+The adapter also checks consumers after blocking `request_sent` handlers return.
+Removing the last consumer disables native observation without requiring another
+request. Mower currently registers no response consumers.
+Adding one deliberately enables the native path associated with accumulation;
+such a change requires renewed memory validation.
+
+Each native window tracks its own subscription. Recreated GUI processes install
+the adapter again; multiple windows in one process reuse the class adapter with
+separate consumer state. Dependency-pin tests require review when pywebview is
+upgraded. Recheck the upstream initialization, URL/HTML loading and request
+callbacks, remove the adapter if upstream fixes the subscription, and repeat
+native memory and window-function acceptance before changing that pin. The
+adapter relies on those version-specific internals, not a general pywebview API.
+
 ## Native input ownership
 
 For Cocoa, GTK and Qt, Vue sends a bounded viewport snapshot containing the draggable title-bar rectangles and any HTML resize grips. Control buttons and page content remain outside those rectangles. Invalid snapshots clear earlier regions; a snapshot for a different viewport size cannot capture input while layout is changing. Corners and resize edges take precedence over dragging.
@@ -65,7 +101,7 @@ A refused or timed-out hit-region update invalidates the frontend's acknowledgem
 From the repository root, run:
 
 ```bash
-python -m pytest arknights_mower/tests/window_state_tests.py arknights_mower/tests/window_frameless_tests.py arknights_mower/tests/window_regions_tests.py arknights_mower/tests/window_backend_tests.py arknights_mower/tests/window_shell_platform_tests.py arknights_mower/tests/cocoa_window_tests.py arknights_mower/tests/linux_window_tests.py arknights_mower/tests/webview_ui_tests.py arknights_mower/tests/desktop_process_tests.py
+python -m pytest arknights_mower/tests/window_state_tests.py arknights_mower/tests/window_frameless_tests.py arknights_mower/tests/window_regions_tests.py arknights_mower/tests/window_backend_tests.py arknights_mower/tests/window_shell_platform_tests.py arknights_mower/tests/cocoa_window_tests.py arknights_mower/tests/linux_window_tests.py arknights_mower/tests/webview_ui_tests.py arknights_mower/tests/desktop_process_tests.py arknights_mower/tests/webview_response_tests.py
 ```
 
 From `ui/`, run:

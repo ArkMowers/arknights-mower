@@ -434,6 +434,9 @@ def webview_window(
         shadow=True,
         background_color=window_background_color(theme),
     )
+    from arknights_mower.utils.webview_response import configure_response_observation
+
+    configure_response_observation(window)
     window.events.resized += window_size
     bridge = attach_window_shell(
         window,
