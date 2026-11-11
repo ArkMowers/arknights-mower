@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { defaultIncomeSettings, incomeRequest } from './income'
 import { calculateIncome } from './incomeWorker'
+import { runCalculationBridge } from './vendor/workbench/calculationBridge'
 import { createIncomeSession } from './incomeSession'
 import { createDefaultWorkspace } from './vendor/workbench/defaults'
 import { compileRosterSchedule } from './vendor/scheduler/compileRosterSchedule'
@@ -327,3 +328,112 @@ it.each(tailorModels)(
     )
   }
 )
+
+it.each(
+  [true, false].flatMap((expectationMode) =>
+    [
+      ['巫恋', '贝娜'],
+      ['巫恋', '柏喙'],
+      ['柏喙', '卡夫卡']
+    ].map((names) => ({ expectationMode, names }))
+  )
+)(
+  'rejects simultaneous tailor skills instead of choosing the strongest: %j',
+  ({ expectationMode, names }) => {
+    const source = plan()
+    source.plan1.room_1_1.plans = names.map((agent) => ({ agent, replacement: [] }))
+    const result = calculateIncome(source, { ...settings(), expectationMode, seed: 42 })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('不支持多名裁缝')
+    for (const name of names) expect(result.error).toContain(name)
+    expect(result).not.toHaveProperty('summary')
+  }
+)
+it.each([false, true])(
+  'checks actual backup activation for a second tailor: active=%s',
+  (active) => {
+    const source = plan()
+    source.plan1.room_1_1.plans = [
+      { agent: '巫恋', replacement: [] },
+      { agent: '芬', replacement: [] }
+    ]
+    source.backup_plans = [
+      {
+        name: '裁缝替班',
+        trigger: active ? 'True' : 'False',
+        plan: {
+          room_1_1: {
+            plans: [
+              { agent: 'Current', replacement: [] },
+              { agent: '贝娜', replacement: [] }
+            ]
+          }
+        },
+        task: { room_1_1: ['Current', '贝娜'] }
+      }
+    ]
+    const result = calculateIncome(source, settings())
+    expect(result.success, result.error).toBe(!active)
+    if (active) expect(result.error).toContain('不支持多名裁缝')
+  }
+)
+it('allows unused tailor replacements and one tailor in each separate trading room', () => {
+  const source = plan()
+  source.plan1.room_1_1.plans = [{ agent: '巫恋', replacement: ['贝娜'] }]
+  source.plan1.room_1_2 = {
+    name: '贸易站',
+    product: 'lmd',
+    plans: [{ agent: '柏喙', replacement: ['卡夫卡'] }]
+  }
+  const result = calculateIncome(source, settings())
+  expect(result.success, result.error).toBe(true)
+})
+it('does not apply the multiple-tailor restriction to fixed orundum orders', () => {
+  const source = plan()
+  source.facility_levels = { room_1_1: 3 }
+  source.plan1.room_1_1.product = 'orundum'
+  source.plan1.room_1_1.plans = ['巫恋', '贝娜'].map((agent) => ({ agent, replacement: [] }))
+  const result = calculateIncome(source, settings())
+  expect(result.success, result.error).toBe(true)
+})
+
+it('ignores a second tailor whose skill is inactive at zero morale', () => {
+  const schedule = tailorSchedule('巫恋', ['贝娜']),
+    id = resolveOperatorCharId('贝娜')
+  schedule.assumptions.operatorMorale = { [id]: 0 }
+  const report = simulateSchedule(schedule, {
+    schedulingModel: 'mower-alpha',
+    sampleHours: 1,
+    consumptionOverrides: { [id]: 0 },
+    production: productionOptions
+  })
+  expect(report.success, JSON.stringify(report.diagnostics)).toBe(true)
+  expect(report.production.success).toBe(true)
+})
+
+it.each(
+  [true, false].flatMap((expectationMode) =>
+    ['resident', 'run-order'].map((placement) => ({ expectationMode, placement }))
+  )
+)('allows Closure fixed orders with multiple tailors: %j', ({ expectationMode, placement }) => {
+  const source = plan()
+  source.facility_levels = { room_1_1: 3 }
+  source.plan1.room_1_1.plans = [
+    { agent: '巫恋', replacement: placement === 'run-order' ? ['可露希尔'] : [] },
+    { agent: '贝娜', replacement: [] },
+    { agent: placement === 'resident' ? '可露希尔' : '芬', replacement: [] }
+  ]
+  const { workspace, options } = incomeRequest(source, { ...settings(), expectationMode, seed: 42 })
+  options.simulationOptions.sampleHours = 6
+  const result = runCalculationBridge(workspace, options)
+  expect(result.success, result.error).toBe(true)
+  const orders = result.simulationReport.production.events
+    .filter((event) => event.type === 'order-completed')
+    .map((event) => event.order)
+  expect(orders.length).toBeGreaterThan(0)
+  for (const order of orders) {
+    expect(order.mode).toBe('closure')
+    expect(order.goldCost).toBe(2)
+    expect(order.lmdReward).toBe(1200)
+  }
+})

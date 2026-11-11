@@ -700,7 +700,7 @@ it.each(['龙舌兰', '可露希尔'])(
     source.plan1.room_2_1 = {
       name: '贸易站',
       product: 'lmd',
-      plans: [{ agent }, { agent: '巫恋' }, { agent: '柏喙' }]
+      plans: [{ agent }, { agent: '芬' }, { agent: '柏喙' }]
     }
     const result = calculateIncome(source, {
       ...modelSettings(),
