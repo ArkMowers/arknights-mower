@@ -12,6 +12,7 @@ from arknights_mower.agent import agent
 
 @pytest.fixture
 def serve(monkeypatch):
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", "auto")
     monkeypatch.setattr(agent.config.conf, "ai_type", "custom-online")
     monkeypatch.setattr(agent.config.conf, "ai_base_url", "https://api.openai.com/v1")
     monkeypatch.setattr(agent.config.conf, "ai_model", "fixture-model")
@@ -34,7 +35,16 @@ def event_stream(*events):
     )
 
 
-def test_two_streamed_questions_in_one_process(serve, monkeypatch):
+@pytest.mark.parametrize(
+    "protocol,url",
+    [
+        ("auto", "https://api.openai.com/v1"),
+        ("responses", "https://relay.example/v1"),
+    ],
+)
+def test_two_streamed_questions_in_one_process(serve, monkeypatch, protocol, url):
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", protocol)
+    monkeypatch.setattr(agent.config.conf, "ai_base_url", url)
     tool = Mock(side_effect=["first plan", "second plan"])
     monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
     requests = []
@@ -232,3 +242,176 @@ def test_unrelated_api_error_does_not_switch_protocol(serve, status, code, param
         agent.build_llm("test-key", max_retries=0).invoke("Query")
     assert caught.value.code == code
     assert paths == ["/v1/responses"]
+
+
+def responses_text(text):
+    return httpx.Response(
+        200,
+        json={
+            "id": "resp-fixture",
+            "object": "response",
+            "created_at": 1,
+            "status": "completed",
+            "model": "fixture-model",
+            "output": [
+                {
+                    "type": "message",
+                    "id": "msg-fixture",
+                    "role": "assistant",
+                    "status": "completed",
+                    "content": [
+                        {"type": "output_text", "text": text, "annotations": []}
+                    ],
+                }
+            ],
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "service,url,protocol,expected",
+    [
+        ("custom-online", "https://api.openai.com/v1/", "auto", "/v1/responses"),
+        ("custom-online", "https://relay.example/v1", "auto", "/v1/chat/completions"),
+        ("custom-local", "http://localhost:11434/v1", "auto", "/v1/chat/completions"),
+        (
+            "custom-online",
+            "https://api.openai.com/v1",
+            "chat-completions",
+            "/v1/chat/completions",
+        ),
+        (
+            "custom-online",
+            "https://relay.example/v1",
+            "chat-completions",
+            "/v1/chat/completions",
+        ),
+        ("custom-online", "https://relay.example/v1", "responses", "/v1/responses"),
+        ("custom-local", "http://localhost:11434/v1", "responses", "/v1/responses"),
+        ("deepseek", "https://ignored.example/v1", "responses", "/chat/completions"),
+    ],
+)
+def test_selected_protocol_controls_actual_request(
+    serve, monkeypatch, service, url, protocol, expected
+):
+    monkeypatch.setattr(agent.config.conf, "ai_type", service)
+    monkeypatch.setattr(agent.config.conf, "ai_base_url", url)
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", protocol)
+    paths = []
+
+    def respond(path, body):
+        paths.append(path)
+        if path.endswith("/responses"):
+            assert "temperature" not in body
+            return responses_text("answer")
+        return httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-fixture",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "fixture-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "stop",
+                        "message": {"role": "assistant", "content": "answer"},
+                    }
+                ],
+            },
+        )
+
+    serve(respond)
+    assert agent.build_llm("test-key").invoke("Query").content == "answer"
+    assert paths == [expected]
+
+
+@pytest.mark.parametrize(
+    "protocol,endpoint",
+    [
+        ("responses", "/v1/responses"),
+        ("chat-completions", "/v1/chat/completions"),
+    ],
+)
+def test_explicit_protocol_never_falls_back(serve, monkeypatch, protocol, endpoint):
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", protocol)
+    paths = []
+
+    def respond(path, body):
+        paths.append(path)
+        return rejection(404, "Model not found", "model_not_found")
+
+    serve(respond)
+    with pytest.raises(APIStatusError):
+        agent.build_llm("test-key", max_retries=0).invoke("Query")
+    assert paths == [endpoint]
+
+
+def test_protocol_configuration_round_trip_and_validation():
+    from pydantic import ValidationError
+
+    from arknights_mower.utils.config.conf import Conf
+
+    old = Conf(ai_type="custom-online")
+    assert old.ai_api_protocol == "auto"
+    assert "ai_api_protocol" not in old.model_dump(exclude_unset=True)
+    for protocol in ("auto", "chat-completions", "responses"):
+        saved = {"ai_api_protocol": protocol, "ai_model": "custom-model"}
+        assert Conf.model_validate(saved).model_dump(exclude_unset=True) == saved
+    with pytest.raises(ValidationError):
+        Conf(ai_api_protocol="unknown")
+
+
+@pytest.mark.parametrize(
+    "consumer", ["schedule", "captcha", "missed_order", "navigation"]
+)
+def test_responses_text_reaches_existing_consumers(serve, monkeypatch, consumer):
+    from arknights_mower.agent import navigation_process as worker
+    from arknights_mower.agent.missed_order import summarize_missed_order_result
+    from arknights_mower.agent.schedule_error import analyze_schedule_error
+    from arknights_mower.agent.tools.captcha_ocr_match import match_captcha_order
+    from arknights_mower.utils import path as paths
+
+    monkeypatch.setattr(agent.config.conf, "ai_base_url", "https://relay.example/v1")
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", "responses")
+    requests = []
+    answer = (
+        "[0]"
+        if consumer == "captcha"
+        else '{"indices":[0]}'
+        if consumer == "navigation"
+        else "模型分析结果"
+    )
+
+    def respond(path, body):
+        requests.append(path)
+        assert path == "/v1/responses" and "tools" not in body
+        return responses_text(answer)
+
+    serve(respond)
+    if consumer == "schedule":
+        assert analyze_schedule_error({"message": "排班失败"}, [], "test-key") == answer
+    elif consumer == "captcha":
+        assert match_captcha_order("开", [{"word": "开"}], "test-key") == [0]
+    elif consumer == "missed_order":
+        result = {}
+        assert answer in summarize_missed_order_result(
+            result, agent.build_llm("test-key")
+        )
+        assert result["summary_source"] == "llm"
+    else:
+        settings = agent.config.conf.model_dump()
+        channel = Mock()
+        # Restore the worker's module-level configuration after this direct invocation.
+        monkeypatch.setattr(agent.config, "conf", agent.config.conf)
+        worker._model_worker(
+            channel,
+            settings,
+            "test-key",
+            [{"role": "user", "content": "rank"}],
+            5,
+            {name: getattr(paths, name) for name in worker._PATH_FIELDS},
+        )
+        assert json.loads(channel.send_bytes.call_args.args[0]) == {"text": answer}
+        channel.close.assert_called_once()
+    assert requests == ["/v1/responses"]

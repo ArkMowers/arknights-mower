@@ -228,7 +228,7 @@ describe('partial configuration saves', () => {
       const model = 'provider/model-with-a-long-name-and-complete-version-id'
       const context = await setup({ ai_type: service, ai_model: model })
       const html = await renderSettings(ChatBotSetting, context)
-      expect(selectedLabels(html)).toEqual([label])
+      expect(selectedLabels(html)).toEqual([label, '自动（默认）'])
       expect(html).toContain(`value="${model}"`)
       expect(html).not.toContain('custom-model-description')
       expect(store.ai_type).toBe(service)
@@ -330,6 +330,44 @@ describe('partial configuration saves', () => {
       visit_friend_mode: 'maa'
     })
     expect(store.clue_credit_on_demand).toBe(true)
+  })
+
+  it.each(['auto', 'chat-completions', 'responses'])(
+    'loads and saves API protocol %s without changing service credentials',
+    async (protocol) => {
+      await setup({
+        ai_type: 'custom-online',
+        ai_api_protocol: protocol,
+        ai_custom_key: 'saved-key',
+        ai_model: 'saved-model'
+      })
+      expect(store.ai_api_protocol).toBe(protocol)
+      expect(axios.patch).not.toHaveBeenCalled()
+      const next = protocol === 'responses' ? 'chat-completions' : 'responses'
+      store.ai_api_protocol = next
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        ai_api_protocol: next
+      })
+      expect(store.ai_model).toBe('saved-model')
+      expect(store.ai_custom_key).toBe('saved-key')
+      store.ai_type = 'deepseek'
+      await nextTick()
+      expect(store.ai_api_protocol).toBe(next)
+    }
+  )
+
+  it('shows a protocol selector for custom services and keeps old configuration on auto', async () => {
+    const context = await setup({ ai_type: 'custom-online' })
+    expect(store.ai_api_protocol).toBe('auto')
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.ai_api_protocol = 'responses'
+    const html = await renderSettings(ChatBotSetting, context)
+    expect(html).toContain('OpenAI Responses')
+    expect(html).toContain('请求失败时不切换协议')
+    store.ai_type = 'deepseek'
+    expect(await renderSettings(ChatBotSetting, context)).not.toContain('aria-label="API 协议"')
   })
 
   it.each(['deepseek-flash', 'deepseek-v4-pro', 'deepseek-future-model'])(

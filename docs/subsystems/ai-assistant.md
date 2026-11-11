@@ -4,6 +4,14 @@ The settings page exposes one DeepSeek provider (`ai_type=deepseek`). Its `ai_de
 
 Configuration loading migrates the legacy provider selections `deepseek-v4-flash`, `deepseek-flash` and `deepseek-v4-pro` to the shared provider and corresponding model ID, preserving credentials and unrelated custom-provider settings. Loading adds no unselected default fields to explicit-field serialization. The frontend saves model edits as a partial configuration update without overwriting other provider fields.
 
+### Custom Model API Protocol
+
+`ai_api_protocol` applies to both local and online custom model services. Its values are `auto` (the default for existing configurations), `chat-completions` and `responses`. Loading an absent field does not persist a selection. The settings page saves explicit protocol edits independently of the model, endpoint and credentials; switching to DeepSeek retains the custom protocol setting without applying it to DeepSeek.
+
+Automatic mode uses Responses for the normalized official online address `https://api.openai.com/v1`, and Chat Completions for other addresses. Only official Responses model-unavailable or protocol-incompatibility errors trigger one Chat Completions fallback; authentication, rate limits and unrelated errors do not. A successful fallback lasts for that model instance. Explicit selections use only the selected protocol, including on third-party and local endpoints, and propagate errors without switching protocols.
+
+The shared `build_llm` entry applies this choice to assistant conversations, missed-order summaries, schedule-error analysis, captcha matching and navigation ranking. Responses tool calls retain their call IDs; calls without tools return string content for existing text consumers. Navigation passes the protocol into its isolated model worker and retains its existing deadline and cleanup rules. Responses requests omit the fixed temperature; DeepSeek retains its existing parameters.
+
 ## 1. Conversation Interface
 
 `agent._build_messages` supplies one system instruction, user/assistant history and the current request. The instruction uses one local timezone-aware time snapshot. Both the graph workflow and manual tool loop use `get_tools()` and `tool_func_map`. Tool progress messages describe the current operation in neutral Chinese.

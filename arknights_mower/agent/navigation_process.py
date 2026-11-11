@@ -139,7 +139,13 @@ def invoke_navigation_model(api_key, messages):
 
     settings = {
         key: getattr(config.conf, key)
-        for key in ("ai_type", "ai_deepseek_model", "ai_model", "ai_base_url")
+        for key in (
+            "ai_type",
+            "ai_deepseek_model",
+            "ai_model",
+            "ai_base_url",
+            "ai_api_protocol",
+        )
     }
     process, channel = _start_worker(settings, api_key, messages, remaining())
     owner_pid = os.getpid()

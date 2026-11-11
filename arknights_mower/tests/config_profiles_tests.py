@@ -1734,3 +1734,23 @@ def test_network_adaptive_switches_follow_their_own_profile_groups(storage, inhe
     _activate(original)
     assert config.conf.run_order_network_adaptive is True
     assert config.conf.waiting_scene_network_adaptive is True
+
+
+@pytest.mark.parametrize("inherit", [[], ["assistant"]])
+def test_api_protocol_follows_model_service_profile_group(storage, inherit):
+    config.conf = config.conf.updated(
+        {
+            "ai_type": "custom-online",
+            "ai_base_url": "https://relay.example/v1",
+            "ai_model": "custom-model",
+            "ai_api_protocol": "responses",
+        }
+    )
+    config.save_conf()
+    original = profiles.list_profiles()["active_id"]
+    _create("模型协议配置", inherit)
+    assert config.conf.ai_api_protocol == ("responses" if inherit else "auto")
+    assert config.conf.ai_model == ("custom-model" if inherit else "")
+    _activate(original)
+    assert config.conf.ai_api_protocol == "responses"
+    assert config.conf.ai_base_url == "https://relay.example/v1"

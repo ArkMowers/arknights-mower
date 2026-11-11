@@ -163,14 +163,28 @@ def build_llm(api_key, with_tools=False, *, timeout=90, max_retries=1):
     if ai_type == "deepseek" and model == "deepseek-v4-pro":
         kwargs["reasoning_effort"] = "high"
         kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
-    if ai_type == "custom-online" and base_url == "https://api.openai.com/v1":
+    protocol = (
+        config.conf.ai_api_protocol
+        if ai_type in {"custom-local", "custom-online"}
+        else "chat-completions"
+    )
+    automatic_responses = (
+        protocol == "auto"
+        and ai_type == "custom-online"
+        and base_url == "https://api.openai.com/v1"
+    )
+    if protocol == "responses" or automatic_responses:
         kwargs.pop("temperature")
-        llm = _OfficialOpenAI(**kwargs, use_responses_api=True)
+        llm = _ResponsesOpenAI(
+            **kwargs,
+            use_responses_api=True,
+            allow_chat_fallback=automatic_responses,
+        )
         if not with_tools:
             return llm
         functions = [tool["function"] for tool in get_tools()]
         return llm.bind_tools(functions, strict=False)
-    llm = ChatOpenAI(**kwargs)
+    llm = ChatOpenAI(**kwargs, use_responses_api=False)
     if with_tools:
         return llm.bind_tools(tools=get_tools())
     return llm
@@ -198,15 +212,18 @@ def _responses_model_unavailable(error):
     )
 
 
-class _OfficialOpenAI(ChatOpenAI):
-    """Use the protocol accepted by the model for the rest of this tool loop."""
+class _ResponsesOpenAI(ChatOpenAI):
+    """Keep text callers compatible and limit protocol fallback to automatic mode."""
+
+    allow_chat_fallback: bool = False
 
     def invoke(self, *args, **kwargs):
         try:
             reply = super().invoke(*args, **kwargs)
         except (BadRequestError, NotFoundError) as error:
             if (
-                error.response.request.url.path != "/v1/responses"
+                not self.allow_chat_fallback
+                or error.response.request.url.path != "/v1/responses"
                 or not _responses_model_unavailable(error)
             ):
                 raise
