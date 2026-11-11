@@ -5,7 +5,7 @@ import { advanceRoster, createRosterRuntime, settleRoster, type RuntimeConfig } 
 import { getMowerSourceRuntime } from './mowerSourceRuntime'
 import { mowerCorrectionPlan, planMowerCorrection } from './mowerCorrection'
 import { mowerGroupRecoveryDeadline, mowerMoodLimitGroupReturn } from './mowerGroupRecovery'
-import { mowerHasMeasuredDormDeparture, projectMowerArrangements } from './mowerObservations'
+import { mowerHasMeasuredDormDeparture, mowerUpdateDetail, projectMowerArrangements } from './mowerObservations'
 import { MowerOperatorState } from './mowerOperatorState'
 import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './mowerTaskQueue'
 
@@ -539,6 +539,27 @@ it('executes an advanced personal-limit release during a group recovery wait', (
   expect(mowerGroupRecoveryDeadline(f.source.data, 'g').timeMicros).toBeDefined()
   expect(f.source.data.operators.B!.isResting()).toBe(true)
   expect(f.source.data.groupShiftState.g).toBe(true)
+})
+
+it.each([false,true])('returns a group after its advanced personal-limit departure with predictive mood=%s',predictive=>{
+ const f=fixture(11.925,12),data=f.source.data,op=data.operators.A!
+ f.state.config.mowerPolicy!.predictiveMoodControl=predictive;data.policy.predictiveMoodControl=predictive
+ op.restMoodLimit=true;data.groupRecoveryFullMembers.g=['A','B']
+ f.task.strictMoodLimit=true;f.task.moodLimit=12
+ for(let step=0;step<8;step++){finish(f);advanceRoster(f.state,.5/3600,rates)}
+ expect(op.currentRoom).toBe('');expect(op.restMoodReleaseLimit).toBe(12)
+ expect(op.mood).toBe(11.925)
+ advanceRoster(f.state,2-f.state.time,rates)
+ getMowerSourceRuntime(f.state)
+ f.state.morale.B=24;mowerUpdateDetail(data,'B',24,room,4,true)
+ const task=new MowerTask({time:f.state.time,type:T.SHIFT_ON,plan:{room_1_1:['A'],room_1_2:['B']}})
+ task.backupShiftActive=true;f.source.queue.tasks=[task]
+ for(let step=0;step<8&&f.source.queue.tasks.includes(task);step++){finish(f);advanceRoster(f.state,.5/3600,rates)}
+ expect(task.executionFailure).toBeUndefined()
+ expect(f.source.queue.tasks).not.toContain(task)
+ expect(f.state.occupants.room_1_1_0).toBe('A');expect(f.state.occupants.room_1_2_0).toBe('B')
+ expect(data.groupIsResting('g')).toBe(false)
+ expect(task.timeMicros).toBe(toMowerMicros(2))
 })
 
 it.each([{ mood: 23.95, history: false, ready: true }, { mood: 23, history: false, ready: false }, { mood: 23.87, history: false, ready: false }, { mood: 23.87, history: true, ready: true }])('checks every full-rest member against its room allowance: $mood, history=$history', ({ mood, history, ready }) => {

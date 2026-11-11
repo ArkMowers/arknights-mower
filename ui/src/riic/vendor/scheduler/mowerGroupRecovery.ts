@@ -2,7 +2,7 @@ import {mowerPendingReturnRecoverySlots} from './mowerRetainedRecovery'
 import {mowerHeldRestGroups,mowerForcedWorkGroups,mowerForcedWorkReturn} from './mowerBackupGroupTasks'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
 import {generateMowerDormTasks} from './mowerDormTasks'
-import {mowerDormCandidateMood,mowerSchedulingMoodObservation} from './mowerSchedulingMood'
+import {mowerActualMoodObservation,mowerDormCandidateMood,mowerSchedulingMoodObservation} from './mowerSchedulingMood'
 import {restingThresholdFor,type MowerOperatorState} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {toMowerMicros,roundMowerMicros,MowerTask,MOWER_TASK_TYPES as T} from './mowerTaskQueue'
@@ -89,7 +89,7 @@ export function mowerRecoveryReady(data:MowerSchedulingData,op:MowerOperatorStat
  if(!op)return false
  if(mowerRecoveryMoodComplete(data,op))return true
  if(op.moodIsPrediction||op.timeStampMicros===undefined||!Number.isFinite(op.mood)||op.mood<0||op.mood>24)return false
- const observation=mowerSchedulingMoodObservation(data,op.name)
+ const observation=mowerActualMoodObservation(data,op.name)
  if(observation&&observation[1]>op.timeStampMicros)return false
  if(!op.currentRoom&&data.restMoodComplete(op.name))return true
  if(!op.isResting())return false

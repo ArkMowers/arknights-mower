@@ -225,10 +225,13 @@ export function mowerReplacementReservations(data:MowerSchedulingData,tasks:read
  return {reservedNames,reservedSlots}
 }
 
-/** Another committed shift can satisfy a retained request before its own task resumes. */
-export function mowerCoordinationRequestFulfilled(data:MowerSchedulingData,names:readonly string[]):boolean {
+export function mowerCoordinationRecoveryMembers(data:MowerSchedulingData,names:readonly string[],ordinary=false):MowerOperatorState[] {
  const groups=new Set(data.shiftRequestGroups(names))
- const requested=[...new Set(names.flatMap(name=>{const op=data.operators[name];return op?.group?groups.has(op.group)?data.shiftGroupMembers(op.group):[]:op?[name]:[]}))]
- const anchors=requested.map(name=>data.operators[name]!).filter(op=>op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&(!op.multiGroup||op.independentRest||!!op.shiftGroup&&groups.has(op.shiftGroup)))
- return anchors.length>0&&anchors.every(op=>op.isResting()||data.isStandby(op.name)||!op.currentRoom&&hasObservedFullMood(op))
+ const requested=ordinary?[...new Set([...groups].flatMap(group=>data.shiftGroupMembers(group)).concat([...names]))]:[...new Set(names.flatMap(name=>{const op=data.operators[name];return op?.group?groups.has(op.group)?data.shiftGroupMembers(op.group):[]:op?[name]:[]}))]
+ return requested.map(name=>data.operators[name]).filter((op):op is MowerOperatorState=>!!op&&op.isHigh()&&!op.room.startsWith('dorm')&&!op.workaholic&&(!ordinary||!data.canStandby(op)||names.includes(op.name))&&(!op.multiGroup||op.independentRest&&(!ordinary||names.includes(op.name))||!!op.shiftGroup&&groups.has(op.shiftGroup)))
+}
+/** Another committed shift can satisfy a retained request before its own task resumes. */
+export function mowerCoordinationRequestFulfilled(data:MowerSchedulingData,names:readonly string[],ordinary=false):boolean {
+ const anchors=mowerCoordinationRecoveryMembers(data,names,ordinary)
+ return anchors.length>0&&anchors.every(op=>op.isResting()||!ordinary&&data.isStandby(op.name)||!op.currentRoom&&(!ordinary||!op.moodIsPrediction)&&hasObservedFullMood(op))
 }

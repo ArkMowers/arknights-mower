@@ -8,19 +8,35 @@ import { calculateIncome } from './incomeWorker'
 const longRun = process.env.MOWER_SMOKE_LONG_TEST === '1'
 
 // Complete Scheduling Plan decoded from the supplied JPG, including all six backups.
-it.each(['B202', 'B201'])(
-  'continues the supplied smoke rotation with Vigil assigned to %s',
-  (vigilRoom) => {
+it.each(['B202', 'B201', 'B201-standby'])(
+  'continues the supplied smoke rotation for %s',
+  (scenario) => {
+    const standby = scenario === 'B201-standby'
+    const vigilRoom = standby ? 'B201' : scenario
     const plan = structuredClone(imagePlan)
     if (vigilRoom === 'B201') {
       const smoke = plan.backup_plans.find((backup) => backup.name === '烟火下班')
       smoke.task.room_2_1 = smoke.task.room_2_2
       delete smoke.task.room_2_2
     }
-    const sampleDays = longRun ? 28 : vigilRoom === 'B201' ? 3 : 2
+    if (standby) {
+      plan.conf.resting_standby = [
+        ...new Set([
+          ...plan.conf.resting_standby.split(','),
+          '年',
+          '桑葚',
+          '结城理',
+          '娜斯提',
+          '截云',
+          '乌有',
+          '槐琥'
+        ])
+      ].join(',')
+    }
+    const sampleDays = longRun ? 28 : standby ? 4 : vigilRoom === 'B201' ? 3 : 2
     const original = structuredClone(plan)
     const resultLog = process.env.MOWER_SMOKE_RESULT_LOG
-      ? `${process.env.MOWER_SMOKE_RESULT_LOG}.${vigilRoom}.json`
+      ? `${process.env.MOWER_SMOKE_RESULT_LOG}.${scenario}.json`
       : undefined
     let lastProgress = -1
     const result = calculateIncome(
@@ -67,7 +83,7 @@ it.each(['B202', 'B201'])(
     expect(report.production.assumptions.seed).toBe(546609889)
     expect(result.summary.totalScore82).toBeGreaterThan(0)
     expect(plan).toEqual(original)
-    for (const name of ['重岳', '夕', '森蚺', '迷迭香', '乌有', '阿罗玛']) {
+    for (const name of ['重岳', '夕', '森蚺', '迷迭香', ...(!standby ? ['乌有'] : []), '阿罗玛']) {
       const operator = report.operators.find((item) => item.operatorName === name)
       expect(operator.workHours, name).toBeGreaterThan(0)
       expect(operator.restHours, name).toBeGreaterThan(0)

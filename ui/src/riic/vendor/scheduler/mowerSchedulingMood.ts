@@ -8,6 +8,11 @@ export function mowerSchedulingMoodObservation(data:MowerSchedulingData,name:str
   const snapshot=data.calculatedMoodSnapshot,value=snapshot.values[name]
   return snapshot.timeMicros===data.nowMicros&&value!==undefined&&Number.isFinite(value)&&value>=0&&value<=24?[value,snapshot.timeMicros]:undefined
  }
+ return mowerActualMoodObservation(data,name)
+}
+
+/** Room and card observation times exclude calculated snapshots. */
+export function mowerActualMoodObservation(data:MowerSchedulingData,name:string):[number,number]|undefined {
  const op=data.operators[name],now=data.nowMicros
  const measured=op&&hasRestingMood(op,now)&&!op.moodIsPrediction&&Number.isFinite(op.timeStampMicros)&&op.timeStampMicros!<=now
  const estimate=data.dormMoodEstimates.get(name),elapsed=estimate?now-estimate[1]:-1
