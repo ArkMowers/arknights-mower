@@ -205,7 +205,7 @@ function currentRoomChanged(s:RuntimeState,op:MowerOperatorState,startedWorking=
  if(!refresh.drained)return
  const solved=new Set<string>()
  const invalidateExhaust=(member:MowerOperatorState)=>{
-  if(data.alpha&&!member.currentRoom&&member.depletionRate===0&&hasObservedFullMood(member)&&!member.moodIsPrediction)return
+  if(data.alpha&&(member.isResting()||!member.currentRoom&&member.depletionRate===0)&&hasObservedFullMood(member)&&!member.moodIsPrediction)return
   member.timeStampMicros=undefined
  }
  for(const exhaust of Object.values(data.operators).filter(o=>o.exhaustRequire)){
