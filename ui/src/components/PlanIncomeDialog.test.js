@@ -279,6 +279,27 @@ it('uses the shared optional seed input when a trade tailor disables expectation
   expect(page.hasTailor.value).toBe(true)
   expect(page.settings.fixedSeed).toBe(77)
 })
+it('enables expectation mode when a tailor only belongs to a maintenance backup', async () => {
+  page.settings.operatorMode = 'maximum'
+  props.snapshot.plan.plan1.room_1_1 = {
+    name: '贸易站',
+    product: 'lmd',
+    plans: [{ agent: '芬' }]
+  }
+  props.snapshot.plan.backup_plans = [
+    {
+      name: '停服更新',
+      trigger: { left: 'op_data.major_maintenance_remaining_hours()', operator: '<', right: '4' },
+      task: { room_1_1: ['柏喙'] }
+    }
+  ]
+  await nextTick()
+  expect(page.hasTailor.value).toBe(false)
+  expect(page.settings.expectationMode).toBe(true)
+  props.snapshot.plan.backup_plans[0].trigger = 'True'
+  await nextTick()
+  expect(page.hasTailor.value).toBe(true)
+})
 it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
   await page.readWeights()
   io.client.put.mockImplementation(async (_, value) => ({ data: value }))
