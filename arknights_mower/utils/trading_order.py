@@ -28,6 +28,7 @@ class TradingOrder:
         "龙舌兰": 2500,
         "源石": 20,
     }
+    TAG_BUFFS = ("佩佩", "但书", "可露希尔")
     BUFF_THRESHOLD = 40
 
     def __init__(self):
@@ -60,7 +61,8 @@ class TradingOrder:
         )
 
     def _match_price(self, img):
-        gray = cv2.cvtColor(img[705:790, 575:735], cv2.COLOR_BGR2GRAY)
+        # 标准帧与历史回放均为 RGB
+        gray = cv2.cvtColor(img[705:790, 575:735], cv2.COLOR_RGB2GRAY)
         _, thresh = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
         match_results = {}
         for name, template in self.templates.items():
@@ -84,7 +86,7 @@ class TradingOrder:
                 logger.debug(f"亮度均值: {scores}")
                 tag_candidates = {
                     k: scores[k]
-                    for k in ["佩佩", "但书", "可露希尔"]
+                    for k in self.TAG_BUFFS
                     if scores.get(k, 0) > self.BUFF_THRESHOLD
                 }
                 if tag_candidates:
@@ -96,12 +98,16 @@ class TradingOrder:
                         self.price = self.BUFF_PRICES[best_tag]
                 elif scores.get("源石", 0) > self.BUFF_THRESHOLD:
                     self.buff = "源石"
-                    self.price = 20
+                    self.price = self.BUFF_PRICES["源石"]
                 else:
                     matched_price = self._match_price(img)
-                    if matched_price == 2500:
+                    # 金额未定格时，龙舌兰订单旁的箭头标记仍可判定类型
+                    if (
+                        matched_price == self.BUFF_PRICES["龙舌兰"]
+                        or scores.get("龙舌兰", 0) > self.BUFF_THRESHOLD
+                    ):
                         self.buff = "龙舌兰"
-                        self.price = 2500
+                        self.price = self.BUFF_PRICES["龙舌兰"]
                     else:
                         self.buff = "漏单"
                         self.price = matched_price
@@ -140,7 +146,9 @@ class TradingOrder:
                         else:
                             dt = datetime.strptime(file_path.name[:-4], "%Y%m%d%H%M%S")
                         logger.debug(f"截图时间为{dt}")
-                        self.save(cv2.imread(str(file_path)), dt)
+                        # OpenCV 以 BGR 读取历史截图，先转为标准 RGB 帧
+                        img = cv2.imread(str(file_path))
+                        self.save(cv2.cvtColor(img, cv2.COLOR_BGR2RGB), dt)
                         count += 1
                     except Exception as e:
                         logger.exception(f"Error processing file {file_path}: {e}")
