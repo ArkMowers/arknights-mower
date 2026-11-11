@@ -485,7 +485,7 @@ describe('mandatory full recovery releases read actual recovery before freeing t
 
 
 describe.each(['direct', 'queued'] as const)('exhaust refresh after measured full departure: %s', path => {
-  it.each(['idle-full', 'working', 'predicted'] as const)('preserves only completed idle evidence when another operator changes room: %s', mode => {
+  it.each(['idle-full', 'resting-full', 'resting-underfull', 'resting-predicted', 'resting-unknown', 'working', 'predicted'] as const)('preserves measured full recovery in resting and idle operators when another operator changes room: %s', mode => {
     const f = fixture(24, 24), op = f.source.data.operators.A!
     finish(f)
     expect(op.currentRoom).toBe('')
@@ -493,6 +493,12 @@ describe.each(['direct', 'queued'] as const)('exhaust refresh after measured ful
     advanceRoster(f.state, .5 / 3600, rates); finish(f)
     op.exhaustRequire = true
     f.state.config.mowerSourceRules!.refreshDrained = ['S']
+    if (mode.startsWith('resting-')) {
+      f.state.bedOccupants[room + '_3'] = 'A'; op.currentRoom = room; op.currentIndex = 3; op.depletionRate = -.4
+      if (mode === 'resting-underfull') op.mood = 23
+      if (mode === 'resting-predicted') op.moodIsPrediction = true
+      if (mode === 'resting-unknown') op.timeStampMicros = undefined
+    }
     if (mode === 'working') {
       f.state.occupants.room_1_1_0 = 'A'; op.currentRoom = 'room_1_1'; op.currentIndex = 0; op.depletionRate = 1
     }
@@ -505,7 +511,7 @@ describe.each(['direct', 'queued'] as const)('exhaust refresh after measured ful
     finish(f)
     expect(f.source.queue.tasks).not.toContain(exhaust)
     expect(f.source.data.operators.S!.currentRoom).toBe('')
-    if (mode === 'idle-full') expect(op.timeStampMicros).toBe(stamp)
+    if (mode === 'idle-full' || mode === 'resting-full') expect(op.timeStampMicros).toBe(stamp)
     else expect(op.timeStampMicros).toBeUndefined()
   })
 })
