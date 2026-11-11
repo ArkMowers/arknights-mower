@@ -6,12 +6,13 @@ from urllib.parse import urlsplit
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
+from openai import BadRequestError, NotFoundError
 
 try:
-    from langgraph.graph import END, MessageGraph
+    from langgraph.graph import END, MessagesState, StateGraph
 except ImportError:
     END = "__end__"
-    MessageGraph = None
+    StateGraph = None
 
 from arknights_mower import __version__
 from arknights_mower.agent.missed_order import (
@@ -164,39 +165,70 @@ def build_llm(api_key, with_tools=False, *, timeout=90, max_retries=1):
         kwargs["extra_body"] = {"thinking": {"type": "enabled"}}
     if ai_type == "custom-online" and base_url == "https://api.openai.com/v1":
         kwargs.pop("temperature")
-        kwargs["use_responses_api"] = True
+        llm = _OfficialOpenAI(**kwargs, use_responses_api=True)
         if not with_tools:
-            return _TextOnlyResponsesModel(**kwargs)
+            return llm
         functions = [tool["function"] for tool in get_tools()]
-        return ChatOpenAI(**kwargs).bind_tools(functions, strict=False)
+        return llm.bind_tools(functions, strict=False)
     llm = ChatOpenAI(**kwargs)
     if with_tools:
         return llm.bind_tools(tools=get_tools())
     return llm
 
 
-class _TextOnlyResponsesModel(ChatOpenAI):
-    """Keep response.content a string for Mower's text-only invoke callers."""
+def _responses_model_unavailable(error):
+    if error.param not in (None, "model"):
+        return False
+    if error.code in {"model_not_found", "unsupported_model", "model_not_supported"}:
+        return True
+    if error.param == "model" and error.code == "unsupported_value":
+        return True
+    if not isinstance(error.body, dict):
+        return False
+    message = str(error.body.get("message", "")).lower()
+    # Some endpoint rejections have neither a code nor a parameter.
+    return bool(
+        re.search(
+            r"\bmodel\b(?:\s+[`'\"\w./:-]+)?\s+(?:"
+            r"(?:(?:is )?not (?:supported|available) (?:in|on|with|by|for)|does not support) "
+            r"(?:the )?(?:/?v1/responses|responses api)|"
+            r"(?:only supports|is only supported (?:in|on)) (?:the )?(?:/?v1/chat/completions|chat completions))\b",
+            message,
+        )
+    )
+
+
+class _OfficialOpenAI(ChatOpenAI):
+    """Use the protocol accepted by the model for the rest of this tool loop."""
 
     def invoke(self, *args, **kwargs):
-        reply = super().invoke(*args, **kwargs)
-        return reply.model_copy(update={"content": reply.text()})
+        try:
+            reply = super().invoke(*args, **kwargs)
+        except (BadRequestError, NotFoundError) as error:
+            if (
+                error.response.request.url.path != "/v1/responses"
+                or not _responses_model_unavailable(error)
+            ):
+                raise
+            chat = self.model_copy(update={"use_responses_api": False})
+            reply = ChatOpenAI.invoke(chat, *args, **kwargs)
+            self.use_responses_api = False
+        if not kwargs.get("tools") and isinstance(reply.content, list):
+            return reply.model_copy(update={"content": reply.text()})
+        return reply
 
 
 def build_workflow(api_key):
-    if MessageGraph is None:
+    if StateGraph is None:
         return None
     model_with_tools = build_llm(api_key, with_tools=True)
-    workflow = MessageGraph()
+    workflow = StateGraph(MessagesState)
 
     def agent_node(state):
-        messages = state
-        response = model_with_tools.invoke(messages)
-        return response
+        return {"messages": [model_with_tools.invoke(state["messages"])]}
 
     def tool_node(state):
-        messages = state
-        last_message = messages[-1]
+        last_message = state["messages"][-1]
         tool_calls = last_message.tool_calls
         tool_messages = []
         for tool_call in tool_calls:
@@ -209,15 +241,14 @@ def build_workflow(api_key):
             tool_messages.append(
                 ToolMessage(content=result, tool_call_id=tool_call["id"])
             )
-        return tool_messages
+        return {"messages": tool_messages}
 
     workflow.add_node("agent", agent_node)
     workflow.add_node("action", tool_node)
     workflow.set_entry_point("agent")
 
     def should_continue(state):
-        messages = state
-        last_message = messages[-1]
+        last_message = state["messages"][-1]
         tool_calls = last_message.tool_calls
         if tool_calls:
             return "action"
@@ -555,7 +586,7 @@ def ask_llm(user_input, context=None, api_key=None):
                 yield reply
         return
 
-    for event in app.stream(messages, stream_mode="messages"):
+    for event in app.stream({"messages": messages}, stream_mode="messages"):
         if isinstance(event, tuple):
             message_chunk, _meta = event
             if isinstance(message_chunk, ToolMessage):
