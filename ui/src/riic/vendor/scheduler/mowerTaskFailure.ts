@@ -15,9 +15,9 @@ export interface MowerTaskFailureSnapshot {
  observations:Record<string,[string,number,number|null]>
 }
 
-function snapshot(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,rooms:readonly string[]):MowerTaskFailureSnapshot {
+function snapshot(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,rooms:readonly string[],observationNames:readonly string[]=[]):MowerTaskFailureSnapshot {
  if(task.backupRetentionWait)return {intent:JSON.stringify([task.plan,task.metadata,mowerBackupRetentionFingerprint(data,state.mowerSource?.queue.tasks.filter(other=>other!==task)??[],task.backupRetentionWait.names,state.mowerShiftModel?.select?.(data))]),observations:{}}
- const names=new Set(Object.values(task.plan).flat())
+ const names=new Set([...Object.values(task.plan).flat(),...observationNames])
  if(task.type===T.EXHAUST_OFF)mowerReplacementDependencyNames(data,task.metadata.split(',')).forEach(name=>names.add(name))
  const reservations=mowerReplacementReservations(data,state.mowerSource?.queue.tasks.filter(other=>other!==task)??[])
  const transitions={...mowerArrangementGroupTransitions(data,task.plan),...task.groupShiftTransitions}
@@ -45,8 +45,8 @@ function snapshot(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,roo
 }
 
 /** Retain remaining work and its deadline; only the dispatch view is suspended. */
-export function retainMowerFailedTask(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,reason:string,rooms=Object.keys(task.plan),kind?:'resource-wait'):void {
- task.executionFailure={...(kind?{kind}:{}),reason,rooms:[...rooms],snapshot:snapshot(state,data,task,rooms)}
+export function retainMowerFailedTask(state:RuntimeState,data:MowerSchedulingData,task:MowerTask,reason:string,rooms=Object.keys(task.plan),kind?:'resource-wait',observationNames:readonly string[]=[]):void {
+ task.executionFailure={...(kind?{kind}:{}),reason,rooms:[...rooms],...(observationNames.length?{observationNames:[...observationNames]}:{}),snapshot:snapshot(state,data,task,rooms,observationNames)}
 }
 
 /** Clock/prediction changes cannot admit an exhausted failure. */
@@ -64,7 +64,7 @@ export function resumeMowerFailedTasks(state:RuntimeState,data:MowerSchedulingDa
   reconcileMowerRetainedRecovery(data,task)
   // A prediction replacing a measurement does not constitute new evidence.
   for(const [name,observation] of Object.entries(failure.snapshot.observations))if(data.operators[name]?.moodIsPrediction)observation[2]=null
-  if(JSON.stringify(snapshot(state,data,task,failure.rooms))===JSON.stringify(failure.snapshot))continue
+  if(JSON.stringify(snapshot(state,data,task,failure.rooms,failure.observationNames))===JSON.stringify(failure.snapshot))continue
   refreshMowerDerivedCorrection(data,task,mowerPendingRecoveryTasks({queue,waitingRecovery:state.mowerSource?.waitingRecovery}))
   delete task.executionFailure;task.coordinationDependencyWait=false;task.executionRetained=true;changed=true
  }

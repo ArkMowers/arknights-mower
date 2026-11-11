@@ -1,3 +1,4 @@
+import {mowerRemainingCoordinationRequests} from './mowerRetainedRecovery'
 import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
 import {mowerExhaustTaskSignatures,invalidateMowerExhaustTasks,type MowerExhaustRoomContext} from './mowerExhaustReservations'
 import {sameBackupGroups,type BackupSelection,type BackupGroupState} from './backupGroups'
@@ -176,12 +177,13 @@ export function prepareMowerShiftBackup(data:MowerSchedulingData,task:MowerTask,
   })
   for(const room of Object.keys(merged))delete merged[room]
   Object.assign(merged,completed)
-  const projected=projectMowerArrangements(effective,[merged]),nextSelection=selectionFor(model,projected),next=nextSelection.conditions
+  const groupTransitions={...mowerArrangementGroupTransitions(simulation,merged),...(task.productShiftLocked?transitions:retainedMowerBackupTransitions(data,simulation,intent)),...mowerArrangementGroupTransitions(simulation,intent)}
+  const projected=projectMowerArrangements(effective,[merged],groupTransitions),nextSelection=selectionFor(model,projected),next=nextSelection.conditions
   if(same(next,conditions)&&sameBackupGroups(nextSelection.groupId,selection.groupId)){
    task.backupGroup=selection.groupId
    // A backup workaholic override removes anchors, not the group's scheduled return.
    // Changed slot owners require fresh transitions; effective departures supersede returns.
-   task.groupShiftTransitions={...(task.productShiftLocked?transitions:retainedMowerBackupTransitions(data,simulation,intent)),...mowerArrangementGroupTransitions(simulation,merged)}
+   task.groupShiftTransitions=groupTransitions
    task.backupExplicitSlots=entrySlots
    if(same(conditions,original)&&sameBackupGroups(selection.groupId,data.backupGroup)&&JSON.stringify(merged)===JSON.stringify(intent)){task.plan=intent;delete task.backupShiftIntent;delete task.backupShiftConditions;return}
    task.backupShiftIntent=intent;task.backupShiftConditions=[...conditions];task.plan=stripMowerCurrent(merged);recordMowerBackupRetention(data,simulation,task,new Set(Object.values(intent).flat().filter(name=>!task.backupRetentionAdmissions.includes(name))));return
@@ -288,11 +290,11 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   step.backupExplicitSlots.forEach(slot=>explicitSlots.add(slot))
   const reserved=mowerDormTaskReservations(simulation,effectivePending.filter(t=>t.type!==T.SHIFT_ON||t.retainsExecution||t.backupShiftActive||t.productShiftLocked||t.dormRecoveryRestore.length))
   // A returning shared keeper can close another group's recovery bed. Resolve it before recovery admission.
-  if(!normalizeMowerSharedArrangement(simulation,step.plan,undefined,explicitSlots))throw new MowerResourceWaitError('绑组共享替班冲突，保留原任务并等待岗位释放')
+  if(!normalizeMowerSharedArrangement(simulation,step.plan,step.groupShiftTransitions,explicitSlots))throw new MowerResourceWaitError('绑组共享替班冲突，保留原任务并等待岗位释放')
   const completed=completeMowerBackupDepartureRecovery(simulation,step.plan,explicitSlots,reserved.slots,effectivePending,false,true)
   if(!completed)throw new MowerResourceWaitError('副表下班干员尚无可用恢复床位，保留原任务')
   step.plan=planMowerDormIsolation(simulation,completed,new Set([...reserved.slots,...explicitSlots]),reserved.names)
-  if(!normalizeMowerSharedArrangement(simulation,step.plan,undefined,explicitSlots))throw new MowerResourceWaitError('绑组共享替班冲突，保留原任务并等待岗位释放')
+  if(!normalizeMowerSharedArrangement(simulation,step.plan,step.groupShiftTransitions,explicitSlots))throw new MowerResourceWaitError('绑组共享替班冲突，保留原任务并等待岗位释放')
   let returnPlan=step.plan
   if(initialCorrection){
    returnPlan=explicitPlan(step.plan,explicitSlots)
@@ -302,7 +304,7 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   const positions=new Map(Object.values(simulation.operators).map(op=>[op.name,[op.currentRoom,op.currentIndex] as [string,number]]))
   for(const [group,resting] of Object.entries(mowerArrangementGroupTransitions(simulation,returnPlan)))if(!resting&&simulation.groupIsResting(group))returningGroups.add(group)
   initialCorrection=false
-  simulation=projectMowerArrangements(simulation,[step.plan]);recordMowerDormAdmissions(simulation,step,positions)
+  simulation=projectMowerArrangements(simulation,[step.plan],step.groupShiftTransitions);recordMowerDormAdmissions(simulation,step,positions)
   for(const [room,names] of Object.entries(step.plan))names.forEach((name,index)=>{
    const key=alphaPosition(room,index)
    if(name==='')cleared.add(key);else if(name!=='Current')cleared.delete(key)
@@ -331,8 +333,14 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   if(!same(data.planConditions,conditions)||!sameBackupGroups(data.backupGroup,simulation.backupGroup)){
    const explicitNames=new Set(Object.values(intent).flat().filter(name=>!['Current','Free',''].includes(name)))
    for(const slot of explicitSlots){const [room,index]=slot.split('\0'),name=final[room!]?.[Number(index)];if(name&&!['Current','Free'].includes(name))explicitNames.add(name)}
-   final=reconcileMowerBackupRetention(data,simulation,final,effectivePending,explicitNames)
+   final=reconcileMowerBackupRetention(data,simulation,final,effectivePending,explicitNames,simulation.groupShiftState)
   }
+  const exhaustedOrdinary=mowerExhaustGroups(simulation)
+  const requiredOrdinary=[...new Set(sources.filter(source=>source.ordinaryCoordination).flatMap(mowerRemainingCoordinationRequests))].filter(name=>{
+   const old=data.operators[name],op=simulation.operators[name]
+   return !!old?.currentRoom&&!old.isResting()&&!!op&&!op.exhaustRequire&&!exhaustedOrdinary.has(op.group)
+  })
+  if(requiredOrdinary.length&&unfinishedRequiredDepartures(simulation,requiredOrdinary,effectiveExplicitWork(simulation,model,conditions,explicitWork)).length)throw new MowerResourceWaitError('原下班目标未完成，保留原任务并等待岗位释放',model.observationNames)
   if(requiredNames.length&&unfinishedRequiredDepartures(simulation,requiredNames,effectiveExplicitWork(simulation,model,conditions,explicitWork)).length)throw new MowerShiftPreviewError('原下班目标未完成，保留原任务并等待岗位释放')
   if(cancelledShiftLeavesOnlyDormFill(data,simulation,task,intent,conditions,coalesced,final))throw new MowerShiftPreviewError('原下班意图被完全取消，仅剩普通填床换位，保留原任务，暂不执行换人')
   if(task.type===T.SHIFT_ON&&!task.initialStaffing&&!task.retainsExecution&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked&&!explicitSlots.size&&!task.exhaustSupport&&!task.dormRecoveryRestore.length){
@@ -354,7 +362,8 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
     task.timeMicros=Math.max(task.timeMicros,deadline)
    }
   }
-  task.groupShiftTransitions=Object.fromEntries(Object.entries(simulation.groupShiftState).filter(([group,resting])=>data.groupIsResting(group)!==resting))
+  const inferredTransitions=mowerArrangementGroupTransitions(simulation,final)
+  task.groupShiftTransitions=Object.fromEntries(Object.entries(simulation.groupShiftState).filter(([group,resting])=>data.groupIsResting(group)!==resting||inferredTransitions[group]!==undefined&&inferredTransitions[group]!==resting))
   task.coordinationRequestNames=[...ordinaryRequests].filter(name=>!data.operators[name]?.isResting()&&simulation.operators[name]?.isResting());task.ordinaryCoordination=task.coordinationRequestNames.length>0
   task.backupExplicitSlots=explicitSlots
   task.backupShiftIntent=intent;task.backupShiftConditions=[...conditions];task.backupGroup=simulation.backupGroup;task.plan=final

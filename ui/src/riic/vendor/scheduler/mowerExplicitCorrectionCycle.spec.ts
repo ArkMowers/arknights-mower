@@ -145,10 +145,11 @@ describe('required departure survives complete-cycle convergence',()=>{
   expect(queue.tasks).toContain(task);expect(task.timeMicros).toBe(time)
   expect(task.plan.dormitory_1).toEqual(['A','B'])
  })
- it.each(['ordinary','explicit'] as const)('permits the established %s departure exception',kind=>{
+ it.each(['ordinary','explicit','ordinary-explicit'] as const)('permits the established %s departure exception',kind=>{
   const {data,task,queue,model}=blockedDepartureFixture()
   if(kind==='ordinary'){task.ordinaryCoordination=true;task.coordinationRequestNames=['A']}
-  else if(kind==='explicit'){
+  else {
+   if(kind==='ordinary-explicit'){task.ordinaryCoordination=true;task.coordinationRequestNames=['A'];data.operators.A!.exhaustRequire=false}
    model.evaluate=()=>[true]
    model.explicitTasks=[{central:['A']}]
    model.transition=()=>({central:['A']})

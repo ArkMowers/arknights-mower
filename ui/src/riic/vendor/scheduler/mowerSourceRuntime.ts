@@ -273,10 +273,11 @@ function readMissingMowerReturnRecovery(s:RuntimeState,rates:RuntimeRates,task:M
  for(const [room,indexes] of rooms)observeRoom(s,rates,room,task,indexes)
 }
 /** Recheck mandatory group recovery when a saved return task reaches dispatch. */
-function confirmMowerGroupReturn(s:RuntimeState,rates:RuntimeRates,task:MowerTask):number|undefined {
+function confirmMowerGroupReturn(s:RuntimeState,rates:RuntimeRates,task:MowerTask,previewRules:MowerSchedulingData):number|undefined {
  const {data}=getMowerSourceRuntime(s)
- const groups=Object.entries(mowerArrangementGroupTransitions(data,task.plan)).filter(([group,resting])=>!resting&&data.groupIsResting(group)).map(([group])=>group)
- if(!task.arrangementStarted&&groups.some(group=>mowerHeldRestGroups(data,true).has(group)))throw new MowerShiftPreviewError("副表要求整组强制下班，等待副表退出")
+ const groups=Object.entries({...mowerArrangementGroupTransitions(data,task.plan),...task.groupShiftTransitions}).filter(([group,resting])=>!resting&&data.groupIsResting(group)).map(([group])=>group)
+ // Backup holds use the converged configuration; recovery below uses actual observations.
+ if(!task.arrangementStarted&&groups.some(group=>mowerHeldRestGroups(previewRules,true).has(group)))throw new MowerShiftPreviewError("副表要求整组强制下班，等待副表退出")
  const explicitGroups=new Set(groups.filter(group=>data.shiftGroupMembers(group).some(name=>{
   const op=data.operators[name]!
   return !op.room.startsWith('dorm')&&task.plan[op.room]?.[op.index]===name&&task.backupExplicitSlots.has(op.room+'\0'+op.index)
@@ -805,7 +806,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      // A projected return must not switch the effective backup configuration
      // until its physical recovery prerequisites are ready.
      if([T.SHIFT_ON,T.SELF_CORRECTION,T.RE_ORDER].includes(task.type)){
-      const readyAt=confirmMowerGroupReturn(s,rates,task)
+      const readyAt=confirmMowerGroupReturn(s,rates,task,previewRules)
       if(readyAt!==undefined){task.timeMicros=readyAt;queue.sort();delete source.activeTask;continue}
      }
      if(task.exhaustSupport&&task.coordinationRequestNames.length){
@@ -1019,7 +1020,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     source.error=true;skip();skipPlanning=true
     if(error instanceof MowerShiftPreviewError){
      if(error instanceof MowerBackupRetentionBlocked)task.backupRetentionWait={names:error.names}
-     retainMowerFailedTask(s,data,task,error.message,error instanceof MowerBackupRetentionBlocked?error.rooms:undefined,error instanceof MowerResourceWaitError?'resource-wait':undefined)
+     retainMowerFailedTask(s,data,task,error.message,error instanceof MowerBackupRetentionBlocked?error.rooms:undefined,error instanceof MowerResourceWaitError?'resource-wait':undefined,error instanceof MowerResourceWaitError?error.observationNames:undefined)
      if(error instanceof MowerResourceWaitError)planMowerReturnRecovery(data,queue,task,(source.waitingRecovery??[]).map(wait=>wait.task))
      source.error=false
      delete source.activeTask
