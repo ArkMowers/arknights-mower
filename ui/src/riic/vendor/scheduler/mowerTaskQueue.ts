@@ -36,6 +36,8 @@ export class MowerTask {
  executionFailure?:{kind?:'resource-wait';reason:string;rooms:string[];observationNames?:string[];snapshot:MowerTaskFailureSnapshot}
  executionRetained=false
  fiaReturnTarget?:string;fiaReturnMicros?:number;fiaChargeConfirmed=false;fiaReturnQueued=false
+ /** Finish the temporary charging arrangement before newly released roster work. */
+ fiaRestoration=false
  /** Only observation-derived corrections may be rebuilt before physical execution. */
  derivedCorrection=false
  /** Exact recovery members of an ordinary return prerequisite, absent on other tasks. */

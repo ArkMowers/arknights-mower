@@ -728,7 +728,9 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
    scheduleMowerTasks(queue.tasks,getMowerSourceRuntime(s).data.nowMicros,scheduling)
    protectMowerSupportSwaps(queue.tasks,getMowerSourceRuntime(s).data.nowMicros,scheduling)
   }
-  const selected=runningPhase?undefined:running?.task??queue.find()
+  // A charge may release an older retained shift; restore its temporary rooms first.
+  const fiaRestore=queue.tasks.find(t=>t.fiaRestoration&&!t.executionFailure&&t.timeMicros<=getMowerSourceRuntime(s).data.nowMicros)
+  const selected=runningPhase?undefined:running?.task??fiaRestore??queue.find()
   let task=selected&&(running||selected.timeMicros<=getMowerSourceRuntime(s).data.nowMicros)?selected:undefined
   if(!task&&!runningPhase)break
   if(!running&&!runningPhase){mowerCorrectDorm(getMowerSourceRuntime(s).data);backup('BEGINNING',task)}
