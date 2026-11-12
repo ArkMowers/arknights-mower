@@ -4982,7 +4982,7 @@ def ai_conversations(identifier=None, turn_id=None, operation=None):
 
 
 @app.route("/ai/attachments", methods=["POST"])
-@app.route("/ai/attachments/<identifier>", methods=["DELETE"])
+@app.route("/ai/attachments/<identifier>", methods=["GET", "DELETE"])
 @require_token
 def ai_attachments(identifier=None):
     from arknights_mower.utils.ai_attachments import (
@@ -5000,6 +5000,8 @@ def ai_attachments(identifier=None):
             request.headers.get("X-Mower-Config-Generation")
         ):
             history = active_chat_history()
+            if request.method in {"GET", "HEAD"}:
+                return jsonify(history.read_attachment(identifier))
             if request.method == "DELETE":
                 history.delete_attachment(identifier)
                 return jsonify(ok=True)

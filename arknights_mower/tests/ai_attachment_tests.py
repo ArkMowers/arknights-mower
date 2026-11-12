@@ -106,7 +106,13 @@ def test_upload_reaches_actual_model_and_history(runtime, name, raw, expected):
 
 @pytest.mark.parametrize(
     "method,path",
-    [("POST", "/ai/attachments"), ("DELETE", "/ai/attachments/" + "a" * 32)],
+    [
+        ("POST", "/ai/attachments"),
+        *[
+            (method, "/ai/attachments/" + "a" * 32)
+            for method in ("DELETE", "GET", "HEAD")
+        ],
+    ],
 )
 @pytest.mark.parametrize("token", [None, "wrong"])
 def test_upload_and_delete_require_token_before_work(
@@ -143,6 +149,18 @@ def test_disabled_and_stale_generation_reject_before_work(
         .status_code
         == status
     )
+    for method in ("GET", "HEAD"):
+        assert (
+            runtime[0]
+            .app.test_client()
+            .open(
+                "/ai/attachments/" + "a" * 32,
+                method=method,
+                headers=headers(generation),
+            )
+            .status_code
+            == status
+        )
     storage.assert_not_called()
 
 
@@ -309,3 +327,51 @@ def test_continue_counts_shared_files_once_and_preserves_original_requirements(
     assert (
         sum(block.get("text", "").startswith("用户附件：") for block in blocks) == count
     )
+
+
+@pytest.mark.parametrize(
+    "name,raw,kind",
+    [
+        ("run.log", b"x" * 8000 + b"evidence", "text"),
+        ("screen.png", png(), "image"),
+        ("document.pdf", b"%PDF-1.7\nexample", "pdf"),
+    ],
+)
+def test_preview_returns_saved_input_without_model_call(runtime, name, raw, kind):
+    model = runtime[-1]()
+    metadata = upload(runtime, name, raw).json
+    client = runtime[0].app.test_client()
+    path = "/ai/attachments/" + metadata["id"]
+    response = client.get(path, headers=headers())
+    assert response.status_code == 200
+    assert response.json["kind"] == kind
+    if kind == "text":
+        assert response.json["content"] == raw.decode()[-6000:]
+        assert response.json["truncated"]
+    elif kind == "image":
+        assert response.json["content"].startswith("data:image/jpeg;base64,")
+    else:
+        assert "content" not in response.json
+    assert client.head(path, headers=headers()).status_code == 200
+    assert model.inputs == []
+
+
+def test_preview_rejects_foreign_expired_and_deleted_attachments(runtime):
+    client = runtime[0].app.test_client()
+    metadata = upload(runtime).json
+    path = "/ai/attachments/" + metadata["id"]
+    with runtime[3]._db() as db:
+        db.execute(
+            "UPDATE attachments SET profile='other' WHERE id=?", (metadata["id"],)
+        )
+    assert client.get(path, headers=headers()).status_code == 404
+    with runtime[3]._db() as db:
+        db.execute(
+            "UPDATE attachments SET profile=?,created=0 WHERE id=?",
+            (runtime[3].profile_id, metadata["id"]),
+        )
+    assert client.get(path, headers=headers()).status_code == 404
+    metadata = upload(runtime).json
+    path = "/ai/attachments/" + metadata["id"]
+    client.delete(path, headers=headers())
+    assert client.get(path, headers=headers()).status_code == 404

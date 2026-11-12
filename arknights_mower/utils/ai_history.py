@@ -253,6 +253,25 @@ class HistoryStore:
             **{key: item[key] for key in ("name", "kind", "truncated")},
         }
 
+    def read_attachment(self, identifier):
+        with _lock, self._db() as db:
+            row = db.execute(
+                "SELECT payload FROM attachments WHERE id=? AND profile=? AND (claimed=1 OR created>=?)",
+                (identifier, self.profile_id, time.time() - 3600),
+            ).fetchone()
+            if row is None:
+                raise HistoryError("附件不存在或已过期", 404)
+            item = json.loads(row["payload"])
+            return {
+                "id": identifier,
+                **{key: item[key] for key in ("name", "kind", "truncated")},
+                **(
+                    {"content": item["content"]}
+                    if item["kind"] in ("text", "image")
+                    else {}
+                ),
+            }
+
     def delete_attachment(self, identifier):
         with _lock, self._db() as db:
             db.execute(

@@ -19,7 +19,8 @@ import GridOutline from '@vicons/ionicons5/es/GridOutline'
 import TimeOutline from '@vicons/ionicons5/es/TimeOutline'
 import MailOutline from '@vicons/ionicons5/es/MailOutline'
 import SchoolOutline from '@vicons/ionicons5/es/SchoolOutline'
-import SettingsOutline from '@vicons/ionicons5/es/SettingsOutline'
+import ExpandOutline from '@vicons/ionicons5/es/ExpandOutline'
+import ContractOutline from '@vicons/ionicons5/es/ContractOutline'
 import markdownit from 'markdown-it'
 import MowerAIIcon from './MowerAIIcon.vue'
 
@@ -44,6 +45,39 @@ const fileInputRef = ref(null)
 const fileDragDepth = ref(0)
 let attachmentEpoch = 0
 let pendingAttachments = null
+
+const previewOpen = ref(false)
+const previewFile = ref(null)
+const previewBusy = ref(false)
+const previewError = ref('')
+let previewRequest = 0
+async function inspectAttachment(file) {
+  const request = ++previewRequest
+  const generation = currentGeneration()
+  previewFile.value = { id: file.id, name: file.name, kind: file.kind }
+  previewOpen.value = true
+  previewBusy.value = true
+  previewError.value = ''
+  try {
+    const response = await axios.get(
+      `${import.meta.env.VITE_HTTP_URL || ''}/ai/attachments/${file.id}`
+    )
+    if (disposed || request !== previewRequest || generation !== currentGeneration()) return
+    previewFile.value = response.data
+  } catch (error) {
+    if (!disposed && request === previewRequest && generation === currentGeneration())
+      previewError.value = error.response?.data?.error || '无法读取附件，请重试。'
+  } finally {
+    if (!disposed && request === previewRequest) previewBusy.value = false
+  }
+}
+watch(previewOpen, (value) => {
+  if (!value) {
+    previewRequest++
+    previewFile.value = null
+    previewBusy.value = false
+  }
+})
 
 function settleAttachments(accepted) {
   if (!pendingAttachments) return false
@@ -355,6 +389,11 @@ async function deleteConversation(id = null) {
   }
 }
 function toggleHistory() {
+  if (layoutMode.value === 'expanded' && viewportWidth.value >= 900) {
+    historySidebarOpen.value = !historySidebarOpen.value
+    if (historySidebarOpen.value) loadHistory()
+    return
+  }
   historyOpen.value = !historyOpen.value
   if (historyOpen.value) loadHistory()
 }
@@ -367,14 +406,94 @@ const inputRef = ref(null)
 const panelRef = ref(null)
 const panelPosition = ref(null)
 const dragging = ref(false)
-const panelStyle = computed(() =>
-  panelPosition.value
+const layoutMode = ref('docked')
+const historySidebarOpen = ref(true)
+const viewportWidth = ref(window.innerWidth)
+const panelWidth = ref(560)
+const maxPanelWidth = computed(() => Math.min(900, viewportWidth.value - 640))
+const effectivePanelWidth = computed(() =>
+  Math.max(400, Math.min(panelWidth.value, maxPanelWidth.value))
+)
+const sideHistory = computed(
+  () => layoutMode.value === 'expanded' && viewportWidth.value >= 900 && historySidebarOpen.value
+)
+const panelStyle = computed(() => ({
+  '--panel-width': `${effectivePanelWidth.value}px`,
+  ...(panelPosition.value
     ? { '--chat-left': `${panelPosition.value.x}px`, '--chat-top': `${panelPosition.value.y}px` }
-    : {}
+    : {})
+}))
+const layoutActions = computed(() => [
+  { label: '右侧面板', key: 'docked' },
+  { label: '展开工作区', key: 'expanded' },
+  { label: '悬浮窗口', key: 'floating' },
+  { type: 'divider', key: 'divider' },
+  { label: 'Mower 设置', key: 'settings' }
+])
+function selectLayout(key) {
+  if (key === 'settings') return openSettings()
+  if (!['docked', 'expanded', 'floating'].includes(key)) return
+  layoutMode.value = key
+  historyOpen.value = false
+  if (key === 'expanded') {
+    historySidebarOpen.value = true
+    loadHistory()
+  }
+}
+function resizeViewport() {
+  viewportWidth.value = window.innerWidth
+}
+window.addEventListener('resize', resizeViewport)
+let resizeOrigin = null
+function startResize(event) {
+  if (event.button !== 0 || resizeOrigin) return
+  resizeOrigin = { id: event.pointerId, x: event.clientX, width: effectivePanelWidth.value }
+  event.currentTarget.setPointerCapture(event.pointerId)
+  event.preventDefault()
+}
+function moveResize(event) {
+  if (!resizeOrigin || event.pointerId !== resizeOrigin.id) return
+  panelWidth.value = Math.max(
+    400,
+    Math.min(maxPanelWidth.value, resizeOrigin.width + resizeOrigin.x - event.clientX)
+  )
+}
+function endResize(event) {
+  if (!resizeOrigin || event.pointerId !== resizeOrigin.id) return
+  resizeOrigin = null
+  if (event.currentTarget.hasPointerCapture(event.pointerId))
+    event.currentTarget.releasePointerCapture(event.pointerId)
+}
+function resizeKey(event) {
+  const delta = { ArrowLeft: 32, ArrowRight: -32, Home: -Infinity, End: Infinity }[event.key]
+  if (delta === undefined) return
+  event.preventDefault()
+  panelWidth.value = Math.max(400, Math.min(maxPanelWidth.value, effectivePanelWidth.value + delta))
+}
+const unreadResult = ref(false)
+const backgroundStatus = computed(() => {
+  if (connectionLost.value) return '连接中断'
+  if (loading.value) {
+    const last = chatHistory.value.at(-1)
+    return last?.events?.at(-1)?.status === 'awaiting_approval' ? '等待确认' : '执行中'
+  }
+  const last = chatHistory.value.at(-1)
+  if (last?.status === 'cancelled') return '已停止'
+  return last?.error || (last && isIncomplete(last)) ? '未完成' : '已完成'
+})
+watch(loading, (value, previous) => {
+  if (previous && !value && !show.value) unreadResult.value = true
+})
+watch(
+  () => props.show,
+  (value) => {
+    if (value) unreadResult.value = false
+  }
 )
 let dragOrigin = null
 function startDrag(event) {
   if (
+    layoutMode.value !== 'floating' ||
     dragOrigin ||
     event.button !== 0 ||
     window.innerWidth <= 640 ||
@@ -844,6 +963,7 @@ watch(
 )
 onBeforeUnmount(() => {
   disposed = true
+  window.removeEventListener('resize', resizeViewport)
   historyRequest++
   releaseAttachments()
   closeConnection()
@@ -855,6 +975,7 @@ onBeforeUnmount(() => {
     ref="panelRef"
     v-show="show"
     class="chatbot-container"
+    :class="[`chatbot--${layoutMode}`, { 'side-history': sideHistory }]"
     :style="panelStyle"
     role="dialog"
     aria-label="Mower AI 助手"
@@ -863,6 +984,23 @@ onBeforeUnmount(() => {
     @dragleave="leaveFiles"
     @drop="dropFiles"
   >
+    <div
+      v-if="layoutMode === 'docked' && viewportWidth >= 1200"
+      class="panel-resizer"
+      role="separator"
+      aria-label="调整助手宽度"
+      aria-orientation="vertical"
+      :aria-valuenow="effectivePanelWidth"
+      :aria-valuemin="400"
+      :aria-valuemax="maxPanelWidth"
+      tabindex="0"
+      @pointerdown="startResize"
+      @pointermove="moveResize"
+      @pointerup="endResize"
+      @pointercancel="endResize"
+      @lostpointercapture="endResize"
+      @keydown="resizeKey"
+    />
     <header
       class="chatbot-header"
       :class="{ dragging }"
@@ -905,13 +1043,26 @@ onBeforeUnmount(() => {
         <n-button
           quaternary
           circle
-          class="icon-button"
-          aria-label="Mower 设置"
-          title="前往 Mower 设置"
-          @click="openSettings"
+          class="icon-button expand-button"
+          :aria-label="layoutMode === 'expanded' ? '返回侧栏' : '展开工作区'"
+          :title="layoutMode === 'expanded' ? '返回侧栏' : '展开工作区'"
+          @click="selectLayout(layoutMode === 'expanded' ? 'docked' : 'expanded')"
         >
-          <template #icon><n-icon :component="SettingsOutline" /></template>
+          <template #icon
+            ><n-icon :component="layoutMode === 'expanded' ? ContractOutline : ExpandOutline"
+          /></template>
         </n-button>
+        <n-dropdown :options="layoutActions" trigger="click" @select="selectLayout">
+          <n-button
+            quaternary
+            circle
+            class="icon-button"
+            aria-label="显示方式与设置"
+            title="显示方式与设置"
+          >
+            <template #icon><n-icon :component="EllipsisHorizontal" /></template>
+          </n-button>
+        </n-dropdown>
         <n-button
           quaternary
           circle
@@ -935,324 +1086,405 @@ onBeforeUnmount(() => {
       连接中断，服务仍可能在执行；恢复连接不会重复提交请求。
       <n-button text @click="reconnectRun" :disabled="connecting">重新连接</n-button>
     </div>
-    <div v-if="historyOpen" class="conversation-browser">
-      <div class="conversation-toolbar">
-        <strong>历史会话</strong>
-        <n-popconfirm
-          :disabled="historyOptionsDisabled || !conversations.length"
-          @positive-click="deleteConversation()"
-        >
-          <template #trigger
-            ><n-button
-              size="small"
-              quaternary
-              :disabled="historyOptionsDisabled || !conversations.length"
-              >清空历史</n-button
-            ></template
+    <div class="chatbot-body">
+      <div v-show="historyOpen || sideHistory" class="conversation-browser">
+        <div class="conversation-toolbar">
+          <strong>历史会话</strong>
+          <n-popconfirm
+            :disabled="historyOptionsDisabled || !conversations.length"
+            @positive-click="deleteConversation()"
           >
-          删除当前配置档案的全部会话？此操作无法撤销。
-        </n-popconfirm>
-      </div>
-      <p class="history-help">保存在当前实例，按配置档案分别保存。最多保留 20 个会话。</p>
-      <p v-if="!conversations.length" class="history-help">暂无历史会话</p>
-      <div
-        v-for="item in conversations"
-        :key="item.id"
-        class="conversation-item"
-        :class="{ selected: item.id === conversationId }"
-      >
-        <button
-          type="button"
-          class="conversation-select"
-          :disabled="historyOptionsDisabled"
-          @click="selectConversation(item.id)"
-        >
-          <strong>{{ item.title }}</strong><time>{{ historyTime(item.updated) }}</time>
-        </button>
-        <n-popconfirm
-          :disabled="historyOptionsDisabled"
-          @positive-click="deleteConversation(item.id)"
-        >
-          <template #trigger
-            ><n-button
-              quaternary
-              size="small"
-              :disabled="historyOptionsDisabled"
-              :aria-label="`删除会话：${item.title}`"
-              >删除</n-button
-            ></template
-          >
-          删除这个会话？已执行的操作不会撤销。
-        </n-popconfirm>
-      </div>
-    </div>
-    <div v-else class="history-container">
-      <div ref="historyRef" class="chatbot-history" @scroll="trackScroll" :aria-busy="loading">
-        <div v-if="!chatHistory.length" class="chatbot-welcome">
-          <h3>从一个问题开始</h3>
-          <p>查日志、理解排班、跟进专精、整理反馈。</p>
-          <div class="suggestion-grid">
-            <button
-              v-for="suggestion in suggestions"
-              :key="suggestion.title"
-              type="button"
-              class="suggestion"
-              @click="useSuggestion(suggestion)"
+            <template #trigger
+              ><n-button
+                size="small"
+                quaternary
+                :disabled="historyOptionsDisabled || !conversations.length"
+                >清空历史</n-button
+              ></template
             >
-              <n-icon :component="suggestion.icon" aria-hidden="true" />
-              <strong>{{ suggestion.title }}</strong>
-              <span>{{ suggestion.description }}</span>
-            </button>
-          </div>
-          <span class="welcome-hint">选择一个话题，补充细节后发送</span>
+            删除当前配置档案的全部会话？此操作无法撤销。
+          </n-popconfirm>
         </div>
-        <div v-else class="message-list">
-          <article
-            v-for="(msg, idx) in chatHistory"
-            :key="idx"
-            class="chat-row"
-            :class="[msg.role, { 'message-error': msg.error }]"
+        <p class="history-help">保存在当前实例，按配置档案分别保存。最多保留 20 个会话。</p>
+        <p v-if="!conversations.length" class="history-help">暂无历史会话</p>
+        <div
+          v-for="item in conversations"
+          :key="item.id"
+          class="conversation-item"
+          :class="{ selected: item.id === conversationId }"
+        >
+          <button
+            type="button"
+            class="conversation-select"
+            :disabled="historyOptionsDisabled"
+            @click="selectConversation(item.id)"
           >
-            <div class="message-meta">
-              <span>{{ msg.role === 'user' ? '你' : 'Mower AI' }}</span>
-              <span
-                v-if="msg.role === 'bot' && loading && idx === chatHistory.length - 1"
-                class="message-state"
-                >{{ replyProgress(msg) }}</span
-              >
-            </div>
-            <div v-if="msg.role === 'user' && msg.attachments?.length" class="sent-attachments">
-              <span
-                v-for="file in msg.attachments"
-                :key="file.id"
-                :title="file.truncated ? '仅包含末尾 6000 字符' : file.name"
-                ><n-icon :component="Attach" />{{ file.name }}</span
-              >
-            </div>
-            <div v-if="msg.role === 'bot' && msg.events?.length" class="tool-events">
-              <details
-                v-for="event in msg.events"
-                :key="event.id"
-                :open="event.status === 'awaiting_approval' && loading && msg === activeReply"
-              >
-                <summary>{{ event.label || event.name }} · {{ eventStatus(event, msg) }}</summary>
-                <p class="evidence-label">
-                  证据 {{ event.id }}
-                  <span v-if="event.observed_at">· {{ event.observed_at }}</span>
-                </p>
-                <p v-if="event.source">{{ event.source }}</p>
-                <pre v-if="event.preview">{{ pretty(event.preview) }}</pre>
-                <pre v-else-if="event.arguments">{{ pretty(event.arguments) }}</pre>
-                <pre v-if="event.result">{{ event.result }}</pre>
-                <p v-if="event.truncated">仅展示部分结果，不能据此判断完整覆盖。</p>
-                <template
-                  v-if="
-                    event.type === 'approval' &&
-                    event.status === 'awaiting_approval' &&
-                    loading &&
-                    msg === activeReply
-                  "
+            <strong>{{ item.title }}</strong><time>{{ historyTime(item.updated) }}</time>
+          </button>
+          <n-popconfirm
+            :disabled="historyOptionsDisabled"
+            @positive-click="deleteConversation(item.id)"
+          >
+            <template #trigger
+              ><n-button
+                quaternary
+                size="small"
+                :disabled="historyOptionsDisabled"
+                :aria-label="`删除会话：${item.title}`"
+                >删除</n-button
+              ></template
+            >
+            删除这个会话？已执行的操作不会撤销。
+          </n-popconfirm>
+        </div>
+      </div>
+      <div v-show="!historyOpen || sideHistory" class="chatbot-main">
+        <div class="history-container">
+          <div ref="historyRef" class="chatbot-history" @scroll="trackScroll" :aria-busy="loading">
+            <div v-if="!chatHistory.length" class="chatbot-welcome">
+              <h3>从一个问题开始</h3>
+              <p>查日志、理解排班、跟进专精、整理反馈。</p>
+              <div class="suggestion-grid">
+                <button
+                  v-for="suggestion in suggestions"
+                  :key="suggestion.title"
+                  type="button"
+                  class="suggestion"
+                  @click="useSuggestion(suggestion)"
                 >
-                  <p>
-                    请核对具体内容。确认有效期至
-                    {{
-                      event.expires_at
-                        ? new Date(event.expires_at * 1000).toLocaleTimeString()
-                        : '本轮截止时间'
-                    }}；刷新不会延长，停止或服务重启后失效。
-                  </p>
-                  <n-button
-                    size="small"
-                    type="primary"
-                    :disabled="controlBusy || stopping || connectionLost || Boolean(event.decision)"
-                    @click="sendControl('approve', event)"
-                    >{{ event.decision === 'approve' ? '已提交确认' : '确认执行' }}</n-button
+                  <n-icon :component="suggestion.icon" aria-hidden="true" />
+                  <strong>{{ suggestion.title }}</strong>
+                  <span>{{ suggestion.description }}</span>
+                </button>
+              </div>
+              <span class="welcome-hint">选择一个话题，补充细节后发送</span>
+            </div>
+            <div v-else class="message-list">
+              <article
+                v-for="(msg, idx) in chatHistory"
+                :key="idx"
+                class="chat-row"
+                :class="[msg.role, { 'message-error': msg.error }]"
+              >
+                <div class="message-meta">
+                  <span>{{ msg.role === 'user' ? '你' : 'Mower AI' }}</span>
+                  <span
+                    v-if="msg.role === 'bot' && loading && idx === chatHistory.length - 1"
+                    class="message-state"
+                    >{{ replyProgress(msg) }}</span
+                  >
+                </div>
+                <div v-if="msg.role === 'user' && msg.attachments?.length" class="sent-attachments">
+                  <button
+                    type="button"
+                    @click="inspectAttachment(file)"
+                    v-for="file in msg.attachments"
+                    :key="file.id"
+                    :title="file.truncated ? '仅包含末尾 6000 字符' : file.name"
+                  >
+                    <n-icon :component="Attach" />{{ file.name }}
+                  </button>
+                </div>
+                <div v-if="msg.role === 'bot' && msg.events?.length" class="tool-events">
+                  <details
+                    v-for="event in msg.events"
+                    :key="event.id"
+                    :open="event.status === 'awaiting_approval' && loading && msg === activeReply"
+                  >
+                    <summary>
+                      {{ event.label || event.name }} · {{ eventStatus(event, msg) }}
+                    </summary>
+                    <p class="evidence-label">
+                      证据 {{ event.id }}
+                      <span v-if="event.observed_at">· {{ event.observed_at }}</span>
+                    </p>
+                    <p v-if="event.source">{{ event.source }}</p>
+                    <pre v-if="event.preview">{{ pretty(event.preview) }}</pre>
+                    <pre v-else-if="event.arguments">{{ pretty(event.arguments) }}</pre>
+                    <pre v-if="event.result">{{ event.result }}</pre>
+                    <p v-if="event.truncated">仅展示部分结果，不能据此判断完整覆盖。</p>
+                    <template
+                      v-if="
+                        event.type === 'approval' &&
+                        event.status === 'awaiting_approval' &&
+                        loading &&
+                        msg === activeReply
+                      "
+                    >
+                      <p>
+                        请核对具体内容。确认有效期至
+                        {{
+                          event.expires_at
+                            ? new Date(event.expires_at * 1000).toLocaleTimeString()
+                            : '本轮截止时间'
+                        }}；刷新不会延长，停止或服务重启后失效。
+                      </p>
+                      <n-button
+                        size="small"
+                        type="primary"
+                        :disabled="
+                          controlBusy || stopping || connectionLost || Boolean(event.decision)
+                        "
+                        @click="sendControl('approve', event)"
+                        >{{ event.decision === 'approve' ? '已提交确认' : '确认执行' }}</n-button
+                      >
+                      <n-button
+                        size="small"
+                        :disabled="
+                          controlBusy || stopping || connectionLost || Boolean(event.decision)
+                        "
+                        @click="sendControl('reject', event)"
+                        >不执行</n-button
+                      >
+                    </template>
+                  </details>
+                </div>
+                <div v-if="msg.role === 'user'" class="message-content user-content">
+                  {{ msg.content }}
+                </div>
+                <div v-else class="message-content assistant-content">
+                  <div
+                    v-if="msg.content || msg.draft"
+                    class="message-markdown"
+                    v-html="renderMessage(msg.content || msg.draft)"
+                  ></div>
+                  <div v-else class="thinking-indicator" role="status">
+                    <span aria-hidden="true">···</span
+                    >{{ connecting ? '正在建立连接' : replyProgress(msg) }}
+                  </div>
+                </div>
+                <div
+                  v-if="
+                    msg.role === 'bot' &&
+                    msg.content &&
+                    !(loading && idx === chatHistory.length - 1)
+                  "
+                  class="message-actions"
+                >
+                  <n-button quaternary class="reply-action" @click="copyMessage(msg)"
+                    ><template #icon><n-icon :component="CopyOutline" /></template>复制</n-button
                   >
                   <n-button
-                    size="small"
-                    :disabled="controlBusy || stopping || connectionLost || Boolean(event.decision)"
-                    @click="sendControl('reject', event)"
-                    >不执行</n-button
+                    v-if="
+                      isIncomplete(msg) &&
+                      msg.mode === 'summary' &&
+                      msg.turn_id &&
+                      idx === chatHistory.length - 1
+                    "
+                    quaternary
+                    class="reply-action"
+                    :disabled="loading || historyBusy || remoteBusy"
+                    @click="resumeIncompleteTurn(msg, idx)"
+                    >重新生成摘要</n-button
                   >
-                </template>
-              </details>
+                  <n-popconfirm
+                    v-if="!isIncomplete(msg) && msg.mode === 'summary'"
+                    :disabled="loading || historyBusy"
+                    @positive-click="adoptSummary(msg)"
+                  >
+                    <template #trigger
+                      ><n-button quaternary class="reply-action" :disabled="loading || historyBusy"
+                        >核对后采用摘要</n-button
+                      ></template
+                    >
+                    将这份摘要作为后续对话的历史背景？请先核对其中的事实与未完成事项。
+                  </n-popconfirm>
+                  <template v-if="!isIncomplete(msg)">
+                    <n-button
+                      v-if="!msg.followUpState"
+                      quaternary
+                      class="reply-action"
+                      @click="msg.followUpState = 'resolved'"
+                      ><template #icon><n-icon :component="CheckmarkOutline" /></template
+                      >已解决</n-button
+                    >
+                    <n-button
+                      v-if="!msg.followUpState && feedbackAvailable"
+                      quaternary
+                      class="reply-action"
+                      @click="openFeedbackFlow(msg)"
+                      >反馈问题</n-button
+                    >
+                    <span v-if="msg.followUpState === 'resolved'" class="follow-up-result"
+                      ><n-icon :component="CheckmarkOutline" />已标记解决</span
+                    >
+                    <span v-else-if="msg.followUpState === 'feedback'" class="follow-up-result"
+                      >已打开反馈窗口</span
+                    >
+                  </template>
+                </div>
+              </article>
             </div>
-            <div v-if="msg.role === 'user'" class="message-content user-content">
-              {{ msg.content }}
-            </div>
-            <div v-else class="message-content assistant-content">
+          </div>
+          <n-button
+            v-if="!atBottom && chatHistory.length"
+            round
+            class="jump-latest"
+            @click="scrollToLatest"
+            ><template #icon><n-icon :component="ArrowDownOutline" /></template>回到最新</n-button
+          >
+        </div>
+
+        <footer class="chatbot-input-area">
+          <input ref="fileInputRef" class="file-picker" type="file" multiple @change="pickFiles" />
+          <div class="composer" :class="{ 'file-dragging': fileDragDepth > 0 }">
+            <div v-if="draftAttachments.length" class="attachment-list">
               <div
-                v-if="msg.content || msg.draft"
-                class="message-markdown"
-                v-html="renderMessage(msg.content || msg.draft)"
-              ></div>
-              <div v-else class="thinking-indicator" role="status">
-                <span aria-hidden="true">···</span
-                >{{ connecting ? '正在建立连接' : replyProgress(msg) }}
+                v-for="file in draftAttachments"
+                :key="file.id"
+                class="attachment-chip"
+                :title="file.truncated ? `${file.name}：仅发送文字摘录，内容有省略` : file.name"
+              >
+                <button
+                  type="button"
+                  class="attachment-preview-trigger"
+                  @click="inspectAttachment(file)"
+                >
+                  <img v-if="file.preview" :src="file.preview" :alt="file.name" />
+                  <n-icon v-else :component="DocumentTextOutline" />
+                  <span>{{ file.name }}</span>
+                </button>
+                <n-button
+                  quaternary
+                  circle
+                  size="tiny"
+                  :aria-label="`移除 ${file.name}`"
+                  :title="`移除 ${file.name}`"
+                  @click="removeAttachment(file)"
+                  ><template #icon><n-icon :component="CloseOutline" /></template
+                ></n-button>
               </div>
             </div>
-            <div
-              v-if="
-                msg.role === 'bot' && msg.content && !(loading && idx === chatHistory.length - 1)
-              "
-              class="message-actions"
-            >
-              <n-button quaternary class="reply-action" @click="copyMessage(msg)"
-                ><template #icon><n-icon :component="CopyOutline" /></template>复制</n-button
+            <n-input
+              ref="inputRef"
+              v-model:value="userInput"
+              type="textarea"
+              :bordered="false"
+              :autosize="{ minRows: 2, maxRows: 6 }"
+              :maxlength="4000"
+              :placeholder="continueMode ? '补充要求…' : '发消息…'"
+              :input-props="{ 'aria-label': '发送给 Mower AI 的问题' }"
+              @keydown="onInputKeydown"
+              @paste="pasteFiles"
+            />
+            <div class="composer-toolbar">
+              <n-button
+                quaternary
+                circle
+                aria-label="添加文件"
+                title="添加文件"
+                :loading="attachmentsBusy"
+                :disabled="attachmentsBusy || loading"
+                @click="fileInputRef?.click()"
+                ><template #icon><n-icon :component="Attach" /></template
+              ></n-button>
+              <n-dropdown :options="composerActions" trigger="click" @select="selectComposerAction">
+                <n-button quaternary circle aria-label="更多操作" title="更多操作">
+                  <template #icon><n-icon :component="EllipsisHorizontal" /></template>
+                </n-button>
+              </n-dropdown>
+              <n-icon
+                v-if="contextInfo?.limited"
+                :component="InformationCircleOutline"
+                :title="contextHint"
+                :aria-label="contextHint"
+                class="context-info"
+              />
+              <span class="composer-spacer" />
+              <span v-if="userInput.length > 3500" class="input-count"
+                >{{ userInput.length }} / 4000</span
               >
               <n-button
-                v-if="
-                  isIncomplete(msg) &&
-                  msg.mode === 'summary' &&
-                  msg.turn_id &&
-                  idx === chatHistory.length - 1
-                "
-                quaternary
-                class="reply-action"
-                :disabled="loading || historyBusy || remoteBusy"
-                @click="resumeIncompleteTurn(msg, idx)"
-                >重新生成摘要</n-button
-              >
-              <n-popconfirm
-                v-if="!isIncomplete(msg) && msg.mode === 'summary'"
-                :disabled="loading || historyBusy"
-                @positive-click="adoptSummary(msg)"
-              >
-                <template #trigger
-                  ><n-button quaternary class="reply-action" :disabled="loading || historyBusy"
-                    >核对后采用摘要</n-button
-                  ></template
-                >
-                将这份摘要作为后续对话的历史背景？请先核对其中的事实与未完成事项。
-              </n-popconfirm>
-              <template v-if="!isIncomplete(msg)">
-                <n-button
-                  v-if="!msg.followUpState"
-                  quaternary
-                  class="reply-action"
-                  @click="msg.followUpState = 'resolved'"
-                  ><template #icon><n-icon :component="CheckmarkOutline" /></template
-                  >已解决</n-button
-                >
-                <n-button
-                  v-if="!msg.followUpState && feedbackAvailable"
-                  quaternary
-                  class="reply-action"
-                  @click="openFeedbackFlow(msg)"
-                  >反馈问题</n-button
-                >
-                <span v-if="msg.followUpState === 'resolved'" class="follow-up-result"
-                  ><n-icon :component="CheckmarkOutline" />已标记解决</span
-                >
-                <span v-else-if="msg.followUpState === 'feedback'" class="follow-up-result"
-                  >已打开反馈窗口</span
-                >
-              </template>
+                v-if="loading"
+                circle
+                class="send-button"
+                :title="stopping ? '停止中' : '停止'"
+                :aria-label="stopping ? '停止中' : '停止'"
+                :loading="stopping"
+                :disabled="!activeReply?.turn_id || controlBusy || stopping"
+                @click="sendControl('stop')"
+                ><template #icon><n-icon :component="Stop" /></template
+              ></n-button>
+              <n-button
+                v-else
+                type="primary"
+                circle
+                class="send-button"
+                :title="continueMode ? '继续处理' : '发送'"
+                :aria-label="continueMode ? '继续处理' : '发送'"
+                :disabled="!canSend"
+                @click="sendMessage"
+                ><template #icon><n-icon :component="ArrowUpOutline" /></template
+              ></n-button>
             </div>
-          </article>
-        </div>
-      </div>
-      <n-button
-        v-if="!atBottom && chatHistory.length"
-        round
-        class="jump-latest"
-        @click="scrollToLatest"
-        ><template #icon><n-icon :component="ArrowDownOutline" /></template>回到最新</n-button
-      >
-    </div>
-
-    <footer v-if="!historyOpen" class="chatbot-input-area">
-      <input ref="fileInputRef" class="file-picker" type="file" multiple @change="pickFiles" />
-      <div class="composer" :class="{ 'file-dragging': fileDragDepth > 0 }">
-        <div v-if="draftAttachments.length" class="attachment-list">
-          <div
-            v-for="file in draftAttachments"
-            :key="file.id"
-            class="attachment-chip"
-            :title="file.truncated ? `${file.name}：仅发送文字摘录，内容有省略` : file.name"
-          >
-            <img v-if="file.preview" :src="file.preview" :alt="file.name" />
-            <n-icon v-else :component="DocumentTextOutline" />
-            <span>{{ file.name }}</span>
-            <n-button
-              quaternary
-              circle
-              size="tiny"
-              :aria-label="`移除 ${file.name}`"
-              :title="`移除 ${file.name}`"
-              @click="removeAttachment(file)"
-              ><template #icon><n-icon :component="CloseOutline" /></template
-            ></n-button>
           </div>
-        </div>
-        <n-input
-          ref="inputRef"
-          v-model:value="userInput"
-          type="textarea"
-          :bordered="false"
-          :autosize="{ minRows: 2, maxRows: 6 }"
-          :maxlength="4000"
-          :placeholder="continueMode ? '补充要求…' : '发消息…'"
-          aria-label="发送给 Mower AI 的问题"
-          @keydown="onInputKeydown"
-          @paste="pasteFiles"
-        />
-        <div class="composer-toolbar">
-          <n-button
-            quaternary
-            circle
-            aria-label="添加文件"
-            title="添加文件"
-            :loading="attachmentsBusy"
-            :disabled="attachmentsBusy || loading"
-            @click="fileInputRef?.click()"
-            ><template #icon><n-icon :component="Attach" /></template
-          ></n-button>
-          <n-dropdown :options="composerActions" trigger="click" @select="selectComposerAction">
-            <n-button quaternary circle aria-label="更多操作" title="更多操作">
-              <template #icon><n-icon :component="EllipsisHorizontal" /></template>
-            </n-button>
-          </n-dropdown>
-          <n-icon
-            v-if="contextInfo?.limited"
-            :component="InformationCircleOutline"
-            :title="contextHint"
-            :aria-label="contextHint"
-            class="context-info"
-          />
-          <span class="composer-spacer" />
-          <span v-if="userInput.length > 3500" class="input-count"
-            >{{ userInput.length }} / 4000</span
-          >
-          <n-button
-            v-if="loading"
-            circle
-            class="send-button"
-            :title="stopping ? '停止中' : '停止'"
-            :aria-label="stopping ? '停止中' : '停止'"
-            :loading="stopping"
-            :disabled="!activeReply?.turn_id || controlBusy || stopping"
-            @click="sendControl('stop')"
-            ><template #icon><n-icon :component="Stop" /></template
-          ></n-button>
-          <n-button
-            v-else
-            type="primary"
-            circle
-            class="send-button"
-            :title="continueMode ? '继续处理' : '发送'"
-            :aria-label="continueMode ? '继续处理' : '发送'"
-            :disabled="!canSend"
-            @click="sendMessage"
-            ><template #icon><n-icon :component="ArrowUpOutline" /></template
-          ></n-button>
-        </div>
+        </footer>
       </div>
-    </footer>
+    </div>
   </section>
+  <button
+    v-if="!show && mower.ai_assistant_enabled === true && (loading || unreadResult)"
+    class="background-task"
+    type="button"
+    @click="show = true"
+  >
+    <n-icon :component="MowerAIIcon" />
+    <span>Mower AI · {{ backgroundStatus }}</span>
+  </button>
+  <n-modal
+    v-model:show="previewOpen"
+    preset="card"
+    :title="previewFile?.name || '附件'"
+    class="attachment-preview"
+    style="width: min(760px, calc(100vw - 32px))"
+  >
+    <p v-if="previewBusy" role="status">正在读取附件…</p>
+    <div v-else-if="previewError" role="alert">
+      {{ previewError }} <n-button @click="inspectAttachment(previewFile)">重试</n-button>
+    </div>
+    <template v-else-if="previewFile">
+      <p v-if="previewFile.truncated">以下是实际发送的文字摘录，内容有省略。</p>
+      <pre v-if="previewFile.kind === 'text'" class="attachment-text">{{
+        previewFile.content
+      }}</pre>
+      <img
+        v-else-if="previewFile.kind === 'image'"
+        :src="previewFile.content"
+        :alt="previewFile.name"
+        class="attachment-image"
+      />
+      <p v-else>PDF 作为原文件交给模型读取；当前服务需要支持 PDF 输入。本地未提取文字。</p>
+    </template>
+  </n-modal>
 </template>
 
 <style scoped>
+.attachment-preview-trigger,
+.sent-attachments button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 40px;
+  border: 0;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.attachment-text {
+  max-height: 65dvh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.attachment-image {
+  display: block;
+  max-width: 100%;
+  max-height: 65dvh;
+  margin: auto;
+  object-fit: contain;
+}
 .tool-events {
   margin: 0 0 12px;
   font-size: 12px;
@@ -1346,6 +1578,8 @@ onBeforeUnmount(() => {
   left: clamp(16px, var(--chat-left, 100vw), calc(100vw - var(--chat-width) - 16px));
   top: clamp(16px, var(--chat-top, 100dvh), calc(100dvh - var(--chat-height) - 16px));
   z-index: 2000;
+  /* 覆盖日志页时独立合成，防止下层文字滤镜盖住对话。 */
+  transform: translateZ(0);
   display: flex;
   flex-direction: column;
   width: var(--chat-width);
@@ -1363,6 +1597,96 @@ onBeforeUnmount(() => {
   -webkit-user-select: text;
   -webkit-font-smoothing: antialiased;
 }
+.chatbot--docked {
+  position: relative;
+  inset: auto;
+  flex: 0 0 var(--panel-width);
+  width: var(--panel-width);
+  height: 100%;
+  border-radius: 0;
+  border-width: 0 0 0 1px;
+  box-shadow: none;
+  overflow: visible;
+}
+.chatbot--expanded {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+.chatbot--floating {
+  --chat-width: min(560px, calc(100vw - 32px));
+  --chat-height: min(760px, calc(100dvh - 72px));
+}
+.chatbot--floating .chatbot-header {
+  cursor: grab;
+  touch-action: none;
+}
+.chatbot-body,
+.chatbot-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.chatbot-main {
+  flex-direction: column;
+}
+.side-history .conversation-browser {
+  flex: 0 0 244px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--mower-divider);
+  background: var(--mower-body-bg, var(--mower-surface));
+}
+.chatbot--expanded .message-list,
+.chatbot--expanded .chatbot-welcome,
+.chatbot--expanded .chatbot-input-area {
+  width: 100%;
+  max-width: 900px;
+  box-sizing: border-box;
+  margin-inline: auto;
+}
+.panel-resizer {
+  position: absolute;
+  left: -5px;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+.panel-resizer:hover,
+.panel-resizer:focus-visible {
+  background: var(--mower-primary-block);
+}
+.background-task {
+  position: fixed;
+  right: 20px;
+  bottom: max(72px, env(safe-area-inset-bottom));
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--mower-border);
+  border-radius: 24px;
+  background: var(--mower-surface);
+  color: var(--mower-text);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+@media (max-width: 1199px) {
+  .chatbot--docked {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(560px, 100%);
+  }
+}
 .chatbot-header {
   display: flex;
   align-items: center;
@@ -1370,8 +1694,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--mower-divider);
-  cursor: grab;
-  touch-action: none;
+  cursor: default;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -1703,7 +2026,7 @@ onBeforeUnmount(() => {
   color: var(--mower-text);
   font-size: 12px;
 }
-.attachment-chip > span {
+.attachment-preview-trigger > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1720,7 +2043,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   max-width: 100%;
 }
-.sent-attachments > span {
+.sent-attachments > button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1770,22 +2093,27 @@ onBeforeUnmount(() => {
   color: var(--mower-text-muted);
 }
 .send-button {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
   padding: 0;
   border-radius: 50%;
   transition: transform 0.15s;
 }
 @media (max-width: 640px) {
   .chatbot-container {
+    position: absolute;
     inset: 0;
     width: 100%;
-    height: 100dvh;
+    height: 100%;
     border: 0;
     border-radius: 0;
   }
+  .expand-button {
+    display: none;
+  }
   .chatbot-header {
+    gap: 8px;
     padding: max(12px, env(safe-area-inset-top)) 14px 12px;
     cursor: default;
     touch-action: auto;
@@ -1808,7 +2136,7 @@ onBeforeUnmount(() => {
     display: none;
   }
   .icon-button {
-    width: 36px;
+    width: 40px;
   }
   .assistant-heading h2 {
     white-space: nowrap;

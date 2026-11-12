@@ -65,7 +65,12 @@ beforeEach(async () => {
   state.push = vi.fn()
   FakeSocket.instances = []
   vi.useFakeTimers()
-  vi.stubGlobal('window', { location: { search: '?token=test-session' }, innerWidth: 1280 })
+  vi.stubGlobal('window', {
+    location: { search: '?token=test-session' },
+    innerWidth: 1280,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn()
+  })
   vi.stubGlobal('WebSocket', FakeSocket)
   vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockResolvedValue() } })
   scope = effectScope()
@@ -249,6 +254,7 @@ describe('AI chat interactions', () => {
   )
 
   it('drags by the header with pointer capture and stops after cancellation', () => {
+    component.selectLayout('floating')
     component.panelRef.value = { getBoundingClientRect: () => ({ left: 800, top: 300 }) }
     const handle = {
       setPointerCapture: vi.fn(),
@@ -271,7 +277,10 @@ describe('AI chat interactions', () => {
     component.moveDrag({ pointerId: 5, clientX: 300, clientY: 200 })
     expect(component.panelPosition.value).toBeNull()
     component.moveDrag({ pointerId: 4, clientX: 330, clientY: 220 })
-    expect(component.panelStyle.value).toEqual({ '--chat-left': '300px', '--chat-top': '200px' })
+    expect(component.panelStyle.value).toMatchObject({
+      '--chat-left': '300px',
+      '--chat-top': '200px'
+    })
     component.endDrag(event)
     expect(handle.releasePointerCapture).toHaveBeenCalledWith(4)
     expect(component.dragging.value).toBe(false)
@@ -282,6 +291,7 @@ describe('AI chat interactions', () => {
   })
 
   it('leaves header controls and the mobile panel free of dragging', () => {
+    component.selectLayout('floating')
     component.panelRef.value = { getBoundingClientRect: () => ({ left: 800, top: 300 }) }
     const event = {
       button: 0,
@@ -1136,4 +1146,103 @@ it('keeps the original continuation target when an attachment request is rejecte
   expect(component.continuationTarget.value.turn_id).toBe(7)
   expect(component.userInput.value).toBe('added requirement')
   expect(component.draftAttachments.value[0].id).toBe(metadata.id)
+})
+
+describe('AI workspace', () => {
+  it('toggles expanded history without hiding the conversation', () => {
+    component.selectLayout('expanded')
+    expect(component.sideHistory.value).toBe(true)
+    component.toggleHistory()
+    expect(component.sideHistory.value).toBe(false)
+    expect(component.historyOpen.value).toBe(false)
+    component.toggleHistory()
+    expect(component.sideHistory.value).toBe(true)
+  })
+  it('preserves the running request, draft and attachments across layouts', async () => {
+    const socket = send()
+    socket.open()
+    socket.receive({ reply: '处理中' })
+    component.userInput.value = '补充要求'
+    component.draftAttachments.value = [{ id: 'file', name: 'run.log' }]
+    const messages = component.chatHistory.value
+    const requests = socket.send.mock.calls.length
+    for (const mode of ['expanded', 'floating', 'docked']) {
+      component.selectLayout(mode)
+      await flush()
+      expect(component.chatHistory.value).toBe(messages)
+      expect(component.userInput.value).toBe('补充要求')
+      expect(component.draftAttachments.value[0].id).toBe('file')
+      expect(component.loading.value).toBe(true)
+    }
+    expect(socket.send).toHaveBeenCalledTimes(requests)
+    expect(socket.close).not.toHaveBeenCalled()
+    expect(FakeSocket.instances).toHaveLength(1)
+  })
+  it('bounds panel resizing and releases pointer capture', () => {
+    const handle = {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: () => true,
+      releasePointerCapture: vi.fn()
+    }
+    const event = {
+      button: 0,
+      pointerId: 7,
+      clientX: 720,
+      currentTarget: handle,
+      preventDefault: vi.fn()
+    }
+    component.startResize(event)
+    component.moveResize({ pointerId: 8, clientX: 0 })
+    expect(component.effectivePanelWidth.value).toBe(560)
+    component.moveResize({ pointerId: 7, clientX: 0 })
+    expect(component.effectivePanelWidth.value).toBe(640)
+    component.endResize(event)
+    component.moveResize({ pointerId: 7, clientX: 1000 })
+    expect(component.effectivePanelWidth.value).toBe(640)
+    component.resizeKey({ key: 'Home', preventDefault: vi.fn() })
+    expect(component.effectivePanelWidth.value).toBe(400)
+    component.resizeKey({ key: 'ArrowLeft', preventDefault: vi.fn() })
+    expect(component.effectivePanelWidth.value).toBe(432)
+    expect(handle.releasePointerCapture).toHaveBeenCalledWith(7)
+  })
+  it('shows hidden approval and completion until reopened', async () => {
+    const socket = send()
+    socket.open()
+    props.show = false
+    component.chatHistory.value.at(-1).events = [{ status: 'awaiting_approval' }]
+    await flush()
+    expect(component.backgroundStatus.value).toBe('等待确认')
+    socket.receive({ reply: '已完成' })
+    socket.receive({ done: true })
+    await flush()
+    expect(component.unreadResult.value).toBe(true)
+    expect(component.backgroundStatus.value).toBe('已完成')
+    props.show = true
+    await flush()
+    expect(component.unreadResult.value).toBe(false)
+  })
+  it('ignores stale preview responses and keeps preview errors retryable', async () => {
+    let finish
+    state.axios.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    const old = component.inspectAttachment({ id: 'old', name: 'old.log' })
+    state.axios.get.mockResolvedValueOnce({
+      data: { id: 'new', name: 'new.log', kind: 'text', content: '<script>data</script>' }
+    })
+    await component.inspectAttachment({ id: 'new', name: 'new.log' })
+    finish({ data: { id: 'old', content: 'stale' } })
+    await old
+    expect(component.previewFile.value.content).toBe('<script>data</script>')
+    state.axios.get.mockRejectedValueOnce(new Error('offline'))
+    await component.inspectAttachment({ id: 'new', name: 'new.log' })
+    expect(component.previewError.value).toContain('重试')
+    state.axios.get.mockResolvedValueOnce({ data: { id: 'new', content: 'saved excerpt' } })
+    await component.inspectAttachment(component.previewFile.value)
+    expect(component.previewFile.value.content).toBe('saved excerpt')
+    expect(FakeSocket.instances).toHaveLength(0)
+  })
 })

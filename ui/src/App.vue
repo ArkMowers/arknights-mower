@@ -108,122 +108,124 @@
             >
               <div id="header-app-menu" />
             </header>
-            <n-layout :has-sider="!isMobileNav" class="outer-layout">
-              <n-layout-sider
-                v-if="!isMobileNav"
-                v-show="!sidebarHidden"
-                :class="{ 'halloween-shell': halloweenActive }"
-                :bordered="!windowShellActive"
-                collapse-mode="width"
-                :collapsed-width="64"
-                :width="210"
-                :collapsed="sidebarCollapsed"
-                content-style="display: flex; flex-direction: column; overflow: hidden"
-              >
-                <SidebarUpdateChecks
-                  v-if="!windowShellActive || !sidebarCollapsed"
+            <div class="app-workspace">
+              <n-layout :has-sider="!isMobileNav" class="outer-layout">
+                <n-layout-sider
+                  v-if="!isMobileNav"
+                  v-show="!sidebarHidden"
+                  :class="{ 'halloween-shell': halloweenActive }"
+                  :bordered="!windowShellActive"
+                  collapse-mode="width"
+                  :collapsed-width="64"
+                  :width="210"
                   :collapsed="sidebarCollapsed"
-                  :collapsible="!windowShellActive"
-                  :show-logo="sidebarCollapsed"
-                  :version="softwareVersion"
-                  :deployment="deployment"
-                  :display-mode="softwareVersionDisplay"
-                  :enabled="updates_enabled === true"
-                  :extra-settings-visible="
-                    !config_store.manager_owned_device || config_store.extra_settings_visible
-                  "
-                  :resource-version="resourceVersion"
-                  :resource-metadata="resource_version_store.info.current_metadata"
-                  @toggle="toggleSidebar"
-                >
-                  <template v-if="!windowShellActive && !sidebarCollapsed" #home>
-                    <div id="sidebar-app-menu" />
-                  </template>
-                </SidebarUpdateChecks>
-                <div id="sidebar-navigation" class="sidebar-navigation">
-                  <AppSidebar
-                    :collapsed="sidebarCollapsed"
-                    @open-chat="openChatBot"
-                    @expand-sidebar="expandSidebar"
-                    @customize="openSidebarEditor"
-                  />
-                </div>
-              </n-layout-sider>
-              <n-layout-content class="layout-content-container">
-                <n-watermark
-                  v-if="watermarkVisible"
-                  class="content-watermark"
-                  :content="watermarkData"
-                  cross
-                  :font-size="16"
-                  :line-height="32"
-                  :width="400"
-                  :height="384"
-                  :x-offset="12"
-                  :y-offset="60"
-                  :rotate="-15"
-                />
-                <ConfigSaveNotice />
-                <CrashRecoveryNotice v-if="loaded" />
-                <router-view
-                  v-if="loaded && contentRoute"
-                  v-slot="{ Component }"
-                  :route="contentRoute"
-                >
-                  <keep-alive include="TaskSettings">
-                    <component :is="Component" />
-                  </keep-alive>
-                </router-view>
-                <SettingsDialog
-                  v-if="loaded"
-                  :show="settingsDirectoryMode"
-                  :style="mowerCssVariables"
-                  @close="leaveSettings"
-                />
-                <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
-                <Feedback />
-                <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
-                <n-modal
-                  v-model:show="showUpdateNoticeModal"
-                  preset="card"
-                  style="width: min(720px, calc(100vw - 32px))"
-                  title="版本更新"
                   content-style="display: flex; flex-direction: column; overflow: hidden"
-                  :mask-closable="false"
-                  :close-on-esc="false"
-                  closable
-                  @close="handleUpdateNoticeAck"
                 >
-                  <div style="flex: none; font-size: 18px; font-weight: 600">
-                    {{ `已更新到 ${updateNotice.current_version}` }}
-                  </div>
-                  <div
-                    v-if="updateNotice.previous_version"
-                    style="flex: none; margin-top: 8px; color: var(--n-text-color-3)"
-                  >
-                    {{ `从 ${updateNotice.previous_version} 更新` }}
-                  </div>
-                  <div
-                    style="
-                      min-height: 0;
-                      margin-top: 16px;
-                      max-height: 50vh;
-                      overflow: auto;
-                      line-height: 1.6;
+                  <SidebarUpdateChecks
+                    v-if="!windowShellActive || !sidebarCollapsed"
+                    :collapsed="sidebarCollapsed"
+                    :collapsible="!windowShellActive"
+                    :show-logo="sidebarCollapsed"
+                    :version="softwareVersion"
+                    :deployment="deployment"
+                    :display-mode="softwareVersionDisplay"
+                    :enabled="updates_enabled === true"
+                    :extra-settings-visible="
+                      !config_store.manager_owned_device || config_store.extra_settings_visible
                     "
-                    v-html="renderedChangelog"
-                  ></div>
-                  <div
-                    style="flex: none; margin-top: 20px; display: flex; justify-content: flex-end"
+                    :resource-version="resourceVersion"
+                    :resource-metadata="resource_version_store.info.current_metadata"
+                    @toggle="toggleSidebar"
                   >
-                    <n-button type="primary" @click="handleUpdateNoticeAck">我知道了</n-button>
+                    <template v-if="!windowShellActive && !sidebarCollapsed" #home>
+                      <div id="sidebar-app-menu" />
+                    </template>
+                  </SidebarUpdateChecks>
+                  <div id="sidebar-navigation" class="sidebar-navigation">
+                    <AppSidebar
+                      :collapsed="sidebarCollapsed"
+                      @open-chat="openChatBot"
+                      @expand-sidebar="expandSidebar"
+                      @customize="openSidebarEditor"
+                    />
                   </div>
-                </n-modal>
-              </n-layout-content>
-              <n-layout-footer v-if="isMobileNav" class="navigation-footer">
-                <MobileTabBar :more-open="mobileMenuOpen" @more="mobileMenuOpen = true" />
-              </n-layout-footer>
-            </n-layout>
+                </n-layout-sider>
+                <n-layout-content class="layout-content-container">
+                  <n-watermark
+                    v-if="watermarkVisible"
+                    class="content-watermark"
+                    :content="watermarkData"
+                    cross
+                    :font-size="16"
+                    :line-height="32"
+                    :width="400"
+                    :height="384"
+                    :x-offset="12"
+                    :y-offset="60"
+                    :rotate="-15"
+                  />
+                  <ConfigSaveNotice />
+                  <CrashRecoveryNotice v-if="loaded" />
+                  <router-view
+                    v-if="loaded && contentRoute"
+                    v-slot="{ Component }"
+                    :route="contentRoute"
+                  >
+                    <keep-alive include="TaskSettings">
+                      <component :is="Component" />
+                    </keep-alive>
+                  </router-view>
+                  <SettingsDialog
+                    v-if="loaded"
+                    :show="settingsDirectoryMode"
+                    :style="mowerCssVariables"
+                    @close="leaveSettings"
+                  />
+                  <Feedback />
+                  <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
+                  <n-modal
+                    v-model:show="showUpdateNoticeModal"
+                    preset="card"
+                    style="width: min(720px, calc(100vw - 32px))"
+                    title="版本更新"
+                    content-style="display: flex; flex-direction: column; overflow: hidden"
+                    :mask-closable="false"
+                    :close-on-esc="false"
+                    closable
+                    @close="handleUpdateNoticeAck"
+                  >
+                    <div style="flex: none; font-size: 18px; font-weight: 600">
+                      {{ `已更新到 ${updateNotice.current_version}` }}
+                    </div>
+                    <div
+                      v-if="updateNotice.previous_version"
+                      style="flex: none; margin-top: 8px; color: var(--n-text-color-3)"
+                    >
+                      {{ `从 ${updateNotice.previous_version} 更新` }}
+                    </div>
+                    <div
+                      style="
+                        min-height: 0;
+                        margin-top: 16px;
+                        max-height: 50vh;
+                        overflow: auto;
+                        line-height: 1.6;
+                      "
+                      v-html="renderedChangelog"
+                    ></div>
+                    <div
+                      style="flex: none; margin-top: 20px; display: flex; justify-content: flex-end"
+                    >
+                      <n-button type="primary" @click="handleUpdateNoticeAck">我知道了</n-button>
+                    </div>
+                  </n-modal>
+                </n-layout-content>
+                <n-layout-footer v-if="isMobileNav" class="navigation-footer">
+                  <MobileTabBar :more-open="mobileMenuOpen" @more="mobileMenuOpen = true" />
+                </n-layout-footer>
+              </n-layout>
+              <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
+            </div>
             <n-drawer
               v-if="isMobileNav"
               v-model:show="mobileMenuOpen"
@@ -1063,7 +1065,7 @@ watch(
   flex-direction: column;
 }
 
-.provider > .outer-layout {
+.provider > .app-workspace {
   flex: 1 1 auto;
   min-height: 0;
   height: auto;
@@ -1470,7 +1472,19 @@ td {
   padding-right: 0;
 }
 
+.app-workspace {
+  display: flex;
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .outer-layout {
+  isolation: isolate;
+  flex: 1;
+  min-width: 0;
   position: relative;
   height: 100%;
 }
