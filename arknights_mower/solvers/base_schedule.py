@@ -10812,6 +10812,7 @@ class BaseSchedulerSolver(
                         ):
                             continue
                     raise ValueError("原下班目标未完成，保留原任务并等待岗位释放")
+            # 回班预演附带的副表任务不能让原普通回班跳过恢复要求。
             if (
                 task.type == TaskTypes.SHIFT_ON
                 and not getattr(task, "initial_staffing", False)
@@ -10819,7 +10820,7 @@ class BaseSchedulerSolver(
                 and not getattr(task, "group_shift_expected", {})
                 and not getattr(task, "backup_shift_active", False)
                 and not getattr(task, "product_shift_locked", False)
-                and not explicit_slots
+                and not getattr(task, "backup_explicit_slots", ())
                 and not getattr(task, "exhaust_support", False)
                 and not getattr(task, "dorm_recovery_restore", ())
             ):
@@ -10907,7 +10908,9 @@ class BaseSchedulerSolver(
                             for queued in trial_solver.tasks
                         ]
                         return
+                    # 恢复完成前保留原回班意图，不提交预演中的副表安排。
                     task.time = max(task.time, deadline)
+                    return
             task.group_shift_transitions = {
                 group: resting
                 for group, resting in simulation.op_data.group_shift_state.items()
