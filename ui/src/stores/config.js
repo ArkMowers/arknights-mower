@@ -170,6 +170,7 @@ export const useConfigStore = defineStore('config', () => {
   const ai_type = ref('')
   const ai_key = ref('')
   const ai_custom_key = ref('')
+  const ai_api_protocol = ref('auto')
   const ai_base_url = ref('')
   const ai_model = ref('')
   const ai_deepseek_model = ref('deepseek-flash')
@@ -647,6 +648,7 @@ export const useConfigStore = defineStore('config', () => {
       ai_key.value = response.data.ai_key
       ai_custom_key.value = response.data.ai_custom_key || ''
       ai_type.value = response.data.ai_type
+      ai_api_protocol.value = response.data.ai_api_protocol ?? 'auto'
       ai_base_url.value = response.data.ai_base_url || ''
       ai_model.value = response.data.ai_model || ''
       ai_deepseek_model.value = response.data.ai_deepseek_model ?? 'deepseek-flash'
@@ -860,6 +862,7 @@ export const useConfigStore = defineStore('config', () => {
       ai_type: ai_type.value,
       ai_key: ai_key.value,
       ai_custom_key: ai_custom_key.value,
+      ai_api_protocol: ai_api_protocol.value,
       ai_base_url: ai_base_url.value,
       ai_model: ai_model.value,
       ai_deepseek_model: ai_deepseek_model.value,
@@ -1247,6 +1250,7 @@ export const useConfigStore = defineStore('config', () => {
     ai_type,
     ai_key,
     ai_custom_key,
+    ai_api_protocol,
     ai_base_url,
     ai_model,
     ai_deepseek_model,

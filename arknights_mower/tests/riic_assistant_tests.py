@@ -234,12 +234,10 @@ def test_model_workflows_dispatch_real_read_only_trial(state, monkeypatch, workf
     if workflow == "manual":
         assert agent._run_manual_tool_loop(messages, "test-key")[-1] == "主班草案已检查"
     else:
-        if agent.MessageGraph is None:
+        if agent.StateGraph is None:
             pytest.skip("LangGraph optional dependency unavailable")
-        assert (
-            agent.build_workflow("test-key").invoke(messages)[-1].content
-            == "主班草案已检查"
-        )
+        reply = agent.build_workflow("test-key").invoke({"messages": messages})
+        assert reply["messages"][-1].content == "主班草案已检查"
     assert json.loads(observations[-1].content)["valid"]
     assert state[1].model_dump() == before
 

@@ -191,7 +191,11 @@ def test_worker_response_preserves_budget_checked_rule_fallback(monkeypatch, out
     from arknights_mower.utils.device.io_budget import device_io_budget
 
     monkeypatch.setattr(
-        config, "conf", Conf(ai_type="deepseek", ai_key="offline-test-key")
+        config,
+        "conf",
+        Conf(
+            ai_type="deepseek", ai_key="offline-test-key", ai_api_protocol="responses"
+        ),
     )
     monkeypatch.setattr(config, "stop_mower", threading.Event())
     monkeypatch.setattr(
@@ -230,6 +234,7 @@ def test_worker_response_preserves_budget_checked_rule_fallback(monkeypatch, out
             result = ranking.rank_activity_entries_with_agent("1-7", {}, CANDIDATES * 2)
         assert result == ([1, 0] if outcome == "success" else [0, 1])
     factory.assert_called_once()
+    assert factory.call_args.args[0]["ai_api_protocol"] == "responses"
     process.close.assert_called_once()
     channel.close.assert_called_once()
 

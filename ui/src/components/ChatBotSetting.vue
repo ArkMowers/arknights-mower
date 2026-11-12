@@ -3,8 +3,15 @@ import { computed } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { storeToRefs } from 'pinia'
 const store = useConfigStore()
-const { ai_key, ai_custom_key, ai_type, ai_base_url, ai_model, ai_deepseek_model } =
-  storeToRefs(store)
+const {
+  ai_key,
+  ai_custom_key,
+  ai_type,
+  ai_base_url,
+  ai_model,
+  ai_deepseek_model,
+  ai_api_protocol
+} = storeToRefs(store)
 const customModel = computed(() => ['custom-local', 'custom-online'].includes(ai_type.value))
 const modelKey = computed({
   get: () => (customModel.value ? ai_custom_key.value : ai_key.value),
@@ -22,13 +29,27 @@ const deepseekModels = [
   { label: 'DeepSeek Flash（deepseek-flash）', value: 'deepseek-flash' },
   { label: 'DeepSeek V4 Pro（deepseek-v4-pro）', value: 'deepseek-v4-pro' }
 ]
+const protocolOptions = [
+  { label: '自动（默认）', value: 'auto' },
+  { label: 'OpenAI Chat Completions', value: 'chat-completions' },
+  { label: 'OpenAI Responses', value: 'responses' }
+]
+const protocolDescription = computed(() => {
+  if (ai_api_protocol.value === 'responses') {
+    return '固定使用 Responses；请求失败时不切换协议。请确认服务商支持此接口。'
+  }
+  if (ai_api_protocol.value === 'chat-completions') {
+    return '固定使用 Chat Completions；请求失败时不切换协议。'
+  }
+  return 'OpenAI 官方在线地址优先使用 Responses，遇到模型不支持等错误时尝试 Chat Completions；其他地址使用 Chat Completions。'
+})
 const selectMenuProps = { class: 'settings-select-menu' }
 </script>
 <template>
   <n-card
     title="AI 助手与模型服务"
     class="ai-settings-card"
-    data-settings-keywords="DeepSeek Flash Pro OpenAI 本地模型 在线模型 中转商 接口地址 模型名称 模型 ID API 密钥"
+    data-settings-keywords="DeepSeek Flash Pro OpenAI 本地模型 在线模型 中转商 接口地址 模型名称 模型 ID API 密钥 协议 Responses Chat Completions"
   >
     <div class="ai-settings-summary">
       <p>配置 AI 助手和报错分析使用的模型服务。</p>
@@ -83,6 +104,19 @@ const selectMenuProps = { class: 'settings-select-menu' }
             "
           />
         </n-form-item>
+        <n-form-item label="API 协议">
+          <n-select
+            v-model:value="ai_api_protocol"
+            class="settings-select-wrap"
+            :options="protocolOptions"
+            placement="bottom-end"
+            :virtual-scroll="false"
+            :menu-props="selectMenuProps"
+            :consistent-menu-width="false"
+            aria-label="API 协议"
+          />
+          <p class="ai-field-description">{{ protocolDescription }}</p>
+        </n-form-item>
         <n-form-item label="模型名称">
           <n-input
             v-model:value="ai_model"
@@ -109,7 +143,7 @@ const selectMenuProps = { class: 'settings-select-menu' }
     </n-form>
     <div class="ai-service-note">
       <p>所选报错的精简日志会发送到这里配置的模型服务。</p>
-      <p v-if="customModel">本地接口需兼容 OpenAI Chat Completions，在线接口必须使用 HTTPS。</p>
+      <p v-if="customModel">接口需支持所选的 OpenAI API 协议，在线接口必须使用 HTTPS。</p>
     </div>
   </n-card>
 </template>

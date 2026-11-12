@@ -979,6 +979,8 @@ class AIAgentPart(ConfModel):
     "自定义接口密钥"
     ai_base_url: str = ""
     "自定义 OpenAI 兼容接口地址"
+    ai_api_protocol: Literal["auto", "chat-completions", "responses"] = "auto"
+    "自定义模型 API 协议"
     ai_model: str = ""
     "自定义模型名称"
     ai_deepseek_model: str = "deepseek-flash"
