@@ -92,6 +92,7 @@ export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTask
   if(restoreRooms.length){
    const restore=new MowerTask({time:rosterHead(queue,hooks)?.time??task.time,plan:restoration,type:T.FIAMMETTA})
    restore.fiaReturnTarget=task.fiaReturnTarget;restore.fiaReturnMicros=task.fiaReturnMicros;restore.fiaChargeConfirmed=task.fiaChargeConfirmed
+   restore.fiaRestoration=true
    queue.tasks.push(restore);hooks.skip?.()
   }else hooks.completeFia?.(task)
  }
