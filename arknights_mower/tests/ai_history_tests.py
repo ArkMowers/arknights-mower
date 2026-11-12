@@ -50,7 +50,7 @@ def test_streamed_reply_survives_new_socket_and_store_without_replaying(
     server, agent, _, store = history
     contexts = []
 
-    def ask(text, context, api_key):
+    def ask(text, context, api_key, **kwargs):
         contexts.append(context)
         yield "完整"
         yield "回复<!--MOWER_MISS_STATE:{}-->"

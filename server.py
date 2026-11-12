@@ -4912,10 +4912,20 @@ def active_chat_history():
     return HistoryStore(list_profiles()["active_id"])
 
 
+@app.route(
+    "/ai/conversations/<identifier>/turns/<int:turn_id>/control",
+    methods=["POST"],
+    defaults={"operation": "control"},
+)
+@app.route(
+    "/ai/conversations/<identifier>/summary",
+    methods=["POST"],
+    defaults={"operation": "summary"},
+)
 @app.route("/ai/conversations", methods=["GET", "DELETE"])
 @app.route("/ai/conversations/<identifier>", methods=["GET", "DELETE"])
 @require_token
-def ai_conversations(identifier=None):
+def ai_conversations(identifier=None, turn_id=None, operation=None):
     from arknights_mower.utils.ai_history import HistoryError
     from arknights_mower.utils.config_backup import LocalConfigError
     from arknights_mower.utils.config_profiles import ProfileConflict
@@ -4927,6 +4937,33 @@ def ai_conversations(identifier=None):
             request.headers.get("X-Mower-Config-Generation")
         ):
             history = active_chat_history()
+            if request.method == "POST":
+                if request.content_length is None or request.content_length > 4096:
+                    return jsonify(error="控制请求过长或长度无效"), 400
+                body = request.get_json(silent=True)
+                if not isinstance(body, dict):
+                    return jsonify(error="控制请求格式无效"), 400
+                if operation == "summary":
+                    if set(body) != {"turn_id"} or (
+                        body["turn_id"] is not None and type(body["turn_id"]) is not int
+                    ):
+                        return jsonify(error="摘要选择无效"), 400
+                    history.adopt_summary(identifier, body["turn_id"])
+                    return jsonify(ok=True)
+                if set(body) - {"action", "approval_id", "digest"}:
+                    return jsonify(error="确认不能修改操作参数"), 400
+                from arknights_mower.agent.execution import control
+
+                return jsonify(
+                    control(
+                        history,
+                        identifier,
+                        turn_id,
+                        body.get("action"),
+                        body.get("approval_id"),
+                        body.get("digest"),
+                    )
+                )
             if request.method == "DELETE":
                 history.delete(identifier)
                 return jsonify(ok=True)
@@ -4989,20 +5026,58 @@ def ws_chat(ws):
 
                     if "conversation_id" in req:
                         history = active_chat_history()
-                        with history.turn(req["conversation_id"], user_input) as turn:
-                            ws.send(
-                                json.dumps({"conversation_id": turn.conversation_id})
+                        from arknights_mower.agent.execution import (
+                            Execution,
+                            ExecutionStopped,
+                        )
+
+                        mode = req.get("mode", "chat")
+                        if mode == "summary":
+                            user_input = "请整理当前会话摘要草稿，保留目标、已确认事实、未完成事项和操作结果，供我核对。"
+                        with history.turn(
+                            req["conversation_id"],
+                            user_input,
+                            request_id=req.get("request_id"),
+                            retry_of=req.get("retry_of"),
+                            mode=mode,
+                        ) as turn:
+                            execution = Execution(
+                                history, turn, lambda frame: ws.send(json.dumps(frame))
                             )
-                            for reply in ask_llm(
-                                user_input,
-                                context=turn.context,
-                                api_key=config.conf.resolved_ai_key,
-                            ):
-                                turn.append(reply)
-                                ws.send(json.dumps({"reply": reply}))
-                            if not turn.reply.strip():
-                                raise ValueError("没有收到回复，请检查模型配置后重试")
-                            turn.complete = True
+                            with execution.registered():
+                                ws.send(
+                                    json.dumps(
+                                        {
+                                            "conversation_id": turn.conversation_id,
+                                            "turn_id": turn.turn_id,
+                                            "context": turn.context_info,
+                                            "mode": turn.mode,
+                                        }
+                                    )
+                                )
+                                try:
+                                    for reply in ask_llm(
+                                        turn.user_input,
+                                        context=turn.context,
+                                        api_key=config.conf.resolved_ai_key,
+                                        execution=execution,
+                                    ):
+                                        execution.check()
+                                        turn.append(reply)
+                                        ws.send(json.dumps({"reply": reply}))
+                                    execution.check()
+                                    if not turn.reply.strip():
+                                        raise ValueError(
+                                            "没有收到回复，请检查模型配置后重试"
+                                        )
+                                    turn.complete = True
+                                except ExecutionStopped:
+                                    turn.status = "cancelled"
+                                    turn.reply = turn.reply or execution.draft
+                                    raise
+                                except Exception:
+                                    turn.reply = turn.reply or execution.draft
+                                    raise
                     else:
                         # Older clients retain socket-local context.
                         context = context[-19:]

@@ -42,6 +42,85 @@ const historyBusy = ref(false)
 const historyReady = ref(false)
 const historyError = ref('')
 const remoteBusy = ref(false)
+const contextInfo = ref(null)
+const summarySource = ref(0)
+const controlBusy = ref(false)
+const stopping = ref(false)
+let requestOptions = {}
+const pretty = (value) => JSON.stringify(value, null, 2)
+const toolStatus = {
+  awaiting_approval: '待确认',
+  running: '执行中',
+  succeeded: '查询完成',
+  verified: '已核对写入',
+  accepted: '邮件服务已接受',
+  failed: '失败或检查未通过',
+  unknown: '结果待核实',
+  not_executed: '未执行',
+  not_repeated: '未重复执行'
+}
+function eventStatus(event, msg) {
+  if (event.status === 'awaiting_approval' && !(loading.value && activeReply === msg))
+    return '未执行（确认已失效）'
+  if (event.status === 'running' && !(loading.value && activeReply === msg)) return '结果待核实'
+  return toolStatus[event.status] || event.status
+}
+function replyProgress(msg) {
+  if (stopping.value && activeReply === msg) return '正在停止后续调用'
+  const event = msg.events?.at(-1)
+  if (event?.status === 'awaiting_approval') return '等待你核对并确认'
+  if (event?.status === 'running') return event.label || '正在执行工具'
+  return '正在生成回复'
+}
+async function sendControl(action, event = null) {
+  if (!loading.value || !activeReply?.turn_id || controlBusy.value) return
+  controlBusy.value = true
+  const target = activeReply
+  try {
+    await axios.post(`${historyBase}/${conversationId.value}/turns/${target.turn_id}/control`, {
+      action,
+      ...(event ? { approval_id: event.approval_id, digest: event.digest } : {})
+    })
+    if (action === 'stop' && activeReply === target) stopping.value = true
+  } catch (error) {
+    notice.error(error.response?.data?.error || '操作未提交，请重试或刷新历史核实。')
+  } finally {
+    controlBusy.value = false
+  }
+}
+function requestSummary() {
+  if (!conversationId.value || loading.value || historyBusy.value || remoteBusy.value) return
+  sendTurn('请整理当前会话摘要草稿，供我核对。', { mode: 'summary' })
+}
+async function adoptSummary(msg = null) {
+  if (loading.value || historyBusy.value) return
+  historyBusy.value = true
+  try {
+    await axios.post(`${historyBase}/${conversationId.value}/summary`, {
+      turn_id: msg?.turn_id || null
+    })
+    summarySource.value = msg?.turn_id || 0
+    notice.success(msg ? '已采用核对后的摘要，后续提问仍会重新查询当前状态。' : '已停用摘要')
+  } catch (error) {
+    notice.error(error.response?.data?.error || '摘要未保存，请重试。')
+  } finally {
+    historyBusy.value = false
+  }
+}
+function retryTurn(msg, index) {
+  if (
+    loading.value ||
+    historyBusy.value ||
+    remoteBusy.value ||
+    index !== chatHistory.value.length - 1 ||
+    !msg.turn_id
+  )
+    return
+  sendTurn(chatHistory.value[index - 1].content, {
+    retry_of: msg.turn_id,
+    mode: msg.mode || 'chat'
+  })
+}
 const historyBase = `${import.meta.env.VITE_HTTP_URL || ''}/ai/conversations`
 let historyRequest = 0
 let disposed = false
@@ -53,10 +132,16 @@ function currentGeneration() {
 function restoreConversation(data) {
   conversationId.value = data.id
   remoteBusy.value = data.busy
+  summarySource.value = data.summary_source || 0
+  contextInfo.value = null
   chatHistory.value = data.turns.flatMap((turn) => [
     { role: 'user', content: turn.user },
     {
       role: 'bot',
+      turn_id: turn.id,
+      mode: turn.mode || 'chat',
+      events: turn.events || [],
+      draft: '',
       content:
         turn.assistant +
         (turn.status !== 'complete' ? '\n\n本轮未完成，部分操作可能已执行，请核实后再继续。' : ''),
@@ -180,7 +265,13 @@ const canSend = computed(
     !remoteBusy.value
 )
 const statusLabel = computed(() =>
-  connecting.value ? '正在连接' : loading.value ? '正在回复' : '日志排查与使用建议'
+  stopping.value
+    ? '正在停止后续调用'
+    : connecting.value
+      ? '正在连接'
+      : loading.value
+        ? '正在处理'
+        : '日志排查与使用建议'
 )
 const suggestions = [
   { title: '排查连接', description: '设备连接失败，应该先检查什么？', icon: DocumentTextOutline },
@@ -200,6 +291,7 @@ function messageFrame(text) {
   return JSON.stringify({
     message: text,
     conversation_id: conversationId.value,
+    ...requestOptions,
     generation: axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
   })
 }
@@ -223,11 +315,14 @@ function closeConnection() {
 }
 function failReply(text) {
   if (activeReply) {
+    if (!activeReply.content) activeReply.content = activeReply.draft || ''
+    activeReply.draft = ''
     activeReply.content += `${activeReply.content ? '\n\n' : ''}${text}`
     activeReply.error = true
   }
   activeReply = null
   loading.value = false
+  stopping.value = false
   closeConnection()
 }
 function connectWS(text) {
@@ -273,7 +368,28 @@ function connectWS(text) {
       showAssistantUnavailable()
       return
     }
-    if (typeof data.reply === 'string') activeReply.content += data.reply
+    if (data.turn_id) {
+      activeReply.turn_id = data.turn_id
+      activeReply.mode = data.mode || 'chat'
+      contextInfo.value = data.context || null
+    }
+    if (data.event) {
+      const event = data.event
+      if (event.turn_id !== activeReply.turn_id) return
+      if (event.type === 'answer_delta') activeReply.draft += event.text || ''
+      else if (event.type === 'answer_reset' || event.type === 'model') activeReply.draft = ''
+      else if (event.type === 'tool' || event.type === 'approval') {
+        activeReply.events = [
+          ...activeReply.events.filter((item) => item.id !== event.id),
+          event
+        ].slice(-32)
+      }
+      return
+    }
+    if (typeof data.reply === 'string') {
+      activeReply.draft = ''
+      activeReply.content += data.reply
+    }
     if (data.error) {
       failReply(`回复失败：${data.error}`)
       return
@@ -285,6 +401,7 @@ function connectWS(text) {
       }
       activeReply = null
       loading.value = false
+      stopping.value = false
       let retained = chatHistory.value.reduce((size, item) => size + item.content.length, 0)
       while (
         chatHistory.value.length > 2 &&
@@ -306,15 +423,41 @@ function connectWS(text) {
 }
 function sendMessage() {
   if (!canSend.value) return
-  if (!assistantAllowed()) return
   const text = userInput.value.trim()
   if (text.length > 4000) return
+  sendTurn(text)
+}
+function sendTurn(text, options = {}) {
+  if (
+    loading.value ||
+    historyBusy.value ||
+    !historyReady.value ||
+    remoteBusy.value ||
+    !assistantAllowed()
+  )
+    return
+  requestOptions = {
+    request_id: Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
+      value.toString(16).padStart(2, '0')
+    ).join(''),
+    ...options
+  }
   chatHistory.value.push({ role: 'user', content: text })
-  chatHistory.value.push({ role: 'bot', content: '', followUpState: null, error: false })
+  chatHistory.value.push({
+    role: 'bot',
+    content: '',
+    draft: '',
+    events: [],
+    followUpState: null,
+    error: false,
+    mode: options.mode || 'chat'
+  })
   activeReply = chatHistory.value.at(-1)
   loading.value = true
+  stopping.value = false
   atBottom.value = true
-  userInput.value = ''
+  historyOpen.value = false
+  if (!options.mode && !options.retry_of) userInput.value = ''
   if (!ws || ws.readyState !== WebSocket.OPEN) connectWS(text)
   else ws.send(messageFrame(text))
   nextTick(scrollToLatest)
@@ -332,6 +475,8 @@ function newConversation() {
   if (loading.value) return
   closeConnection()
   conversationId.value = null
+  contextInfo.value = null
+  summarySource.value = 0
   remoteBusy.value = false
   historyOpen.value = false
   chatHistory.value = []
@@ -573,21 +718,62 @@ onBeforeUnmount(() => {
               <span
                 v-if="msg.role === 'bot' && loading && idx === chatHistory.length - 1"
                 class="message-state"
-                >正在回复</span
+                >{{ replyProgress(msg) }}</span
               >
+            </div>
+            <div v-if="msg.role === 'bot' && msg.events?.length" class="tool-events">
+              <details
+                v-for="event in msg.events"
+                :key="event.id"
+                :open="event.status === 'awaiting_approval' && loading && msg === activeReply"
+              >
+                <summary>{{ event.label || event.name }} · {{ eventStatus(event, msg) }}</summary>
+                <p class="evidence-label">
+                  证据 {{ event.id }}
+                  <span v-if="event.observed_at">· {{ event.observed_at }}</span>
+                </p>
+                <p v-if="event.source">{{ event.source }}</p>
+                <pre v-if="event.preview">{{ pretty(event.preview) }}</pre>
+                <pre v-else-if="event.arguments">{{ pretty(event.arguments) }}</pre>
+                <pre v-if="event.result">{{ event.result }}</pre>
+                <p v-if="event.truncated">仅展示部分结果，不能据此判断完整覆盖。</p>
+                <template
+                  v-if="
+                    event.type === 'approval' &&
+                    event.status === 'awaiting_approval' &&
+                    loading &&
+                    msg === activeReply
+                  "
+                >
+                  <p>请核对具体内容。确认在 {{ event.expires_in }} 秒内有效；停止或重启后失效。</p>
+                  <n-button
+                    size="small"
+                    type="primary"
+                    :disabled="controlBusy || stopping"
+                    @click="sendControl('approve', event)"
+                    >确认执行</n-button
+                  >
+                  <n-button
+                    size="small"
+                    :disabled="controlBusy || stopping"
+                    @click="sendControl('reject', event)"
+                    >不执行</n-button
+                  >
+                </template>
+              </details>
             </div>
             <div v-if="msg.role === 'user'" class="message-content user-content">
               {{ msg.content }}
             </div>
             <div v-else class="message-content assistant-content">
               <div
-                v-if="msg.content"
+                v-if="msg.content || msg.draft"
                 class="message-markdown"
-                v-html="renderMessage(msg.content)"
+                v-html="renderMessage(msg.content || msg.draft)"
               ></div>
               <div v-else class="thinking-indicator" role="status">
                 <span aria-hidden="true">···</span
-                >{{ connecting ? '正在建立连接' : '正在思考你的问题' }}
+                >{{ connecting ? '正在建立连接' : replyProgress(msg) }}
               </div>
             </div>
             <div
@@ -599,6 +785,26 @@ onBeforeUnmount(() => {
               <n-button quaternary class="reply-action" @click="copyMessage(msg)"
                 ><template #icon><n-icon :component="CopyOutline" /></template>复制</n-button
               >
+              <n-button
+                v-if="msg.error && msg.turn_id && idx === chatHistory.length - 1"
+                quaternary
+                class="reply-action"
+                :disabled="loading || historyBusy || remoteBusy"
+                @click="retryTurn(msg, idx)"
+                >重试未完成请求</n-button
+              >
+              <n-popconfirm
+                v-if="!msg.error && msg.mode === 'summary'"
+                :disabled="loading || historyBusy"
+                @positive-click="adoptSummary(msg)"
+              >
+                <template #trigger
+                  ><n-button quaternary class="reply-action" :disabled="loading || historyBusy"
+                    >核对后采用摘要</n-button
+                  ></template
+                >
+                将这份摘要作为后续对话的历史背景？请先核对其中的事实与未完成事项。
+              </n-popconfirm>
               <template v-if="!msg.error">
                 <n-button
                   v-if="!msg.followUpState"
@@ -636,6 +842,27 @@ onBeforeUnmount(() => {
     </div>
 
     <footer v-if="!historyOpen" class="chatbot-input-area">
+      <div class="context-toolbar">
+        <span v-if="contextInfo?.limited"
+          >本轮仅使用 {{ contextInfo.included_turns }} 轮近期记录，部分历史未传给模型。</span
+        >
+        <span v-else>近期上下文最多 10 轮、24,000 字符。</span>
+        <n-button
+          text
+          size="tiny"
+          :disabled="!conversationId || loading || historyBusy || remoteBusy"
+          @click="requestSummary"
+          >整理摘要</n-button
+        >
+        <n-button
+          v-if="summarySource"
+          text
+          size="tiny"
+          :disabled="loading || historyBusy"
+          @click="adoptSummary()"
+          >停用摘要</n-button
+        >
+      </div>
       <div class="composer">
         <n-input
           ref="inputRef"
@@ -653,7 +880,19 @@ onBeforeUnmount(() => {
           <span v-if="userInput.length > 3500" class="input-count"
             >{{ userInput.length }} / 4000</span
           >
-          <n-button type="primary" class="send-button" :disabled="!canSend" @click="sendMessage"
+          <n-button
+            v-if="loading"
+            class="send-button"
+            :disabled="!activeReply?.turn_id || controlBusy || stopping"
+            @click="sendControl('stop')"
+            >{{ stopping ? '停止中' : '停止' }}</n-button
+          >
+          <n-button
+            v-else
+            type="primary"
+            class="send-button"
+            :disabled="!canSend"
+            @click="sendMessage"
             ><template #icon><n-icon :component="ArrowUpOutline" /></template
             >{{ loading ? '回复中' : '发送' }}</n-button
           >
@@ -665,6 +904,47 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.tool-events {
+  margin: 0 0 12px;
+  font-size: 12px;
+  color: var(--mower-text-muted);
+}
+.tool-events details {
+  border: 1px solid var(--mower-divider);
+  border-radius: 8px;
+  padding: 8px;
+  margin-bottom: 6px;
+}
+.tool-events summary {
+  cursor: pointer;
+  color: var(--mower-text);
+}
+.tool-events pre {
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.tool-events p {
+  margin: 6px 0;
+}
+.tool-events .n-button + .n-button {
+  margin-left: 8px;
+}
+.context-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  margin-bottom: 8px;
+  color: var(--mower-text-muted);
+  font-size: 11px;
+}
+.context-toolbar > span {
+  flex: 1;
+}
+
 .history-notice {
   padding: 8px 14px;
   font-size: 12px;

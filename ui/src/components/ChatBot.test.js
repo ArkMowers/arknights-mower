@@ -59,7 +59,8 @@ beforeEach(async () => {
   state.axios = {
     defaults: { headers: { common: { 'X-Mower-Config-Generation': 'page-generation' } } },
     get: vi.fn().mockResolvedValue({ data: { conversations: [] } }),
-    delete: vi.fn().mockResolvedValue({ data: { ok: true } })
+    delete: vi.fn().mockResolvedValue({ data: { ok: true } }),
+    post: vi.fn().mockResolvedValue({ data: { ok: true } })
   }
   state.push = vi.fn()
   FakeSocket.instances = []
@@ -103,6 +104,7 @@ describe('AI chat interactions', () => {
     expect(JSON.parse(socket.send.mock.calls[1][0])).toEqual({
       message: 'hello',
       conversation_id: null,
+      request_id: expect.any(String),
       generation: 'page-generation'
     })
   })
@@ -307,7 +309,12 @@ describe('AI chat interactions', () => {
     socket.open()
     expect(socket.send.mock.calls.map(([data]) => JSON.parse(data))).toEqual([
       { token: 'test-session' },
-      { message: '检查日志', conversation_id: null, generation: 'page-generation' }
+      {
+        message: '检查日志',
+        conversation_id: null,
+        request_id: expect.any(String),
+        generation: 'page-generation'
+      }
     ])
     socket.receive({ reply: '正在查询\n' })
     expect(component.loading.value).toBe(true)
@@ -324,6 +331,7 @@ describe('AI chat interactions', () => {
     expect(JSON.parse(socket.send.mock.calls.at(-1)[0])).toEqual({
       message: '下一条草稿',
       conversation_id: null,
+      request_id: expect.any(String),
       generation: 'page-generation'
     })
   })
@@ -588,4 +596,144 @@ it('bounds live messages independently of stored history', () => {
   socket.receive({ reply: 'newest reply', done: true })
   expect(component.chatHistory.value).toHaveLength(200)
   expect(component.chatHistory.value.at(-1).content).toBe('newest reply')
+})
+
+describe('retained execution controls', () => {
+  function begin(mode = 'chat') {
+    const socket = send()
+    socket.open()
+    socket.receive({
+      conversation_id: 'conversation',
+      turn_id: 7,
+      mode,
+      context: { limited: true, included_turns: 2 }
+    })
+    return socket
+  }
+  function approval(socket) {
+    const event = {
+      type: 'approval',
+      id: 'T7-1',
+      turn_id: 7,
+      name: 'set_route',
+      status: 'awaiting_approval',
+      approval_id: 'nonce',
+      digest: 'digest',
+      preview: { before: [], after: [{ name: 'test' }] }
+    }
+    socket.receive({ event })
+    return event
+  }
+  it('keeps tool evidence separate from speculative drafts and final answers', () => {
+    const socket = begin()
+    socket.receive({ event: { type: 'answer_delta', turn_id: 7, text: '正在检查' } })
+    const reply = component.chatHistory.value.at(-1)
+    expect(reply.content).toBe('')
+    expect(reply.draft).toBe('正在检查')
+    socket.receive({ event: { type: 'answer_reset', turn_id: 7 } })
+    const event = approval(socket)
+    socket.receive({ event: { ...event, type: 'tool', status: 'verified', result: '保存成功' } })
+    socket.receive({ reply: '路线已保存 [证据 T7-1]', done: true })
+    expect(reply.draft).toBe('')
+    expect(reply.content).toBe('路线已保存 [证据 T7-1]')
+    expect(reply.events).toHaveLength(1)
+    expect(reply.events[0].status).toBe('verified')
+    expect(component.contextInfo.value).toEqual({ limited: true, included_turns: 2 })
+  })
+  it.each(['approve', 'reject'])(
+    'sends only server-held confirmation identity for %s',
+    async (action) => {
+      const socket = begin()
+      const event = approval(socket)
+      await component.sendControl(action, event)
+      expect(state.axios.post).toHaveBeenCalledWith(
+        '/ai/conversations/conversation/turns/7/control',
+        { action, approval_id: 'nonce', digest: 'digest' }
+      )
+      expect(component.loading.value).toBe(true)
+      expect(socket.close).not.toHaveBeenCalled()
+    }
+  )
+  it('waits for backend completion after stop and does not claim to undo a started write', async () => {
+    const socket = begin()
+    await component.sendControl('stop')
+    expect(component.stopping.value).toBe(true)
+    expect(component.loading.value).toBe(true)
+    expect(state.axios.post).toHaveBeenCalledWith(
+      '/ai/conversations/conversation/turns/7/control',
+      { action: 'stop' }
+    )
+    socket.receive({ event: { type: 'tool', turn_id: 7, id: 'T7-1', status: 'accepted' } })
+    socket.receive({ error: '已停止后续调用' })
+    expect(component.loading.value).toBe(false)
+    expect(component.chatHistory.value.at(-1).events[0].status).toBe('accepted')
+  })
+  it('keeps controls available when their HTTP request fails', async () => {
+    const socket = begin()
+    state.axios.post.mockRejectedValueOnce(new Error('offline'))
+    await component.sendControl('stop')
+    expect(component.stopping.value).toBe(false)
+    expect(component.controlBusy.value).toBe(false)
+    expect(component.loading.value).toBe(true)
+    expect(state.notice.error).toHaveBeenCalledOnce()
+    expect(socket.close).not.toHaveBeenCalled()
+  })
+  it('marks restored approvals expired and refuses to send a control outside a live turn', async () => {
+    component.restoreConversation({
+      id: 'conversation',
+      turns: [
+        {
+          id: 7,
+          user: '请求',
+          assistant: '',
+          status: 'interrupted',
+          events: [{ status: 'awaiting_approval' }, { status: 'running' }]
+        }
+      ]
+    })
+    const reply = component.chatHistory.value.at(-1)
+    expect(component.eventStatus(reply.events[0], reply)).toBe('未执行（确认已失效）')
+    expect(component.eventStatus(reply.events[1], reply)).toBe('结果待核实')
+    await component.sendControl('approve', reply.events[0])
+    expect(state.axios.post).not.toHaveBeenCalled()
+  })
+  it('retries the last interrupted turn with a fresh request ID and retained turn identity', () => {
+    const socket = begin()
+    const first = JSON.parse(socket.send.mock.calls[1][0])
+    socket.receive({ error: '断线' })
+    component.retryTurn(component.chatHistory.value.at(-1), 1)
+    const next = FakeSocket.instances.at(-1)
+    next.open()
+    const retry = JSON.parse(next.send.mock.calls[1][0])
+    expect(retry.retry_of).toBe(7)
+    expect(retry.request_id).not.toBe(first.request_id)
+    expect(retry.conversation_id).toBe('conversation')
+    expect(retry.message).toBe(first.message)
+  })
+  it('does not adopt generated summaries until explicitly selected and supports clearing them', async () => {
+    const socket = begin('summary')
+    socket.receive({ reply: '摘要草稿', done: true })
+    expect(state.axios.post).not.toHaveBeenCalled()
+    expect(component.summarySource.value).toBe(0)
+    await component.adoptSummary(component.chatHistory.value.at(-1))
+    expect(state.axios.post).toHaveBeenLastCalledWith('/ai/conversations/conversation/summary', {
+      turn_id: 7
+    })
+    expect(component.summarySource.value).toBe(7)
+    await component.adoptSummary()
+    expect(state.axios.post).toHaveBeenLastCalledWith('/ai/conversations/conversation/summary', {
+      turn_id: null
+    })
+    expect(component.summarySource.value).toBe(0)
+  })
+  it('requests summary generation without sending the unsent draft', () => {
+    const socket = begin()
+    socket.receive({ reply: '回答', done: true })
+    component.userInput.value = '保留草稿'
+    component.requestSummary()
+    const frame = JSON.parse(socket.send.mock.calls.at(-1)[0])
+    expect(frame.mode).toBe('summary')
+    expect(frame.message).not.toBe('保留草稿')
+    expect(component.userInput.value).toBe('保留草稿')
+  })
 })

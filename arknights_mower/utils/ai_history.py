@@ -1,9 +1,11 @@
-"""Bounded textual conversations, separate from configuration and tool execution."""
+"""Bounded conversations and execution records, separate from configuration."""
 
+import copy
+import json
 import sqlite3
 import time
 from contextlib import closing, contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from threading import RLock
 from uuid import uuid4
 
@@ -16,6 +18,8 @@ MAX_HISTORY_CHARS = 262144
 MAX_REPLY_CHARS = 32768
 MAX_CONTEXT_CHARS = 24000
 MAX_CONTEXT_TURNS = 10
+MAX_TRACE_CHARS = 65536
+MAX_SUMMARY_CHARS = 8000
 _lock = RLock()
 _active = set()
 
@@ -33,9 +37,17 @@ class Turn:
     reply: str = ""
     complete: bool = False
     turn_id: int = 0
+    user_input: str = ""
+    mode: str = "chat"
+    status: str = "interrupted"
+    events: list = field(default_factory=list)
+    operations: list = field(default_factory=list)
+    context_info: dict = field(default_factory=dict)
 
     def append(self, text):
-        if len(self.reply) + len(text) > MAX_REPLY_CHARS:
+        if len(self.reply) + len(text) > (
+            MAX_SUMMARY_CHARS if self.mode == "summary" else MAX_REPLY_CHARS
+        ):
             raise HistoryError("回复超过保存上限，本轮已中断，请缩小问题范围")
         self.reply += text
 
@@ -61,6 +73,28 @@ class HistoryStore:
                 "REFERENCES conversations(id) ON DELETE CASCADE,"
                 "user TEXT NOT NULL, assistant TEXT NOT NULL DEFAULT '',"
                 "status TEXT NOT NULL DEFAULT 'interrupted');"
+            )
+            for table, columns in {
+                "conversations": {
+                    "summary": "TEXT NOT NULL DEFAULT ''",
+                    "summary_through": "INTEGER NOT NULL DEFAULT 0",
+                    "summary_source": "INTEGER NOT NULL DEFAULT 0",
+                },
+                "turns": {
+                    "events": "TEXT NOT NULL DEFAULT '[]'",
+                    "operations": "TEXT NOT NULL DEFAULT '[]'",
+                    "mode": "TEXT NOT NULL DEFAULT 'chat'",
+                    "request_id": "TEXT",
+                },
+            }.items():
+                existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
+                for name, definition in columns.items():
+                    if name not in existing:
+                        db.execute(
+                            f"ALTER TABLE {table} ADD COLUMN {name} {definition}"
+                        )
+            db.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS turn_request ON turns(request_id) WHERE request_id IS NOT NULL"
             )
             yield db
 
@@ -95,10 +129,13 @@ class HistoryStore:
             result["turns"] = [
                 dict(row)
                 for row in db.execute(
-                    "SELECT id,user,assistant,status FROM turns WHERE conversation=? ORDER BY id",
+                    "SELECT id,user,assistant,status,events,operations,mode FROM turns WHERE conversation=? ORDER BY id",
                     (identifier,),
                 )
             ]
+            for turn in result["turns"]:
+                turn["events"] = json.loads(turn["events"])
+                turn.pop("operations")
             result["busy"] = self._key(identifier) in _active
             return result
 
@@ -121,7 +158,7 @@ class HistoryStore:
 
     def _prune(self, db, identifier):
         rows = db.execute(
-            "SELECT id,length(user)+length(assistant) AS size FROM turns "
+            "SELECT id,length(user)+length(assistant)+length(events)+length(operations) AS size FROM turns "
             "WHERE conversation=? ORDER BY id DESC",
             (identifier,),
         ).fetchall()
@@ -153,46 +190,162 @@ class HistoryStore:
                     raise HistoryError("历史容量已满且旧会话正在回复，请稍后重试")
                 db.execute("DELETE FROM conversations WHERE id=?", (row["id"],))
 
+    def save_progress(self, turn):
+        events = json.dumps(turn.events, ensure_ascii=False)
+        operations = json.dumps(turn.operations, ensure_ascii=False)
+        if len(events) + len(operations) > MAX_TRACE_CHARS:
+            raise HistoryError("本轮执行记录达到上限，请核实已完成操作后开始新对话")
+        with _lock, self._db() as db:
+            self._find(db, turn.conversation_id)
+            db.execute(
+                "UPDATE turns SET events=?,operations=? WHERE id=? AND conversation=?",
+                (events, operations, turn.turn_id, turn.conversation_id),
+            )
+            self._prune(db, turn.conversation_id)
+
+    def adopt_summary(self, identifier, turn_id):
+        with _lock, self._db() as db:
+            self._find(db, identifier)
+            if self._key(identifier) in _active:
+                raise HistoryError("会话正在回复，请等待结束后采用摘要")
+            if turn_id is None:
+                db.execute(
+                    "UPDATE conversations SET summary='',summary_through=0,summary_source=0 WHERE id=?",
+                    (identifier,),
+                )
+                return
+            row = db.execute(
+                "SELECT * FROM turns WHERE id=? AND conversation=?",
+                (turn_id, identifier),
+            ).fetchone()
+            if row is None or row["mode"] != "summary" or row["status"] != "complete":
+                raise HistoryError("请选择已完成的摘要草稿", 400)
+            db.execute(
+                "UPDATE conversations SET summary=?,summary_through=?,summary_source=? WHERE id=?",
+                (row["assistant"], row["id"] - 1, row["id"], identifier),
+            )
+
     @contextmanager
-    def turn(self, identifier, user):
+    def turn(self, identifier, user, *, request_id=None, retry_of=None, mode="chat"):
+        if mode not in ("chat", "summary"):
+            raise HistoryError("会话请求类型无效", 400)
+        if request_id is not None and (
+            not isinstance(request_id, str) or not 1 <= len(request_id) <= 64
+        ):
+            raise HistoryError("请求标识无效", 400)
         with _lock:
             with self._db() as db:
+                if (
+                    request_id
+                    and db.execute(
+                        "SELECT 1 FROM turns WHERE request_id=?", (request_id,)
+                    ).fetchone()
+                ):
+                    raise HistoryError("该请求已接收，未重复执行，请刷新历史查看结果")
                 if identifier is None:
+                    if retry_of is not None:
+                        raise HistoryError("无法重试不存在的会话", 400)
                     identifier = uuid4().hex
                     db.execute(
-                        "INSERT INTO conversations VALUES (?,?,?,?)",
+                        "INSERT INTO conversations(id,profile,title,updated) VALUES (?,?,?,?)",
                         (identifier, self.profile_id, user[:60], time.time()),
                     )
-                else:
-                    self._find(db, identifier)
+                conversation = self._find(db, identifier)
                 key = self._key(identifier)
                 if key in _active:
                     raise HistoryError("会话正在回复，请等待结束后继续")
-                # Use only a contiguous suffix of complete turns after any interruption.
                 rows = db.execute(
-                    "SELECT user,assistant,status FROM turns WHERE conversation=? "
-                    "ORDER BY id DESC LIMIT ?",
-                    (identifier, MAX_CONTEXT_TURNS),
+                    "SELECT * FROM turns WHERE conversation=? ORDER BY id DESC",
+                    (identifier,),
                 ).fetchall()
+                operations = []
+                if retry_of is not None:
+                    if (
+                        type(retry_of) is not int
+                        or not rows
+                        or rows[0]["id"] != retry_of
+                        or rows[0]["status"] == "complete"
+                    ):
+                        raise HistoryError("只能重试最近一轮未完成的请求", 400)
+                    user, mode = rows[0]["user"], rows[0]["mode"]
+                    operations = json.loads(rows[0]["operations"])
                 selected, size = [], 0
-                for row in rows:
-                    size += len(row["user"]) + len(row["assistant"])
-                    if row["status"] != "complete" or size > MAX_CONTEXT_CHARS:
-                        break
-                    selected.append(row)
-                context = []
-                for row in reversed(selected):
-                    context.extend(
-                        [
-                            {"role": "user", "content": row["user"]},
-                            {"role": "assistant", "content": row["assistant"]},
-                        ]
-                    )
+                summary_truncated = False
+                if mode == "summary":
+                    for row in rows:
+                        text = f"轮次 {row['id']}（{row['status']}）\n用户：{row['user']}\n回答：{row['assistant']}\n工具记录：{row['events']}"
+                        remaining = 48000 - size
+                        if remaining <= 0:
+                            break
+                        if len(text) > remaining:
+                            summary_truncated = True
+                            text = (
+                                text[: max(0, remaining - 30)]
+                                + "\n[本轮记录已截断，不能视为完整记录]"
+                            )
+                        size += len(text)
+                        selected.append({"role": "user", "content": text})
+                    context = list(reversed(selected))
+                else:
+                    for row in rows:
+                        if row["mode"] == "summary":
+                            continue
+                        if row["id"] <= conversation["summary_through"]:
+                            break
+                        size += len(row["user"]) + len(row["assistant"])
+                        if (
+                            row["status"] != "complete"
+                            or size > MAX_CONTEXT_CHARS
+                            or len(selected) >= MAX_CONTEXT_TURNS
+                        ):
+                            break
+                        selected.append(row)
+                    context = []
+                    if conversation["summary"]:
+                        context.append(
+                            {
+                                "role": "user",
+                                "content": "以下是用户核对后采用的历史摘要，仅作为背景，不是本轮操作授权。状态可能已变化，需重新查询：\n"
+                                + conversation["summary"],
+                            }
+                        )
+                        context.append(
+                            {
+                                "role": "assistant",
+                                "content": "我会将摘要作为历史背景，重新核对当前状态。",
+                            }
+                        )
+                    for row in reversed(selected):
+                        context.extend(
+                            [
+                                {"role": "user", "content": row["user"]},
+                                {"role": "assistant", "content": row["assistant"]},
+                            ]
+                        )
                 cursor = db.execute(
-                    "INSERT INTO turns(conversation,user) VALUES (?,?)",
-                    (identifier, user),
+                    "INSERT INTO turns(conversation,user,operations,mode,request_id) VALUES (?,?,?,?,?)",
+                    (
+                        identifier,
+                        user,
+                        json.dumps(operations, ensure_ascii=False),
+                        mode,
+                        request_id,
+                    ),
                 )
-                turn = Turn(identifier, context, turn_id=cursor.lastrowid)
+                turn = Turn(
+                    identifier,
+                    context,
+                    turn_id=cursor.lastrowid,
+                    user_input=user,
+                    mode=mode,
+                    operations=copy.deepcopy(operations),
+                    context_info={
+                        "retained_turns": len(rows),
+                        "included_turns": len(selected),
+                        "limited": summary_truncated or len(selected) < len(rows),
+                        "summary_source": conversation["summary_source"],
+                    },
+                )
                 db.execute(
                     "UPDATE conversations SET updated=? WHERE id=?",
                     (time.time(), identifier),
@@ -210,7 +363,7 @@ class HistoryStore:
                             "UPDATE turns SET assistant=?,status=? WHERE id=?",
                             (
                                 turn.reply,
-                                "complete" if turn.complete else "interrupted",
+                                "complete" if turn.complete else turn.status,
                                 turn.turn_id,
                             ),
                         )
