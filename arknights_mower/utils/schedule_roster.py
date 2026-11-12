@@ -54,20 +54,6 @@ def _operator_ids_by_name():
     return name_to_ids
 
 
-def _refresh_roster():
-    """Refresh ownership and skill data when a Skland account is configured."""
-    from arknights_mower.utils import config
-
-    if not getattr(config.conf, "skland_info", None):
-        return False
-    try:
-        from arknights_mower.solvers.cultivate_depot import cultivate
-
-        return cultivate().start()
-    except Exception:
-        return False
-
-
 def _training_requirement_error(char):
     level = char.get("mainSkillLevel")
     if type(level) is not int or not 1 <= level <= 7:
@@ -123,7 +109,7 @@ def _training_slot_errors(global_plan, characters, name_to_ids):
             candidates = [
                 owned[cid] for cid in sorted(name_to_ids[name]) if cid in owned
             ]
-            # Missing operators remain subject to the ownership refresh policy.
+            # Missing operators are reported by the ownership check.
             reasons = [_training_requirement_error(char) for char in candidates]
             if reasons and all(reasons):
                 errors.append(
@@ -238,8 +224,8 @@ def _progression_warnings(global_plan, characters, name_to_ids, scheduled):
     return warnings
 
 
-def validate_owned_operators(global_plan, *, refresh=True) -> str | None:
-    """Return advisory roster checks, optionally refreshing stale data once."""
+def validate_owned_operators(global_plan) -> str | None:
+    """Return advisory roster checks from the local cache without synchronization."""
     path = get_path("@app/tmp/cultivate.json")
     if not path.exists():
         return None
@@ -287,21 +273,9 @@ def validate_owned_operators(global_plan, *, refresh=True) -> str | None:
         return warnings
 
     warnings = warnings_from(characters)
-    if warnings and refresh and _refresh_roster():
-        try:
-            characters = _read_roster(path)
-        except (OSError, ValueError):
-            return CACHE_ERROR
-        if characters is None:
-            return None
-        warnings = warnings_from(characters)
     return "\n".join(warnings) if warnings else None
 
 
-def collect_roster_warnings(global_plan, *, refresh=True):
-    warning = (
-        validate_owned_operators(global_plan)
-        if refresh
-        else validate_owned_operators(global_plan, refresh=False)
-    )
+def collect_roster_warnings(global_plan):
+    warning = validate_owned_operators(global_plan)
     return [warning] if warning else []

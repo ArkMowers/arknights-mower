@@ -3545,9 +3545,7 @@ class Operators:
             ),
         )
 
-    def validate_backup_plans(
-        self, *, max_seconds=None, check_owned=True, refresh_roster=True
-    ):
+    def validate_backup_plans(self, *, max_seconds=None, check_owned=True):
         """独立检查可能的副表组合；可选耗时预算覆盖条件分析和组合检查。"""
         from arknights_mower.utils.backup_validation import (
             BackupValidationLimitExceeded,
@@ -3574,7 +3572,7 @@ class Operators:
                 "message": error,
             }
         if check_owned:
-            warnings = collect_roster_warnings(self.global_plan, refresh=refresh_roster)
+            warnings = collect_roster_warnings(self.global_plan)
 
         baseline = Operators(self.global_plan, runtime_conf=self.runtime_conf)
         validated = {baseline._schedule_validation_key()}
