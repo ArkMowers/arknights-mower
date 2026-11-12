@@ -1055,7 +1055,7 @@ class TestMasteryPlanView(unittest.TestCase):
         side_effect=RuntimeError("boom"),
     )
     def test_background_dispatch_swallows_thread_exceptions(self, dispatch, logger):
-        # 后台线程异常必须兜底记录（loggers.exception），不得让线程静默死亡
+        # 后台线程异常必须兜底记录（logger.exception），不得让线程静默死亡
         from arknights_mower.views.mastery import _dispatch_new_plans_in_background
 
         _dispatch_new_plans_in_background([("char_001", 0)])  # 不应抛异常
@@ -1065,6 +1065,7 @@ class TestMasteryPlanView(unittest.TestCase):
         # 连续快速添加 → 后台派发用模块级锁串行化：第一个派发阻塞期间，
         # 第二个不得并发进入同步派发
         import threading
+
         from arknights_mower.views import mastery as view
 
         entered = threading.Semaphore(0)

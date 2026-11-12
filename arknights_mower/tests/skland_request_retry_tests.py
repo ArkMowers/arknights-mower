@@ -45,7 +45,7 @@ def test_headers_factory_recomputed_per_attempt():
         patch(GET, side_effect=[requests.exceptions.Timeout(), MagicMock()]) as get,
         _fake_time([0.0, 30.0]),
     ):
-        resp = skland.request_with_retry(
+        skland.request_with_retry(
             "get", URL, headers={"stale": True}, headers_factory=factory
         )
     assert get.call_count == 2
