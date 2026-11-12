@@ -828,18 +828,57 @@ describe('retained execution controls', () => {
     await component.sendControl('approve', reply.events[0])
     expect(state.axios.post).not.toHaveBeenCalled()
   })
-  it('retries the last interrupted turn with a fresh request ID and retained turn identity', () => {
+  it('continues the last interrupted turn with a fresh request ID and retained turn identity', () => {
     const socket = begin()
     const first = JSON.parse(socket.send.mock.calls[1][0])
     socket.receive({ error: '断线' })
-    component.retryTurn(component.chatHistory.value.at(-1), 1)
+    component.resumeIncompleteTurn(component.chatHistory.value.at(-1), 1)
     const next = FakeSocket.instances.at(-1)
     next.open()
     const retry = JSON.parse(next.send.mock.calls[1][0])
-    expect(retry.retry_of).toBe(7)
+    expect(retry.continue_of).toBe(7)
     expect(retry.request_id).not.toBe(first.request_id)
     expect(retry.conversation_id).toBe('conversation')
     expect(retry.message).toBe(first.message)
+  })
+  it('preserves the unsent draft and blocks double continuation clicks', () => {
+    const socket = begin()
+    socket.receive({ error: '已停止' })
+    component.userInput.value = '另一个问题草稿'
+    const stopped = component.chatHistory.value.at(-1)
+    component.resumeIncompleteTurn(stopped, 1)
+    component.resumeIncompleteTurn(stopped, 1)
+    expect(component.userInput.value).toBe('另一个问题草稿')
+    expect(component.chatHistory.value).toHaveLength(4)
+    expect(component.chatHistory.value[2].content).toBe('继续处理')
+  })
+  it.each(['继续', '继续处理'])(
+    'maps typed %s to continuation after restoring a stopped turn',
+    (text) => {
+      component.restoreConversation({
+        id: 'conversation',
+        turns: [
+          { id: 9, user: '原始目标', assistant: '已有进度', status: 'cancelled', continued_from: 7 }
+        ]
+      })
+      expect(component.chatHistory.value[0].content).toBe('继续处理')
+      const socket = send(text)
+      socket.open()
+      const request = JSON.parse(socket.send.mock.calls[1][0])
+      expect(request.continue_of).toBe(9)
+      expect(component.userInput.value).toBe('')
+    }
+  )
+  it('regenerates an interrupted summary without task continuation', () => {
+    const socket = begin('summary')
+    socket.receive({ error: '摘要生成中断' })
+    component.resumeIncompleteTurn(component.chatHistory.value.at(-1), 1)
+    const next = FakeSocket.instances.at(-1)
+    next.open()
+    const request = JSON.parse(next.send.mock.calls[1][0])
+    expect(request.retry_of).toBe(7)
+    expect(request.continue_of).toBeUndefined()
+    expect(request.mode).toBe('summary')
   })
   it('does not adopt generated summaries until explicitly selected and supports clearing them', async () => {
     const socket = begin('summary')

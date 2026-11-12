@@ -115,17 +115,18 @@ async function adoptSummary(msg = null) {
     historyBusy.value = false
   }
 }
-function retryTurn(msg, index) {
+function resumeIncompleteTurn(msg, index) {
   if (
     loading.value ||
     historyBusy.value ||
     remoteBusy.value ||
     index !== chatHistory.value.length - 1 ||
-    !msg.turn_id
+    !msg.turn_id ||
+    !msg.error
   )
     return
   sendTurn(chatHistory.value[index - 1].content, {
-    retry_of: msg.turn_id,
+    [msg.mode === 'summary' ? 'retry_of' : 'continue_of']: msg.turn_id,
     mode: msg.mode || 'chat'
   })
 }
@@ -144,7 +145,7 @@ function restoreConversation(data) {
   summarySource.value = data.summary_source || 0
   contextInfo.value = null
   chatHistory.value = data.turns.flatMap((turn, index) => [
-    { role: 'user', content: turn.user },
+    { role: 'user', content: turn.continued_from ? '继续处理' : turn.user },
     {
       role: 'bot',
       turn_id: turn.id,
@@ -497,6 +498,17 @@ function sendMessage() {
   if (!canSend.value) return
   const text = userInput.value.trim()
   if (text.length > 4000) return
+  const last = chatHistory.value.at(-1)
+  if (
+    ['继续', '继续处理'].includes(text) &&
+    last?.error &&
+    last.turn_id &&
+    last.mode !== 'summary'
+  ) {
+    resumeIncompleteTurn(last, chatHistory.value.length - 1)
+    if (loading.value) userInput.value = ''
+    return
+  }
   sendTurn(text)
 }
 function sendTurn(text, options = {}) {
@@ -514,7 +526,7 @@ function sendTurn(text, options = {}) {
     ).join(''),
     ...options
   }
-  chatHistory.value.push({ role: 'user', content: text })
+  chatHistory.value.push({ role: 'user', content: options.continue_of ? '继续处理' : text })
   chatHistory.value.push({
     role: 'bot',
     content: '',
@@ -531,7 +543,7 @@ function sendTurn(text, options = {}) {
   stopping.value = false
   atBottom.value = true
   historyOpen.value = false
-  if (!options.mode && !options.retry_of) userInput.value = ''
+  if (!options.mode && !options.retry_of && !options.continue_of) userInput.value = ''
   if (!ws || ws.readyState !== WebSocket.OPEN) connectWS(text)
   else ws.send(messageFrame(text))
   nextTick(scrollToLatest)
@@ -870,8 +882,8 @@ onBeforeUnmount(() => {
                 quaternary
                 class="reply-action"
                 :disabled="loading || historyBusy || remoteBusy"
-                @click="retryTurn(msg, idx)"
-                >重试未完成请求</n-button
+                @click="resumeIncompleteTurn(msg, idx)"
+                >{{ msg.mode === 'summary' ? '重新生成摘要' : '继续处理' }}</n-button
               >
               <n-popconfirm
                 v-if="!msg.error && msg.mode === 'summary'"
@@ -923,7 +935,12 @@ onBeforeUnmount(() => {
 
     <footer v-if="!historyOpen" class="chatbot-input-area">
       <div class="context-toolbar">
-        <span v-if="contextInfo?.limited"
+        <span v-if="contextInfo?.continued_from"
+          >已带入原目标和保存的进度，继续处理剩余工作。{{
+            contextInfo.continuation_limited ? '部分记录已截断。' : ''
+          }}</span
+        >
+        <span v-else-if="contextInfo?.limited"
           >本轮仅使用 {{ contextInfo.included_turns }} 轮近期记录，部分历史未传给模型。</span
         >
         <span v-else>近期上下文最多 10 轮、24,000 字符。</span>

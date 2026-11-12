@@ -5007,6 +5007,7 @@ def run_stored_chat(ws, req, user_input):
                 user_input,
                 request_id=req.get("request_id"),
                 retry_of=req.get("retry_of"),
+                continue_of=req.get("continue_of"),
                 mode=mode,
             ) as turn:
                 execution = Execution(history, turn, send)

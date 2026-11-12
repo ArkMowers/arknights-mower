@@ -69,6 +69,7 @@ def run_chat(
     *,
     conversation=None,
     retry_of=None,
+    continue_of=None,
     mode="chat",
     decide="approve",
     on_event=None,
@@ -104,6 +105,8 @@ def run_chat(
     }
     if retry_of is not None:
         request["retry_of"] = retry_of
+    if continue_of is not None:
+        request["continue_of"] = continue_of
     if request_id:
         request["request_id"] = request_id
     socket = Socket(json.dumps({"token": "chat-profile-token"}), json.dumps(request))
@@ -219,8 +222,9 @@ def test_changed_route_while_waiting_requires_new_preview(runtime):
     assert any(item.get("status") == "unknown" for item in events(socket))
 
 
+@pytest.mark.parametrize("restart", ["retry_of", "continue_of"])
 def test_retry_does_not_resend_accepted_mail_even_after_store_reopen(
-    runtime, monkeypatch
+    runtime, monkeypatch, restart
 ):
     _, agent, _, store, install = runtime
     sent = Mock(return_value="邮件发送成功！")
@@ -240,13 +244,14 @@ def test_retry_does_not_resend_accepted_mail_even_after_store_reopen(
         [tool_call("submit_issue", args)],
         [AIMessageChunk(content="此前邮件服务已接受，未重复发送")],
     )
-    second = run_chat(runtime, conversation=identifier, retry_of=turn_id)
+    second = run_chat(runtime, conversation=identifier, **{restart: turn_id})
     assert sent.call_count == 1
     assert not any(item["type"] == "approval" for item in events(second))
     assert "未重复执行" in model.inputs[1][-1].content
 
 
-def test_unknown_write_after_exception_is_not_repeated(runtime, monkeypatch):
+@pytest.mark.parametrize("restart", ["retry_of", "continue_of"])
+def test_unknown_write_after_exception_is_not_repeated(runtime, monkeypatch, restart):
     _, agent, _, _, install = runtime
     sent = Mock(side_effect=OSError("mail connection lost"))
     monkeypatch.setitem(agent.tool_func_map, "submit_issue", sent)
@@ -259,7 +264,7 @@ def test_unknown_write_after_exception_is_not_repeated(runtime, monkeypatch):
     second = run_chat(
         runtime,
         conversation=first.sent[0]["conversation_id"],
-        retry_of=first.sent[0]["turn_id"],
+        **{restart: first.sent[0]["turn_id"]},
     )
     assert sent.call_count == 1
     assert any(item.get("status") == "not_repeated" for item in events(second))
@@ -779,3 +784,173 @@ def test_retry_confirmation_rejects_other_changed_plan_contents(runtime, field, 
     assert saved["status"] == "failed"
     result = next(item for item in events(socket) if item.get("status") == "unknown")
     assert "内容已改变" in result["result"]
+
+
+def test_continue_carries_original_goal_completed_reads_and_partial_answer(
+    runtime, monkeypatch
+):
+    server, agent, _, store, install = runtime
+    identifier = complete(store, "背景问题", "此前背景")
+    read = Mock(return_value="已查到计划 A，等待训练")
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", read)
+    install([tool_call("list_plans")], [AIMessageChunk(content="尚未完成的分析")])
+
+    def stop(socket, event):
+        if event.get("type") == "answer_delta":
+            response = server.app.test_client().post(
+                f"/ai/conversations/{identifier}/turns/{event['turn_id']}/control",
+                headers=headers(),
+                json={"action": "stop"},
+            )
+            assert response.status_code == 200
+
+    first = run_chat(runtime, conversation=identifier, on_event=stop)
+    target = first.sent[0]["turn_id"]
+    assert store.read(identifier)["turns"][-1]["status"] == "cancelled"
+    model = install([AIMessageChunk(content="继续分析剩余工作")])
+    second = run_chat(runtime, conversation=identifier, continue_of=target)
+    assert len(model.inputs) == 1
+    context = "\n".join(str(msg.content) for msg in model.inputs[0])
+    for expected in (
+        "此前背景",
+        "已查到计划 A，等待训练",
+        "尚未完成的分析",
+        "旧确认全部失效",
+    ):
+        assert expected in context
+    assert model.inputs[0][-1].content == "请执行本次请求"
+    assert read.call_count == 1
+    saved = store.read(identifier)["turns"][-1]
+    assert saved["continued_from"] == target and saved["user"] == "请执行本次请求"
+    assert saved["status"] == "complete"
+    assert second.sent[0]["turn_id"] != target
+
+
+def test_continue_replaces_stopped_approval_and_rejects_old_confirmation(runtime):
+    server, _, _, store, install = runtime
+    args = {"profession": "先锋", "supports_json": "[]"}
+    install([tool_call("set_route", args)])
+    first = run_chat(runtime, decide="stop")
+    old = next(event for event in events(first) if event["type"] == "approval")
+    identifier = first.sent[0]["conversation_id"]
+    install([tool_call("set_route", args)], [AIMessageChunk(content="已完成")])
+
+    def verify(socket, event):
+        if event.get("type") != "approval":
+            return
+        assert event["approval_id"] != old["approval_id"]
+        response = server.app.test_client().post(
+            f"/ai/conversations/{identifier}/turns/{event['turn_id']}/control",
+            headers=headers(),
+            json={
+                "action": "approve",
+                "approval_id": old["approval_id"],
+                "digest": old["digest"],
+            },
+        )
+        assert response.status_code == 409
+        assert event["preview"]["after"] == []
+
+    second = run_chat(
+        runtime, conversation=identifier, continue_of=old["turn_id"], on_event=verify
+    )
+    assert any(item.get("status") == "verified" for item in events(second))
+    assert store.read(identifier)["turns"][-1]["status"] == "complete"
+
+
+def test_repeated_continuation_survives_pruning_and_reopen(runtime, monkeypatch):
+    _, _, _, store, install = runtime
+    monkeypatch.setattr(ai_history, "MAX_TURNS", 1)
+    with store.turn(None, "原始目标") as first:
+        first.append("首轮进度")
+    identifier, target = first.conversation_id, first.turn_id
+    for index in range(3):
+        store = ai_history.HistoryStore(store.profile_id)
+        with store.turn(identifier, "继续", continue_of=target) as turn:
+            assert turn.user_input == "原始目标"
+            assert "首轮进度" in turn.context[0]["content"]
+            for prior in range(index):
+                assert f"后续进度{prior}" in turn.context[0]["content"]
+            turn.append(f"后续进度{index}")
+        target = turn.turn_id
+        assert len(store.read(identifier)["turns"]) == 1
+    model = install([AIMessageChunk(content="完成剩余工作")])
+    run_chat(runtime, conversation=identifier, continue_of=target)
+    assert model.inputs[0][-1].content == "原始目标"
+    assert "后续进度2" in model.inputs[0][1].content
+
+
+def test_continuation_bounds_and_retention_include_progress(runtime, monkeypatch):
+    _, _, _, store, _ = runtime
+    monkeypatch.setattr(ai_history, "MAX_HISTORY_CHARS", 40000)
+    with store.turn(None, "goal") as first:
+        first.append("旧草稿" * 8000)
+    with store.turn(first.conversation_id, "继续", continue_of=first.turn_id) as second:
+        assert second.context_info["continuation_limited"]
+        second.append("新草稿" * 8000)
+    with store.turn(first.conversation_id, "继续", continue_of=second.turn_id) as third:
+        third.append("最终草稿")
+    target = third.turn_id
+    for index in range(6):
+        with store.turn(first.conversation_id, "继续", continue_of=target) as current:
+            current.append(f"进度{index}" + "\\" * 3900)
+        target = current.turn_id
+    with store.turn(first.conversation_id, "继续", continue_of=target) as final:
+        assert final.context_info["continuation_limited"]
+        assert "进度5" in final.context[0]["content"]
+        assert final.user_input == "goal"
+    with closing(sqlite3.connect(store.path)) as db:
+        records = db.execute(
+            "SELECT user,assistant,events,operations,continuation FROM turns"
+        ).fetchall()
+    assert sum(len(value) for row in records for value in row) <= 40000
+    assert all(len(row[-1]) <= ai_history.MAX_CONTINUATION_CHARS for row in records)
+    assert store.read(first.conversation_id)["turns"][-1]["continued_from"] == target
+
+
+@pytest.mark.parametrize(
+    "case", ["complete", "older", "both", "summary", "foreign", "busy"]
+)
+def test_invalid_continuation_never_dispatches_model(runtime, case):
+    _, _, _, store, install = runtime
+    with store.turn(
+        None, "original", mode="summary" if case == "summary" else "chat"
+    ) as first:
+        first.complete = case == "complete"
+    identifier = first.conversation_id
+    kwargs = {"continue_of": first.turn_id}
+    if case == "older":
+        complete(store, identifier=identifier)
+    elif case == "both":
+        kwargs["retry_of"] = first.turn_id
+    elif case == "foreign":
+        identifier = complete(ai_history.HistoryStore("other-profile"))
+    model = install([AIMessageChunk(content="must not run")])
+    if case == "busy":
+        with store.turn(identifier, "active"):
+            result = run_chat(runtime, conversation=identifier, **kwargs)
+    else:
+        result = run_chat(runtime, conversation=identifier, **kwargs)
+    assert "error" in result.sent[-1]
+    assert model.inputs == []
+
+
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_continue_requires_auth_before_storage(runtime, monkeypatch, token):
+    server = runtime[0]
+    access = Mock(side_effect=AssertionError("storage accessed"))
+    monkeypatch.setattr(server, "active_chat_history", access)
+    socket = FakeSocket(
+        json.dumps({"token": token}),
+        json.dumps(
+            {
+                "message": "继续",
+                "conversation_id": "a" * 32,
+                "continue_of": 1,
+                "generation": "0",
+            }
+        ),
+    )
+    chat(server, socket)
+    access.assert_not_called()
+    assert socket.closed and socket.close_reason == 4401
