@@ -10,14 +10,13 @@ from unittest.mock import MagicMock, patch
 
 # 只验证 cultivate_depot 自身对 request_with_retry 的调用方式，森空岛网络层
 # 一律由 test double 控制（与其他测试同款 stub，规避导入链联网）。
-# 但 cultivate_depot 的 info URL 常量来自 skland 真实模块：桩状态下导入拿到的是
-# MagicMock 属性，URL 断言会随执行顺序漂移（单文件运行必挂）。这里清掉桩和可能
-# 已按桩导入的 cultivate_depot，强制按真实模块重新导入，保证与运行顺序无关。
-sys.modules.pop("arknights_mower.utils.skland", None)
-sys.modules.pop("arknights_mower.solvers.cultivate_depot", None)
+# 注意：不得 pop/重导入模块来"拿到真实 URL 常量"——收集期 pop 与其他测试的惰性
+# 导入会让 patch 按名字解析到的实例和测试绑定的实例分裂成两个模块对象（CI 分片
+# 已踩过）。URL 断言改为在 _run_refresh 里显式 patch player_info_url 为测试常量，
+# 与导入顺序无关。
+sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import cultivate_depot  # noqa: E402
-from arknights_mower.utils import skland  # noqa: E402,F401
 
 PLAYER_URL = "https://zonai.skland.com/api/v1/game/cultivate/player?uid=100"
 INFO_URL = "https://zonai.skland.com/api/v1/game/player/info?uid=100"
@@ -69,6 +68,12 @@ def _run_refresh():
         ) as request_mock,
         patch("arknights_mower.solvers.cultivate_depot.parse_roster"),
         patch("arknights_mower.solvers.cultivate_depot.atomic_write"),
+        # info URL 由 cultivate_depot 用 skland 常量拼出：桩态下该常量是 MagicMock，
+        # 显式 patch 成测试常量，URL 断言与导入顺序无关
+        patch(
+            "arknights_mower.solvers.cultivate_depot.player_info_url",
+            "https://zonai.skland.com/api/v1/game/player/info",
+        ),
         patch(
             "arknights_mower.utils.building_skills.parse_base_conditions",
             return_value={},
