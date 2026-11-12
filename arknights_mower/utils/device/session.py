@@ -26,18 +26,9 @@ from arknights_mower.utils.log import logger
 
 # The decoded frame the 1920x1080 templates require.
 REQUIRED_DISPLAY_SIZE = [1920, 1080]
-# A management program that cannot be located or queried lowers capability: it
-# owns instance lifecycle and multi-instance queries, while capture, touch and
-# the frame gate read the ADB transport the selected device already exposes. Such
-# a binding degrades to an ADB-only transaction instead of a terminal verdict.
-ADB_ONLY_FALLBACK_CODES = frozenset({"manager_missing", "binding_failed"})
-# A missing canvas, a timed-out read-only manager query, or a degraded binding
-# can resolve inside the same deadline. Invalid instance identity stays terminal.
-# The fallback codes above are listed through their degraded verdict, so a
-# binding without any serial still fails at once with its own reason.
-RETRYABLE_WAIT_CODES = frozenset(
-    {"frame_failed", "manager_timeout", "manager_unavailable"}
-)
+# A missing canvas or a timed-out read-only manager query can resolve inside
+# the same deadline. Invalid instance identity remains terminal.
+RETRYABLE_WAIT_CODES = frozenset({"frame_failed", "manager_timeout"})
 # The one failure that only says the transaction ran out of time; a verdict with
 # an observed reason is more useful and replaces it wherever one exists.
 BUDGET_EXHAUSTED = "设备恢复时间预算已耗尽"
@@ -688,16 +679,6 @@ class DeviceSession:
             )
             return self.last
         except InstanceBindingError as exc:
-            degraded = self._degrade_to_adb_only(
-                exc.code,
-                str(exc),
-                profile,
-                deadline,
-                frame_probe=frame_probe,
-                prepare_target=prepare_target,
-            )
-            if degraded is not None:
-                return degraded
             self.last = ReadinessResult(
                 "offline",
                 "",
@@ -719,72 +700,10 @@ class DeviceSession:
             )
             return self.last
         except Exception as exc:
-            # Any other binding inspection failure is diagnosed the same way: a
-            # device whose serial is known keeps its transport.
-            degraded = self._degrade_to_adb_only(
-                "binding_failed",
-                str(exc),
-                profile,
-                deadline,
-                frame_probe=frame_probe,
-                prepare_target=prepare_target,
-            )
-            if degraded is not None:
-                return degraded
             self.last = ReadinessResult(
                 "offline", "", self.adb_path, code="binding_failed", message=str(exc)
             )
             return self.last
-        return self._observe_transport(
-            instance,
-            deadline,
-            frame_probe=frame_probe,
-            prepare_target=prepare_target,
-        )
-
-    def _degrade_to_adb_only(
-        self, code, message, profile, deadline, *, frame_probe=None, prepare_target=None
-    ):
-        """Verify the ADB transport when no usable manager answered this binding.
-
-        Returns ``None`` when the failure is not a manager-capability failure or
-        when the binding has no serial to verify, so those verdicts stay exactly
-        as they were.
-        """
-        if code not in ADB_ONLY_FALLBACK_CODES:
-            return None
-        serial = (profile.mumu_manual_serial or profile.last_serial).strip()
-        if not serial:
-            return None
-        logger.warning(
-            f"未找到模拟器管理程序，本次仅用 ADB 直连 {serial}"
-            "（自动启动/重启模拟器不可用，请检查设备连接设置）"
-        )
-        return self._observe_transport(
-            InstanceObservation("unknown", serial),
-            deadline,
-            frame_probe=frame_probe,
-            prepare_target=prepare_target,
-            code="manager_unavailable",
-            message=message,
-        )
-
-    def _observe_transport(
-        self,
-        instance,
-        deadline,
-        *,
-        frame_probe=None,
-        prepare_target=None,
-        code="",
-        message="",
-    ):
-        """Decide readiness from the ADB transport of one observed binding.
-
-        Shared by the manager-confirmed path and by the ADB-only degradation, so a
-        device is gated by exactly the same transport, boot and frame conditions
-        whichever route named its serial.
-        """
         profile = self.profile
         serial = (
             instance.serial or ""
@@ -793,9 +712,7 @@ class DeviceSession:
         )
         if instance.serial:
             serial = instance.serial
-        self.last = ReadinessResult(
-            "absent", serial, self.adb_path, instance.state, code, message
-        )
+        self.last = ReadinessResult("absent", serial, self.adb_path, instance.state)
         if not serial and instance.state == "unknown":
             self.last = ReadinessResult(
                 "absent", "", code="target_required", message="请选择明确的设备 serial"
@@ -823,13 +740,13 @@ class DeviceSession:
             if target == serial
         ]
         state: Readiness = "absent"
-        states_code = ""
+        code = ""
         if states:
             state = "offline"
             if len(states) != 1:
-                states_code = "target_ambiguous"
+                code = "target_ambiguous"
             elif states[0] == "unauthorized":
-                states_code = "device_unauthorized"
+                code = "device_unauthorized"
             elif states[0] == "device":
                 boot = self.adb.boot_completed(
                     self.adb_path, serial, self._remaining(deadline)
@@ -848,16 +765,7 @@ class DeviceSession:
                         instance.mumu_created_timestamp,
                     )
         self._remaining(deadline)
-        # A transport verdict replaces the caller's reason only when it says
-        # something more specific about this serial.
-        self.last = ReadinessResult(
-            state,
-            serial,
-            self.adb_path,
-            instance.state,
-            states_code or code,
-            message if not states_code else "",
-        )
+        self.last = ReadinessResult(state, serial, self.adb_path, instance.state, code)
         return self.last
 
     def _confirm_display(
@@ -1080,9 +988,6 @@ class DeviceSession:
         # positively identified this running/starting instance. A canvas that
         # is not there yet never justifies one.
         frame_only = observation.code == "frame_failed" and bool(observation.serial)
-        # An ADB-only degradation reports ``instance_state="unknown"`` on purpose:
-        # without the manager there is no authority to stop or launch anything, so
-        # this stays False and the transaction only reconnects the endpoint.
         restartable = (
             observation.instance_state in {"running", "starting"}
             and (

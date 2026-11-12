@@ -1,9 +1,10 @@
-"""A MuMu manager that cannot be located must lower capability, not block ADB.
+"""A manager that cannot be located must fail with an actionable verdict.
 
-The vendor manager owns instance lifecycle and multi-instance queries. The
-capture, touch and frame gates read the ADB transport, so a binding whose manager
-is missing (empty saved path, MuMu moved by its own upgrade, stale install
-directory) still has to reach the device when its serial is known.
+The vendor manager owns instance lifecycle and multi-instance queries, and for
+MuMu 12 it also owns endpoint identity: the reported ADB port is cross-checked
+against the saved creation timestamp. A saved serial is therefore not evidence
+that the endpoint still belongs to the selected instance, so a missing manager
+must stay terminal instead of silently reconnecting to an unverified address.
 """
 
 import tempfile
@@ -17,8 +18,6 @@ from arknights_mower.utils.device.endpoint_identity import InstanceBindingError
 from arknights_mower.utils.device.mumu12ipc.paths import resolve_mumu_paths
 from arknights_mower.utils.device.screenshot_backend import ScreenshotSession
 from arknights_mower.utils.device.session import (
-    ADB_ONLY_FALLBACK_CODES,
-    RETRYABLE_WAIT_CODES,
     DeviceSession,
     ReadinessResult,
     RecoveryPolicy,
@@ -110,7 +109,7 @@ class ManagerPathTests(unittest.TestCase):
         self.assertIn("未填写", str(raised.exception))
 
 
-class DegradedObservationTests(unittest.TestCase):
+class ManagerMissingIsTerminalTests(unittest.TestCase):
     def session(self, adb, simulator, profile_, attempts=3):
         bound = DeviceSession(
             adb,
@@ -123,34 +122,49 @@ class DegradedObservationTests(unittest.TestCase):
         bound.bind(profile_)
         return bound
 
-    def test_missing_manager_degrades_to_the_saved_serial(self):
+    def assertNotReady(self, observation):
+        self.assertNotEqual(observation.state, "ready")
+        self.assertEqual(observation.serial, "")
+
+    def test_observe_reports_the_missing_manager_instead_of_a_saved_serial(self):
         with tempfile.TemporaryDirectory() as folder:
             adb, simulator = ADB(), SpySimulator()
             bound = self.session(adb, simulator, profile(installation_path=folder))
             observation = bound.observe(bound.begin_budget())
-        self.assertEqual(observation.code, "manager_unavailable")
-        self.assertEqual(observation.serial, SERIAL)
-        self.assertEqual(observation.state, "absent")
-        self.assertEqual(observation.instance_state, "unknown")
-        self.assertIn("未找到模拟器管理程序", observation.message or "")
-        self.assertEqual(bound.last.code, "manager_unavailable")
+        self.assertNotReady(observation)
+        self.assertEqual(observation.code, "manager_missing")
+        self.assertIn("重新检测并选择实例", observation.message or "")
+        self.assertEqual(adb.actions, [])
+        self.assertEqual(simulator.lifecycle, [])
 
-    def test_degraded_binding_is_retryable_so_a_reconnect_can_run(self):
-        self.assertEqual(
-            ADB_ONLY_FALLBACK_CODES, frozenset({"manager_missing", "binding_failed"})
-        )
-        self.assertIn("manager_unavailable", RETRYABLE_WAIT_CODES)
+    def test_ensure_ready_stays_terminal_and_never_reconnects(self):
         with tempfile.TemporaryDirectory() as folder:
-            bound = self.session(
-                ADB(), SpySimulator(), profile(installation_path=folder)
-            )
-            observation = bound.observe(bound.begin_budget())
-            # No SessionFailure: the transaction keeps its budget for the transport.
-            bound._check_observation(observation)
+            adb, simulator = ADB(), SpySimulator()
+            bound = self.session(adb, simulator, profile(installation_path=folder))
+            with self.assertRaises(SessionFailure) as raised:
+                bound.ensure_ready()
+        self.assertEqual(raised.exception.observation.code, "manager_missing")
+        self.assertIn("重新检测", str(raised.exception))
+        # An unverified endpoint must never be used for capture or touch.
+        self.assertEqual(adb.actions, [])
+        self.assertEqual(simulator.lifecycle, [])
 
-    def test_other_binding_inspection_failures_also_degrade(self):
-        # A rejected instance index is not a manager-capability verdict, but it is
-        # still no reason to abandon a device whose serial is known.
+    def test_online_saved_serial_does_not_prove_the_binding(self):
+        # The reviewer's scenario: the old address belongs to another instance
+        # that is online and already booted. It must still not become ready.
+        with tempfile.TemporaryDirectory() as folder:
+            adb = ADB()
+            adb.rows = [(SERIAL, "device")]
+            adb.boot = "1"
+            simulator = SpySimulator()
+            bound = self.session(adb, simulator, profile(installation_path=folder))
+            with self.assertRaises(SessionFailure):
+                bound.ensure_ready()
+        self.assertEqual(adb.actions, [])
+        self.assertEqual(simulator.lifecycle, [])
+
+    def test_rejected_instance_index_does_not_fall_back_to_the_saved_serial(self):
+        # A non-numeric index is a configuration error, not a capability verdict.
         with tempfile.TemporaryDirectory() as folder:
             bound = self.session(
                 ADB(),
@@ -158,52 +172,42 @@ class DegradedObservationTests(unittest.TestCase):
                 profile(installation_path=folder, instance_id="not-a-number"),
             )
             observation = bound.observe(bound.begin_budget())
-        self.assertEqual(observation.code, "manager_unavailable")
-        self.assertEqual(observation.serial, SERIAL)
+        self.assertNotReady(observation)
+        self.assertEqual(observation.code, "binding_failed")
         self.assertIn("实例编号", observation.message or "")
 
-    def test_manual_serial_takes_precedence_over_the_saved_one(self):
+    def test_ldplayer_missing_manager_never_reaches_ready(self):
+        # LDPlayer verifies the binding through its own endpoint resolver; a
+        # missing manager must not skip that check and trust the saved serial.
         with tempfile.TemporaryDirectory() as folder:
-            bound = self.session(
-                ADB(),
-                SpySimulator(),
-                profile(installation_path=folder, mumu_manual_serial="127.0.0.1:7555"),
-            )
-            observation = bound.observe(bound.begin_budget())
-        self.assertEqual(observation.serial, "127.0.0.1:7555")
-
-    def test_missing_manager_without_any_serial_fails_immediately(self):
-        with tempfile.TemporaryDirectory() as folder:
-            adb, simulator = ADB(), SpySimulator()
-            bound = self.session(
-                adb, simulator, profile(installation_path=folder, last_serial="")
-            )
-            with self.assertRaises(SessionFailure) as raised:
-                bound.ensure_ready()
-        self.assertEqual(raised.exception.observation.code, "manager_missing")
-        self.assertIn("重新检测", str(raised.exception))
-        self.assertEqual(adb.actions, [])
-        self.assertEqual(simulator.lifecycle, [])
-
-    def test_degraded_transaction_reconnects_the_endpoint_and_then_reaches_ready(self):
-        adb = ADB()
-
-        def reconnect():
-            # The device answers only after the manager-less reconnect.
+            adb = ADB()
             adb.rows = [(SERIAL, "device")]
             adb.boot = "1"
-
-        adb.on_recover = reconnect
-        simulator = SpySimulator()
-        with tempfile.TemporaryDirectory() as folder:
-            bound = self.session(adb, simulator, profile(installation_path=folder))
-            ready = bound.ensure_ready()
-        self.assertEqual(ready.state, "ready")
-        self.assertEqual(ready.serial, SERIAL)
-        # Degraded state carries no lifecycle authority: reconnect only.
-        self.assertEqual(adb.actions, [SERIAL])
+            simulator = SpySimulator()
+            bound = self.session(
+                adb,
+                simulator,
+                profile(preset_id="windows.ldplayer9", installation_path=folder),
+            )
+            observation = bound.observe(bound.begin_budget())
+        self.assertNotReady(observation)
+        self.assertEqual(observation.code, "manager_missing")
         self.assertEqual(simulator.lifecycle, [])
-        self.assertEqual(ready.instance_state, "unknown")
+
+    def test_nox_missing_manager_never_reaches_ready(self):
+        with tempfile.TemporaryDirectory() as folder:
+            adb = ADB()
+            adb.rows = [(SERIAL, "device")]
+            adb.boot = "1"
+            simulator = SpySimulator()
+            bound = self.session(
+                adb,
+                simulator,
+                profile(preset_id="windows.nox", installation_path=folder),
+            )
+            observation = bound.observe(bound.begin_budget())
+        self.assertNotReady(observation)
+        self.assertEqual(observation.code, "manager_missing")
 
 
 class ScreenshotFailureCodeTests(unittest.TestCase):
