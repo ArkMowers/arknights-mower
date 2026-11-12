@@ -80,6 +80,31 @@ class EmergencyRecoveryMixin:
             self, "_emergency_handoff", False
         )
 
+    def _emergency_preserves_task(self, task):
+        """救急作废旧排班时，保留已有执行责任和专项恢复。"""
+        return task.retains_execution or any(
+            getattr(task, flag, False)
+            for flag in (
+                "mood_physical_started",
+                "derived_correction_started",
+                "group_shift_expected",
+                "backup_shift_active",
+                "product_shift_locked",
+                "product_switched_before_arrangement",
+                "backup_retention_started",
+                "urgent_recovery_started",
+                "dorm_recovery_restore",
+                "preferred_replacement_restore",
+                "fia_return_target",
+                "advance_support_swap",
+                "strict_mood_limit",
+                "initial_fia",
+                "emergency_staffing",
+                "arrangement_retry_room",
+                "backup_group_request",
+            )
+        )
+
     def _emergency_replan_releases(self):
         """恢复目标与个人上限共用清退规划；交接期间只保留个人上限。"""
         state = getattr(self, "emergency_state", None) or {}
@@ -378,6 +403,7 @@ class EmergencyRecoveryMixin:
         """初始化检查一次；恢复已有批次先核对实际驻员及未完成安排。"""
         if getattr(self, "emergency_state", None) is not None:
             self._emergency_validate_state()
+            self._emergency_filter_tasks()
         if self._emergency_continuation_waiting():
             return
         if not self._emergency_active() and getattr(
@@ -565,18 +591,7 @@ class EmergencyRecoveryMixin:
             "next_read": now,
         }
         self.emergency_state = state
-        self.tasks[:] = [
-            task
-            for task in self.tasks
-            if task.type
-            not in ORDINARY_SHIFTS | {TaskTypes.FILL_DORM, TaskTypes.RELEASE_DORM}
-            and not getattr(task, "backup_shift_active", False)
-            and not (
-                task.type == TaskTypes.NOT_SPECIFIC
-                and any(not room.startswith("dorm") for room in task.plan)
-                and not getattr(task, "emergency_staffing", False)
-            )
-        ]
+        self._emergency_filter_tasks(initial=True)
         state["observed_at"] = datetime.now()
         self._initial_staffing_pending = False
         self._emergency_save()
@@ -1471,16 +1486,10 @@ class EmergencyRecoveryMixin:
             candidates, key=lambda name: (data.operators[name].current_mood(), name)
         )
 
-    def _emergency_filter_tasks(self):
+    def _emergency_filter_tasks(self, *, initial=False):
+        """两个队列统一作废旧状态派生的普通排班，交接后由正常规划重建。"""
         if not self._emergency_frozen():
             return
-        self.tasks[:] = [
-            task
-            for task in self.tasks
-            if not getattr(task, "mood_control_event", None)
-            or task.retains_execution
-            or getattr(task, "mood_physical_started", False)
-        ]
         fia_targets = set(self.emergency_state.get("fia_targets", ()))
         fia = self.op_data.operators.get("菲亚梅塔")
         fia_rooms = {
@@ -1493,51 +1502,66 @@ class EmergencyRecoveryMixin:
                 slot.agent == "菲亚梅塔" for slot in self.op_data.plan.get(room, ())
             )
         }
-        self.tasks[:] = [
-            task
-            for task in self.tasks
-            if task.type not in ORDINARY_SHIFTS
-            and not (
-                task.type == TaskTypes.FIAMMETTA
-                and not hasattr(task, "emergency_original_roster")
-                and (not task.plan or task.meta_data)
-                and (
-                    not fia_targets
-                    or not fia_rooms
-                    or task.meta_data
+
+        def keep(task):
+            if self._emergency_preserves_task(task):
+                return True
+            return (
+                task.type not in ORDINARY_SHIFTS
+                and not getattr(task, "mood_control_event", None)
+                and not (
+                    initial
+                    and task.type in (TaskTypes.FILL_DORM, TaskTypes.RELEASE_DORM)
+                )
+                and not (
+                    task.type == TaskTypes.FIAMMETTA
+                    and not hasattr(task, "emergency_original_roster")
+                    and (not task.plan or task.meta_data)
                     and (
-                        (
-                            task.meta_data not in fia_targets
-                            and not (
-                                getattr(task, "emergency_fia_fallback", False)
-                                and task.meta_data in primary_names(self.op_data)
-                                and not self.op_data.has_rest_mood_limit(task.meta_data)
-                                and self.op_data.operators[task.meta_data].upper_limit
-                                == 24
+                        not fia_targets
+                        or not fia_rooms
+                        or task.meta_data
+                        and (
+                            (
+                                task.meta_data not in fia_targets
+                                and not (
+                                    getattr(task, "emergency_fia_fallback", False)
+                                    and task.meta_data in primary_names(self.op_data)
+                                    and not self.op_data.has_rest_mood_limit(
+                                        task.meta_data
+                                    )
+                                    and self.op_data.operators[
+                                        task.meta_data
+                                    ].upper_limit
+                                    == 24
+                                )
                             )
+                            or set(task.plan) != fia_rooms
                         )
-                        or set(task.plan) != fia_rooms
+                    )
+                )
+                and not (
+                    self.emergency_state["phase"] == "returning"
+                    and getattr(task, "emergency_dorm", False)
+                )
+                and not (
+                    task.type == TaskTypes.NOT_SPECIFIC
+                    and any(not room.startswith("dorm") for room in task.plan)
+                )
+                and not (
+                    task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
+                    and task.meta_data
+                    and not hasattr(task, "emergency_original_roster")
+                    and not getattr(task, "run_order_restore_pending", False)
+                    and not self._emergency_run_order_available(
+                        task.meta_data, task.plan
                     )
                 )
             )
-            and not getattr(task, "backup_shift_active", False)
-            and not (
-                self.emergency_state["phase"] == "returning"
-                and getattr(task, "emergency_dorm", False)
-            )
-            and not (
-                task.type == TaskTypes.NOT_SPECIFIC
-                and any(not room.startswith("dorm") for room in task.plan)
-                and not getattr(task, "emergency_staffing", False)
-            )
-            and not (
-                task.type in (TaskTypes.RUN_ORDER, TaskTypes.REFRESH_TIME)
-                and task.meta_data
-                and not hasattr(task, "emergency_original_roster")
-                and not getattr(task, "run_order_restore_pending", False)
-                and not self._emergency_run_order_available(task.meta_data, task.plan)
-            )
-        ]
+
+        self.tasks[:] = [task for task in self.tasks if keep(task)]
+        waiting = getattr(self, "waiting_group_shifts", [])
+        waiting[:] = [task for task in waiting if keep(task)]
 
     def _emergency_reconcile_staffing(self):
         """已派发安排以实际驻员核销，尚未读到的房间保留待办。"""
@@ -1637,6 +1661,7 @@ class EmergencyRecoveryMixin:
     def _emergency_tick(self, *, completed_task=None):
         """只有到期观测或已完成的驻员变更推进恢复，不随空转循环重做规划。"""
         state = self.emergency_state
+        self._emergency_filter_tasks()
         if self._emergency_continuation_waiting(completed_task):
             return
         staffing_completed = self._emergency_reconcile_staffing()
@@ -2413,6 +2438,7 @@ class EmergencyRecoveryMixin:
         self._emergency_sync_reservations()
         self.run_order_solver()
         self.plan_metadata()
+        self._ensure_ordinary_planning_wake()
         self._emergency_save()
         logger.info("正常排班已接回周转，未恢复的组继续休息，自动救急结束")
         return True
