@@ -63,6 +63,22 @@ def test_static_headers_kept_without_factory():
     assert post.call_args.kwargs["headers"] is skland.header_login
 
 
+def test_factory_only_call_without_headers():
+    # 生产签名请求的调用形态：只传 headers_factory、不传 headers——headers 现为
+    # 可选缺省，调用不得抛 TypeError，每次尝试取到 factory 现算的请求头
+    factory = MagicMock(return_value={"sign": "fresh"})
+    with patch(GET, return_value=MagicMock()) as get:
+        resp = skland.request_with_retry("get", URL, headers_factory=factory)
+    assert resp is get.return_value
+    assert get.call_args.kwargs["headers"] == {"sign": "fresh"}
+
+
+def test_missing_both_headers_and_factory_rejected():
+    # headers 与 headers_factory 都缺省是调用方错误：快速失败，不发无请求头的请求
+    with pytest.raises(ValueError):
+        skland.request_with_retry("get", URL)
+
+
 def test_retry_emits_warning_before_retrying():
     # 重试前打 WARNING：含异常类型名（面向用户可读），成功后不再追加
     with (

@@ -219,7 +219,7 @@ def request_with_retry(
     url,
     *,
     json=None,
-    headers,
+    headers=None,
     timeout=_AUTH_REQUEST_TIMEOUT,
     headers_factory=None,
 ):
@@ -230,8 +230,12 @@ def request_with_retry(
     headers_factory：零参可调用，返回请求头 dict。提供时每次尝试（含第一次）开始前
     现算请求头——签名时间戳由 get_sign_header/generate_signature 现算（含服务器时钟
     校准），重试不再携带过期时间戳（否则重试带旧 timestamp 会被判「请勿修改设备
-    本地时间」）。不提供时沿用静态 headers（登录类请求头无时间戳，不受影响）。
+    本地时间」）。签名请求推荐只传 factory（不传 headers）；不传 factory 时沿用静态
+    headers（登录类请求头无时间戳，不受影响）。两者都缺省是调用方错误，直接拒绝，
+    不发出无请求头的请求。
     """
+    if headers_factory is None and headers is None:
+        raise ValueError("request_with_retry 需要 headers 或 headers_factory 之一")
     started = time.monotonic()
     for attempt in range(_AUTH_NETWORK_RETRIES):
         try:
