@@ -217,8 +217,12 @@ def test_ownership_validation_includes_additional_bindings(
     if owned_extra:
         ids.append("char_500_noirc")
     write_roster(roster_path, *ids)
-    refresh = MagicMock(return_value=True)
-    monkeypatch.setattr(schedule_roster, "_refresh_roster", refresh)
+    refresh = MagicMock(
+        side_effect=AssertionError("schedule validation requested Skland")
+    )
+    monkeypatch.setattr(
+        "arknights_mower.solvers.cultivate_depot.cultivate.start", refresh
+    )
     result = schedule_roster.validate_owned_operators(plan)
     if owned_extra:
         assert result is None
@@ -226,7 +230,7 @@ def test_ownership_validation_includes_additional_bindings(
         assert result.startswith("森空岛缓存中未持有以下排班干员：黑角")
         assert "请确认已持有" in result
         assert "「养成规划」页面手动点击「刷新」" in result
-    assert refresh.call_count == (0 if owned_extra else 1)
+    refresh.assert_not_called()
 
 
 @pytest.mark.parametrize("priority", [False, True])

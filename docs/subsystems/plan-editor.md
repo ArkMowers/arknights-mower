@@ -1,6 +1,6 @@
 # Scheduling Plan Editor
 
-The normal and rescue editors share the existing 验证排班 result banners. Success banners close automatically after three seconds and can also be closed manually. Ownership and progression findings, structural errors, incomplete validation and request failures require clicking the close button and never expire automatically. Startup and runtime checks do not open these banners. [Schedule Roster Warnings](base-scheduler.md#schedule-roster-warnings) owns the advisory roster checks and their display boundary.
+The normal and rescue editors share the existing 验证排班 result banners. Success banners close automatically after three seconds and can also be closed manually. Ownership and progression findings, structural errors, incomplete validation and request failures require clicking the close button and never expire automatically. Failed requests identify whether saving the plan or validating it failed and display the backend message or error text when available; otherwise they retain the request error message. A failed save prevents validation of an older saved plan. Startup and runtime checks do not open these banners. [Schedule Roster Warnings](base-scheduler.md#schedule-roster-warnings) owns the advisory roster checks and their display boundary.
 
 ## 1. Facility Display
 

@@ -10,6 +10,7 @@ handling, cursor feedback, and multi-monitor interaction.
 """
 
 import ctypes
+import sys
 from collections.abc import Callable
 from ctypes import wintypes
 from threading import Lock
@@ -661,6 +662,8 @@ def _install_hook(
 
 def _apply_dwm_window_chrome(hwnd: int) -> None:
     """Let DWM draw the native rounded corner and system window border."""
+    if sys.getwindowsversion().build < 22000:
+        return
     try:
         dwmapi = ctypes.WinDLL("dwmapi", use_last_error=True)
         set_attribute = dwmapi.DwmSetWindowAttribute

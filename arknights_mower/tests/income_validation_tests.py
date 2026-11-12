@@ -85,7 +85,45 @@ def test_cached_roster_validation_is_read_only_and_warns_without_blocking(
     ).json
     assert result["success"]
     assert "缓存名单校验失败" in result["warnings"][0]
-    assert owned.call_args.kwargs == {"refresh": False}
+    owned.assert_called_once()
+    assert owned.call_args.kwargs == {}
+
+
+@pytest.mark.parametrize("snapshot", [False, True])
+def test_plan_validation_uses_cached_findings_without_sync_or_writes(
+    client, monkeypatch, tmp_path, snapshot
+):
+    from arknights_mower.tests.schedule_roster_tests import write_roster
+
+    monkeypatch.setattr(
+        config,
+        "conf",
+        config.Conf(skland_info=[{"account": "offline", "password": "unused"}]),
+    )
+    path = tmp_path / "cultivate.json"
+    write_roster(path, "char_103_angel")
+    monkeypatch.setattr(schedule_roster, "get_path", lambda _: path)
+    refresh = MagicMock(side_effect=AssertionError("validation requested Skland"))
+    monkeypatch.setattr(
+        "arknights_mower.solvers.cultivate_depot.cultivate.start", refresh
+    )
+    save_plan = MagicMock(side_effect=AssertionError("validation saved plan"))
+    monkeypatch.setattr(config, "save_plan", save_plan)
+    config.plan = config.PlanModel(**simple_plan())
+    before = path.read_bytes(), path.stat().st_mtime_ns, config.plan.model_dump()
+    body = {"plan": simple_plan(), "operatorMode": "cache"} if snapshot else {}
+    for _ in range(2):
+        response = client.post("/validate-plan", json=body)
+        assert response.status_code == 200
+        assert response.json["success"]
+        assert "未持有以下排班干员：芬" in response.json["warnings"][0]
+    assert (
+        path.read_bytes(),
+        path.stat().st_mtime_ns,
+        config.plan.model_dump(),
+    ) == before
+    refresh.assert_not_called()
+    save_plan.assert_not_called()
 
 
 def test_removed_backup_bindings_fail_before_calculation_and_restored_bindings_pass(

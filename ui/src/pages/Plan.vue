@@ -452,10 +452,12 @@ async function validate_plan() {
   if (validating_plan.value) return
   validating_plan.value = true
   const feedback = { duration: 0, closable: true }
+  let errorPrefix = '保存排班失败: '
   try {
     await nextTick()
     await plan_store.save_plan()
     await plan_store.wait_for_plan_save()
+    errorPrefix = '验证失败: '
     const { data } = await axios.post(
       `${import.meta.env.VITE_HTTP_URL}/${rescue ? 'rescue-plan/validate' : 'validate-plan'}`,
       {},
@@ -474,7 +476,11 @@ async function validate_plan() {
       message.error(data.message, feedback)
     }
   } catch (error) {
-    message.error('验证失败: ' + error.message, feedback)
+    const data = error.response?.data
+    const detail = [data?.message, data?.error, error.message].find(
+      (value) => typeof value === 'string' && value.trim()
+    )
+    message.error(errorPrefix + detail, feedback)
   } finally {
     validating_plan.value = false
   }

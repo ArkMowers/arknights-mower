@@ -260,7 +260,12 @@ def test_editor_validation_reports_rescue_roster_and_training_warnings(
 
     path = schedule_roster.get_path("@app/tmp/cultivate.json")
     write_training_roster(path, level=6)
-    monkeypatch.setattr(schedule_roster, "_refresh_roster", lambda: False)
+    refresh = MagicMock(
+        side_effect=AssertionError("rescue validation requested Skland")
+    )
+    monkeypatch.setattr(
+        "arknights_mower.solvers.cultivate_depot.cultivate.start", refresh
+    )
     config.plan = config.PlanModel(
         plan1={"central": {"plans": [{"agent": "能天使", "replacement": ["芬"]}]}}
     )
@@ -285,3 +290,4 @@ def test_editor_validation_reports_rescue_roster_and_training_warnings(
     config.save_plan.assert_not_called()
     config.save_conf.assert_not_called()
     config.save_rescue_plan.assert_not_called()
+    refresh.assert_not_called()
