@@ -117,6 +117,7 @@ async function cancel_pause() {
   }
 }
 const mobile = inject('mobile')
+const chat_panel_visible = inject('chat_panel_visible', ref(false))
 const resizer_height = computed(() => (mobile.value ? 24 : RESIZER_HEIGHT))
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
@@ -234,6 +235,14 @@ function finish_log_view_transition() {
   drain_log_view_updates(true)
 }
 
+watch(
+  chat_panel_visible,
+  (visible) => {
+    if (visible && log_view_transition?.target === document) finish_log_view_transition()
+  },
+  { flush: 'sync' }
+)
+
 function transition_log_view(update, { panel, closing = false, immediate = false } = {}) {
   const pane = log_layout.value
   const target = !panel && pane?.startViewTransition ? pane : document
@@ -243,6 +252,7 @@ function transition_log_view(update, { panel, closing = false, immediate = false
     !pane ||
     !target.startViewTransition ||
     document.hidden ||
+    (target === document && chat_panel_visible.value) ||
     (reduced && (!panel || panel === 'daily')) ||
     !globalThis.CSS?.supports('selector(:active-view-transition-type(mower-log))')
   ) {
@@ -274,7 +284,7 @@ function transition_log_view(update, { panel, closing = false, immediate = false
       if (closing) types.push('mower-log-collapse')
     }
     const transition = target.startViewTransition({ update: commit, types })
-    log_view_transition = { transition, commit }
+    log_view_transition = { transition, commit, target }
     void transition.ready.catch(() => {})
     const release = () => {
       if (log_view_transition?.transition !== transition) return

@@ -1070,3 +1070,56 @@ def change_plan_target(plan_id, target, path=None):
         if cursor.rowcount != 1:
             raise ValueError("专精状态已变化，请刷新后重试")
         conn.commit()
+
+
+def save_confirmed_route(profession, supports_json, expected, path=None):
+    """Replace a confirmed route only while its observed value still matches."""
+    with _conn(path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM mastery_route WHERE profession=? ORDER BY is_default LIMIT 1",
+            (profession,),
+        ).fetchone()
+        current = dict(row) if row else None
+        if current != expected:
+            raise ValueError("专精路线已改变，请重新查看并确认")
+        conn.execute(
+            "INSERT OR REPLACE INTO mastery_route (profession,supports,is_default,optimal,half_off) VALUES (?,?,0,0,1)",
+            (profession, supports_json),
+        )
+        saved = conn.execute(
+            "SELECT supports FROM mastery_route WHERE profession=? AND is_default=0",
+            (profession,),
+        ).fetchone()
+        if saved is None or saved[0] != supports_json:
+            raise ValueError("路线保存后核对失败")
+        conn.commit()
+
+
+def retry_confirmed_plans(expected_plans, path=None):
+    """Reset failed plans only while their confirmed contents still match."""
+    with _conn(path) as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        current = [
+            lazy_fill_plan_names(dict(row))
+            for row in conn.execute(
+                "SELECT * FROM mastery_plan WHERE status='failed' ORDER BY id"
+            )
+        ]
+        if current != sorted(expected_plans, key=lambda plan: plan["id"]):
+            raise ValueError("失败计划列表或内容已改变，请重新查看并确认")
+        ids = [plan["id"] for plan in current]
+        conn.execute(
+            "UPDATE mastery_plan SET status='idle', failed_reason=CASE WHEN failed_reason='材料不足' "
+            "AND expires_at IS NOT NULL AND expires_at != '' THEN failed_reason ELSE NULL END WHERE status='failed'"
+        )
+        if any(
+            conn.execute(
+                "SELECT status FROM mastery_plan WHERE id=?", (identifier,)
+            ).fetchone()[0]
+            != "idle"
+            for identifier in ids
+        ):
+            raise ValueError("计划重置后核对失败")
+        conn.commit()
+        return len(ids)

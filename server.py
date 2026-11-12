@@ -9,10 +9,11 @@ import mimetypes
 import os
 import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
@@ -21,7 +22,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 from zlib import error as ZlibError
 
-from flask import Flask, abort, g, request, send_file, send_from_directory
+from flask import Flask, abort, g, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_sock import Sock
 from pydantic import ValidationError
@@ -4902,6 +4903,212 @@ def configuration_chat_request(generation):
             chat_active_requests -= 1
 
 
+def active_chat_history():
+    from arknights_mower.utils.ai_history import HistoryStore
+    from arknights_mower.utils.config_profiles import list_profiles
+
+    return HistoryStore(list_profiles()["active_id"])
+
+
+@app.route(
+    "/ai/conversations/<identifier>/turns/<int:turn_id>/control",
+    methods=["POST"],
+    defaults={"operation": "control"},
+)
+@app.route(
+    "/ai/conversations/<identifier>/summary",
+    methods=["POST"],
+    defaults={"operation": "summary"},
+)
+@app.route("/ai/conversations", methods=["GET", "DELETE"])
+@app.route("/ai/conversations/<identifier>", methods=["GET", "DELETE"])
+@require_token
+def ai_conversations(identifier=None, turn_id=None, operation=None):
+    from arknights_mower.utils.ai_history import HistoryError
+    from arknights_mower.utils.config_backup import LocalConfigError
+    from arknights_mower.utils.config_profiles import ProfileConflict
+
+    if not app.config["AI_ASSISTANT_ENABLED"]:
+        return jsonify(error="管理员未开启", code="ai_assistant_disabled"), 403
+    try:
+        with configuration_chat_request(
+            request.headers.get("X-Mower-Config-Generation")
+        ):
+            history = active_chat_history()
+            if request.method == "POST":
+                if request.content_length is None or request.content_length > 4096:
+                    return jsonify(error="控制请求过长或长度无效"), 400
+                body = request.get_json(silent=True)
+                if not isinstance(body, dict):
+                    return jsonify(error="控制请求格式无效"), 400
+                if operation == "summary":
+                    if set(body) != {"turn_id"} or (
+                        body["turn_id"] is not None and type(body["turn_id"]) is not int
+                    ):
+                        return jsonify(error="摘要选择无效"), 400
+                    history.adopt_summary(identifier, body["turn_id"])
+                    return jsonify(ok=True)
+                if set(body) - {"action", "approval_id", "digest"}:
+                    return jsonify(error="确认不能修改操作参数"), 400
+                from arknights_mower.agent.execution import control
+
+                return jsonify(
+                    control(
+                        history,
+                        identifier,
+                        turn_id,
+                        body.get("action"),
+                        body.get("approval_id"),
+                        body.get("digest"),
+                    )
+                )
+            if request.method == "DELETE":
+                history.delete(identifier)
+                return jsonify(ok=True)
+            if identifier is None:
+                return jsonify(conversations=history.list())
+            return jsonify(history.read(identifier))
+    except HistoryError as exc:
+        return jsonify(error=str(exc), code="conversation_unavailable"), exc.status
+    except (ProfileConflict, LocalConfigError) as exc:
+        return jsonify(
+            error=str(exc), code=getattr(exc, "code", "configuration_unavailable")
+        ), 409
+    except (OSError, sqlite3.Error):
+        logger.exception("无法读取或保存 AI 会话历史")
+        return jsonify(error="无法读取或保存会话历史，请检查实例数据目录"), 503
+
+
+@app.route("/ai/attachments", methods=["POST"])
+@app.route("/ai/attachments/<identifier>", methods=["GET", "DELETE"])
+@require_token
+def ai_attachments(identifier=None):
+    from arknights_mower.utils.ai_attachments import (
+        MAX_UPLOAD_BYTES,
+        normalize_attachment,
+    )
+    from arknights_mower.utils.ai_history import HistoryError
+    from arknights_mower.utils.config_backup import LocalConfigError
+    from arknights_mower.utils.config_profiles import ProfileConflict
+
+    if not app.config["AI_ASSISTANT_ENABLED"]:
+        return jsonify(error="管理员未开启", code="ai_assistant_disabled"), 403
+    try:
+        with configuration_chat_request(
+            request.headers.get("X-Mower-Config-Generation")
+        ):
+            history = active_chat_history()
+            if request.method in {"GET", "HEAD"}:
+                return jsonify(history.read_attachment(identifier))
+            if request.method == "DELETE":
+                history.delete_attachment(identifier)
+                return jsonify(ok=True)
+            if (
+                request.content_length is None
+                or request.content_length > MAX_UPLOAD_BYTES + 65536
+            ):
+                raise HistoryError("文件超过 2 MB 上限", 413)
+            upload = request.files.get("file")
+            if upload is None:
+                raise HistoryError("请选择文件", 400)
+            item = normalize_attachment(
+                upload.filename, upload.stream.read(MAX_UPLOAD_BYTES + 1)
+            )
+            return jsonify(history.save_attachment(item))
+    except HistoryError as exc:
+        return jsonify(error=str(exc)), exc.status
+    except (ProfileConflict, LocalConfigError) as exc:
+        return jsonify(error=str(exc)), 409
+    except (OSError, sqlite3.Error):
+        logger.exception("无法保存 AI 附件")
+        return jsonify(error="无法保存附件，请检查实例数据目录"), 503
+
+
+def run_stored_chat(ws, req, user_input):
+    from arknights_mower.agent.agent import ask_llm
+    from arknights_mower.agent.execution import (
+        ChatTurnError,
+        Execution,
+        ExecutionStopped,
+        ModelCallError,
+    )
+
+    disconnected = False
+
+    def send(frame):
+        nonlocal disconnected
+        if not disconnected:
+            try:
+                ws.send(json.dumps(frame))
+            except (ConnectionClosed, OSError):
+                disconnected = True
+
+    history = active_chat_history()
+    mode = req.get("mode", "chat")
+    if mode == "summary":
+        user_input = "请整理当前会话摘要草稿，保留目标、已确认事实、未完成事项和操作结果，供我核对。"
+    execution = None
+    with ExitStack() as registrations:
+        try:
+            with history.turn(
+                req["conversation_id"],
+                user_input,
+                request_id=req.get("request_id"),
+                retry_of=req.get("retry_of"),
+                continue_of=req.get("continue_of"),
+                continue_instruction=req.get("continue_instruction", ""),
+                attachment_ids=req.get("attachment_ids"),
+                mode=mode,
+            ) as turn:
+                execution = Execution(history, turn, send)
+                registrations.enter_context(execution.registered())
+                send(
+                    {
+                        "conversation_id": turn.conversation_id,
+                        "turn_id": turn.turn_id,
+                        "context": turn.context_info,
+                        "mode": turn.mode,
+                    }
+                )
+                try:
+                    for reply in ask_llm(
+                        turn.user_input,
+                        context=turn.context,
+                        api_key=config.conf.resolved_ai_key,
+                        execution=execution,
+                    ):
+                        execution.check()
+                        turn.append(reply)
+                        execution.send({"reply": reply})
+                    execution.check()
+                    if not turn.reply.strip():
+                        raise ValueError("没有收到回复，请检查模型配置后重试")
+                    turn.complete = True
+                except ExecutionStopped:
+                    turn.status = "cancelled"
+                    turn.reply = turn.reply or execution.draft
+                    raise
+                except Exception as exc:
+                    turn.reply = turn.reply or execution.draft
+                    if execution.stopped:
+                        turn.status = "cancelled"
+                    else:
+                        turn.failure = {
+                            "code": exc.code
+                            if isinstance(exc, ModelCallError)
+                            else "execution_error",
+                            "message": str(exc)[:2000],
+                        }
+                    raise
+        except Exception as exc:
+            if execution:
+                execution.finish(str(exc))
+                raise ChatTurnError(str(exc), execution.turn) from exc
+            raise
+        else:
+            execution.finish()
+
+
 @sock.route("/ws/chat")
 def ws_chat(ws):
     from arknights_mower.utils.config_backup import LocalConfigError
@@ -4933,28 +5140,78 @@ def ws_chat(ws):
             if not isinstance(req, dict):
                 ws.send(json.dumps({"error": "消息格式无效"}))
                 continue
-            last_reply = None
+            if req.get("resume") is True:
+                from arknights_mower.agent.execution import observe
+                from arknights_mower.utils.ai_history import HistoryError
+
+                if set(req) - {
+                    "resume",
+                    "conversation_id",
+                    "request_id",
+                    "turn_id",
+                    "generation",
+                }:
+                    raise HistoryError("恢复连接不能提交新消息或操作参数", 400)
+                with configuration_chat_request(req.get("generation")):
+                    history = active_chat_history()
+                    identifier = req.get("conversation_id")
+                    turn_id = req.get("turn_id")
+                    if req.get("request_id") is not None or identifier is None:
+                        accepted = history.turn_for_request(req.get("request_id"))
+                        if (
+                            identifier is not None
+                            and identifier != accepted["conversation"]
+                        ):
+                            raise HistoryError("请求不属于此会话", 400)
+                        if turn_id is not None and (
+                            type(turn_id) is not int or turn_id != accepted["id"]
+                        ):
+                            raise HistoryError("请求不属于此轮对话", 400)
+                        identifier, turn_id = accepted["conversation"], accepted["id"]
+                    frames = observe(history, identifier, turn_id)
+                    try:
+                        for frame in frames:
+                            ws.send(json.dumps(frame))
+                    finally:
+                        frames.close()
+                continue
             if "message" in req:
                 user_input = req["message"]
-                if not isinstance(user_input, str) or len(user_input) > 4000:
+                if (
+                    not isinstance(user_input, str)
+                    or not user_input.strip()
+                    or len(user_input) > 4000
+                ):
                     ws.send(json.dumps({"error": "消息过长或格式无效"}))
                     continue
                 with configuration_chat_request(req.get("generation")):
-                    context.append({"role": "user", "content": user_input})
-                    context = context[-20:]
-                    logger.debug(f"收到llm请求：{user_input}")
-                    # 用流式生成器
                     from arknights_mower.agent.agent import ask_llm
 
-                    for reply in ask_llm(
-                        user_input,
-                        context=context[:-1],
-                        api_key=config.conf.resolved_ai_key,
-                    ):
-                        ws.send(json.dumps({"reply": reply}))
-                        last_reply = reply
-                    if last_reply:
-                        context.append({"role": "assistant", "content": reply})
+                    if "conversation_id" in req:
+                        run_stored_chat(ws, req, user_input)
+                    else:
+                        # Older clients retain socket-local context.
+                        context = context[-19:]
+                        from arknights_mower.utils.ai_history import MAX_REPLY_CHARS
+
+                        chunks = []
+                        reply_size = 0
+                        for reply in ask_llm(
+                            user_input,
+                            context=context,
+                            api_key=config.conf.resolved_ai_key,
+                        ):
+                            reply_size += len(reply)
+                            if reply_size > MAX_REPLY_CHARS:
+                                raise ValueError("回复超过长度上限，请缩小问题范围")
+                            chunks.append(reply)
+                            ws.send(json.dumps({"reply": reply}))
+                        context.extend(
+                            [
+                                {"role": "user", "content": user_input},
+                                {"role": "assistant", "content": "".join(chunks)},
+                            ]
+                        )
                     ws.send(json.dumps({"done": True}))
         except (ConnectionClosed, OSError):
             break
@@ -4975,7 +5232,10 @@ def ws_chat(ws):
         except Exception as e:
             logger.exception(f"WebSocket处理错误：{str(e)}")
             try:
-                ws.send(json.dumps({"error": str(e)}))
+                error = {"error": str(e)}
+                if hasattr(e, "turn_status"):
+                    error.update(status=e.turn_status, code=e.code)
+                ws.send(json.dumps(error))
             except (ConnectionClosed, OSError):
                 break
 

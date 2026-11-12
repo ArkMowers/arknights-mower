@@ -1,4 +1,7 @@
+import html
 import sqlite3
+import time
+from contextlib import closing
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -11,31 +14,63 @@ def call_db(query: str):
     try:
         database_path = get_path("@app/tmp/data.db")
         logger.debug("执行 SQL 查询: %s", query)
-        conn = sqlite3.connect(database_path)
-        cursor = conn.cursor()
-        cursor.execute(query)
-        # 只返回前 100 行，防止数据量过大
-        rows = cursor.fetchmany(100)
-        columns = [desc[0] for desc in cursor.description]
-        result = [dict(zip(columns, row)) for row in rows]
-        cursor.close()
-        conn.close()
+        deadline = time.monotonic() + 2
+        with closing(
+            sqlite3.connect(
+                database_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2
+            )
+        ) as conn:
+            conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 1048576)
+            conn.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, 8000)
+            conn.setlimit(sqlite3.SQLITE_LIMIT_COLUMN, 64)
+            conn.execute("PRAGMA query_only=ON")
+            allowed = {
+                sqlite3.SQLITE_SELECT,
+                sqlite3.SQLITE_FUNCTION,
+                sqlite3.SQLITE_RECURSIVE,
+            }
+
+            def authorize(action, arg1, arg2, database, source):
+                if action == sqlite3.SQLITE_READ:
+                    return (
+                        sqlite3.SQLITE_OK
+                        if arg1 in {"log", "agent_action", "trading_history"}
+                        else sqlite3.SQLITE_DENY
+                    )
+                if action == sqlite3.SQLITE_FUNCTION and (arg2 or "").lower() in {
+                    "load_extension",
+                    "readfile",
+                    "writefile",
+                }:
+                    return sqlite3.SQLITE_DENY
+                return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
+
+            conn.set_authorizer(authorize)
+            conn.set_progress_handler(lambda: time.monotonic() >= deadline, 1000)
+            cursor = conn.execute(query)
+            if cursor.description is None:
+                raise ValueError("仅支持只读查询")
+            columns = [desc[0] for desc in cursor.description]
+            result = [dict(zip(columns, row)) for row in cursor.fetchmany(100)]
         if not result:
             return "<p>无查询结果</p>"
-        html = (
+        table = (
             "<table border='1'><tr>"
-            + "".join(f"<th>{col}</th>" for col in columns)
+            + "".join(f"<th>{html.escape(str(col))}</th>" for col in columns)
             + "</tr>"
         )
         for row in result:
-            html += (
+            table += (
                 "<tr>"
-                + "".join(f"<td>{row.get(col, '')}</td>" for col in columns)
+                + "".join(
+                    f"<td>{html.escape(str(row.get(col, ''))[:2000])}</td>"
+                    for col in columns
+                )
                 + "</tr>"
             )
-        html += "</table>"
-        logger.debug("SQL 查询结果: %s", html)
-        return html
+        table += "</table>"
+        logger.debug("SQL 查询返回 %s 行", len(result))
+        return table
     except Exception as e:
         return f"SQL 执行失败: {e}"
 

@@ -69,7 +69,7 @@ def test_inspection_reads_actual_state_and_source_without_sending(evidence):
 
 
 def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
-    evidence, monkeypatch
+    evidence, monkeypatch, tmp_path
 ):
     _, sent, _ = evidence
     turns = []
@@ -89,7 +89,7 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
                 ],
             )
         if len(turns) == 2:
-            report = json.loads(messages[-1].content)
+            report = json.loads(messages[-1].content.split("\n", 1)[-1])
             index = report["references"]
             source = index["sources"][0]
             assert any(row["id"] == source["record_id"] for row in index["records"])
@@ -118,14 +118,38 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
                     }
                 ],
             )
-        assert messages[-1].content == "邮件发送成功！"
+        assert messages[-1].content.endswith("邮件发送成功！")
         return AIMessage(content="已反馈，并注明待确认事项。")
 
     model = Mock()
     model.invoke.side_effect = invoke
     monkeypatch.setattr(agent, "build_llm", lambda *args, **kwargs: model)
-    result = agent._run_manual_tool_loop(
-        agent._build_messages("请反馈训练问题并分析相关代码"), "offline-key"
+    from arknights_mower.agent.execution import Execution
+    from arknights_mower.utils import ai_history
+
+    monkeypatch.setattr(ai_history, "get_path", lambda _: tmp_path / "chat.sqlite3")
+    store = ai_history.HistoryStore("feedback-profile")
+    approvals = []
+    with store.turn(None, "请反馈训练问题并分析相关代码") as turn:
+
+        def send(frame):
+            event = frame["event"]
+            if event["type"] == "approval":
+                approvals.append(event)
+                assert not sent
+                run.control("approve", event["approval_id"], event["digest"])
+
+        run = Execution(store, turn, send)
+        with run.registered():
+            result = agent._run_manual_tool_loop(
+                agent._build_messages("请反馈训练问题并分析相关代码"),
+                "offline-key",
+                execution=run,
+            )
+    assert len(approvals) == 1
+    assert (
+        approvals[0]["preview"]["content"]["description"]
+        == "用户观察：训练未开始。期望：正常开始。"
     )
     assert result[-1] == "已反馈，并注明待确认事项。"
     contents = parts(sent)

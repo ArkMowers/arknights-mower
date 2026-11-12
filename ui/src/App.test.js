@@ -529,6 +529,16 @@ describe('desktop page startup', () => {
     return html
   }
 
+  it('shares assistant visibility with the mounted business page', async () => {
+    const component = await mount()
+    const visibility = provide.mock.calls.find(([key]) => key === 'chat_panel_visible')?.[1]
+    expect(visibility).toBe(component.showChatBot)
+    component.openChatBot()
+    expect(visibility.value).toBe(true)
+    component.showChatBot.value = false
+    expect(visibility.value).toBe(false)
+  })
+
   it('toggles the mounted content watermark without reloading its version or application data', async () => {
     state.loadWatermark.mockResolvedValue('4.1.6-alpha.42')
     const component = await mount()
