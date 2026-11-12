@@ -3352,8 +3352,6 @@ class BaseSchedulerSolver(
         for task in getattr(self, "waiting_group_shifts", ()):
             if task is current_task:
                 continue
-            if self._emergency_suspends_waiting_shift(task):
-                continue
             if set(returning_groups).intersection(
                 getattr(task, "group_shift_waiting", ())
             ):

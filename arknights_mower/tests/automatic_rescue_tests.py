@@ -706,7 +706,15 @@ def test_initial_staffing_cannot_skip_rescue_admission(
     assert not solver._emergency_startup_pending
     assert saved[-1][0] is False
     assert saved[-1][1]["phase"] == "staffing"
-    assert not any(task.type == TaskTypes.SELF_CORRECTION for task in solver.tasks)
+    corrections = [
+        task for task in solver.tasks if task.type == TaskTypes.SELF_CORRECTION
+    ]
+    assert corrections == ([pending] if pending_shift else [])
+    if pending_shift:
+        assert corrections[0] is pending
+        assert pending.execution_failure == {"reason": "waiting"}
+        assert pending.plan == {primary.room: [primary.name]}
+        assert pending.time == NOW
     assert {
         name: (op.current_room, op.current_index, op.mood, op.time_stamp)
         for name, op in data.operators.items()
