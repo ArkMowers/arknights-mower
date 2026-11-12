@@ -1,15 +1,19 @@
 import { expect, it } from 'vitest'
 import { appendFileSync } from 'node:fs'
 import process from 'node:process'
-import plan from './fixtures/income-fiammetta-return.json'
+import baseline from './fixtures/income-fiammetta-return.json'
 import { defaultIncomeSettings } from './income'
 import { calculateIncome } from './incomeWorker'
 
 const longRun = process.env.MOWER_INCOME_LONG_TEST === '1'
 
 it(
-  'returns Aroma after cross-dorm charging and exhaustion-timer refresh in the seed 42 plan',
+  'returns Aroma promptly after cross-dorm charging in the seed 42 plan',
   () => {
+    const plan = structuredClone(baseline)
+    const fia = plan.plan1.dormitory_4.plans.find((slot) => slot.agent === '菲亚梅塔')
+    // 固定阿罗玛为充能对象，确保本用例实际覆盖充能后的回班。
+    fia.replacement = ['阿罗玛']
     const sampleDays = longRun ? 28 : 2
     const result = calculateIncome(plan, {
       ...defaultIncomeSettings(),
