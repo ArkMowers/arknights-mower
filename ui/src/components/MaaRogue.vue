@@ -9,6 +9,20 @@ const mobile = inject('mobile')
 const config_store = useConfigStore()
 
 const { maa_rg_theme, rogue } = storeToRefs(config_store)
+watch(
+  [maa_rg_theme, () => rogue.value.mode, () => rogue.value.blackflow_strategy],
+  ([theme, mode, strategy]) => {
+    if (theme !== 'BlackFlow' || mode !== 0) return
+    if (strategy === 'burn' || strategy === 'burn_with_investment') {
+      rogue.value.blackflow_fast_flight = true
+      rogue.value.investment_enabled = strategy === 'burn_with_investment'
+    }
+    if (['', 'burn', 'burn_with_investment', 'ending2', 'ending3'].includes(strategy)) {
+      rogue.value.blackflow_strategy = 'ending1'
+    }
+  },
+  { immediate: true, flush: 'sync' }
+)
 const exp_flight = computed(
   () =>
     maa_rg_theme.value === 'BlackFlow' &&
@@ -21,10 +35,17 @@ const prep_flight = computed(
     rogue.value.mode === 30003 &&
     rogue.value.blackflow_start_run_fast_flight
 )
-function restart_blackflow() {
-  rogue.value.blackflow_start_run_id = Array.from(
-    crypto.getRandomValues(new Uint32Array(4)),
-    (value) => value.toString(16).padStart(8, '0')
+const boss_stop = computed(
+  () =>
+    maa_rg_theme.value === 'BlackFlow' &&
+    rogue.value.mode === 0 &&
+    rogue.value.stop_at_final_boss &&
+    !rogue.value.blackflow_fast_flight
+)
+function restart_blackflow(kind = 'opening') {
+  const key = kind === 'boss' ? 'blackflow_boss_run_id' : 'blackflow_start_run_id'
+  rogue.value[key] = Array.from(crypto.getRandomValues(new Uint32Array(4)), (value) =>
+    value.toString(16).padStart(8, '0')
   ).join('')
 }
 
@@ -227,7 +248,8 @@ const rogue_theme_tip = computed(() => {
 3. 已解锁的最高难度 <3 或未解锁相关科技时，请不要使用指挥避战策略，否则会导致出错
 4. 当前难度 ≥15 时，6★ 干员希望消耗 +1，使用部分分队时可能无法招募开局 6★ 干员，导致出错或失败`,
     BlackFlow: `黑流树海支持刷等级、投资、培养襁褓动物和刷开局。
-刷等级可选择第一至第三结局或快速到达第三层。刷开局先进行准备局，再以期望奖励结束目标局；也可选择凹第一层实托邦。
+刷等级默认以第一结局为目标，第二、第三结局暂不开放。勾选快速飞三层后，到达第三层即重开，不打结局。
+一结局路线由 MAA 自动规划发育和秘境行商交易；目前主要使用通用战斗决策，不能保证通关。刷开局先进行准备局，再以期望奖励结束目标局；也可选择凹第一层实托邦。
 精二机械师配合特勤分队或堡垒战术分队、稳扎稳打或坚不可摧职业组，可在解锁对应科技后使用结构性原理移动。`
   }
   return tips[maa_rg_theme.value] ? rogue_theme_tip_header + tips[maa_rg_theme.value] : ''
@@ -502,20 +524,32 @@ const find_playtime_options = [
         >
       </n-flex>
     </n-form-item>
-    <n-form-item v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 0" label="刷等级路线">
-      <n-select
-        :disabled="rogue.blackflow_fast_flight"
-        v-model:value="rogue.blackflow_strategy"
-        :options="[
-          { label: '跟随 MAA 默认', value: '' },
-          { label: '快速到达第三层', value: 'burn' },
-          { label: '投资后快速到达第三层', value: 'burn_with_investment' },
-          { label: '第一结局', value: 'ending1' },
-          { label: '第二结局', value: 'ending2' },
-          { label: '第三结局', value: 'ending3' }
-        ]"
-      />
+    <n-form-item v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 0" label="目标结局">
+      <n-flex vertical>
+        <n-select
+          :disabled="rogue.blackflow_fast_flight"
+          v-model:value="rogue.blackflow_strategy"
+          :options="[{ label: '一结局 · 强制重启', value: 'ending1' }]"
+        />
+        <n-text depth="3"
+          >取消快速飞三层后按第一结局推进，使用上方配置的分队、职业组和开局干员正常招募。</n-text
+        >
+      </n-flex>
     </n-form-item>
+    <template v-if="boss_stop">
+      <n-form-item label="目前状态">
+        <MaaTaskStatus kind="blackflow_boss" :settings="rogue" />
+      </n-form-item>
+      <n-form-item label="暂停后">
+        <n-flex vertical>
+          <n-text
+            >到达后保留这一局并保存完成状态，Mower
+            重启后也不会重复执行。修改本轮开局设置或点击按钮可开始新一轮。</n-text
+          >
+          <n-button @click="restart_blackflow('boss')">重新执行到第五层 BOSS 前</n-button>
+        </n-flex>
+      </n-form-item>
+    </template>
     <template v-if="maa_rg_theme === 'BlackFlow' && rogue.mode === 30003">
       <n-form-item label="目前状态">
         <MaaTaskStatus kind="blackflow" :settings="rogue" />
@@ -641,7 +675,15 @@ const find_playtime_options = [
       v-if="is_field_enabled('stop_at_final_boss', maa_rg_theme, rogue.mode)"
       :show-label="false"
     >
-      <n-checkbox v-model:checked="rogue.stop_at_final_boss">到达险路恶敌前停止</n-checkbox>
+      <n-flex vertical>
+        <n-checkbox v-model:checked="rogue.stop_at_final_boss">{{
+          maa_rg_theme === 'BlackFlow' ? '在第五层 BOSS 前暂停' : '到达险路恶敌前停止'
+        }}</n-checkbox>
+        <n-text v-if="maa_rg_theme === 'BlackFlow'" depth="3"
+          >在第五层 BOSS
+          编队页停止，尚未扣除此次移动的行动力，可手动接管。快速飞三层会提前重开，不会到达此处。</n-text
+        >
+      </n-flex>
     </n-form-item>
     <n-form-item
       v-if="is_field_enabled('stop_at_max_level', maa_rg_theme, rogue.mode)"
