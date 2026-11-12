@@ -59,7 +59,14 @@ def schedule(room, name, backup):
     }
     return {
         "plan1": {} if backup else table,
-        "backup_plans": [{"plan": table, "conf": {}, "task": {}, "trigger": {}}]
+        "backup_plans": [
+            {
+                "plan": table,
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "True", "operator": "", "right": ""},
+            }
+        ]
         if backup
         else [],
     }
@@ -113,18 +120,25 @@ def test_mastery_and_workshop_collect_additional_replacements(backup, model, roo
 
 
 @pytest.mark.parametrize("backup", [False, True])
-def test_additional_replacement_is_excluded_from_training_assistants(game, backup):
+@pytest.mark.parametrize("active", [False, True])
+@pytest.mark.parametrize("model", [False, True])
+def test_additional_replacement_reservation_follows_backup_activation(
+    game, backup, active, model
+):
     metadata, ids = game
+    raw = schedule("meeting", "艾丽妮", backup)
+    if backup and not active:
+        raw["backup_plans"][0]["trigger"] = {}
+    plan = PlanModel(**raw) if model else raw
     inputs = TrainingInputs(
         roster=[owned(ids[name]) for name in ("能天使", "艾丽妮", "逻各斯")],
         metadata=metadata,
-        schedule=mastery_support_data.schedule_context(
-            schedule("meeting", "艾丽妮", backup)
-        ),
+        schedule=mastery_support_data.schedule_context(plan),
     )
     candidates, _ = mastery_support_data.candidates(ids["能天使"], inputs=inputs)
-    assert "艾丽妮" not in candidates
+    assert ("艾丽妮" not in candidates) is (not backup or active)
     assert "逻各斯" in candidates
+    assert "meeting" in mastery_support_data.trainee_schedule_conflict("艾丽妮", plan)
 
 
 @pytest.mark.parametrize("backup", [False, True])
