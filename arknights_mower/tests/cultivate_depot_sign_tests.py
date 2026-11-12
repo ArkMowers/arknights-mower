@@ -10,9 +10,14 @@ from unittest.mock import MagicMock, patch
 
 # 只验证 cultivate_depot 自身对 request_with_retry 的调用方式，森空岛网络层
 # 一律由 test double 控制（与其他测试同款 stub，规避导入链联网）。
-sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
+# 但 cultivate_depot 的 info URL 常量来自 skland 真实模块：桩状态下导入拿到的是
+# MagicMock 属性，URL 断言会随执行顺序漂移（单文件运行必挂）。这里清掉桩和可能
+# 已按桩导入的 cultivate_depot，强制按真实模块重新导入，保证与运行顺序无关。
+sys.modules.pop("arknights_mower.utils.skland", None)
+sys.modules.pop("arknights_mower.solvers.cultivate_depot", None)
 
 from arknights_mower.solvers import cultivate_depot  # noqa: E402
+from arknights_mower.utils import skland  # noqa: E402,F401
 
 PLAYER_URL = "https://zonai.skland.com/api/v1/game/cultivate/player?uid=100"
 INFO_URL = "https://zonai.skland.com/api/v1/game/player/info?uid=100"
@@ -26,9 +31,7 @@ def _run_refresh():
     第二处 info GET 通过让基建条件解析为空来触发。
     """
     conf = SimpleNamespace(
-        skland_info=[
-            SimpleNamespace(account="a", password="p", cultivate_select=True)
-        ]
+        skland_info=[SimpleNamespace(account="a", password="p", cultivate_select=True)]
     )
     binding = {
         "gameId": 1,

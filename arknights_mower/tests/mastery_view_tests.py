@@ -350,9 +350,7 @@ class TestMasteryPlanView(unittest.TestCase):
                         "arknights_mower.utils.mastery_recommendation.get_cultivate_characters",
                         return_value=roster if has_box else None,
                     ),
-                    patch(
-                        "arknights_mower.views.mastery._dispatch_new_plans_async"
-                    ),
+                    patch("arknights_mower.views.mastery._dispatch_new_plans_async"),
                     patch(
                         "arknights_mower.views.mastery.refresh_workshop_after_plan_change"
                     ),
@@ -982,9 +980,7 @@ class TestMasteryPlanView(unittest.TestCase):
 
     @patch("arknights_mower.views.mastery.logger")
     @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
-    def test_background_dispatch_logs_sync_failure_as_warning(
-        self, dispatch, logger
-    ):
+    def test_background_dispatch_logs_sync_failure_as_warning(self, dispatch, logger):
         # 森空岛同步失败 → WARNING 提示计划已保留（用户要看到），不再改写响应
         from arknights_mower.views.mastery import _dispatch_new_plans_in_background
 

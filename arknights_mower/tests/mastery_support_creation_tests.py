@@ -67,9 +67,7 @@ def test_plan_api_allows_scheduled_trainee(database, context_game, legacy_payloa
             "arknights_mower.utils.mastery_recommendation.get_current_mastery_level",
             return_value=0,
         ),
-        patch(
-            "arknights_mower.views.mastery._dispatch_new_plans_async"
-        ) as dispatch,
+        patch("arknights_mower.views.mastery._dispatch_new_plans_async") as dispatch,
     ):
         conf.webview.token = ""
         response = app.test_client().post("/mastery-plan", json=payload)
