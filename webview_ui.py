@@ -1188,6 +1188,70 @@ def _run_desktop():
         raise
 
 
+# 启动器只保留 1 MB 诊断信息，超过上限就顺带把上一份改名为 launcher.log.1。
+LAUNCHER_LOG_LIMIT = 1024 * 1024
+
+
+def _launcher_failure_message(error):
+    """拼装面向用户的启动失败提示；目录取实际数据目录，避免写死安装路径。"""
+    try:
+        from arknights_mower.utils.path import get_path
+
+        directory = get_path("@app", space="")
+    except BaseException:
+        directory = "Mower 数据目录"
+    return (
+        f"无法启动 Mower：{error}\n\n"
+        "常见原因：更新目录权限不足，或被杀毒/同步/备份软件占用；"
+        "诊断信息已写入 tmp\\launcher.log\n\n"
+        f"如持续失败，可先用管理员权限启动一次或修复 {directory} 目录权限"
+    )
+
+
+def report_launcher_failure(error):
+    """把启动器异常落盘到 @app/tmp/launcher.log，并尽力弹出可操作的提示。
+
+    冻结包的父进程 console=False、sys.stderr 为 None，而且有意不建立文件日志
+    （文件日志只属于子进程，见 _run_desktop 里的说明），所以这里只用标准库自立
+    门户：先写诊断文件，再用 ctypes 弹一个原生消息框。两件事都是 best-effort：
+    兜底逻辑本身绝不能在异常处理器里再抛，否则用户只会看到 PyInstaller 弹窗。
+    """
+    import time
+    import traceback
+
+    try:
+        from arknights_mower.utils.path import get_path
+
+        path = get_path("@app/tmp/launcher.log", space="")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if path.stat().st_size > LAUNCHER_LOG_LIMIT:
+                path.replace(path.with_name("launcher.log.1"))
+        except OSError:
+            # 还没有旧日志，或改名被占用时直接追加即可，诊断不该再制造异常。
+            pass
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        with path.open("a", encoding="utf-8") as stream:
+            stream.write(
+                f"[{timestamp}] 启动器异常：{type(error).__name__}: {error}\n"
+                f"{traceback.format_exc()}\n"
+            )
+    except BaseException:
+        # 落盘失败也要继续走到用户提示，绝不在异常处理器里再抛。
+        pass
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.user32.MessageBoxW(
+            0, _launcher_failure_message(error), "Mower 启动失败", 0x10
+        )
+    except BaseException:
+        # 没有桌面会话或 ctypes 不可用时静默放弃，诊断已留在 launcher.log 里。
+        pass
+
+
 if __name__ == "__main__":
     mp.freeze_support()
     if sys.argv[1:2] == ["--desktop-worker"]:
@@ -1203,7 +1267,15 @@ if __name__ == "__main__":
         if sys.platform == "win32" and not _supervised_instance:
             from arknights_mower.utils.instance_supervisor import run_launcher
 
-            sys.exit(run_launcher(sys.argv[1:]))
+            try:
+                sys.exit(run_launcher(sys.argv[1:]))
+            except SystemExit:
+                raise
+            except BaseException as error:
+                # 冻结包没有控制台，未捕获异常只会变成 PyInstaller 弹窗且零日志；
+                # 这里兜住启动器分支，至少留下 traceback 和一条可操作提示。
+                report_launcher_failure(error)
+                sys.exit(1)
         if _supervised_instance:
             from arknights_mower.utils.instance_supervisor import (
                 child_report,

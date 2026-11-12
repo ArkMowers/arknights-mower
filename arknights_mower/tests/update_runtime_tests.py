@@ -21,6 +21,15 @@ from arknights_mower.utils import path as mower_path
 from arknights_mower.utils import update_runtime as runtime
 
 
+def permission_error_saying(text):
+    """A ``PermissionError(13)`` whose ``str()`` is exactly ``text``."""
+    return type(
+        "LabelledPermissionError",
+        (PermissionError,),
+        {"__str__": lambda self: text},
+    )(13, "denied")
+
+
 class SubmissionLockTests(unittest.TestCase):
     def test_only_native_lock_contention_becomes_a_busy_verdict(self):
         windows_lock = OSError(errno.EACCES, "locked")
@@ -327,6 +336,85 @@ class InstanceScanTests(unittest.TestCase):
         ):
             with self.assertRaises(runtime.InstanceScanError):
                 runtime.instances(self.directory, timeout=0)
+
+    def test_permission_error_quotes_errno_size_and_likely_causes(self):
+        with patch.object(Path, "read_text", side_effect=PermissionError(13, "denied")):
+            with self.assertRaises(runtime.InstanceScanError) as caught:
+                runtime.instances(self.directory, timeout=0)
+        message = str(caught.exception)
+        self.assertIn("无法完整读取实例登记，请稍后重试或检查文件权限", message)
+        self.assertIn(str(self.path), message)
+        self.assertIn("[Errno 13]", message)
+        # 异常串已经带了错误码，这里不得再重复写一遍 errno=13。
+        self.assertNotIn("errno=", message)
+        self.assertIn("文件大小", message)
+        self.assertIn("常见原因", message)
+
+    def test_errno_is_only_spelled_out_when_the_message_hides_it(self):
+        cases = {
+            "半角括号": ("[Errno 13] denied", False),
+            "全角括号": ("【Errno 13】拒绝访问", False),
+            "大写": ("[ERRNO 13] denied", False),
+            "未携带": ("登记文件被占用", True),
+        }
+        for name, (text, explicit) in cases.items():
+            with self.subTest(name):
+                with patch.object(
+                    Path, "read_text", side_effect=permission_error_saying(text)
+                ):
+                    with self.assertRaises(runtime.InstanceScanError) as caught:
+                        runtime.instances(self.directory, timeout=0)
+                message = str(caught.exception)
+                self.assertIn("13", message)
+                self.assertEqual("errno=13" in message, explicit)
+                # 无论哪种写法，errno 都只出现一次（不重复渲染同一个错误码）。
+                self.assertEqual(message.lower().count("errno"), 1)
+
+    def test_every_scan_failure_is_kept_in_details_and_counted(self):
+        other = self.path.with_name("another.json")
+        runtime.write_json(other, self.record)
+        with patch.object(Path, "read_text", side_effect=PermissionError(13, "denied")):
+            with self.assertRaises(runtime.InstanceScanError) as caught:
+                runtime.instances(self.directory, timeout=0)
+        error = caught.exception
+        self.assertIn("另有 1 个登记读取失败", str(error))
+        self.assertEqual(len(error.details), 2)
+        # 登记按文件名排序扫描，another.json 排在 live.json 之前。
+        self.assertEqual(error.details[0]["path"], str(other))
+        self.assertEqual(error.details[0]["kind"], "file")
+        self.assertEqual(error.details[0]["errno"], 13)
+        for detail in error.details:
+            self.assertEqual(
+                set(detail), {"path", "kind", "errno", "winerror", "size", "error"}
+            )
+
+    def test_unlistable_directory_is_reported_as_a_directory(self):
+        with patch.object(Path, "iterdir", side_effect=PermissionError(13, "denied")):
+            with self.assertRaises(runtime.InstanceScanError) as caught:
+                runtime.instances(self.directory, timeout=0)
+        message = str(caught.exception)
+        self.assertIn("目录", message)
+        self.assertIn("无法列举", message)
+        self.assertNotIn("另有", message)
+        detail = caught.exception.details[0]
+        self.assertEqual(detail["kind"], "directory")
+        self.assertEqual(detail["path"], str(self.directory / "instances"))
+        self.assertIsNone(detail["size"])
+
+    def test_invalid_content_detail_omits_platform_codes(self):
+        self.path.write_text("{", encoding="utf-8")
+        with self.assertRaises(runtime.InstanceScanError) as caught:
+            runtime.instances(self.directory, timeout=0)
+        detail = caught.exception.details[0]
+        self.assertEqual(detail["path"], str(self.path))
+        self.assertIsNone(detail["errno"])
+        self.assertIsNone(detail["winerror"])
+        self.assertNotIn("errno=", str(caught.exception))
+
+    def test_scan_error_stays_constructible_with_a_plain_message(self):
+        error = runtime.InstanceScanError("unreadable")
+        self.assertEqual(str(error), "unreadable")
+        self.assertEqual(error.details, [])
 
     def test_tray_best_effort_scan_does_not_delete_unknown_registrations(self):
         self.path.write_text("{", encoding="utf-8")
