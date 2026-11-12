@@ -62,6 +62,7 @@ const state = vi.hoisted(() => ({
   route: null,
   router: null,
   mobile: null,
+  chatPanelVisible: null,
   preview: null,
   previewOptions: null,
   realPreview: false,
@@ -82,6 +83,7 @@ vi.mock('vue', async (original) => ({
     if (key === routeLocationKey) return state.route
     if (key === routerKey) return state.router
     if (key === 'mobile') return state.mobile
+    if (key === 'chat_panel_visible') return state.chatPanelVisible
     return ref(false)
   },
   onBeforeUnmount: vi.fn(),
@@ -169,6 +171,7 @@ describe('log page', () => {
     state.route = reactive({ hash: '', query: {}, redirectedFrom: null })
     state.router = { push: vi.fn(), replace: vi.fn() }
     state.mobile = ref(false)
+    state.chatPanelVisible = ref(false)
     state.preview = { start: vi.fn(), stop: vi.fn() }
     state.realPreview = false
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
@@ -2271,6 +2274,54 @@ describe('log page', () => {
     })
     return { callbacks, finishAnimations, skipTransition }
   }
+
+  it('applies document-wide log changes directly while the assistant is visible', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
+    const { callbacks } = deferViewTransitions()
+    state.chatPanelVisible.value = true
+    const { find } = mountWidePane()
+    const task = viewControl(find, '任务列表')
+    task.props.onClick()
+    await nextTick()
+    expect(task.props['aria-pressed']).toBe(false)
+    expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'false')
+    expect(document.startViewTransition).not.toHaveBeenCalled()
+
+    state.chatPanelVisible.value = false
+    task.props.onClick()
+    expect(document.startViewTransition).toHaveBeenCalledOnce()
+    await callbacks[0]()
+    expect(task.props['aria-pressed']).toBe(true)
+  })
+
+  it('finishes a document transition and applies queued selections when opening the assistant', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-10-20T11:30:00.000', plan: {}, type: '跑单' }]
+    const { callbacks, finishAnimations, skipTransition } = deferViewTransitions({
+      holdAnimation: true
+    })
+    const { find, page } = mountWidePane()
+    page.sc_blob = 'blob:initial-frame'
+    page.apply_log_layout()
+    await nextTick()
+    const screenshot = viewControl(find, '预览截图')
+    const task = viewControl(find, '任务列表')
+    screenshot.props.onClick()
+    await callbacks[0]()
+    task.props.onClick()
+    expect(callbacks).toHaveLength(1)
+
+    state.chatPanelVisible.value = true
+    expect(skipTransition).toHaveBeenCalledOnce()
+    await nextTick()
+    expect(screenshot.props['aria-pressed']).toBe(false)
+    expect(task.props['aria-pressed']).toBe(false)
+    expect(localStorage.setItem).toHaveBeenLastCalledWith('log_show_task_table', 'false')
+    expect(document.startViewTransition).toHaveBeenCalledOnce()
+    finishAnimations[0]()
+    await nextTick()
+    expect(document.startViewTransition).toHaveBeenCalledOnce()
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
 
   it.each([
     [false, ['mower-log', 'mower-log-layout', 'mower-log-rail']],

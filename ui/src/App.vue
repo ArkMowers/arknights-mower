@@ -465,6 +465,7 @@ function leaveSettings() {
   void router.push(settingsReturnTo.value)
 }
 const showChatBot = ref(false)
+provide('chat_panel_visible', showChatBot)
 const chatBotMounted = ref(false)
 function openChatBot() {
   mobileMenuOpen.value = false
@@ -1482,7 +1483,6 @@ td {
 }
 
 .outer-layout {
-  isolation: isolate;
   flex: 1;
   min-width: 0;
   position: relative;

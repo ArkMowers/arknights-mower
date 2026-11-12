@@ -1578,8 +1578,6 @@ onBeforeUnmount(() => {
   left: clamp(16px, var(--chat-left, 100vw), calc(100vw - var(--chat-width) - 16px));
   top: clamp(16px, var(--chat-top, 100dvh), calc(100dvh - var(--chat-height) - 16px));
   z-index: 2000;
-  /* 覆盖日志页时独立合成，防止下层文字滤镜盖住对话。 */
-  transform: translateZ(0);
   display: flex;
   flex-direction: column;
   width: var(--chat-width);
