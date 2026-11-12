@@ -14,7 +14,7 @@ date: 2026-11-05
 
 ## Decision
 
-Select compatible eligible groups in configured priority order. Explicit exclusions are symmetric. Each selected group has one exclusive-backup slot; a shared backup occupies all selected memberships. Global overlays remain scoped by group membership and merge once in backup order. Preserve legacy group exclusions during import. Default-group backups remain fallback-only.
+Select compatible eligible groups in configured priority order. Explicit exclusions are symmetric. Each selected group has one exclusive-backup slot; a shared backup occupies all selected memberships. Global overlays remain scoped by group membership and merge once in backup order. Preserve legacy group exclusions during import. The initial implementation retained default-group fallback from single-group selection. This prevented default backups from ever participating when custom conditions covered every state, such as working and resting. The default group now participates alongside custom groups; its backups still require their own conditions.
 
 ## Alternatives considered
 
@@ -22,7 +22,9 @@ Adding a domain or scenario layer makes independent selections possible but comp
 
 ## Verification
 
-The focused native suites pass 358 tests, including complete-shift activation and persisted tuple state, full cross-group validation failures, fallback, condition correlation, snapshot isolation, shared exclusive slots and unchanged-state convergence. Frontend and simulator suites pass 154 tests for symmetric editing and removal, legacy and parallel JSON persistence, priority selection, per-group choices and projected activation. Production build includes the income Worker. Offline browser interaction confirms symmetric exclusions and the new `True` condition. No live device was used.
+The initial focused native suites passed 358 tests, including complete-shift activation and persisted tuple state, full cross-group validation failures, fallback, condition correlation, snapshot isolation, shared exclusive slots and unchanged-state convergence. Initial frontend and simulator suites passed 154 tests for symmetric editing and removal, legacy and parallel JSON persistence, priority selection, per-group choices and projected activation. Production build includes the income Worker. Offline browser interaction confirms symmetric exclusions and the new `True` condition. No live device was used.
+
+The default-group correction is covered by native selection and combined-roster validation tests, simulator selection tests and the supplied plan in [`incomeDefaultGroup.test.js`](../../../../ui/src/riic/incomeDefaultGroup.test.js). Both Aroma working states apply and remove Fartooth resting priority as her condition changes; the full 3-day warmup and 28-day sample activates and deactivates that backup without modifying the plan. This uses maximum operator practice and unlimited materials, not a captured roster or inventory.
 
 ## Consequences
 

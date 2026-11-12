@@ -49,7 +49,7 @@ def normalize_backup_groups(groups):
         if excluded and (
             group["id"] == DEFAULT_BACKUP_GROUP or DEFAULT_BACKUP_GROUP in excluded
         ):
-            raise ValueError("默认分组仅作为兜底，不能配置分组互斥")
+            raise ValueError("默认分组始终生效，不能配置分组互斥")
         group["exclusive_with"] = excluded
     for group in result:
         for other in result:
@@ -72,13 +72,13 @@ def normalize_backup_groups(groups):
 
 
 def select_group_ids(groups, eligible):
-    selected = []
+    selected = [DEFAULT_BACKUP_GROUP]
     for group in groups:
         if group["id"] == DEFAULT_BACKUP_GROUP or group["id"] not in eligible:
             continue
         if not set(group["exclusive_with"]).intersection(selected):
             selected.append(group["id"])
-    return tuple(selected) or (DEFAULT_BACKUP_GROUP,)
+    return tuple(selected)
 
 
 @dataclass(frozen=True)

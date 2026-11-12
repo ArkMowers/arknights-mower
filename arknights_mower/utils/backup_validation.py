@@ -193,7 +193,7 @@ def possible_backup_conditions(
 
     def group_branches(index, selected, terms):
         if index == len(custom):
-            yield selected or ("default",), terms
+            yield selected, terms
             return
         group = custom[index]
         if set(group["exclusive_with"]).intersection(selected):
@@ -210,7 +210,7 @@ def possible_backup_conditions(
                 )
 
     combinations = set()
-    for selected_groups, group_terms in group_branches(0, (), []):
+    for selected_groups, group_terms in group_branches(0, ("default",), []):
         active_groups = set(selected_groups)
         eligible = [
             index

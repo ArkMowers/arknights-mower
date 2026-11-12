@@ -322,7 +322,7 @@ def test_nested_duration_condition_selects_group_at_its_advance_threshold(monkey
     assert data.next_major_maintenance_check(now) == now + timedelta(minutes=30)
     data._projection_now += timedelta(minutes=30)
     selected = data.evaluate_backup_selection()
-    assert selected.group_id == "long-stop"
+    assert selected.group_id == ("default", "long-stop")
     assert selected.conditions == [True]
 
 

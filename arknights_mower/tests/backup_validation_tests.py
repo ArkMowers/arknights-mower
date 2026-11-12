@@ -1050,3 +1050,26 @@ def test_parallel_group_validation_checks_full_cross_group_roster(excluded):
         assert "替班变更" in result["message"]
         assert "替换组不可用高效组干员" in result["message"]
     assert (repr(data.plan), data.plan_condition, data.backup_group) == previous
+
+
+def test_default_and_custom_group_overlays_are_validated_together():
+    plan = two_backups()
+    plan["backup_groups"] = [
+        {
+            "id": "custom",
+            "name": "Custom",
+            "trigger": {"left": "True"},
+            "exclusive_with": [],
+        }
+    ]
+    for backup, group in zip(plan["backup_plans"], ["default", "custom"]):
+        backup.group_ids = [group]
+        backup.trigger = LogicExpression("True", "==", "True")
+    data = initialize(plan)
+    previous = repr(data.plan), list(data.plan_condition), data.backup_group
+    result = data.validate_backup_plans(check_owned=False)
+    assert result["status"] == "failed"
+    assert "主力变更" in result["message"]
+    assert "替班变更" in result["message"]
+    assert "替换组不可用高效组干员" in result["message"]
+    assert (repr(data.plan), data.plan_condition, data.backup_group) == previous

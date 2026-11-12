@@ -589,8 +589,8 @@
       "reason": "Support multiple backup group memberships, retained group and exclusive selection, and isolated scheduling previews with scoped default backups."
     },
     "scheduler/backupGroups.spec.ts": {
-      "sha256": "33dc5255e23d4ee2235d4b32760d863741600fd6caba82c7658b6947fba5e9eb",
-      "reason": "Support multiple backup group memberships, retained group and exclusive selection, and isolated scheduling previews with scoped default backups. Support concurrent backup groups with symmetric exclusions, configured group priority, per-group exclusive slots, shared memberships and value-based isolated selection state."
+      "sha256": "4c416197862fbfe3677c81d5066a3752325331e5714ed6eb4cb87df1b6f769d5",
+      "reason": "Support multiple backup group memberships, retained group and exclusive selection, and isolated scheduling previews with scoped default backups. Support concurrent backup groups with symmetric exclusions, configured group priority, per-group exclusive slots, shared memberships and value-based isolated selection state. Always include the default group alongside eligible custom groups, preserving backup conditions and shared exclusive slots."
     },
     "scheduler/backupInventoryExpression.spec.ts": {
       "reason": "Verify live group maximum and minimum mood, anchor filtering, condition trees and missing groups.",
@@ -881,8 +881,8 @@
       "reason": "Declare supported raw material inputs and validate nonnegative fractional daily external supplies independently of integer starting inventory."
     },
     "scheduler/backupGroups.ts": {
-      "sha256": "bed4aada3b0697ea034204a3d82cc41b3d9c687a0b83e76650add1ac419c5b64",
-      "reason": "Support concurrent backup groups with symmetric exclusions, configured group priority, per-group exclusive slots, shared memberships and value-based isolated selection state."
+      "sha256": "bdaa78ca07f72247183b96bd268022c26af802685be1d617928ec87093fd27ce",
+      "reason": "Support concurrent backup groups with symmetric exclusions, configured group priority, per-group exclusive slots, shared memberships and value-based isolated selection state. Always include the default group alongside eligible custom groups, preserving backup conditions and shared exclusive slots."
     },
     "scheduler/mowerFiammettaReturn.spec.ts": {
       "sha256": "f9caf416061c486ace2249339407cb8a9dacd5402d165d7486d357411892ce94",

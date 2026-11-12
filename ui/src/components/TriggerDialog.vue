@@ -164,7 +164,7 @@ function update_trigger(data) {
         <n-collapse-item title="分组条件与管理" name="groups">
           <n-alert :show-icon="false" type="info" style="margin-bottom: 12px">
             分组默认可同时生效，新建分组的条件为
-            True。有互斥关系时，按下方列表从上到下选择；被排除的分组不影响其他组。没有自定义分组生效时使用默认分组。旧配置已保留原有互斥关系，可在下方调整。
+            True。有互斥关系时，按下方列表从上到下选择；被排除的分组不影响其他组。默认分组始终生效，不参与分组互斥；其中的副表仍须满足自身条件。旧配置已保留原有互斥关系，可在下方调整。
           </n-alert>
           <n-alert
             v-if="groups_without_condition.length"
@@ -237,7 +237,9 @@ function update_trigger(data) {
                 <trigger-editor :data="selected_group.trigger" @update="update_group_trigger" />
               </n-scrollbar>
             </template>
-            <n-text v-else depth="3">默认分组作为兜底，不需要设置分组条件。</n-text>
+            <n-text v-else depth="3"
+              >默认分组始终生效，不需要设置分组条件；其中的副表仍须满足自身条件。</n-text
+            >
           </n-space>
         </n-collapse-item>
       </n-collapse>
