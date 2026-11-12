@@ -208,9 +208,24 @@ def test_request_owner_survives_complete_departure_planning(solver):
     assert "絮雨" in departure.plan["dormitory_1"]
 
 
-def test_plan_schema_rejects_unknown_group_even_in_inactive_backup():
-    with pytest.raises(ValueError, match="绑组任务组名不存在"):
-        PlanModel(backup_plans=[{"group_tasks": [{"group": "missing"}]}])
+def test_schedule_validation_rejects_unknown_group_even_in_inactive_backup():
+    from arknights_mower.utils.operators import Operators, build_global_plan
+
+    model = PlanModel(
+        backup_plans=[
+            {
+                "name": "未知绑组副表",
+                "trigger": {"left": "False"},
+                "group_tasks": [{"group": "missing"}],
+            }
+        ]
+    )
+    data = Operators(build_global_plan(plan_model=model))
+    assert "绑组任务组名不存在：missing" in data.init_and_validate()
+    result = data.validate_backup_plans(check_owned=False)
+    assert not result["success"]
+    assert "未知绑组副表" in result["message"]
+    assert "绑组任务组名不存在：missing" in result["message"]
 
 
 def test_plan_schema_accepts_group_declared_by_another_backup_and_round_trips():
