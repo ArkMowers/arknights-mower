@@ -372,6 +372,13 @@ class TestDwmWindowChrome(unittest.TestCase):
         from arknights_mower.utils import windows_frameless
 
         self.module = windows_frameless
+        version = patch.object(
+            windows_frameless.sys,
+            "getwindowsversion",
+            return_value=SimpleNamespace(build=22000),
+        )
+        version.start()
+        self.addCleanup(version.stop)
 
     def test_requests_native_rounded_corners_and_system_border_color(self):
         set_attribute = Mock(return_value=0)
@@ -422,6 +429,51 @@ class TestDwmWindowChrome(unittest.TestCase):
                     )
                 with library:
                     self.assertIsNone(self.module._apply_dwm_window_chrome(0x1234))
+
+
+class TestDwmChromeCompatibility(unittest.TestCase):
+    def test_only_supported_windows_builds_request_optional_chrome(self):
+        import ast
+        from pathlib import Path
+
+        source = Path(__file__).parents[1] / "utils/windows_frameless.py"
+        function = next(
+            node
+            for node in ast.parse(source.read_text(encoding="utf-8")).body
+            if isinstance(node, ast.FunctionDef)
+            and node.name == "_apply_dwm_window_chrome"
+        )
+        for build in (19045, 20348, 21999, 22000, 22621):
+            with self.subTest(build=build):
+                set_attribute = Mock(return_value=0)
+                library = Mock(
+                    return_value=SimpleNamespace(DwmSetWindowAttribute=set_attribute)
+                )
+                namespace = {
+                    "sys": SimpleNamespace(
+                        getwindowsversion=lambda: SimpleNamespace(build=build)
+                    ),
+                    "ctypes": Mock(WinDLL=library),
+                    "wintypes": Mock(),
+                    "logger": Mock(),
+                }
+                exec(
+                    compile(
+                        ast.Module(body=[function], type_ignores=[]), source, "exec"
+                    ),
+                    namespace,
+                )
+                namespace["_apply_dwm_window_chrome"](0x1234)
+                if build < 22000:
+                    library.assert_not_called()
+                    set_attribute.assert_not_called()
+                else:
+                    library.assert_called_once_with("dwmapi", use_last_error=True)
+                    self.assertEqual(
+                        [call.args[1] for call in set_attribute.call_args_list],
+                        [33, 34],
+                    )
+                namespace["logger"].debug.assert_not_called()
 
 
 class TestDesktopWindowMinSize(unittest.TestCase):
