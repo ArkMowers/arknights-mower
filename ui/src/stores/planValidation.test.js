@@ -148,7 +148,7 @@ describe('manual schedule validation', () => {
 
     expect(axios.post).toHaveBeenCalledTimes(1)
     expect(axios.post.mock.calls[0][0]).toBe(`${import.meta.env.VITE_HTTP_URL}/plan`)
-    expect(message.error).toHaveBeenCalledWith('验证失败: 保存失败', {
+    expect(message.error).toHaveBeenCalledWith('保存排班失败: 保存失败', {
       duration: 0,
       closable: true
     })
@@ -158,6 +158,35 @@ describe('manual schedule validation', () => {
     axios.post.mockResolvedValue({ data: { success: true, message: '验证通过' } })
     await validate()
     expect(message.success).toHaveBeenCalledWith('验证通过', { duration: 3000, closable: true })
+  })
+
+  it.each([false, true])('shows server rejection details (rescue=%s)', async (rescue) => {
+    for (const saving of [true, false]) {
+      for (const data of [
+        { message: '排班设置格式无效', error: 'invalid_configuration' },
+        { error: '救急排班格式无效' }
+      ]) {
+        const { validate, message, validating_plan } = setup(rescue)
+        axios.post.mockReset()
+        if (!saving) axios.post.mockResolvedValueOnce({ data: {} })
+        axios.post.mockRejectedValueOnce(
+          Object.assign(new Error('Request failed with status code 400'), {
+            response: { status: 400, data }
+          })
+        )
+
+        await validate()
+
+        expect(axios.post).toHaveBeenCalledTimes(saving ? 1 : 2)
+        expect(message.error).toHaveBeenCalledWith(
+          `${saving ? '保存排班失败' : '验证失败'}: ${data.message || data.error}`,
+          { duration: 0, closable: true }
+        )
+        expect(message.success).not.toHaveBeenCalled()
+        expect(validating_plan.value).toBe(false)
+        store.$dispose()
+      }
+    }
   })
 
   it.each([false, true])(
