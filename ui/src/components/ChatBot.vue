@@ -12,6 +12,7 @@ import CloseOutline from '@vicons/ionicons5/es/CloseOutline'
 import CopyOutline from '@vicons/ionicons5/es/CopyOutline'
 import DocumentTextOutline from '@vicons/ionicons5/es/DocumentTextOutline'
 import GridOutline from '@vicons/ionicons5/es/GridOutline'
+import TimeOutline from '@vicons/ionicons5/es/TimeOutline'
 import MailOutline from '@vicons/ionicons5/es/MailOutline'
 import SchoolOutline from '@vicons/ionicons5/es/SchoolOutline'
 import SettingsOutline from '@vicons/ionicons5/es/SettingsOutline'
@@ -34,6 +35,93 @@ const renderMessage = (content) => md.render(visibleContent(content))
 const userInput = ref('')
 const chatHistory = ref([])
 const loading = ref(false)
+const conversationId = ref(null)
+const conversations = ref([])
+const historyOpen = ref(false)
+const historyBusy = ref(false)
+const historyReady = ref(false)
+const historyError = ref('')
+const remoteBusy = ref(false)
+const historyBase = `${import.meta.env.VITE_HTTP_URL || ''}/ai/conversations`
+let historyRequest = 0
+let disposed = false
+const historyOptionsDisabled = computed(() => loading.value || historyBusy.value)
+
+function currentGeneration() {
+  return axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
+}
+function restoreConversation(data) {
+  conversationId.value = data.id
+  remoteBusy.value = data.busy
+  chatHistory.value = data.turns.flatMap((turn) => [
+    { role: 'user', content: turn.user },
+    {
+      role: 'bot',
+      content:
+        turn.assistant +
+        (turn.status !== 'complete' ? '\n\n本轮未完成，部分操作可能已执行，请核实后再继续。' : ''),
+      error: turn.status !== 'complete',
+      followUpState: null
+    }
+  ])
+  atBottom.value = true
+}
+async function loadHistory({ restore = false, id = null } = {}) {
+  if (loading.value || historyBusy.value || mower.ai_assistant_enabled !== true) return
+  const requestId = ++historyRequest
+  const generation = currentGeneration()
+  const valid = () =>
+    !disposed &&
+    mower.ai_assistant_enabled === true &&
+    requestId === historyRequest &&
+    generation === currentGeneration()
+  historyBusy.value = true
+  historyError.value = ''
+  try {
+    const { data } = await axios.get(historyBase)
+    if (!valid()) return
+    conversations.value = data.conversations
+    const selected = id || (restore ? data.conversations[0]?.id : null)
+    if (selected) {
+      const response = await axios.get(`${historyBase}/${selected}`)
+      if (!valid()) return
+      closeConnection()
+      restoreConversation(response.data)
+      userInput.value = ''
+    }
+    historyReady.value = true
+  } catch (error) {
+    if (valid()) historyError.value = error.response?.data?.error || '无法读取会话历史，请重试。'
+  } finally {
+    if (!disposed && requestId === historyRequest) historyBusy.value = false
+  }
+}
+async function selectConversation(id) {
+  await loadHistory({ id })
+  if (!historyError.value) historyOpen.value = false
+}
+async function deleteConversation(id = null) {
+  if (historyOptionsDisabled.value) return
+  historyBusy.value = true
+  historyError.value = ''
+  try {
+    await axios.delete(id ? `${historyBase}/${id}` : historyBase)
+    if (disposed) return
+    if (!id || id === conversationId.value) newConversation()
+    conversations.value = id ? conversations.value.filter((item) => item.id !== id) : []
+  } catch (error) {
+    historyError.value = error.response?.data?.error || '删除失败，请重试。'
+  } finally {
+    historyBusy.value = false
+  }
+}
+function toggleHistory() {
+  historyOpen.value = !historyOpen.value
+  if (historyOpen.value) loadHistory()
+}
+function historyTime(timestamp) {
+  return new Date(timestamp * 1000).toLocaleString()
+}
 const connecting = ref(false)
 const historyRef = ref(null)
 const inputRef = ref(null)
@@ -83,7 +171,14 @@ function endDrag(event) {
   }
 }
 const atBottom = ref(true)
-const canSend = computed(() => Boolean(userInput.value.trim()) && !loading.value)
+const canSend = computed(
+  () =>
+    Boolean(userInput.value.trim()) &&
+    !loading.value &&
+    !historyBusy.value &&
+    historyReady.value &&
+    !remoteBusy.value
+)
 const statusLabel = computed(() =>
   connecting.value ? '正在连接' : loading.value ? '正在回复' : '日志排查与使用建议'
 )
@@ -104,6 +199,7 @@ let connectTimer = null
 function messageFrame(text) {
   return JSON.stringify({
     message: text,
+    conversation_id: conversationId.value,
     generation: axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
   })
 }
@@ -170,6 +266,7 @@ function connectWS(text) {
       failReply('无法读取 AI 回复，请重试。')
       return
     }
+    if (data.conversation_id) conversationId.value = data.conversation_id
     if (!activeReply) return
     if (data.code === 'ai_assistant_disabled') {
       failReply(data.error || '管理员未开启')
@@ -188,6 +285,15 @@ function connectWS(text) {
       }
       activeReply = null
       loading.value = false
+      let retained = chatHistory.value.reduce((size, item) => size + item.content.length, 0)
+      while (
+        chatHistory.value.length > 2 &&
+        (chatHistory.value.length > 200 || retained > 262144)
+      ) {
+        retained -= chatHistory.value
+          .splice(0, 2)
+          .reduce((size, item) => size + item.content.length, 0)
+      }
     }
   }
   ws.onerror = () => failReply('AI 连接失败，请检查服务与访问密钥后重试。')
@@ -195,7 +301,7 @@ function connectWS(text) {
     clearTimeout(connectTimer)
     connecting.value = false
     ws = null
-    if (loading.value) failReply('连接已中断。再次发送将建立新会话，请补充必要的问题背景。')
+    if (loading.value) failReply('连接已中断，未自动重发。可从历史会话重新打开并核实操作结果。')
   }
 }
 function sendMessage() {
@@ -225,6 +331,9 @@ function useSuggestion(suggestion) {
 function newConversation() {
   if (loading.value) return
   closeConnection()
+  conversationId.value = null
+  remoteBusy.value = false
+  historyOpen.value = false
   chatHistory.value = []
   userInput.value = ''
   activeReply = null
@@ -284,13 +393,18 @@ watch(
       return
     }
     if (!value) return
+    if (enabled === true && !historyReady.value) await loadHistory({ restore: true })
     await nextTick()
     inputRef.value?.focus()
     if (atBottom.value) scrollToLatest()
   },
   { immediate: true }
 )
-onBeforeUnmount(closeConnection)
+onBeforeUnmount(() => {
+  disposed = true
+  historyRequest++
+  closeConnection()
+})
 </script>
 
 <template>
@@ -319,20 +433,28 @@ onBeforeUnmount(closeConnection)
         </div>
       </div>
       <div class="header-actions">
-        <n-popconfirm :disabled="loading || !chatHistory.length" @positive-click="newConversation">
-          <template #trigger>
-            <n-button
-              quaternary
-              circle
-              class="icon-button"
-              :disabled="loading || !chatHistory.length"
-              aria-label="新对话"
-              title="新对话"
-              ><template #icon><n-icon :component="AddOutline" /></template
-            ></n-button>
-          </template>
-          清空当前对话，开始新的会话？
-        </n-popconfirm>
+        <n-button
+          quaternary
+          circle
+          class="icon-button"
+          :disabled="historyOptionsDisabled"
+          aria-label="历史会话"
+          title="历史会话"
+          @click="toggleHistory"
+        >
+          <template #icon><n-icon :component="TimeOutline" /></template>
+        </n-button>
+        <n-button
+          quaternary
+          circle
+          class="icon-button"
+          :disabled="historyOptionsDisabled || !historyReady"
+          aria-label="新对话"
+          title="新对话，保留历史"
+          @click="newConversation"
+        >
+          <template #icon><n-icon :component="AddOutline" /></template>
+        </n-button>
         <n-button
           quaternary
           circle
@@ -356,7 +478,71 @@ onBeforeUnmount(closeConnection)
       </div>
     </header>
 
-    <div class="history-container">
+    <div v-if="historyError" class="history-notice" role="alert">
+      {{ historyError }}
+      <n-button text @click="loadHistory({ restore: !historyReady })" :disabled="historyBusy"
+        >重试</n-button
+      >
+    </div>
+    <div v-if="remoteBusy && !historyOpen" class="history-notice" role="status">
+      此会话正在其他连接中回复。
+      <n-button text @click="loadHistory({ id: conversationId })" :disabled="historyBusy"
+        >刷新</n-button
+      >
+    </div>
+    <div v-if="historyOpen" class="conversation-browser">
+      <div class="conversation-toolbar">
+        <strong>历史会话</strong>
+        <n-popconfirm
+          :disabled="historyOptionsDisabled || !conversations.length"
+          @positive-click="deleteConversation()"
+        >
+          <template #trigger
+            ><n-button
+              size="small"
+              quaternary
+              :disabled="historyOptionsDisabled || !conversations.length"
+              >清空历史</n-button
+            ></template
+          >
+          删除当前配置档案的全部会话？此操作无法撤销。
+        </n-popconfirm>
+      </div>
+      <p class="history-help">保存在当前实例，按配置档案分别保存。最多保留 20 个会话。</p>
+      <p v-if="!conversations.length" class="history-help">暂无历史会话</p>
+      <div
+        v-for="item in conversations"
+        :key="item.id"
+        class="conversation-item"
+        :class="{ selected: item.id === conversationId }"
+      >
+        <button
+          type="button"
+          class="conversation-select"
+          :disabled="historyOptionsDisabled"
+          @click="selectConversation(item.id)"
+        >
+          <strong>{{ item.title }}</strong
+          ><time>{{ historyTime(item.updated) }}</time>
+        </button>
+        <n-popconfirm
+          :disabled="historyOptionsDisabled"
+          @positive-click="deleteConversation(item.id)"
+        >
+          <template #trigger
+            ><n-button
+              quaternary
+              size="small"
+              :disabled="historyOptionsDisabled"
+              :aria-label="`删除会话：${item.title}`"
+              >删除</n-button
+            ></template
+          >
+          删除这个会话？已执行的操作不会撤销。
+        </n-popconfirm>
+      </div>
+    </div>
+    <div v-else class="history-container">
       <div ref="historyRef" class="chatbot-history" @scroll="trackScroll" :aria-busy="loading">
         <div v-if="!chatHistory.length" class="chatbot-welcome">
           <h3>从一个问题开始</h3>
@@ -450,7 +636,7 @@ onBeforeUnmount(closeConnection)
       >
     </div>
 
-    <footer class="chatbot-input-area">
+    <footer v-if="!historyOpen" class="chatbot-input-area">
       <div class="composer">
         <n-input
           ref="inputRef"
@@ -474,12 +660,69 @@ onBeforeUnmount(closeConnection)
           >
         </div>
       </div>
-      <p class="composer-note">AI 可能判断有误，请核对日志与操作范围。</p>
+      <p class="composer-note">会话自动保存在本机。AI 可能判断有误，请核对操作范围。</p>
     </footer>
   </section>
 </template>
 
 <style scoped>
+.history-notice {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--mower-error-text);
+}
+.conversation-browser {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px;
+}
+.conversation-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.history-help {
+  font-size: 12px;
+  color: var(--mower-text-muted);
+  line-height: 1.8;
+}
+.conversation-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--mower-divider);
+  border-radius: 8px;
+}
+.conversation-item.selected {
+  background: var(--mower-primary-block);
+}
+.conversation-select {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  padding: 8px 0;
+  text-align: left;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.conversation-select strong {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+}
+.conversation-select time {
+  display: block;
+  font-size: 11px;
+  color: var(--mower-text-muted);
+  margin-top: 6px;
+}
+
 .chatbot-container {
   --chat-width: min(440px, calc(100vw - 32px));
   --chat-height: min(560px, calc(100dvh - 32px));
@@ -898,6 +1141,23 @@ onBeforeUnmount(closeConnection)
   }
   .composer-toolbar {
     padding-left: 4px;
+  }
+}
+@media (max-width: 360px) {
+  .assistant-mark {
+    display: none;
+  }
+  .icon-button {
+    width: 36px;
+  }
+  .assistant-heading h2 {
+    white-space: nowrap;
+  }
+  .assistant-status {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 @media (prefers-reduced-motion: reduce) {

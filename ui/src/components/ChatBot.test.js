@@ -51,13 +51,15 @@ async function flush() {
   await nextTick()
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   state.feedback = ref(false)
   state.notice = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
   state.dialog = { warning: vi.fn() }
   state.mower = reactive({ ai_assistant_enabled: true })
   state.axios = {
-    defaults: { headers: { common: { 'X-Mower-Config-Generation': 'page-generation' } } }
+    defaults: { headers: { common: { 'X-Mower-Config-Generation': 'page-generation' } } },
+    get: vi.fn().mockResolvedValue({ data: { conversations: [] } }),
+    delete: vi.fn().mockResolvedValue({ data: { ok: true } })
   }
   state.push = vi.fn()
   FakeSocket.instances = []
@@ -69,6 +71,7 @@ beforeEach(() => {
   emit = vi.fn()
   props = reactive({ show: true })
   component = scope.run(() => ChatBot.setup(props, { expose: vi.fn(), emit }))
+  await flush()
 })
 afterEach(() => {
   state.cleanup?.()
@@ -99,6 +102,7 @@ describe('AI chat interactions', () => {
     expect(JSON.parse(socket.send.mock.calls[0][0])).toEqual({ token: 'test+secret&value' })
     expect(JSON.parse(socket.send.mock.calls[1][0])).toEqual({
       message: 'hello',
+      conversation_id: null,
       generation: 'page-generation'
     })
   })
@@ -303,7 +307,7 @@ describe('AI chat interactions', () => {
     socket.open()
     expect(socket.send.mock.calls.map(([data]) => JSON.parse(data))).toEqual([
       { token: 'test-session' },
-      { message: '检查日志', generation: 'page-generation' }
+      { message: '检查日志', conversation_id: null, generation: 'page-generation' }
     ])
     socket.receive({ reply: '正在查询\n' })
     expect(component.loading.value).toBe(true)
@@ -319,6 +323,7 @@ describe('AI chat interactions', () => {
     expect(component.chatHistory.value).toHaveLength(4)
     expect(JSON.parse(socket.send.mock.calls.at(-1)[0])).toEqual({
       message: '下一条草稿',
+      conversation_id: null,
       generation: 'page-generation'
     })
   })
@@ -443,4 +448,144 @@ describe('AI chat interactions', () => {
     expect(socket.close).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
   })
+})
+
+describe('persistent conversations', () => {
+  const saved = {
+    id: 'saved-conversation',
+    busy: false,
+    turns: [
+      { user: '之前的问题', assistant: '完整回复<!--MOWER_MISS_STATE:{}-->', status: 'complete' }
+    ]
+  }
+  function historyResponses() {
+    state.axios.get.mockImplementation(async (url) => ({
+      data: url.endsWith('/saved-conversation')
+        ? saved
+        : { conversations: [{ id: saved.id, title: '之前的问题', updated: 1 }] }
+    }))
+  }
+  it('restores the latest conversation on remount without creating a socket', async () => {
+    state.cleanup()
+    scope.stop()
+    historyResponses()
+    scope = effectScope()
+    component = scope.run(() => ChatBot.setup(props, { expose: vi.fn(), emit }))
+    await flush()
+    expect(component.conversationId.value).toBe(saved.id)
+    expect(component.chatHistory.value[1].content).toBe(saved.turns[0].assistant)
+    expect(component.renderMessage(component.chatHistory.value[1].content)).not.toContain(
+      'MOWER_MISS_STATE'
+    )
+    expect(FakeSocket.instances).toHaveLength(0)
+    const socket = send('继续')
+    socket.open()
+    expect(JSON.parse(socket.send.mock.calls[1][0]).conversation_id).toBe(saved.id)
+  })
+  it('uses the acknowledged conversation after reconnect and preserves it when starting a new one', () => {
+    const socket = send()
+    socket.open()
+    socket.receive({ conversation_id: 'persisted' })
+    socket.receive({ reply: 'answer', done: true })
+    socket.onclose()
+    const next = send('继续')
+    next.open()
+    expect(JSON.parse(next.send.mock.calls[1][0]).conversation_id).toBe('persisted')
+    next.receive({ reply: 'next', done: true })
+    component.newConversation()
+    expect(component.conversationId.value).toBeNull()
+    expect(component.chatHistory.value).toEqual([])
+    expect(state.axios.delete).not.toHaveBeenCalled()
+  })
+  it('deletes selected history and clears only through the history endpoint', async () => {
+    historyResponses()
+    await component.selectConversation(saved.id)
+    await component.deleteConversation(saved.id)
+    expect(state.axios.delete).toHaveBeenCalledWith(
+      expect.stringContaining('/ai/conversations/saved-conversation')
+    )
+    expect(component.conversationId.value).toBeNull()
+    await component.deleteConversation()
+    expect(state.axios.delete).toHaveBeenLastCalledWith(
+      expect.stringMatching(/\/ai\/conversations$/)
+    )
+    expect(component.conversations.value).toEqual([])
+  })
+  it('retains history on deletion failure and refuses to mutate during a reply', async () => {
+    historyResponses()
+    await component.selectConversation(saved.id)
+    state.axios.delete.mockRejectedValue({ response: { data: { error: '会话正在回复' } } })
+    await component.deleteConversation(saved.id)
+    expect(component.historyError.value).toBe('会话正在回复')
+    expect(component.conversationId.value).toBe(saved.id)
+    state.axios.delete.mockClear()
+    send()
+    await component.deleteConversation(saved.id)
+    expect(state.axios.delete).not.toHaveBeenCalled()
+    expect(component.conversationId.value).toBe(saved.id)
+  })
+  it('blocks sending after an initial read failure until retry succeeds', async () => {
+    component.historyReady.value = false
+    state.axios.get.mockRejectedValue(new Error('offline'))
+    await component.loadHistory({ restore: true })
+    component.userInput.value = 'hello'
+    expect(component.canSend.value).toBe(false)
+    expect(component.historyError.value).toBeTruthy()
+    state.axios.get.mockResolvedValue({ data: { conversations: [] } })
+    await component.loadHistory({ restore: true })
+    expect(component.canSend.value).toBe(true)
+  })
+  it('ignores an old generation or disposed history response', async () => {
+    let resolve
+    state.axios.get.mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      })
+    )
+    const pending = component.loadHistory({ restore: true })
+    state.axios.defaults.headers.common['X-Mower-Config-Generation'] = 'new-generation'
+    resolve({ data: { conversations: [{ id: 'old', title: 'old' }] } })
+    await pending
+    expect(component.conversations.value).toEqual([])
+    expect(component.chatHistory.value).toEqual([])
+    state.axios.get.mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      })
+    )
+    const disposed = component.loadHistory({ restore: true })
+    state.cleanup()
+    resolve({ data: { conversations: [{ id: 'old', title: 'old' }] } })
+    await disposed
+    expect(component.conversations.value).toEqual([])
+  })
+  it('renders interrupted history and requires refresh while another connection is active', async () => {
+    state.axios.get.mockResolvedValueOnce({ data: { conversations: [] } }).mockResolvedValueOnce({
+      data: {
+        ...saved,
+        busy: true,
+        turns: [{ user: '执行', assistant: '部分', status: 'interrupted' }]
+      }
+    })
+    await component.selectConversation(saved.id)
+    expect(component.chatHistory.value[1].error).toBe(true)
+    expect(component.chatHistory.value[1].content).toContain('部分操作可能已执行')
+    component.userInput.value = '继续'
+    expect(component.canSend.value).toBe(false)
+    historyResponses()
+    await component.loadHistory({ id: saved.id })
+    expect(component.remoteBusy.value).toBe(false)
+  })
+})
+
+it('bounds live messages independently of stored history', () => {
+  component.chatHistory.value = Array.from({ length: 200 }, (_, index) => ({
+    role: index % 2 ? 'bot' : 'user',
+    content: 'older'
+  }))
+  const socket = send('newest question')
+  socket.open()
+  socket.receive({ reply: 'newest reply', done: true })
+  expect(component.chatHistory.value).toHaveLength(200)
+  expect(component.chatHistory.value.at(-1).content).toBe('newest reply')
 })
