@@ -380,6 +380,9 @@ function apply_log_layout() {
   container.style.setProperty('--log-task-h', `${height}px`)
 }
 
+const FALLBACK_SCREENSHOT = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'
+let last_screenshot_error = 0
+
 function screenshot_loaded(event) {
   const image = event.target
   if (image?.naturalWidth > 0 && image?.naturalHeight > 0) {
@@ -388,6 +391,16 @@ function screenshot_loaded(event) {
       workspace.screenshot = { ...workspace.screenshot, aspect: screenshot_aspect }
   }
   apply_log_layout()
+}
+
+function screenshot_error(event) {
+  console.debug('截图预览加载失败，正在重置:', event)
+  workspace.screenshot = null
+  const now = Date.now()
+  if (now - last_screenshot_error > 2000) {
+    last_screenshot_error = now
+    screenshotPreview.invalidate()
+  }
 }
 
 async function restore_log_layout() {
@@ -1303,8 +1316,10 @@ async function db_delete(keys) {
         v-if="has_screenshot"
         class="log-screenshot"
         :src="sc_blob"
+        :fallback-src="FALLBACK_SCREENSHOT"
         object-fit="contain"
         @load="screenshot_loaded"
+        @error="screenshot_error"
       />
       <div
         v-if="has_screenshot"

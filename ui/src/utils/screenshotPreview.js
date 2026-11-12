@@ -13,6 +13,24 @@ export function createScreenshotPreview({
   let controller = null
   let etag = ''
   let imageUrl = ''
+  const pendingRevokes = new Set()
+
+  function safeRevoke(url) {
+    if (!url) return
+    pendingRevokes.add(url)
+    queueMicrotask(() => {
+      if (pendingRevokes.delete(url)) {
+        URL.revokeObjectURL(url)
+      }
+    })
+  }
+
+  function flushRevokes() {
+    for (const url of pendingRevokes) {
+      URL.revokeObjectURL(url)
+    }
+    pendingRevokes.clear()
+  }
 
   function restoreImage() {
     const cached = getCachedSnapshot()
@@ -25,6 +43,7 @@ export function createScreenshotPreview({
   restoreImage()
 
   function clearImage() {
+    flushRevokes()
     if (imageUrl) URL.revokeObjectURL(imageUrl)
     imageUrl = ''
     onChange('')
@@ -48,6 +67,7 @@ export function createScreenshotPreview({
       })
       if (!active || generation !== currentGeneration) return
       if (response.status === 200) {
+        if (!response.data || response.data.size === 0) return
         pendingUrl = URL.createObjectURL(response.data)
         let aspect
         if (getFirstFrameAspect && !imageUrl) {
@@ -55,7 +75,7 @@ export function createScreenshotPreview({
           aspect = await getFirstFrameAspect(pendingUrl)
           if (!active || generation !== currentGeneration) return
         }
-        if (imageUrl) URL.revokeObjectURL(imageUrl)
+        if (imageUrl) safeRevoke(imageUrl)
         imageUrl = pendingUrl
         pendingUrl = ''
         etag = response.headers.etag || ''
@@ -100,6 +120,18 @@ export function createScreenshotPreview({
       controller = null
       etag = ''
       clearImage()
+    },
+    invalidate() {
+      etag = ''
+      cacheSnapshot(null)
+      clearImage()
+      if (active) {
+        clearTimeout(timer)
+        timer = null
+        controller?.abort()
+        controller = null
+        poll(++generation)
+      }
     }
   }
 }

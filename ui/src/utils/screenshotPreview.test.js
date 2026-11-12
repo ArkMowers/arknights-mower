@@ -204,4 +204,27 @@ describe('memory screenshot preview', () => {
     await vi.advanceTimersByTimeAsync(1000)
     expect(fetchSnapshot.mock.calls[2][0].headers).toEqual({})
   })
+
+  it('invalidates a broken frame and retries without etag immediately', async () => {
+    let snapshot = { blob: new Blob(['cached']), etag: '"frame-1"', aspect: 16 / 9 }
+    preview = createScreenshotPreview({
+      fetchSnapshot,
+      onChange,
+      getCachedSnapshot: () => snapshot,
+      cacheSnapshot: (value) => (snapshot = value)
+    })
+    preview.start()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onChange).toHaveBeenCalledWith('blob:frame')
+
+    createUrl.mockReturnValue('blob:recovered')
+    preview.invalidate()
+    expect(snapshot).toBeNull()
+    expect(revokeUrl).toHaveBeenCalledWith('blob:frame')
+    expect(onChange).toHaveBeenLastCalledWith('')
+
+    await vi.advanceTimersByTimeAsync(0)
+    expect(fetchSnapshot.mock.lastCall[0].headers).toEqual({})
+    expect(onChange).toHaveBeenLastCalledWith('blob:recovered')
+  })
 })

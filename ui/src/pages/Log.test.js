@@ -169,7 +169,7 @@ describe('log page', () => {
     state.route = reactive({ hash: '', query: {}, redirectedFrom: null })
     state.router = { push: vi.fn(), replace: vi.fn() }
     state.mobile = ref(false)
-    state.preview = { start: vi.fn(), stop: vi.fn() }
+    state.preview = { start: vi.fn(), stop: vi.fn(), invalidate: vi.fn() }
     state.realPreview = false
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
     const documentTarget = Object.assign(new EventTarget(), {
@@ -549,6 +549,29 @@ describe('log page', () => {
     expect(screenshot.parent).toBe(log.parent)
     expect(all(screenshot).some((target) => target.props.src === 'blob:http://latest')).toBe(true)
     expect(all().some((target) => target.props.class === 'log-resizer log-resizer-sc')).toBe(true)
+  })
+
+  it('handles image load error gracefully with fallback and invalidates cached preview', async () => {
+    const { find, all } = mountWorkspace()
+    app._instance.setupState.workspace.screenshot = {
+      blob: new Blob(['x']),
+      etag: '"frame-1"',
+      aspect: 16 / 9
+    }
+    app._instance.setupState.sc_blob = 'blob:http://broken'
+    await nextTick()
+
+    const screenshot = find((target) => target.props.class === 'log-screenshot')
+    expect(screenshot).toBeDefined()
+    expect(screenshot.props['fallback-src']).toBeDefined()
+    expect(screenshot.props.onError).toBeTypeOf('function')
+
+    screenshot.props.onError(new Event('error'))
+    await nextTick()
+
+    expect(app._instance.setupState.workspace.screenshot).toBeNull()
+    expect(state.preview.invalidate).toHaveBeenCalled()
+    expect(all().some((target) => target.props.class === 'log-screenshot')).toBe(true)
   })
 
   it('fits the default mobile screenshot height to the loaded frame and current pane width', async () => {
