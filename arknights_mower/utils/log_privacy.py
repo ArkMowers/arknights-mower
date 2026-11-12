@@ -20,10 +20,20 @@ _USER_HOME = re.compile(
     r"(?i)(?:[a-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+"
     r"|/(?:home|Users)/)[^\\/\r\n\"'<>]+|/root(?=/)"
 )
-_SECRET_FIELD = re.compile(
+# One value: a quoted string, a bracketed list, or a token that ends at the first
+# delimiter. Identifiers keep the rest of their line, because the diagnostics that
+# follow them (a verdict code, a reason) are what a report has to preserve.
+_VALUE = r"""(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\[[^\]\r\n]*\]|[^\s,;，；)\]}>]+)"""
+_IDENTIFIER_FIELD = re.compile(
+    r"(?im)((?:[\"']|\b)(?:last_serial|serial|device_id|adb)(?:[\"']|\b)\s*[:=]\s*)"
+    + _VALUE
+)
+# Credential values can contain any text, so their record ends the search rather
+# than a delimiter guess that could leave half a secret behind.
+_CREDENTIAL_FIELD = re.compile(
     r"(?im)((?:[\"']|\b)(?:api[_-]?key|ai_key|ai_custom_key|token|password|"
-    r"pass_code|secret|authorization|cookie|smtp_pass|skland_info|last_serial|"
-    r"serial|device_id|adb)(?:[\"']|\b)\s*[:=]\s*)[^\r\n]+"
+    r"pass_code|secret|authorization|cookie|smtp_pass|skland_info)(?:[\"']|\b)"
+    r"\s*[:=]\s*)[^\r\n]+"
 )
 _BEARER = re.compile(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+")
 _QUERY_SECRET = re.compile(
@@ -85,8 +95,10 @@ class LogRedactor:
             text,
         )
         text = _QUERY_SECRET.sub(lambda match: match[1] + REDACTED, text)
-        # 与 AI 证据读取保持同一原则：有凭据字段的行不猜测嵌套值在哪里结束。
-        text = _SECRET_FIELD.sub(lambda match: match[1] + REDACTED, text)
+        # 标识类只遮蔽值本身，保留同一行的诊断信息；凭据类仍以整行结尾为边界，
+        # 且必须早于 _BEARER，否则 "authorization: Bearer <jwt>" 会漏出令牌。
+        text = _IDENTIFIER_FIELD.sub(lambda match: match[1] + REDACTED, text)
+        text = _CREDENTIAL_FIELD.sub(lambda match: match[1] + REDACTED, text)
         text = _BEARER.sub(lambda match: match[1] + " " + REDACTED, text)
         text = _API_KEY.sub(REDACTED, text)
         text = _EMAIL.sub(REDACTED, text)
@@ -115,7 +127,7 @@ def diagnostic_log_redactor():
     for name in (
         "last_serial",
         "adb_path",
-        "install_dir",
+        "installation_path",
         "manager_path",
         "config_path",
     ):
