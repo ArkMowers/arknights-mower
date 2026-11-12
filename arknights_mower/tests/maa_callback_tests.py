@@ -16,6 +16,7 @@ import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.tests.maa_process_helpers import fake_sdk_worker  # noqa: E402
 from arknights_mower.utils.maa_callback import (  # noqa: E402
+    BLACKFLOW_CALLBACKS,
     CONNECTION_TEXT,
     SUB_TASK_INFO,
     MaaCallbackLog,
@@ -24,6 +25,219 @@ from arknights_mower.utils.maa_callback import (  # noqa: E402
 )
 
 LOG_NAME = "arknights_mower.utils.log"
+
+
+@pytest.mark.parametrize(
+    "what,inner,level,text",
+    [
+        (
+            "BlackFlowStrategyStarted",
+            {"profile": "ending1"},
+            logging.INFO,
+            "黑流树海策略开始：一结局 · 强制重启",
+        ),
+        (
+            "BlackFlowRoutingDecision",
+            {
+                "floor": 3,
+                "action_points_before": 12,
+                "action_points_after": 8,
+                "movement": "walk",
+                "node_type": "scrap_shop",
+                "safety_margin": 2,
+            },
+            logging.INFO,
+            "黑流树海第 3 层：计划徒步前往秘境行商，预计行动力 12→8，安全余量 2",
+        ),
+        (
+            "BlackFlowRoutingDecision",
+            {
+                "floor": 5,
+                "action_points_before": 8,
+                "action_points_after": 7,
+                "movement": "rogue_6_scrap_M_11",
+                "node_type": "battle_boss",
+                "node_name": "险路恶敌",
+                "safety_margin": 0,
+            },
+            logging.INFO,
+            "黑流树海第 5 层：计划使用加工品「结构性原理」前往险路恶敌，预计行动力 8→7，安全余量 0",
+        ),
+        (
+            "BlackFlowRoutingWarning",
+            {"code": "route_blocked"},
+            logging.WARNING,
+            "黑流树海：路线被阻断",
+        ),
+        (
+            "BlackFlowMilestoneChanged",
+            {"milestone_id": "ending1_floor2_expedition", "status": "available"},
+            logging.INFO,
+            "黑流树海阶段目标：第二层优先先行一步（可以执行）",
+        ),
+        (
+            "BlackFlowMilestoneChanged",
+            {"milestone_id": "ending1_floor2_scrap_shop", "status": "satisfied"},
+            logging.INFO,
+            "黑流树海阶段目标：第二层优先秘境行商（已经完成）",
+        ),
+        (
+            "BlackFlowMilestoneChanged",
+            {"milestone_id": "ending1_floor2_scrap_shop", "status": "missed"},
+            logging.WARNING,
+            "黑流树海阶段目标：第二层优先秘境行商（已经错过）",
+        ),
+        (
+            "BlackFlowMilestoneChanged",
+            {"milestone_id": "ending1_floor2_scrap_shop", "status": "impossible"},
+            logging.WARNING,
+            "黑流树海阶段目标：第二层优先秘境行商（无法完成）",
+        ),
+        (
+            "BlackFlowInventoryCleanup",
+            {"status": "started"},
+            logging.WARNING,
+            "黑流树海：零件箱超载，开始清理",
+        ),
+        (
+            "BlackFlowInventoryCleanup",
+            {"status": "discarded", "name": "枯苔藓球"},
+            logging.INFO,
+            "黑流树海：已丢弃零件：枯苔藓球",
+        ),
+        (
+            "BlackFlowInventoryCleanup",
+            {"status": "completed"},
+            logging.INFO,
+            "黑流树海：零件箱清理完成",
+        ),
+        (
+            "BlackFlowInventoryCleanup",
+            {"status": "failed"},
+            logging.ERROR,
+            "黑流树海：零件箱清理失败",
+        ),
+        (
+            "BlackFlowStrategyResult",
+            {
+                "outcome": "burn_completed",
+                "termination_reason": "third_floor_reached",
+                "succeeded": True,
+            },
+            logging.INFO,
+            "黑流树海本局策略结束：第三层速通路线完成（已抵达第三层，本局路线完成）",
+        ),
+        (
+            "BlackFlowStrategyResult",
+            {
+                "outcome": "planning_failed",
+                "termination_reason": "map rebuild failed twice",
+                "succeeded": False,
+            },
+            logging.WARNING,
+            "黑流树海本局策略结束：路线规划失败（连续两次地图重建失败）",
+        ),
+        (
+            "BlackFlowScrapTradeAborted",
+            {"reason": "sale_failed", "item": "板藤"},
+            logging.WARNING,
+            "黑流树海秘境行商交易中止：出售「板藤」未得到确认，停止交易并离店",
+        ),
+    ],
+)
+def test_blackflow_progress_is_logged_by_scheduler(
+    monkeypatch, what, inner, level, text
+):
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.maa_callback = MaaCallbackLog()
+    logger = MagicMock()
+    monkeypatch.setattr(base_schedule, "logger", logger)
+    solver.on_maa_callback(
+        20003, payload(taskchain="Roguelike", what=what, details=inner), None
+    )
+    logger.log.assert_called_once_with(
+        level, text, extra={"log_group": "maa-integration"}
+    )
+
+
+def test_blackflow_future_and_malformed_fields_keep_diagnostics_without_claiming_success():
+    log = MaaCallbackLog()
+    for what in BLACKFLOW_CALLBACKS:
+        for value in (None, [], {}, {"future": True}):
+            inner = dict.fromkeys(
+                (
+                    "status",
+                    "profile",
+                    "code",
+                    "node_type",
+                    "node_name",
+                    "movement",
+                    "milestone_id",
+                    "outcome",
+                    "termination_reason",
+                    "succeeded",
+                    "name",
+                    "item",
+                    "reason",
+                    "floor",
+                    "action_points_before",
+                    "action_points_after",
+                    "safety_margin",
+                ),
+                value,
+            )
+            line = log.describe(20003, {"what": what, "details": inner})
+            assert line is None or isinstance(line.text, str)
+    for what in ("BlackFlowMilestoneChanged", "BlackFlowInventoryCleanup"):
+        for status in ("inactive", "future_status"):
+            assert (
+                log.describe(20003, {"what": what, "details": {"status": status}})
+                is None
+            )
+    line = log.describe(
+        20003,
+        {
+            "what": "BlackFlowStrategyResult",
+            "details": {
+                "outcome": "future_result",
+                "termination_reason": "future_reason",
+                "succeeded": "true",
+            },
+        },
+    )
+    assert line.level == logging.WARNING
+    assert line.text == "黑流树海本局策略结束：future_result（future_reason）"
+    line = log.describe(20003, {"what": "BlackFlowRoutingDecision", "details": {}})
+    assert (
+        line.text
+        == "黑流树海第 ? 层：计划以未知方式前往未知节点，预计行动力 ?→?，安全余量 ?"
+    )
+
+
+def test_blackflow_boss_pause_callback_has_a_readable_handoff(monkeypatch):
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.maa_callback = MaaCallbackLog()
+    logger = MagicMock()
+    monkeypatch.setattr(base_schedule, "logger", logger)
+    solver.on_maa_callback(
+        20003,
+        payload(
+            taskchain="Roguelike",
+            subtask="ProcessTask",
+            what="ExceededLimit",
+            details={
+                "task": "BlackFlow@Roguelike@StageDreadfulFoe-5",
+                "exec_times": 0,
+                "max_times": 0,
+            },
+        ),
+        None,
+    )
+    logger.log.assert_called_once_with(
+        logging.INFO,
+        "黑流树海已在第五层 BOSS 前暂停，可手动接管本局",
+        extra={"log_group": "maa-integration"},
+    )
 
 
 class FakeClock:
@@ -93,7 +307,10 @@ class MaaMalformedPayloadTests(unittest.TestCase):
     def test_wrong_typed_fields_never_raise(self):
         # 每个已知 what 都至少喂一次把字段换成别的类型，覆盖所有取值分支。
         whats = (
-            list(SUB_TASK_INFO) + list(CONNECTION_TEXT) + ["RoutingRestart", "Whatever"]
+            list(SUB_TASK_INFO)
+            + list(CONNECTION_TEXT)
+            + list(BLACKFLOW_CALLBACKS)
+            + ["RoutingRestart", "Whatever"]
         )
         for message in self.messages:
             for what in whats:

@@ -44,6 +44,8 @@ _DB_TABLE_STMTS = (
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_blackflow_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS maa_blackflow_boss_progress ("
+    "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS trading_history ("
     "time INTEGER PRIMARY KEY,"
     "server_date TEXT,"
@@ -418,18 +420,18 @@ def load_maa_copilot_progress():
     return json.loads(row[0]) if row else {}
 
 
-def load_maa_blackflow_progress():
+def load_maa_blackflow_progress(*, boss=False):
+    table = "maa_blackflow_boss_progress" if boss else "maa_blackflow_progress"
     with _conn() as connection:
-        row = connection.execute(
-            "SELECT payload FROM maa_blackflow_progress WHERE id = 1"
-        ).fetchone()
+        row = connection.execute(f"SELECT payload FROM {table} WHERE id = 1").fetchone()
     return json.loads(row[0]) if row else {}
 
 
-def save_maa_blackflow_progress(progress):
+def save_maa_blackflow_progress(progress, *, boss=False):
+    table = "maa_blackflow_boss_progress" if boss else "maa_blackflow_progress"
     with _conn() as connection:
         connection.execute(
-            "INSERT OR REPLACE INTO maa_blackflow_progress VALUES (1, ?)",
+            f"INSERT OR REPLACE INTO {table} VALUES (1, ?)",
             (json.dumps(progress),),
         )
         connection.commit()

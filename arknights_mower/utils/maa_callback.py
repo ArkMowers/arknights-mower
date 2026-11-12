@@ -249,12 +249,6 @@ SUB_TASK_INFO = {
             f"{_inner(details).get('max_times', 0)}）"
         ),
     ),
-    "BlackFlowScrapTradeAborted": (
-        logging.WARNING,
-        lambda details: (
-            f"黑流树海秘境行商交易中止：{_inner(details).get('reason', '')}（{_inner(details).get('item', '')}）"
-        ),
-    ),
     # 保全派驻
     "SSSStage": (
         logging.INFO,
@@ -382,6 +376,225 @@ BLACKFLOW_START_STATUS = {
 }
 
 
+BLACKFLOW_PROFILES = {
+    "ending1": "一结局 · 强制重启",
+    "ending2": "二结局 · 维度重构",
+    "ending3": "三结局 · 纠缠，调和",
+    "investment": "刷源石锭，投资完成后自动退出",
+    "burn": "快速到达第三层",
+    "burn_with_investment": "投资后快速到达第三层",
+    "baby_animal": "刷襁褓动物",
+    "baby_animal_floor3": "刷襁褓动物",
+    "start_run_animals": "刷开局准备局：培育目标动物",
+    "start_run_rewards": "刷开局准备局：快速到达第三层",
+    "start_run_rewards_with_investment": "刷开局准备局：投资后快速到达第三层",
+}
+
+BLACKFLOW_MOVEMENTS = {
+    "walk": "徒步",
+    "rogue_6_scrap_M_01": "使用加工品「报废轮子」",
+    "rogue_6_scrap_M_02": "使用加工品「报废假肢」",
+    "rogue_6_scrap_M_03": "使用加工品「标准引擎」",
+    "rogue_6_scrap_M_04": "使用加工品「重弹簧」",
+    "rogue_6_scrap_M_05": "使用加工品「气垫底座」",
+    "rogue_6_scrap_M_06": "使用加工品「试作外骨骼」",
+    "rogue_6_scrap_M_07": "使用加工品「小八界」",
+    "rogue_6_scrap_M_08": "使用加工品「一次性喷气背包」",
+    "rogue_6_scrap_M_09": "使用加工品「老妈妈的融雪」",
+    "rogue_6_scrap_M_10": "使用加工品「坎诺特的触须」",
+    "rogue_6_scrap_M_11": "使用加工品「结构性原理」",
+    "rogue_6_scrap_M_12": "使用加工品「简易遥控器」",
+    "rogue_6_scrap_M_13": "使用加工品「紧急逃生座椅」",
+    "rogue_6_scrap_M_14": "使用加工品「力反馈方向盘」",
+    "rogue_6_scrap_M_15": "使用加工品「鸣笛」",
+    "rogue_6_scrap_M_16": "使用加工品「坎诺特特快」",
+}
+
+
+BLACKFLOW_NODES = {
+    "empty": "空节点",
+    "battle_normal": "作战",
+    "combat": "作战",
+    "battle_elite": "紧急作战",
+    "emergency_combat": "紧急作战",
+    "battle_boss": "险路恶敌",
+    "boss": "险路恶敌",
+    "shop": "普通商店",
+    "battle_shop": "普通商店",
+    "scrap_shop": "秘境行商",
+    "incident": "不期而遇",
+    "encounter": "不期而遇",
+    "hide_invisible": "未知的诡秘",
+    "mysterious_presage": "未知的诡秘",
+    "hide_battle": "未知的凶戾",
+    "ferocious_presage": "未知的凶戾",
+    "expedition": "先行一步",
+    "scout": "先行一步",
+    "battle_savage": "｢居民｣ 据点",
+    "duel": "狭路相逢",
+    "face_off": "狭路相逢",
+    "employ": "应急助力",
+    "emergency_aid": "应急助力",
+    "rest": "休整节点",
+    "light": "羽瞰点",
+    "feather_point": "羽瞰点",
+    "door": "曲折密道",
+    "winding_passage": "曲折密道",
+    "sacrifice": "奉献节点",
+    "wish": "得偿所愿",
+    "portal": "误入奇境",
+    "bosky_passage": "误入奇境",
+    "resident_stronghold": "｢居民｣ 据点",
+    "final": "险路尽头",
+    "fate": "命运所指",
+    "evacuate": "撤离点",
+    "teleporter": "传送点",
+    "unclassified": "未知节点",
+    "other": "其他节点",
+}
+
+BLACKFLOW_MILESTONE_STATUS = {
+    "available": "可以执行",
+    "satisfied": "已经完成",
+    "missed": "已经错过",
+    "impossible": "无法完成",
+}
+
+BLACKFLOW_OUTCOMES = {
+    "start_run_prepared": "开局准备已完成",
+    "start_run_utopia_missed": "第一层不是实托邦",
+    "investment_completed": "投资路线完成",
+    "investment_missed": "投资路线错过",
+    "burn_completed": "第三层速通路线完成",
+    "baby_cultivation_completed": "目标襁褓动物培育完成",
+    "baby_cultivation_target_missed": "未获得目标襁褓动物",
+    "ending_prerequisite_failed": "结局前置条件未完成",
+    "strategy_completed": "本局策略目标已经完成",
+    "page_recovery_failed": "无法返回地图",
+    "ending2_completed": "二结局已经完成",
+    "ending3_completed": "三结局已经完成",
+    "ending2_prerequisite_failed": "二结局前置条件未完成",
+    "ending3_prerequisite_failed": "三结局前置条件未完成",
+    "baby_cultivation_unfinished": "襁褓动物培育未完成",
+    "task_event_failed": "节点结果处理失败",
+    "perception_port_missing": "地图识别接口不可用",
+    "map_rebuild_failed": "地图重建失败",
+    "planning_failed": "路线规划失败",
+    "transaction_proposal_failed": "无法准备本次移动",
+    "move_preview_failed": "无法打开移动预览",
+    "move_preview_rejected": "移动预览拒绝当前路线",
+    "move_confirmation_failed": "无法确认本次移动",
+    "post_move_validation_failed": "移动后的状态校验失败",
+    "planning_retry_exhausted": "路线重新规划次数已经用尽",
+    "state_machine_dead_end": "内部状态机错误",
+    "map_recovery_exhausted": "地图恢复重试次数已经用尽",
+    "floor_recognition_failed": "楼层识别失败",
+    "movement_inventory_observation_failed": "移动加工品识别失败",
+    "movement_selection_failed": "移动加工品选择失败",
+    "node_dispatch_failed": "节点分派失败",
+    "node_result_failed": "节点结果处理失败",
+    "internal_failure": "内部状态异常",
+}
+
+BLACKFLOW_REASONS = {
+    "start_run_prepared": "已到达第三层，将按目标难度和分队开启下一局",
+    "first_floor_without_utopia": "将放弃这一局，重新进行准备局",
+    "investment_finished": "投资已经完成，本局结束",
+    "investment_shop_window_closed": "已经离开第一层且尚未投资，本局重开",
+    "third_floor_reached": "已抵达第三层，本局路线完成",
+    "cultivation_result_reported": "已经取得培育结果，本局结束",
+    "cultivation_target_obtained": "培育结果包含目标品种，任务结束",
+    "cultivation_target_not_obtained": "培育结果未包含目标品种，本局重开",
+    "floor1_shop_has_no_seed": "第一层商店没有种子，本局结束",
+    "mandatory_prerequisite_missed": "必须完成的结局前置条件已经错过",
+    "strategy_terminal_reached": "已经抵达策略终点",
+    "node_page_could_not_return_to_map": "无法从节点页面返回地图",
+    "ending2_terminal_completed": "已完成二结局战斗",
+    "ending3_terminal_completed": "已完成三结局战斗",
+    "fifth_floor_reached_without_valid_sandtable_payment": "第五层前仍未满足二结局的沙盘要求",
+    "fifth_floor_reached_without_special_device": "第五层前仍未取得三结局所需藏品",
+    "third_floor_has_no_portal": "第三层未发现误入奇境，本局路线完成",
+    "third_floor_action_points_exhausted": "第三层行动力耗尽，未完成培育",
+    "scrap_shop_never_reached": "没有到达秘境行商，本局结束",
+    "map recovery port is unavailable": "地图恢复接口不可用",
+    "BlackFlow perception and task port is not attached": "地图识别与任务接口不可用",
+    "map rebuild failed twice": "连续两次地图重建失败",
+    "preview replanning exceeded the finite candidate limit": "预览反复改变可选路线，已经超过重新规划次数",
+}
+
+BLACKFLOW_WARNINGS = {
+    "map_rebuild_failed": "地图重建失败",
+    "page_recovery_failed": "无法从节点页面返回地图",
+    "preview_cost_changed": "移动预览显示的行动力消耗发生变化，正在重新规划",
+    "route_blocked": "路线被阻断",
+    "insufficient_action_points": "当前行动力不足",
+    "target_state_changed": "目标状态已变化",
+    "target_unreachable": "目标当前不可达，正在探测未知节点并重新规划",
+    "inferred_edge_selected": "本次移动使用了推断的连线",
+    "post_move_mismatch": "移动后的节点或行动力状态不一致",
+    "identity_conflict": "预览显示的节点类型与当前地图不一致",
+}
+
+BLACKFLOW_TRADE_FAILURES = {
+    "market_unavailable": "物品数据不可用，跳过交易并离店",
+    "inventory_incomplete": "持有物清点失败，停止交易并离店",
+    "page_switch_failed": "买入与出售页面切换失败，停止交易并离店",
+    "sale_search_failed": "出售列表查找失败，停止交易并离店",
+    "sell_back_search_failed": "未能找到要卖回的「{0}」，停止交易并离店",
+    "sale_failed": "出售「{0}」未得到确认，停止交易并离店",
+}
+
+BLACKFLOW_MILESTONES = {
+    "ending1_floor1_battles": "第一层优先作战",
+    "ending1_floor1_hidden": "第一层尽量探索未知的诡秘",
+    "ending1_floor2_expedition": "第二层优先先行一步",
+    "ending1_floor2_hidden": "第二层尽量探索未知的诡秘",
+    "ending1_floor2_incident": "第二层尽量经过不期而遇",
+    "ending1_informant": "第二、三层优先经过带线人角标的不期而遇",
+    "ending1_floor2_employ": "第二层顺路经过应急助力",
+    "ending1_floor2_light": "第二层顺路经过羽瞰点",
+    "ending1_floor2_wish": "第二层顺路经过得偿所愿",
+    "ending1_late_expedition": "第三至五层优先先行一步",
+    "ending1_late_employ": "第三至五层优先应急助力",
+    "ending1_late_hidden": "第三至五层尽量探索未知的诡秘",
+    "ending1_late_incident": "第三至五层尽量经过不期而遇",
+    "ending1_late_combat": "第三至五层顺路经过作战",
+    "ending1_late_light": "第三至五层顺路经过羽瞰点",
+    "ending1_late_wish": "第三至五层顺路经过得偿所愿",
+    "ending1_floor1_scrap_shop": "第一层顺路进入秘境行商交易",
+    "ending1_floor2_scrap_shop": "第二层优先秘境行商",
+    "ending1_late_scrap_shop": "第三至五层优先秘境行商",
+    "investment_shop": "进入第一层固定商店并完成投资",
+    "burn_floor1_shop": "第一层进入商店",
+    "burn_floor1_final": "第一层抵达险路尽头",
+    "burn_floor2_final": "第二层抵达险路尽头",
+    "baby_check_seed_shop": "第一层检查商店中的种子",
+    "baby_explore_hidden": "尚未发现秘境行商时尽量多开未知的诡秘",
+    "baby_visit_incident": "顺路进入不期而遇",
+    "baby_floor2_shops": "第二层经过普通商店时继续获取种子",
+    "baby_floor3_shops": "第三层经过普通商店时继续获取种子",
+    "baby_cultivate_scrap_shop_transit": "第一、二层进入秘境行商培育种子后前往层出口",
+    "baby_cultivate_scrap_shop_final": "第三层进入秘境行商培育种子",
+    "ending2_sandtable_a": "获得沙盘 A",
+    "ending2_sandtable_b": "获得沙盘 B",
+    "ending2_fate": "第五层进入命运所指并完成二结局",
+    "ending3_device_option2": "在先行一步选择第二项并获得三结局所需藏品",
+    "ending3_relics": "获得三件降低三结局难度的特殊藏品",
+    "ending3_floor5_boss": "完成第五层首领战斗",
+    "ending3_floor6": "在第六层完成三结局",
+}
+
+BLACKFLOW_CALLBACKS = {
+    "BlackFlowRoutingDecision",
+    "BlackFlowRoutingWarning",
+    "BlackFlowMilestoneChanged",
+    "BlackFlowInventoryCleanup",
+    "BlackFlowScrapTradeAborted",
+    "BlackFlowStrategyStarted",
+    "BlackFlowStrategyResult",
+}
+
+
 # ProcessTask 的完成动作，按 (任务链, 节点) 区分。
 PROCESS_TASK_COMPLETED = {
     ("Custom", "SS@Store@CheckUnlimited"): (
@@ -492,6 +705,82 @@ def _sequence(value) -> list:
 def _inner(details: dict) -> dict:
     """Sub-task payloads nest their fields under ``details``; require an object."""
     return _mapping(details.get("details"))
+
+
+def blackflow_boss_stop_reached(details: dict) -> bool:
+    inner = _inner(details)
+    return (
+        details.get("taskchain") == "Roguelike"
+        and details.get("subtask") == "ProcessTask"
+        and details.get("what") == "ExceededLimit"
+        and inner.get("task") == "BlackFlow@Roguelike@StageDreadfulFoe-5"
+        and type(inner.get("max_times")) is int
+        and inner["max_times"] == 0
+        and type(inner.get("exec_times")) is int
+        and inner["exec_times"] == 0
+    )
+
+
+def _blackflow_line(what: str, inner: dict) -> MaaLogLine | None:
+    def translated(table, field, fallback):
+        key = _key(inner.get(field))
+        return table.get(key, key[:128] or fallback)
+
+    if what == "BlackFlowStrategyStarted":
+        profile = translated(BLACKFLOW_PROFILES, "profile", "未知策略")
+        return MaaLogLine(logging.INFO, f"黑流树海策略开始：{profile}")
+    if what == "BlackFlowRoutingDecision":
+
+        def number(field):
+            value = inner.get(field)
+            return value if type(value) is int else "?"
+
+        movement = translated(BLACKFLOW_MOVEMENTS, "movement", "以未知方式")
+        node = _key(inner.get("node_name"))[:128] or translated(
+            BLACKFLOW_NODES, "node_type", "未知节点"
+        )
+        return MaaLogLine(
+            logging.INFO,
+            f"黑流树海第 {number('floor')} 层：计划{movement}前往{node}，预计行动力 "
+            f"{number('action_points_before')}→{number('action_points_after')}，"
+            f"安全余量 {number('safety_margin')}",
+        )
+    if what == "BlackFlowRoutingWarning":
+        warning = translated(BLACKFLOW_WARNINGS, "code", "路线出现异常")
+        return MaaLogLine(logging.WARNING, f"黑流树海：{warning}")
+    if what == "BlackFlowMilestoneChanged":
+        status = _key(inner.get("status"))
+        if status not in BLACKFLOW_MILESTONE_STATUS:
+            return None
+        milestone = translated(BLACKFLOW_MILESTONES, "milestone_id", "未知阶段目标")
+        level = logging.WARNING if status in ("missed", "impossible") else logging.INFO
+        return MaaLogLine(
+            level,
+            f"黑流树海阶段目标：{milestone}（{BLACKFLOW_MILESTONE_STATUS[status]}）",
+        )
+    if what == "BlackFlowInventoryCleanup":
+        item = _key(inner.get("name"))[:128] or "未知零件"
+        entry = {
+            "started": (logging.WARNING, "零件箱超载，开始清理"),
+            "discarded": (logging.INFO, f"已丢弃零件：{item}"),
+            "completed": (logging.INFO, "零件箱清理完成"),
+            "failed": (logging.ERROR, "零件箱清理失败"),
+        }.get(_key(inner.get("status")))
+        return MaaLogLine(entry[0], f"黑流树海：{entry[1]}") if entry else None
+    if what == "BlackFlowScrapTradeAborted":
+        item = _key(inner.get("item"))[:128]
+        reason = translated(BLACKFLOW_TRADE_FAILURES, "reason", "交易出现异常")
+        suffix = f"（{item}）" if item and "{0}" not in reason else ""
+        return MaaLogLine(
+            logging.WARNING,
+            f"黑流树海秘境行商交易中止：{reason.replace('{0}', item or '未知物品')}{suffix}",
+        )
+    if what == "BlackFlowStrategyResult":
+        outcome = translated(BLACKFLOW_OUTCOMES, "outcome", "结果未知")
+        reason = translated(BLACKFLOW_REASONS, "termination_reason", "原因未知")
+        level = logging.INFO if inner.get("succeeded") is True else logging.WARNING
+        return MaaLogLine(level, f"黑流树海本局策略结束：{outcome}（{reason}）")
+    return None
 
 
 def _chain(details: dict) -> str:
@@ -732,6 +1021,13 @@ class MaaCallbackLog:
                 entry = (logging.WARNING, f"{_chain(details)}：{subtask} 出错")
             return _entry_line(entry, details)
         if message == 20003:
+            if blackflow_boss_stop_reached(details):
+                return MaaLogLine(
+                    logging.INFO, "黑流树海已在第五层 BOSS 前暂停，可手动接管本局"
+                )
+            what = _key(details.get("what"))
+            if what in BLACKFLOW_CALLBACKS:
+                return _blackflow_line(what, _inner(details))
             if details.get("what") == "BlackFlowStartRun":
                 inner = _inner(details)
                 entry = BLACKFLOW_START_STATUS.get(_key(inner.get("status")))

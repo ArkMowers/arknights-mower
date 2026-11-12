@@ -106,6 +106,73 @@ def test_fast_flight_does_not_replace_unrelated_openings(dispatch, theme, mode):
     assert "collectible_mode_roles" not in params
 
 
+@pytest.mark.parametrize("strategy", [None, "", "ending1", "ending2", "ending3"])
+def test_blackflow_regular_exp_targets_ending1_with_normal_opening(dispatch, strategy):
+    rogue = {
+        "mode": 0,
+        "squad": "指挥分队",
+        "roles": "取长补短",
+        "core_char_list": [{"name": "棘刺", "use_support": True}],
+        "stop_at_final_boss": True,
+    }
+    if strategy is not None:
+        rogue["blackflow_strategy"] = strategy
+    _, params = dispatch(maa_rg_theme="BlackFlow", rogue=rogue)
+    assert params["blackflow_strategy"] == "ending1"
+    assert params["squad"] == "指挥分队"
+    assert params["roles"] == "取长补短"
+    assert params["core_char_list"] == [{"name": "棘刺", "use_support": True}]
+    assert params["stop_at_final_boss"] is True
+    assert not base_schedule.config.conf.rogue.blackflow_fast_flight
+
+
+@pytest.mark.parametrize(
+    "strategy,investment", [("burn", False), ("burn_with_investment", True)]
+)
+def test_legacy_blackflow_flight_migrates_and_reaches_dispatch(
+    dispatch, strategy, investment
+):
+    rogue = {
+        "mode": 0,
+        "blackflow_strategy": strategy,
+        "investment_enabled": not investment,
+    }
+    conf = Conf(maa_rg_theme="BlackFlow", rogue=rogue)
+    saved = conf.model_dump(exclude_unset=True)
+    assert rogue["blackflow_strategy"] == strategy
+    assert saved["rogue"]["blackflow_strategy"] == "ending1"
+    assert saved["rogue"]["blackflow_fast_flight"] is True
+    assert saved["rogue"]["investment_enabled"] is investment
+    _, params = dispatch(**saved)
+    assert "blackflow_strategy" not in params
+    assert params["investment_enabled"] is investment
+    assert params["core_char_list"] == [{"name": "机械师", "use_support": False}]
+
+
+def test_blackflow_defaults_and_migration_do_not_change_other_themes():
+    conf = Conf(maa_rg_theme="BlackFlow", rogue={"mode": 0})
+    assert conf.rogue.blackflow_strategy == "ending1"
+    assert "blackflow_strategy" not in conf.model_dump(exclude_unset=True)["rogue"]
+    other = Conf(
+        maa_rg_theme="Sami",
+        rogue={"blackflow_strategy": "burn", "investment_enabled": True},
+    )
+    assert other.rogue.blackflow_strategy == "burn"
+    assert other.rogue.investment_enabled is True
+    assert not other.rogue.blackflow_fast_flight
+
+
+@pytest.mark.parametrize("mode", [1, 30001, 30003])
+def test_inactive_legacy_flight_does_not_change_investment(mode):
+    conf = Conf(
+        maa_rg_theme="BlackFlow",
+        rogue={"mode": mode, "blackflow_strategy": "burn", "investment_enabled": True},
+    )
+    assert conf.rogue.blackflow_strategy == "burn"
+    assert conf.rogue.investment_enabled is True
+    assert not conf.rogue.blackflow_fast_flight
+
+
 def test_ordered_recruitment_and_sami_switches_reach_real_dispatch(dispatch):
     chain, params = dispatch(
         maa_rg_theme="Sami",
@@ -202,7 +269,7 @@ def test_blackflow_preparation_and_target_parameters(dispatch):
     _, params = dispatch(
         maa_rg_theme="BlackFlow", rogue={"mode": 0, "blackflow_strategy": "ending3"}
     )
-    assert params["blackflow_strategy"] == "ending3"
+    assert params["blackflow_strategy"] == "ending1"
     assert "blackflow_start_animals" not in params
 
 

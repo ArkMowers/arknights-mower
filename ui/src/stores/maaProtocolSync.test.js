@@ -43,6 +43,7 @@ describe('MAA reward and long task config', () => {
       blackflow_fast_flight: true,
       blackflow_start_run_fast_flight: true,
       blackflow_start_run_id: 'new-opening-round',
+      blackflow_boss_run_id: 'new-boss-round',
       blackflow_start_animals: ['swaddled_cat', 'swaddled_cat'],
       blackflow_start_rewards: 3,
       collectible_mode_roles: '坚不可摧',
@@ -86,6 +87,7 @@ describe('MAA reward and long task config', () => {
     expect(store.rogue.blackflow_fast_flight).toBe(true)
     expect(store.rogue.blackflow_start_run_fast_flight).toBe(true)
     expect(store.rogue.blackflow_start_run_id).toBe('new-opening-round')
+    expect(store.rogue.blackflow_boss_run_id).toBe('new-boss-round')
     expect(store.rcl.clear_store).toBe(true)
     expect(store.paradox.scripts).toEqual([{ id: 'a'.repeat(64) }])
     expect(store.maa_event_shop.switch_source).toBe('活动方案')

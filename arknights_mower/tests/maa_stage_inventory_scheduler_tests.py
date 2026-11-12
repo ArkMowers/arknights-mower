@@ -925,10 +925,9 @@ class MaaRoguelikeTests(unittest.TestCase):
         self.assertEqual(task_config["blackflow_strategy"], "baby_animal")
         self.assertEqual(task_config["blackflow_cultivation_target"], "swaddled_dog")
 
-    def test_rogue_omits_blackflow_fields_outside_baby_animal(self):
-        # 非 30001 模式：黑流树海字段不下发
+    def test_rogue_exp_targets_ending1_without_cultivation_fields(self):
         task_config = self._run_rogue(theme="BlackFlow", mode=0).args[1]
-        self.assertNotIn("blackflow_strategy", task_config)
+        self.assertEqual(task_config["blackflow_strategy"], "ending1")
         self.assertNotIn("blackflow_cultivation_target", task_config)
 
     def test_rogue_sends_playtime_target_for_jiegarden(self):
