@@ -1096,18 +1096,19 @@ def save_confirmed_route(profession, supports_json, expected, path=None):
         conn.commit()
 
 
-def retry_confirmed_plans(expected_ids, path=None):
-    """Reset only the failed plans listed in a still-current confirmation."""
+def retry_confirmed_plans(expected_plans, path=None):
+    """Reset failed plans only while their confirmed contents still match."""
     with _conn(path) as conn:
         conn.execute("BEGIN IMMEDIATE")
-        ids = [
-            row[0]
+        current = [
+            lazy_fill_plan_names(dict(row))
             for row in conn.execute(
-                "SELECT id FROM mastery_plan WHERE status='failed' ORDER BY id"
+                "SELECT * FROM mastery_plan WHERE status='failed' ORDER BY id"
             )
         ]
-        if ids != sorted(expected_ids):
-            raise ValueError("失败计划列表已改变，请重新查看并确认")
+        if current != sorted(expected_plans, key=lambda plan: plan["id"]):
+            raise ValueError("失败计划列表或内容已改变，请重新查看并确认")
+        ids = [plan["id"] for plan in current]
         conn.execute(
             "UPDATE mastery_plan SET status='idle', failed_reason=CASE WHEN failed_reason='材料不足' "
             "AND expires_at IS NOT NULL AND expires_at != '' THEN failed_reason ELSE NULL END WHERE status='failed'"

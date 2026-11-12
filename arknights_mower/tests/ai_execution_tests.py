@@ -690,3 +690,92 @@ def test_summary_excerpts_large_turn_and_reports_omission(runtime):
         assert len(summary.context[0]["content"]) <= 48000
         assert "用户：问题" in summary.context[0]["content"]
         assert "记录已截断" in summary.context[0]["content"]
+
+
+def test_retry_confirmation_rejects_changed_target_of_same_plan(runtime, monkeypatch):
+    from arknights_mower.utils import mastery_recommendation
+    from arknights_mower.views import mastery
+
+    server, _, _, _, install = runtime
+    monkeypatch.setattr(
+        mastery_recommendation, "get_current_mastery_level", lambda *_: 0
+    )
+    monkeypatch.setattr(
+        mastery_recommendation, "get_mastery_requirement_error", lambda *_: "未精二"
+    )
+    monkeypatch.setattr(mastery, "refresh_workshop_after_plan_change", lambda: None)
+    identifier = mastery_db.insert_plan(
+        "char_test", 0, 1, char_name="测试", skill_name="测试技能"
+    )
+    with mastery_db._conn() as db:
+        db.execute("UPDATE mastery_plan SET status='failed' WHERE id=?", (identifier,))
+        db.commit()
+    previews = []
+
+    def change_target(socket, event):
+        if event.get("type") != "approval":
+            return
+        previews.append(event["preview"]["plans"])
+        response = server.app.test_client().patch(
+            "/mastery-plan/target",
+            headers=headers(),
+            json={"id": identifier, "target_level": 3},
+        )
+        assert response.status_code == 200, response.json
+        assert mastery_db.get_plan_by_id(identifier)["status"] == "failed"
+
+    install(
+        [tool_call("retry_plan_tool", {"char_id": "", "skill_index": 0})],
+        [AIMessageChunk(content="请重新核对")],
+    )
+    first = run_chat(runtime, on_event=change_target)
+    assert previews[0][0]["target_level"] == 1
+    saved = mastery_db.get_plan_by_id(identifier)
+    assert saved["target_level"] == 3
+    assert saved["status"] == "failed"
+    assert not any(item.get("status") == "verified" for item in events(first))
+
+    install(
+        [tool_call("retry_plan_tool", {"char_id": "", "skill_index": 0})],
+        [AIMessageChunk(content="已核对")],
+    )
+    second = run_chat(runtime)
+    approval = next(item for item in events(second) if item.get("type") == "approval")
+    assert approval["preview"]["plans"][0]["target_level"] == 3
+    assert mastery_db.get_plan_by_id(identifier)["status"] == "idle"
+    assert any(item.get("status") == "verified" for item in events(second))
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("skill_index", 1),
+        ("failed_reason", "材料不足"),
+        ("support_plan", '{"changed":true}'),
+    ],
+)
+def test_retry_confirmation_rejects_other_changed_plan_contents(runtime, field, value):
+    install = runtime[4]
+    identifier = mastery_db.insert_plan("char_test", 0, 1)
+    with mastery_db._conn() as db:
+        db.execute("UPDATE mastery_plan SET status='failed' WHERE id=?", (identifier,))
+        db.commit()
+
+    def change(socket, event):
+        if event.get("type") == "approval":
+            with mastery_db._conn() as db:
+                db.execute(
+                    f"UPDATE mastery_plan SET {field}=? WHERE id=?", (value, identifier)
+                )
+                db.commit()
+
+    install(
+        [tool_call("retry_plan_tool", {"char_id": "", "skill_index": 0})],
+        [AIMessageChunk(content="请重新核对")],
+    )
+    socket = run_chat(runtime, on_event=change)
+    saved = mastery_db.get_plan_by_id(identifier)
+    assert saved[field] == value
+    assert saved["status"] == "failed"
+    result = next(item for item in events(socket) if item.get("status") == "unknown")
+    assert "内容已改变" in result["result"]

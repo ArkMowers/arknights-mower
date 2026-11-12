@@ -69,7 +69,6 @@ def prepare_operation(name, args, function):
         return preview, perform
     if name == "retry_plan_tool":
         plans = mastery_db.get_failed_plans()
-        ids = sorted(plan["id"] for plan in plans)
         preview = {
             "action": "将下列全部失败计划重置为待执行",
             "plans": [
@@ -90,7 +89,7 @@ def prepare_operation(name, args, function):
         }
 
         def perform():
-            count = mastery_db.retry_confirmed_plans(ids)
+            count = mastery_db.retry_confirmed_plans(plans)
             return f"已核对重置 {count} 个失败的专精计划为待执行"
 
         return preview, perform
