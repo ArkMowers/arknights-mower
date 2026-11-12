@@ -148,7 +148,13 @@ def _returns_boolean(node, known_operators):
 
 
 def possible_backup_conditions(
-    backups, combination_limit, *, known_operators=None, deadline=None, groups=()
+    backups,
+    combination_limit,
+    *,
+    known_operators=None,
+    deadline=None,
+    groups=(),
+    training_support=None,
 ):
     """Analyze compatible groups and every retained exclusive-plan selection."""
     from types import SimpleNamespace
@@ -168,6 +174,7 @@ def possible_backup_conditions(
             combination_limit,
             known_operators=known_operators,
             deadline=deadline,
+            training_support=training_support,
         )
     visited = 0
 
@@ -185,6 +192,7 @@ def possible_backup_conditions(
                 1,
                 known_operators=known_operators,
                 deadline=deadline,
+                training_support=training_support,
                 required={index: True for index in range(len(terms))},
             )
         )
@@ -284,6 +292,7 @@ def possible_backup_conditions(
                 combination_limit,
                 known_operators=known_operators,
                 deadline=deadline,
+                training_support=training_support,
                 required={
                     index: True for index in range(len(globals_), len(candidates))
                 },
@@ -303,7 +312,13 @@ def possible_backup_conditions(
 
 
 def _ungrouped_backup_conditions(
-    backups, combination_limit, *, known_operators=None, deadline=None, required=None
+    backups,
+    combination_limit,
+    *,
+    known_operators=None,
+    deadline=None,
+    required=None,
+    training_support=None,
 ):
     """仅删除条件逻辑能证明不成立的组合，不读取驻员或执行导入表达式。"""
     domains = {}
@@ -313,7 +328,22 @@ def _ungrouped_backup_conditions(
         condition_domains.setdefault(key, None)
         return lambda state: state[key]
 
+    def training_query(node):
+        return (
+            training_support is not None
+            and isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "op_data"
+            and node.func.attr == "facility_is_training"
+            and len(node.args) == 1
+            and _string_literal(node.args[0]) == "train"
+            and not node.keywords
+        )
+
     def formula(node):
+        if training_query(node):
+            return lambda state: True
         if isinstance(node, ast.BoolOp):
             children = [formula(child) for child in node.values]
             combine = all if isinstance(node.op, ast.And) else any
@@ -343,7 +373,7 @@ def _ungrouped_backup_conditions(
             if (
                 type(value) is bool
                 and comparison in (ast.Eq, ast.NotEq, ast.Is, ast.IsNot)
-                and _returns_boolean(left, known_operators)
+                and (_returns_boolean(left, known_operators) or training_query(left))
             ):
                 child = formula(left)
                 expected = value if comparison in (ast.Eq, ast.Is) else not value
@@ -366,6 +396,9 @@ def _ungrouped_backup_conditions(
                     and left.attr == "current_room"
                     and _operator_owner(left.value, known_operators)
                 ):
+                    if left.value.slice.value == training_support:
+                        expected = comparison is ast.Eq
+                        return lambda state: ("train" == value) == expected
                     key = ("room", ast.dump(left))
                 elif (
                     isinstance(left, ast.Call)

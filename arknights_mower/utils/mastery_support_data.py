@@ -31,7 +31,7 @@ def actual_central_bonus(solver, configured):
     )
 
 
-def schedule_context(plan=None):
+def schedule_context(plan=None, *, training=True):
     if plan is None:
         from arknights_mower.utils import config
 
@@ -55,6 +55,10 @@ def schedule_context(plan=None):
                         if room == "central":
                             central_names.add(name)
     central = 5 if CONTROL_TRAINERS.intersection(central_names) else 0
+    if training and plan.get("backup_plans"):
+        from .mastery_schedule import assistant_conflicts
+
+        blocked = assistant_conflicts(plan, blocked)
     return blocked, central
 
 
@@ -69,7 +73,7 @@ def trainee_schedule_conflict(name, plan=None):
     """Return why a trainee cannot leave its non-training schedule, if any."""
     if not name:
         return None
-    blocked, _ = schedule_context(plan)
+    blocked, _ = schedule_context(plan, training=False)
     rooms = blocked.get(name)
     if not rooms:
         return None
