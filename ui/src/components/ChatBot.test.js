@@ -446,7 +446,8 @@ describe('AI chat interactions', () => {
     })
     expect(component.chatHistory.value).toHaveLength(200)
     expect(component.chatHistory.value.at(-1).content).toContain('已开始的操作结果')
-    expect(component.chatHistory.value.at(-1).error).toBe(true)
+    expect(component.chatHistory.value.at(-1).error).toBe(false)
+    expect(component.chatHistory.value.at(-1).status).toBe('cancelled')
     expect(component.loading.value).toBe(false)
   })
 
@@ -841,16 +842,31 @@ describe('retained execution controls', () => {
     expect(retry.conversation_id).toBe('conversation')
     expect(retry.message).toBe(first.message)
   })
-  it('preserves the unsent draft and blocks double continuation clicks', () => {
+  it('uses the existing composer for empty continuation and blocks double sends', () => {
     const socket = begin()
-    socket.receive({ error: '已停止' })
-    component.userInput.value = '另一个问题草稿'
-    const stopped = component.chatHistory.value.at(-1)
-    component.resumeIncompleteTurn(stopped, 1)
-    component.resumeIncompleteTurn(stopped, 1)
-    expect(component.userInput.value).toBe('另一个问题草稿')
+    socket.receive({ error: '已停止', status: 'cancelled' })
+    expect(component.continueMode.value).toBe(true)
+    expect(component.canSend.value).toBe(true)
+    component.sendMessage()
+    component.sendMessage()
     expect(component.chatHistory.value).toHaveLength(4)
     expect(component.chatHistory.value[2].content).toBe('继续处理')
+    const next = FakeSocket.instances.at(-1)
+    next.open()
+    const request = JSON.parse(next.send.mock.calls[1][0])
+    expect(request.continue_of).toBe(7)
+    expect(request.continue_instruction).toBeUndefined()
+  })
+  it('preserves the composer draft when switching between continuation and a new question', () => {
+    const socket = begin()
+    socket.receive({ error: '已停止', status: 'cancelled' })
+    component.userInput.value = '先核对计划 A'
+    component.composeNewQuestion.value = true
+    expect(component.continueMode.value).toBe(false)
+    expect(component.userInput.value).toBe('先核对计划 A')
+    component.composeNewQuestion.value = false
+    expect(component.continueMode.value).toBe(true)
+    expect(component.userInput.value).toBe('先核对计划 A')
   })
   it.each(['继续', '继续处理'])(
     'maps typed %s to continuation after restoring a stopped turn',
@@ -880,6 +896,97 @@ describe('retained execution controls', () => {
     expect(request.continue_of).toBeUndefined()
     expect(request.mode).toBe('summary')
   })
+  it.each(['继续，但先不要发邮件', '继续处理：只分析剩余步骤', '继续 先核对状态'])(
+    'sends %s as an explicit continuation requirement',
+    (text) => {
+      const first = begin()
+      first.receive({ error: '已停止', status: 'cancelled', code: 'execution_stopped' })
+      const socket = send(text)
+      socket.open()
+      const request = JSON.parse(socket.send.mock.calls[1][0])
+      expect(request.continue_of).toBe(7)
+      expect(request.continue_instruction).toBe(text)
+      expect(component.chatHistory.value.at(-2).content).toBe(text)
+      expect(component.userInput.value).toBe('')
+    }
+  )
+  it('sends any composer text as a continuation requirement and restores it from history', () => {
+    component.restoreConversation({
+      id: 'conversation',
+      turns: [
+        {
+          id: 7,
+          user: '原目标',
+          assistant: '',
+          status: 'cancelled',
+          continued_from: 6,
+          continue_instruction: '先不要发邮件'
+        }
+      ]
+    })
+    expect(component.chatHistory.value[0].content).toBe('先不要发邮件')
+    component.userInput.value = '只核对计划 A'
+    component.sendMessage()
+    const socket = FakeSocket.instances.at(-1)
+    socket.open()
+    expect(JSON.parse(socket.send.mock.calls[1][0]).continue_instruction).toBe('只核对计划 A')
+    expect(component.userInput.value).toBe('')
+  })
+  it('leaves an unrelated new question outside the continuation chain', () => {
+    const first = begin()
+    first.receive({ error: '已停止', status: 'cancelled' })
+    component.composeNewQuestion.value = true
+    const socket = send('换个话题，设备设置在哪里？')
+    socket.open()
+    const request = JSON.parse(socket.send.mock.calls[1][0])
+    expect(request.continue_of).toBeUndefined()
+    expect(request.continue_instruction).toBeUndefined()
+  })
+  it('renders a user stop without an error and keeps continuation available', () => {
+    const socket = begin()
+    socket.receive({ error: '已停止后续调用', status: 'cancelled', code: 'execution_stopped' })
+    const stopped = component.chatHistory.value.at(-1)
+    expect(stopped.error).toBe(false)
+    expect(stopped.content).toContain('已停止，可继续处理')
+    expect(component.isIncomplete(stopped)).toBe(true)
+    expect(component.loading.value).toBe(false)
+  })
+  it.each([
+    ['model_timeout', '模型响应超时'],
+    ['model_connection', '模型服务连接失败'],
+    ['model_error', '模型调用失败'],
+    ['execution_error', '本轮处理失败']
+  ])('preserves the %s distinction for live, reconnected and restored replies', (code, label) => {
+    const socket = begin()
+    socket.receive({ error: 'detail', status: 'interrupted', code })
+    expect(component.chatHistory.value.at(-1).content).toContain(label)
+    expect(component.chatHistory.value.at(-1).error).toBe(true)
+    component.restoreConversation({
+      id: 'conversation',
+      turns: [
+        {
+          id: 7,
+          user: 'goal',
+          assistant: 'partial',
+          status: 'interrupted',
+          failure: { code, message: 'detail' }
+        }
+      ]
+    })
+    expect(component.chatHistory.value.at(-1).content).toContain(label)
+    const next = send('继续')
+    next.open()
+    next.receive({
+      snapshot: {
+        conversation_id: 'conversation',
+        turn_id: 8,
+        status: 'interrupted',
+        assistant: '',
+        failure: { code, message: 'detail' }
+      }
+    })
+    expect(component.chatHistory.value.at(-1).content).toContain(label)
+  })
   it('does not adopt generated summaries until explicitly selected and supports clearing them', async () => {
     const socket = begin('summary')
     socket.receive({ reply: '摘要草稿', done: true })
@@ -906,4 +1013,127 @@ describe('retained execution controls', () => {
     expect(frame.message).not.toBe('保留草稿')
     expect(component.userInput.value).toBe('保留草稿')
   })
+})
+
+describe('composer attachments', () => {
+  const metadata = { id: 'a'.repeat(32), name: 'run.log', kind: 'text', truncated: false }
+  function file(name = 'run.log', type = 'text/plain') {
+    return new File(['log evidence'], name, { type })
+  }
+  beforeEach(() => {
+    state.axios.post.mockResolvedValue({ data: metadata })
+  })
+  it('uploads selected files and sends only IDs through the existing composer', async () => {
+    const event = { target: { files: [file()], value: 'run.log' } }
+    await component.pickFiles(event)
+    expect(event.target.value).toBe('')
+    expect(state.axios.post.mock.calls[0][0]).toContain('/ai/attachments')
+    expect(state.axios.post.mock.calls[0][1].get('file').name).toBe('run.log')
+    expect(component.canSend.value).toBe(true)
+    const socket = send('')
+    socket.open()
+    const request = JSON.parse(socket.send.mock.calls[1][0])
+    expect(request.message).toBe('请查看附件。')
+    expect(request.attachment_ids).toEqual([metadata.id])
+    expect(JSON.stringify(request)).not.toContain('log evidence')
+    socket.receive({ turn_id: 1, conversation_id: 'conversation' })
+    socket.receive({ reply: 'read', done: true })
+    expect(component.draftAttachments.value).toEqual([])
+    expect(component.chatHistory.value[0].attachments).toEqual([metadata])
+  })
+  it('restores attachments and text after admission rejection', async () => {
+    await component.addFiles([file()])
+    const socket = send('check file')
+    socket.open()
+    socket.receive({ error: '附件数量超限' })
+    expect(component.draftAttachments.value[0].id).toBe(metadata.id)
+    expect(component.userInput.value).toBe('check file')
+    expect(component.canSend.value).toBe(true)
+  })
+  it('keeps ordinary text dragging and pasting unchanged', () => {
+    const event = {
+      type: 'dragenter',
+      dataTransfer: { types: ['text/plain'] },
+      clipboardData: { files: [] },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn()
+    }
+    component.dragFiles(event)
+    component.leaveFiles(event)
+    component.dropFiles(event)
+    component.pasteFiles(event)
+    expect(event.preventDefault).not.toHaveBeenCalled()
+    expect(state.axios.post).not.toHaveBeenCalled()
+  })
+  it('handles nested file dragging and clipboard files through upload', async () => {
+    const event = {
+      type: 'dragenter',
+      dataTransfer: { types: ['Files'], files: [file()] },
+      preventDefault: vi.fn(),
+      stopPropagation: vi.fn()
+    }
+    component.dragFiles(event)
+    component.dragFiles(event)
+    component.leaveFiles(event)
+    expect(component.fileDragDepth.value).toBe(1)
+    await component.dropFiles(event)
+    expect(component.fileDragDepth.value).toBe(0)
+    await component.pasteFiles({
+      clipboardData: { files: [file('second.txt')] },
+      preventDefault: vi.fn()
+    })
+    expect(state.axios.post).toHaveBeenCalledTimes(2)
+  })
+  it('revokes image previews when removing a file', async () => {
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview')
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    state.axios.post.mockResolvedValue({ data: { ...metadata, name: 'screen.png', kind: 'image' } })
+    await component.addFiles([file('screen.png', 'image/png')])
+    expect(component.draftAttachments.value[0].preview).toBe('blob:preview')
+    component.removeAttachment(component.draftAttachments.value[0])
+    expect(revoke).toHaveBeenCalledWith('blob:preview')
+    expect(state.axios.delete.mock.calls[0][0]).toContain(metadata.id)
+    expect(component.draftAttachments.value).toEqual([])
+  })
+  it('discards an upload response after starting a new conversation', async () => {
+    let resolve
+    state.axios.post.mockReturnValue(
+      new Promise((done) => {
+        resolve = done
+      })
+    )
+    const uploading = component.addFiles([file()])
+    expect(component.canSend.value).toBe(false)
+    component.newConversation()
+    resolve({ data: metadata })
+    await uploading
+    expect(component.draftAttachments.value).toEqual([])
+  })
+  it('retains existing files on failed upload and rejects oversized files locally', async () => {
+    await component.addFiles([file()])
+    state.axios.post.mockRejectedValue({ response: { data: { error: '不支持此格式' } } })
+    await component.addFiles([file('binary.exe')])
+    expect(state.notice.error).toHaveBeenCalledWith('不支持此格式')
+    await component.addFiles([{ name: 'large', size: 2 * 1024 * 1024 + 1 }])
+    expect(state.axios.post).toHaveBeenCalledTimes(2)
+    expect(component.draftAttachments.value).toHaveLength(1)
+  })
+})
+
+it('keeps the original continuation target when an attachment request is rejected', async () => {
+  component.chatHistory.value = [
+    { role: 'user', content: 'original goal' },
+    { role: 'bot', content: 'partial', status: 'cancelled', turn_id: 7 }
+  ]
+  component.conversationId.value = 'conversation'
+  const metadata = { id: 'a'.repeat(32), name: 'log.txt', kind: 'text', truncated: false }
+  state.axios.post.mockResolvedValue({ data: metadata })
+  await component.addFiles([new File(['evidence'], 'log.txt')])
+  const socket = send('added requirement')
+  socket.open()
+  expect(JSON.parse(socket.send.mock.calls[1][0]).continue_of).toBe(7)
+  socket.receive({ error: '附件数量超限' })
+  expect(component.continuationTarget.value.turn_id).toBe(7)
+  expect(component.userInput.value).toBe('added requirement')
+  expect(component.draftAttachments.value[0].id).toBe(metadata.id)
 })

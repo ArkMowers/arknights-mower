@@ -616,3 +616,88 @@ def test_stored_chat_streams_tools_and_final_answer(
         if protocol == "auto"
         else ["/v1/" + protocol.replace("chat-completions", "chat/completions")] * 2
     )
+
+
+@pytest.mark.parametrize("protocol", ["responses", "chat-completions"])
+def test_file_inputs_use_actual_sdk_protocol(serve, monkeypatch, tmp_path, protocol):
+    from arknights_mower.agent.execution import Execution
+    from arknights_mower.tests.ai_attachment_tests import png
+    from arknights_mower.utils.ai_attachments import normalize_attachment
+    from arknights_mower.utils.ai_history import HistoryStore
+
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", protocol)
+    requests = []
+
+    def respond(path, body):
+        requests.append(body)
+        if protocol == "responses":
+            assert path.endswith("/responses")
+            return event_stream(
+                {
+                    "type": "response.output_text.delta",
+                    "item_id": "msg_1",
+                    "output_index": 0,
+                    "content_index": 0,
+                    "delta": "read files",
+                }
+            )
+        assert path.endswith("/chat/completions")
+        return event_stream(
+            {
+                "id": "chatcmpl-1",
+                "object": "chat.completion.chunk",
+                "created": 1,
+                "model": "fixture-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": "read files"},
+                        "finish_reason": None,
+                    }
+                ],
+            }
+        )
+
+    serve(respond)
+    store = HistoryStore("files")
+    store.path = tmp_path / "history.sqlite3"
+    files = [
+        store.save_attachment(normalize_attachment(name, raw))["id"]
+        for name, raw in [
+            ("log.txt", b"log content"),
+            ("image.png", png()),
+            ("doc.pdf", b"%PDF-1.7\nexample"),
+        ]
+    ]
+    with store.turn(None, "read files", attachment_ids=files) as turn:
+        control = Execution(store, turn, lambda event: None)
+        list(
+            agent.ask_llm(
+                turn.user_input, turn.context, api_key="test-key", execution=control
+            )
+        )
+    assert len(requests) == 1
+    body = requests[0]
+    messages = body["input" if protocol == "responses" else "messages"]
+    content = next(
+        item["content"] for item in reversed(messages) if item.get("role") == "user"
+    )
+    if protocol == "responses":
+        assert any(
+            item["type"] == "input_file"
+            and item["filename"] == "doc.pdf"
+            and item["file_data"].startswith("data:application/pdf;base64,")
+            for item in content
+        )
+        assert any(
+            item["type"] == "input_image"
+            and item["image_url"].startswith("data:image/jpeg;base64,")
+            for item in content
+        )
+    else:
+        assert any(
+            item["type"] == "file" and item["file"]["filename"] == "doc.pdf"
+            for item in content
+        )
+        assert any(item["type"] == "image_url" for item in content)
+    assert "log content" in json.dumps(content)

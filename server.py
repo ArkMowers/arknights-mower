@@ -4981,9 +4981,57 @@ def ai_conversations(identifier=None, turn_id=None, operation=None):
         return jsonify(error="无法读取或保存会话历史，请检查实例数据目录"), 503
 
 
+@app.route("/ai/attachments", methods=["POST"])
+@app.route("/ai/attachments/<identifier>", methods=["DELETE"])
+@require_token
+def ai_attachments(identifier=None):
+    from arknights_mower.utils.ai_attachments import (
+        MAX_UPLOAD_BYTES,
+        normalize_attachment,
+    )
+    from arknights_mower.utils.ai_history import HistoryError
+    from arknights_mower.utils.config_backup import LocalConfigError
+    from arknights_mower.utils.config_profiles import ProfileConflict
+
+    if not app.config["AI_ASSISTANT_ENABLED"]:
+        return jsonify(error="管理员未开启", code="ai_assistant_disabled"), 403
+    try:
+        with configuration_chat_request(
+            request.headers.get("X-Mower-Config-Generation")
+        ):
+            history = active_chat_history()
+            if request.method == "DELETE":
+                history.delete_attachment(identifier)
+                return jsonify(ok=True)
+            if (
+                request.content_length is None
+                or request.content_length > MAX_UPLOAD_BYTES + 65536
+            ):
+                raise HistoryError("文件超过 2 MB 上限", 413)
+            upload = request.files.get("file")
+            if upload is None:
+                raise HistoryError("请选择文件", 400)
+            item = normalize_attachment(
+                upload.filename, upload.stream.read(MAX_UPLOAD_BYTES + 1)
+            )
+            return jsonify(history.save_attachment(item))
+    except HistoryError as exc:
+        return jsonify(error=str(exc)), exc.status
+    except (ProfileConflict, LocalConfigError) as exc:
+        return jsonify(error=str(exc)), 409
+    except (OSError, sqlite3.Error):
+        logger.exception("无法保存 AI 附件")
+        return jsonify(error="无法保存附件，请检查实例数据目录"), 503
+
+
 def run_stored_chat(ws, req, user_input):
     from arknights_mower.agent.agent import ask_llm
-    from arknights_mower.agent.execution import Execution, ExecutionStopped
+    from arknights_mower.agent.execution import (
+        ChatTurnError,
+        Execution,
+        ExecutionStopped,
+        ModelCallError,
+    )
 
     disconnected = False
 
@@ -5008,6 +5056,8 @@ def run_stored_chat(ws, req, user_input):
                 request_id=req.get("request_id"),
                 retry_of=req.get("retry_of"),
                 continue_of=req.get("continue_of"),
+                continue_instruction=req.get("continue_instruction", ""),
+                attachment_ids=req.get("attachment_ids"),
                 mode=mode,
             ) as turn:
                 execution = Execution(history, turn, send)
@@ -5038,12 +5088,22 @@ def run_stored_chat(ws, req, user_input):
                     turn.status = "cancelled"
                     turn.reply = turn.reply or execution.draft
                     raise
-                except Exception:
+                except Exception as exc:
                     turn.reply = turn.reply or execution.draft
+                    if execution.stopped:
+                        turn.status = "cancelled"
+                    else:
+                        turn.failure = {
+                            "code": exc.code
+                            if isinstance(exc, ModelCallError)
+                            else "execution_error",
+                            "message": str(exc)[:2000],
+                        }
                     raise
         except Exception as exc:
             if execution:
                 execution.finish(str(exc))
+                raise ChatTurnError(str(exc), execution.turn) from exc
             raise
         else:
             execution.finish()
@@ -5172,7 +5232,10 @@ def ws_chat(ws):
         except Exception as e:
             logger.exception(f"WebSocket处理错误：{str(e)}")
             try:
-                ws.send(json.dumps({"error": str(e)}))
+                error = {"error": str(e)}
+                if hasattr(e, "turn_status"):
+                    error.update(status=e.turn_status, code=e.code)
+                ws.send(json.dumps(error))
             except (ConnectionClosed, OSError):
                 break
 

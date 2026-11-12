@@ -45,6 +45,8 @@ class Turn:
     operations: list = field(default_factory=list)
     context_info: dict = field(default_factory=dict)
     continuation: dict = field(default_factory=dict)
+    failure: dict = field(default_factory=dict)
+    attachments: list = field(default_factory=list)
 
     def append(self, text):
         if len(self.reply) + len(text) > (
@@ -54,8 +56,13 @@ class Turn:
         self.reply += text
 
 
-def continuation_record(previous, context):
+def continuation_record(previous, context, instruction=""):
     prior = json.loads(previous["continuation"])
+    instructions = prior.get("instructions", [])
+    if instruction:
+        instructions = [*instructions, instruction]
+    if len(json.dumps(instructions, ensure_ascii=False)) > 8000:
+        raise HistoryError("累计补充要求超过保存上限，请整理要求后开始新对话", 400)
     background = prior.get("notes") or json.dumps(context, ensure_ascii=False)
     events = [
         {
@@ -94,6 +101,8 @@ def continuation_record(previous, context):
         "from": previous["id"],
         "notes": background + "\n" + record,
         "limited": limited,
+        "instructions": instructions,
+        "instruction_index": len(instructions) - 1 if instruction else None,
     }
     if len(json.dumps(result, ensure_ascii=False)) > MAX_CONTINUATION_CHARS:
         result["limited"] = True
@@ -141,6 +150,16 @@ def continuation_messages(record, operations):
     ]
 
 
+def saved_user_message(row):
+    instructions = json.loads(row["continuation"]).get("instructions", [])
+    return row["user"] + (
+        "\n用户在继续处理时补充的要求（按先后顺序）：\n"
+        + json.dumps(instructions, ensure_ascii=False)
+        if instructions
+        else ""
+    )
+
+
 class HistoryStore:
     def __init__(self, profile_id):
         self.profile_id = profile_id
@@ -175,6 +194,7 @@ class HistoryStore:
                     "mode": "TEXT NOT NULL DEFAULT 'chat'",
                     "request_id": "TEXT",
                     "continuation": "TEXT NOT NULL DEFAULT '{}'",
+                    "failure": "TEXT NOT NULL DEFAULT '{}'",
                 },
             }.items():
                 existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})")}
@@ -183,10 +203,71 @@ class HistoryStore:
                         db.execute(
                             f"ALTER TABLE {table} ADD COLUMN {name} {definition}"
                         )
+            db.executescript(
+                "CREATE TABLE IF NOT EXISTS attachments(id TEXT PRIMARY KEY, profile TEXT NOT NULL, payload TEXT NOT NULL, created REAL NOT NULL, claimed INTEGER NOT NULL DEFAULT 0);"
+                "CREATE TABLE IF NOT EXISTS turn_attachments(turn_id INTEGER NOT NULL REFERENCES turns(id) ON DELETE CASCADE, attachment_id TEXT NOT NULL REFERENCES attachments(id) ON DELETE CASCADE, direct INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(turn_id, attachment_id));"
+            )
+            if "direct" not in {
+                row[1] for row in db.execute("PRAGMA table_info(turn_attachments)")
+            }:
+                db.execute(
+                    "ALTER TABLE turn_attachments ADD COLUMN direct INTEGER NOT NULL DEFAULT 1"
+                )
             db.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS turn_request ON turns(request_id) WHERE request_id IS NOT NULL"
             )
             yield db
+            db.execute(
+                "DELETE FROM attachments WHERE NOT EXISTS (SELECT 1 FROM turn_attachments WHERE attachment_id=attachments.id) AND (claimed=1 OR created<?)",
+                (time.time() - 3600,),
+            )
+
+    def save_attachment(self, item):
+        from arknights_mower.utils.ai_attachments import (
+            MAX_INSTANCE_BYTES,
+            MAX_PROFILE_BYTES,
+        )
+
+        payload = json.dumps(item, ensure_ascii=False)
+        with _lock, self._db() as db:
+            db.execute(
+                "DELETE FROM attachments WHERE claimed=0 AND created<?",
+                (time.time() - 3600,),
+            )
+            total, own = db.execute(
+                "SELECT coalesce(sum(length(CAST(payload AS BLOB))),0),coalesce(sum(CASE WHEN profile=? THEN length(CAST(payload AS BLOB)) ELSE 0 END),0) FROM attachments",
+                (self.profile_id,),
+            ).fetchone()
+            size = len(payload.encode())
+            if total + size > MAX_INSTANCE_BYTES or own + size > MAX_PROFILE_BYTES:
+                raise HistoryError(
+                    "附件存储已满，请删除不需要的历史或待发送附件后重试", 413
+                )
+            identifier = uuid4().hex
+            db.execute(
+                "INSERT INTO attachments(id,profile,payload,created) VALUES(?,?,?,?)",
+                (identifier, self.profile_id, payload, time.time()),
+            )
+        return {
+            "id": identifier,
+            **{key: item[key] for key in ("name", "kind", "truncated")},
+        }
+
+    def delete_attachment(self, identifier):
+        with _lock, self._db() as db:
+            db.execute(
+                "DELETE FROM attachments WHERE id=? AND profile=? AND claimed=0",
+                (identifier, self.profile_id),
+            )
+
+    def _attachments(self, db, turn_id, include_context=False):
+        return [
+            {"id": row["id"], **json.loads(row["payload"])}
+            for row in db.execute(
+                "SELECT a.id,a.payload FROM attachments a JOIN turn_attachments t ON t.attachment_id=a.id WHERE t.turn_id=? AND a.profile=? AND (t.direct=1 OR ?) ORDER BY a.created,a.id",
+                (turn_id, self.profile_id, include_context),
+            )
+        ]
 
     def _key(self, identifier):
         return (str(self.path), identifier)
@@ -232,16 +313,24 @@ class HistoryStore:
             result["turns"] = [
                 dict(row)
                 for row in db.execute(
-                    "SELECT id,user,assistant,status,events,operations,mode,continuation FROM turns WHERE conversation=? ORDER BY id",
+                    "SELECT id,user,assistant,status,events,operations,mode,continuation,failure FROM turns WHERE conversation=? ORDER BY id",
                     (identifier,),
                 )
             ]
             for turn in result["turns"]:
                 turn["events"] = json.loads(turn["events"])
                 turn.pop("operations")
-                turn["continued_from"] = json.loads(turn.pop("continuation")).get(
-                    "from"
+                continuation = json.loads(turn.pop("continuation"))
+                turn["continued_from"] = continuation.get("from")
+                index = continuation.get("instruction_index")
+                turn["continue_instruction"] = (
+                    continuation["instructions"][index] if index is not None else ""
                 )
+                turn["failure"] = json.loads(turn["failure"])
+                turn["attachments"] = [
+                    {key: item[key] for key in ("id", "name", "kind", "truncated")}
+                    for item in self._attachments(db, turn["id"])
+                ]
             result["busy"] = self._key(identifier) in _active
             return result
 
@@ -264,7 +353,7 @@ class HistoryStore:
 
     def _prune(self, db, identifier):
         rows = db.execute(
-            "SELECT id,length(user)+length(assistant)+length(events)+length(operations)+length(continuation) AS size FROM turns "
+            "SELECT id,length(user)+length(assistant)+length(events)+length(operations)+length(continuation)+length(failure) AS size FROM turns "
             "WHERE conversation=? ORDER BY id DESC",
             (identifier,),
         ).fetchall()
@@ -340,12 +429,39 @@ class HistoryStore:
         request_id=None,
         retry_of=None,
         continue_of=None,
+        continue_instruction="",
+        attachment_ids=None,
         mode="chat",
     ):
+        from arknights_mower.utils.ai_attachments import (
+            MAX_ATTACHMENTS,
+            attachment_blocks,
+            content_text_size,
+        )
+
+        if attachment_ids is None:
+            attachment_ids = []
+        if (
+            not isinstance(attachment_ids, list)
+            or len(attachment_ids) > MAX_ATTACHMENTS
+            or any(
+                not isinstance(item, str) or len(item) != 32 for item in attachment_ids
+            )
+        ):
+            raise HistoryError("每次最多携带 4 个有效附件", 400)
+        if mode == "summary" and attachment_ids:
+            raise HistoryError("摘要不接受新附件", 400)
         if mode not in ("chat", "summary"):
             raise HistoryError("会话请求类型无效", 400)
         if retry_of is not None and continue_of is not None:
             raise HistoryError("不能同时重试和继续同一请求", 400)
+        if (
+            not isinstance(continue_instruction, str)
+            or len(continue_instruction) > 4000
+            or (continue_instruction and continue_of is None)
+        ):
+            raise HistoryError("补充要求须随继续请求提交，且不超过 4000 字符", 400)
+        continue_instruction = continue_instruction.strip()
         source_turn = continue_of if continue_of is not None else retry_of
         if request_id is not None and (
             not isinstance(request_id, str) or not 1 <= len(request_id) <= 64
@@ -394,11 +510,47 @@ class HistoryStore:
                     user, mode = rows[0]["user"], rows[0]["mode"]
                     operations = json.loads(rows[0]["operations"])
                     continuing = continuing or bool(json.loads(rows[0]["continuation"]))
+                inherited = (
+                    self._attachments(db, source_turn, include_context=True)
+                    if source_turn is not None
+                    else []
+                )
+                identifiers = list(
+                    dict.fromkeys([item["id"] for item in inherited] + attachment_ids)
+                )
+                if len(identifiers) > MAX_ATTACHMENTS:
+                    raise HistoryError(
+                        "继续任务累计最多携带 4 个附件，请开始新对话处理更多文件", 400
+                    )
+                attachments = []
+                for attachment_id in identifiers:
+                    row = db.execute(
+                        "SELECT payload,created,claimed FROM attachments WHERE id=? AND profile=?",
+                        (attachment_id, self.profile_id),
+                    ).fetchone()
+                    if row is None or (
+                        not row["claimed"] and row["created"] < time.time() - 3600
+                    ):
+                        raise HistoryError("附件不存在或已过期，请重新添加", 400)
+                    attachments.append(
+                        {"id": attachment_id, **json.loads(row["payload"])}
+                    )
                 selected, size = [], 0
+                context_attachments = len(attachments)
+                context_files = []
                 summary_truncated = False
                 if mode == "summary":
                     for row in rows:
-                        text = f"轮次 {row['id']}（{row['status']}）\n用户：{row['user']}\n回答：{row['assistant']}\n工具记录：{row['events']}"
+                        file_text = "\n".join(
+                            f"附件 {item['name']}："
+                            + (
+                                item["content"]
+                                if item["kind"] == "text"
+                                else "图片或 PDF 原件未纳入摘要"
+                            )
+                            for item in self._attachments(db, row["id"])
+                        )
+                        text = f"轮次 {row['id']}（{row['status']}）\n用户：{saved_user_message(row)}\n回答：{row['assistant']}\n工具记录：{row['events']}\n{file_text}"
                         remaining = 48000 - size
                         if remaining <= 0:
                             break
@@ -417,14 +569,20 @@ class HistoryStore:
                             continue
                         if row["id"] <= conversation["summary_through"]:
                             break
-                        size += len(row["user"]) + len(row["assistant"])
+                        files = self._attachments(db, row["id"])
+                        if context_attachments + len(files) > MAX_ATTACHMENTS:
+                            break
+                        content = attachment_blocks(saved_user_message(row), files)
+                        size += content_text_size(content) + len(row["assistant"])
                         if (
                             row["status"] != "complete"
                             or size > MAX_CONTEXT_CHARS
                             or len(selected) >= MAX_CONTEXT_TURNS
                         ):
                             break
-                        selected.append(row)
+                        context_attachments += len(files)
+                        context_files.extend(files)
+                        selected.append((row, content))
                     context = []
                     if conversation["summary"]:
                         context.append(
@@ -440,15 +598,30 @@ class HistoryStore:
                                 "content": "我会将摘要作为历史背景，重新核对当前状态。",
                             }
                         )
-                    for row in reversed(selected):
+                    for row, content in reversed(selected):
                         context.extend(
                             [
-                                {"role": "user", "content": row["user"]},
+                                {"role": "user", "content": content},
                                 {"role": "assistant", "content": row["assistant"]},
                             ]
                         )
                     if continuing:
-                        continuation = continuation_record(rows[0], context)
+                        continuation = continuation_record(
+                            rows[0],
+                            [
+                                {
+                                    **message,
+                                    "content": message["content"]
+                                    if isinstance(message["content"], str)
+                                    else "\n".join(
+                                        block.get("text", "")
+                                        for block in message["content"]
+                                    ),
+                                }
+                                for message in context
+                            ],
+                            continue_instruction,
+                        )
                         context = continuation_messages(continuation, operations)
                 cursor = db.execute(
                     "INSERT INTO turns(conversation,user,operations,mode,request_id,continuation) VALUES (?,?,?,?,?,?)",
@@ -461,6 +634,22 @@ class HistoryStore:
                         json.dumps(continuation, ensure_ascii=False),
                     ),
                 )
+                references = list(
+                    dict.fromkeys(identifiers + [item["id"] for item in context_files])
+                )
+                if continuing:
+                    known = {item["id"] for item in attachments}
+                    attachments.extend(
+                        item for item in context_files if item["id"] not in known
+                    )
+                for attachment_id in references:
+                    db.execute(
+                        "INSERT INTO turn_attachments(turn_id,attachment_id,direct) VALUES(?,?,?)",
+                        (cursor.lastrowid, attachment_id, attachment_id in identifiers),
+                    )
+                    db.execute(
+                        "UPDATE attachments SET claimed=1 WHERE id=?", (attachment_id,)
+                    )
                 turn = Turn(
                     identifier,
                     context,
@@ -469,6 +658,7 @@ class HistoryStore:
                     mode=mode,
                     operations=copy.deepcopy(operations),
                     continuation=continuation,
+                    attachments=attachments,
                     context_info={
                         "retained_turns": len(rows),
                         "included_turns": len(selected),
@@ -495,10 +685,11 @@ class HistoryStore:
                 try:
                     with self._db() as db:
                         db.execute(
-                            "UPDATE turns SET assistant=?,status=? WHERE id=?",
+                            "UPDATE turns SET assistant=?,status=?,failure=? WHERE id=?",
                             (
                                 turn.reply,
                                 "complete" if turn.complete else turn.status,
+                                json.dumps(turn.failure, ensure_ascii=False),
                                 turn.turn_id,
                             ),
                         )

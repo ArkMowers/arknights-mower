@@ -6,8 +6,10 @@ from contextlib import closing
 from threading import Event, Thread
 from unittest.mock import Mock
 
+import httpx
 import pytest
 from langchain_core.messages import AIMessageChunk
+from openai import APIConnectionError, APITimeoutError
 
 from arknights_mower.agent import execution
 from arknights_mower.tests.ai_history_tests import (
@@ -70,6 +72,8 @@ def run_chat(
     conversation=None,
     retry_of=None,
     continue_of=None,
+    continue_instruction=None,
+    attachment_ids=None,
     mode="chat",
     decide="approve",
     on_event=None,
@@ -107,6 +111,10 @@ def run_chat(
         request["retry_of"] = retry_of
     if continue_of is not None:
         request["continue_of"] = continue_of
+    if continue_instruction is not None:
+        request["continue_instruction"] = continue_instruction
+    if attachment_ids is not None:
+        request["attachment_ids"] = attachment_ids
     if request_id:
         request["request_id"] = request_id
     socket = Socket(json.dumps({"token": "chat-profile-token"}), json.dumps(request))
@@ -947,6 +955,7 @@ def test_continue_requires_auth_before_storage(runtime, monkeypatch, token):
                 "message": "继续",
                 "conversation_id": "a" * 32,
                 "continue_of": 1,
+                "continue_instruction": "先核对计划",
                 "generation": "0",
             }
         ),
@@ -954,3 +963,221 @@ def test_continue_requires_auth_before_storage(runtime, monkeypatch, token):
     chat(server, socket)
     access.assert_not_called()
     assert socket.closed and socket.close_reason == 4401
+
+
+def test_continue_with_requirements_preserves_goal_progress_and_later_changes(
+    runtime, monkeypatch
+):
+    server, agent, _, store, install = runtime
+    monkeypatch.setattr(ai_history, "MAX_TURNS", 1)
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", lambda: "原先查询的计划 A")
+    install([tool_call("list_plans")], RuntimeError("interrupted"))
+    first = run_chat(runtime)
+    identifier = first.sent[0]["conversation_id"]
+    model = install(RuntimeError("interrupted again"))
+    requirement = "继续，但先不要发邮件"
+    second = run_chat(
+        runtime,
+        conversation=identifier,
+        continue_of=first.sent[0]["turn_id"],
+        continue_instruction=requirement,
+    )
+    inputs = "\n".join(str(message.content) for message in model.inputs[0])
+    assert "请执行本次请求" in inputs and "原先查询的计划 A" in inputs
+    assert requirement in model.inputs[0][-1].content
+    saved = (
+        server.app.test_client()
+        .get(f"/ai/conversations/{identifier}", headers=headers())
+        .json
+    )
+    assert len(saved["turns"]) == 1
+    assert saved["turns"][0]["continue_instruction"] == requirement
+    assert saved["turns"][0]["user"] == "请执行本次请求"
+    reopened = ai_history.HistoryStore(store.profile_id)
+    assert reopened.read(identifier)["turns"][0]["continue_instruction"] == requirement
+    next_requirement = "只分析计划 A 的剩余步骤"
+    model = install([AIMessageChunk(content="已按新要求分析")])
+    run_chat(
+        runtime,
+        conversation=identifier,
+        continue_of=second.sent[0]["turn_id"],
+        continue_instruction=next_requirement,
+    )
+    assert len(model.inputs) == 1
+    assert requirement in model.inputs[0][-1].content
+    assert next_requirement in model.inputs[0][-1].content
+    assert model.inputs[0][-1].content.index(requirement) < model.inputs[0][
+        -1
+    ].content.index(next_requirement)
+    with reopened.turn(identifier, "普通后续问题") as followup:
+        assert requirement in followup.context[0]["content"]
+        assert next_requirement in followup.context[0]["content"]
+
+
+def test_new_requirements_do_not_authorize_writes(runtime, monkeypatch):
+    _, agent, _, _, install = runtime
+    send = Mock(return_value="邮件发送成功！")
+    monkeypatch.setitem(agent.tool_func_map, "submit_issue", send)
+    args = {"description": "建议", "issue_type": "Feature"}
+    install([tool_call("submit_issue", args)])
+    first = run_chat(runtime, decide="stop")
+    install([tool_call("submit_issue", args)], [AIMessageChunk(content="未发送")])
+    second = run_chat(
+        runtime,
+        conversation=first.sent[0]["conversation_id"],
+        continue_of=first.sent[0]["turn_id"],
+        continue_instruction="继续并发送",
+        decide="reject",
+    )
+    assert any(event["type"] == "approval" for event in events(second))
+    send.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "instruction,target", [(True, True), ("a" * 4001, True), ("新增要求", False)]
+)
+def test_invalid_continuation_requirements_never_start_turn(
+    runtime, instruction, target
+):
+    _, _, _, store, install = runtime
+    with store.turn(None, "goal") as first:
+        pass
+    model = install([AIMessageChunk(content="must not run")])
+    result = run_chat(
+        runtime,
+        conversation=first.conversation_id,
+        continue_of=first.turn_id if target else None,
+        continue_instruction=instruction,
+    )
+    assert "error" in result.sent[-1]
+    assert model.inputs == []
+    assert len(store.read(first.conversation_id)["turns"]) == 1
+
+
+def test_requirement_capacity_rejects_instead_of_dropping_prior_restrictions(runtime):
+    _, _, _, store, install = runtime
+    with store.turn(None, "goal") as first:
+        pass
+    requirement = "约束" * 1500
+    with store.turn(
+        first.conversation_id,
+        "继续",
+        continue_of=first.turn_id,
+        continue_instruction=requirement,
+    ) as second:
+        second.append("progress")
+    with store.turn(
+        first.conversation_id,
+        "继续",
+        continue_of=second.turn_id,
+        continue_instruction=requirement,
+    ) as third:
+        third.append("progress")
+    model = install([AIMessageChunk(content="must not run")])
+    result = run_chat(
+        runtime,
+        conversation=first.conversation_id,
+        continue_of=third.turn_id,
+        continue_instruction=requirement,
+    )
+    assert "累计补充要求" in result.sent[-1]["error"]
+    assert model.inputs == []
+    with store.turn(first.conversation_id, "继续", retry_of=third.turn_id) as retry:
+        assert retry.continuation["instructions"] == [requirement, requirement]
+        assert (
+            len(json.dumps(retry.continuation, ensure_ascii=False))
+            <= ai_history.MAX_CONTINUATION_CHARS
+        )
+
+
+@pytest.mark.parametrize(
+    "failure,code",
+    [
+        (TimeoutError("timeout"), "model_timeout"),
+        (
+            APITimeoutError(request=httpx.Request("POST", "https://model.invalid")),
+            "model_timeout",
+        ),
+        (httpx.ReadTimeout("read timed out"), "model_timeout"),
+        (
+            APIConnectionError(request=httpx.Request("POST", "https://model.invalid")),
+            "model_connection",
+        ),
+        (httpx.ConnectError("cannot connect"), "model_connection"),
+        (ValueError("bad response"), "model_error"),
+    ],
+)
+def test_model_failure_kind_survives_history_and_reconnection(runtime, failure, code):
+    server, _, _, store, install = runtime
+    model = install(failure)
+    socket = run_chat(runtime)
+    identifier = socket.sent[0]["conversation_id"]
+    assert socket.sent[-1]["status"] == "interrupted"
+    assert socket.sent[-1]["code"] == code
+    assert model.closed == 1
+    saved = (
+        server.app.test_client()
+        .get(f"/ai/conversations/{identifier}", headers=headers())
+        .json["turns"][-1]
+    )
+    assert saved["failure"]["code"] == code
+    reopened = ai_history.HistoryStore(store.profile_id)
+    snapshot = list(execution.observe(reopened, identifier))[-1]["snapshot"]
+    assert snapshot["failure"] == saved["failure"]
+    assert snapshot["status"] == "interrupted"
+
+
+def test_user_stop_is_distinct_from_model_failure_after_reload(runtime):
+    server, _, _, store, install = runtime
+    install([tool_call("set_route", {"profession": "先锋", "supports_json": "[]"})])
+    socket = run_chat(runtime, decide="stop")
+    assert socket.sent[-1]["status"] == "cancelled"
+    assert socket.sent[-1]["code"] == "execution_stopped"
+    identifier = socket.sent[0]["conversation_id"]
+    saved = (
+        server.app.test_client()
+        .get(f"/ai/conversations/{identifier}", headers=headers())
+        .json["turns"][-1]
+    )
+    assert saved["status"] == "cancelled" and saved["failure"] == {}
+    snapshot = list(
+        execution.observe(ai_history.HistoryStore(store.profile_id), identifier)
+    )[-1]["snapshot"]
+    assert snapshot["status"] == "cancelled" and snapshot["failure"] == {}
+
+
+def test_stop_while_provider_is_blocked_stays_cancelled_after_timeout(
+    runtime, monkeypatch
+):
+    server, agent, _, store, _ = runtime
+    entered, release = Event(), Event()
+
+    class BlockingModel:
+        def stream(self, messages):
+            entered.set()
+            assert release.wait(5)
+            raise TimeoutError("provider timeout")
+            yield
+
+    monkeypatch.setattr(agent, "build_llm", lambda *args, **kwargs: BlockingModel())
+    results = []
+    worker = Thread(target=lambda: results.append(run_chat(runtime)))
+    worker.start()
+    try:
+        assert entered.wait(5)
+        identifier = store.list()[0]["id"]
+        target = store.read(identifier)["turns"][-1]["id"]
+        response = server.app.test_client().post(
+            f"/ai/conversations/{identifier}/turns/{target}/control",
+            headers=headers(),
+            json={"action": "stop"},
+        )
+        assert response.status_code == 200
+    finally:
+        release.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert results[0].sent[-1]["status"] == "cancelled"
+    assert results[0].sent[-1]["code"] == "execution_stopped"
+    saved = store.read(identifier)["turns"][-1]
+    assert saved["status"] == "cancelled" and saved["failure"] == {}

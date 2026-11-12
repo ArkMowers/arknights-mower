@@ -36,6 +36,22 @@ _registry_lock = RLock()
 _running = {}
 
 
+class ModelCallError(RuntimeError):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+class ChatTurnError(RuntimeError):
+    def __init__(self, message, turn):
+        super().__init__(message)
+        self.turn_status = turn.status
+        self.code = turn.failure.get(
+            "code",
+            "execution_stopped" if turn.status == "cancelled" else "execution_error",
+        )
+
+
 class ExecutionStopped(Exception):
     pass
 
@@ -90,6 +106,7 @@ def observe(store, conversation_id, turn_id=None):
                 "events": turn["events"],
                 "mode": turn["mode"],
                 "status": turn["status"],
+                "failure": turn["failure"],
             }
         }
         return
@@ -161,6 +178,7 @@ class Execution:
                 if self.turn.complete and error is None
                 else self.turn.status,
                 error=error[:2000] if error else None,
+                failure=copy.deepcopy(self.turn.failure),
             )
             self.revision += 1
             self.condition.notify_all()

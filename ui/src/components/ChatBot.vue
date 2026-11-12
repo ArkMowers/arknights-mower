@@ -7,6 +7,10 @@ import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 import AddOutline from '@vicons/ionicons5/es/AddOutline'
 import ArrowDownOutline from '@vicons/ionicons5/es/ArrowDownOutline'
 import ArrowUpOutline from '@vicons/ionicons5/es/ArrowUpOutline'
+import Stop from '@vicons/ionicons5/es/Stop'
+import Attach from '@vicons/ionicons5/es/Attach'
+import EllipsisHorizontal from '@vicons/ionicons5/es/EllipsisHorizontal'
+import InformationCircleOutline from '@vicons/ionicons5/es/InformationCircleOutline'
 import CheckmarkOutline from '@vicons/ionicons5/es/CheckmarkOutline'
 import CloseOutline from '@vicons/ionicons5/es/CloseOutline'
 import CopyOutline from '@vicons/ionicons5/es/CopyOutline'
@@ -33,6 +37,109 @@ const md = markdownit({ html: false, breaks: true })
 const visibleContent = (content) => content.replace(/<!--MOWER_MISS_STATE:[\s\S]*?-->/g, '')
 const renderMessage = (content) => md.render(visibleContent(content))
 const userInput = ref('')
+const composeNewQuestion = ref(false)
+const draftAttachments = ref([])
+const attachmentsBusy = ref(false)
+const fileInputRef = ref(null)
+const fileDragDepth = ref(0)
+let attachmentEpoch = 0
+let pendingAttachments = null
+
+function settleAttachments(accepted) {
+  if (!pendingAttachments) return false
+  const pending = pendingAttachments
+  pendingAttachments = null
+  if (!accepted && !disposed && pending.epoch === attachmentEpoch) {
+    draftAttachments.value = [...pending.files, ...draftAttachments.value]
+    composeNewQuestion.value = pending.asNewQuestion
+    if (!userInput.value) userInput.value = pending.text
+    return true
+  } else {
+    for (const file of pending.files) if (file.preview) URL.revokeObjectURL(file.preview)
+  }
+}
+
+function releaseAttachments() {
+  attachmentEpoch++
+  settleAttachments(true)
+  for (const file of draftAttachments.value) if (file.preview) URL.revokeObjectURL(file.preview)
+  draftAttachments.value = []
+}
+async function addFiles(files) {
+  if (!assistantAllowed() || attachmentsBusy.value || loading.value) return
+  const selected = Array.from(files || [])
+  if (!selected.length) return
+  if (draftAttachments.value.length + selected.length > 4) {
+    notice.warning('最多添加 4 个文件')
+    return
+  }
+  const epoch = attachmentEpoch
+  const generation = currentGeneration()
+  attachmentsBusy.value = true
+  try {
+    for (const file of selected) {
+      if (!file.size || file.size > 2 * 1024 * 1024) {
+        notice.error(`${file.name}：文件为空或超过 2 MB`)
+        continue
+      }
+      const body = new FormData()
+      body.append('file', file)
+      try {
+        const response = await axios.post(
+          `${import.meta.env.VITE_HTTP_URL || ''}/ai/attachments`,
+          body
+        )
+        if (disposed || epoch !== attachmentEpoch || generation !== currentGeneration()) return
+        const attachment = response.data
+        draftAttachments.value.push({
+          ...attachment,
+          preview: attachment.kind === 'image' ? URL.createObjectURL(file) : null
+        })
+        if (attachment.truncated) notice.warning(`${attachment.name}：仅发送文字摘录，内容有省略`)
+      } catch (error) {
+        if (!disposed && epoch === attachmentEpoch)
+          notice.error(error.response?.data?.error || '文件未添加，请重试。')
+      }
+    }
+  } finally {
+    attachmentsBusy.value = false
+  }
+}
+function removeAttachment(file) {
+  draftAttachments.value = draftAttachments.value.filter((item) => item.id !== file.id)
+  if (file.preview) URL.revokeObjectURL(file.preview)
+  axios.delete(`${import.meta.env.VITE_HTTP_URL || ''}/ai/attachments/${file.id}`).catch(() => {})
+}
+function pickFiles(event) {
+  const files = Array.from(event.target.files || [])
+  event.target.value = ''
+  return addFiles(files)
+}
+function dragFiles(event) {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.type === 'dragenter') fileDragDepth.value++
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+function leaveFiles(event) {
+  if (!fileDragDepth.value) return
+  event.preventDefault()
+  fileDragDepth.value = Math.max(0, fileDragDepth.value - 1)
+}
+function dropFiles(event) {
+  if (!Array.from(event.dataTransfer?.types || []).includes('Files')) return
+  event.preventDefault()
+  event.stopPropagation()
+  fileDragDepth.value = 0
+  return addFiles(event.dataTransfer.files)
+}
+function pasteFiles(event) {
+  const files = Array.from(event.clipboardData?.files || [])
+  if (!files.length) return
+  event.preventDefault()
+  return addFiles(files)
+}
 const chatHistory = ref([])
 const loading = ref(false)
 const conversationId = ref(null)
@@ -115,20 +222,40 @@ async function adoptSummary(msg = null) {
     historyBusy.value = false
   }
 }
-function resumeIncompleteTurn(msg, index) {
+function isIncomplete(msg) {
+  return Boolean(msg?.error || msg?.status === 'cancelled')
+}
+function terminalNotice(status, failure = {}, mode = 'chat') {
+  if (status === 'cancelled') {
+    return `已停止，可${mode === 'summary' ? '重新生成摘要' : '继续处理'}。已开始的操作可能已执行，请核对执行记录。`
+  }
+  const labels = {
+    model_timeout: '模型响应超时',
+    model_connection: '模型服务连接失败',
+    model_error: '模型调用失败',
+    execution_error: '本轮处理失败',
+    request_error: '请求未完成'
+  }
+  const label = labels[failure.code] || '本轮未完成'
+  return `${label}${failure.message ? `：${failure.message}` : '，原因未记录。'} 请核对执行记录后再继续。`
+}
+function resumeIncompleteTurn(msg, index, instruction = '') {
   if (
     loading.value ||
     historyBusy.value ||
     remoteBusy.value ||
     index !== chatHistory.value.length - 1 ||
     !msg.turn_id ||
-    !msg.error
+    !isIncomplete(msg) ||
+    instruction.length > 4000
   )
     return
   sendTurn(chatHistory.value[index - 1].content, {
     [msg.mode === 'summary' ? 'retry_of' : 'continue_of']: msg.turn_id,
-    mode: msg.mode || 'chat'
+    mode: msg.mode || 'chat',
+    ...(instruction ? { continue_instruction: instruction } : {})
   })
+  if (instruction && loading.value) userInput.value = ''
 }
 const historyBase = `${import.meta.env.VITE_HTTP_URL || ''}/ai/conversations`
 let historyRequest = 0
@@ -139,25 +266,33 @@ function currentGeneration() {
   return axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
 }
 function restoreConversation(data) {
+  composeNewQuestion.value = false
   requestOptions = {}
   conversationId.value = data.id
   remoteBusy.value = data.busy
   summarySource.value = data.summary_source || 0
   contextInfo.value = null
   chatHistory.value = data.turns.flatMap((turn, index) => [
-    { role: 'user', content: turn.continued_from ? '继续处理' : turn.user },
+    {
+      role: 'user',
+      content: turn.continued_from ? turn.continue_instruction || '继续处理' : turn.user,
+      attachments: turn.attachments || []
+    },
     {
       role: 'bot',
       turn_id: turn.id,
       mode: turn.mode || 'chat',
+      status: turn.status,
       events: turn.events || [],
       draft: '',
       content:
         turn.assistant +
         (turn.status !== 'complete' && !(data.busy && index === data.turns.length - 1)
-          ? '\n\n本轮未完成，部分操作可能已执行，请核实后再继续。'
+          ? `\n\n${terminalNotice(turn.status, turn.failure, turn.mode)}`
           : ''),
-      error: turn.status !== 'complete' && !(data.busy && index === data.turns.length - 1),
+      error:
+        !['complete', 'cancelled'].includes(turn.status) &&
+        !(data.busy && index === data.turns.length - 1),
       followUpState: null
     }
   ])
@@ -275,9 +410,53 @@ function endDrag(event) {
   }
 }
 const atBottom = ref(true)
+const continuationTarget = computed(() => {
+  const last = chatHistory.value.at(-1)
+  return last?.turn_id && last.mode !== 'summary' && isIncomplete(last) ? last : null
+})
+const continueMode = computed(() => Boolean(continuationTarget.value) && !composeNewQuestion.value)
+const composerActions = computed(() => [
+  ...(continuationTarget.value
+    ? [
+        {
+          label: continueMode.value ? '作为新提问' : '继续原任务',
+          key: 'toggle-question',
+          disabled: loading.value || historyBusy.value || remoteBusy.value
+        }
+      ]
+    : []),
+  {
+    label: '整理摘要',
+    key: 'summary',
+    disabled: !conversationId.value || loading.value || historyBusy.value || remoteBusy.value
+  },
+  ...(summarySource.value
+    ? [
+        {
+          label: '停用摘要',
+          key: 'clear-summary',
+          disabled: loading.value || historyBusy.value || remoteBusy.value
+        }
+      ]
+    : [])
+])
+function selectComposerAction(key) {
+  if (loading.value || historyBusy.value || remoteBusy.value) return
+  if (key === 'toggle-question') composeNewQuestion.value = !composeNewQuestion.value
+  else if (key === 'summary') requestSummary()
+  else if (key === 'clear-summary') adoptSummary()
+}
+const contextHint = computed(() =>
+  contextInfo.value?.continued_from
+    ? `已带入原目标和保存的进度。${contextInfo.value.continuation_limited ? '部分记录已截断。' : ''}`
+    : contextInfo.value?.limited
+      ? `本轮使用 ${contextInfo.value.included_turns} 轮近期记录，部分历史未传给模型。`
+      : '近期上下文最多 10 轮、24,000 字符。'
+)
 const canSend = computed(
   () =>
-    Boolean(userInput.value.trim()) &&
+    (Boolean(userInput.value.trim()) || continueMode.value || draftAttachments.value.length > 0) &&
+    !attachmentsBusy.value &&
     !loading.value &&
     !historyBusy.value &&
     historyReady.value &&
@@ -334,12 +513,19 @@ function closeConnection() {
   }
   connecting.value = false
 }
-function failReply(text) {
+function failReply(text, status = 'interrupted') {
+  const restored = settleAttachments(false)
+  if (restored && activeReply && !activeReply.turn_id) {
+    chatHistory.value.splice(-2)
+    activeReply = null
+    notice.error(text)
+  }
   if (activeReply) {
     if (!activeReply.content) activeReply.content = activeReply.draft || ''
     activeReply.draft = ''
     activeReply.content += `${activeReply.content ? '\n\n' : ''}${text}`
-    activeReply.error = true
+    activeReply.status = status
+    activeReply.error = status !== 'cancelled'
   }
   activeReply = null
   loading.value = false
@@ -371,7 +557,9 @@ function trimHistory() {
 function applySnapshot(snapshot) {
   if (!activeReply) return
   conversationId.value = snapshot.conversation_id
+  if (snapshot.turn_id) settleAttachments(true)
   activeReply.turn_id = snapshot.turn_id
+  activeReply.status = snapshot.status
   activeReply.mode = snapshot.mode || 'chat'
   activeReply.events = snapshot.events || []
   activeReply.content = snapshot.assistant || ''
@@ -383,8 +571,8 @@ function applySnapshot(snapshot) {
   remoteBusy.value = false
   if (snapshot.status !== 'running') {
     if (snapshot.status !== 'complete') {
-      activeReply.error = true
-      activeReply.content += `\n\n${snapshot.error || '本轮未完成，部分操作可能已执行，请核实后再继续。'}`
+      activeReply.error = snapshot.status !== 'cancelled'
+      activeReply.content += `\n\n${terminalNotice(snapshot.status, snapshot.failure || { message: snapshot.error }, snapshot.mode)}`
     }
     activeReply = null
     loading.value = false
@@ -452,6 +640,7 @@ function connectWS(text, resume = false) {
       return
     }
     if (data.turn_id) {
+      settleAttachments(true)
       activeReply.turn_id = data.turn_id
       activeReply.mode = data.mode || 'chat'
       contextInfo.value = data.context || null
@@ -474,7 +663,10 @@ function connectWS(text, resume = false) {
       activeReply.content += data.reply
     }
     if (data.error) {
-      failReply(`回复失败：${data.error}`)
+      failReply(
+        terminalNotice(data.status, { code: data.code, message: data.error }, activeReply.mode),
+        data.status
+      )
       return
     }
     if (data.done === true) {
@@ -498,18 +690,16 @@ function sendMessage() {
   if (!canSend.value) return
   const text = userInput.value.trim()
   if (text.length > 4000) return
-  const last = chatHistory.value.at(-1)
-  if (
-    ['继续', '继续处理'].includes(text) &&
-    last?.error &&
-    last.turn_id &&
-    last.mode !== 'summary'
-  ) {
-    resumeIncompleteTurn(last, chatHistory.value.length - 1)
+  if (continueMode.value) {
+    resumeIncompleteTurn(
+      continuationTarget.value,
+      chatHistory.value.length - 1,
+      ['', '继续', '继续处理'].includes(text) ? '' : text
+    )
     if (loading.value) userInput.value = ''
     return
   }
-  sendTurn(text)
+  sendTurn(text || '请查看附件。')
 }
 function sendTurn(text, options = {}) {
   if (
@@ -517,16 +707,30 @@ function sendTurn(text, options = {}) {
     historyBusy.value ||
     !historyReady.value ||
     remoteBusy.value ||
-    !assistantAllowed()
+    !assistantAllowed() ||
+    attachmentsBusy.value
   )
     return
+  const files = options.mode === 'summary' ? [] : [...draftAttachments.value]
+  const asNewQuestion = composeNewQuestion.value
+  composeNewQuestion.value = false
   requestOptions = {
     request_id: Array.from(crypto.getRandomValues(new Uint8Array(16)), (value) =>
       value.toString(16).padStart(2, '0')
     ).join(''),
-    ...options
+    ...options,
+    ...(files.length ? { attachment_ids: files.map((file) => file.id) } : {})
   }
-  chatHistory.value.push({ role: 'user', content: options.continue_of ? '继续处理' : text })
+  chatHistory.value.push({
+    role: 'user',
+    content: options.continue_of ? options.continue_instruction || '继续处理' : text,
+    attachments: files.map((file) => ({
+      id: file.id,
+      name: file.name,
+      kind: file.kind,
+      truncated: file.truncated
+    }))
+  })
   chatHistory.value.push({
     role: 'bot',
     content: '',
@@ -536,6 +740,10 @@ function sendTurn(text, options = {}) {
     error: false,
     mode: options.mode || 'chat'
   })
+  if (files.length) {
+    pendingAttachments = { files, text: userInput.value, epoch: attachmentEpoch, asNewQuestion }
+    draftAttachments.value = []
+  }
   activeReply = chatHistory.value.at(-1)
   loading.value = true
   connectionLost.value = false
@@ -559,6 +767,8 @@ function useSuggestion(suggestion) {
 }
 function newConversation() {
   if (loading.value) return
+  releaseAttachments()
+  composeNewQuestion.value = false
   closeConnection()
   conversationId.value = null
   contextInfo.value = null
@@ -635,6 +845,7 @@ watch(
 onBeforeUnmount(() => {
   disposed = true
   historyRequest++
+  releaseAttachments()
   closeConnection()
 })
 </script>
@@ -647,6 +858,10 @@ onBeforeUnmount(() => {
     :style="panelStyle"
     role="dialog"
     aria-label="Mower AI 助手"
+    @dragenter="dragFiles"
+    @dragover="dragFiles"
+    @dragleave="leaveFiles"
+    @drop="dropFiles"
   >
     <header
       class="chatbot-header"
@@ -752,7 +967,8 @@ onBeforeUnmount(() => {
           :disabled="historyOptionsDisabled"
           @click="selectConversation(item.id)"
         >
-          <strong>{{ item.title }}</strong><time>{{ historyTime(item.updated) }}</time>
+          <strong>{{ item.title }}</strong
+          ><time>{{ historyTime(item.updated) }}</time>
         </button>
         <n-popconfirm
           :disabled="historyOptionsDisabled"
@@ -804,6 +1020,14 @@ onBeforeUnmount(() => {
                 v-if="msg.role === 'bot' && loading && idx === chatHistory.length - 1"
                 class="message-state"
                 >{{ replyProgress(msg) }}</span
+              >
+            </div>
+            <div v-if="msg.role === 'user' && msg.attachments?.length" class="sent-attachments">
+              <span
+                v-for="file in msg.attachments"
+                :key="file.id"
+                :title="file.truncated ? '仅包含末尾 6000 字符' : file.name"
+                ><n-icon :component="Attach" />{{ file.name }}</span
               >
             </div>
             <div v-if="msg.role === 'bot' && msg.events?.length" class="tool-events">
@@ -878,15 +1102,20 @@ onBeforeUnmount(() => {
                 ><template #icon><n-icon :component="CopyOutline" /></template>复制</n-button
               >
               <n-button
-                v-if="msg.error && msg.turn_id && idx === chatHistory.length - 1"
+                v-if="
+                  isIncomplete(msg) &&
+                  msg.mode === 'summary' &&
+                  msg.turn_id &&
+                  idx === chatHistory.length - 1
+                "
                 quaternary
                 class="reply-action"
                 :disabled="loading || historyBusy || remoteBusy"
                 @click="resumeIncompleteTurn(msg, idx)"
-                >{{ msg.mode === 'summary' ? '重新生成摘要' : '继续处理' }}</n-button
+                >重新生成摘要</n-button
               >
               <n-popconfirm
-                v-if="!msg.error && msg.mode === 'summary'"
+                v-if="!isIncomplete(msg) && msg.mode === 'summary'"
                 :disabled="loading || historyBusy"
                 @positive-click="adoptSummary(msg)"
               >
@@ -897,7 +1126,7 @@ onBeforeUnmount(() => {
                 >
                 将这份摘要作为后续对话的历史背景？请先核对其中的事实与未完成事项。
               </n-popconfirm>
-              <template v-if="!msg.error">
+              <template v-if="!isIncomplete(msg)">
                 <n-button
                   v-if="!msg.followUpState"
                   quaternary
@@ -934,33 +1163,29 @@ onBeforeUnmount(() => {
     </div>
 
     <footer v-if="!historyOpen" class="chatbot-input-area">
-      <div class="context-toolbar">
-        <span v-if="contextInfo?.continued_from"
-          >已带入原目标和保存的进度，继续处理剩余工作。{{
-            contextInfo.continuation_limited ? '部分记录已截断。' : ''
-          }}</span
-        >
-        <span v-else-if="contextInfo?.limited"
-          >本轮仅使用 {{ contextInfo.included_turns }} 轮近期记录，部分历史未传给模型。</span
-        >
-        <span v-else>近期上下文最多 10 轮、24,000 字符。</span>
-        <n-button
-          text
-          size="tiny"
-          :disabled="!conversationId || loading || historyBusy || remoteBusy"
-          @click="requestSummary"
-          >整理摘要</n-button
-        >
-        <n-button
-          v-if="summarySource"
-          text
-          size="tiny"
-          :disabled="loading || historyBusy"
-          @click="adoptSummary()"
-          >停用摘要</n-button
-        >
-      </div>
-      <div class="composer">
+      <input ref="fileInputRef" class="file-picker" type="file" multiple @change="pickFiles" />
+      <div class="composer" :class="{ 'file-dragging': fileDragDepth > 0 }">
+        <div v-if="draftAttachments.length" class="attachment-list">
+          <div
+            v-for="file in draftAttachments"
+            :key="file.id"
+            class="attachment-chip"
+            :title="file.truncated ? `${file.name}：仅发送文字摘录，内容有省略` : file.name"
+          >
+            <img v-if="file.preview" :src="file.preview" :alt="file.name" />
+            <n-icon v-else :component="DocumentTextOutline" />
+            <span>{{ file.name }}</span>
+            <n-button
+              quaternary
+              circle
+              size="tiny"
+              :aria-label="`移除 ${file.name}`"
+              :title="`移除 ${file.name}`"
+              @click="removeAttachment(file)"
+              ><template #icon><n-icon :component="CloseOutline" /></template
+            ></n-button>
+          </div>
+        </div>
         <n-input
           ref="inputRef"
           v-model:value="userInput"
@@ -968,34 +1193,62 @@ onBeforeUnmount(() => {
           :bordered="false"
           :autosize="{ minRows: 2, maxRows: 6 }"
           :maxlength="4000"
-          placeholder="描述问题，或粘贴相关日志…"
+          :placeholder="continueMode ? '补充要求…' : '发消息…'"
           aria-label="发送给 Mower AI 的问题"
           @keydown="onInputKeydown"
+          @paste="pasteFiles"
         />
         <div class="composer-toolbar">
-          <span class="keyboard-hint">Enter 发送 <span>·</span> Shift + Enter 换行</span>
+          <n-button
+            quaternary
+            circle
+            aria-label="添加文件"
+            title="添加文件"
+            :loading="attachmentsBusy"
+            :disabled="attachmentsBusy || loading"
+            @click="fileInputRef?.click()"
+            ><template #icon><n-icon :component="Attach" /></template
+          ></n-button>
+          <n-dropdown :options="composerActions" trigger="click" @select="selectComposerAction">
+            <n-button quaternary circle aria-label="更多操作" title="更多操作">
+              <template #icon><n-icon :component="EllipsisHorizontal" /></template>
+            </n-button>
+          </n-dropdown>
+          <n-icon
+            v-if="contextInfo?.limited"
+            :component="InformationCircleOutline"
+            :title="contextHint"
+            :aria-label="contextHint"
+            class="context-info"
+          />
+          <span class="composer-spacer" />
           <span v-if="userInput.length > 3500" class="input-count"
             >{{ userInput.length }} / 4000</span
           >
           <n-button
             v-if="loading"
+            circle
             class="send-button"
+            :title="stopping ? '停止中' : '停止'"
+            :aria-label="stopping ? '停止中' : '停止'"
+            :loading="stopping"
             :disabled="!activeReply?.turn_id || controlBusy || stopping"
             @click="sendControl('stop')"
-            >{{ stopping ? '停止中' : '停止' }}</n-button
-          >
+            ><template #icon><n-icon :component="Stop" /></template
+          ></n-button>
           <n-button
             v-else
             type="primary"
+            circle
             class="send-button"
+            :title="continueMode ? '继续处理' : '发送'"
+            :aria-label="continueMode ? '继续处理' : '发送'"
             :disabled="!canSend"
             @click="sendMessage"
             ><template #icon><n-icon :component="ArrowUpOutline" /></template
-            >{{ loading ? '回复中' : '发送' }}</n-button
-          >
+          ></n-button>
         </div>
       </div>
-      <p class="composer-note">会话自动保存在本机。AI 可能判断有误，请核对操作范围。</p>
     </footer>
   </section>
 </template>
@@ -1028,18 +1281,6 @@ onBeforeUnmount(() => {
 }
 .tool-events .n-button + .n-button {
   margin-left: 8px;
-}
-.context-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 10px;
-  align-items: center;
-  margin-bottom: 8px;
-  color: var(--mower-text-muted);
-  font-size: 11px;
-}
-.context-toolbar > span {
-  flex: 1;
 }
 
 .history-notice {
@@ -1442,6 +1683,58 @@ onBeforeUnmount(() => {
   padding: 12px 18px 10px;
   border-top: 1px solid var(--mower-divider);
 }
+.file-picker {
+  display: none;
+}
+.attachment-list {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 5px;
+}
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 200px;
+  padding: 4px 6px;
+  border: 1px solid var(--mower-border);
+  border-radius: 9px;
+  color: var(--mower-text);
+  font-size: 12px;
+}
+.attachment-chip > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.attachment-chip img {
+  width: 32px;
+  height: 32px;
+  object-fit: cover;
+  border-radius: 5px;
+}
+.sent-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 100%;
+}
+.sent-attachments > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--mower-text-muted);
+}
+.composer.file-dragging {
+  border-style: dashed;
+  border-color: var(--mower-primary);
+  background: var(--mower-primary-block);
+}
 .composer {
   padding: 6px;
   border: 1px solid var(--mower-border);
@@ -1466,13 +1759,11 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 4px 4px 2px 8px;
 }
-.keyboard-hint {
+.composer-spacer {
   flex: 1;
-  font-size: 11px;
-  color: var(--mower-text-muted);
 }
-.keyboard-hint > span {
-  margin: 0 3px;
+.context-info {
+  color: var(--mower-text-muted);
 }
 .input-count {
   font-size: 11px;
@@ -1480,15 +1771,12 @@ onBeforeUnmount(() => {
   color: var(--mower-text-muted);
 }
 .send-button {
-  height: 40px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  padding: 0;
+  border-radius: 50%;
   transition: transform 0.15s;
-}
-.composer-note {
-  margin: 8px 0 0;
-  font-size: 11px;
-  text-align: center;
-  color: var(--mower-text-muted);
 }
 @media (max-width: 640px) {
   .chatbot-container {
@@ -1511,9 +1799,6 @@ onBeforeUnmount(() => {
   }
   .chatbot-input-area {
     padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  }
-  .keyboard-hint {
-    font-size: 10px;
   }
   .composer-toolbar {
     padding-left: 4px;
