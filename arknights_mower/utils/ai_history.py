@@ -536,7 +536,7 @@ class HistoryStore:
                         {"id": attachment_id, **json.loads(row["payload"])}
                     )
                 selected, size = [], 0
-                context_attachments = len(attachments)
+                context_attachment_ids = {item["id"] for item in attachments}
                 context_files = []
                 summary_truncated = False
                 if mode == "summary":
@@ -569,8 +569,12 @@ class HistoryStore:
                             continue
                         if row["id"] <= conversation["summary_through"]:
                             break
-                        files = self._attachments(db, row["id"])
-                        if context_attachments + len(files) > MAX_ATTACHMENTS:
+                        files = [
+                            item
+                            for item in self._attachments(db, row["id"])
+                            if item["id"] not in context_attachment_ids
+                        ]
+                        if len(context_attachment_ids) + len(files) > MAX_ATTACHMENTS:
                             break
                         content = attachment_blocks(saved_user_message(row), files)
                         size += content_text_size(content) + len(row["assistant"])
@@ -580,7 +584,7 @@ class HistoryStore:
                             or len(selected) >= MAX_CONTEXT_TURNS
                         ):
                             break
-                        context_attachments += len(files)
+                        context_attachment_ids.update(item["id"] for item in files)
                         context_files.extend(files)
                         selected.append((row, content))
                     context = []

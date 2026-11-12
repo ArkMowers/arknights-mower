@@ -74,6 +74,7 @@ def run_chat(
     continue_of=None,
     continue_instruction=None,
     attachment_ids=None,
+    message="请执行本次请求",
     mode="chat",
     decide="approve",
     on_event=None,
@@ -102,7 +103,7 @@ def run_chat(
                 assert response.status_code == 200, response.json
 
     request = {
-        "message": "请执行本次请求",
+        "message": message,
         "generation": "0",
         "conversation_id": conversation,
         "mode": mode,

@@ -269,3 +269,43 @@ def test_extracted_text_stays_bounded(runtime, name, raw):
             ).fetchone()[0]
         )
     assert len(payload["content"]) <= 6000
+
+
+@pytest.mark.parametrize("count", [2, 3, 4])
+def test_continue_counts_shared_files_once_and_preserves_original_requirements(
+    runtime, count
+):
+    files = [
+        upload(runtime, f"log-{i}.txt", f"evidence-{i}".encode()).json["id"]
+        for i in range(count)
+    ]
+    model = runtime[-1](
+        [AIMessageChunk(content="first analysis")],
+        TimeoutError("timeout"),
+        [AIMessageChunk(content="continued analysis")],
+    )
+    first = run_chat(
+        runtime, message="重点检查订单，不要分析训练", attachment_ids=files
+    )
+    identifier = first.sent[0]["conversation_id"]
+    second = run_chat(
+        runtime, conversation=identifier, message="按照刚才的目标深入分析"
+    )
+    third = run_chat(
+        runtime, conversation=identifier, continue_of=second.sent[0]["turn_id"]
+    )
+    assert third.sent[-1] == {"done": True}
+    content = json.dumps([m.content for m in model.inputs[-1]], ensure_ascii=False)
+    assert "重点检查订单，不要分析训练" in content
+    assert "按照刚才的目标深入分析" in content
+    for i in range(count):
+        assert f"evidence-{i}" in content
+    blocks = [
+        block
+        for message in model.inputs[-1]
+        if isinstance(message.content, list)
+        for block in message.content
+    ]
+    assert (
+        sum(block.get("text", "").startswith("用户附件：") for block in blocks) == count
+    )
