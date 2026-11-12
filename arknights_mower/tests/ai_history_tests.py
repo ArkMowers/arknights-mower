@@ -24,11 +24,25 @@ def history(chat_profiles, storage, monkeypatch):
     return server, agent, profiles, server.active_chat_history()
 
 
-def send(server, text, identifier=None, socket_type=FakeSocket):
-    socket = socket_type(
-        json.dumps({"token": "chat-profile-token"}),
-        json.dumps({"message": text, "generation": "0", "conversation_id": identifier}),
+def chat_socket(
+    socket_type=FakeSocket, *, token="chat-profile-token", generation="0", **request
+):
+    return socket_type(
+        json.dumps({"token": token}),
+        json.dumps({"generation": generation, **request}),
     )
+
+
+def post_control(server, conversation_id, turn_id, **body):
+    return server.app.test_client().post(
+        f"/ai/conversations/{conversation_id}/turns/{turn_id}/control",
+        headers=headers(),
+        json=body,
+    )
+
+
+def send(server, text, identifier=None, socket_type=FakeSocket):
+    socket = chat_socket(socket_type, message=text, conversation_id=identifier)
     chat(server, socket)
     return socket
 
@@ -196,15 +210,8 @@ def test_profile_switch_keeps_history_separate_and_restores_it(history, monkeypa
         )
     model = Mock()
     monkeypatch.setattr(agent, "ask_llm", model)
-    socket = FakeSocket(
-        json.dumps({"token": "chat-profile-token"}),
-        json.dumps(
-            {
-                "message": "cross profile",
-                "generation": generation,
-                "conversation_id": identifier,
-            }
-        ),
+    socket = chat_socket(
+        message="cross profile", generation=generation, conversation_id=identifier
     )
     chat(server, socket)
     model.assert_not_called()

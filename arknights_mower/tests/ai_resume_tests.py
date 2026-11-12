@@ -15,7 +15,9 @@ from arknights_mower.tests.ai_history_tests import (
     chat_profiles as chat_profiles,
 )
 from arknights_mower.tests.ai_history_tests import (
+    chat_socket,
     headers,
+    post_control,
 )
 from arknights_mower.tests.ai_history_tests import (
     history as history,
@@ -44,16 +46,13 @@ def resume(
             if "snapshot" in frame and on_snapshot:
                 on_snapshot(frame["snapshot"])
 
-    socket = Socket(
-        json.dumps({"token": token}),
-        json.dumps(
-            {
-                "resume": True,
-                "conversation_id": identifier,
-                "request_id": request_id,
-                "generation": generation,
-            }
-        ),
+    socket = chat_socket(
+        Socket,
+        token=token,
+        resume=True,
+        conversation_id=identifier,
+        request_id=request_id,
+        generation=generation,
     )
     chat(server, socket)
     return socket
@@ -81,16 +80,11 @@ def test_disconnect_during_confirmation_keeps_exact_pending_operation(
                 raise ConnectionClosed()
             super().send(value)
 
-    socket = Disconnect(
-        json.dumps({"token": "chat-profile-token"}),
-        json.dumps(
-            {
-                "message": "保存路线",
-                "generation": "0",
-                "conversation_id": None,
-                "request_id": "original-request",
-            }
-        ),
+    socket = chat_socket(
+        Disconnect,
+        message="保存路线",
+        conversation_id=None,
+        request_id="original-request",
     )
     worker = Thread(target=chat, args=(server, socket))
     worker.start()
@@ -170,16 +164,8 @@ def test_lost_ack_resumes_by_request_without_replaying_model(runtime):
             disconnected.set()
             raise ConnectionClosed()
 
-    socket = Disconnect(
-        json.dumps({"token": "chat-profile-token"}),
-        json.dumps(
-            {
-                "message": "查询",
-                "generation": "0",
-                "conversation_id": None,
-                "request_id": "lost-ack",
-            }
-        ),
+    socket = chat_socket(
+        Disconnect, message="查询", conversation_id=None, request_id="lost-ack"
     )
     worker = Thread(target=chat, args=(server, socket))
     worker.start()
@@ -248,10 +234,13 @@ def test_stale_approval_after_process_restart_cannot_be_confirmed(runtime):
         store.save_progress(turn)
     restored = resume(server, turn.conversation_id).sent[-1]["snapshot"]
     assert restored["status"] == "interrupted"
-    result = server.app.test_client().post(
-        f"/ai/conversations/{turn.conversation_id}/turns/{turn.turn_id}/control",
-        headers=headers(),
-        json={"action": "approve", "approval_id": "old", "digest": "old"},
+    result = post_control(
+        server,
+        turn.conversation_id,
+        turn.turn_id,
+        action="approve",
+        approval_id="old",
+        digest="old",
     )
     assert result.status_code == 409
 
@@ -294,15 +283,8 @@ def test_observer_limit_and_disconnection_release_slots(runtime):
                     def send(self, value):
                         raise ConnectionClosed()
 
-                socket = Disconnect(
-                    json.dumps({"token": "chat-profile-token"}),
-                    json.dumps(
-                        {
-                            "resume": True,
-                            "conversation_id": turn.conversation_id,
-                            "generation": "0",
-                        }
-                    ),
+                socket = chat_socket(
+                    Disconnect, resume=True, conversation_id=turn.conversation_id
                 )
                 chat(server, socket)
                 assert run.observers == execution.MAX_OBSERVERS - 1
@@ -329,16 +311,7 @@ def test_disconnected_confirmation_expires_without_writing(runtime, monkeypatch)
                 raise ConnectionClosed()
             super().send(value)
 
-    socket = Disconnect(
-        json.dumps({"token": "chat-profile-token"}),
-        json.dumps(
-            {
-                "message": "保存路线",
-                "generation": "0",
-                "conversation_id": None,
-            }
-        ),
-    )
+    socket = chat_socket(Disconnect, message="保存路线", conversation_id=None)
     chat(server, socket)
     restored = resume(server, socket.sent[0]["conversation_id"]).sent[-1]["snapshot"]
     assert restored["events"][-1]["status"] == "not_executed"
@@ -393,14 +366,13 @@ def test_real_websocket_reconnect_preserves_confirmation(runtime):
         snapshot = json.loads(second.receive(timeout=3))["snapshot"]
         assert snapshot["events"][-1] == event
         assert mastery_db.get_route("先锋") is None
-        response = server.app.test_client().post(
-            f"/ai/conversations/{identifier}/turns/{turn_id}/control",
-            headers=headers(),
-            json={
-                "action": "approve",
-                "approval_id": event["approval_id"],
-                "digest": event["digest"],
-            },
+        response = post_control(
+            server,
+            identifier,
+            turn_id,
+            action="approve",
+            approval_id=event["approval_id"],
+            digest=event["digest"],
         )
         assert response.status_code == 200
         for _ in range(10):
@@ -444,16 +416,7 @@ def test_detached_execution_admission_is_bounded(runtime, monkeypatch):
     with store.turn(None, "occupied") as turn:
         run = execution.Execution(store, turn, lambda _: None)
         with run.registered():
-            socket = FakeSocket(
-                json.dumps({"token": "chat-profile-token"}),
-                json.dumps(
-                    {
-                        "message": "excess",
-                        "generation": "0",
-                        "conversation_id": None,
-                    }
-                ),
-            )
+            socket = chat_socket(message="excess", conversation_id=None)
             chat(server, socket)
             assert "会话过多" in socket.sent[-1]["error"]
             assert not run.stopped

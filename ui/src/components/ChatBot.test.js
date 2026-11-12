@@ -92,6 +92,10 @@ function send(text = '检查日志') {
   return FakeSocket.instances.at(-1)
 }
 
+function restoreTurn(turn) {
+  component.restoreConversation({ id: 'conversation', turns: [turn] })
+}
+
 describe('AI chat interactions', () => {
   it.each([
     ['http://mower.example:18000', 'ws://mower.example:18000/ws/chat'],
@@ -821,17 +825,12 @@ describe('retained execution controls', () => {
     expect(socket.close).not.toHaveBeenCalled()
   })
   it('marks restored approvals expired and refuses to send a control outside a live turn', async () => {
-    component.restoreConversation({
-      id: 'conversation',
-      turns: [
-        {
-          id: 7,
-          user: '请求',
-          assistant: '',
-          status: 'interrupted',
-          events: [{ status: 'awaiting_approval' }, { status: 'running' }]
-        }
-      ]
+    restoreTurn({
+      id: 7,
+      user: '请求',
+      assistant: '',
+      status: 'interrupted',
+      events: [{ status: 'awaiting_approval' }, { status: 'running' }]
     })
     const reply = component.chatHistory.value.at(-1)
     expect(component.eventStatus(reply.events[0], reply)).toBe('未执行（确认已失效）')
@@ -881,11 +880,12 @@ describe('retained execution controls', () => {
   it.each(['继续', '继续处理'])(
     'maps typed %s to continuation after restoring a stopped turn',
     (text) => {
-      component.restoreConversation({
-        id: 'conversation',
-        turns: [
-          { id: 9, user: '原始目标', assistant: '已有进度', status: 'cancelled', continued_from: 7 }
-        ]
+      restoreTurn({
+        id: 9,
+        user: '原始目标',
+        assistant: '已有进度',
+        status: 'cancelled',
+        continued_from: 7
       })
       expect(component.chatHistory.value[0].content).toBe('继续处理')
       const socket = send(text)
@@ -921,18 +921,13 @@ describe('retained execution controls', () => {
     }
   )
   it('sends any composer text as a continuation requirement and restores it from history', () => {
-    component.restoreConversation({
-      id: 'conversation',
-      turns: [
-        {
-          id: 7,
-          user: '原目标',
-          assistant: '',
-          status: 'cancelled',
-          continued_from: 6,
-          continue_instruction: '先不要发邮件'
-        }
-      ]
+    restoreTurn({
+      id: 7,
+      user: '原目标',
+      assistant: '',
+      status: 'cancelled',
+      continued_from: 6,
+      continue_instruction: '先不要发邮件'
     })
     expect(component.chatHistory.value[0].content).toBe('先不要发邮件')
     component.userInput.value = '只核对计划 A'
@@ -971,17 +966,12 @@ describe('retained execution controls', () => {
     socket.receive({ error: 'detail', status: 'interrupted', code })
     expect(component.chatHistory.value.at(-1).content).toContain(label)
     expect(component.chatHistory.value.at(-1).error).toBe(true)
-    component.restoreConversation({
-      id: 'conversation',
-      turns: [
-        {
-          id: 7,
-          user: 'goal',
-          assistant: 'partial',
-          status: 'interrupted',
-          failure: { code, message: 'detail' }
-        }
-      ]
+    restoreTurn({
+      id: 7,
+      user: 'goal',
+      assistant: 'partial',
+      status: 'interrupted',
+      failure: { code, message: 'detail' }
     })
     expect(component.chatHistory.value.at(-1).content).toContain(label)
     const next = send('继续')
@@ -1106,12 +1096,8 @@ describe('composer attachments', () => {
     expect(component.draftAttachments.value).toEqual([])
   })
   it('discards an upload response after starting a new conversation', async () => {
-    let resolve
-    state.axios.post.mockReturnValue(
-      new Promise((done) => {
-        resolve = done
-      })
-    )
+    const { promise, resolve } = Promise.withResolvers()
+    state.axios.post.mockReturnValue(promise)
     const uploading = component.addFiles([file()])
     expect(component.canSend.value).toBe(false)
     component.newConversation()
@@ -1222,19 +1208,14 @@ describe('AI workspace', () => {
     expect(component.unreadResult.value).toBe(false)
   })
   it('ignores stale preview responses and keeps preview errors retryable', async () => {
-    let finish
-    state.axios.get.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve
-        })
-    )
+    const { promise, resolve } = Promise.withResolvers()
+    state.axios.get.mockReturnValueOnce(promise)
     const old = component.inspectAttachment({ id: 'old', name: 'old.log' })
     state.axios.get.mockResolvedValueOnce({
       data: { id: 'new', name: 'new.log', kind: 'text', content: '<script>data</script>' }
     })
     await component.inspectAttachment({ id: 'new', name: 'new.log' })
-    finish({ data: { id: 'old', content: 'stale' } })
+    resolve({ data: { id: 'old', content: 'stale' } })
     await old
     expect(component.previewFile.value.content).toBe('<script>data</script>')
     state.axios.get.mockRejectedValueOnce(new Error('offline'))

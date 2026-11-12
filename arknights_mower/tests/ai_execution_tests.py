@@ -16,8 +16,10 @@ from arknights_mower.tests.ai_history_tests import (
     chat_profiles as chat_profiles,
 )
 from arknights_mower.tests.ai_history_tests import (
+    chat_socket,
     complete,
     headers,
+    post_control,
 )
 from arknights_mower.tests.ai_history_tests import (
     history as history,
@@ -70,15 +72,11 @@ def run_chat(
     runtime,
     *,
     conversation=None,
-    retry_of=None,
-    continue_of=None,
-    continue_instruction=None,
-    attachment_ids=None,
     message="请执行本次请求",
     mode="chat",
     decide="approve",
     on_event=None,
-    request_id=None,
+    **options,
 ):
     server = runtime[0]
 
@@ -91,34 +89,23 @@ def run_chat(
                 on_event(self, event)
             if event.get("type") == "approval" and decide:
                 identifier = self.sent[0]["conversation_id"]
-                response = server.app.test_client().post(
-                    f"/ai/conversations/{identifier}/turns/{event['turn_id']}/control",
-                    headers=headers(),
-                    json={
-                        "action": decide,
-                        "approval_id": event["approval_id"],
-                        "digest": event["digest"],
-                    },
+                response = post_control(
+                    server,
+                    identifier,
+                    event["turn_id"],
+                    action=decide,
+                    approval_id=event["approval_id"],
+                    digest=event["digest"],
                 )
                 assert response.status_code == 200, response.json
 
-    request = {
-        "message": message,
-        "generation": "0",
-        "conversation_id": conversation,
-        "mode": mode,
-    }
-    if retry_of is not None:
-        request["retry_of"] = retry_of
-    if continue_of is not None:
-        request["continue_of"] = continue_of
-    if continue_instruction is not None:
-        request["continue_instruction"] = continue_instruction
-    if attachment_ids is not None:
-        request["attachment_ids"] = attachment_ids
-    if request_id:
-        request["request_id"] = request_id
-    socket = Socket(json.dumps({"token": "chat-profile-token"}), json.dumps(request))
+    socket = chat_socket(
+        Socket,
+        message=message,
+        conversation_id=conversation,
+        mode=mode,
+        **{key: value for key, value in options.items() if value is not None},
+    )
     chat(server, socket)
     return socket
 
@@ -174,14 +161,13 @@ def test_route_requires_exact_confirmation_and_verifies_persisted_change(runtime
             assert event["preview"]["before"] == []
             assert event["preview"]["after"][0]["name"] == "桃金娘"
             observed.append(event)
-            response = server.app.test_client().post(
-                f"/ai/conversations/{socket.sent[0]['conversation_id']}/turns/{event['turn_id']}/control",
-                headers=headers(),
-                json={
-                    "action": "approve",
-                    "approval_id": event["approval_id"],
-                    "digest": "changed",
-                },
+            response = post_control(
+                server,
+                socket.sent[0]["conversation_id"],
+                event["turn_id"],
+                action="approve",
+                approval_id=event["approval_id"],
+                digest="changed",
             )
             assert response.status_code == 409
 
@@ -304,11 +290,7 @@ def test_stop_during_started_write_preserves_result_and_prevents_next_call(
         assert entered.wait(5)
         identifier = store.list()[0]["id"]
         turn_id = store.read(identifier)["turns"][-1]["id"]
-        response = server.app.test_client().post(
-            f"/ai/conversations/{identifier}/turns/{turn_id}/control",
-            headers=headers(),
-            json={"action": "stop"},
-        )
+        response = post_control(server, identifier, turn_id, action="stop")
         assert response.status_code == 200
     finally:
         release.set()
@@ -328,10 +310,11 @@ def test_stop_between_model_chunks_closes_stream(runtime):
 
     def stop(socket, event):
         if event.get("type") == "answer_delta":
-            response = server.app.test_client().post(
-                f"/ai/conversations/{socket.sent[0]['conversation_id']}/turns/{event['turn_id']}/control",
-                headers=headers(),
-                json={"action": "stop"},
+            response = post_control(
+                server,
+                socket.sent[0]["conversation_id"],
+                event["turn_id"],
+                action="stop",
             )
             assert response.status_code == 200
 
@@ -806,11 +789,7 @@ def test_continue_carries_original_goal_completed_reads_and_partial_answer(
 
     def stop(socket, event):
         if event.get("type") == "answer_delta":
-            response = server.app.test_client().post(
-                f"/ai/conversations/{identifier}/turns/{event['turn_id']}/control",
-                headers=headers(),
-                json={"action": "stop"},
-            )
+            response = post_control(server, identifier, event["turn_id"], action="stop")
             assert response.status_code == 200
 
     first = run_chat(runtime, conversation=identifier, on_event=stop)
@@ -848,14 +827,13 @@ def test_continue_replaces_stopped_approval_and_rejects_old_confirmation(runtime
         if event.get("type") != "approval":
             return
         assert event["approval_id"] != old["approval_id"]
-        response = server.app.test_client().post(
-            f"/ai/conversations/{identifier}/turns/{event['turn_id']}/control",
-            headers=headers(),
-            json={
-                "action": "approve",
-                "approval_id": old["approval_id"],
-                "digest": old["digest"],
-            },
+        response = post_control(
+            server,
+            identifier,
+            event["turn_id"],
+            action="approve",
+            approval_id=old["approval_id"],
+            digest=old["digest"],
         )
         assert response.status_code == 409
         assert event["preview"]["after"] == []
@@ -949,17 +927,12 @@ def test_continue_requires_auth_before_storage(runtime, monkeypatch, token):
     server = runtime[0]
     access = Mock(side_effect=AssertionError("storage accessed"))
     monkeypatch.setattr(server, "active_chat_history", access)
-    socket = FakeSocket(
-        json.dumps({"token": token}),
-        json.dumps(
-            {
-                "message": "继续",
-                "conversation_id": "a" * 32,
-                "continue_of": 1,
-                "continue_instruction": "先核对计划",
-                "generation": "0",
-            }
-        ),
+    socket = chat_socket(
+        token=token,
+        message="继续",
+        conversation_id="a" * 32,
+        continue_of=1,
+        continue_instruction="先核对计划",
     )
     chat(server, socket)
     access.assert_not_called()
@@ -1168,11 +1141,7 @@ def test_stop_while_provider_is_blocked_stays_cancelled_after_timeout(
         assert entered.wait(5)
         identifier = store.list()[0]["id"]
         target = store.read(identifier)["turns"][-1]["id"]
-        response = server.app.test_client().post(
-            f"/ai/conversations/{identifier}/turns/{target}/control",
-            headers=headers(),
-            json={"action": "stop"},
-        )
+        response = post_control(server, identifier, target, action="stop")
         assert response.status_code == 200
     finally:
         release.set()
