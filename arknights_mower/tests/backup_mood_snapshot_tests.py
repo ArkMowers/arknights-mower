@@ -128,7 +128,10 @@ def test_group_and_backup_conditions_share_time_and_next_selection_advances(
     assert data.operators["伊内丝"].current_mood(NOW + timedelta(hours=1)) > 13
     first_calls = clock.calls
     selected = data.evaluate_backup_selection()
-    assert (selected.group_id, selected.conditions) == ("recovering", [True, True])
+    assert (selected.group_id, selected.conditions) == (
+        ("default", "recovering"),
+        [True, True],
+    )
     assert clock.calls - first_calls == 1
     clock.current = NOW + timedelta(hours=1)
     selected = data.evaluate_backup_selection()

@@ -42,10 +42,11 @@ export function selectBackupPlans(
   const selected: string[] = []
   // The optional catalog preserves the old helper's single-group interface.
   for (const id of eligibleGroups) {
+    if (id === 'default') continue
     const excluded = groups?.find(group => group.id === id)?.exclusive_with ?? selected
     if (!selected.some(other => excluded.includes(other))) selected.push(id)
   }
-  if (!selected.length) selected.push('default')
+  selected.unshift('default')
   const conditions = plans.map((plan, index) => plan.groupIds.some(id => selected.includes(id)) && (typeof eligiblePlans === 'function' ? eligiblePlans(index) : !!eligiblePlans[index]))
   const exclusive = plans.flatMap((plan, index) => conditions[index] && plan.backupType === 'exclusive' ? [index] : [])
   const occupied = new Set<string>()

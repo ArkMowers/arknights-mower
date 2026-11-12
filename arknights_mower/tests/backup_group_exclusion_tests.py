@@ -1,6 +1,8 @@
 import copy
 import itertools
+import json
 import pickle
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -8,6 +10,7 @@ from pydantic import ValidationError
 from arknights_mower.utils import config
 from arknights_mower.utils.backup_validation import possible_backup_conditions
 from arknights_mower.utils.config.plan import PlanModel
+from arknights_mower.utils.config.plan_advanced import apply_advanced_settings
 from arknights_mower.utils.operators import Operators, build_global_plan
 
 
@@ -55,7 +58,7 @@ def test_parallel_exclusive_selection_isolated_projection_and_saved_state():
         ],
     )
     selection = data.evaluate_backup_selection()
-    assert selection.group_ids == ("trade", "factory")
+    assert selection.group_ids == ("default", "trade", "factory")
     assert selection.conditions == [True, False, True, True]
     assert data.backup_group == "default"
     assert data.swap_plan(selection.conditions, backup_group=selection.group_id) is None
@@ -77,7 +80,7 @@ def test_priority_chain_excluded_group_does_not_block_later_group():
         [backup(key, [key]) for key in ["maintenance", "trade", "factory"]],
     )
     selected = data.evaluate_backup_selection()
-    assert selected.group_ids == ("maintenance", "factory")
+    assert selected.group_ids == ("default", "maintenance", "factory")
     assert selected.conditions == [True, False, True]
     data.backup_groups[1], data.backup_groups[2] = (
         data.backup_groups[2],
@@ -98,16 +101,24 @@ def test_shared_exclusive_reserves_every_active_membership():
     assert data.evaluate_backup_selection().conditions == [False, False, True]
 
 
-def test_fallback_only_when_no_custom_group_selected():
+def test_default_group_coexists_and_still_checks_backup_conditions():
     data = load(
         [group("a", trigger=False), group("b", trigger=False)],
-        [backup("fallback", ["default"]), backup("a", ["a"])],
+        [
+            backup("default", ["default"]),
+            backup("disabled", ["default"], "global", trigger=False),
+            backup("a", ["a"]),
+        ],
     )
-    assert data.evaluate_backup_selection().conditions == [True, False]
+    assert data.evaluate_backup_selection().conditions == [True, False, False]
     data.backup_groups[1]["trigger"] = {"left": "True"}
-    data.backup_plans[1].trigger = "False"
-    assert data.evaluate_backup_selection().group_id == "a"
-    assert data.evaluate_backup_selection().conditions == [False, False]
+    selected = data.evaluate_backup_selection()
+    assert selected.group_ids == ("default", "a")
+    assert selected.conditions == [True, False, True]
+    data.swap_plan(selected.conditions, backup_group=selected.group_id)
+    assert data.evaluate_backup_selection() == selected
+    data.backup_plans[2].trigger = "False"
+    assert data.evaluate_backup_selection().conditions == [True, False, False]
 
 
 def test_legacy_migration_and_symmetric_roundtrip_do_not_mutate_input():
@@ -160,15 +171,17 @@ def test_validation_matches_runtime_for_priorities_shared_slots_and_retention(
     data = load(
         groups,
         [
+            backup("default", ["default"]),
+            backup("disabled", ["default"], "global", trigger=False),
             backup("a", ["a"]),
-            backup("ab", ["a", "b"]),
+            backup("ab", ["default", "a", "b"]),
             backup("b", ["b"]),
             backup("c", ["c"]),
             backup("shared-overlay", ["a", "b", "c"], "global"),
         ],
     )
     expected = set()
-    for current in itertools.product([False, True], repeat=5):
+    for current in itertools.product([False, True], repeat=7):
         data.plan_condition = list(current)
         expected.add(tuple(data.evaluate_backup_selection().conditions))
     actual = set(
@@ -206,7 +219,7 @@ def test_new_groups_default_true_without_enabling_legacy_or_explicit_empty_group
         ],
         [backup(key, [key]) for key in ["new", "legacy", "empty"]],
     )
-    assert data.evaluate_backup_selection().group_id == "new"
+    assert data.evaluate_backup_selection().group_id == ("default", "new")
     assert data.evaluate_backup_selection().conditions == [True, False, False]
     from arknights_mower.utils.config.plan import BackupGroup
 
@@ -216,3 +229,37 @@ def test_new_groups_default_true_without_enabling_legacy_or_explicit_empty_group
     )
     assert [item.trigger.left for item in model.backup_groups[1:]] == ["True", "True"]
     assert [item.exclusive_with for item in model.backup_groups[1:]] == [[], []]
+
+
+@pytest.mark.parametrize("working", [True, False])
+def test_supplied_default_priority_applies_beside_either_aroma_group(
+    working, monkeypatch
+):
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "ui/src/riic/fixtures/income-automation-rest.json"
+    )
+    document = PlanModel.model_validate(json.loads(path.read_text()))
+    monkeypatch.setattr(
+        config, "conf", apply_advanced_settings(config.conf, document.advanced_settings)
+    )
+    data = Operators(build_global_plan(plan_model=document))
+    assert data.init_and_validate() is None
+    data.operators["阿罗玛"].current_room = "room_1_1" if working else ""
+    data.operators["远牙"].mood = 24
+    for name in ["焰尾", "薇薇安娜", "野鬃", "灰毫"]:
+        data.operators[name].mood = 12
+    index = next(
+        i for i, backup in enumerate(data.backup_plans) if backup.name == "远牙动态低优"
+    )
+    selected = data.evaluate_backup_selection()
+    assert selected.group_ids == ("default", "group-1" if working else "group-2")
+    assert selected.conditions[index]
+    assert data.swap_plan(selected.conditions, backup_group=selected.group_id) is None
+    assert data.config.is_resting_priority("远牙")
+    data.operators["远牙"].mood = 0
+    selected = data.evaluate_backup_selection()
+    assert not selected.conditions[index]
+    assert data.swap_plan(selected.conditions, backup_group=selected.group_id) is None
+    assert not data.config.is_resting_priority("远牙")
+    assert data.evaluate_backup_selection() == selected

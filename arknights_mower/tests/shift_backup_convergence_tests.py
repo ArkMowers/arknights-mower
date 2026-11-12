@@ -490,11 +490,11 @@ def test_group_selection_is_committed_only_with_final_shift(solver):
     task = downshift(solver)
     solver._prepare_shift_backup(task)
     assert task.backup_shift_conditions == [True]
-    assert task.backup_group == "rest"
+    assert task.backup_group == ("default", "rest")
     assert solver.op_data.backup_group == "default"
     assert solver.op_data.plan_condition == [False]
     solver._activate_shift_backup(task)
-    assert solver.op_data.backup_group == "rest"
+    assert solver.op_data.backup_group == ("default", "rest")
     assert solver.op_data.plan_condition == [True]
 
 
@@ -526,7 +526,7 @@ def test_direct_selection_remembers_group_with_no_active_backup(solver):
         }
     ]
     assert not solver.backup_plan_solver()
-    assert solver.op_data.backup_group == "empty"
+    assert solver.op_data.backup_group == ("default", "empty")
     assert solver.op_data.plan_condition == [False]
 
 
@@ -577,11 +577,11 @@ def test_concurrent_group_state_survives_complete_shift_and_saved_task(solver):
     task = downshift(solver)
     solver._prepare_shift_backup(task)
     assert task.backup_shift_conditions == [True, True]
-    assert task.backup_group == ("rest", "parallel")
+    assert task.backup_group == ("default", "rest", "parallel")
     assert solver.op_data.backup_group == "default"
     task = pickle.loads(pickle.dumps(task))
     solver._activate_shift_backup(task)
-    assert solver.op_data.backup_group == ("rest", "parallel")
+    assert solver.op_data.backup_group == ("default", "rest", "parallel")
     assert solver.op_data.plan_condition == [True, True]
     before = (
         list(task.backup_shift_conditions),

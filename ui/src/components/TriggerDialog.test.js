@@ -157,6 +157,7 @@ it('shows both group hints only inside expanded group management', async () => {
   state.groupsExpanded = true
   const html = await renderToString(createSSRApp(TriggerDialog))
   expect(html).toContain('分组默认可同时生效')
+  expect(html).toContain('默认分组始终生效，不参与分组互斥；其中的副表仍须满足自身条件。')
   expect(html).toContain('请为分组添加生效条件')
   expect(html).toContain('深海、红松')
   expect(html).toContain('不会生效')
@@ -177,6 +178,7 @@ it('clears the empty-group hint when a condition is set and preserves configured
   const html = await renderToString(createSSRApp(TriggerDialog))
   expect(html).not.toContain('请为分组添加生效条件')
   expect(html).toContain('分组默认可同时生效')
+  expect(html).toContain('默认分组始终生效，不参与分组互斥；其中的副表仍须满足自身条件。')
 })
 
 it('edits symmetric group exclusions, clears them and protects locked/default groups', () => {
