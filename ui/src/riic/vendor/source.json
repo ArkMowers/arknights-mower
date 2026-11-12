@@ -565,8 +565,8 @@
       "reason": "Refresh only explicitly observation-derived, unstarted corrections after related observations or group/dependency changes; preserve original task identity and time and explicit or started remaining work, synchronized from calculator 4448dd3916b681e4c2ff08a80e851ae9256215a0. Compare both ordinary and dormitory-retention failure reservations against the logical union of dispatch and parked recovery tasks; storage moves and clock changes do not release failures, while actual reservation changes do."
     },
     "scheduler/mowerAlphaCandidates.spec.ts": {
-      "sha256": "bde1be931cdd4433c79c75d79f59dc00a1a68a4452a4ea6af021cfd11b075f0c",
-      "reason": "Preserve bundled regression cases alongside the synchronized source tests. Verify primary takeover of priority replacement beds and explicit low-priority replacement admission and protection. Restore saved user order within the explicit high-priority operator list for recovery admission and single-target allocation."
+      "sha256": "f37bdc0df6918a64906887a317c9ea77a947f73478cededf51aa2ab2732df7ff",
+      "reason": "Preserve bundled regression cases alongside the synchronized source tests. Verify primary takeover of priority replacement beds and explicit low-priority replacement admission and protection. Restore saved user order within the explicit high-priority operator list for recovery admission and single-target allocation. Verify that replacements with explicit high or low priority preserve a standby resident while an ordinary replacement can yield."
     },
     "scheduler/mowerDormAdmissions.spec.ts": {
       "sha256": "4b4c2661ebcb8f31208b4ac029326e530772ca94f12958fe9ec6283e4d86742a",
@@ -721,8 +721,8 @@
       "reason": "Allow independent empty-bed planning around suspended failures while preserving retained arrangements and their reservations. Re-admit unstarted ordinary bed filling against current occupancy and all pending reservations before dispatch; preserve retained or started arrangements, identity, original time and independent capacity. Use the same parked-task name, destination and current-position reservations during fill generation and execution-time admission, preserving independent capacity."
     },
     "scheduler/mowerAlphaCandidates.ts": {
-      "sha256": "cccf0a9dd22eeed9be1bdb9ceb1cf0dbe2f6d1acce474f55b61edc43dad31f64",
-      "reason": "Reserve retained arrangements, actual affected occupants, binding-group members and their occupied recovery beds during independent filling. Restore saved user order within the explicit high-priority operator list for recovery admission and single-target allocation. Support income-only neutral dormitory padding without skills, working replacements or recovery-task ownership; preserve actual occupancy, readable report identities and saved model provenance. Pass waiting-task source reservations through the shared candidate, priority and isolation planners without reserving every ordinary queued source. Retain reservation owners while lending only a required member's own ordinary-return name and currently vacant Free target to its recovery prerequisite."
+      "sha256": "eb784758cd8badf32b2bc36b614c302b7b01d502f746b42ee2bb8abc69dc7b54",
+      "reason": "Reserve retained arrangements, actual affected occupants, binding-group members and their occupied recovery beds during independent filling. Restore saved user order within the explicit high-priority operator list for recovery admission and single-target allocation. Support income-only neutral dormitory padding without skills, working replacements or recovery-task ownership; preserve actual occupancy, readable report identities and saved model provenance. Pass waiting-task source reservations through the shared candidate, priority and isolation planners without reserving every ordinary queued source. Retain reservation owners while lending only a required member's own ordinary-return name and currently vacant Free target to its recovery prerequisite. Select residents with measured full mood before unfinished residents, then select lower recovery tiers first for occupied-bed takeover; preserve configured vacancy order."
     },
     "scheduler/mowerAlphaDormPlanning.spec.ts": {
       "sha256": "6370993641963843e03f71204317b66f4264026f5db3214db08e99e5aef09856",

@@ -68,6 +68,25 @@ function takeoverData() {
 
 
 describe('native priority replacement bed takeover', () => {
+  it.each([false, true])('selects the lower-tier victim for an explicit-priority replacement: %s', explicit => {
+    const data = takeoverData()
+    data.operators.S!.mood = 12.9
+    data.operators.R!.mood = 22.6
+    data.priorityReplacement = []
+    if (explicit) data.restingPriorityNames = ['R']
+    else data.lowPriorityNames = ['R']
+    data.operators.owner!.replacement.push('行铃')
+    data.operators['行铃'] = new MowerOperatorState({ name: '行铃',
+      currentRoom: 'dormitory_1', currentIndex: 1, mood: 20.9, timeStampMicros: 0 })
+    data.plan.dormitory_1 = ['Free', 'Free']
+    data.dorms.push(new MowerDormState(['dormitory_1', 1], '行铃'))
+
+    const task = planMowerAlphaDormFill(data, new MowerTaskQueue(), true)!
+    const projected = projectMowerArrangements(data, [task.plan])
+
+    expect(new Set(projected.dorms.map(bed => bed.name))).toEqual(new Set(['R', 'S']))
+    expect(data.dorms.map(bed => bed.name)).toEqual(['S', '行铃'])
+  })
   it('lets an explicitly low-priority replacement take a priority replacement bed', () => {
     const data = takeoverData()
     data.standbyNames = []; data.operators.S!.operatorType = 'low'; data.operators.S!.mood = 12
