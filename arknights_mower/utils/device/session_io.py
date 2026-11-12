@@ -367,9 +367,18 @@ class _InstanceManager:
         self.profile = profile
         self.window = window
         manager = self.locate_manager(profile)
-        if not manager or not Path(resolve_config_path(manager)).is_file():
-            raise ValueError("找不到已绑定实例的管理程序")
-        self.manager = str(Path(resolve_config_path(manager)).resolve())
+        resolved = resolve_config_path(manager) if manager else ""
+        if not resolved or not Path(resolved).is_file():
+            # The saved installation is the only actionable context: name the
+            # directory Mower actually searched instead of the unresolved path.
+            searched = profile.installation_path or profile.manager_path or "未填写"
+            raise InstanceBindingError(
+                "manager_missing",
+                f"未找到模拟器管理程序：Mower 在「{searched}」下没有找到可用的管理器"
+                "可执行文件。请重新检测并选择实例，或手动指定模拟器安装目录。",
+                ["installation_path", "manager_path"],
+            )
+        self.manager = str(Path(resolved).resolve())
 
     def command(self, argv, operation):
         """One owned lifecycle command; its exit code is the vendor's verdict.

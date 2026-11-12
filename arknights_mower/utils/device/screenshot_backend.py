@@ -208,7 +208,11 @@ class ScreenshotSession:
             "%s 截图阶段失败：stage=%s code=%s elapsed_ms=%.1f detail=%s",
             BACKEND_LABELS[self.profile.screenshot_backend],
             stage,
-            getattr(cause, "code", type(cause).__name__),
+            # A session failure carries its verdict on the observation; naming the
+            # class would hide the code the user has to act on.
+            getattr(cause, "code", None)
+            or getattr(getattr(cause, "observation", None), "code", None)
+            or type(cause).__name__,
             (time.monotonic() - started) * 1000,
             str(cause)[:1000],
         )
