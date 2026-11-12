@@ -397,27 +397,6 @@ class PlanModel(BaseModel):
                     raise ValueError(f"副表 {backup.name} 的分组不存在：{group_id}")
         return self
 
-    @model_validator(mode="after")
-    def validate_group_task_names(self):
-        known = set()
-        for table in [self.plan1, *(backup.plan for backup in self.backup_plans)]:
-            for room in table.model_dump().values():
-                if not isinstance(room, dict):
-                    continue
-                for slot in room.get("plans", []):
-                    known.add(slot.get("group", ""))
-                    known.update(
-                        binding.get("group", "")
-                        for binding in slot.get("group_bindings", [])
-                    )
-        for backup in self.backup_plans:
-            for task in backup.group_tasks:
-                if task.group not in known:
-                    raise ValueError(
-                        f"副表 {backup.name} 的绑组任务组名不存在：{task.group}"
-                    )
-        return self
-
     # 全局运行设置随排班导出；旧排班没有此字段时保留本机现有设置。
     advanced_settings: Optional[dict[str, Any]] = None
 

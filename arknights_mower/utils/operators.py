@@ -564,8 +564,13 @@ class Operators:
         return default_plan, ext_config.merge_config(plan.config)
 
     def init_and_validate(self, update=False):
+        from arknights_mower.utils.backup_group_tasks import validate_group_task_names
         from arknights_mower.utils.backup_validation import validate_trade_order_targets
 
+        try:
+            validate_group_task_names(self.global_plan)
+        except ValueError as error:
+            return str(error)
         primary = self.global_plan["default_plan"]
         if error := validate_trade_order_targets(
             primary.plan, primary.products, label="主表"

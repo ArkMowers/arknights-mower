@@ -3,6 +3,25 @@
 from datetime import datetime
 
 
+def validate_group_task_names(global_plan):
+    """Reject unresolved group references when validating executable schedules."""
+    plans = [global_plan["default_plan"], *global_plan["backup_plans"]]
+    known = {
+        binding["group"]
+        for plan in plans
+        for slots in plan.plan.values()
+        for slot in slots
+        for binding in slot.bindings
+        if binding["group"]
+    }
+    for backup in plans[1:]:
+        for task in backup.group_tasks:
+            if task["group"] not in known:
+                raise ValueError(
+                    f"副表 {backup.name} 的绑组任务组名不存在：{task['group']}"
+                )
+
+
 def active_group_tasks(data):
     result = {}
     for index, (active, backup) in enumerate(

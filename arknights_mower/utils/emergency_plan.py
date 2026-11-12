@@ -59,7 +59,10 @@ def rescue_plan_for(data, plan):
 
 def validate_rescue_schedule(data, schedule):
     """静态校验救急主副表自身；条件生效后的设施对照交给初始化。"""
-    from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
+    from arknights_mower.utils.backup_group_tasks import validate_group_task_names
+    from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, build_global_plan
+
+    validate_group_task_names(build_global_plan(plan_model=schedule))
 
     primary = schedule.plan1.model_dump(exclude_none=True)
     roster = {
