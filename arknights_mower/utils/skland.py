@@ -215,25 +215,57 @@ _AUTH_NETWORK_RETRIES = 3
 
 
 def request_with_retry(
-    method, url, *, json=None, headers, timeout=_AUTH_REQUEST_TIMEOUT
+    method,
+    url,
+    *,
+    json=None,
+    headers,
+    timeout=_AUTH_REQUEST_TIMEOUT,
+    headers_factory=None,
 ):
     """带超时发起请求；连接层瞬时错误（连接超时/拒连/重置/响应体截断或损坏）重试几次再抛出。
 
     只重试连接层瞬时错误，不重试认证被拒（如「设备信息无效」）这类语义性失败。
+
+    headers_factory：零参可调用，返回请求头 dict。提供时每次尝试（含第一次）开始前
+    现算请求头——签名时间戳由 get_sign_header/generate_signature 现算（含服务器时钟
+    校准），重试不再携带过期时间戳（否则重试带旧 timestamp 会被判「请勿修改设备
+    本地时间」）。不提供时沿用静态 headers（登录类请求头无时间戳，不受影响）。
     """
+    started = time.monotonic()
     for attempt in range(_AUTH_NETWORK_RETRIES):
         try:
+            # 每次尝试都重新取头：有 factory 用 factory，否则用静态 headers
+            request_headers = (
+                headers_factory() if headers_factory is not None else headers
+            )
             if method.lower() == "post":
-                return requests.post(url, json=json, headers=headers, timeout=timeout)
-            return requests.get(url, headers=headers, timeout=timeout)
+                return requests.post(
+                    url, json=json, headers=request_headers, timeout=timeout
+                )
+            return requests.get(url, headers=request_headers, timeout=timeout)
         except (
             requests.exceptions.ConnectionError,
             requests.exceptions.Timeout,
             requests.exceptions.ChunkedEncodingError,
             requests.exceptions.ContentDecodingError,
-        ):
+        ) as exc:
+            waited = time.monotonic() - started
             if attempt == _AUTH_NETWORK_RETRIES - 1:
+                logger.warning(
+                    "森空岛请求重试 %d 次仍失败（%s，已等待 %.0f 秒），本次请求放弃",
+                    _AUTH_NETWORK_RETRIES,
+                    type(exc).__name__,
+                    waited,
+                )
                 raise
+            logger.warning(
+                "森空岛请求失败（%s），已等待 %.0f 秒，正在重试（第 %d/%d 次）",
+                type(exc).__name__,
+                waited,
+                attempt + 2,
+                _AUTH_NETWORK_RETRIES,
+            )
             time.sleep(1)
 
 
@@ -276,10 +308,11 @@ def get_cred(grant):
 
 def get_binding_list(sign_token):
     v = []
+    # 用 headers_factory 每次尝试现算签名头：重试不再携带过期时间戳
     resp = request_with_retry(
         "get",
         binding_url,
-        headers=get_sign_header(
+        headers_factory=lambda: get_sign_header(
             binding_url,
             "get",
             None,

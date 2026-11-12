@@ -351,7 +351,7 @@ class TestMasteryPlanView(unittest.TestCase):
                         return_value=roster if has_box else None,
                     ),
                     patch(
-                        "arknights_mower.views.mastery._dispatch_new_plans_immediately"
+                        "arknights_mower.views.mastery._dispatch_new_plans_async"
                     ),
                     patch(
                         "arknights_mower.views.mastery.refresh_workshop_after_plan_change"
@@ -482,7 +482,7 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(insert.call_args.kwargs["priority"], 4)
         self.auto_order.assert_not_called()
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery._add_or_reuse_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_quick_add_auto_orders_before_dispatch(self, get_skill, add, dispatch):
@@ -498,19 +498,19 @@ class TestMasteryPlanView(unittest.TestCase):
             True,
         )
 
-        def dispatch_after_order(**_kwargs):
+        def dispatch_after_order(targets):
+            # 保存响应路径里先完成自动排序，再启动后台派发（派发收窄到新增的几条）
             self.auto_order.assert_called_once_with(
                 [7],
                 order=["skill:existing:0", "module:existing:x"],
             )
-            return {"scheduled": [], "skipped": []}
 
         dispatch.side_effect = dispatch_after_order
         response = self.client.post(
             "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
         )
         self.assertEqual(response.status_code, 200)
-        dispatch.assert_called_once()
+        dispatch.assert_called_once_with(targets=[("char_001", 0)])
 
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
@@ -766,14 +766,16 @@ class TestMasteryPlanView(unittest.TestCase):
     # --- 一键专精立即派发 ---
 
     @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
-    def test_post_added_dispatches_immediately(
-        self, get_level, get_skill, insert, get_existing, dispatch
+    def test_post_added_dispatches_in_background(
+        self, get_level, get_skill, insert, get_existing, dispatch, inline
     ):
-        # 一键专精建计划成功后立即派发，不再等下次仓库扫描
+        # 一键专精建计划成功后由后台线程立即派发（保存与森空岛同步解耦），
+        # 响应即时返回 added，请求路径不再内联调用同步派发
         get_skill.return_value = self._char_table()
         get_level.return_value = 1
         insert.return_value = 5
@@ -784,8 +786,9 @@ class TestMasteryPlanView(unittest.TestCase):
         dispatch.assert_called_once()
         # 派发范围收窄到刚点的那一条（定案 2：按钮字面意思优先）
         self.assertEqual(dispatch.call_args.kwargs["targets"], [("char_001", 0)])
+        inline.assert_not_called()
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_id", return_value=None)
     @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
     @patch("arknights_mower.utils.mastery_db.insert_plan")
@@ -804,7 +807,7 @@ class TestMasteryPlanView(unittest.TestCase):
         )
         get_by_id.assert_called_once_with(5, None)
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_post_no_add_no_dispatch(self, get_skill, dispatch):
         # 全部 error（无新计划落库）→ 不派发
@@ -815,7 +818,7 @@ class TestMasteryPlanView(unittest.TestCase):
         self.assertEqual(r.get_json()["results"][0]["status"], "error")
         dispatch.assert_not_called()
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_post_batch_all_errors_no_dispatch(self, get_skill, dispatch):
         # batch 多计划全部 error（无 added）→ 不派发
@@ -849,19 +852,16 @@ class TestMasteryPlanView(unittest.TestCase):
         plan.update(overrides)
         return plan
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_skill")
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     def test_post_duplicate_idle_reuses_existing_and_dispatches(
         self, get_skill, insert, get_existing, dispatch
     ):
-        # 已有一条待执行的计划：不建新行，走原有派发让它排上（前端出绿字）
+        # 已有一条待执行的计划：不建新行，走后台派发让它排上（前端出绿字）
         get_skill.return_value = self._char_table()
         get_existing.return_value = self._existing()
-        dispatch.return_value = {
-            "scheduled": [{"char_id": "char_001", "skill_index": 0}]
-        }
         r = self.client.post(
             "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
         )
@@ -872,7 +872,7 @@ class TestMasteryPlanView(unittest.TestCase):
         insert.assert_not_called()
         self.assertEqual(dispatch.call_args.kwargs["targets"], [("char_001", 0)])
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_skill")
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
@@ -891,7 +891,7 @@ class TestMasteryPlanView(unittest.TestCase):
         insert.assert_not_called()
         dispatch.assert_not_called()
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_skill")
     @patch("arknights_mower.views.mastery.update_plan_status")
     @patch("arknights_mower.utils.mastery_db.insert_plan")
@@ -899,27 +899,24 @@ class TestMasteryPlanView(unittest.TestCase):
     def test_post_duplicate_failed_requeued(
         self, get_skill, insert, update_status, get_existing, dispatch
     ):
-        # failed 算「已有」：放回待执行（否则进不了待练名单），再走派发
+        # failed 算「已有」：放回待执行（否则进不了待练名单），再交后台派发；
+        # 材料不足不再改写响应状态（走日志），计划状态保持 existing
         get_skill.return_value = self._char_table()
         get_existing.return_value = self._existing(
             status="failed", failed_reason="材料不足"
         )
-        dispatch.return_value = {
-            "scheduled": [],
-            "skipped": [{"char_id": "char_001", "skill_index": 0}],
-        }
         r = self.client.post(
             "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
         )
         result = r.get_json()["results"][0]
-        self.assertEqual(result["status"], "insufficient")
-        self.assertEqual(result["reason"], "材料不足，暂不开始")
+        self.assertEqual(result["status"], "existing")
+        self.assertIn("已重新排入待执行", result["reason"])
         # 置回待执行时必须连 failed_reason 一起清（与 retry_failed_plans 同口径）
         update_status.assert_called_once_with(11, "idle", failed_reason="", path=None)
         insert.assert_not_called()
-        dispatch.assert_called_once()
+        dispatch.assert_called_once_with(targets=[("char_001", 0)])
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_skill")
     @patch("arknights_mower.views.mastery.update_plan_status", return_value=False)
     @patch("arknights_mower.utils.mastery_db.insert_plan")
@@ -942,51 +939,169 @@ class TestMasteryPlanView(unittest.TestCase):
         insert.assert_not_called()
         dispatch.assert_not_called()
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
-    def test_post_insufficient_materials_reports_it(
+    def test_post_material_shortage_keeps_added_and_defers_to_background(
         self, get_level, get_skill, insert, get_existing, dispatch
     ):
-        # 材料不足：不静默跳过，明确回「材料不足，暂不开始」（旧行为是白建一行还说「已添加」）
+        # 材料不足不再把响应改写成 insufficient：计划照常「已添加」，派发结果
+        # （含暂缓原因）由后台线程写日志告知用户
         get_skill.return_value = self._char_table()
         get_level.return_value = 1
         insert.return_value = 5
-        dispatch.return_value = {
-            "scheduled": [],
-            "skipped": [{"char_id": "char_001", "skill_index": 0}],
-        }
         r = self.client.post(
             "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
         )
         result = r.get_json()["results"][0]
-        self.assertEqual(result["status"], "insufficient")
-        self.assertEqual(result["reason"], "材料不足，暂不开始")
+        self.assertEqual(result["status"], "added")
+        dispatch.assert_called_once_with(targets=[("char_001", 0)])
 
-    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_async")
     @patch("arknights_mower.views.mastery.get_plan_by_skill", return_value=None)
     @patch("arknights_mower.utils.mastery_db.insert_plan")
     @patch("arknights_mower.views.mastery.get_skill_data")
     @patch("arknights_mower.utils.mastery_recommendation.get_current_mastery_level")
-    def test_post_schedule_conflict_reports_real_reason(
+    def test_post_schedule_conflict_keeps_added_and_defers_to_background(
         self, get_level, get_skill, insert, get_existing, dispatch
     ):
+        # 排班冲突同理：响应即时返回 added，冲突原因由后台线程写日志
         get_skill.return_value = self._char_table()
         get_level.return_value = 1
         insert.return_value = 5
+        r = self.client.post(
+            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
+        )
+        result = r.get_json()["results"][0]
+        self.assertEqual(result["status"], "added")
+        dispatch.assert_called_once_with(targets=[("char_001", 0)])
+
+    # --- 后台立即派发（保存与森空岛同步解耦） ---
+
+    @patch("arknights_mower.views.mastery.logger")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    def test_background_dispatch_logs_sync_failure_as_warning(
+        self, dispatch, logger
+    ):
+        # 森空岛同步失败 → WARNING 提示计划已保留（用户要看到），不再改写响应
+        from arknights_mower.views.mastery import _dispatch_new_plans_in_background
+
+        dispatch.return_value = {
+            "scheduled": [],
+            "skipped": [
+                {
+                    "char_id": "char_001",
+                    "skill_index": 0,
+                    "reason": "森空岛同步失败，计划已保留，请刷新后重试",
+                }
+            ],
+        }
+        _dispatch_new_plans_in_background([("char_001", 0)])
+        logger.warning.assert_called_once()
+        self.assertIn("已保留", logger.warning.call_args.args[0])
+        logger.info.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.logger")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    def test_background_dispatch_logs_scheduled_as_info(self, dispatch, logger):
+        # 派发成功 → INFO 给用户结果
+        from arknights_mower.views.mastery import _dispatch_new_plans_in_background
+
+        dispatch.return_value = {
+            "scheduled": [
+                {
+                    "char_id": "char_001",
+                    "name": "阿米娅",
+                    "skill_index": 0,
+                    "skill_name": "一技能",
+                }
+            ],
+            "skipped": [],
+        }
+        _dispatch_new_plans_in_background([("char_001", 0)])
+        logger.info.assert_called_once()
+        self.assertIn("阿米娅", logger.info.call_args.args[0])
+        logger.warning.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.logger")
+    @patch("arknights_mower.views.mastery._dispatch_new_plans_immediately")
+    def test_background_dispatch_logs_skipped_reasons(self, dispatch, logger):
+        # 材料不足/排班冲突 → INFO 逐条给出真实原因
+        from arknights_mower.views.mastery import _dispatch_new_plans_in_background
+
         reason = "阿米娅 出现在非训练室排班（room_1_1），不能进行专精训练"
         dispatch.return_value = {
             "scheduled": [],
-            "skipped": [{"char_id": "char_001", "skill_index": 0, "reason": reason}],
+            "skipped": [
+                {
+                    "char_id": "char_001",
+                    "name": "阿米娅",
+                    "skill_index": 0,
+                    "skill_name": "一技能",
+                    "reason": reason,
+                }
+            ],
         }
-        response = self.client.post(
-            "/mastery-plan", json={"items": [{"name": "阿米娅", "skill_index": 0}]}
-        )
-        result = response.get_json()["results"][0]
-        self.assertEqual(result["status"], "deferred")
-        self.assertEqual(result["reason"], reason)
+        _dispatch_new_plans_in_background([("char_001", 0)])
+        logger.info.assert_called_once()
+        self.assertIn(reason, logger.info.call_args.args[0])
+        logger.warning.assert_not_called()
+
+    @patch("arknights_mower.views.mastery.logger")
+    @patch(
+        "arknights_mower.views.mastery._dispatch_new_plans_immediately",
+        side_effect=RuntimeError("boom"),
+    )
+    def test_background_dispatch_swallows_thread_exceptions(self, dispatch, logger):
+        # 后台线程异常必须兜底记录（loggers.exception），不得让线程静默死亡
+        from arknights_mower.views.mastery import _dispatch_new_plans_in_background
+
+        _dispatch_new_plans_in_background([("char_001", 0)])  # 不应抛异常
+        logger.exception.assert_called_once()
+
+    def test_background_dispatch_serializes_concurrent_calls(self):
+        # 连续快速添加 → 后台派发用模块级锁串行化：第一个派发阻塞期间，
+        # 第二个不得并发进入同步派发
+        import threading
+        from arknights_mower.views import mastery as view
+
+        entered = threading.Semaphore(0)
+        release_first = threading.Event()
+        calls = []
+
+        def slow_dispatch(**kwargs):
+            calls.append(kwargs["targets"])
+            entered.release()
+            if len(calls) == 1:
+                # 第一个派发阻塞在锁内：其余派发必须排队，不得并发进入
+                release_first.wait(2)
+            return {"scheduled": [], "skipped": []}
+
+        with patch.object(view, "_dispatch_new_plans_immediately", slow_dispatch):
+            threads = [
+                threading.Thread(
+                    target=view._dispatch_new_plans_in_background,
+                    args=([(f"char_{i}", 0)],),
+                    daemon=True,
+                )
+                for i in range(3)
+            ]
+            threads[0].start()
+            self.assertTrue(entered.acquire(timeout=2))
+            self.assertEqual(calls, [[("char_0", 0)]])
+            threads[1].start()
+            threads[1].join(0.2)
+            # 第一个派发未结束（锁被持有）→ 第二个还没进入派发
+            self.assertEqual(len(calls), 1, "锁未释放时不得并发进入派发")
+            release_first.set()
+            self.assertTrue(entered.acquire(timeout=2))
+            self.assertEqual(calls[1], [("char_1", 0)])
+            threads[2].start()
+            self.assertTrue(entered.acquire(timeout=2))
+            for t in threads:
+                t.join(2)
 
     def test_dispatch_new_plans_targets_filter(self):
         # targets 给了就只派发这几条（定案 2：按钮字面意思优先）

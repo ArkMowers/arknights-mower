@@ -1,6 +1,6 @@
 import json
 from functools import wraps
-from threading import RLock
+from threading import Lock, RLock, Thread
 
 from flask import Blueprint, abort, current_app, request
 from flask.views import MethodView
@@ -46,6 +46,8 @@ class Routes:
 
 mastery_bp = Blueprint("mastery", __name__)
 _start_lock = RLock()
+# 后台立即派发串行化锁：连续快速添加时防止并发森空岛同步/派发互相踩踏
+_dispatch_lock = Lock()
 
 
 def _require_token(f):
@@ -167,6 +169,64 @@ def _dispatch_new_plans_immediately(targets=None):
     except Exception as e:
         logger.exception(f"一键专精立即派发失败: {e}")
         return nothing
+
+
+def _dispatch_new_plans_in_background(targets):
+    """后台线程体：执行森空岛同步与立即派发，结果只写日志不回传响应。
+
+    保存接口已即时返回，派发结果走 WebUI 实时日志告知用户。森空岛同步失败
+    不影响计划本身（已落库），下次调度会自动重试。线程内异常必须兜底记录，
+    不得让线程静默死亡。
+    """
+    try:
+        with _dispatch_lock:
+            info = _dispatch_new_plans_immediately(targets=targets)
+        skipped = list((info or {}).get("skipped", []))
+        scheduled = list((info or {}).get("scheduled", []))
+        # 同步失败是「暂时没派上」而非「计划失败」：单独 WARNING 提示计划已保留
+        sync_failed = [
+            entry
+            for entry in skipped
+            if "森空岛同步失败" in (entry.get("reason") or "")
+        ]
+        skipped = [
+            entry
+            for entry in skipped
+            if "森空岛同步失败" not in (entry.get("reason") or "")
+        ]
+        if sync_failed:
+            logger.warning("森空岛同步失败，新增专精计划已保留，将在下次调度时自动重试")
+        if scheduled:
+            names = "、".join(
+                f"{entry.get('name') or entry.get('char_id', '')}"
+                f"「{entry.get('skill_name', '')}」"
+                for entry in scheduled
+            )
+            logger.info(f"新增专精计划已安排立即开始：{names}")
+        for entry in skipped:
+            reason = entry.get("reason") or "材料不足，暂不开始"
+            logger.info(
+                f"专精暂未开始：{entry.get('name') or entry.get('char_id', '')}"
+                f"「{entry.get('skill_name', '')}」：{reason}"
+            )
+    except Exception:
+        logger.exception("后台立即派发新增专精计划失败")
+
+
+def _dispatch_new_plans_async(targets):
+    """在后台线程执行立即派发：保存响应即时返回，不再内联等待森空岛同步。
+
+    一次森空岛同步最坏可超 90 秒（登录+绑定列表+养成数据，请求级超时 30 秒
+    最多 3 次），同步只决定「是否立即派发开训」，不影响计划保存本身。后台函数
+    用模块级锁串行化，避免连续快速添加导致并发派发。
+    """
+    thread = Thread(
+        target=_dispatch_new_plans_in_background,
+        args=(targets,),
+        name="mastery-plan-dispatch",
+        daemon=True,
+    )
+    thread.start()
 
 
 def _added_plan_result(name, plan_id, path=None):
@@ -470,19 +530,10 @@ class MasteryPlanView(MethodView):
         for result, char_id, skill_index, target_level in manual_starts:
             result["task"] = _start_mastery_task(char_id, skill_index, target_level)
         if pending and not create_task:
-            info = _dispatch_new_plans_immediately(
-                targets=[target for _, target in pending]
-            )
-            skipped = {
-                (entry.get("char_id"), entry.get("skill_index")): entry
-                for entry in (info or {}).get("skipped", [])
-            }
-            for result, target in pending:
-                if target in skipped:
-                    # 排班冲突与材料不足都暂缓，但要把真实原因返回给用户。
-                    reason = skipped[target].get("reason")
-                    result["status"] = "deferred" if reason else "insufficient"
-                    result["reason"] = reason or "材料不足，暂不开始"
+            # 保存与森空岛同步解耦：响应即时返回 added/existing/error，同步与派发
+            # 交给后台线程，结果写日志（含同步失败的 WARNING）。不再内联等待同步
+            # 完成（最坏 90 秒+），也不再把 skipped 映射成 deferred/insufficient。
+            _dispatch_new_plans_async(targets=[target for _, target in pending])
         if added_plan_ids:
             refresh_workshop_after_plan_change()
         return {"results": results}
