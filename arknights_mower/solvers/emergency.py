@@ -80,6 +80,36 @@ class EmergencyRecoveryMixin:
             self, "_emergency_handoff", False
         )
 
+    def _emergency_suspends_waiting_shift(self, task):
+        """救急期间未开始的普通等待请求保留原任务，暂不预约未来驻员和床位。"""
+        return (
+            self._emergency_active()
+            and task.type in ORDINARY_SHIFTS - {TaskTypes.SWITCH_PRODUCT}
+            and not task.retains_execution
+            and not any(
+                getattr(task, flag, False)
+                for flag in (
+                    "mood_physical_started",
+                    "derived_correction_started",
+                    "group_shift_expected",
+                    "backup_shift_active",
+                    "product_shift_locked",
+                    "product_switched_before_arrangement",
+                    "backup_retention_started",
+                    "dorm_recovery_restore",
+                    "preferred_replacement_restore",
+                    "fia_return_target",
+                    "advance_support_swap",
+                    "exhaust_support",
+                    "ordinary_coordination",
+                    "strict_mood_limit",
+                    "initial_fia",
+                    "emergency_staffing",
+                    "arrangement_retry_room",
+                )
+            )
+        )
+
     def _emergency_replan_releases(self):
         """恢复目标与个人上限共用清退规划；交接期间只保留个人上限。"""
         state = getattr(self, "emergency_state", None) or {}
