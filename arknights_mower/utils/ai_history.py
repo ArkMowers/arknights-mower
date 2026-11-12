@@ -123,6 +123,19 @@ class HistoryStore:
                 )
             ]
 
+    def turn_for_request(self, request_id):
+        if not isinstance(request_id, str) or not 1 <= len(request_id) <= 64:
+            raise HistoryError("请求标识无效", 400)
+        with _lock, self._db() as db:
+            row = db.execute(
+                "SELECT t.conversation,t.id FROM turns t JOIN conversations c ON c.id=t.conversation "
+                "WHERE t.request_id=? AND c.profile=?",
+                (request_id, self.profile_id),
+            ).fetchone()
+            if row is None:
+                raise HistoryError("未找到已接收的请求，请核实历史后重新提问", 404)
+            return dict(row)
+
     def read(self, identifier):
         with _lock, self._db() as db:
             result = self._find(db, identifier)

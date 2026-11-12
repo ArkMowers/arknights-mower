@@ -30,3 +30,5 @@ date: 2026-11-12
 
 
 当前操作规则归属 [AI Assistant 子系统说明](../../../../docs/subsystems/ai-assistant.md#confirmed-tool-execution)。现有配置档案、专精计划和排班表概念保持原义，无需修改术语表。
+
+[会话重连规则](../../../../docs/subsystems/ai-assistant.md#live-conversation-reconnection)使原有执行不依赖查看它的连接。复用当前请求处理线程和有容量限制的内存快照，无需增加任务服务或另一套框架。用户返回后可在原截止时间前查看并决定同一待确认操作，不重新发起模型或工具调用。服务进程重启仍使旧确认失效，并沿用明确重试的边界。`ai_resume_tests.py` 使用离线模型响应，通过实际路由处理函数验证连接恢复、回执丢失、确认操作与会话归属。

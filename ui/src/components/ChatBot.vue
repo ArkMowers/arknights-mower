@@ -42,6 +42,9 @@ const historyBusy = ref(false)
 const historyReady = ref(false)
 const historyError = ref('')
 const remoteBusy = ref(false)
+const connectionLost = ref(false)
+let reconnectTimer = null
+let reconnectAttempts = 0
 const contextInfo = ref(null)
 const summarySource = ref(0)
 const controlBusy = ref(false)
@@ -66,6 +69,7 @@ function eventStatus(event, msg) {
   return toolStatus[event.status] || event.status
 }
 function replyProgress(msg) {
+  if (connectionLost.value && activeReply === msg) return '连接中断，正在恢复进度'
   if (stopping.value && activeReply === msg) return '正在停止后续调用'
   const event = msg.events?.at(-1)
   if (event?.status === 'awaiting_approval') return '等待你核对并确认'
@@ -74,6 +78,7 @@ function replyProgress(msg) {
 }
 async function sendControl(action, event = null) {
   if (!loading.value || !activeReply?.turn_id || controlBusy.value) return
+  if (action !== 'stop' && (connectionLost.value || event?.decision)) return
   controlBusy.value = true
   const target = activeReply
   try {
@@ -81,7 +86,10 @@ async function sendControl(action, event = null) {
       action,
       ...(event ? { approval_id: event.approval_id, digest: event.digest } : {})
     })
-    if (action === 'stop' && activeReply === target) stopping.value = true
+    if (activeReply === target) {
+      if (action === 'stop') stopping.value = true
+      else if (event) event.decision = action
+    }
   } catch (error) {
     notice.error(error.response?.data?.error || '操作未提交，请重试或刷新历史核实。')
   } finally {
@@ -130,11 +138,12 @@ function currentGeneration() {
   return axios.defaults.headers.common[CONFIG_GENERATION_HEADER]
 }
 function restoreConversation(data) {
+  requestOptions = {}
   conversationId.value = data.id
   remoteBusy.value = data.busy
   summarySource.value = data.summary_source || 0
   contextInfo.value = null
-  chatHistory.value = data.turns.flatMap((turn) => [
+  chatHistory.value = data.turns.flatMap((turn, index) => [
     { role: 'user', content: turn.user },
     {
       role: 'bot',
@@ -144,11 +153,20 @@ function restoreConversation(data) {
       draft: '',
       content:
         turn.assistant +
-        (turn.status !== 'complete' ? '\n\n本轮未完成，部分操作可能已执行，请核实后再继续。' : ''),
-      error: turn.status !== 'complete',
+        (turn.status !== 'complete' && !(data.busy && index === data.turns.length - 1)
+          ? '\n\n本轮未完成，部分操作可能已执行，请核实后再继续。'
+          : ''),
+      error: turn.status !== 'complete' && !(data.busy && index === data.turns.length - 1),
       followUpState: null
     }
   ])
+  if (data.busy && chatHistory.value.length) {
+    activeReply = chatHistory.value.at(-1)
+    loading.value = true
+    connectionLost.value = true
+    reconnectAttempts = 0
+    connectWS(null, true)
+  }
   atBottom.value = true
 }
 async function loadHistory({ restore = false, id = null } = {}) {
@@ -305,6 +323,8 @@ function trackScroll() {
   if (el) atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
 }
 function closeConnection() {
+  clearTimeout(reconnectTimer)
+  reconnectTimer = null
   clearTimeout(connectTimer)
   if (ws) {
     ws.onopen = ws.onmessage = ws.onerror = ws.onclose = null
@@ -323,9 +343,55 @@ function failReply(text) {
   activeReply = null
   loading.value = false
   stopping.value = false
+  remoteBusy.value = false
+  connectionLost.value = false
   closeConnection()
 }
-function connectWS(text) {
+function reconnectRun() {
+  if (disposed || !loading.value || !assistantAllowed()) return
+  connectionLost.value = true
+  connectWS(null, true)
+}
+function lostConnection() {
+  closeConnection()
+  if (!loading.value || disposed) return
+  connectionLost.value = true
+  if (reconnectAttempts < 3) {
+    const delay = 1000 * 2 ** reconnectAttempts++
+    reconnectTimer = setTimeout(reconnectRun, delay)
+  }
+}
+function trimHistory() {
+  let retained = chatHistory.value.reduce((size, item) => size + item.content.length, 0)
+  while (chatHistory.value.length > 2 && (chatHistory.value.length > 200 || retained > 262144)) {
+    retained -= chatHistory.value.splice(0, 2).reduce((size, item) => size + item.content.length, 0)
+  }
+}
+function applySnapshot(snapshot) {
+  if (!activeReply) return
+  conversationId.value = snapshot.conversation_id
+  activeReply.turn_id = snapshot.turn_id
+  activeReply.mode = snapshot.mode || 'chat'
+  activeReply.events = snapshot.events || []
+  activeReply.content = snapshot.assistant || ''
+  activeReply.draft = snapshot.draft || ''
+  activeReply.error = false
+  contextInfo.value = snapshot.context || contextInfo.value
+  connectionLost.value = false
+  reconnectAttempts = 0
+  remoteBusy.value = false
+  if (snapshot.status !== 'running') {
+    if (snapshot.status !== 'complete') {
+      activeReply.error = true
+      activeReply.content += `\n\n${snapshot.error || '本轮未完成，部分操作可能已执行，请核实后再继续。'}`
+    }
+    activeReply = null
+    loading.value = false
+    stopping.value = false
+    trimHistory()
+  }
+}
+function connectWS(text, resume = false) {
   const token = new URLSearchParams(window.location.search).get('token')
   if (!token) {
     failReply('AI 助手需要 Web UI 访问密钥，请从 Mower 窗口或其浏览器入口打开。')
@@ -337,17 +403,29 @@ function connectWS(text) {
   try {
     ws = new WebSocket(backend.replace(/^http/, 'ws') + '/ws/chat')
   } catch {
-    failReply('无法建立 AI 连接，请检查服务地址后重试。')
+    if (resume) lostConnection()
+    else failReply('无法建立 AI 连接，请检查服务地址后重试。')
     return
   }
   connectTimer = setTimeout(() => {
-    failReply('AI 连接超时，请检查服务是否运行后重试。')
+    if (resume) lostConnection()
+    else failReply('AI 连接超时，请检查服务是否运行后重试。')
   }, 20000)
   ws.onopen = () => {
     clearTimeout(connectTimer)
     connecting.value = false
     ws.send(JSON.stringify({ token }))
-    ws.send(messageFrame(text))
+    ws.send(
+      resume
+        ? JSON.stringify({
+            resume: true,
+            conversation_id: conversationId.value,
+            request_id: requestOptions.request_id,
+            turn_id: activeReply?.turn_id,
+            generation: currentGeneration()
+          })
+        : messageFrame(text)
+    )
   }
   ws.onmessage = (event) => {
     let data
@@ -359,6 +437,10 @@ function connectWS(text) {
     }
     if (!data || typeof data !== 'object' || Array.isArray(data)) {
       failReply('无法读取 AI 回复，请重试。')
+      return
+    }
+    if (data.snapshot) {
+      applySnapshot(data.snapshot)
       return
     }
     if (data.conversation_id) conversationId.value = data.conversation_id
@@ -402,24 +484,14 @@ function connectWS(text) {
       activeReply = null
       loading.value = false
       stopping.value = false
-      let retained = chatHistory.value.reduce((size, item) => size + item.content.length, 0)
-      while (
-        chatHistory.value.length > 2 &&
-        (chatHistory.value.length > 200 || retained > 262144)
-      ) {
-        retained -= chatHistory.value
-          .splice(0, 2)
-          .reduce((size, item) => size + item.content.length, 0)
-      }
+      connectionLost.value = false
+      remoteBusy.value = false
+      reconnectAttempts = 0
+      trimHistory()
     }
   }
-  ws.onerror = () => failReply('AI 连接失败，请检查服务与访问密钥后重试。')
-  ws.onclose = () => {
-    clearTimeout(connectTimer)
-    connecting.value = false
-    ws = null
-    if (loading.value) failReply('连接已中断，未自动重发。可从历史会话重新打开并核实操作结果。')
-  }
+  ws.onerror = lostConnection
+  ws.onclose = lostConnection
 }
 function sendMessage() {
   if (!canSend.value) return
@@ -454,6 +526,8 @@ function sendTurn(text, options = {}) {
   })
   activeReply = chatHistory.value.at(-1)
   loading.value = true
+  connectionLost.value = false
+  reconnectAttempts = 0
   stopping.value = false
   atBottom.value = true
   historyOpen.value = false
@@ -538,6 +612,7 @@ watch(
       return
     }
     if (!value) return
+    if (connectionLost.value && !ws && !reconnectTimer) reconnectRun()
     if (enabled === true && !historyReady.value) await loadHistory({ restore: true })
     await nextTick()
     inputRef.value?.focus()
@@ -629,11 +704,9 @@ onBeforeUnmount(() => {
         >重试</n-button
       >
     </div>
-    <div v-if="remoteBusy && !historyOpen" class="history-notice" role="status">
-      此会话正在其他连接中回复。
-      <n-button text @click="loadHistory({ id: conversationId })" :disabled="historyBusy"
-        >刷新</n-button
-      >
+    <div v-if="connectionLost" class="history-notice" role="status">
+      连接中断，服务仍可能在执行；恢复连接不会重复提交请求。
+      <n-button text @click="reconnectRun" :disabled="connecting">重新连接</n-button>
     </div>
     <div v-if="historyOpen" class="conversation-browser">
       <div class="conversation-toolbar">
@@ -745,17 +818,24 @@ onBeforeUnmount(() => {
                     msg === activeReply
                   "
                 >
-                  <p>请核对具体内容。确认在 {{ event.expires_in }} 秒内有效；停止或重启后失效。</p>
+                  <p>
+                    请核对具体内容。确认有效期至
+                    {{
+                      event.expires_at
+                        ? new Date(event.expires_at * 1000).toLocaleTimeString()
+                        : '本轮截止时间'
+                    }}；刷新不会延长，停止或服务重启后失效。
+                  </p>
                   <n-button
                     size="small"
                     type="primary"
-                    :disabled="controlBusy || stopping"
+                    :disabled="controlBusy || stopping || connectionLost || Boolean(event.decision)"
                     @click="sendControl('approve', event)"
-                    >确认执行</n-button
+                    >{{ event.decision === 'approve' ? '已提交确认' : '确认执行' }}</n-button
                   >
                   <n-button
                     size="small"
-                    :disabled="controlBusy || stopping"
+                    :disabled="controlBusy || stopping || connectionLost || Boolean(event.decision)"
                     @click="sendControl('reject', event)"
                     >不执行</n-button
                   >

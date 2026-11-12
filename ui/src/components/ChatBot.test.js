@@ -363,22 +363,109 @@ describe('AI chat interactions', () => {
     expect(component.loading.value).toBe(false)
   })
 
-  it('preserves a partial reply on disconnect and reconnects without overwriting it', () => {
+  it('reconnects to the same request and replaces the partial snapshot without resending', () => {
     const first = send()
     first.open()
+    const request = JSON.parse(first.send.mock.calls[1][0])
+    first.receive({ conversation_id: 'saved', turn_id: 7 })
     first.receive({ reply: '已查询的内容' })
     first.onclose()
     const partial = component.chatHistory.value.at(-1)
-    expect(partial.content).toContain('已查询的内容')
-    expect(partial.content).toContain('连接已中断')
-    expect(partial.error).toBe(true)
-    const second = send('补充背景重新查询')
-    expect(second).not.toBe(first)
+    expect(partial.content).toBe('已查询的内容')
+    expect(partial.error).toBe(false)
+    expect(component.loading.value).toBe(true)
+    expect(component.connectionLost.value).toBe(true)
+    vi.advanceTimersByTime(1000)
+    const second = FakeSocket.instances.at(-1)
     second.open()
-    second.receive({ reply: '新的回复' })
-    second.receive({ done: true })
-    expect(partial.content).not.toContain('新的回复')
-    expect(component.chatHistory.value.at(-1).content).toBe('新的回复')
+    expect(JSON.parse(second.send.mock.calls[1][0])).toEqual({
+      resume: true,
+      conversation_id: 'saved',
+      request_id: request.request_id,
+      turn_id: 7,
+      generation: 'page-generation'
+    })
+    second.receive({
+      snapshot: {
+        conversation_id: 'saved',
+        turn_id: 7,
+        assistant: '已查询的内容和后续结果',
+        status: 'complete',
+        events: []
+      }
+    })
+    expect(component.chatHistory.value).toHaveLength(2)
+    expect(partial.content).toBe('已查询的内容和后续结果')
+    expect(component.loading.value).toBe(false)
+    expect(component.connectionLost.value).toBe(false)
+  })
+
+  it('uses the request identity when the initial acknowledgement is lost', () => {
+    const first = send()
+    first.open()
+    const request = JSON.parse(first.send.mock.calls[1][0])
+    first.onclose()
+    vi.advanceTimersByTime(1000)
+    const second = FakeSocket.instances.at(-1)
+    second.open()
+    expect(JSON.parse(second.send.mock.calls[1][0])).toEqual({
+      resume: true,
+      conversation_id: null,
+      request_id: request.request_id,
+      generation: 'page-generation'
+    })
+    second.receive({
+      snapshot: {
+        conversation_id: 'accepted',
+        turn_id: 8,
+        assistant: '已保存的回答',
+        status: 'complete'
+      }
+    })
+    expect(component.conversationId.value).toBe('accepted')
+    expect(component.chatHistory.value).toHaveLength(2)
+  })
+
+  it('retains interrupted results and trims history after a terminal snapshot', () => {
+    const socket = send()
+    socket.open()
+    component.chatHistory.value.unshift(
+      ...Array.from({ length: 200 }, (_, i) => ({
+        role: i % 2 ? 'bot' : 'user',
+        content: '历史'
+      }))
+    )
+    socket.receive({
+      snapshot: {
+        conversation_id: 'saved',
+        turn_id: 7,
+        assistant: '已开始的操作结果',
+        status: 'cancelled',
+        error: '已停止后续调用'
+      }
+    })
+    expect(component.chatHistory.value).toHaveLength(200)
+    expect(component.chatHistory.value.at(-1).content).toContain('已开始的操作结果')
+    expect(component.chatHistory.value.at(-1).error).toBe(true)
+    expect(component.loading.value).toBe(false)
+  })
+
+  it('bounds automatic reconnection and cancels its timers on disposal', () => {
+    const first = send()
+    first.open()
+    first.onerror()
+    for (const delay of [1000, 2000, 4000]) {
+      vi.advanceTimersByTime(delay)
+      FakeSocket.instances.at(-1).onerror()
+    }
+    vi.advanceTimersByTime(60000)
+    expect(FakeSocket.instances).toHaveLength(4)
+    expect(component.loading.value).toBe(true)
+    component.reconnectRun()
+    expect(FakeSocket.instances).toHaveLength(5)
+    state.cleanup()
+    vi.advanceTimersByTime(60000)
+    expect(FakeSocket.instances).toHaveLength(5)
   })
 
   it.each([{ error: '模型不可用' }, null, [], { done: true }])(
@@ -567,21 +654,65 @@ describe('persistent conversations', () => {
     await disposed
     expect(component.conversations.value).toEqual([])
   })
-  it('renders interrupted history and requires refresh while another connection is active', async () => {
+  it('attaches to an active history turn and restores confirmation after a reload', async () => {
     state.axios.get.mockResolvedValueOnce({ data: { conversations: [] } }).mockResolvedValueOnce({
       data: {
         ...saved,
         busy: true,
-        turns: [{ user: '执行', assistant: '部分', status: 'interrupted' }]
+        turns: [{ id: 7, user: '执行', assistant: '部分', status: 'interrupted' }]
       }
     })
     await component.selectConversation(saved.id)
-    expect(component.chatHistory.value[1].error).toBe(true)
-    expect(component.chatHistory.value[1].content).toContain('部分操作可能已执行')
-    component.userInput.value = '继续'
-    expect(component.canSend.value).toBe(false)
-    historyResponses()
-    await component.loadHistory({ id: saved.id })
+    const reply = component.chatHistory.value[1]
+    expect(reply.error).toBe(false)
+    expect(reply.content).toBe('部分')
+    expect(component.loading.value).toBe(true)
+    const socket = FakeSocket.instances.at(-1)
+    socket.open()
+    expect(JSON.parse(socket.send.mock.calls[1][0])).toEqual({
+      resume: true,
+      conversation_id: saved.id,
+      turn_id: 7,
+      generation: 'page-generation'
+    })
+    const event = {
+      id: 'T7-1',
+      type: 'approval',
+      status: 'awaiting_approval',
+      approval_id: 'original-nonce',
+      digest: 'original-digest',
+      expires_at: 1800000000
+    }
+    await component.sendControl('approve', event)
+    expect(state.axios.post).not.toHaveBeenCalled()
+    socket.receive({
+      snapshot: {
+        conversation_id: saved.id,
+        turn_id: 7,
+        assistant: '',
+        draft: '',
+        events: [event],
+        status: 'running'
+      }
+    })
+    expect(component.eventStatus(reply.events[0], reply)).toBe('待确认')
+    expect(reply.events[0].expires_at).toBe(1800000000)
+    await component.sendControl('approve', reply.events[0])
+    await component.sendControl('approve', reply.events[0])
+    expect(state.axios.post).toHaveBeenCalledExactlyOnceWith(
+      `/ai/conversations/${saved.id}/turns/7/control`,
+      { action: 'approve', approval_id: 'original-nonce', digest: 'original-digest' }
+    )
+    socket.receive({
+      snapshot: {
+        conversation_id: saved.id,
+        turn_id: 7,
+        assistant: '已完成',
+        events: [],
+        status: 'complete'
+      }
+    })
+    expect(component.loading.value).toBe(false)
     expect(component.remoteBusy.value).toBe(false)
   })
 })

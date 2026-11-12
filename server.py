@@ -13,7 +13,7 @@ import sqlite3
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from functools import wraps
 from io import BytesIO
 from pathlib import Path
@@ -4981,6 +4981,73 @@ def ai_conversations(identifier=None, turn_id=None, operation=None):
         return jsonify(error="无法读取或保存会话历史，请检查实例数据目录"), 503
 
 
+def run_stored_chat(ws, req, user_input):
+    from arknights_mower.agent.agent import ask_llm
+    from arknights_mower.agent.execution import Execution, ExecutionStopped
+
+    disconnected = False
+
+    def send(frame):
+        nonlocal disconnected
+        if not disconnected:
+            try:
+                ws.send(json.dumps(frame))
+            except (ConnectionClosed, OSError):
+                disconnected = True
+
+    history = active_chat_history()
+    mode = req.get("mode", "chat")
+    if mode == "summary":
+        user_input = "请整理当前会话摘要草稿，保留目标、已确认事实、未完成事项和操作结果，供我核对。"
+    execution = None
+    with ExitStack() as registrations:
+        try:
+            with history.turn(
+                req["conversation_id"],
+                user_input,
+                request_id=req.get("request_id"),
+                retry_of=req.get("retry_of"),
+                mode=mode,
+            ) as turn:
+                execution = Execution(history, turn, send)
+                registrations.enter_context(execution.registered())
+                send(
+                    {
+                        "conversation_id": turn.conversation_id,
+                        "turn_id": turn.turn_id,
+                        "context": turn.context_info,
+                        "mode": turn.mode,
+                    }
+                )
+                try:
+                    for reply in ask_llm(
+                        turn.user_input,
+                        context=turn.context,
+                        api_key=config.conf.resolved_ai_key,
+                        execution=execution,
+                    ):
+                        execution.check()
+                        turn.append(reply)
+                        execution.send({"reply": reply})
+                    execution.check()
+                    if not turn.reply.strip():
+                        raise ValueError("没有收到回复，请检查模型配置后重试")
+                    turn.complete = True
+                except ExecutionStopped:
+                    turn.status = "cancelled"
+                    turn.reply = turn.reply or execution.draft
+                    raise
+                except Exception:
+                    turn.reply = turn.reply or execution.draft
+                    raise
+        except Exception as exc:
+            if execution:
+                execution.finish(str(exc))
+            raise
+        else:
+            execution.finish()
+
+
 @sock.route("/ws/chat")
 def ws_chat(ws):
     from arknights_mower.utils.config_backup import LocalConfigError
@@ -5012,6 +5079,41 @@ def ws_chat(ws):
             if not isinstance(req, dict):
                 ws.send(json.dumps({"error": "消息格式无效"}))
                 continue
+            if req.get("resume") is True:
+                from arknights_mower.agent.execution import observe
+                from arknights_mower.utils.ai_history import HistoryError
+
+                if set(req) - {
+                    "resume",
+                    "conversation_id",
+                    "request_id",
+                    "turn_id",
+                    "generation",
+                }:
+                    raise HistoryError("恢复连接不能提交新消息或操作参数", 400)
+                with configuration_chat_request(req.get("generation")):
+                    history = active_chat_history()
+                    identifier = req.get("conversation_id")
+                    turn_id = req.get("turn_id")
+                    if req.get("request_id") is not None or identifier is None:
+                        accepted = history.turn_for_request(req.get("request_id"))
+                        if (
+                            identifier is not None
+                            and identifier != accepted["conversation"]
+                        ):
+                            raise HistoryError("请求不属于此会话", 400)
+                        if turn_id is not None and (
+                            type(turn_id) is not int or turn_id != accepted["id"]
+                        ):
+                            raise HistoryError("请求不属于此轮对话", 400)
+                        identifier, turn_id = accepted["conversation"], accepted["id"]
+                    frames = observe(history, identifier, turn_id)
+                    try:
+                        for frame in frames:
+                            ws.send(json.dumps(frame))
+                    finally:
+                        frames.close()
+                continue
             if "message" in req:
                 user_input = req["message"]
                 if (
@@ -5025,59 +5127,7 @@ def ws_chat(ws):
                     from arknights_mower.agent.agent import ask_llm
 
                     if "conversation_id" in req:
-                        history = active_chat_history()
-                        from arknights_mower.agent.execution import (
-                            Execution,
-                            ExecutionStopped,
-                        )
-
-                        mode = req.get("mode", "chat")
-                        if mode == "summary":
-                            user_input = "请整理当前会话摘要草稿，保留目标、已确认事实、未完成事项和操作结果，供我核对。"
-                        with history.turn(
-                            req["conversation_id"],
-                            user_input,
-                            request_id=req.get("request_id"),
-                            retry_of=req.get("retry_of"),
-                            mode=mode,
-                        ) as turn:
-                            execution = Execution(
-                                history, turn, lambda frame: ws.send(json.dumps(frame))
-                            )
-                            with execution.registered():
-                                ws.send(
-                                    json.dumps(
-                                        {
-                                            "conversation_id": turn.conversation_id,
-                                            "turn_id": turn.turn_id,
-                                            "context": turn.context_info,
-                                            "mode": turn.mode,
-                                        }
-                                    )
-                                )
-                                try:
-                                    for reply in ask_llm(
-                                        turn.user_input,
-                                        context=turn.context,
-                                        api_key=config.conf.resolved_ai_key,
-                                        execution=execution,
-                                    ):
-                                        execution.check()
-                                        turn.append(reply)
-                                        ws.send(json.dumps({"reply": reply}))
-                                    execution.check()
-                                    if not turn.reply.strip():
-                                        raise ValueError(
-                                            "没有收到回复，请检查模型配置后重试"
-                                        )
-                                    turn.complete = True
-                                except ExecutionStopped:
-                                    turn.status = "cancelled"
-                                    turn.reply = turn.reply or execution.draft
-                                    raise
-                                except Exception:
-                                    turn.reply = turn.reply or execution.draft
-                                    raise
+                        run_stored_chat(ws, req, user_input)
                     else:
                         # Older clients retain socket-local context.
                         context = context[-19:]

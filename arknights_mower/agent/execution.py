@@ -1,5 +1,6 @@
 """Confirmed tool execution, evidence and cooperative cancellation for stored chat."""
 
+import copy
 import hashlib
 import inspect
 import json
@@ -29,6 +30,8 @@ APPROVAL_SECONDS = 180
 MAX_CALLS = 24
 MAX_ARGUMENT_CHARS = 8000
 MAX_RESULT_CHARS = 32000
+MAX_ACTIVE_RUNS = 8
+MAX_OBSERVERS = 4
 _registry_lock = RLock()
 _running = {}
 
@@ -59,19 +62,115 @@ def control(store, conversation_id, turn_id, action, approval_id=None, digest=No
     return run.control(action, approval_id, digest)
 
 
+def observe(store, conversation_id, turn_id=None):
+    saved = store.read(conversation_id)
+    if turn_id is not None and (type(turn_id) is not int or turn_id <= 0):
+        raise HistoryError("轮次标识无效", 400)
+    if not saved["turns"]:
+        raise HistoryError("会话暂无执行记录", 404)
+    if turn_id is None:
+        turn_id = saved["turns"][-1]["id"]
+    with _registry_lock:
+        run = _running.get((str(store.path), conversation_id, turn_id))
+        if run is not None and run.store.profile_id != store.profile_id:
+            raise HistoryError("会话不属于当前配置档案", 404)
+    if run is None:
+        saved = store.read(conversation_id)
+        turn = next((item for item in saved["turns"] if item["id"] == turn_id), None)
+        if turn is None:
+            raise HistoryError("此轮记录已被清理", 404)
+        if saved["busy"] and saved["turns"][-1]["id"] == turn_id:
+            raise HistoryError("本轮正在准备，请重新连接查看进度")
+        yield {
+            "snapshot": {
+                "conversation_id": conversation_id,
+                "turn_id": turn["id"],
+                "assistant": turn["assistant"],
+                "draft": "",
+                "events": turn["events"],
+                "mode": turn["mode"],
+                "status": turn["status"],
+            }
+        }
+        return
+    with run.condition:
+        if run.observers >= MAX_OBSERVERS:
+            raise HistoryError("查看本轮进度的连接过多，请关闭其他会话窗口")
+        run.observers += 1
+    try:
+        revision = -1
+        while True:
+            with run.condition:
+                run.condition.wait_for(lambda: run.revision != revision, timeout=15)
+                revision = run.revision
+                snapshot = copy.deepcopy(run.snapshot)
+            yield {"snapshot": snapshot}
+            if snapshot["status"] != "running":
+                return
+    finally:
+        with run.condition:
+            run.observers -= 1
+
+
 class Execution:
     def __init__(self, store, turn, send):
-        self.store, self.turn, self.send = store, turn, send
+        self.store, self.turn, self._send = store, turn, send
         self.condition = Condition()
         self.stopped = False
         self.pending = None
         self.calls = 0
         self.draft = ""
+        self.observers = 0
+        self.revision = 0
+        self.snapshot = {
+            "conversation_id": turn.conversation_id,
+            "turn_id": turn.turn_id,
+            "context": turn.context_info,
+            "mode": turn.mode,
+            "assistant": "",
+            "draft": "",
+            "events": [],
+            "status": "running",
+        }
+
+    def send(self, frame):
+        with self.condition:
+            event = frame.get("event", {})
+            kind = event.get("type")
+            if kind == "answer_delta":
+                self.snapshot["draft"] = (self.snapshot["draft"] + event["text"])[
+                    :32768
+                ]
+            elif kind in {"answer_reset", "model"} or "reply" in frame:
+                self.snapshot["draft"] = ""
+            if kind in {"tool", "approval"}:
+                self.snapshot["events"] = copy.deepcopy(self.turn.events)
+            if "reply" in frame:
+                self.snapshot["assistant"] = self.turn.reply
+            self.revision += 1
+            self.condition.notify_all()
+        self._send(frame)
+
+    def finish(self, error=None):
+        # Publish completion only after the history transaction has finished.
+        with self.condition:
+            self.snapshot.update(
+                assistant=self.turn.reply,
+                draft="",
+                status="complete"
+                if self.turn.complete and error is None
+                else self.turn.status,
+                error=error[:2000] if error else None,
+            )
+            self.revision += 1
+            self.condition.notify_all()
 
     @contextmanager
     def registered(self):
         key = (str(self.store.path), self.turn.conversation_id, self.turn.turn_id)
         with _registry_lock:
+            if sum(item[0] == key[0] for item in _running) >= MAX_ACTIVE_RUNS:
+                raise HistoryError("AI 正在处理的会话过多，请等待已有请求结束")
             _running[key] = self
         try:
             yield self
@@ -153,6 +252,7 @@ class Execution:
                     "preview": operation["preview"],
                     "status": "awaiting_approval",
                     "expires_in": APPROVAL_SECONDS,
+                    "expires_at": time.time() + APPROVAL_SECONDS,
                 }
             )
             with self.condition:

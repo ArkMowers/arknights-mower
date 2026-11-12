@@ -30,3 +30,5 @@ Stopping cannot undo an already-started operation; provider reads finish at the 
 
 
 Current operational rules belong to the [AI Assistant subsystem description](../../../../docs/subsystems/ai-assistant.md#confirmed-tool-execution). Existing configuration profile, mastery plan and Scheduling Plan concepts keep their meanings; no glossary change is required.
+
+The [live reconnection contract](../../../../docs/subsystems/ai-assistant.md#live-conversation-reconnection) keeps the original execution alive independently of its viewer. Reusing the request handler and bounded in-memory snapshots avoids adding a task service or another framework. A returning viewer can inspect and decide the same pending operation before its original deadline, without reissuing model or tool calls. Process restart deliberately retains the existing invalid-confirmation and explicit-retry boundary. `ai_resume_tests.py` verifies viewer reconnection, lost acknowledgements, confirmation decisions and ownership through the real route handlers with offline model responses.
