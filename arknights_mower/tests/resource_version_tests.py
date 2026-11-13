@@ -68,8 +68,11 @@ class TestResVersionNewer(unittest.TestCase):
 
 
 class TestCheckResourceUpdate(unittest.TestCase):
-    def _patch(self, remote=None, local=None, cache=None):
+    def _patch(self, remote=None, local=None, cache=None, activities=()):
         stack = ExitStack()
+        stack.enter_context(
+            patch.object(rv, "_read_local_activities", return_value=list(activities))
+        )
         stack.enter_context(
             patch(
                 "arknights_mower.utils.resource_version._fetch_remote_version_json",
@@ -179,6 +182,10 @@ class TestCheckResourceUpdate(unittest.TestCase):
 
     def test_all_responses_keep_installed_activity_timestamps(self):
         local = _version("2026.08.22-aaaaaaa", "已安装活动", 1724068800)
+        activities = [
+            {"name": "较早活动", "time": 1723982400, "endTime": 1724241600},
+            local["activity"],
+        ]
         local["gacha"] = {
             "name": "已安装卡池",
             "time": 1724155200,
@@ -186,6 +193,7 @@ class TestCheckResourceUpdate(unittest.TestCase):
         }
         remote = _version("2026.08.23-bbbbbbb", "远程活动", 1726747200)
         expected = {
+            "activities": activities,
             "activity": {
                 "name": "已安装活动",
                 "time": 1724068800,
@@ -206,7 +214,9 @@ class TestCheckResourceUpdate(unittest.TestCase):
             ("missing remote version", {"activity": remote["activity"]}, None, False),
         ]:
             with self.subTest(response=label):
-                with self._patch(remote=fetched, local=local, cache=cache):
+                with self._patch(
+                    remote=fetched, local=local, cache=cache, activities=activities
+                ):
                     got = rv.check_resource_update(local_only=local_only)
                 self.assertEqual(got["current_metadata"], expected)
 
@@ -217,8 +227,66 @@ class TestCheckResourceUpdate(unittest.TestCase):
                     got = rv.check_resource_update()
                 self.assertEqual(
                     got["current_metadata"],
-                    {"activity": {}, "gacha": {}, "last_updated": ""},
+                    {"activity": {}, "activities": [], "gacha": {}, "last_updated": ""},
                 )
+
+
+class TestReadLocalActivities(unittest.TestCase):
+    def test_battle_windows_merge_phases_and_ignore_shop_deadlines(self):
+        stages = [
+            {"zoneNameSecond": "较早活动", "endTs": {"startTs": 100, "endTs": 400}},
+            {"zoneNameSecond": "较早活动", "endTs": {"startTs": 200, "endTs": 500}},
+            {"zoneNameSecond": "较早活动", "endTs": {"startTs": 100, "endTs": 400}},
+            {
+                "zoneNameSecond": "较新活动",
+                "endTs": {"startTs": 300, "endTs": 450},
+                "rewardEndTime": 900,
+            },
+            {"zoneNameSecond": "常驻关卡", "endTs": None},
+            {"zoneNameSecond": "剿灭", "endTs": -1},
+            {"zoneNameSecond": "非法窗口", "endTs": {"startTs": 100, "endTs": 100}},
+            {"zoneNameSecond": "缺少时间", "endTs": {"endTs": 500}},
+        ]
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "stage_data_full.json"
+            path.write_text(json.dumps(stages), encoding="utf-8")
+            with patch.object(rv, "resource_pkg_path", return_value=path) as resolve:
+                self.assertEqual(
+                    rv._read_local_activities(),
+                    [
+                        {"name": "较新活动", "time": 300, "endTime": 450},
+                        {"name": "较早活动", "time": 100, "endTime": 500},
+                    ],
+                )
+                resolve.assert_called_once_with(
+                    "arknights_mower/data/stage_data_full.json"
+                )
+
+    def test_resource_switch_reloads_activities_without_borrowing_another_generation(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as root:
+            first, second = Path(root) / "first.json", Path(root) / "second.json"
+            first.write_text(
+                json.dumps(
+                    [
+                        {
+                            "zoneNameSecond": "第一版活动",
+                            "endTs": {"startTs": 100, "endTs": 400},
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            second.write_text("[]", encoding="utf-8")
+            with patch.object(
+                rv,
+                "resource_pkg_path",
+                side_effect=[first, second, Path(root) / "missing"],
+            ):
+                self.assertEqual(rv._read_local_activities()[0]["name"], "第一版活动")
+                self.assertEqual(rv._read_local_activities(), [])
+                self.assertEqual(rv._read_local_activities(), [])
 
 
 class TestReadLocalVersion(unittest.TestCase):

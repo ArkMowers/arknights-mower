@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { resourceVersionBadge, resourceVersionHint, softwareVersionBadge } from './versionBadges'
+import {
+  resourceActivityBadges,
+  resourceActivityHint,
+  resourceVersionBadge,
+  resourceVersionHint,
+  softwareVersionBadge
+} from './versionBadges'
 
 const start = Date.parse('2026-10-10T00:00:00+08:00')
 const end = Date.parse('2026-10-20T00:00:00+08:00')
@@ -57,39 +63,156 @@ describe('software version badges', () => {
 })
 
 describe('installed resource badges', () => {
-  it('moves from green through yellow to red across the selected activity interval', () => {
+  it('colors by the earliest closing active activity despite a newer permanent resource label', () => {
+    const permanent = { name: '卫戍协议:规程', time: 1794124800, endTime: 4092580799 }
+    const metadata = {
+      activity: permanent,
+      gacha: { name: '将雪投火', time: 1793487600, endTime: 1794686399 },
+      activities: [
+        permanent,
+        { name: '较晚关闭', time: activity.time - 864000, endTime: activity.endTime + 864000 },
+        activity,
+        {
+          name: '尚未开始',
+          time: (start + 6 * 86400000) / 1000,
+          endTime: (start + 7 * 86400000) / 1000
+        },
+        { name: '已经关闭', time: activity.time - 86400, endTime: activity.time }
+      ]
+    }
+    expect(resourceVersionBadge(metadata, start + 5 * 86400000)).toMatchObject({
+      name: '昨日海',
+      state: 'active',
+      hue: 70
+    })
+    expect(resourceVersionBadge(metadata, end)).toMatchObject({
+      name: '较晚关闭',
+      state: 'active',
+      hue: 47
+    })
+  })
+
+  it('keeps permanent-only metadata neutral without a countdown clock or a 2099 deadline', () => {
+    const permanent = { name: '卫戍协议:规程', time: 1794124800, endTime: 4092580799 }
+    const now = Date.parse('2026-11-13T12:00:00+08:00')
+    for (const metadata of [
+      { activity: permanent },
+      { activity: permanent, activities: [permanent] },
+      { activity: permanent, activities: [] }
+    ]) {
+      const badge = resourceVersionBadge(metadata, now)
+      expect(badge).toMatchObject({ state: 'unknown', refresh: false })
+      expect(badge.hue).toBeUndefined()
+      expect(resourceVersionHint('卫戍协议:规程', badge)).toContain('长期开放')
+      expect(resourceVersionHint('卫戍协议:规程', badge)).not.toContain('2099')
+      expect(resourceVersionHint('卫戍协议:规程', badge)).not.toContain('距作战关闭还有')
+    }
+    const finite = { name: '时间啊，向前！', time: 1793487600, endTime: 1795291199 }
+    expect(resourceVersionBadge({ activity: permanent, activities: [finite] }, now)).toMatchObject({
+      name: '时间啊，向前！',
+      state: 'active',
+      hue: 58
+    })
+  })
+
+  it('does not color by an upcoming activity or an open gacha, but keeps their hints refreshing', () => {
+    const metadata = {
+      activities: [{ ...activity, time: activity.time + 60 }],
+      gacha: { name: '卡池', time: activity.time - 60, endTime: activity.endTime }
+    }
+    const badge = resourceVersionBadge(metadata, start)
+    expect(badge).toMatchObject({ state: 'unknown', refresh: true })
+    expect(badge.hue).toBeUndefined()
+    expect(resourceVersionHint('当前资源', badge)).toContain('活动开始')
+    expect(resourceVersionHint('当前资源', badge)).toContain('卡池「卡池」结束')
+    expect(resourceVersionBadge(metadata, start + 60000)).toMatchObject({
+      state: 'active',
+      hue: 140
+    })
+  })
+
+  it('lists every unfinished battle activity, including an older event and an upcoming event', () => {
+    const metadata = {
+      activity,
+      activities: [
+        activity,
+        { name: '较早活动', time: activity.time - 86400, endTime: activity.endTime + 86400 },
+        { name: '商店仍开放', time: activity.time - 172800, endTime: activity.time },
+        { name: '尚未开启', time: activity.endTime + 1, endTime: activity.endTime + 86400 },
+        { name: '无效时间', time: activity.time, endTime: null }
+      ]
+    }
+    const badges = resourceActivityBadges(metadata, start)
+    expect(badges.map((badge) => badge.name)).toEqual(['昨日海', '较早活动', '尚未开启'])
+    expect(resourceActivityHint(badges[0])).toContain('作战关闭：2026/10/20 00:00（北京时间）')
+    expect(resourceActivityHint(badges[2])).toContain('活动开始：2026/10/20 00:00')
+    const hint = resourceVersionHint('当前资源', resourceVersionBadge(metadata, start))
+    expect(hint).toContain('较早活动')
+    expect(hint).toContain('尚未开启')
+    expect(hint).not.toContain('商店仍开放')
+    expect(resourceActivityBadges(metadata, end).map((badge) => badge.name)).toEqual([
+      '较早活动',
+      '尚未开启'
+    ])
+  })
+
+  it('keeps refreshing while an older activity remains open after the version event ends', () => {
+    const metadata = {
+      activity,
+      activities: [
+        { name: '较早活动', time: activity.time - 86400, endTime: activity.endTime + 86400 }
+      ]
+    }
+    expect(resourceVersionBadge(metadata, end).refresh).toBe(true)
+    const closed = resourceVersionBadge(metadata, end + 86400000)
+    expect(closed.refresh).toBe(false)
+    expect(resourceVersionHint('当前资源', closed)).toContain('当前资源中没有未结束的活动')
+    expect(resourceVersionHint('当前资源', closed)).not.toContain('较早活动')
+  })
+
+  it('falls back to the single activity for older server responses', () => {
+    expect(resourceActivityBadges({ activity }, start).map((badge) => badge.name)).toEqual([
+      '昨日海'
+    ])
+    expect(resourceActivityBadges({ activity, activities: [] }, start)).toEqual([])
+  })
+
+  it('moves from green through yellow to red and becomes neutral when the activity closes', () => {
     expect(resourceVersionBadge({ activity }, start)).toMatchObject({ state: 'active', hue: 140 })
     expect(resourceVersionBadge({ activity }, start + (end - start) / 2)).toMatchObject({
       state: 'active',
       hue: 70
     })
+    expect(resourceVersionBadge({ activity }, end - 1).hue).toBe(0)
     expect(resourceVersionBadge({ activity }, end)).toMatchObject({
-      state: 'ended',
-      hue: 0,
+      state: 'unknown',
       refresh: false
     })
-    expect(resourceVersionBadge({ activity }, end + 86400000).hue).toBe(0)
+    expect(resourceVersionBadge({ activity }, end + 86400000).hue).toBeUndefined()
     expect(resourceVersionBadge({ activity }, start - 86400000)).toMatchObject({
-      state: 'upcoming',
-      hue: 140
+      state: 'unknown',
+      refresh: true
     })
   })
 
-  it('uses the same later-start entry as the resource label, preferring activity on a tie', () => {
+  it('keeps gacha deadlines in the hint without letting them determine activity color', () => {
     const gacha = { name: '海渊巡游', time: activity.time, endTime: activity.endTime + 86400 }
     expect(resourceVersionBadge({ activity, gacha }, start).name).toBe('昨日海')
     expect(
       resourceVersionBadge({ activity, gacha: { ...gacha, time: gacha.time + 60 } }, start)
-    ).toMatchObject({ name: '海渊巡游', kind: '卡池', end: end + 86400000 })
+    ).toMatchObject({ name: '昨日海', kind: '活动', end })
+    expect(
+      resourceVersionHint('当前资源', resourceVersionBadge({ activity, gacha }, start))
+    ).toContain('卡池「海渊巡游」结束')
   })
 
-  it('does not borrow an earlier activity end when the displayed gacha has no end time', () => {
+  it('keeps an invalid gacha neutral while the valid activity still controls color', () => {
     const gacha = { name: '海渊巡游', time: activity.time + 60 }
-    expect(resourceVersionBadge({ activity, gacha }, start)).toEqual({
-      name: '海渊巡游',
-      kind: '卡池',
-      state: 'unknown',
-      refresh: false
+    expect(resourceVersionBadge({ activity, gacha }, start)).toMatchObject({
+      name: '昨日海',
+      state: 'active',
+      hue: 140,
+      gacha: { name: '海渊巡游', kind: '卡池', state: 'unknown', refresh: false }
     })
   })
 
@@ -113,13 +236,13 @@ describe('installed resource badges', () => {
   it('states the actual event end in the game timezone and remaining time without claiming resource expiry', () => {
     const badge = resourceVersionBadge({ activity }, end - 9000000)
     expect(resourceVersionHint('当前资源', badge)).toBe(
-      '资源版本 当前资源\n活动「昨日海」结束：2026/10/20 00:00（北京时间）\n距结束还有 2 小时 30 分钟'
+      '资源版本 当前资源\n活动「昨日海」作战关闭：2026/10/20 00:00（北京时间）\n距作战关闭还有 2 小时 30 分钟'
     )
     expect(resourceVersionHint('当前资源', resourceVersionBadge({ activity }, end))).toContain(
-      '活动已结束'
+      '当前资源中没有未结束的活动'
     )
     expect(resourceVersionHint('当前资源', resourceVersionBadge({}))).toContain(
-      '未提供有效的活动或卡池结束时间'
+      '当前资源中没有未结束的活动'
     )
   })
 })
