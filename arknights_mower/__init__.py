@@ -20,7 +20,7 @@ if sys.platform == "win32":
     ):
         os.environ["OPENBLAS_NUM_THREADS"] = "1"
 
-__version__ = "4.1.6-alpha.14"
+__version__ = "4.1.6-alpha.15"
 __release_system__ = ""
 __release_arch__ = ""
 __release_archive__ = ""
