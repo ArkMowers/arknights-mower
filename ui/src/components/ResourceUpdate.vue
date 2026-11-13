@@ -10,6 +10,7 @@ import { useUpdateProgress } from '@/composables/useUpdateProgress'
 import { getDroppedFile, postManualUpdate } from '@/utils/manualUpdate'
 import '@/styles/updates.css'
 import UpdatePreview from './UpdatePreview.vue'
+import ResourceActivityTimes from './ResourceActivityTimes.vue'
 import { showResourceUpdateDialog } from '@/utils/updateDialog'
 
 const props = defineProps({ skipInitialCheck: Boolean, compact: Boolean, preview: Object })
@@ -172,6 +173,7 @@ function set_auto_update(checked) {
       </template>
       <span v-else class="update-caption">检查更新以获取最新资源包。</span>
     </div>
+    <ResourceActivityTimes v-if="!compact" :metadata="info.current_metadata" />
     <n-alert v-if="info.error" type="error" title="资源检查未完成" role="alert">{{
       info.error
     }}</n-alert>

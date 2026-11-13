@@ -760,6 +760,32 @@ describe('sidebar version badges', () => {
     expect(vi.getTimerCount()).toBe(0)
   })
 
+  it('keeps older unfinished activities in the hint after the version activity closes', async () => {
+    const now = Date.now() / 1000
+    const view = mountClock(
+      {
+        resourceVersion: '当前资源',
+        resourceMetadata: {
+          activity: { name: '最新活动', time: now - 60, endTime: now + 60 },
+          activities: [
+            { name: '最新活动', time: now - 60, endTime: now + 60 },
+            { name: '较早活动', time: now - 86400, endTime: now + 120 }
+          ]
+        }
+      },
+      ClientBrand
+    )
+    expect(view.resourceButton().props['aria-label']).toContain('最新活动')
+    expect(view.resourceButton().props['aria-label']).toContain('较早活动')
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(view.resourceButton().props['aria-label']).not.toContain('最新活动')
+    expect(view.resourceButton().props['aria-label']).toContain('较早活动')
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(view.resourceButton().props['aria-label']).not.toContain('较早活动')
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('does not run a clock when the installed metadata has no known interval', () => {
     mountClock({ resourceVersion: '当前资源', resourceMetadata: {} })
     expect(vi.getTimerCount()).toBe(0)
