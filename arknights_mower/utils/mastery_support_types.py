@@ -97,14 +97,23 @@ def editable_after(plan):
     return runtime.get("level", plan["target_level"])
 
 
+def has_planned_supports(plan):
+    """Saved routes and a legacy stage replacement share runtime execution."""
+    runtime = decode_json(plan.get("support_runtime")) or {}
+    return bool(plan.get("support_plan") or runtime.get("mood_fallback"))
+
+
 def stage_for(plan, level):
     value = decode_supports(plan)
     stage = next(
         (dict(s) for s in (value or {}).get("stages", []) if s["level"] == level), None
     )
     runtime = decode_json(plan.get("support_runtime"))
-    if stage and runtime and runtime.get("level") == level:
-        stage.update(runtime)
+    if runtime and runtime.get("level") == level:
+        if stage:
+            stage.update(runtime)
+        elif runtime.get("mood_fallback"):
+            stage = dict(runtime)
     if stage and (
         stage.get("configured_swap_buffer", False) is None
         or isinstance(stage.get("configured_swap_buffer"), dict)

@@ -36,6 +36,7 @@ from arknights_mower.utils.mastery_panel_template import (
     recognize_operator,
     recognize_skill,
 )
+from arknights_mower.utils.mastery_support_types import has_planned_supports
 from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -1502,7 +1503,11 @@ def _refresh_training_plan(solver, plan, room):
 
     _update_expiry(solver, plan, room)
     try:
-        if plan.get("support_plan") and plan.get("swap_frozen") and room.slots_reliable:
+        if (
+            has_planned_supports(plan)
+            and plan.get("swap_frozen")
+            and room.slots_reliable
+        ):
             from arknights_mower.solvers.mastery_support_state import refresh_end
             from arknights_mower.utils.mastery_support import stage_for
 
@@ -1558,7 +1563,7 @@ def _restore_unconfirmed_swap(solver, plan):
     from arknights_mower.utils.mastery_order import halving_successor
     from arknights_mower.utils.mastery_support_types import decode_json, stage_for
 
-    if plan.get("support_plan"):
+    if has_planned_supports(plan):
         runtime = decode_json(plan.get("support_runtime")) or {}
         level = runtime.get("level")
         route = stage_for(plan, level) if isinstance(level, int) else None
@@ -1640,7 +1645,7 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
         return False
     # 当前步目标级 = 主面板专精图标（亮 N 颗=专N，#76），读不到回退 target_level
     step_level = room.panel.mastery_tier or None
-    if plan.get("support_plan"):
+    if has_planned_supports(plan):
         from arknights_mower.solvers.mastery_support_runtime import recover
 
         return recover(solver, plan, room)

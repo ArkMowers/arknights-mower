@@ -1358,8 +1358,25 @@ class BaseSchedulerSolver(
                     support_mood_context(waiting["plan_id"], self.op_data)
                     != waiting["context"]
                 )
-                if not changed and support_mood_shortages(
-                    self.op_data, waiting["required"]
+                shortages = support_mood_shortages(self.op_data, waiting["required"])
+                observation_pending = getattr(
+                    task, "mastery_mood_observation_pending", False
+                ) and not any(
+                    pending is not task
+                    and pending.time <= datetime.now() + timedelta(minutes=1)
+                    for pending in task_view(
+                        self.tasks, TaskScope.DISPATCH, self.op_data
+                    )
+                )
+                replacement_ready = any(
+                    not support_mood_shortages(self.op_data, required)
+                    for required in waiting.get("alternatives", ())
+                )
+                if (
+                    not changed
+                    and shortages
+                    and not observation_pending
+                    and not replacement_ready
                 ):
                     continue
                 del task.execution_failure
@@ -5098,8 +5115,10 @@ class BaseSchedulerSolver(
             return True
 
     @fixed_selection_profile
-    def _scan_card_moods(self, *, missing_calculated=(), initial=False, workshop=False):
-        """每轮真实规划共用一次升序扫描，首个绿色后的姓名按 24 预估。"""
+    def _scan_card_moods(
+        self, *, missing_calculated=(), initial=False, workshop=False, mastery=False
+    ):
+        """升序扫描心情；临近任务阻止进入时返回 False，供依赖解除后继续。"""
         initial = initial or self._initial_mood_read_pending()
         # 启动恢复的离线调用可能只构造了排班数据而没有设备识别器；此时
         # 保留已恢复任务，待真实设备启动后再由完整初始化执行扫描。
@@ -5112,9 +5131,14 @@ class BaseSchedulerSolver(
             and not initial
             and not missing_calculated
             and not workshop
+            and not mastery
         ):
             return
-        if not workshop and getattr(self, "_card_moods_scanned_this_run", False):
+        if (
+            not workshop
+            and not mastery
+            and getattr(self, "_card_moods_scanned_this_run", False)
+        ):
             return
 
         room = (
@@ -5138,16 +5162,18 @@ class BaseSchedulerSolver(
             return
 
         def can_continue():
-            if not workshop:
+            if not workshop and not mastery:
                 return self.no_pending_task(1)
             deadline = datetime.now() + timedelta(minutes=1)
             return not any(
-                task.time <= deadline and (task.type != TaskTypes.WORKSHOP or task.plan)
+                (not mastery or task is not getattr(self, "task", None))
+                and task.time <= deadline
+                and (mastery or task.type != TaskTypes.WORKSHOP or task.plan)
                 for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
             )
 
         if not initial and not can_continue():
-            return
+            return False
         if workshop:
             self._workshop_card_moods_scanned_this_run = True
         else:
@@ -22787,9 +22813,21 @@ class BaseSchedulerSolver(
         ) and not getattr(room, "collected", False):
             return
         current = getattr(self, "task", None)
+        mood_waiting = {
+            str(task.mastery_mood_wait["plan_id"])
+            for task in getattr(self, "tasks", [])
+            if task.type == TaskTypes.SKILL_UPGRADE
+            and getattr(task, "execution_failure", None)
+            and getattr(task, "mastery_mood_wait", None)
+        }
         if any(
             task is not current
             and task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
+            and not (
+                task.type == TaskTypes.SKILL_UPGRADE
+                and getattr(task, "execution_failure", None)
+                and getattr(task, "mastery_mood_wait", None)
+            )
             for task in getattr(self, "tasks", [])
         ):
             return
@@ -22803,7 +22841,7 @@ class BaseSchedulerSolver(
             plans = [waiting]
         protection_notified = False
         for plan in plans:
-            if plan["status"] != "idle":
+            if plan["status"] != "idle" or str(plan["id"]) in mood_waiting:
                 continue
             key = (plan["char_id"], plan["skill_index"])
             entry = confirmed.get(key)
