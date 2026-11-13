@@ -39,6 +39,7 @@ import {
 } from '@/utils/logLayout'
 import { latestLogDate } from '@/utils/logSource'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
+import { windowMinimizedKey } from '@/window-shell/context.js'
 import StartSchedule from '@/components/StartSchedule.vue'
 import LogOutput from '@/components/LogOutput.vue'
 import LogDailyStatus from '@/components/LogDailyStatus.vue'
@@ -121,6 +122,7 @@ async function cancel_pause() {
 }
 const mobile = inject('mobile')
 const chat_panel_visible = inject('chat_panel_visible', ref(false))
+const windowMinimized = inject(windowMinimizedKey, ref(false))
 const resizer_height = computed(() => (mobile.value ? 24 : RESIZER_HEIGHT))
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
@@ -612,9 +614,12 @@ const screenshotPreview = createScreenshotPreview({
 })
 
 function updateScreenshotPreview() {
-  if (sc_preview.value && !document.hidden) screenshotPreview.start()
-  else screenshotPreview.stop()
+  if (!sc_preview.value || document.hidden) screenshotPreview.stop()
+  else if (windowMinimized.value) screenshotPreview.pause()
+  else screenshotPreview.start()
 }
+
+watch(windowMinimized, updateScreenshotPreview)
 
 watch(
   sc_preview,

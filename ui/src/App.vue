@@ -325,6 +325,7 @@ import {
   formatWindowTitle,
   formatEmulatorLabel
 } from '@/window-shell/adapter.js'
+import { windowMinimizedKey } from '@/window-shell/context.js'
 import { createSaveCoordinator } from '@/utils/configPersistence'
 import { configProfilesKey, createConfigProfiles } from '@/composables/configProfiles'
 import { readProcessActionStatus, submitProcessAction } from '@/utils/processAction'
@@ -364,6 +365,10 @@ const {
   capabilities: windowShellCapabilities,
   state: windowShellState
 } = windowShell
+provide(
+  windowMinimizedKey,
+  computed(() => windowShellState.value.minimized)
+)
 
 let disposeModalDrag = null
 

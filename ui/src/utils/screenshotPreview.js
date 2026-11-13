@@ -42,6 +42,7 @@ export function createScreenshotPreview({
     const requestController = new AbortController()
     controller = requestController
     let pendingUrl = ''
+    let replacedUrl = ''
     const releasePending = () => {
       if (pendingUrl) URL.revokeObjectURL(pendingUrl)
       pendingUrl = ''
@@ -64,7 +65,8 @@ export function createScreenshotPreview({
         await image.decode()
         if (!active || generation !== currentGeneration) return
         const aspect = image.naturalWidth / image.naturalHeight
-        previousUrl = imageUrl
+        replacedUrl = imageUrl
+        previousUrl = replacedUrl
         imageUrl = pendingUrl
         pendingUrl = ''
         etag = response.headers.etag || ''
@@ -82,12 +84,21 @@ export function createScreenshotPreview({
     } finally {
       releasePending()
       requestController.signal.removeEventListener('abort', releasePending)
+      if (previousUrl === replacedUrl) releasePrevious()
       if (active && generation === currentGeneration) {
-        releasePrevious()
         controller = null
         timer = setTimeout(() => poll(currentGeneration), interval)
       }
     }
+  }
+
+  function pause() {
+    active = false
+    generation += 1
+    clearTimeout(timer)
+    timer = null
+    controller?.abort()
+    controller = null
   }
 
   return {
@@ -97,13 +108,9 @@ export function createScreenshotPreview({
       restoreImage()
       poll(++generation)
     },
+    pause,
     stop() {
-      active = false
-      generation += 1
-      clearTimeout(timer)
-      timer = null
-      controller?.abort()
-      controller = null
+      pause()
       etag = ''
       clearImage()
     }

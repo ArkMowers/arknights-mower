@@ -24,6 +24,7 @@ import LogDailyStatus from '@/components/LogDailyStatus.vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 import { useLogBackgroundStore } from '@/stores/logBackground'
 import { useGuiStore } from '@/stores/gui'
+import { windowMinimizedKey } from '@/window-shell/context.js'
 
 const { descriptor } = parse(readFileSync(new URL('./Log.vue', import.meta.url), 'utf8'))
 const script = compileScript(descriptor, { id: 'task-dialog-loading-test' })
@@ -64,6 +65,7 @@ const state = vi.hoisted(() => ({
   router: null,
   mobile: null,
   chatPanelVisible: null,
+  windowMinimized: null,
   preview: null,
   previewOptions: null,
   realPreview: false,
@@ -85,6 +87,7 @@ vi.mock('vue', async (original) => ({
     if (key === routerKey) return state.router
     if (key === 'mobile') return state.mobile
     if (key === 'chat_panel_visible') return state.chatPanelVisible
+    if (key === windowMinimizedKey) return state.windowMinimized
     return ref(false)
   },
   onBeforeUnmount: vi.fn(),
@@ -173,7 +176,8 @@ describe('log page', () => {
     state.router = { push: vi.fn(), replace: vi.fn() }
     state.mobile = ref(false)
     state.chatPanelVisible = ref(false)
-    state.preview = { start: vi.fn(), stop: vi.fn() }
+    state.windowMinimized = ref(false)
+    state.preview = { start: vi.fn(), pause: vi.fn(), stop: vi.fn() }
     state.realPreview = false
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
     const documentTarget = Object.assign(new EventTarget(), {
@@ -241,6 +245,100 @@ describe('log page', () => {
   function callsTo(path) {
     return state.client.get.mock.calls.filter(([url]) => url.endsWith(path))
   }
+
+  it('pauses only screenshot requests while the desktop window is minimized', async () => {
+    state.realPreview = true
+    vi.stubGlobal(
+      'Image',
+      class {
+        naturalWidth = 16
+        naturalHeight = 9
+        async decode() {}
+      }
+    )
+    const frame = new Blob(['frame'])
+    const pending = Promise.withResolvers()
+    const previewRequests = vi
+      .fn()
+      .mockResolvedValueOnce({ status: 200, data: frame, headers: { etag: '"frame"' } })
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue({ status: 304, headers: {} })
+    state.client.get.mockImplementation(async (url, options) => {
+      if (url.endsWith('/screenshot/latest')) return previewRequests(options)
+      if (url.endsWith('/status')) return { data: { status: 'working', plan_condition: [] } }
+      return { data: url.endsWith('/task') ? [] : {} }
+    })
+
+    const component = await mountWithStore()
+    try {
+      const displayedUrl = component.sc_blob.value
+      expect(displayedUrl).toMatch(/^blob:/)
+      const snapshot = component.workspace.screenshot
+      expect(snapshot).toEqual({ blob: frame, etag: '"frame"', aspect: 16 / 9 })
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(previewRequests).toHaveBeenCalledTimes(2)
+      const request = previewRequests.mock.lastCall[0]
+
+      state.windowMinimized.value = true
+      await nextTick()
+      expect(document.hidden).toBe(false)
+      expect(request.signal.aborted).toBe(true)
+      pending.resolve({ status: 200, data: new Blob(['stale']), headers: { etag: '"stale"' } })
+      await vi.advanceTimersByTimeAsync(4000)
+      expect(previewRequests).toHaveBeenCalledTimes(2)
+      expect(component.sc_blob.value).toBe(displayedUrl)
+      expect(component.workspace.screenshot).toBe(snapshot)
+      expect(callsTo('/task')).toHaveLength(2)
+      expect(callsTo('/status')).toHaveLength(2)
+
+      state.windowMinimized.value = false
+      await nextTick()
+      expect(previewRequests).toHaveBeenCalledTimes(3)
+      expect(previewRequests.mock.lastCall[0].headers).toEqual({ 'If-None-Match': '"frame"' })
+      state.windowMinimized.value = false
+      await vi.advanceTimersByTimeAsync(0)
+      expect(previewRequests).toHaveBeenCalledTimes(3)
+      expect(component.sc_blob.value).toBe(displayedUrl)
+      expect(callsTo('/task')).toHaveLength(2)
+      expect(callsTo('/status')).toHaveLength(2)
+    } finally {
+      onUnmounted.mock.lastCall[0]()
+    }
+  })
+
+  it('waits for browser visibility and the screenshot toggle after desktop restore', async () => {
+    state.realPreview = true
+    state.windowMinimized.value = true
+    state.client.get.mockImplementation(async (url) =>
+      url.endsWith('/screenshot/latest') ? { status: 204, headers: {} } : { data: {} }
+    )
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    onMounted.mock.lastCall[0]()
+
+    try {
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(callsTo('/screenshot/latest')).toHaveLength(0)
+
+      setHidden(true)
+      state.windowMinimized.value = false
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(callsTo('/screenshot/latest')).toHaveLength(0)
+
+      setHidden(false)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(callsTo('/screenshot/latest')).toHaveLength(1)
+
+      state.windowMinimized.value = true
+      await nextTick()
+      component.sc_preview.value = false
+      state.windowMinimized.value = false
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(callsTo('/screenshot/latest')).toHaveLength(1)
+      expect(localStorage.setItem).toHaveBeenCalledWith('sc_preview', 'false')
+    } finally {
+      onUnmounted.mock.lastCall[0]()
+    }
+  })
 
   it('pauses hidden-page requests and refreshes immediately when visible again', async () => {
     let status = 'working'
