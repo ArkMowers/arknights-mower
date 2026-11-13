@@ -1168,7 +1168,7 @@ const start_options = [
 const db_groups = [
   {
     key: 'mastery',
-    label: '全自动专精',
+    label: '全自动专精/合成',
     items: ['mastery_plan', 'mastery_route', 'mastery_notify']
   },
   {

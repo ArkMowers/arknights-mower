@@ -149,7 +149,7 @@ function formatCount(value) {
         <div v-else class="gp-empty gp-overview__empty">
           <p class="gp-empty__title">队列还是空的</p>
           <p class="gp-muted">
-            选择干员并设置养成目标；开启全自动专精后自动训练技能，精英化与模组升级仍需手动完成。
+            选择干员并设置养成目标；开启全自动专精/合成后，会在扫描仓库任务结束后自动训练技能，精英化与模组升级仍需手动完成。
           </p>
           <div class="gp-empty__actions">
             <n-button size="small" type="primary" @click="emit('add-target')"
