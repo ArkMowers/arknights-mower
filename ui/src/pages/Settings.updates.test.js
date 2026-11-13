@@ -51,6 +51,9 @@ vi.mock('@/components/SoftwareVersionPreference.vue', () => ({
 vi.mock('@/components/VersionWatermarkPreference.vue', () => ({
   default: { setup: () => () => '' }
 }))
+vi.mock('@/components/RunningLogLayoutPreference.vue', () => ({
+  default: { setup: () => () => '' }
+}))
 vi.mock('@/components/LogBackgroundPreference.vue', () => ({ default: { setup: () => () => '' } }))
 vi.mock('@/components/HalloweenPreference.vue', () => ({ default: { setup: () => () => '' } }))
 vi.mock('@/components/SettingsSegmented.vue', () => ({ default: { setup: () => () => '' } }))

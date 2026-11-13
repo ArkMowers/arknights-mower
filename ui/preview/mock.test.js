@@ -142,11 +142,18 @@ describe('offline preview', () => {
       task_settings_layout: 'checklist',
       base_report_mode: 'standard',
       halloween_mode: 'auto',
-      task_queue_display: 'portraits'
+      task_queue_display: 'portraits',
+      running_log_layout: 'right_rail'
     })
     await client.put('/gui/appearance', { task_settings_layout: 'waterfall' })
     await client.put('/gui/appearance', { software_version_display: 'channel' })
     await client.put('/gui/appearance', { software_version_language: 'zh' })
+    const customLayout = 'custom:split:daily,log,tasks|screenshot'
+    await expect(
+      client.put('/gui/appearance', { running_log_layout: customLayout })
+    ).resolves.toMatchObject({
+      data: { running_log_layout: customLayout }
+    })
     await expect(
       client.put('/gui/appearance', {
         watermark_visible: false,
@@ -162,7 +169,8 @@ describe('offline preview', () => {
       task_settings_layout: 'waterfall',
       base_report_mode: 'standard',
       halloween_mode: 'auto',
-      task_queue_display: 'portraits'
+      task_queue_display: 'portraits',
+      running_log_layout: customLayout
     })
     expect(data.config).toEqual(originalConfig)
     expect(data.appearance).not.toHaveProperty('watermark_confirmation')
@@ -173,7 +181,8 @@ describe('offline preview', () => {
       task_settings_layout: 'checklist',
       base_report_mode: 'standard',
       halloween_mode: 'auto',
-      task_queue_display: 'portraits'
+      task_queue_display: 'portraits',
+      running_log_layout: 'right_rail'
     })
     expect(data.appearance).toEqual({
       software_version_display: 'version',
@@ -182,7 +191,8 @@ describe('offline preview', () => {
       task_settings_layout: 'checklist',
       base_report_mode: 'standard',
       halloween_mode: 'auto',
-      task_queue_display: 'portraits'
+      task_queue_display: 'portraits',
+      running_log_layout: 'right_rail'
     })
   })
 
@@ -221,7 +231,10 @@ describe('offline preview', () => {
     { halloween_mode: 'ON', software_version_display: 'channel' },
     { halloween_mode: ' off ' },
     { halloween_mode: 'disabled' },
-    { halloween_mode: 'on', software_version_display: 'invalid' }
+    { halloween_mode: 'on', software_version_display: 'invalid' },
+    { running_log_layout: null },
+    { running_log_layout: 'custom:split:daily,log,screenshot,tasks|' },
+    { running_log_layout: 'custom:single:daily,daily,log,tasks', task_queue_display: 'names' }
   ])('rejects invalid appearance update %j without partial writes', async (payload) => {
     const data = createPreviewData({})
     const original = structuredClone(data.appearance)

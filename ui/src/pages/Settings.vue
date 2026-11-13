@@ -15,6 +15,7 @@ import { themeSelectionKey } from '@/composables/themeSelection'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
 import VersionWatermarkPreference from '@/components/VersionWatermarkPreference.vue'
+import RunningLogLayoutPreference from '@/components/RunningLogLayoutPreference.vue'
 import LogBackgroundPreference from '@/components/LogBackgroundPreference.vue'
 import HalloweenPreference from '@/components/HalloweenPreference.vue'
 import SettingsSegmented from '@/components/SettingsSegmented.vue'
@@ -265,6 +266,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               </n-alert>
             </div>
           </n-form-item>
+          <RunningLogLayoutPreference />
           <LogBackgroundPreference />
         </n-form>
       </n-card>
