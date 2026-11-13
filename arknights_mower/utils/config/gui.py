@@ -363,6 +363,35 @@ def load_task_queue_display() -> str:
     return value if value in ("portraits", "names") else "portraits"
 
 
+def _is_valid_running_log_layout(value: object) -> bool:
+    if not isinstance(value, str):
+        return False
+    if value in (
+        "right_rail",
+        "left_rail",
+        "right_rail_log",
+        "left_rail_log",
+        "stacked",
+    ):
+        return True
+    modules = {"screenshot", "tasks", "daily", "log"}
+    if value.startswith("custom:single:"):
+        items = value.removeprefix("custom:single:").split(",")
+    elif value.startswith("custom:split:"):
+        columns = value.removeprefix("custom:split:").split("|")
+        if len(columns) != 2 or not all(columns):
+            return False
+        items = [item for column in columns for item in column.split(",")]
+    else:
+        return False
+    return len(items) == len(modules) and set(items) == modules
+
+
+def load_running_log_layout() -> str:
+    value = read_gui_data(strict=True).get("running_log_layout")
+    return value if _is_valid_running_log_layout(value) else "right_rail"
+
+
 def load_base_report_mode() -> str:
     value = read_gui_data(strict=True).get("base_report_mode")
     return value if value in ("standard", "stock") else "standard"
@@ -422,6 +451,7 @@ def save_appearance(changes: dict) -> dict:
             "任务配置显示方式无效",
         ),
         "task_queue_display": (str, ("portraits", "names"), "任务列表显示方式无效"),
+        "running_log_layout": (str, None, "运行日志布局无效"),
         "base_report_mode": (str, ("standard", "stock"), "基建报表显示方式无效"),
         "halloween_mode": (str, ("auto", "on", "off"), "万圣节装饰显示方式无效"),
         "watermark_visible": (bool, (True, False), "版本水印显示设置无效"),
@@ -437,7 +467,11 @@ def save_appearance(changes: dict) -> dict:
         raise ValueError("请提供有效的外观配置")
     for key, value in values.items():
         value_type, choices, message = fields[key]
-        if not isinstance(value, value_type) or value not in choices:
+        if (
+            not isinstance(value, value_type)
+            or (choices is not None and value not in choices)
+            or (key == "running_log_layout" and not _is_valid_running_log_layout(value))
+        ):
             raise ValueError(message)
     if values.get("watermark_visible") is False:
         if changes.get("watermark_confirmation") != _WATERMARK_CONFIRMATION:

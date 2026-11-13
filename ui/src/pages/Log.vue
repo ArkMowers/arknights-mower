@@ -29,6 +29,7 @@ import {
   fitRailLayout,
   logLayoutZoom,
   logMinHeight,
+  PANE_MIN_HEIGHT,
   RAIL_GAP,
   RAIL_LAYOUT_MIN_WIDTH,
   RAIL_LOG_MIN_WIDTH,
@@ -40,6 +41,7 @@ import { latestLogDate } from '@/utils/logSource'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import StartSchedule from '@/components/StartSchedule.vue'
 import LogOutput from '@/components/LogOutput.vue'
+import LogDailyStatus from '@/components/LogDailyStatus.vue'
 import LogOperator from '@/components/LogOperator.vue'
 import SessionLink from '@/components/SessionLink.vue'
 import TaskActionSubjects from '@/components/TaskActionSubjects.vue'
@@ -51,13 +53,14 @@ import { usePlanStore } from '@/stores/plan'
 import { queueTaskRoom, queueTaskRows } from '@/utils/taskPresentation'
 import { useResolvedTheme } from '@/composables/theme'
 import { getDailyStatusItems, hasDailyStatusTasks } from '@/task-workflow/model'
+import { parseRunningLogLayout } from '@/utils/logLayoutConfig'
 const mower_store = useMowerStore()
 const config_store = useConfigStore()
 const logBackground = useLogBackgroundStore()
 const workspace = useLogWorkspaceStore()
 const startup_reveal = ref(!workspace.visited)
 const page_visible = ref(!document.hidden)
-const { taskQueueDisplay } = storeToRefs(useGuiStore())
+const { taskQueueDisplay, runningLogLayout } = storeToRefs(useGuiStore())
 const { operators, plan } = storeToRefs(usePlanStore())
 const operator_names = computed(() => operators.value.map((operator) => operator.value))
 const mastery_icons = [mastery0, mastery1, mastery2, mastery3]
@@ -142,6 +145,10 @@ watch(
 const task_table_visible = computed(() => show_task_table.value && task_list.value.length > 0)
 const screenshot_entry = use_panel_entry(has_screenshot)
 const queue_entry = use_panel_entry(task_table_visible)
+const plan_condition_visible = computed(
+  () => show_task_table.value && plan_condition.value.length > 0
+)
+const daily_overview = shallowRef({ items: [], gameDay: null })
 const log_layout = ref(null)
 const action_bar = ref(null)
 const show_view_controls = ref(false)
@@ -164,7 +171,8 @@ function show_operator_hint(name, event) {
     y: bounds.top - 4
   }
 }
-const task_queue = ref(null)
+const task_queue_elements = ref([])
+const task_queue = computed(() => task_queue_elements.value[0])
 const layout_preference = { ...workspace.layout }
 let layoutObserver
 let restoring_log_layout = false
@@ -279,7 +287,7 @@ function transition_log_view(update, { panel, closing = false, immediate = false
           panel === 'screenshot'
             ? !task_table_visible.value
             : !has_screenshot.value && task_list.value.length > 0
-        if (rail_layout.value && changesRail) types.push('mower-log-rail')
+        if (split_layout.value && changesRail) types.push('mower-log-rail')
       }
       if (closing) types.push('mower-log-collapse')
     }
@@ -298,10 +306,35 @@ function transition_log_view(update, { panel, closing = false, immediate = false
   }
 }
 
-// 桌面宽屏仿照游戏主界面：截图和任务列表在右栏，日志占左侧。
 const rail_layout = ref(workspace.wideLayout && !mobile.value)
-const rail_active = computed(() => has_screenshot.value || task_table_visible.value)
-const rail_mode = computed(() => rail_layout.value && rail_active.value && !mobile.value)
+const saved_layout = computed(() => parseRunningLogLayout(runningLogLayout.value))
+const single_layout = computed(() => saved_layout.value.mode === 'single')
+const split_layout = computed(() => rail_layout.value && !mobile.value && !single_layout.value)
+const uses_saved_order = computed(() => single_layout.value || split_layout.value)
+const log_column_on_right = computed(() => saved_layout.value.right.includes('log'))
+const screenshot_column_on_left = computed(() => saved_layout.value.left.includes('screenshot'))
+const daily_in_log = computed(() => {
+  if (!split_layout.value) return false
+  const logColumn = log_column_on_right.value ? saved_layout.value.right : saved_layout.value.left
+  return logColumn[logColumn.indexOf('log') - 1] === 'daily'
+})
+const rail_mode = computed(() => {
+  if (!split_layout.value) return false
+  const present = {
+    log: true,
+    screenshot: has_screenshot.value,
+    tasks: task_table_visible.value || plan_condition_visible.value,
+    daily: !daily_in_log.value && daily_overview.value.items.length > 0
+  }
+  return [saved_layout.value.left, saved_layout.value.right].every((column) =>
+    column.some((module) => present[module])
+  )
+})
+const layout_columns = computed(() => {
+  if (split_layout.value) return [saved_layout.value.left, saved_layout.value.right]
+  if (single_layout.value) return [saved_layout.value.single]
+  return [['screenshot', 'tasks', 'log']]
+})
 const rail_entry = use_panel_entry(rail_mode)
 const log_entry = use_panel_entry(computed(() => log_lines.value.length > 0))
 
@@ -323,10 +356,31 @@ function plan_condition_height(container, zoom) {
   return (container.querySelector('.plan-condition')?.getBoundingClientRect().height ?? 0) / zoom
 }
 
+function standalone_daily_height(container, zoom) {
+  return (container.querySelector('.log-daily-module')?.getBoundingClientRect().height ?? 0) / zoom
+}
+
 // 上下排列时截图按当前宽度等比显示的高度；宽度未知时返回 0。
 function stacked_screenshot_fit(container) {
   const width = container.querySelector('.log-screenshot')?.clientWidth || container.clientWidth
   return width > 0 ? Math.round(width / screenshot_aspect) : 0
+}
+
+function clamp_stacked_screenshot(value, paneHeight, bottomReserve, fit) {
+  const bounded = clampScreenshotHeight(
+    value,
+    paneHeight,
+    bottomReserve,
+    fit || Infinity,
+    resizer_height.value
+  )
+  const minimum = Math.min(PANE_MIN_HEIGHT, fit || Infinity)
+  return uses_saved_order.value ? Math.max(minimum, bounded) : bounded
+}
+
+function clamp_stacked_task(value, availableHeight, bottomReserve) {
+  const height = clampTaskHeight(value, availableHeight, bottomReserve)
+  return uses_saved_order.value ? Math.max(PANE_MIN_HEIGHT, height) : height
 }
 
 function apply_log_layout() {
@@ -340,7 +394,8 @@ function apply_log_layout() {
   const paneHeight = bounds.height / zoom
   const logHeight = logMinHeight(paneHeight)
   const bottomReserve = logHeight + resizer_height.value
-  const conditionHeight = plan_condition_height(container, zoom)
+  const fixedHeight =
+    plan_condition_height(container, zoom) + standalone_daily_height(container, zoom)
   container.style.setProperty('--log-min-h', `${logHeight}px`)
   let screenshotTrack = 0
   if (has_screenshot.value) {
@@ -351,13 +406,7 @@ function apply_log_layout() {
       : (layout_preference.screenshot_height ?? 270)
     const height = fitMobile
       ? fit
-      : clampScreenshotHeight(
-          preferred,
-          paneHeight,
-          bottomReserve + conditionHeight,
-          fit || Infinity,
-          resizer_height.value
-        )
+      : clamp_stacked_screenshot(preferred, paneHeight, bottomReserve + fixedHeight, fit)
     screenshotTrack = height + resizer_height.value
     container.style.setProperty('--log-sc-h', `${height}px`)
     container.style.setProperty('--log-sc-aspect', String(screenshot_aspect))
@@ -382,11 +431,12 @@ function apply_log_layout() {
         animation.animationName?.startsWith('reveal-log-screenshot') &&
         animation.playState === 'running'
     )
+  const scrollOffset = uses_saved_order.value ? 0 : (container.scrollTop ?? 0)
   const availableHeight =
-    screenshotTrack && screenshotEntering
-      ? paneHeight + (container.scrollTop ?? 0) - screenshotTrack - conditionHeight
+    uses_saved_order.value || (screenshotTrack && screenshotEntering)
+      ? paneHeight + scrollOffset - screenshotTrack - fixedHeight
       : (bounds.bottom - task.top) / zoom
-  const height = clampTaskHeight(layout_preference.task_height, availableHeight, bottomReserve)
+  const height = clamp_stacked_task(layout_preference.task_height, availableHeight, bottomReserve)
   container.style.setProperty('--log-task-h', `${height}px`)
 }
 
@@ -457,20 +507,28 @@ function resize_log_pane(event, pane) {
           layout_preference.rail_width = fitted.width
         }
       } else {
-        size = clampScreenshotHeight(
+        size = clamp_stacked_screenshot(
           dragged,
           paneHeight,
-          bottomReserve + plan_condition_height(container, zoom),
-          stacked_screenshot_fit(container) || Infinity,
-          resizer_height.value
+          bottomReserve +
+            plan_condition_height(container, zoom) +
+            standalone_daily_height(container, zoom),
+          stacked_screenshot_fit(container)
         )
       }
     } else {
       const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
       if (!task) return
-      size = clampTaskHeight(
+      const screenshot = container.querySelector('.log-screenshot')?.getBoundingClientRect()
+      const availableHeight = uses_saved_order.value
+        ? paneHeight -
+          plan_condition_height(container, zoom) -
+          standalone_daily_height(container, zoom) -
+          (screenshot ? screenshot.height / zoom + resizer_height.value : 0)
+        : (bounds.bottom - task.top) / zoom
+      size = clamp_stacked_task(
         (moveEvent.clientY - task.top) / zoom,
-        (bounds.bottom - task.top) / zoom,
+        availableHeight,
         bottomReserve
       )
     }
@@ -491,7 +549,7 @@ function resize_log_pane(event, pane) {
   })
 }
 
-// 左右分栏时拖动日志与右栏之间的纵向分隔条，调整右栏宽度并保存。
+// 拖动两栏之间的分隔条可调整截图所在栏的宽度。
 function resize_rail_column(event) {
   event.preventDefault()
   const container = log_layout.value
@@ -504,7 +562,10 @@ function resize_rail_column(event) {
     if (!bounds.width || !paneWidth) return
     const logRailMinWidth = Math.max(RAIL_LOG_MIN_WIDTH, Math.round(paneWidth * 0.4))
     const maxRailWidth = Math.min(RAIL_MAX_WIDTH, paneWidth - logRailMinWidth - RAIL_GAP)
-    const dragged = ((bounds.right - moveEvent.clientX) * paneWidth) / bounds.width - RAIL_GAP / 2
+    const distance = screenshot_column_on_left.value
+      ? moveEvent.clientX - bounds.left
+      : bounds.right - moveEvent.clientX
+    const dragged = (distance * paneWidth) / bounds.width - RAIL_GAP / 2
     const width = Math.max(RAIL_MIN_WIDTH, Math.min(maxRailWidth, Math.round(dragged)))
     if (width <= 0) return
     savedWidth = width
@@ -620,7 +681,10 @@ watch(
   },
   { flush: 'sync' }
 )
-watch(rail_active, () => nextTick(apply_log_layout))
+watch([rail_mode, runningLogLayout], () => {
+  cancel_layout_resize?.()
+  nextTick(apply_log_layout)
+})
 watch(
   task_queue,
   (table) => {
@@ -656,21 +720,18 @@ workspace.restoreDailyStatus()
 const { dailyStatus: daily_status } = storeToRefs(workspace)
 const daily_status_loading = ref(false)
 const daily_view_selected = ref(workspace.dailyView)
-const daily_status_always_visible = computed(() => rail_layout.value && !mobile.value)
 const daily_toggle_available = computed(
   () =>
     show_daily_tasks.value &&
     running.value &&
-    !daily_status_always_visible.value &&
+    !uses_saved_order.value &&
     hasDailyStatusTasks(config_store)
 )
 const daily_view_visible = computed(() => daily_toggle_available.value && daily_view_selected.value)
 const daily_slot = computed(() => (daily_view_visible.value ? 'alternate' : 'header'))
 const daily_status_enabled = computed(
   () =>
-    show_daily_tasks.value &&
-    running.value &&
-    (daily_status_always_visible.value || daily_view_visible.value)
+    show_daily_tasks.value && running.value && (uses_saved_order.value || daily_view_visible.value)
 )
 watch(daily_toggle_available, (available) => {
   if (!available) daily_view_selected.value = false
@@ -680,13 +741,12 @@ const daily_items = computed(() =>
     ? getDailyStatusItems(config_store, daily_status.value.records ?? {})
     : []
 )
-const daily_overview = shallowRef({ items: [], gameDay: null })
 watch(
-  [daily_status_always_visible, daily_items],
+  [uses_saved_order, daily_items],
   ([wide], [wasWide]) => {
     const update = () => {
       daily_overview.value = {
-        items: daily_status_always_visible.value ? daily_items.value : [],
+        items: uses_saved_order.value ? daily_items.value : [],
         gameDay: daily_status.value?.game_day
       }
     }
@@ -709,6 +769,10 @@ const displayed_daily_items = computed(() =>
 )
 const displayed_daily_game_day = computed(() =>
   daily_view_visible.value ? daily_status.value?.game_day : daily_overview.value.gameDay
+)
+watch(
+  () => daily_overview.value.items.length,
+  () => nextTick(apply_log_layout)
 )
 // 日志上方的日期取最新一条日志行的日期，而不是游戏日。
 const log_date = computed(() => latestLogDate(log_lines.value))
@@ -868,9 +932,6 @@ import ConciseLogIcon from '@vicons/tabler/es/List'
 import TaskListIcon from '@vicons/tabler/es/ListNumbers'
 import DailyTasksIcon from '@vicons/tabler/es/ListCheck'
 import MoreIcon from '@vicons/tabler/es/Dots'
-import DailyDoneIcon from '@vicons/ionicons5/es/CheckmarkCircle'
-import DailyAttemptedIcon from '@vicons/ionicons5/es/AlertCircleOutline'
-import DailyPendingIcon from '@vicons/ionicons5/es/EllipseOutline'
 import DailyViewSwitchIcon from '@vicons/ionicons5/es/SwapHorizontalOutline'
 import HistoryIcon from '@vicons/ionicons5/es/TimeOutline'
 
@@ -940,7 +1001,7 @@ function apply_log_view_toggle({ className, state }, immediate) {
   ) {
     transition_log_view(update, { panel: 'queue', closing: !enabled, immediate })
   } else if (className === 'daily-tasks-toggle') {
-    const wide = daily_status_always_visible.value
+    const wide = uses_saved_order.value
     const available = running.value && hasDailyStatusTasks(config_store)
     if (wide) skip_next_daily_motion = immediate
     if (!wide && available) transition_log_view(update, { immediate })
@@ -970,16 +1031,6 @@ function toggle_daily_view() {
     true
   )
 }
-
-const daily_states = {
-  done: { icon: DailyDoneIcon, label: '今日已处理（按调度记录）', summary: '已处理' },
-  attempted: { icon: DailyAttemptedIcon, label: '今日已尝试，尚未完成', summary: '已尝试' },
-  pending: { icon: DailyPendingIcon, label: '今日尚未完成', summary: '未处理' }
-}
-const dailyState = (state) =>
-  Object.hasOwn(daily_states, state)
-    ? daily_states[state]
-    : { icon: DailyPendingIcon, label: '处理结果未确认', summary: '未确认' }
 
 const show_task = ref(false)
 const TaskDialog = shallowRef(null)
@@ -1265,7 +1316,9 @@ async function db_delete(keys) {
     class="home-container"
     :class="{
       'home-container--mobile': mobile,
-      'home-container--rail': rail_mode
+      'home-container--rail': rail_mode,
+      'home-container--log-right': rail_mode && log_column_on_right,
+      'home-container--log-in-rail': rail_mode && screenshot_column_on_left !== log_column_on_right
     }"
   >
     <div
@@ -1283,7 +1336,9 @@ async function db_delete(keys) {
       :class="{
         'with-screenshot': has_screenshot,
         'has-tasks': task_table_visible,
+        'log-pane--single': single_layout,
         'log-pane--rail': rail_mode,
+        'log-pane--rail-left': rail_mode && screenshot_column_on_left,
         'log-pane--reveal-content': log_entry,
         'log-pane--reveal-screenshot': screenshot_entry,
         'log-pane--expand-screenshot': screenshot_entry === 'expand',
@@ -1293,326 +1348,321 @@ async function db_delete(keys) {
       aria-label="运行日志"
       @animationend.self="apply_log_layout"
     >
-      <n-image v-if="has_screenshot" class="log-screenshot" :src="sc_blob" object-fit="contain" />
       <div
-        v-if="has_screenshot"
-        class="log-resizer log-resizer-sc"
-        @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
-      ></div>
-
-      <div v-if="show_task_table && plan_condition.length > 0" class="plan-condition">
-        <span class="plan-condition-label">当前激活的副表为： </span>
-        <span v-for="(x, index) in plan_condition" :key="index" class="plan-condition-name">
-          {{ x }}
-        </span>
-      </div>
-      <div
-        v-if="task_list.length > 0"
-        v-show="task_table_visible"
-        :id="`${toolbar_id}-queue`"
-        ref="task_queue"
-        class="task-table-scroll"
-        role="region"
-        aria-label="任务列表"
+        v-for="column in layout_columns"
+        v-show="rail_mode || column.includes('log')"
+        :key="column.includes('log') ? 'log' : 'side'"
+        class="log-column"
+        :class="{ 'log-column--with-log': column.includes('log') }"
       >
-        <n-table
-          class="task-table"
-          :class="{ 'task-table--names': show_task_names }"
-          size="small"
-          :bordered="show_task_names"
-          :single-line="!show_task_names"
-        >
-          <thead>
-            <tr>
-              <th class="task-time"><span class="task-time-label">时间</span></th>
-              <th :colspan="show_task_names ? 2 : undefined">任务</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="{
-                task,
-                clock,
-                day,
-                heading,
-                mastery,
-                actions,
-                roomEntries,
-                roomId,
-                roomAgents,
-                roomIndex = 0,
-                refreshTargets,
-                key
-              } in task_rows"
-              :key="key"
-              class="task-group-start"
+        <template v-for="module in column" :key="module">
+          <template v-if="module === 'screenshot'">
+            <n-image
+              v-if="has_screenshot"
+              class="log-screenshot"
+              :src="sc_blob"
+              object-fit="contain"
+            />
+            <div
+              v-if="has_screenshot"
+              class="log-resizer log-resizer-sc"
+              @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
+            ></div>
+          </template>
+          <template v-else-if="module === 'tasks'">
+            <div v-if="plan_condition_visible" class="plan-condition">
+              <span class="plan-condition-label">当前激活的副表为： </span>
+              <span v-for="(x, index) in plan_condition" :key="index" class="plan-condition-name">
+                {{ x }}
+              </span>
+            </div>
+            <div
+              v-if="task_list.length > 0"
+              v-show="task_table_visible"
+              :id="`${toolbar_id}-queue`"
+              ref="task_queue_elements"
+              class="task-table-scroll"
+              role="region"
+              aria-label="任务列表"
             >
-              <td
-                v-if="roomIndex === 0"
-                class="task-time"
-                :rowspan="show_task_names && roomEntries.length ? roomEntries.length : undefined"
+              <n-table
+                class="task-table"
+                :class="{ 'task-table--names': show_task_names }"
+                size="small"
+                :bordered="show_task_names"
+                :single-line="!show_task_names"
               >
-                <n-popover
-                  v-if="day && day !== task_calendar_day"
-                  :show="task_date_hint === key"
-                  trigger="click"
-                  placement="top"
-                  @update:show="set_task_date_hint(key, $event)"
-                >
-                  <template #trigger>
-                    <button
-                      type="button"
-                      class="task-date-trigger"
-                      :aria-label="`${day} ${clock}`"
-                      :aria-expanded="task_date_hint === key"
-                      @pointerenter="
-                        $event.pointerType === 'mouse' && set_task_date_hint(key, true)
-                      "
-                      @pointerleave="
-                        $event.pointerType === 'mouse' && set_task_date_hint(key, false)
-                      "
-                      @keydown.esc.stop="set_task_date_hint(key, false)"
-                    >
-                      <time :datetime="task.time">{{ clock }}</time>
-                    </button>
-                  </template>
-                  {{ day }} {{ clock }}
-                </n-popover>
-                <time v-else :datetime="task.time" :title="day">{{ clock }}</time>
-                <template v-if="show_task_names && roomEntries.length">
-                  <div v-if="task.emergency_recovery_release">自动救急</div>
-                  <div v-else-if="task.emergency_staffing">自动救急换班</div>
-                  <div v-else-if="task.emergency_dorm">自动救急宿舍安排</div>
-                </template>
-              </td>
-              <template v-if="show_task_names">
-                <template v-if="roomIndex < roomEntries.length">
-                  <td>{{ roomId }}</td>
-                  <td>
-                    {{
-                      Array.isArray(roomAgents)
-                        ? roomAgents.map((name) => name || '_').join(', ')
-                        : ''
-                    }}
-                  </td>
-                </template>
-                <td v-else colspan="2">
-                  {{
-                    task.display_name ||
-                    (typeof task.type === 'string' ? task.type : task.type?.display_value)
-                  }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
-                </td>
-              </template>
-              <td v-else class="task-content">
-                <div class="task-heading">
-                  <TaskActionSubjects
-                    v-if="actions.length"
-                    :actions="actions"
-                    :facility-plan="plan"
-                    :size="24"
-                  />
-                  <template v-for="(token, index) in heading" :key="index">
-                    <button
-                      v-if="!actions.length && token.type === 'operator'"
-                      type="button"
-                      class="task-operator-button"
-                      :class="{ 'task-operator-button--named': token.showName }"
-                      :aria-label="token.name"
-                      :title="token.name"
-                      @click="show_operator_hint(token.name, $event)"
-                      @focus="show_operator_hint(token.name, $event)"
-                      @blur="operator_hint = null"
-                      @keydown.esc="operator_hint = null"
-                    >
-                      <log-operator
-                        :name="token.name"
-                        :show-name="token.showName"
-                        :size="24"
-                        :tabindex="-1"
-                      />
-                    </button>
-                    <span
-                      v-else-if="!actions.length && token.type === 'group'"
-                      class="task-subject"
-                      >{{ token.text }}</span
-                    >
-                    <span v-else-if="!actions.length">{{ token.text }}</span>
-                  </template>
-                </div>
-                <div v-if="task.emergency_recovery_release" class="task-flag">自动救急</div>
-                <div v-else-if="task.emergency_staffing" class="task-flag">自动救急换班</div>
-                <div v-else-if="task.emergency_dorm" class="task-flag">自动救急宿舍安排</div>
-                <div v-if="mastery" class="task-facilities">
-                  <div v-if="mastery.room" class="task-room-label" :title="mastery.room">
-                    {{ mastery.label }}
-                  </div>
-                  <div
-                    class="task-mastery-detail"
-                    :class="{ 'task-mastery-detail--unplaced': !mastery.room }"
+                <thead>
+                  <tr>
+                    <th class="task-time"><span class="task-time-label">时间</span></th>
+                    <th :colspan="show_task_names ? 2 : undefined">任务</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="{
+                      task,
+                      clock,
+                      day,
+                      heading,
+                      mastery,
+                      actions,
+                      roomEntries,
+                      roomId,
+                      roomAgents,
+                      roomIndex = 0,
+                      refreshTargets,
+                      key
+                    } in task_rows"
+                    :key="key"
+                    class="task-group-start"
                   >
-                    <template v-for="(token, index) in mastery.tokens" :key="index">
-                      <button
-                        v-if="token.type === 'operator'"
-                        type="button"
-                        class="task-operator-button"
-                        :aria-label="token.name"
-                        :title="token.name"
-                        @click="show_operator_hint(token.name, $event)"
-                        @focus="show_operator_hint(token.name, $event)"
-                        @blur="operator_hint = null"
-                        @keydown.esc="operator_hint = null"
+                    <td
+                      v-if="roomIndex === 0"
+                      class="task-time"
+                      :rowspan="
+                        show_task_names && roomEntries.length ? roomEntries.length : undefined
+                      "
+                    >
+                      <n-popover
+                        v-if="day && day !== task_calendar_day"
+                        :show="task_date_hint === key"
+                        trigger="click"
+                        placement="top"
+                        @update:show="set_task_date_hint(key, $event)"
                       >
-                        <log-operator :name="token.name" :size="24" :tabindex="-1" />
-                      </button>
-                      <span
-                        v-else-if="token.type === 'mastery'"
-                        class="task-mastery"
-                        role="img"
-                        :aria-label="token.text"
-                        :title="token.text"
-                        ><template v-for="(level, position) in token.levels" :key="position"
-                          ><span v-if="position" aria-hidden="true"> → </span
-                          ><img
-                            :src="mastery_icons[level]"
-                            width="20"
-                            height="18"
-                            alt=""
-                            aria-hidden="true" /></template
-                      ></span>
-                      <span v-else>{{ token.text }}</span>
+                        <template #trigger>
+                          <button
+                            type="button"
+                            class="task-date-trigger"
+                            :aria-label="`${day} ${clock}`"
+                            :aria-expanded="task_date_hint === key"
+                            @pointerenter="
+                              $event.pointerType === 'mouse' && set_task_date_hint(key, true)
+                            "
+                            @pointerleave="
+                              $event.pointerType === 'mouse' && set_task_date_hint(key, false)
+                            "
+                            @keydown.esc.stop="set_task_date_hint(key, false)"
+                          >
+                            <time :datetime="task.time">{{ clock }}</time>
+                          </button>
+                        </template>
+                        {{ day }} {{ clock }}
+                      </n-popover>
+                      <time v-else :datetime="task.time" :title="day">{{ clock }}</time>
+                      <template v-if="show_task_names && roomEntries.length">
+                        <div v-if="task.emergency_recovery_release">自动救急</div>
+                        <div v-else-if="task.emergency_staffing">自动救急换班</div>
+                        <div v-else-if="task.emergency_dorm">自动救急宿舍安排</div>
+                      </template>
+                    </td>
+                    <template v-if="show_task_names">
+                      <template v-if="roomIndex < roomEntries.length">
+                        <td>{{ roomId }}</td>
+                        <td>
+                          {{
+                            Array.isArray(roomAgents)
+                              ? roomAgents.map((name) => name || '_').join(', ')
+                              : ''
+                          }}
+                        </td>
+                      </template>
+                      <td v-else colspan="2">
+                        {{
+                          task.display_name ||
+                          (typeof task.type === 'string' ? task.type : task.type?.display_value)
+                        }}{{ task.meta_data ? ' ' + task.meta_data : '' }}
+                      </td>
                     </template>
-                  </div>
-                </div>
-                <div v-if="roomEntries.length" class="task-facilities">
-                  <div v-for="[key, value] in roomEntries" :key="key" class="task-facility">
-                    <div class="task-room-label" :title="key">
-                      {{ queueTaskRoom(task, key, plan) }}
-                    </div>
-                    <div class="task-operators">
-                      <button
-                        v-for="(name, index) in value"
-                        :key="index"
-                        type="button"
-                        class="task-operator-button"
-                        :aria-label="operator_hint_name(name)"
-                        :title="operator_hint_name(name)"
-                        @click="show_operator_hint(name, $event)"
-                        @focus="show_operator_hint(name, $event)"
-                        @blur="operator_hint = null"
-                        @keydown.esc="operator_hint = null"
-                      >
-                        <log-operator :name="name || '_'" :size="24" :tabindex="-1" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-                <div v-if="refreshTargets.length" class="task-refresh-targets">
-                  <div
-                    v-for="(target, index) in refreshTargets"
-                    :key="`${target.id}:${index}`"
-                    class="task-room-label"
-                    :title="target.id"
-                  >
-                    {{ target.label }}
-                  </div>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </n-table>
-      </div>
-      <div
-        v-if="task_list.length > 0"
-        v-show="task_table_visible"
-        class="log-resizer log-resizer-task"
-        @pointerdown="(event) => resize_log_pane(event, 'task')"
-      ></div>
-      <log-output
-        class="log"
-        :lines="log_lines"
-        :operator-names="operator_names"
-        :facility-plan="plan"
-        :compact="mobile"
-        :concise="log_concise"
-        :running="running"
-        :auto-scroll="auto_scroll"
-        :show-alternate-view="daily_view_visible"
-      >
-        <template #history="{ at }">
-          <SessionLink
-            class="log-history-link"
-            :to="{ name: 'log_schedule', query: { at: String(at) } }"
-            title="在日志调度中查看"
-            aria-label="在日志调度中查看这条记录"
+                    <td v-else class="task-content">
+                      <div class="task-heading">
+                        <TaskActionSubjects
+                          v-if="actions.length"
+                          :actions="actions"
+                          :facility-plan="plan"
+                          :size="24"
+                        />
+                        <template v-for="(token, index) in heading" :key="index">
+                          <button
+                            v-if="!actions.length && token.type === 'operator'"
+                            type="button"
+                            class="task-operator-button"
+                            :class="{ 'task-operator-button--named': token.showName }"
+                            :aria-label="token.name"
+                            :title="token.name"
+                            @click="show_operator_hint(token.name, $event)"
+                            @focus="show_operator_hint(token.name, $event)"
+                            @blur="operator_hint = null"
+                            @keydown.esc="operator_hint = null"
+                          >
+                            <log-operator
+                              :name="token.name"
+                              :show-name="token.showName"
+                              :size="24"
+                              :tabindex="-1"
+                            />
+                          </button>
+                          <span
+                            v-else-if="!actions.length && token.type === 'group'"
+                            class="task-subject"
+                            >{{ token.text }}</span
+                          >
+                          <span v-else-if="!actions.length">{{ token.text }}</span>
+                        </template>
+                      </div>
+                      <div v-if="task.emergency_recovery_release" class="task-flag">自动救急</div>
+                      <div v-else-if="task.emergency_staffing" class="task-flag">自动救急换班</div>
+                      <div v-else-if="task.emergency_dorm" class="task-flag">自动救急宿舍安排</div>
+                      <div v-if="mastery" class="task-facilities">
+                        <div v-if="mastery.room" class="task-room-label" :title="mastery.room">
+                          {{ mastery.label }}
+                        </div>
+                        <div
+                          class="task-mastery-detail"
+                          :class="{ 'task-mastery-detail--unplaced': !mastery.room }"
+                        >
+                          <template v-for="(token, index) in mastery.tokens" :key="index">
+                            <button
+                              v-if="token.type === 'operator'"
+                              type="button"
+                              class="task-operator-button"
+                              :aria-label="token.name"
+                              :title="token.name"
+                              @click="show_operator_hint(token.name, $event)"
+                              @focus="show_operator_hint(token.name, $event)"
+                              @blur="operator_hint = null"
+                              @keydown.esc="operator_hint = null"
+                            >
+                              <log-operator :name="token.name" :size="24" :tabindex="-1" />
+                            </button>
+                            <span
+                              v-else-if="token.type === 'mastery'"
+                              class="task-mastery"
+                              role="img"
+                              :aria-label="token.text"
+                              :title="token.text"
+                              ><template v-for="(level, position) in token.levels" :key="position"
+                                ><span v-if="position" aria-hidden="true"> → </span
+                                ><img
+                                  :src="mastery_icons[level]"
+                                  width="20"
+                                  height="18"
+                                  alt=""
+                                  aria-hidden="true" /></template
+                            ></span>
+                            <span v-else>{{ token.text }}</span>
+                          </template>
+                        </div>
+                      </div>
+                      <div v-if="roomEntries.length" class="task-facilities">
+                        <div v-for="[key, value] in roomEntries" :key="key" class="task-facility">
+                          <div class="task-room-label" :title="key">
+                            {{ queueTaskRoom(task, key, plan) }}
+                          </div>
+                          <div class="task-operators">
+                            <button
+                              v-for="(name, index) in value"
+                              :key="index"
+                              type="button"
+                              class="task-operator-button"
+                              :aria-label="operator_hint_name(name)"
+                              :title="operator_hint_name(name)"
+                              @click="show_operator_hint(name, $event)"
+                              @focus="show_operator_hint(name, $event)"
+                              @blur="operator_hint = null"
+                              @keydown.esc="operator_hint = null"
+                            >
+                              <log-operator :name="name || '_'" :size="24" :tabindex="-1" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div v-if="refreshTargets.length" class="task-refresh-targets">
+                        <div
+                          v-for="(target, index) in refreshTargets"
+                          :key="`${target.id}:${index}`"
+                          class="task-room-label"
+                          :title="target.id"
+                        >
+                          {{ target.label }}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </n-table>
+            </div>
+            <div
+              v-if="task_list.length > 0"
+              v-show="task_table_visible"
+              class="log-resizer log-resizer-task"
+              @pointerdown="(event) => resize_log_pane(event, 'task')"
+            ></div>
+          </template>
+          <LogDailyStatus
+            v-else-if="module === 'daily' && !daily_in_log && daily_overview.items.length"
+            class="log-daily-module"
+            :items="daily_overview.items"
+            :game-day="daily_overview.gameDay"
+            standalone
+          />
+          <log-output
+            v-else-if="module === 'log'"
+            class="log"
+            :lines="log_lines"
+            :operator-names="operator_names"
+            :facility-plan="plan"
+            :compact="mobile"
+            :concise="log_concise"
+            :running="running"
+            :auto-scroll="auto_scroll"
+            :show-alternate-view="daily_view_visible"
           >
-            <HistoryIcon aria-hidden="true" />
-          </SessionLink>
-        </template>
-        <template v-if="daily_toggle_available" #title>
-          <button
-            class="log-daily-toggle"
-            type="button"
-            :aria-label="
-              daily_view_visible ? '今日任务，切换到运行日志' : '运行日志，切换到今日任务'
-            "
-            @click="toggle_daily_view"
-          >
-            {{ daily_view_visible ? '今日任务' : '运行日志' }}
-            <DailyViewSwitchIcon aria-hidden="true" />
-          </button>
-        </template>
-        <template v-if="daily_view_visible || displayed_daily_items.length" #[daily_slot]>
-          <div
-            class="daily-status"
-            :class="{ 'daily-status--view': daily_view_visible }"
-            :role="daily_view_visible ? 'region' : 'group'"
-            :aria-label="daily_view_visible ? '今日任务' : '任务状态'"
-            :tabindex="daily_view_visible ? 0 : undefined"
-            :title="
-              displayed_daily_items.length
-                ? `游戏日 ${displayed_daily_game_day}，北京时间每日凌晨 4 点开始新的游戏日`
-                : undefined
-            "
-          >
-            <p v-if="!daily_view_visible && log_date" class="daily-status__date">
-              {{ log_date }}
-            </p>
-            <ul
-              v-if="displayed_daily_items.length"
-              class="daily-status__items"
-              aria-label="任务概览"
-            >
-              <li
-                v-for="item in displayed_daily_items"
-                :key="item.id"
-                class="daily-status__item"
-                :class="`daily-status__item--${item.state}`"
-                :title="`${item.title}：${dailyState(item.state).label}`"
+            <template #history="{ at }">
+              <SessionLink
+                class="log-history-link"
+                :to="{ name: 'log_schedule', query: { at: String(at) } }"
+                title="在日志调度中查看"
+                aria-label="在日志调度中查看这条记录"
               >
-                <n-icon
-                  class="daily-status__icon"
-                  :component="dailyState(item.state).icon"
-                  aria-hidden="true"
-                />
-                <span class="daily-status__title">{{ item.title }}</span>
-                <span class="daily-status__state">，{{ dailyState(item.state).label }}</span>
-                <span v-if="daily_view_visible" class="daily-status__summary" aria-hidden="true">
-                  {{ dailyState(item.state).summary }}
-                </span>
-              </li>
-            </ul>
-            <p v-else class="daily-status__empty" role="status">
-              {{ daily_status_loading ? '正在读取今日任务…' : '暂无今日任务状态' }}
-            </p>
-          </div>
+                <HistoryIcon aria-hidden="true" />
+              </SessionLink>
+            </template>
+            <template v-if="daily_toggle_available" #title>
+              <button
+                class="log-daily-toggle"
+                type="button"
+                :aria-label="
+                  daily_view_visible ? '今日任务，切换到运行日志' : '运行日志，切换到今日任务'
+                "
+                @click="toggle_daily_view"
+              >
+                {{ daily_view_visible ? '今日任务' : '运行日志' }}
+                <DailyViewSwitchIcon aria-hidden="true" />
+              </button>
+            </template>
+            <template
+              v-if="daily_view_visible || (daily_in_log && displayed_daily_items.length)"
+              #[daily_slot]
+            >
+              <LogDailyStatus
+                :items="displayed_daily_items"
+                :game-day="displayed_daily_game_day"
+                :log-date="log_date"
+                :alternate="daily_view_visible"
+                :loading="daily_status_loading"
+              />
+            </template>
+          </log-output>
         </template>
-      </log-output>
+      </div>
       <div
         v-if="rail_mode"
         class="log-resizer log-resizer-rail"
         role="separator"
         aria-orientation="vertical"
-        aria-label="调整日志与右侧栏宽度"
+        :aria-label="screenshot_column_on_left ? '调整左侧栏宽度' : '调整右侧栏宽度'"
         @pointerdown="resize_rail_column"
       ></div>
     </section>
@@ -2051,30 +2101,17 @@ async function db_delete(keys) {
 
 .log-pane {
   --log-resizer-size: 8px;
-  --log-screenshot-tracks: 0px 0px;
-  --log-task-row: 0px;
-  --log-task-handle: 0px;
+  --log-screenshot-size: calc(var(--log-sc-h, 270px) * var(--log-screenshot-entry, 1));
   grid-row: 1;
   z-index: 1;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows:
-    var(--log-screenshot-tracks) auto var(--log-task-row) var(--log-task-handle)
-    minmax(var(--log-min-h, 120px), 1fr);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
   min-width: 0;
   overflow: auto;
   position: relative;
 
-  &.with-screenshot {
-    --log-screenshot-tracks: calc(var(--log-sc-h, 270px) * var(--log-screenshot-entry, 1))
-      calc(var(--log-resizer-size) * var(--log-screenshot-entry, 1));
-  }
-
-  &.has-tasks {
-    --log-task-row: auto;
-    --log-task-handle: auto;
-  }
   &.log-pane--expand-screenshot {
     animation: reveal-log-screenshot var(--log-startup-reveal);
   }
@@ -2090,6 +2127,17 @@ async function db_delete(keys) {
   }
 }
 
+.log-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.log-daily-module {
+  overflow: hidden;
+}
+
 .log-pane--reveal-screenshot .log-screenshot {
   animation: reveal-log-preview var(--log-startup-reveal);
 }
@@ -2102,20 +2150,20 @@ async function db_delete(keys) {
   animation: reveal-log-layer var(--log-startup-reveal);
 }
 
-/* 宽屏右栏：截图在上，任务列表铺满下方，日志占左侧整列。 */
 .home-container .log-pane.log-pane--rail {
   --log-rail-track: calc(var(--log-rail-w, 480px) * var(--log-rail-entry, 1));
   --log-rail-spacing: calc(var(--log-rail-gap) * var(--log-rail-entry, 1));
   grid-template-columns: minmax(0, 1fr) var(--log-rail-track);
-  grid-template-rows: var(--log-screenshot-tracks) auto minmax(0, auto) minmax(0, 1fr);
   column-gap: var(--log-rail-spacing);
   overflow: hidden;
 
-  .log-screenshot,
-  .log-resizer-sc,
-  .plan-condition,
-  .task-table-scroll {
-    grid-column: 2;
+  &.log-pane--rail-left {
+    grid-template-columns: var(--log-rail-track) minmax(0, 1fr);
+
+    .log-resizer-rail {
+      left: calc(var(--log-rail-track) + (var(--log-rail-spacing) - 8px) / 2);
+      right: auto;
+    }
   }
 
   .plan-condition {
@@ -2123,9 +2171,18 @@ async function db_delete(keys) {
   }
 
   .task-table-scroll {
-    width: 100%;
-    max-width: none;
+    flex: 1 1 0;
     max-height: none;
+  }
+
+  .log-column--with-log .task-table-scroll {
+    flex: 0 1 auto;
+    max-height: min(240px, 28%);
+  }
+
+  .task-table-scroll:has(~ :is(.log-screenshot, .log-daily-module)) {
+    flex-grow: 0;
+    flex-basis: auto;
   }
 
   .log-resizer-task {
@@ -2133,18 +2190,18 @@ async function db_delete(keys) {
   }
 
   .log {
-    grid-column: 1;
-    grid-row: 1 / -1;
+    flex: 1 1 0;
+    min-height: min(var(--log-min-h, 120px), 24%);
   }
 
   .log-screenshot {
-    justify-self: stretch;
+    flex: 0 1 auto;
     max-width: none;
     max-height: none;
 
     :deep(img) {
       width: var(--log-rail-w, 480px);
-      height: var(--log-sc-h, 270px);
+      height: 100%;
       max-width: none;
       max-height: none;
     }
@@ -2154,7 +2211,7 @@ async function db_delete(keys) {
 .home-container:not(.home-container--mobile) .log-pane:not(.log-pane--rail) {
   --log-stacked-task-width: min(100%, var(--log-stack-max-width));
 
-  &.with-screenshot {
+  &.with-screenshot:not(.log-pane--single) {
     --log-stacked-task-width: min(
       100%,
       var(--log-stack-max-width),
@@ -2172,12 +2229,11 @@ async function db_delete(keys) {
 }
 
 .log-screenshot {
-  grid-row: 1;
   width: 100%;
   max-width: min(var(--log-stack-max-width), 100%);
-  justify-self: start;
   align-self: start;
-  height: 100%;
+  flex: none;
+  height: var(--log-screenshot-size);
   min-height: 0;
   max-height: var(--log-stack-shot-max-height);
   border-radius: 8px;
@@ -2197,6 +2253,7 @@ async function db_delete(keys) {
 }
 
 .log-resizer {
+  flex: none;
   width: 100%;
   height: var(--log-resizer-size);
   cursor: row-resize;
@@ -2228,11 +2285,9 @@ async function db_delete(keys) {
 }
 
 .log-resizer-sc {
-  grid-row: 2;
-  height: 100%;
+  height: calc(var(--log-resizer-size) * var(--log-screenshot-entry, 1));
 }
 
-/* 左右分栏时日志与右栏之间的纵向拖动手柄。 */
 .log-resizer-rail {
   position: absolute;
   top: 0;
@@ -2254,7 +2309,7 @@ async function db_delete(keys) {
 }
 
 .task-table-scroll {
-  grid-row: 4;
+  flex: 0 0 auto;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -2262,7 +2317,10 @@ async function db_delete(keys) {
   max-height: var(--log-task-h, min(240px, 28vh));
   overflow: auto;
   scrollbar-width: thin;
-  justify-self: start;
+}
+
+.log-pane--single .task-table-scroll {
+  max-height: max(90px, var(--log-task-h, min(240px, 28vh)));
 }
 
 /* 任务列表不预留滚动条空间；能悬停的设备只在悬停或键盘聚焦时显示滚动条。 */
@@ -2457,7 +2515,6 @@ async function db_delete(keys) {
 }
 
 .plan-condition {
-  grid-row: 3;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -2516,14 +2573,10 @@ async function db_delete(keys) {
   outline-offset: 2px;
 }
 
-.log-resizer-task {
-  grid-row: 5;
-}
-
 .log {
-  grid-row: 6;
-  height: 100% !important;
-  min-height: 0;
+  flex: 1 0 var(--log-min-h, 120px);
+  height: auto !important;
+  min-height: var(--log-min-h, 120px);
   overflow: hidden;
 }
 
@@ -2556,171 +2609,6 @@ async function db_delete(keys) {
   color: var(--mower-text-muted);
 }
 
-/* 日志上方的日期与今日任务：整体居中，透明波点底在四周浅出。 */
-.daily-status {
-  position: relative;
-  display: flex;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
-  flex-direction: column;
-  flex-shrink: 0;
-  align-items: center;
-  gap: 4px;
-  margin-inline: auto;
-  padding: 6px 24px 8px;
-  border-radius: 10px;
-  font-size: 12px;
-  line-height: 18px;
-}
-
-.daily-status::before {
-  content: '';
-  position: absolute;
-  inset: -8px -40px;
-  background-image: radial-gradient(
-    circle,
-    color-mix(in srgb, currentColor 9%, transparent) 1px,
-    transparent 1.2px
-  );
-  background-size: 12px 12px;
-  -webkit-mask-image: radial-gradient(ellipse 55% 110% at 50% 50%, #000 25%, transparent 100%);
-  mask-image: radial-gradient(ellipse 55% 110% at 50% 50%, #000 25%, transparent 100%);
-  pointer-events: none;
-}
-
-.daily-status > * {
-  position: relative;
-  z-index: 1;
-}
-
-.daily-status__date {
-  margin: 0;
-  color: var(--mower-text-muted, #8a9099);
-  font-size: 11px;
-  font-weight: var(--log-label-weight);
-  letter-spacing: 0.12em;
-  font-variant-numeric: tabular-nums;
-}
-
-.daily-status__items {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-  max-height: 58px;
-  width: 100%;
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.daily-status--view {
-  align-items: stretch;
-  height: 100%;
-  padding: 0 var(--log-scroll-padding) 8px var(--log-inset);
-  overflow: auto;
-  overscroll-behavior: contain;
-}
-
-.daily-status--view::before {
-  content: none;
-}
-
-.daily-status--view .daily-status__items {
-  display: block;
-  max-height: none;
-  overflow: visible;
-}
-
-.daily-status--view .daily-status__item {
-  display: flex;
-  gap: 8px;
-  height: auto;
-  min-height: 36px;
-  padding: 6px 0;
-  border: 0;
-  border-bottom: var(--log-hairline) solid var(--log-rule);
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-}
-
-.daily-status__summary {
-  margin-inline-start: auto;
-  font-size: 11px;
-}
-
-.daily-status__empty {
-  margin: 8px 0;
-  color: var(--mower-text-muted);
-}
-
-.daily-status__item {
-  --lg-btn-label: var(--lg-btn-neutral-label);
-  --lg-btn-line: var(--lg-btn-neutral-line);
-  --lg-btn-bg: var(--lg-btn-neutral-bg);
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  box-sizing: border-box;
-  height: 26px;
-  max-width: 100%;
-  flex-shrink: 0;
-  padding: 2px 9px 2px 6px;
-  border: var(--log-hairline) solid var(--lg-btn-line);
-  border-radius: 999px;
-  color: var(--lg-btn-label);
-  background-image: var(--lg-btn-sheen), var(--lg-btn-bg);
-  backdrop-filter: blur(20px) saturate(1.1);
-  -webkit-backdrop-filter: blur(20px) saturate(1.1);
-  box-shadow: var(--lg-btn-shadow);
-  white-space: nowrap;
-}
-
-.daily-status__item--done {
-  --lg-btn-label: var(--lg-btn-primary-label);
-  --lg-btn-line: var(--lg-btn-primary-line);
-  --lg-btn-bg: var(--lg-btn-primary-bg);
-}
-
-.daily-status__item--attempted {
-  --lg-btn-label: var(--lg-btn-warning-label);
-  --lg-btn-line: var(--lg-btn-warning-line);
-  --lg-btn-bg: var(--lg-btn-warning-bg);
-}
-
-.daily-status__item--pending,
-.daily-status__item--unknown {
-  .daily-status__icon {
-    color: var(--mower-text-muted, #8a9099);
-  }
-}
-
-.daily-status__title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.daily-status__icon {
-  font-size: 14px;
-}
-
-/* 状态文字只给读屏软件，视觉上由图标和颜色区分。 */
-.daily-status__state {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
-
-/* 操作按钮在左，截图预览与自动滚动开关在同一行右端，不再盖住右上角的截图。 */
 .log-toolbar {
   grid-row: 2;
   display: flex;
@@ -3081,6 +2969,15 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   max-width: min(100%, 440px);
 }
 
+.home-container--log-right .process-status {
+  left: auto;
+  right: 0;
+}
+
+.home-container--log-in-rail .process-status {
+  max-width: min(100%, 320px);
+}
+
 .log-bg {
   --log-rail-entry: 0;
   --log-bg-mask: linear-gradient(90deg, #000 58%, rgb(0 0 0 / calc(1 - var(--log-rail-entry))));
@@ -3123,6 +3020,17 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
 /* 右栏布局时立绘只铺在左侧日志区，向截图和任务列表一侧渐隐。 */
 .home-container--rail .log-bg {
   --log-rail-entry: 1;
+}
+
+.home-container--log-right .log-bg {
+  left: auto;
+  right: 0;
+  --log-bg-mask: linear-gradient(270deg, #000 58%, rgb(0 0 0 / calc(1 - var(--log-rail-entry))));
+  background-position: calc(35% + 15% * var(--log-rail-entry)) 50%;
+}
+
+.home-container--log-in-rail .log-bg {
+  width: calc(100% - 50% * var(--log-rail-entry));
 }
 
 .db-admin-body {

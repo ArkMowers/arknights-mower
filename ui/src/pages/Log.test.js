@@ -20,6 +20,7 @@ import {
 import { routeLocationKey, routerKey } from 'vue-router'
 
 import LogPage from './Log.vue'
+import LogDailyStatus from '@/components/LogDailyStatus.vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 import { useLogBackgroundStore } from '@/stores/logBackground'
 import { useGuiStore } from '@/stores/gui'
@@ -460,6 +461,15 @@ describe('log page', () => {
             slots.title?.(),
             props.showAlternateView ? slots.alternate?.() : slots.header?.()
           ])
+    })
+    const dailyStatusTemplate = parse(
+      readFileSync(new URL('../components/LogDailyStatus.vue', import.meta.url), 'utf8')
+    ).descriptor.template.content
+    app.component('LogDailyStatus', {
+      ...LogDailyStatus,
+      ssrRender: undefined,
+      render: compile(dailyStatusTemplate),
+      setup: (props, context) => ({ ...LogDailyStatus.setup(props, context) })
     })
     app.component('LogOperator', {
       props: ['name', 'showName'],
@@ -1376,7 +1386,7 @@ describe('log page', () => {
       state.client.get.mockResolvedValue({ data: {} })
       onMounted.mock.lastCall[0]()
       component.layout_preference.task_height = 132
-      component.task_queue.value = queue
+      component.task_queue_elements.value = [queue]
       await nextTick()
       await nextTick()
 
@@ -1413,7 +1423,7 @@ describe('log page', () => {
     ]
     const { find } = mountWorkspace()
     const queue = find((target) => target.props.class === 'task-table-scroll')
-    const pane = queue.parent
+    const pane = queue.parent.parent
     pane.getBoundingClientRect = () => ({ top: 0, bottom: 900, height: 900 })
     pane.querySelector = (selector) => (selector === '.task-table-scroll' ? queue : null)
     queue.getBoundingClientRect = () => ({ top: 278, bottom: 410, height: 132 })
@@ -2142,6 +2152,53 @@ describe('log page', () => {
     expect(component.layout_preference.screenshot_height).toBe(500)
   })
 
+  it.each([
+    { mobile: false, width: 1000, imageWidth: 480, shot: 90 },
+    { mobile: true, width: 366, imageWidth: 360, shot: 640 }
+  ])('retains the panels in a short explicit single layout (mobile=$mobile)', (fixture) => {
+    const { mobile, width, imageWidth, shot } = fixture
+    state.mobile.value = mobile
+    useGuiStore().runningLogLayout = 'custom:single:log,daily,tasks,screenshot'
+    const sizes = new Map()
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    component.sc_blob.value = 'blob:preview'
+    component.layout_preference.task_height = 132
+    component.log_layout.value = {
+      clientWidth: width,
+      getBoundingClientRect: () => ({ top: 0, bottom: 250, height: 250 }),
+      querySelector: (selector) => {
+        if (selector === '.log-screenshot') return { clientWidth: imageWidth }
+        if (selector === '.log-daily-module')
+          return { getBoundingClientRect: () => ({ height: 64 }) }
+        if (selector === '.task-table-scroll')
+          return { getBoundingClientRect: () => ({ top: 184 }) }
+        return null
+      },
+      style: { setProperty: (key, value) => sizes.set(key, value), removeProperty: vi.fn() }
+    }
+    component.screenshot_aspect = mobile ? 360 / 640 : 16 / 9
+    component.apply_log_layout()
+    expect(sizes.get('--log-sc-h')).toBe(`${shot}px`)
+    expect(sizes.get('--log-task-h')).toBe('90px')
+    expect(sizes.get('--log-min-h')).toBe('120px')
+  })
+
+  it('retains the saved task height below the log when the other column has no screenshot', async () => {
+    useGuiStore().runningLogLayout = 'custom:split:log,tasks,daily|screenshot'
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { classes, find, page, pane, sizes } = mountWidePane()
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    pane.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600 })
+    pane.querySelector = (selector) => (selector === '.task-table-scroll' ? queue : null)
+    queue.getBoundingClientRect = () => ({ top: 460 })
+    page.layout_preference.task_height = 132
+    page.apply_log_layout()
+    await nextTick()
+
+    expect(classes(pane)).not.toContain('log-pane--rail')
+    expect(sizes()['--log-task-h']).toBe('132px')
+  })
+
   it.each([1, 0.8, 1.25])(
     'saves the screenshot drag height in layout pixels at zoom %s',
     (zoom) => {
@@ -2493,7 +2550,9 @@ describe('log page', () => {
     const { callbacks, finishAnimations, skipTransition } = deferViewTransitions({
       holdAnimation: true
     })
-    const { find } = mountWidePane()
+    const { find, page } = mountWidePane()
+    page.apply_log_layout()
+    await nextTick()
     const toggle = viewControl(find, '任务列表')
     const queue = find((target) => target.props.class === 'task-table-scroll')
 
@@ -2649,7 +2708,7 @@ describe('log page', () => {
     pane.clientWidth = width
     pane.getBoundingClientRect = () => ({ top: 0, bottom: 800, height: 800 })
     const sizes = () => Object.fromEntries(pane.style.setProperty.mock.calls)
-    const classes = (target) => target.props.class.split(' ')
+    const classes = (target) => (target.props.class ?? '').split(' ')
     return { ...workspace, page: app._instance.setupState, pane, sizes, classes }
   }
 
@@ -2670,9 +2729,12 @@ describe('log page', () => {
     const screenshot = find((target) => target.props.src === 'blob:http://latest')
     const condition = find((target) => target.props.class === 'plan-condition')
     const queue = find((target) => target.props.class === 'task-table-scroll')
-    expect(condition.parent).toBe(pane)
-    expect(pane.children.indexOf(screenshot)).toBeLessThan(pane.children.indexOf(condition))
-    expect(pane.children.indexOf(condition)).toBeLessThan(pane.children.indexOf(queue))
+    const column = condition.parent
+    expect(column.parent).toBe(pane)
+    expect(screenshot.parent).toBe(column)
+    expect(queue.parent).toBe(column)
+    expect(column.children.indexOf(screenshot)).toBeLessThan(column.children.indexOf(condition))
+    expect(column.children.indexOf(condition)).toBeLessThan(column.children.indexOf(queue))
   })
 
   it('places the screenshot above the task list in a right column on a wide desktop pane', async () => {
@@ -2691,7 +2753,10 @@ describe('log page', () => {
 
     expect(classes(pane)).toContain('log-pane--rail')
     expect(classes(pane.parent)).toContain('home-container--rail')
-    expect(find((target) => target.props.class === 'task-table-scroll').parent).toBe(pane)
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    const columns = pane.children.filter((target) => classes(target).includes('log-column'))
+    expect(queue.parent).toBe(columns[1])
+    expect(find((target) => target.props['data-log-content']).parent).toBe(columns[0])
     expect(sizes()['--log-rail-w']).toBe('480px')
     expect(sizes()['--log-sc-h']).toBe('270px')
     expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-task-h')
@@ -2707,6 +2772,87 @@ describe('log page', () => {
     expect(classes(pane.parent)).not.toContain('home-container--rail')
     expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-rail-w')
     expect(state.client.post).not.toHaveBeenCalled()
+  })
+
+  it('moves real panels into the saved order and retains the log across rearrangement', async () => {
+    vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
+    state.mower.refs.running.value = true
+    state.config.report_enable = true
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    mockDailyStatus(() => ({
+      game_day: '2026-11-01',
+      source: 'live',
+      records: { report: 'done' }
+    }))
+    const gui = useGuiStore()
+    const { pane, page, classes, find, all } = mountWidePane()
+    const log = find((target) => target.props['data-log-content'])
+    const panelOrder = () =>
+      pane.children
+        .filter(
+          (target) => classes(target).includes('log-column') && target.style.display !== 'none'
+        )
+        .map((column) =>
+          column.children.flatMap((target) =>
+            classes(target).filter((name) =>
+              ['log', 'log-screenshot', 'task-table-scroll', 'log-daily-module'].includes(name)
+            )
+          )
+        )
+    page.sc_blob = 'blob:preview'
+    page.apply_log_layout()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(panelOrder()).toEqual([['log'], ['log-screenshot', 'task-table-scroll']])
+    expect(all(log).some((target) => classes(target).includes('daily-status'))).toBe(true)
+
+    gui.runningLogLayout = 'custom:split:tasks,screenshot|log,daily'
+    await nextTick()
+    expect(panelOrder()).toEqual([
+      ['task-table-scroll', 'log-screenshot'],
+      ['log', 'log-daily-module']
+    ])
+    expect(find((target) => target.props['data-log-content'])).toBe(log)
+
+    gui.runningLogLayout = 'right_rail_log'
+    await nextTick()
+    expect(panelOrder()).toEqual([
+      ['log-daily-module', 'task-table-scroll'],
+      ['log-screenshot', 'log']
+    ])
+    expect(find((target) => target.props['data-log-content'])).toBe(log)
+
+    state.mobile.value = true
+    await nextTick()
+    expect(panelOrder()).toEqual([['log-screenshot', 'task-table-scroll', 'log']])
+    expect(find((target) => classes(target).includes('log-daily-toggle'))).toBeTruthy()
+
+    gui.runningLogLayout = 'custom:single:log,daily,tasks,screenshot'
+    await vi.advanceTimersByTimeAsync(0)
+    expect(panelOrder()).toEqual([
+      ['log', 'log-daily-module', 'task-table-scroll', 'log-screenshot']
+    ])
+    expect(all().some((target) => classes(target).includes('log-daily-toggle'))).toBe(false)
+    expect(find((target) => target.props['data-log-content'])).toBe(log)
+  })
+
+  it('reveals the task queue through its hash after moving it into the log column', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { find, page } = mountWidePane()
+    page.sc_blob = 'blob:preview'
+    page.apply_log_layout()
+    await nextTick()
+    const original = find((target) => target.props.class === 'task-table-scroll')
+
+    useGuiStore().runningLogLayout = 'custom:split:tasks,daily,log|screenshot'
+    await nextTick()
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    expect(queue).not.toBe(original)
+
+    state.route.hash = '#task-queue'
+    await nextTick()
+    await nextTick()
+    expect(queue.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+    expect(original.scrollIntoView).not.toHaveBeenCalled()
   })
 
   it.each([false, true])(

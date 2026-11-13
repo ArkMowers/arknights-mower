@@ -2,6 +2,7 @@ import axios, { AxiosError } from 'axios'
 import screenshot from './screenshot.svg?raw'
 import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '../src/utils/depot_inventory.js'
 import { ORDER_PRICES, ORDER_TYPES } from '../src/utils/baseReport.js'
+import { isValidRunningLogLayout } from '../src/utils/logLayoutConfig.js'
 import {
   BlobReader,
   BlobWriter,
@@ -484,7 +485,8 @@ export function createPreviewData(config) {
       task_settings_layout: 'checklist',
       base_report_mode: previewReportMode(),
       halloween_mode: 'auto',
-      task_queue_display: 'portraits'
+      task_queue_display: 'portraits',
+      running_log_layout: 'right_rail'
     }
   }
 }
@@ -1008,9 +1010,10 @@ export function createPreviewAdapter(data, requests = []) {
       delete changes.watermark_confirmation
       if (
         Object.keys(changes).length === 0 ||
-        Object.entries(changes).some(
-          ([key, value]) => !Object.hasOwn(choices, key) || !choices[key].includes(value)
-        ) ||
+        Object.entries(changes).some(([key, value]) => {
+          if (key === 'running_log_layout') return !isValidRunningLogLayout(value)
+          return !Object.hasOwn(choices, key) || !choices[key].includes(value)
+        }) ||
         (Object.hasOwn(body, 'watermark_confirmation') && body.watermark_visible !== false) ||
         (body.watermark_visible === false &&
           body.watermark_confirmation !== '反馈问题时务必说明具体版本')

@@ -174,7 +174,9 @@ const menus = computed(() => [
         label: props.sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
         key: 'view-toggle-sidebar'
       },
-      { label: '编辑侧边栏', key: 'view-edit-sidebar' }
+      { label: '编辑侧边栏', key: 'view-edit-sidebar' },
+      { type: 'divider', key: 'view-log-layout-divider' },
+      { label: '运行日志布局…', key: 'view-custom-log-layout' }
     ]
   },
   {
@@ -361,7 +363,8 @@ function selectMenuItem(key, option) {
   if (option?.disabled) return
   const viewActions = {
     'view-toggle-sidebar': 'toggle-sidebar',
-    'view-edit-sidebar': 'edit-sidebar'
+    'view-edit-sidebar': 'edit-sidebar',
+    'view-custom-log-layout': 'custom-log-layout'
   }
   if (viewActions[key]) {
     emit('view-action', viewActions[key])

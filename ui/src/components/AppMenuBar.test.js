@@ -198,6 +198,7 @@ describe('WebUI Mower 菜单', () => {
     ['档案', 'export-profile', 'profileAction', ['export', undefined]],
     ['视图', 'view-toggle-sidebar', 'viewAction', ['toggle-sidebar']],
     ['视图', 'view-edit-sidebar', 'viewAction', ['edit-sidebar']],
+    ['视图', 'view-custom-log-layout', 'viewAction', ['custom-log-layout']],
     ['帮助', 'help-feedback', 'helpAction', ['feedback']],
     ['帮助', 'help-documentation', 'helpAction', ['documentation']],
     ['帮助', 'help-changelog', 'helpAction', ['changelog']],
@@ -289,9 +290,10 @@ describe('共用视图菜单', () => {
     const bar = mount({ sidebarVisible })
     await bar.toggle('视图')
     const options = bar.menu('视图').props.options
-    expect(options.map((item) => item.label)).toEqual([
+    expect(options.filter((item) => item.label).map((item) => item.label)).toEqual([
       sidebarVisible ? '隐藏侧边栏' : '显示侧边栏',
-      '编辑侧边栏'
+      '编辑侧边栏',
+      '运行日志布局…'
     ])
     await bar.select(options[0], '视图')
     expect(bar.viewAction).toHaveBeenCalledExactlyOnceWith('toggle-sidebar')
@@ -299,6 +301,10 @@ describe('共用视图菜单', () => {
     await bar.toggle('视图')
     await bar.select(options[1], '视图')
     expect(bar.viewAction).toHaveBeenLastCalledWith('edit-sidebar')
+    const layoutOption = options.find((item) => item.key === 'view-custom-log-layout')
+    await bar.toggle('视图')
+    await bar.select(layoutOption, '视图')
+    expect(bar.viewAction).toHaveBeenLastCalledWith('custom-log-layout')
     expect(bar.connectionAction).not.toHaveBeenCalled()
     expect(bar.profileAction).not.toHaveBeenCalled()
     expect(bar.helpAction).not.toHaveBeenCalled()

@@ -60,6 +60,38 @@ describe('shared GUI appearance preferences', () => {
     expect(reloaded.taskQueueDisplay).toBe('names')
   })
 
+  it('saves running log layout choice and restores it on a later load', async () => {
+    const { store } = createStore()
+    const layout = 'custom:split:log,daily|screenshot,tasks'
+    expect(store.runningLogLayout).toBe('right_rail')
+    expect(await store.setRunningLogLayout(layout)).toBe(false)
+    await store.load()
+
+    axios.put.mockRejectedValueOnce(new Error('save failed'))
+    expect(await store.setRunningLogLayout(layout)).toBe(false)
+    expect(store.runningLogLayout).toBe('right_rail')
+    expect(store.runningLogLayoutError).toContain('布局保存失败')
+
+    const response = deferred()
+    axios.put.mockReturnValueOnce(response.promise)
+    const retry = store.setRunningLogLayout(layout)
+    expect(store.runningLogLayout).toBe('right_rail')
+    response.resolve({ data: { running_log_layout: layout } })
+    expect(await retry).toBe(true)
+    expect(store.runningLogLayout).toBe(layout)
+    expect(axios.put).toHaveBeenLastCalledWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { running_log_layout: layout },
+      { timeout: 5000 }
+    )
+    axios.get.mockResolvedValueOnce({
+      data: { software_version_display: 'version', running_log_layout: layout }
+    })
+    const { store: reloaded } = createStore()
+    expect(await reloaded.load()).toBe(true)
+    expect(reloaded.runningLogLayout).toBe(layout)
+  })
+
   it('shares one version-default store and disables editing before the initial read', async () => {
     const { pinia, store } = createStore()
     expect(useGuiStore(pinia)).toBe(store)

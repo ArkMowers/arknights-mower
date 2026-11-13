@@ -52,12 +52,14 @@ class GuiAppearanceTests(unittest.TestCase):
                 "software_version_language": "en",
                 "task_settings_layout": "checklist",
                 "task_queue_display": "portraits",
+                "running_log_layout": "right_rail",
                 "base_report_mode": "standard",
                 "halloween_mode": "auto",
                 "watermark_visible": True,
             },
         )
         self.assertEqual(gui.load_software_version_display(), "version")
+        self.assertEqual(gui.load_running_log_layout(), "right_rail")
         self.assertEqual(gui.load_base_report_mode(), "standard")
         self.assertEqual(gui.load_halloween_mode(), "auto")
         self.assertIs(gui.load_watermark_visible(), True)
@@ -76,6 +78,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
                         "task_queue_display": "portraits",
+                        "running_log_layout": "right_rail",
                         "base_report_mode": "standard",
                         "halloween_mode": "auto",
                         "watermark_visible": True,
@@ -98,6 +101,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
                         "task_queue_display": "portraits",
+                        "running_log_layout": "right_rail",
                         "base_report_mode": "standard",
                         "halloween_mode": "auto",
                         "watermark_visible": True,
@@ -179,6 +183,7 @@ class GuiAppearanceTests(unittest.TestCase):
                     {"base_report_mode": "stock"},
                     {"halloween_mode": "off"},
                     {"task_queue_display": "names"},
+                    {"running_log_layout": "custom:split:daily,tasks|screenshot,log"},
                 ):
                     self.assertEqual(
                         self.client.put(
@@ -317,6 +322,77 @@ class GuiAppearanceTests(unittest.TestCase):
                 gui._update_gui_data(task_settings_layout=value)
                 before = self.path.read_bytes()
                 self.assertEqual(self.read().json["task_settings_layout"], "checklist")
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_running_log_layout_round_trips_and_stays_independent_of_other_fields(self):
+        gui._update_gui_data(task_queue_display="names", window_mode="maximized")
+        original = gui.read_gui_data()
+        for value in (
+            "left_rail",
+            "stacked",
+            "right_rail_log",
+            "left_rail_log",
+            "custom:split:log|daily,tasks,screenshot",
+            "custom:split:screenshot,daily,tasks|log",
+            "custom:split:daily,tasks|screenshot,log",
+            "custom:single:daily,screenshot,tasks,log",
+            "right_rail",
+        ):
+            with self.subTest(value=value):
+                response = self.client.put(
+                    "/gui/appearance",
+                    json={"running_log_layout": value},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json, {"running_log_layout": value})
+                self.assertEqual(self.read().json["running_log_layout"], value)
+                self.assertEqual(
+                    gui.read_gui_data(), {**original, "running_log_layout": value}
+                )
+
+    def test_invalid_running_log_layout_rejects_the_entire_appearance_update(self):
+        gui._update_gui_data(running_log_layout="left_rail", task_queue_display="names")
+        before = self.path.read_bytes()
+        for value in (
+            None,
+            True,
+            1,
+            [],
+            {},
+            "grid",
+            "custom:split:daily|tasks",
+            "custom:split:|daily,log,screenshot,tasks",
+            "custom:split:daily,log,screenshot,tasks|",
+            "custom:split:daily|log|screenshot,tasks",
+            "custom:split:daily,log|daily,screenshot",
+            "custom:single:daily,log,screenshot,foo",
+            "custom:single:daily,log,screenshot,tasks,log",
+            "custom:single:daily,log,screenshot, tasks",
+        ):
+            with self.subTest(value=value):
+                payload = {
+                    "task_queue_display": "portraits",
+                    "running_log_layout": value,
+                }
+                response = self.client.put(
+                    "/gui/appearance", json=payload, headers=self.headers
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(response.json["ok"])
+                self.assertEqual(self.path.read_bytes(), before)
+
+    def test_invalid_saved_running_log_layout_defaults_without_rewriting_the_file(self):
+        for value in (
+            None,
+            [],
+            "unsupported",
+            "custom:split:daily,log,screenshot,tasks|",
+        ):
+            with self.subTest(value=value):
+                gui._update_gui_data(running_log_layout=value)
+                before = self.path.read_bytes()
+                self.assertEqual(self.read().json["running_log_layout"], "right_rail")
                 self.assertEqual(self.path.read_bytes(), before)
 
     def test_base_report_mode_round_trips_and_stays_independent_of_other_fields(self):
@@ -525,6 +601,7 @@ class GuiAppearanceTests(unittest.TestCase):
                 **response.json,
                 "software_version_language": "en",
                 "task_queue_display": "portraits",
+                "running_log_layout": "right_rail",
                 "base_report_mode": "standard",
                 "halloween_mode": "auto",
                 "watermark_visible": True,

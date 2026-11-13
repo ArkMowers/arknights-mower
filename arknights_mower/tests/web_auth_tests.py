@@ -37,6 +37,7 @@ def protected_server(monkeypatch):
         (gui, "load_software_version_display"),
         (gui, "load_software_version_language"),
         (gui, "load_task_settings_layout"),
+        (gui, "load_running_log_layout"),
         (gui, "save_appearance"),
     ):
         monkeypatch.setattr(owner, name, forbidden)
@@ -244,6 +245,7 @@ def preflight_server(monkeypatch):
         (gui, "load_software_version_display"),
         (gui, "load_software_version_language"),
         (gui, "load_task_settings_layout"),
+        (gui, "load_running_log_layout"),
         (gui, "save_appearance"),
     ):
         monkeypatch.setattr(owner, name, access)

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import axios from 'axios'
+import { DEFAULT_RUNNING_LOG_LAYOUT, isValidRunningLogLayout } from '@/utils/logLayoutConfig'
 
 const appearanceUrl = `${import.meta.env.VITE_HTTP_URL || ''}/gui/appearance`
 const validDisplay = (value) => value === 'version' || value === 'channel'
@@ -15,6 +16,16 @@ export const useGuiStore = defineStore('gui', () => {
   const softwareVersionLanguage = ref('en')
   const taskSettingsLayout = ref('checklist')
   const taskQueueDisplay = ref('portraits')
+  const runningLogLayout = ref(DEFAULT_RUNNING_LOG_LAYOUT)
+  const runningLogLayoutDialogOpen = ref(false)
+
+  function openRunningLogLayoutDialog() {
+    runningLogLayoutDialogOpen.value = true
+  }
+
+  function closeRunningLogLayoutDialog() {
+    runningLogLayoutDialogOpen.value = false
+  }
   const watermarkVisible = ref(true)
   const baseReportMode = ref('standard')
   const halloweenMode = ref('auto')
@@ -23,12 +34,14 @@ export const useGuiStore = defineStore('gui', () => {
   const saving = ref(false)
   const layoutSaving = ref(false)
   const taskQueueDisplaySaving = ref(false)
+  const runningLogLayoutSaving = ref(false)
   const watermarkSaving = ref(false)
   const reportModeSaving = ref(false)
   const halloweenSaving = ref(false)
   const error = ref('')
   const layoutError = ref('')
   const taskQueueDisplayError = ref('')
+  const runningLogLayoutError = ref('')
   const watermarkError = ref('')
   const reportModeError = ref('')
   const halloweenError = ref('')
@@ -39,11 +52,13 @@ export const useGuiStore = defineStore('gui', () => {
       saving.value ||
       layoutSaving.value ||
       taskQueueDisplaySaving.value ||
+      runningLogLayoutSaving.value ||
       watermarkSaving.value ||
       reportModeSaving.value ||
       halloweenSaving.value
   )
   const layoutDisabled = displayDisabled
+  const runningLogLayoutDisabled = displayDisabled
   const watermarkDisabled = displayDisabled
   const reportModeDisabled = displayDisabled
   const halloweenDisabled = displayDisabled
@@ -63,6 +78,7 @@ export const useGuiStore = defineStore('gui', () => {
     error.value = ''
     layoutError.value = ''
     taskQueueDisplayError.value = ''
+    runningLogLayoutError.value = ''
     watermarkError.value = ''
     reportModeError.value = ''
     halloweenError.value = ''
@@ -92,6 +108,9 @@ export const useGuiStore = defineStore('gui', () => {
         softwareVersionLanguage.value = data.software_version_language ?? 'en'
         taskSettingsLayout.value = data.task_settings_layout ?? 'checklist'
         taskQueueDisplay.value = data.task_queue_display ?? 'portraits'
+        runningLogLayout.value = isValidRunningLogLayout(data.running_log_layout)
+          ? data.running_log_layout
+          : DEFAULT_RUNNING_LOG_LAYOUT
         watermarkVisible.value = data.watermark_visible ?? true
         baseReportMode.value = data.base_report_mode ?? 'standard'
         halloweenMode.value = data.halloween_mode ?? 'auto'
@@ -101,6 +120,7 @@ export const useGuiStore = defineStore('gui', () => {
         error.value = '软件版本显示偏好读取失败，请重试。'
         layoutError.value = '全部设置显示偏好读取失败，请重试。'
         taskQueueDisplayError.value = '任务列表显示方式读取失败，请重试。'
+        runningLogLayoutError.value = '运行日志布局偏好读取失败，请重试。'
         watermarkError.value = '版本水印设置读取失败，请重试。'
         reportModeError.value = '基建报表显示偏好读取失败，请重试。'
         halloweenError.value = '万圣节装饰设置读取失败，请重试。'
@@ -235,6 +255,28 @@ export const useGuiStore = defineStore('gui', () => {
     return loaded.value ? setTaskQueueDisplay(failedTaskQueueDisplay) : load()
   }
 
+  async function setRunningLogLayout(value) {
+    if (runningLogLayoutDisabled.value || !isValidRunningLogLayout(value)) return false
+    if (value === runningLogLayout.value) return true
+    runningLogLayoutSaving.value = true
+    runningLogLayoutError.value = ''
+    try {
+      const { data } = await axios.put(
+        appearanceUrl,
+        { running_log_layout: value },
+        { timeout: 5000 }
+      )
+      if (data?.running_log_layout !== value) throw new Error()
+      runningLogLayout.value = value
+      return true
+    } catch {
+      runningLogLayoutError.value = '布局保存失败。可以再次点击「保存布局」重试。'
+      return false
+    } finally {
+      runningLogLayoutSaving.value = false
+    }
+  }
+
   async function setBaseReportMode(value) {
     if (reportModeDisabled.value || !validReportMode(value)) return false
     if (value === baseReportMode.value) return true
@@ -328,6 +370,10 @@ export const useGuiStore = defineStore('gui', () => {
     softwareVersionLanguage,
     taskSettingsLayout,
     taskQueueDisplay,
+    runningLogLayout,
+    runningLogLayoutDialogOpen,
+    openRunningLogLayoutDialog,
+    closeRunningLogLayoutDialog,
     watermarkVisible,
     baseReportMode,
     halloweenMode,
@@ -336,17 +382,20 @@ export const useGuiStore = defineStore('gui', () => {
     saving,
     layoutSaving,
     taskQueueDisplaySaving,
+    runningLogLayoutSaving,
     watermarkSaving,
     reportModeSaving,
     halloweenSaving,
     error,
     layoutError,
     taskQueueDisplayError,
+    runningLogLayoutError,
     watermarkError,
     reportModeError,
     halloweenError,
     displayDisabled,
     layoutDisabled,
+    runningLogLayoutDisabled,
     watermarkDisabled,
     reportModeDisabled,
     halloweenDisabled,
@@ -355,6 +404,7 @@ export const useGuiStore = defineStore('gui', () => {
     setSoftwareVersionLanguage,
     setTaskSettingsLayout,
     setTaskQueueDisplay,
+    setRunningLogLayout,
     setBaseReportMode,
     setHalloweenMode,
     setWatermarkVisible,
