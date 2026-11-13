@@ -3601,9 +3601,13 @@ def try_add_release_dorm(
 
         filling_vacancies = bool(vacancies)
         arrangement = {}
+        # 先让实读回满者腾床，再按恢复层级从低到高选择让床者。
         beds_to_visit = sorted(
             op_data.ordered_dorms(),
-            key=lambda bed: not is_full_dorm_filler(op_data, bed.name, now),
+            key=lambda bed: (
+                not is_full_dorm_filler(op_data, bed.name, now),
+                -resting_tier(op_data, bed.name, now) if not filling_vacancies else 0,
+            ),
         )
         for bed in beds_to_visit:
             room, index = bed.position

@@ -21,8 +21,9 @@ function fixture(){
 }
 
 describe('normal returns account for recovery members restored by backup exit',()=>{
- it.each(['separate','same-room','shared-cover','later-coalesced','third-group'] as const)('keeps independent return slots at their original time: %s',kind=>{
+ it.each(['separate','same-room','shared-cover','later-coalesced','third-group','explicit-backup'] as const)('keeps independent return slots at their original time: %s',kind=>{
   const {data,model,task,queue}=fixture(),commonRoom=kind==='same-room',room=commonRoom?'room_1_1':'room_1_3',index=commonRoom?1:0
+  if(kind==='explicit-backup')model.explicitSlots=(_original,conditions)=>new Set(conditions[0]?[]:['room_1_2\0'+0])
   data.operators.D=new MowerOperatorState({name:'D',room,index,group:'H',replacement:['Z'],operatorType:'high',currentRoom:'dormitory_1',currentIndex:4,mood:24,timeStampMicros:0})
   data.operators.Z=new MowerOperatorState({name:'Z',currentRoom:room,currentIndex:index,mood:24,timeStampMicros:0})
   data.plan[room]=commonRoom?['A','D']:['D'];data.groupShiftState.H=true;data.dorms[2]!.name='D';data.dorms[2]!.timeMicros=0
@@ -78,6 +79,26 @@ describe('normal returns account for recovery members restored by backup exit',(
   expect(data.operators.B!.currentRoom).toBe('dormitory_1')
   expect(data.operators.B!.mood).toBe(kind==='complete'?24:18)
   expect(queue.tasks.some(queued=>queued===task)).toBe(true)
+ })
+ it('keeps ordinary recovery when the return activates an explicit backup arrangement',()=>{
+  const {data,model,task,queue}=fixture()
+  model.explicitSlots=(_original,conditions)=>new Set(conditions[0]?[]:['room_1_2\0'+0])
+  for(const now of [0,.1,.2]){
+   data.nowMicros=toMowerMicros(now)
+   prepareMowerShiftCycle(data,task,queue,model)
+   expect(task.timeMicros).toBe(toMowerMicros(3))
+   expect(data.planConditions).toEqual([true])
+   expect(data.operators.B!.currentRoom).toBe('dormitory_1')
+   expect(queue.tasks.filter(candidate=>candidate===task)).toHaveLength(1)
+  }
+  data.dorms[1]!.timeMicros=toMowerMicros(4)
+  prepareMowerShiftCycle(data,task,queue,model)
+  expect(task.timeMicros).toBe(toMowerMicros(4))
+  data.nowMicros=toMowerMicros(4);data.operators.B!.mood=24;data.operators.B!.timeStampMicros=data.nowMicros
+  prepareMowerShiftCycle(data,task,queue,model)
+  expect(task.timeMicros).toBe(toMowerMicros(4))
+  expect(task.plan.room_1_2).toEqual(['B'])
+  expect(task.backupShiftConditions).toEqual([false])
  })
  it('keeps the existing absolute extra-wait cap across repeated preparation',()=>{
   const {data,model,task,queue}=fixture();data.groupMoodGapMaxExtraWaitHours=.5

@@ -1,6 +1,6 @@
 # Scheduling Plan Editor
 
-The normal and rescue editors share the existing 验证排班 result banners. Success banners close automatically after three seconds and can also be closed manually. Ownership and progression findings, structural errors, incomplete validation and request failures require clicking the close button and never expire automatically. Startup and runtime checks do not open these banners. [Schedule Roster Warnings](base-scheduler.md#schedule-roster-warnings) owns the advisory roster checks and their display boundary.
+The normal and rescue editors share the existing 验证排班 result banners. Success banners close automatically after three seconds and can also be closed manually. Ownership and progression findings, structural errors, incomplete validation and request failures require clicking the close button and never expire automatically. Failed requests identify whether saving the plan or validating it failed and display the backend message or error text when available; otherwise they retain the request error message. A failed save prevents validation of an older saved plan. Startup and runtime checks do not open these banners. [Schedule Roster Warnings](base-scheduler.md#schedule-roster-warnings) owns the advisory roster checks and their display boundary.
 
 ## 1. Facility Display
 
@@ -61,6 +61,8 @@ The [shared color decision](../../.agents/notes/implemented/simplification/2026-
 ### Backup Group Task Editor
 
 The backup task dialog edits room assignments and group requests separately. Group names come from all main and backup operator bindings. The writer chooses a complete-group on-duty or off-duty request. On-duty requests offer one execution or a forced on-duty hold throughout activation; off-duty requests offer one execution, a coordinated hold, or a forced hold throughout activation. The dialog explains dependency coordination and ordinary return after deactivation. JSON import and export preserve `group_tasks` without changing advanced settings. Runtime behavior follows [Backup Group Tasks](base-scheduler.md#backup-group-tasks).
+
+An unresolved group name in a backup task remains in the editable document and does not prevent saving, JSON or image import, JSON export or image export for normal and rescue plans. Validation reports the backup and missing group; the user can select an existing group, restore its operator binding or remove the task and validate again. Startup and runtime initialization retain the same rejection under [Backup Group Tasks](base-scheduler.md#backup-group-tasks). The [recovery tests](../../arknights_mower/tests/plan_group_task_recovery_tests.py) cover document round trips, authenticated routes, image-export payloads and validation after correction.
 
 ## 6. Backup Facility Import
 

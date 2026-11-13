@@ -332,7 +332,90 @@ def registration_key(record):
 
 
 class InstanceScanError(RuntimeError):
-    """A complete registration snapshot could not be read safely."""
+    """A complete registration snapshot could not be read safely.
+
+    ``details`` keeps one entry per unreadable path so logs and the UI can show
+    every failure instead of only the first one quoted in ``str(exc)``. It never
+    takes part in control flow; ``InstanceScanError(message)`` still works.
+    """
+
+    def __init__(self, message, *, details=None):
+        super().__init__(message)
+        self.details = list(details or ())
+
+
+SCAN_FAILURE_HINT = "常见原因：该文件正被杀毒/同步/备份软件独占，或目录权限不足"
+
+
+def _safe_file_size(path):
+    """文件大小只用来诊断；取不到就返回 None，绝不影响扫描结果。"""
+    try:
+        size = Path(path).stat().st_size
+    except (OSError, ValueError):
+        return None
+    return size if type(size) is int and size >= 0 else None
+
+
+def _scan_failure_detail(path, error, kind):
+    """Describe one unreadable path without raising or touching control flow."""
+    errno_code = getattr(error, "errno", None)
+    winerror_code = getattr(error, "winerror", None)
+    return {
+        "path": str(path),
+        "kind": kind,
+        "errno": errno_code if type(errno_code) is int else None,
+        "winerror": winerror_code if type(winerror_code) is int else None,
+        "size": _safe_file_size(path) if kind == "file" else None,
+        "error": str(error),
+    }
+
+
+_PLATFORM_CODE_BRACKETS = str.maketrans(
+    {
+        "[": "",
+        "]": "",
+        "【": "",
+        "】": "",
+        "(": "",
+        "（": "",
+        ")": "",
+        "）": "",
+    }
+)
+
+
+def _quotes_platform_code(text, label, code):
+    """``[Errno 13]`` / ``【ERRNO 13】`` 等写法都算已经渲染出平台错误码。"""
+    normalized = text.translate(_PLATFORM_CODE_BRACKETS).lower()
+    return f"{label.lower()} {code}" in normalized
+
+
+def _scan_failure_message(first, failure_count=1):
+    """Quote the first failure plus a hint, keeping the established prefix."""
+    if first["kind"] == "directory":
+        # 「目录无法列举」必须与「某个文件读不了」区分开，否则用户会拿着目录名去查文件。
+        subject = f"目录 {first['path']} 无法列举"
+    else:
+        subject = first["path"]
+    hints = [first["error"]]
+    errno_code = first["errno"]
+    if errno_code is not None and not _quotes_platform_code(
+        first["error"], "errno", errno_code
+    ):
+        # 异常串已经渲染过 [Errno 13]，同一句话里再写一遍只是噪音。
+        hints.append(f"errno={errno_code}")
+    if first["winerror"] is not None:
+        # winerror 始终显式给出：本地化的 [WinError 5] 会把数字藏进中文，grep 不到。
+        hints.append(f"winerror={first['winerror']}")
+    if first["size"] is not None:
+        hints.append(f"文件大小 {first['size']} B")
+    message = (
+        "无法完整读取实例登记，请稍后重试或检查文件权限："
+        f"{subject}（{'，'.join(hints)}）"
+    )
+    if failure_count > 1:
+        message += f"（另有 {failure_count - 1} 个登记读取失败）"
+    return f"{message}；{SCAN_FAILURE_HINT}"
 
 
 def instances(directory=None, *, timeout=5, strict=True):
@@ -352,7 +435,7 @@ def instances(directory=None, *, timeout=5, strict=True):
             return []
         except OSError as exc:
             paths = []
-            failures.append((directory, exc))
+            failures.append((directory, exc, "directory"))
         for path in paths:
             try:
                 record = json.loads(path.read_text(encoding="utf-8"))
@@ -373,17 +456,20 @@ def instances(directory=None, *, timeout=5, strict=True):
             except FileNotFoundError:
                 pass  # The instance may have removed its registration on exit.
             except (OSError, ValueError) as exc:
-                failures.append((path, exc))
+                failures.append((path, exc, "file"))
         if not failures:
             return result
         remaining = deadline - time.monotonic()
         if remaining <= 0:
             if not strict:
                 return result
-            path, error = failures[0]
+            details = [
+                _scan_failure_detail(path, error, kind)
+                for path, error, kind in failures
+            ]
             raise InstanceScanError(
-                f"无法完整读取实例登记，请稍后重试或检查文件权限：{path}（{error}）"
-            ) from error
+                _scan_failure_message(details[0], len(details)), details=details
+            ) from failures[0][1]
         time.sleep(min(0.05, remaining))
 
 

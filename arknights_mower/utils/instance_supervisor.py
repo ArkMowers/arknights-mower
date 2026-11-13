@@ -22,6 +22,10 @@ INTENTIONAL_EXIT_CODE = 73
 INTENTIONAL_REASONS = frozenset(("window", "tray", "ctrl_c", "runtime_request"))
 HTTP_PROBE_PATH = "/status"
 HTTP_PROBE_USER_AGENT = "Mower Instance Supervisor"
+# 登记文件被心跳原子替换时，扫描可能恰好撞上暂时不可读的瞬间。启动器只在
+# “复用已有窗口还是拉起新实例”这个边界上判断一次，0.5 s 的短预算足以吸收这个
+# 窗口（同 rapidocr 里 200 ms 的先例），而且绝不能因为不完整的快照把启动拦掉。
+EXISTING_INSTANCE_SCAN_TIMEOUT = 0.5
 _report_lock = threading.RLock()
 
 
@@ -667,18 +671,26 @@ def supervise(
 def show_existing_instance(directory):
     from arknights_mower.utils.path import get_path
 
-    target = os.path.normcase(str(Path(directory).resolve()))
-    for record in runtime.instances(timeout=0):
-        if record.get("kind") != "instance" or not record.get("ready"):
-            continue
-        data = Path(record.get("data_dir") or get_path("@app", space=""))
-        owned = data / (record.get("space") or "") / "tmp/process-supervision"
-        if os.path.normcase(str(owned.resolve())) != target:
-            continue
-        if (runtime.state_dir() / "shutdown" / f"{record['id']}.json").exists():
-            continue
-        runtime.send_instance_command(record, "show")
-        return True
+    try:
+        target = os.path.normcase(str(Path(directory).resolve()))
+        for record in runtime.instances(
+            timeout=EXISTING_INSTANCE_SCAN_TIMEOUT, strict=False
+        ):
+            if record.get("kind") != "instance" or not record.get("ready"):
+                continue
+            data = Path(record.get("data_dir") or get_path("@app", space=""))
+            owned = data / (record.get("space") or "") / "tmp/process-supervision"
+            if os.path.normcase(str(owned.resolve())) != target:
+                continue
+            if (runtime.state_dir() / "shutdown" / f"{record['id']}.json").exists():
+                continue
+            runtime.send_instance_command(record, "show")
+            return True
+    except Exception:
+        # 本函数只回答“要不要复用已有窗口”，属于锦上添花：它跑在 instance_lock
+        # 之前，冻结包的父进程没有日志和控制台，任何读盘异常如果冒出去就会变成
+        # 无可诊断的启动崩溃。读不到完整登记就当作没有已有实例，由锁继续兜底。
+        return False
     return False
 
 

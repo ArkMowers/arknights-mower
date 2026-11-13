@@ -25,10 +25,11 @@ def resolve_mumu_paths(installation: str, manager: str = "") -> tuple[str, str]:
 
     if not executable:
         candidates = manager_candidates(root)
-        executable = next(
-            (path for path in candidates if path.is_file()), candidates[0]
-        )
-    return str(root), str(executable)
+        # An unverified candidate must not be reported as this installation's
+        # manager: callers would then verify a path that never existed and
+        # describe the failure against an invented location.
+        executable = next((path for path in candidates if path.is_file()), None)
+    return str(root), str(executable) if executable else ""
 
 
 def renderer_candidates(root: str) -> list[str]:

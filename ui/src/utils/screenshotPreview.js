@@ -1,8 +1,9 @@
+import { nextTick } from 'vue'
+
 // 完成一次请求后才安排下一次；关闭或卸载时取消请求并释放 Blob URL。
 export function createScreenshotPreview({
   fetchSnapshot,
   onChange,
-  getFirstFrameAspect,
   getCachedSnapshot = () => null,
   cacheSnapshot = () => {},
   interval = 1000
@@ -13,23 +14,11 @@ export function createScreenshotPreview({
   let controller = null
   let etag = ''
   let imageUrl = ''
-  const pendingRevokes = new Set()
+  let previousUrl = ''
 
-  function safeRevoke(url) {
-    if (!url) return
-    pendingRevokes.add(url)
-    queueMicrotask(() => {
-      if (pendingRevokes.delete(url)) {
-        URL.revokeObjectURL(url)
-      }
-    })
-  }
-
-  function flushRevokes() {
-    for (const url of pendingRevokes) {
-      URL.revokeObjectURL(url)
-    }
-    pendingRevokes.clear()
+  function releasePrevious() {
+    if (previousUrl) URL.revokeObjectURL(previousUrl)
+    previousUrl = ''
   }
 
   function restoreImage() {
@@ -43,7 +32,7 @@ export function createScreenshotPreview({
   restoreImage()
 
   function clearImage() {
-    flushRevokes()
+    releasePrevious()
     if (imageUrl) URL.revokeObjectURL(imageUrl)
     imageUrl = ''
     onChange('')
@@ -69,23 +58,19 @@ export function createScreenshotPreview({
       if (response.status === 200) {
         if (!response.data || response.data.size === 0) return
         pendingUrl = URL.createObjectURL(response.data)
-        let aspect
-        if (getFirstFrameAspect && !imageUrl) {
-          requestController.signal.addEventListener('abort', releasePending, { once: true })
-          aspect = await getFirstFrameAspect(pendingUrl)
-          if (!active || generation !== currentGeneration) return
-        }
-        if (imageUrl) safeRevoke(imageUrl)
+        requestController.signal.addEventListener('abort', releasePending, { once: true })
+        const image = new Image()
+        image.src = pendingUrl
+        await image.decode()
+        if (!active || generation !== currentGeneration) return
+        const aspect = image.naturalWidth / image.naturalHeight
+        previousUrl = imageUrl
         imageUrl = pendingUrl
         pendingUrl = ''
         etag = response.headers.etag || ''
-        cacheSnapshot({
-          blob: response.data,
-          etag,
-          aspect: aspect || getCachedSnapshot()?.aspect
-        })
-        if (aspect) onChange(imageUrl, aspect)
-        else onChange(imageUrl)
+        cacheSnapshot({ blob: response.data, etag, aspect })
+        onChange(imageUrl, aspect)
+        await nextTick()
       } else if (response.status === 204) {
         etag = ''
         cacheSnapshot(null)
@@ -98,6 +83,7 @@ export function createScreenshotPreview({
       releasePending()
       requestController.signal.removeEventListener('abort', releasePending)
       if (active && generation === currentGeneration) {
+        releasePrevious()
         controller = null
         timer = setTimeout(() => poll(currentGeneration), interval)
       }
@@ -120,18 +106,6 @@ export function createScreenshotPreview({
       controller = null
       etag = ''
       clearImage()
-    },
-    invalidate() {
-      etag = ''
-      cacheSnapshot(null)
-      clearImage()
-      if (active) {
-        clearTimeout(timer)
-        timer = null
-        controller?.abort()
-        controller = null
-        poll(++generation)
-      }
     }
   }
 }

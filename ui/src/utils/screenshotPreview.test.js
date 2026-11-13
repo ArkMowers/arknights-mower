@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ref, watch } from 'vue'
 
 import { createScreenshotPreview } from './screenshotPreview.js'
 
@@ -8,9 +9,21 @@ describe('memory screenshot preview', () => {
   let onChange
   let createUrl
   let revokeUrl
+  let decode
 
   beforeEach(() => {
     vi.useFakeTimers()
+    decode = vi.fn().mockResolvedValue()
+    vi.stubGlobal(
+      'Image',
+      class {
+        naturalWidth = 16
+        naturalHeight = 9
+        decode() {
+          return decode(this.src)
+        }
+      }
+    )
     createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:frame')
     revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
     fetchSnapshot = vi.fn().mockResolvedValue({
@@ -26,12 +39,13 @@ describe('memory screenshot preview', () => {
     preview.stop()
     vi.useRealTimers()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   it('polls without log messages and avoids retransmitting an unchanged image', async () => {
     preview.start()
     await vi.advanceTimersByTimeAsync(0)
-    expect(onChange).toHaveBeenLastCalledWith('blob:frame')
+    expect(onChange).toHaveBeenLastCalledWith('blob:frame', 16 / 9)
     fetchSnapshot.mockResolvedValue({ status: 304, headers: {} })
     await vi.advanceTimersByTimeAsync(1000)
     expect(fetchSnapshot.mock.calls[1][0].headers).toEqual({ 'If-None-Match': '"frame-1"' })
@@ -82,7 +96,7 @@ describe('memory screenshot preview', () => {
     })
     preview.start()
     await vi.advanceTimersByTimeAsync(0)
-    expect(snapshot).toEqual({ blob: expect.any(Blob), etag: '"frame-1"', aspect: 4 / 3 })
+    expect(snapshot).toEqual({ blob: expect.any(Blob), etag: '"frame-1"', aspect: 16 / 9 })
     expect(await snapshot.blob.text()).toBe('jpeg')
     fetchSnapshot.mockResolvedValue({ status: 204, headers: {} })
     await vi.advanceTimersByTimeAsync(1000)
@@ -107,6 +121,32 @@ describe('memory screenshot preview', () => {
     expect(fetchSnapshot).toHaveBeenCalledTimes(2)
   })
 
+  it('keeps the old URL live while Vue patches the new image source', async () => {
+    const src = ref('')
+    const atPatch = vi.fn()
+    const unwatch = watch(
+      src,
+      (url, oldUrl) => {
+        if (oldUrl && url) atPatch(revokeUrl.mock.calls.map(([revoked]) => revoked))
+      },
+      { flush: 'post' }
+    )
+    try {
+      preview = createScreenshotPreview({
+        fetchSnapshot,
+        onChange: (url) => (src.value = url)
+      })
+      preview.start()
+      await vi.advanceTimersByTimeAsync(0)
+      createUrl.mockReturnValue('blob:next')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(atPatch).toHaveBeenCalledExactlyOnceWith([])
+      expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:frame')
+    } finally {
+      unwatch()
+    }
+  })
+
   it('ignores a stale response after stopping and restarting', async () => {
     let finishOldRequest
     fetchSnapshot.mockImplementationOnce(
@@ -125,32 +165,32 @@ describe('memory screenshot preview', () => {
     expect(fetchSnapshot).toHaveBeenCalledTimes(3)
   })
 
-  it('publishes the first frame with its decoded aspect and leaves later frames on the normal path', async () => {
+  it('publishes each frame only after its decode finishes', async () => {
     let completeDecode
-    const getFirstFrameAspect = vi.fn(() => new Promise((resolve) => (completeDecode = resolve)))
-    preview = createScreenshotPreview({ fetchSnapshot, onChange, getFirstFrameAspect })
+    decode.mockImplementation(() => new Promise((resolve) => (completeDecode = resolve)))
     preview.start()
     await vi.advanceTimersByTimeAsync(1500)
     expect(fetchSnapshot).toHaveBeenCalledTimes(1)
     expect(onChange).not.toHaveBeenCalled()
 
-    completeDecode(4 / 3)
+    completeDecode()
     await vi.advanceTimersByTimeAsync(0)
-    expect(onChange).toHaveBeenLastCalledWith('blob:frame', 4 / 3)
+    expect(onChange).toHaveBeenLastCalledWith('blob:frame', 16 / 9)
 
     createUrl.mockReturnValue('blob:next')
     await vi.advanceTimersByTimeAsync(1000)
-    expect(onChange).toHaveBeenLastCalledWith('blob:next')
-    expect(getFirstFrameAspect).toHaveBeenCalledExactlyOnceWith('blob:frame')
+    expect(onChange).toHaveBeenCalledTimes(1)
+    expect(revokeUrl).not.toHaveBeenCalled()
+
+    completeDecode()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(onChange).toHaveBeenLastCalledWith('blob:next', 16 / 9)
+    expect(decode.mock.calls).toEqual([['blob:frame'], ['blob:next']])
   })
 
   it('releases a pending first frame on stop without publishing a stale decode', async () => {
     let completeDecode
-    const getFirstFrameAspect = vi
-      .fn()
-      .mockImplementationOnce(() => new Promise((resolve) => (completeDecode = resolve)))
-      .mockResolvedValueOnce(16 / 9)
-    preview = createScreenshotPreview({ fetchSnapshot, onChange, getFirstFrameAspect })
+    decode.mockImplementationOnce(() => new Promise((resolve) => (completeDecode = resolve)))
     preview.start()
     await vi.advanceTimersByTimeAsync(0)
     preview.stop()
@@ -159,7 +199,7 @@ describe('memory screenshot preview', () => {
     createUrl.mockReturnValue('blob:next')
     preview.start()
     await vi.advanceTimersByTimeAsync(0)
-    completeDecode(4 / 3)
+    completeDecode()
     await vi.advanceTimersByTimeAsync(0)
     expect(onChange.mock.calls).toEqual([[''], ['blob:next', 16 / 9]])
     expect(revokeUrl).toHaveBeenCalledTimes(1)
@@ -167,11 +207,7 @@ describe('memory screenshot preview', () => {
 
   it('discards an invalid first frame and retries without its etag', async () => {
     vi.spyOn(console, 'debug').mockImplementation(() => {})
-    const getFirstFrameAspect = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('invalid image'))
-      .mockResolvedValueOnce(4 / 3)
-    preview = createScreenshotPreview({ fetchSnapshot, onChange, getFirstFrameAspect })
+    decode.mockRejectedValueOnce(new Error('invalid image'))
     preview.start()
     await vi.advanceTimersByTimeAsync(0)
     expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:frame')
@@ -180,7 +216,7 @@ describe('memory screenshot preview', () => {
     createUrl.mockReturnValue('blob:next')
     await vi.advanceTimersByTimeAsync(1000)
     expect(fetchSnapshot.mock.calls[1][0].headers).toEqual({})
-    expect(onChange).toHaveBeenLastCalledWith('blob:next', 4 / 3)
+    expect(onChange).toHaveBeenLastCalledWith('blob:next', 16 / 9)
   })
 
   it('keeps the last image on a network failure and retries', async () => {
@@ -203,28 +239,5 @@ describe('memory screenshot preview', () => {
     expect(onChange).toHaveBeenLastCalledWith('')
     await vi.advanceTimersByTimeAsync(1000)
     expect(fetchSnapshot.mock.calls[2][0].headers).toEqual({})
-  })
-
-  it('invalidates a broken frame and retries without etag immediately', async () => {
-    let snapshot = { blob: new Blob(['cached']), etag: '"frame-1"', aspect: 16 / 9 }
-    preview = createScreenshotPreview({
-      fetchSnapshot,
-      onChange,
-      getCachedSnapshot: () => snapshot,
-      cacheSnapshot: (value) => (snapshot = value)
-    })
-    preview.start()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(onChange).toHaveBeenCalledWith('blob:frame')
-
-    createUrl.mockReturnValue('blob:recovered')
-    preview.invalidate()
-    expect(snapshot).toBeNull()
-    expect(revokeUrl).toHaveBeenCalledWith('blob:frame')
-    expect(onChange).toHaveBeenLastCalledWith('')
-
-    await vi.advanceTimersByTimeAsync(0)
-    expect(fetchSnapshot.mock.lastCall[0].headers).toEqual({})
-    expect(onChange).toHaveBeenLastCalledWith('blob:recovered')
   })
 })

@@ -104,6 +104,43 @@ def test_final_restored_members_use_the_existing_group_recovery_policy(
     assert any(queued is task for queued in solver.tasks)
 
 
+def add_return_activated_backup(data):
+    data.backup_plans.append(
+        Plan(
+            {},
+            PlanConfig("", "", "", ling_xi=2),
+            trigger=LogicExpression(
+                "op_data.operators['令'].is_working()", "==", "True"
+            ),
+            task={"room_1_2": ["结城理"]},
+        )
+    )
+    data.plan_condition.append(False)
+
+
+def test_return_triggered_explicit_backup_preserves_ordinary_recovery(restored_group):
+    solver, task, now = restored_group
+    data = solver.op_data
+    add_return_activated_backup(data)
+    for elapsed in [0, 0.1, 0.2]:
+        data._projection_now = now + timedelta(hours=elapsed)
+        solver._prepare_shift_cycle(task)
+        assert task.time == now + timedelta(hours=3)
+        assert data.plan_condition == [True, False]
+        assert data.operators["结城理"].current_room == "dormitory_1"
+        assert sum(queued is task for queued in solver.tasks) == 1
+    data.get_dorm_by_name("结城理")[1].time = now + timedelta(hours=4)
+    solver._prepare_shift_cycle(task)
+    assert task.time == now + timedelta(hours=4)
+    data._projection_now = now + timedelta(hours=4)
+    data.operators["结城理"].mood = 24
+    data.operators["结城理"].time_stamp = data._projection_now
+    solver._prepare_shift_cycle(task)
+    assert task.time == now + timedelta(hours=4)
+    assert task.plan["room_1_2"] == ["结城理"]
+    assert task.backup_shift_conditions == [False, True]
+
+
 def test_final_members_keep_the_absolute_existing_gap_cap(restored_group):
     solver, task, now = restored_group
     config.conf.group_mood_gap_max_extra_wait_hours = 0.5
@@ -118,6 +155,7 @@ def test_final_members_keep_the_absolute_existing_gap_cap(restored_group):
     "kind",
     [
         "separate",
+        "explicit-backup",
         "same-room",
         "shared-cover",
         "working-source-cover",
@@ -131,6 +169,8 @@ def test_final_members_keep_the_absolute_existing_gap_cap(restored_group):
 def test_merged_independent_return_keeps_its_own_date(restored_group, kind):
     solver, task, now = restored_group
     data = solver.op_data
+    if kind == "explicit-backup":
+        add_return_activated_backup(data)
     common_room = kind == "same-room"
     group = "" if kind.startswith("ungrouped-") else "H"
     room, index = ("central", 1) if common_room else ("meeting", 0)

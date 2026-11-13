@@ -89,7 +89,7 @@ function alphaFill(data:MowerSchedulingData,pending:MowerTask[],emptyOnly:boolea
  const recoveryNames=new Set(recovering),full=c.filling.filter(n=>!c.recovering.includes(n)&&!c.unknown.includes(n)),unknown=!!c.unknown.length&&!priorityOnly
  if(priorityOnly&&!recovering.length)return {plan,residents,vacancies}
  if(!recovering.length&&!c.filling.length)return {plan,residents,vacancies}
- const beds=orderMowerAlphaDormIndices(data).map(index=>data.dorms[index]!).sort((a,b)=>Number(alphaFullDormFiller(data,b.name))-Number(alphaFullDormFiller(data,a.name)))
+ const beds=orderMowerAlphaDormIndices(data).map(index=>data.dorms[index]!).sort((a,b)=>Number(alphaFullDormFiller(data,b.name))-Number(alphaFullDormFiller(data,a.name))||(!vacancies.size?alphaRestingTier(data,b.name)-alphaRestingTier(data,a.name):0))
  for(const bed of beds){
   if(plan[bed.position[0]]?.[bed.position[1]]!==undefined&&plan[bed.position[0]]![bed.position[1]]!=='Current')continue
   const position=alphaPosition(...bed.position);if(reserved.slots.has(position)||!data.effectiveFreeSlot(bed))continue

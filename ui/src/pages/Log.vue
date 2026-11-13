@@ -117,6 +117,7 @@ async function cancel_pause() {
   }
 }
 const mobile = inject('mobile')
+const chat_panel_visible = inject('chat_panel_visible', ref(false))
 const resizer_height = computed(() => (mobile.value ? 24 : RESIZER_HEIGHT))
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
@@ -234,6 +235,14 @@ function finish_log_view_transition() {
   drain_log_view_updates(true)
 }
 
+watch(
+  chat_panel_visible,
+  (visible) => {
+    if (visible && log_view_transition?.target === document) finish_log_view_transition()
+  },
+  { flush: 'sync' }
+)
+
 function transition_log_view(update, { panel, closing = false, immediate = false } = {}) {
   const pane = log_layout.value
   const target = !panel && pane?.startViewTransition ? pane : document
@@ -243,6 +252,7 @@ function transition_log_view(update, { panel, closing = false, immediate = false
     !pane ||
     !target.startViewTransition ||
     document.hidden ||
+    (target === document && chat_panel_visible.value) ||
     (reduced && (!panel || panel === 'daily')) ||
     !globalThis.CSS?.supports('selector(:active-view-transition-type(mower-log))')
   ) {
@@ -274,7 +284,7 @@ function transition_log_view(update, { panel, closing = false, immediate = false
       if (closing) types.push('mower-log-collapse')
     }
     const transition = target.startViewTransition({ update: commit, types })
-    log_view_transition = { transition, commit }
+    log_view_transition = { transition, commit, target }
     void transition.ready.catch(() => {})
     const release = () => {
       if (log_view_transition?.transition !== transition) return
@@ -378,29 +388,6 @@ function apply_log_layout() {
       : (bounds.bottom - task.top) / zoom
   const height = clampTaskHeight(layout_preference.task_height, availableHeight, bottomReserve)
   container.style.setProperty('--log-task-h', `${height}px`)
-}
-
-const FALLBACK_SCREENSHOT = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'
-let last_screenshot_error = 0
-
-function screenshot_loaded(event) {
-  const image = event.target
-  if (image?.naturalWidth > 0 && image?.naturalHeight > 0) {
-    screenshot_aspect = image.naturalWidth / image.naturalHeight
-    if (workspace.screenshot)
-      workspace.screenshot = { ...workspace.screenshot, aspect: screenshot_aspect }
-  }
-  apply_log_layout()
-}
-
-function screenshot_error(event) {
-  console.debug('截图预览加载失败，正在重置:', event)
-  workspace.screenshot = null
-  const now = Date.now()
-  if (now - last_screenshot_error > 2000) {
-    last_screenshot_error = now
-    screenshotPreview.invalidate()
-  }
 }
 
 async function restore_log_layout() {
@@ -540,12 +527,6 @@ const screenshotPreview = createScreenshotPreview({
   },
   fetchSnapshot: (options) =>
     axios.get(`${import.meta.env.VITE_HTTP_URL}/screenshot/latest`, options),
-  getFirstFrameAspect: async (url) => {
-    const image = new Image()
-    image.src = url
-    await image.decode()
-    return image.naturalWidth / image.naturalHeight
-  },
   onChange: (url, aspect) => {
     if (aspect) screenshot_aspect = aspect
     latest_screenshot_url = url
@@ -1312,15 +1293,7 @@ async function db_delete(keys) {
       aria-label="运行日志"
       @animationend.self="apply_log_layout"
     >
-      <n-image
-        v-if="has_screenshot"
-        class="log-screenshot"
-        :src="sc_blob"
-        :fallback-src="FALLBACK_SCREENSHOT"
-        object-fit="contain"
-        @load="screenshot_loaded"
-        @error="screenshot_error"
-      />
+      <n-image v-if="has_screenshot" class="log-screenshot" :src="sc_blob" object-fit="contain" />
       <div
         v-if="has_screenshot"
         class="log-resizer log-resizer-sc"

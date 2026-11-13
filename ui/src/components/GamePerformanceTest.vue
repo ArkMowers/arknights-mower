@@ -14,16 +14,6 @@ const job = ref({ status: 'idle' })
 const pending = ref(false)
 const error = ref('')
 const screenshot = ref('')
-const FALLBACK_SCREENSHOT = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'
-let last_screenshot_error = 0
-
-function screenshot_error() {
-  const now = Date.now()
-  if (now - last_screenshot_error > 2000) {
-    last_screenshot_error = now
-    screenshotPreview.invalidate()
-  }
-}
 const running = computed(() => job.value.status === 'running')
 const recommendation = computed(() => {
   const result = job.value
@@ -192,11 +182,9 @@ onUnmounted(() => {
       <n-image
         v-if="screenshot"
         :src="screenshot"
-        :fallback-src="FALLBACK_SCREENSHOT"
         alt="本次游戏性能测试画面"
         object-fit="contain"
         class="performance-test-image"
-        @error="screenshot_error"
       />
       <n-text v-else depth="3">等待本次测试画面…</n-text>
     </div>

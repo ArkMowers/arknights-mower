@@ -33,7 +33,7 @@ from arknights_mower.utils.growth_value import price_catalog
         ("酯原料", "30031", 100, 2),
         ("异铁碎片", "30041", 120, 2),
         ("双酮", "30051", 120, 2),
-        ("破损装置", "30061", 80, 1),
+        ("破损装置", "30061", 160, 2),
         ("固源岩", "30012", 200, 3),
         ("糖", "30022", 200, 2),
         ("聚酸酯", "30032", 200, 2),
@@ -77,10 +77,12 @@ def test_rare_discounts_still_use_full_pack_value(price, discount, quantity):
         product(0, "糖", 200, 100),
         product(0, "糖", 200, -1),
         product(0, "糖", 100, None),
+        product(0, "破损装置", 40, 50),
     ],
 )
 def test_unknown_or_inconsistent_pack_is_not_valued(offer):
-    assert product_sanity_value(offer, {"items": {"30022": {"value": 10}}}) is None
+    catalog = {"items": {"30022": {"value": 10}, "30061": {"value": 5}}}
+    assert product_sanity_value(offer, catalog) is None
 
 
 @pytest.mark.parametrize("value", [None, -1, float("nan"), float("inf"), True])
@@ -105,6 +107,33 @@ def value_shopping(shopping):
     config.conf.maa_mall_buy = ""
     config.conf.credit_shop_value_threshold = 0.15
     return shopping
+
+
+def test_discounted_damaged_devices_use_both_items_for_purchase(value_shopping):
+    shop, state = value_shopping
+    save_values({"破损装置": 5})
+    config.conf.credit_shop_value_threshold = 0.1
+    state.balance = 80
+    state.products = [product(0, "破损装置", 80, 50)]
+
+    shop.run()
+
+    assert state.purchased == [(0, 100)]
+    assert state.balance == 0
+
+
+def test_discounted_damaged_devices_report_credit_shortage(value_shopping):
+    shop, state = value_shopping
+    save_values({"破损装置": 5})
+    config.conf.credit_shop_value_threshold = 0.1
+    state.balance = 50
+    state.products = [product(0, "破损装置", 80, 50)]
+
+    shop.run(on_demand=True)
+
+    assert state.purchased == []
+    assert state.balance == 50
+    assert shop.credit_deficit == 30
 
 
 def test_highest_raw_ratio_is_bought_before_overflow_bargain(value_shopping):

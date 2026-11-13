@@ -9,7 +9,7 @@ import pytest
 
 from arknights_mower.utils import config, path
 from arknights_mower.utils.diagnostics import export_bundle
-from arknights_mower.utils.log_privacy import LogRedactor
+from arknights_mower.utils.log_privacy import REDACTED, LogRedactor
 
 
 @pytest.mark.parametrize(
@@ -160,3 +160,38 @@ def test_export_redacts_live_and_archived_logs_without_rewriting_sources(
         assert "原始截图未经脱敏" in bundle.read("readme.txt").decode("utf-8")
     assert runtime.read_text(encoding="utf-8") == message
     assert json.loads(saved.read_text(encoding="utf-8")) == [{"message": message}]
+
+
+def test_identifier_keeps_the_verdict_that_follows_it():
+    """遮蔽设备串号不能连带吞掉同一行的诊断结论。
+
+    诊断导出按行脱敏，``serial=`` 后面的判决码与原因正是排查所需的字段。
+    """
+
+    text = (
+        "设备观察：state=offline 实例=unknown serial=127.0.0.1:16384 "
+        "code=binding_failed：找不到已绑定实例的管理程序"
+    )
+    redacted = LogRedactor()(text)
+    assert f"serial={REDACTED}" in redacted
+    assert "127.0.0.1:16384" not in redacted
+    assert "code=binding_failed：找不到已绑定实例的管理程序" in redacted
+
+
+def test_json_identifier_keeps_the_rest_of_the_record():
+    """JSON 里的标识字段只遮蔽自己的值，保留后续字段。"""
+
+    text = '{"adb": "C:/adb.exe", "instance_id": "0"}'
+    redacted = LogRedactor()(text)
+    assert "C:/adb.exe" not in redacted
+    assert '"instance_id": "0"' in redacted
+
+
+def test_credentials_still_consume_the_whole_record():
+    """凭据类字段的值可能是任意文本，仍要遮蔽到行尾。"""
+
+    text = "authorization: Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature"
+    redacted = LogRedactor()(text)
+    assert REDACTED in redacted
+    assert "eyJhbGciOiJIUzI1NiJ9" not in redacted
+    assert "payload" not in redacted

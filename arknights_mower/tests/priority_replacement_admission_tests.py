@@ -26,6 +26,56 @@ solver = dorm_empty_release_tests.solver
 shift_solver = shift_backup_convergence_tests.solver
 
 
+@pytest.mark.parametrize("reverse_beds", [False, True])
+@pytest.mark.parametrize("completed_first", [False, True])
+@pytest.mark.parametrize("incoming_name", ["塞雷娅", "歌蕾蒂娅"])
+@pytest.mark.parametrize(
+    "higher_tier,lower_tier",
+    [
+        (RestingTier.PRIORITY_REPLACEMENT, RestingTier.STANDBY),
+        (RestingTier.STANDBY, RestingTier.REPLACEMENT),
+        (RestingTier.REPLACEMENT, RestingTier.IDLE),
+    ],
+)
+def test_takeover_preserves_higher_tier_resident_before_bed_order(
+    op_data, reverse_beds, completed_first, incoming_name, higher_tier, lower_tier
+):
+    data = op_data
+    data.operators["红"].mood = 24
+    data.operators["空爆"].current_room = ""
+    data.plan[ROOM][3] = Room("Free", "", [])
+    first = set_tier(data, "结城理", higher_tier, 24 if completed_first else 12.9)
+    second = set_tier(data, "行铃", lower_tier, 20.9)
+    for index, op in enumerate((first, second), 3):
+        op.current_room, op.current_index = ROOM, index
+    data.dorm = [
+        Dormitory((ROOM, 3), first.name),
+        Dormitory((ROOM, 4), second.name),
+    ]
+    for bed in data.dorm:
+        bed.time = datetime.now() + timedelta(hours=2)
+    if reverse_beds:
+        data.dorm.reverse()
+    data.add(Operator(incoming_name, "", mood=22.6, time_stamp=datetime.now()))
+    data.plan["meeting"][0].replacement.append(incoming_name)
+    if incoming_name == "歌蕾蒂娅":
+        data.config.ope_resting_priority = [incoming_name]
+    else:
+        data.config.resting_priority = [incoming_name]
+    before = [(bed.position, bed.name, bed.time) for bed in data.dorm]
+    tasks = []
+
+    try_add_release_dorm({}, None, data, tasks, empty_only=True)
+
+    assert len(tasks) == 1
+    projected = data.project_arrangements([tasks[0].plan])
+    assert {bed.name for bed in projected.dorm if bed.name} == {
+        incoming_name,
+        second.name if completed_first else first.name,
+    }
+    assert [(bed.position, bed.name, bed.time) for bed in data.dorm] == before
+
+
 @pytest.mark.parametrize("free_room", [False, True])
 @pytest.mark.parametrize("empty_only", [False, True])
 @pytest.mark.parametrize("resident_tier", list(RestingTier)[:-1])

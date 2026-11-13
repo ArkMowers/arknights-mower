@@ -343,7 +343,8 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
   if(requiredOrdinary.length&&unfinishedRequiredDepartures(simulation,requiredOrdinary,effectiveExplicitWork(simulation,model,conditions,explicitWork)).length)throw new MowerResourceWaitError('原下班目标未完成，保留原任务并等待岗位释放',model.observationNames)
   if(requiredNames.length&&unfinishedRequiredDepartures(simulation,requiredNames,effectiveExplicitWork(simulation,model,conditions,explicitWork)).length)throw new MowerShiftPreviewError('原下班目标未完成，保留原任务并等待岗位释放')
   if(cancelledShiftLeavesOnlyDormFill(data,simulation,task,intent,conditions,coalesced,final))throw new MowerShiftPreviewError('原下班意图被完全取消，仅剩普通填床换位，保留原任务，暂不执行换人')
-  if(task.type===T.SHIFT_ON&&!task.initialStaffing&&!task.retainsExecution&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked&&!explicitSlots.size&&!task.exhaustSupport&&!task.dormRecoveryRestore.length){
+  // Incidental backup tasks do not turn the originating ordinary return into an explicit override.
+  if(task.type===T.SHIFT_ON&&!task.initialStaffing&&!task.retainsExecution&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked&&!task.backupExplicitSlots.size&&!task.exhaustSupport&&!task.dormRecoveryRestore.length){
    const effective=model.swap(projectMowerArrangements(data,[]),conditions,simulation.backupGroup)
    const delayedGroups=new Set<string>(),deadline=mowerRestoredGroupRecoveryDeadline(data,effective,returningGroups,delayedGroups)
    if(deadline!==undefined){
@@ -359,7 +360,9 @@ export function prepareMowerShiftCycle(data:MowerSchedulingData,task:MowerTask,q
      Object.assign(task,trial);queue.tasks=trialQueue.tasks.map(queued=>queued===trial?task:queued)
      return
     }
+    // Keep the original intent until recovery permits committing the projected backup arrangement.
     task.timeMicros=Math.max(task.timeMicros,deadline)
+    return
    }
   }
   const inferredTransitions=mowerArrangementGroupTransitions(simulation,final)

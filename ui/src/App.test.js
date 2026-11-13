@@ -529,6 +529,16 @@ describe('desktop page startup', () => {
     return html
   }
 
+  it('shares assistant visibility with the mounted business page', async () => {
+    const component = await mount()
+    const visibility = provide.mock.calls.find(([key]) => key === 'chat_panel_visible')?.[1]
+    expect(visibility).toBe(component.showChatBot)
+    component.openChatBot()
+    expect(visibility.value).toBe(true)
+    component.showChatBot.value = false
+    expect(visibility.value).toBe(false)
+  })
+
   it('toggles the mounted content watermark without reloading its version or application data', async () => {
     state.loadWatermark.mockResolvedValue('4.1.6-alpha.42')
     const component = await mount()
@@ -1923,7 +1933,7 @@ describe('desktop page startup', () => {
   )
 
   it.each([false, true])(
-    'uses current installed resource dates in the brand (mobile %s)',
+    'uses active finite activity deadlines for installed resource colors (mobile %s)',
     async (mobile) => {
       const now = Date.now() / 1000
       state.resource.info.current_display = '当前资源'
@@ -1934,13 +1944,45 @@ describe('desktop page startup', () => {
       component.isMobileNav.value = mobile
       component.mobileMenuOpen.value = mobile
       const upcoming = await renderShell(component)
-      expect(upcoming).toContain('--resource-badge-hue:140')
+      expect(upcoming).not.toContain('sidebar-brand-resource--dated')
+      expect(upcoming).not.toContain('--resource-badge-hue:')
+      expect(upcoming).toContain('活动开始：')
       state.resource.info.current_metadata = {
         activity: { name: '昨日海', time: now - 172800, endTime: now - 86400 }
       }
       const ended = await renderShell(component)
-      expect(ended).toContain('--resource-badge-hue:0')
-      expect(ended).toContain('活动已结束')
+      expect(ended).not.toContain('sidebar-brand-resource--dated')
+      expect(ended).not.toContain('--resource-badge-hue:')
+      expect(ended).toContain('当前资源中没有未结束的活动')
+
+      const permanent = { name: '卫戍协议:规程', time: now - 60, endTime: 4092580799 }
+      const later = { name: '后关闭活动', time: now - 86400, endTime: now + 259200 }
+      state.resource.info.current_display = '卫戍协议:规程#1111'
+      state.resource.info.current_metadata = {
+        activity: permanent,
+        activities: [
+          permanent,
+          later,
+          { name: '先关闭活动', time: now - 86400, endTime: now + 86400 }
+        ]
+      }
+      const active = await renderShell(component)
+      expect(active).toContain('--resource-badge-hue:70')
+      expect(active).toContain('>卫戍协议:规程#1111</button>')
+      expect(active).toContain('活动「先关闭活动」作战关闭')
+      expect(active).toContain('活动「卫戍协议:规程」长期开放')
+      expect(active).not.toContain('2099')
+
+      state.resource.info.current_metadata = { activity: permanent, activities: [later] }
+      const next = await renderShell(component)
+      expect(next).toContain('--resource-badge-hue:105')
+      expect(next).not.toContain('先关闭活动')
+
+      state.resource.info.current_metadata = { activity: permanent, activities: [] }
+      const permanentOnly = await renderShell(component)
+      expect(permanentOnly).not.toContain('sidebar-brand-resource--dated')
+      expect(permanentOnly).not.toContain('--resource-badge-hue:')
+      expect(permanentOnly).toContain('活动「卫戍协议:规程」长期开放')
     }
   )
 

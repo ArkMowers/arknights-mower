@@ -120,7 +120,7 @@ def test_api_rejects_low_level_and_does_not_dispatch(roster, monkeypatch, legacy
     app.register_blueprint(view.mastery_bp)
     insert, dispatch = MagicMock(), MagicMock()
     monkeypatch.setattr(db, "insert_plan", insert)
-    monkeypatch.setattr(view, "_dispatch_new_plans_immediately", dispatch)
+    monkeypatch.setattr(view, "_dispatch_new_plans_async", dispatch)
     payload = (
         {"八幡海铃": 0}
         if legacy
@@ -177,7 +177,7 @@ def test_growth_planning_accepts_unready_but_does_not_dispatch(
     monkeypatch.setattr(view, "get_plan_by_skill", lambda *a, **k: None)
     monkeypatch.setattr(view, "auto_interleave_new_plans", lambda *a, **k: None)
     dispatch = MagicMock()
-    monkeypatch.setattr(view, "_dispatch_new_plans_immediately", dispatch)
+    monkeypatch.setattr(view, "_dispatch_new_plans_async", dispatch)
     app = Flask(__name__)
     app.register_blueprint(view.mastery_bp)
     app.token = ""

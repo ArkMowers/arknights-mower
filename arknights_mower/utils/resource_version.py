@@ -6,6 +6,7 @@
 """
 
 import json
+import math
 from pathlib import Path
 
 import requests
@@ -24,18 +25,49 @@ RESOURCE_VERSION_URL = (
 TMP_VERSION_PATH = get_path("@app/tmp/resource_version.json")
 
 
-def _read_json(path: Path) -> dict | None:
+def _read_json(path: Path, expected_type: type = dict):
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception:
         return None
-    return data if isinstance(data, dict) else None
+    return data if isinstance(data, expected_type) else None
 
 
 def _read_local_version_json() -> dict | None:
     # 资源包目录会在运行期间被原子替换。每次读取都重新解析 overlay，避免首次启动
     # 尚未安装资源包时把内置 version.json 路径永久缓存到进程结束。
     return _read_json(resource_pkg_path("arknights_mower/data/version.json"))
+
+
+def _read_local_activities() -> list[dict]:
+    """从当前资源的关卡窗口合并活动作战时间，不使用商店关闭时间。"""
+    stages = (
+        _read_json(resource_pkg_path("arknights_mower/data/stage_data_full.json"), list)
+        or []
+    )
+    activities = {}
+    for stage in stages:
+        if not isinstance(stage, dict):
+            continue
+        name, window = stage.get("zoneNameSecond"), stage.get("endTs")
+        if not isinstance(name, str) or not name or not isinstance(window, dict):
+            continue
+        start, end = window.get("startTs"), window.get("endTs")
+        if (
+            type(start) not in (int, float)
+            or type(end) not in (int, float)
+            or not math.isfinite(start)
+            or not math.isfinite(end)
+            or not 0 < start < end
+        ):
+            continue
+        if name in activities:
+            activity = activities[name]
+            activity["time"] = min(activity["time"], start)
+            activity["endTime"] = max(activity["endTime"], end)
+        else:
+            activities[name] = {"name": name, "time": start, "endTime": end}
+    return sorted(activities.values(), key=lambda activity: activity["endTime"])
 
 
 def _read_tmp_cache() -> dict | None:
@@ -81,6 +113,7 @@ def check_resource_update(local_only: bool = False) -> dict:
         "current_display": display_version(local) or "",
         "current_metadata": {
             "activity": local.get("activity") or {},
+            "activities": _read_local_activities(),
             "gacha": local.get("gacha") or {},
             "last_updated": local.get("last_updated") or "",
         },

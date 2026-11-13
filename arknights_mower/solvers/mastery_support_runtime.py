@@ -1,5 +1,6 @@
 """Prepare assistant plans after confirming the training-room scene."""
 
+from dataclasses import replace
 from datetime import datetime
 
 from arknights_mower.utils.mastery_mood import require_support_mood
@@ -188,52 +189,7 @@ def prepare_plan_supports(solver, plan, level):
     )
     prepared = _prepare_stage(first, swap, spec, carry)
     prepared["exclude_reducer"] = exclude_reducer
-    remaining = [prepared]
-    for next_level in range(level + 1, plan["target_level"] + 1):
-        next_route = next(
-            (s for s in saved["stages"] if s["level"] == next_level), None
-        )
-        if next_route is None:
-            raise SupportPlanError("协助方案缺少后续专精阶段，请重新添加计划")
-        next_options, _ = candidates(
-            plan["char_id"],
-            include_dynamic=config.conf.assistant_follows_schedule
-            or next_route.get("manual", False),
-            inputs=inputs,
-        )
-        next_first, next_swap = _stage_trainers(
-            next_options, next_route, next_level, occupants[0]
-        )
-        if (
-            not config.conf.assistant_follows_schedule
-            and next_level == plan["target_level"]
-        ):
-            if basic_mastery_successor(plan, next_level):
-                next_first, next_swap = _non_reducer(next_options, next_level), None
-            elif halving_successor(plan, next_level):
-                next_swap = max(
-                    (
-                        stats[next_level]
-                        for stats in next_options.values()
-                        if stats[next_level]["halves"]
-                    ),
-                    key=lambda item: item["efficiency"],
-                    default=None,
-                )
-            else:
-                next_swap = None
-        remaining.append(
-            {
-                **next_route,
-                "operator": next_first["name"],
-                "efficiency": next_first["efficiency"],
-                "first_halves": next_first["halves"],
-                "swap_target": next_swap["name"] if next_swap else None,
-                "swap_efficiency": next_swap["efficiency"] if next_swap else 0,
-                "swap_halves": next_swap["halves"] if next_swap else False,
-            }
-        )
-    require_support_mood(solver, remaining, inherited=bool(carry))
+    prepared = _admit_or_replace(solver, plan, prepared, spec, carry, inputs)
     save_runtime(plan, prepared)
 
 
@@ -247,28 +203,168 @@ def prepare_legacy_support_mood(solver, plan, level):
     options = None
     if config.conf.assistant_follows_schedule:
         options, _ = candidates(plan["char_id"], include_dynamic=True)
-    routes = []
-    for stage_level in range(level, plan["target_level"] + 1):
-        route = _get_plan_route(plan, stage_level)
-        if not route or not route.get("operator"):
-            raise SupportPlanError("无法确认完整协助方案，停止开训")
-        route = {
-            **route,
-            "level": stage_level,
-            "swap_efficiency": 30 if route.get("job_match") else 0,
-        }
-        if options is not None:
-            trainer = options.get(occupants[0], {}).get(stage_level)
-            if trainer is None:
-                raise SupportPlanError("无法确认排班协助干员，停止开训")
-            route.update(
-                operator=trainer["name"],
-                efficiency=trainer["efficiency"],
-                first_halves=trainer["halves"],
-                swap_target=None,
-            )
-        routes.append(route)
-    require_support_mood(solver, routes, inherited=bool(carry))
+    route = _get_plan_route(plan, level)
+    if not route or not route.get("operator"):
+        raise SupportPlanError("无法确认当前阶段协助方案，停止开训")
+    route = {
+        **route,
+        "level": level,
+        "swap_efficiency": route.get(
+            "swap_efficiency", 30 if route.get("job_match") else 0
+        ),
+    }
+    if options is not None:
+        trainer = options.get(occupants[0], {}).get(level)
+        if trainer is None:
+            raise SupportPlanError("无法确认排班协助干员，停止开训")
+        route.update(
+            operator=trainer["name"],
+            efficiency=trainer["efficiency"],
+            first_halves=trainer["halves"],
+            swap_target=None,
+        )
+    spec = StageSpec(
+        level,
+        BASE_HOURS[level] * (0.5 if carry else 1),
+        route.get("central_bonus", 0),
+        route.get(
+            "configured_swap_buffer",
+            route.get("mastery_swap_buffer", DEFAULT_SWAP_BUFFER_MINUTES),
+        ),
+        manual=route.get("manual", False),
+    )
+    selected = _admit_or_replace(solver, plan, route, spec, carry, None)
+    if selected.get("mood_fallback") or (
+        decode_json(plan.get("support_runtime")) or {}
+    ).get("mood_fallback"):
+        save_runtime(plan, selected)
+
+
+def _admit_or_replace(solver, plan, route, spec, carry, inputs):
+    from arknights_mower.utils import config
+    from arknights_mower.utils.log import logger
+    from arknights_mower.utils.mastery_mood import (
+        SupportMoodWait,
+        support_mood_requirements,
+        support_mood_shortages,
+    )
+
+    try:
+        _require_stage_mood(solver, route, inherited=bool(carry))
+        return route
+    except SupportMoodWait as error:
+        if config.conf.assistant_follows_schedule:
+            raise
+        waiting = error
+    options, central = candidates(plan["char_id"], inputs=inputs, include_dynamic=False)
+    spec = replace(spec, central=central, manual=False)
+    exclude_reducer = basic_mastery_successor(plan, spec.level)
+    successor = halving_successor(plan, spec.level)
+    last_name = route.get("swap_target") or route["operator"]
+    retain_halving = bool(successor) and (
+        route.get("swap_halves", last_name in REDUCERS)
+        if route.get("swap_target")
+        else route.get("first_halves", last_name in REDUCERS)
+    )
+    trainers = [stats[spec.level] for stats in options.values()]
+    if exclude_reducer:
+        trainers = [trainer for trainer in trainers if not trainer["halves"]]
+    reducers = (
+        [trainer for trainer in trainers if trainer["halves"]] if retain_halving else []
+    )
+    alternatives = []
+    for first in trainers:
+        for swap in [None, *reducers]:
+            projected = stage_route(first, swap, spec)
+            if projected is None:
+                continue
+            last = swap if projected["swap_target"] else first
+            if retain_halving and (
+                not last["halves"]
+                or projected["hours"] - (projected["switch_after"] or 0) <= 5
+            ):
+                continue
+            prepared = _prepare_stage(first, swap, spec, carry)
+            prepared.update(exclude_reducer=exclude_reducer, mood_fallback=True)
+            required = support_mood_requirements(prepared, inherited=bool(carry))
+            alternatives.append((prepared, required))
+    alternatives.sort(
+        key=lambda pair: (
+            pair[0]["hours"],
+            bool(pair[0]["swap_target"]),
+            pair[0]["operator"],
+            pair[0].get("swap_target") or "",
+        )
+    )
+
+    def available():
+        return next(
+            (
+                prepared
+                for prepared, required in alternatives
+                if not support_mood_shortages(solver.op_data, required)
+            ),
+            None,
+        )
+
+    selected = available()
+    task = getattr(solver, "task", None)
+    observed = getattr(task, "mastery_mood_observation", None)
+    if selected is None and (not observed or observed[0] != spec.level):
+        unknown = next(
+            (
+                prepared
+                for prepared, required in alternatives
+                if any(
+                    value is None
+                    for value in support_mood_shortages(
+                        solver.op_data, required
+                    ).values()
+                )
+            ),
+            None,
+        )
+        if unknown is not None:
+            try:
+                _require_stage_mood(solver, unknown, inherited=bool(carry))
+            except SupportMoodWait:
+                pass
+            selected = available()
+    if selected is None:
+        waiting.alternatives = [required for _, required in alternatives]
+        raise waiting
+    logger.info(
+        "专精协助干员心情不足或未知，当前阶段改用 %s，预计 %.2f 小时",
+        " → ".join(filter(None, (selected["operator"], selected.get("swap_target")))),
+        selected["hours"],
+    )
+    return selected
+
+
+def _require_stage_mood(solver, route, *, inherited):
+    from arknights_mower.utils.mastery_mood import SupportMoodWait
+
+    try:
+        require_support_mood(solver, route, inherited=inherited)
+        return
+    except SupportMoodWait as error:
+        if not any(value is None for value in error.shortages.values()):
+            raise
+        task = getattr(solver, "task", None)
+        observation = (route["level"], tuple(sorted(error.required.items())))
+        scan = getattr(solver, "_scan_card_moods", None)
+        if not callable(scan) or observation == getattr(
+            task, "mastery_mood_observation", None
+        ):
+            raise
+        scanned = scan(mastery=True)
+        if task is not None:
+            task.mastery_mood_observation_pending = scanned is False
+            if scanned is not False:
+                task.mastery_mood_observation = observation
+        if scanned is not False:
+            solver.enter_room("train", max_attempts=1)
+    require_support_mood(solver, route, inherited=inherited)
 
 
 def recover(solver, plan, room):
