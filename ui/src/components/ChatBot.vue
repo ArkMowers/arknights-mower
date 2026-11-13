@@ -1355,6 +1355,7 @@ onBeforeUnmount(() => {
               <n-button
                 quaternary
                 circle
+                size="small"
                 aria-label="添加文件"
                 title="添加文件"
                 :loading="attachmentsBusy"
@@ -1363,7 +1364,7 @@ onBeforeUnmount(() => {
                 ><template #icon><n-icon :component="Attach" /></template
               ></n-button>
               <n-dropdown :options="composerActions" trigger="click" @select="selectComposerAction">
-                <n-button quaternary circle aria-label="更多操作" title="更多操作">
+                <n-button quaternary circle size="small" aria-label="更多操作" title="更多操作">
                   <template #icon><n-icon :component="EllipsisHorizontal" /></template>
                 </n-button>
               </n-dropdown>
@@ -1381,6 +1382,7 @@ onBeforeUnmount(() => {
               <n-button
                 v-if="loading"
                 circle
+                size="small"
                 class="send-button"
                 :title="stopping ? '停止中' : '停止'"
                 :aria-label="stopping ? '停止中' : '停止'"
@@ -1393,6 +1395,7 @@ onBeforeUnmount(() => {
                 v-else
                 type="primary"
                 circle
+                size="small"
                 class="send-button"
                 :title="continueMode ? '继续处理' : '发送'"
                 :aria-label="continueMode ? '继续处理' : '发送'"
@@ -2058,6 +2061,9 @@ onBeforeUnmount(() => {
 }
 .composer-spacer {
   flex: 1;
+}
+.composer-toolbar :deep(.n-icon) {
+  font-size: 16px;
 }
 .context-info {
   color: var(--mower-text-muted);
