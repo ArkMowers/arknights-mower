@@ -46,6 +46,16 @@ function passed(component) {
     }
   }
 }
+function stubImage(decode = vi.fn().mockResolvedValue()) {
+  vi.stubGlobal(
+    'Image',
+    class {
+      naturalWidth = 1920
+      naturalHeight = 1080
+      decode = decode
+    }
+  )
+}
 afterEach(() => {
   scope?.stop()
   state.unmounted.forEach((callback) => callback())
@@ -141,6 +151,7 @@ it('shows the current test frame and stops preview when hidden or finished', asy
   vi.useFakeTimers()
   const page = Object.assign(new EventTarget(), { hidden: false })
   vi.stubGlobal('document', page)
+  stubImage()
   const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:test-frame')
   const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   const { component } = setup()
@@ -180,6 +191,7 @@ it('shows the current test frame and stops preview when hidden or finished', asy
 it('discards a pending frame when another test replaces its owner', async () => {
   vi.useFakeTimers()
   vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false }))
+  stubImage()
   const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:new-frame')
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
   const { component } = setup()
@@ -204,4 +216,72 @@ it('discards a pending frame when another test replaces its owner', async () => 
   await vi.advanceTimersByTimeAsync(0)
   expect(createUrl).toHaveBeenCalledTimes(1)
   expect(component.screenshot.value).toBe('blob:new-frame')
+})
+
+it('keeps the last decoded test frame through repeated corrupt responses and resumes on a valid frame', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false }))
+  const decode = vi
+    .fn()
+    .mockResolvedValueOnce()
+    .mockRejectedValueOnce(new Error('corrupt frame'))
+    .mockRejectedValueOnce(new Error('corrupt frame'))
+    .mockResolvedValueOnce()
+  stubImage(decode)
+  vi.spyOn(console, 'debug').mockImplementation(() => {})
+  const createUrl = vi
+    .spyOn(URL, 'createObjectURL')
+    .mockReturnValueOnce('blob:first')
+    .mockReturnValueOnce('blob:corrupt-one')
+    .mockReturnValueOnce('blob:corrupt-two')
+    .mockReturnValueOnce('blob:recovered')
+  const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const { component } = setup()
+  const frame = (name) => ({ status: 200, data: new Blob([name]), headers: { etag: `"${name}"` } })
+  const fetchScreenshot = vi
+    .fn()
+    .mockResolvedValueOnce(frame('first'))
+    .mockResolvedValueOnce(frame('corrupt-one'))
+    .mockResolvedValueOnce(frame('corrupt-two'))
+    .mockResolvedValueOnce(frame('recovered'))
+    .mockResolvedValueOnce({ status: 304, headers: {} })
+  state.http.get.mockImplementation(async (url, options) =>
+    url.endsWith('/screenshot') ? fetchScreenshot(options) : { data: component.job.value }
+  )
+
+  component.job.value = { status: 'running', id: 'current' }
+  state.mounted.forEach((callback) => callback())
+  await vi.advanceTimersByTimeAsync(0)
+  expect(component.screenshot.value).toBe('blob:first')
+  expect(fetchScreenshot).toHaveBeenCalledTimes(1)
+
+  for (const [index, url] of ['blob:corrupt-one', 'blob:corrupt-two'].entries()) {
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(fetchScreenshot).toHaveBeenCalledTimes(index + 2)
+    expect(component.screenshot.value).toBe('blob:first')
+    expect(revokeUrl).toHaveBeenCalledWith(url)
+    expect(revokeUrl).not.toHaveBeenCalledWith('blob:first')
+  }
+
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(component.screenshot.value).toBe('blob:recovered')
+  expect(fetchScreenshot).toHaveBeenCalledTimes(4)
+  expect(revokeUrl).toHaveBeenCalledWith('blob:first')
+  expect(fetchScreenshot.mock.calls.slice(1, 4).map(([options]) => options.headers)).toEqual([
+    { 'If-None-Match': '"first"' },
+    { 'If-None-Match': '"first"' },
+    { 'If-None-Match': '"first"' }
+  ])
+
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fetchScreenshot).toHaveBeenCalledTimes(5)
+  expect(fetchScreenshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      params: { id: 'current' },
+      headers: { 'If-None-Match': '"recovered"' }
+    })
+  )
+  expect(createUrl).toHaveBeenCalledTimes(4)
+  expect(decode).toHaveBeenCalledTimes(4)
+  expect(component.screenshot.value).toBe('blob:recovered')
 })

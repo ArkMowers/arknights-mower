@@ -554,6 +554,107 @@ describe('log page', () => {
     expect(all().some((target) => target.props.class === 'log-resizer log-resizer-sc')).toBe(true)
   })
 
+  it('keeps the last decoded screenshot and layout through repeated invalid frames', async () => {
+    state.realPreview = true
+    const frames = ['A', 'B', 'C', 'D'].map((name) => ({
+      status: 200,
+      data: new Blob([name], { type: 'image/jpeg' }),
+      headers: { etag: `"${name}"` }
+    }))
+    const requests = vi.fn()
+    for (const frame of frames) requests.mockResolvedValueOnce(frame)
+    requests.mockResolvedValue({ status: 304, headers: {} })
+    state.client.get.mockImplementation(async (url, options) =>
+      url.endsWith('/screenshot/latest') ? requests(options) : { data: {} }
+    )
+    vi.stubGlobal(
+      'Image',
+      class {
+        naturalWidth = 1600
+
+        async decode() {
+          if (this.src === 'blob:B' || this.src === 'blob:C') throw new Error('Invalid JPEG')
+          this.naturalHeight = this.src === 'blob:A' ? 900 : 1200
+        }
+      }
+    )
+    const createUrl = vi
+      .spyOn(URL, 'createObjectURL')
+      .mockReturnValueOnce('blob:A')
+      .mockReturnValueOnce('blob:B')
+      .mockReturnValueOnce('blob:C')
+      .mockReturnValueOnce('blob:D')
+    const debug = vi.spyOn(console, 'debug').mockImplementation(() => {})
+    const { find, page, sizes } = mountWidePane()
+    const getScreenshot = () => find((target) => target.props.class === 'log-screenshot')
+    const getResizer = () => find((target) => target.props.class === 'log-resizer log-resizer-sc')
+    const released = []
+    const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation((url) => {
+      released.push([url, getScreenshot()?.props.src])
+    })
+
+    try {
+      onMounted.mock.lastCall[0]()
+      await vi.advanceTimersByTimeAsync(0)
+      const screenshot = getScreenshot()
+      const resizer = getResizer()
+      const cached = { blob: frames[0].data, etag: '"A"', aspect: 16 / 9 }
+      expect(screenshot.props.src).toBe('blob:A')
+      expect(resizer).toBeDefined()
+      expect(sizes()['--log-rail-w']).toBe('480px')
+      expect(sizes()['--log-sc-h']).toBe('270px')
+      expect(page.workspace.screenshot).toEqual(cached)
+      expect(requests.mock.lastCall[0].headers).toEqual({})
+
+      for (const [index, invalid] of ['blob:B', 'blob:C'].entries()) {
+        await vi.advanceTimersByTimeAsync(999)
+        expect(requests).toHaveBeenCalledTimes(index + 1)
+        await vi.advanceTimersByTimeAsync(1)
+        expect(requests).toHaveBeenCalledTimes(index + 2)
+        expect(requests.mock.lastCall[0].headers).toEqual({ 'If-None-Match': '"A"' })
+        expect(getScreenshot()).toBe(screenshot)
+        expect(screenshot.props.src).toBe('blob:A')
+        expect(getResizer()).toBe(resizer)
+        expect(sizes()['--log-rail-w']).toBe('480px')
+        expect(sizes()['--log-sc-h']).toBe('270px')
+        expect(page.workspace.screenshot).toEqual(cached)
+        expect(released.at(-1)).toEqual([invalid, 'blob:A'])
+        expect(revokeUrl).not.toHaveBeenCalledWith('blob:A')
+      }
+
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(requests).toHaveBeenCalledTimes(4)
+      expect(requests.mock.lastCall[0].headers).toEqual({ 'If-None-Match': '"A"' })
+      expect(getScreenshot()).toBe(screenshot)
+      expect(screenshot.props.src).toBe('blob:D')
+      expect(getResizer()).toBe(resizer)
+      expect(sizes()['--log-rail-w']).toBe('360px')
+      expect(sizes()['--log-sc-h']).toBe('270px')
+      expect(page.workspace.screenshot).toEqual({
+        blob: frames[3].data,
+        etag: '"D"',
+        aspect: 4 / 3
+      })
+      expect(released).toContainEqual(['blob:A', 'blob:D'])
+
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(requests).toHaveBeenCalledTimes(5)
+      expect(requests.mock.lastCall[0].headers).toEqual({ 'If-None-Match': '"D"' })
+      expect(screenshot.props.src).toBe('blob:D')
+      expect(createUrl).toHaveBeenCalledTimes(4)
+    } finally {
+      onUnmounted.mock.lastCall[0]()
+      createUrl.mockRestore()
+      revokeUrl.mockRestore()
+      debug.mockRestore()
+    }
+  })
+
+  async function publishScreenshot(url, aspect) {
+    await state.previewOptions.onChange(url, aspect)
+    await nextTick()
+  }
+
   it('fits the default mobile screenshot height to the loaded frame and current pane width', async () => {
     state.mobile.value = true
     const { find } = mountWorkspace()
@@ -561,13 +662,9 @@ describe('log page', () => {
     const pane = find((target) => target.props['aria-label'] === '运行日志')
     pane.clientWidth = 360
     pane.getBoundingClientRect = () => ({ top: 0, bottom: 900, height: 900 })
-    page.sc_blob = 'blob:http://latest'
-    await nextTick()
-    const image = find((target) => target.props.src === 'blob:http://latest')
+    await publishScreenshot('blob:http://latest', 16 / 9)
     const screenshot = find((target) => target.props.class === 'log-screenshot')
     pane.querySelector = (selector) => (selector === '.log-screenshot' ? screenshot : null)
-    image.props.onLoad({ target: { naturalWidth: 1920, naturalHeight: 1080 } })
-    await nextTick()
     const screenshotHeight = () =>
       pane.style.setProperty.mock.calls.filter(([key]) => key === '--log-sc-h').at(-1)?.[1]
     expect(screenshotHeight()).toBe('203px')
@@ -582,13 +679,11 @@ describe('log page', () => {
 
     screenshot.clientWidth = 0
     pane.clientWidth = 360
-    image.props.onLoad({ target: { naturalWidth: 1080, naturalHeight: 1920 } })
-    await nextTick()
+    await publishScreenshot('blob:http://portrait', 9 / 16)
     expect(screenshotHeight()).toBe('640px')
     pane.clientWidth = 360
     pane.getBoundingClientRect = () => ({ top: 0, bottom: 220, height: 220 })
-    image.props.onLoad({ target: { naturalWidth: 1920, naturalHeight: 1080 } })
-    await nextTick()
+    await publishScreenshot('blob:http://landscape', 16 / 9)
     expect(screenshotHeight()).toBe('203px')
     expect(page.layout_preference.screenshot_height).toBeNull()
     expect(state.client.post).not.toHaveBeenCalled()
@@ -602,11 +697,7 @@ describe('log page', () => {
     pane.getBoundingClientRect = () => ({ top: 0, bottom: 900, height: 900 })
     pane.querySelector = (selector) =>
       selector === '.log-screenshot' ? { getBoundingClientRect: () => ({ top: 0 }) } : null
-    page.sc_blob = 'blob:http://latest'
-    await nextTick()
-    const image = find((target) => target.props.src === 'blob:http://latest')
-    image.props.onLoad({ target: { naturalWidth: 1920, naturalHeight: 1080 } })
-    await nextTick()
+    await publishScreenshot('blob:http://latest', 16 / 9)
     const screenshotHeight = () =>
       pane.style.setProperty.mock.calls.filter(([key]) => key === '--log-sc-h').at(-1)?.[1]
     expect(screenshotHeight()).toBe('270px')
@@ -621,8 +712,7 @@ describe('log page', () => {
     page.resize_log_pane({ preventDefault: vi.fn() }, 'screenshot')
     listeners.get('pointermove')({ clientY: 190 })
     listeners.get('pointerup')()
-    image.props.onLoad({ target: { naturalWidth: 1080, naturalHeight: 1920 } })
-    await nextTick()
+    await publishScreenshot('blob:http://portrait', 9 / 16)
     expect(screenshotHeight()).toBe('190px')
     expect(page.layout_preference.screenshot_height).toBe(190)
     expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
@@ -2606,9 +2696,7 @@ describe('log page', () => {
     expect(sizes()['--log-sc-h']).toBe('270px')
     expect(pane.style.removeProperty).toHaveBeenCalledWith('--log-task-h')
 
-    find((target) => target.props.src === 'blob:http://latest').props.onLoad({
-      target: { naturalWidth: 1600, naturalHeight: 1200 }
-    })
+    await publishScreenshot('blob:http://next', 4 / 3)
     expect(sizes()['--log-rail-w']).toBe('360px')
     expect(sizes()['--log-sc-h']).toBe('270px')
 
@@ -2724,7 +2812,7 @@ describe('log page', () => {
     const screenshot = find((target) => target.props.src === 'blob:http://latest')
     expect(screenshot.props['object-fit']).toBe('contain')
 
-    screenshot.props.onLoad({ target: { naturalWidth: 1600, naturalHeight: 1200 } })
+    await publishScreenshot('blob:http://next', 4 / 3)
     expect(sizes()['--log-sc-h']).toBe('480px')
   })
 

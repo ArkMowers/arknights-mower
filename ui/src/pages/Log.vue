@@ -390,16 +390,6 @@ function apply_log_layout() {
   container.style.setProperty('--log-task-h', `${height}px`)
 }
 
-function screenshot_loaded(event) {
-  const image = event.target
-  if (image?.naturalWidth > 0 && image?.naturalHeight > 0) {
-    screenshot_aspect = image.naturalWidth / image.naturalHeight
-    if (workspace.screenshot)
-      workspace.screenshot = { ...workspace.screenshot, aspect: screenshot_aspect }
-  }
-  apply_log_layout()
-}
-
 async function restore_log_layout() {
   restoring_log_layout = true
   try {
@@ -537,12 +527,6 @@ const screenshotPreview = createScreenshotPreview({
   },
   fetchSnapshot: (options) =>
     axios.get(`${import.meta.env.VITE_HTTP_URL}/screenshot/latest`, options),
-  getFirstFrameAspect: async (url) => {
-    const image = new Image()
-    image.src = url
-    await image.decode()
-    return image.naturalWidth / image.naturalHeight
-  },
   onChange: (url, aspect) => {
     if (aspect) screenshot_aspect = aspect
     latest_screenshot_url = url
@@ -1309,13 +1293,7 @@ async function db_delete(keys) {
       aria-label="运行日志"
       @animationend.self="apply_log_layout"
     >
-      <n-image
-        v-if="has_screenshot"
-        class="log-screenshot"
-        :src="sc_blob"
-        object-fit="contain"
-        @load="screenshot_loaded"
-      />
+      <n-image v-if="has_screenshot" class="log-screenshot" :src="sc_blob" object-fit="contain" />
       <div
         v-if="has_screenshot"
         class="log-resizer log-resizer-sc"
