@@ -1361,13 +1361,14 @@ onBeforeUnmount(() => {
                 :loading="attachmentsBusy"
                 :disabled="attachmentsBusy || loading"
                 @click="fileInputRef?.click()"
-                ><template #icon><n-icon :component="Attach" /></template
+                ><template #icon><n-icon :component="AddOutline" /></template
               ></n-button>
               <n-dropdown :options="composerActions" trigger="click" @select="selectComposerAction">
                 <n-button quaternary circle size="small" aria-label="更多操作" title="更多操作">
                   <template #icon><n-icon :component="EllipsisHorizontal" /></template>
                 </n-button>
               </n-dropdown>
+              <span class="composer-spacer" />
               <n-icon
                 v-if="contextInfo?.limited"
                 :component="InformationCircleOutline"
@@ -1375,7 +1376,6 @@ onBeforeUnmount(() => {
                 :aria-label="contextHint"
                 class="context-info"
               />
-              <span class="composer-spacer" />
               <span v-if="userInput.length > 3500" class="input-count"
                 >{{ userInput.length }} / 4000</span
               >
@@ -2057,13 +2057,10 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 4px 2px 8px;
+  padding: 4px 4px 2px;
 }
 .composer-spacer {
   flex: 1;
-}
-.composer-toolbar :deep(.n-icon) {
-  font-size: 16px;
 }
 .context-info {
   color: var(--mower-text-muted);
@@ -2102,9 +2099,6 @@ onBeforeUnmount(() => {
   }
   .chatbot-input-area {
     padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  }
-  .composer-toolbar {
-    padding-left: 4px;
   }
 }
 @media (max-width: 360px) {
