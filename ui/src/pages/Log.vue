@@ -731,9 +731,7 @@ const daily_view_visible = computed(() => daily_toggle_available.value && daily_
 const daily_slot = computed(() => (daily_view_visible.value ? 'alternate' : 'header'))
 const daily_status_enabled = computed(
   () =>
-    show_daily_tasks.value &&
-    running.value &&
-    (uses_saved_order.value || daily_view_visible.value)
+    show_daily_tasks.value && running.value && (uses_saved_order.value || daily_view_visible.value)
 )
 watch(daily_toggle_available, (available) => {
   if (!available) daily_view_selected.value = false
