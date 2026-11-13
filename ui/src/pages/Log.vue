@@ -310,6 +310,7 @@ const rail_layout = ref(workspace.wideLayout && !mobile.value)
 const saved_layout = computed(() => parseRunningLogLayout(runningLogLayout.value))
 const single_layout = computed(() => saved_layout.value.mode === 'single')
 const split_layout = computed(() => rail_layout.value && !mobile.value && !single_layout.value)
+const uses_saved_order = computed(() => single_layout.value || split_layout.value)
 const log_column_on_right = computed(() => saved_layout.value.right.includes('log'))
 const screenshot_column_on_left = computed(() => saved_layout.value.left.includes('screenshot'))
 const daily_in_log = computed(() => {
@@ -374,12 +375,12 @@ function clamp_stacked_screenshot(value, paneHeight, bottomReserve, fit) {
     resizer_height.value
   )
   const minimum = Math.min(PANE_MIN_HEIGHT, fit || Infinity)
-  return single_layout.value ? Math.max(minimum, bounded) : bounded
+  return uses_saved_order.value ? Math.max(minimum, bounded) : bounded
 }
 
 function clamp_stacked_task(value, availableHeight, bottomReserve) {
   const height = clampTaskHeight(value, availableHeight, bottomReserve)
-  return single_layout.value ? Math.max(PANE_MIN_HEIGHT, height) : height
+  return uses_saved_order.value ? Math.max(PANE_MIN_HEIGHT, height) : height
 }
 
 function apply_log_layout() {
@@ -430,9 +431,10 @@ function apply_log_layout() {
         animation.animationName?.startsWith('reveal-log-screenshot') &&
         animation.playState === 'running'
     )
+  const scrollOffset = uses_saved_order.value ? 0 : (container.scrollTop ?? 0)
   const availableHeight =
-    single_layout.value || (screenshotTrack && screenshotEntering)
-      ? paneHeight + (container.scrollTop ?? 0) - screenshotTrack - fixedHeight
+    uses_saved_order.value || (screenshotTrack && screenshotEntering)
+      ? paneHeight + scrollOffset - screenshotTrack - fixedHeight
       : (bounds.bottom - task.top) / zoom
   const height = clamp_stacked_task(layout_preference.task_height, availableHeight, bottomReserve)
   container.style.setProperty('--log-task-h', `${height}px`)
@@ -518,7 +520,7 @@ function resize_log_pane(event, pane) {
       const task = container.querySelector('.task-table-scroll')?.getBoundingClientRect()
       if (!task) return
       const screenshot = container.querySelector('.log-screenshot')?.getBoundingClientRect()
-      const availableHeight = single_layout.value
+      const availableHeight = uses_saved_order.value
         ? paneHeight -
           plan_condition_height(container, zoom) -
           standalone_daily_height(container, zoom) -
@@ -718,12 +720,11 @@ workspace.restoreDailyStatus()
 const { dailyStatus: daily_status } = storeToRefs(workspace)
 const daily_status_loading = ref(false)
 const daily_view_selected = ref(workspace.dailyView)
-const daily_status_always_visible = computed(() => split_layout.value || single_layout.value)
 const daily_toggle_available = computed(
   () =>
     show_daily_tasks.value &&
     running.value &&
-    !daily_status_always_visible.value &&
+    !uses_saved_order.value &&
     hasDailyStatusTasks(config_store)
 )
 const daily_view_visible = computed(() => daily_toggle_available.value && daily_view_selected.value)
@@ -732,7 +733,7 @@ const daily_status_enabled = computed(
   () =>
     show_daily_tasks.value &&
     running.value &&
-    (daily_status_always_visible.value || daily_view_visible.value)
+    (uses_saved_order.value || daily_view_visible.value)
 )
 watch(daily_toggle_available, (available) => {
   if (!available) daily_view_selected.value = false
@@ -743,11 +744,11 @@ const daily_items = computed(() =>
     : []
 )
 watch(
-  [daily_status_always_visible, daily_items],
+  [uses_saved_order, daily_items],
   ([wide], [wasWide]) => {
     const update = () => {
       daily_overview.value = {
-        items: daily_status_always_visible.value ? daily_items.value : [],
+        items: uses_saved_order.value ? daily_items.value : [],
         gameDay: daily_status.value?.game_day
       }
     }
@@ -1002,7 +1003,7 @@ function apply_log_view_toggle({ className, state }, immediate) {
   ) {
     transition_log_view(update, { panel: 'queue', closing: !enabled, immediate })
   } else if (className === 'daily-tasks-toggle') {
-    const wide = daily_status_always_visible.value
+    const wide = uses_saved_order.value
     const available = running.value && hasDailyStatusTasks(config_store)
     if (wide) skip_next_daily_motion = immediate
     if (!wide && available) transition_log_view(update, { immediate })

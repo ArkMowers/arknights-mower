@@ -2183,6 +2183,22 @@ describe('log page', () => {
     expect(sizes.get('--log-min-h')).toBe('120px')
   })
 
+  it('retains the saved task height below the log when the other column has no screenshot', async () => {
+    useGuiStore().runningLogLayout = 'custom:split:log,tasks,daily|screenshot'
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { classes, find, page, pane, sizes } = mountWidePane()
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    pane.getBoundingClientRect = () => ({ top: 0, bottom: 600, height: 600 })
+    pane.querySelector = (selector) => (selector === '.task-table-scroll' ? queue : null)
+    queue.getBoundingClientRect = () => ({ top: 460 })
+    page.layout_preference.task_height = 132
+    page.apply_log_layout()
+    await nextTick()
+
+    expect(classes(pane)).not.toContain('log-pane--rail')
+    expect(sizes()['--log-task-h']).toBe('132px')
+  })
+
   it.each([1, 0.8, 1.25])(
     'saves the screenshot drag height in layout pixels at zoom %s',
     (zoom) => {
