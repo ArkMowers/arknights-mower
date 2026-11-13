@@ -5,7 +5,6 @@ import { useDialog, useMessage } from 'naive-ui'
 import { useMowerStore } from '@/stores/mower'
 import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 import AddOutline from '@vicons/ionicons5/es/AddOutline'
-import ArrowDownOutline from '@vicons/ionicons5/es/ArrowDownOutline'
 import ArrowUpOutline from '@vicons/ionicons5/es/ArrowUpOutline'
 import Stop from '@vicons/ionicons5/es/Stop'
 import Play from '@vicons/ionicons5/es/Play'
@@ -22,6 +21,7 @@ import SchoolOutline from '@vicons/ionicons5/es/SchoolOutline'
 import ExpandOutline from '@vicons/ionicons5/es/ExpandOutline'
 import ContractOutline from '@vicons/ionicons5/es/ContractOutline'
 import markdownit from 'markdown-it'
+import JumpToLatestButton from './JumpToLatestButton.vue'
 import MowerAIIcon from './MowerAIIcon.vue'
 
 const props = defineProps({ show: Boolean })
@@ -1300,13 +1300,7 @@ onBeforeUnmount(() => {
               </article>
             </div>
           </div>
-          <n-button
-            v-if="!atBottom && chatHistory.length"
-            round
-            class="jump-latest"
-            @click="scrollToLatest"
-            ><template #icon><n-icon :component="ArrowDownOutline" /></template>回到最新</n-button
-          >
+          <jump-to-latest-button v-if="!atBottom && chatHistory.length" @click="scrollToLatest" />
         </div>
 
         <footer class="chatbot-input-area">
@@ -1969,14 +1963,6 @@ onBeforeUnmount(() => {
   height: 40px;
   font-size: 12px;
   color: var(--mower-text-muted);
-}
-.jump-latest {
-  position: absolute;
-  bottom: 12px;
-  left: 50%;
-  transform: translateX(-50%);
-  height: 40px;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.12);
 }
 .chatbot-input-area {
   flex-shrink: 0;
