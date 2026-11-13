@@ -473,6 +473,9 @@ describe('log page', () => {
         props: {},
         children: [],
         parent: null,
+        get offsetWidth() {
+          return this.clientWidth
+        },
         scrollTop: 0,
         scrollIntoView: vi.fn(),
         style: { setProperty: vi.fn(), removeProperty: vi.fn() },
@@ -2423,6 +2426,7 @@ describe('log page', () => {
     const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
     component.log_layout.value = {
       clientWidth: 1290,
+      offsetWidth: 1290,
       getBoundingClientRect: () => ({ top: 0, bottom: 800, height: 800, width: 1290, right: 1290 }),
       querySelector: (selector) =>
         ['.log-screenshot', '.task-table-scroll'].includes(selector)
@@ -2931,6 +2935,29 @@ describe('log page', () => {
     ])
     expect(all().some((target) => classes(target).includes('log-daily-toggle'))).toBe(false)
     expect(find((target) => target.props['data-log-content'])).toBe(log)
+  })
+
+  it('applies a saved two-column layout when a scrollbar narrows the previous layout', async () => {
+    const gui = useGuiStore()
+    gui.loaded = true
+    gui.runningLogLayout = 'stacked'
+    state.client.put.mockImplementation(async (_url, data) => ({ data }))
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { page, pane, classes, find } = mountWidePane(896)
+    Object.defineProperty(pane, 'offsetWidth', { value: 906 })
+    pane.ownerDocument = { documentElement: { style: { zoom: 1.5 } } }
+    pane.getBoundingClientRect = () => ({ width: 1359, top: 0, bottom: 420, height: 420 })
+    page.sc_blob = 'blob:preview'
+    page.apply_log_layout()
+    await nextTick()
+    const screenshot = () => find((target) => target.props.src === 'blob:preview')
+    const queue = () => find((target) => target.props.class === 'task-table-scroll')
+    expect(screenshot().parent).toBe(queue().parent)
+
+    expect(await gui.setRunningLogLayout('custom:split:screenshot|tasks,daily,log')).toBe(true)
+    await nextTick()
+    expect(classes(pane)).toContain('log-pane--rail-left')
+    expect(screenshot().parent).not.toBe(queue().parent)
   })
 
   it('reveals the task queue through its hash after moving it into the log column', async () => {
