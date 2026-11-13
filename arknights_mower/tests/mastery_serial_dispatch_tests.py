@@ -469,3 +469,63 @@ def test_correction_notification_explains_manual_release_and_shares_throttle(
     assert "逻各斯" in message and "下一干员" in message
     assert "确认放弃减半效果" in message and "手动清空训练室协助位" in message
     assert "下次进入训练室" in message
+
+
+@pytest.mark.parametrize("protected", [False, True])
+def test_mood_wait_preserves_task_and_allows_only_independent_training(
+    serial, protected, monkeypatch
+):
+    monkeypatch.setattr(mastery_reader, "_notify_protected", MagicMock())
+    dispatch(serial)
+    waiting = serial.solver.tasks[0]
+    at = waiting.time
+    waiting.execution_failure = {"dependency": True}
+    waiting.mastery_mood_wait = {
+        "plan_id": serial.ids[0],
+        "required": {"协助者": 5},
+        "context": {},
+    }
+    if protected:
+        serial.solver.train_room_state = mastery_reader.RoomState(
+            train_slot="当前干员", state="empty", slots_reliable=True
+        )
+        serial.solver.train_room_state.protected = True
+    for _ in range(3):
+        dispatch(serial)
+    assert waiting in serial.solver.tasks and waiting.time == at
+    assert waiting.execution_failure
+    if protected:
+        assert serial.solver.tasks == [waiting]
+    else:
+        assert len(serial.solver.tasks) == 2
+        assert serial.solver.tasks[1].plan_key == str(serial.ids[1])
+    assert mastery_db.get_plan_by_id(serial.ids[0])["status"] == "idle"
+
+
+@pytest.mark.parametrize("current_level", [0, 1])
+def test_mood_wait_preserves_required_same_trainee_continuity(serial, current_level):
+    sibling_id = mastery_db.insert_plan(
+        "char_fixture_0", 1, 3, char_name="当前干员", skill_name="另一技能", priority=0
+    )
+    serial.operators[0]["recommendations"][0]["current_level"] = current_level
+    serial.operators[0]["recommendations"].append(
+        {
+            "skill_index": 1,
+            "skill_name": "另一技能",
+            "current_level": 0,
+            "chain_needed_materials": [{"name": "测试材料", "count": 1}],
+        }
+    )
+    dispatch(serial)
+    waiting = serial.solver.tasks[0]
+    waiting.execution_failure = {"dependency": True}
+    waiting.mastery_mood_wait = {
+        "plan_id": int(waiting.plan_key),
+        "required": {"协助者": 5},
+        "context": {},
+    }
+    dispatch(serial)
+    assert len(serial.solver.tasks) == 2
+    assert serial.solver.tasks[1].plan_key == str(
+        serial.ids[1] if current_level else sibling_id
+    )

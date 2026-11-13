@@ -32,6 +32,8 @@ The locally authenticated `GET /growth-crafting-order` returns `planning_items`,
 The plan list provides the default-off “同干员技能接续训练” setting. Its question-mark help explains that consecutive training may leave shared assistants without enough recovery time, causing a later skill to wait for mood. The setting saves through the shared configuration store and belongs to the base profile group. Enabling it groups one trainee's unfinished skills for arrangement and runtime queue normalization. With it disabled, skills may separate to avoid shared assistants; proximity remains a preference. In either mode, multiple unfinished skills of one trainee retain the existing consecutive, lower-mastery-first order when at least one has reached mastery one or two, with active training first. This preserves cross-skill halving and the existing joint-material admission rule. Explicit custom order remains authoritative when adding plans; runtime continuity rules still apply.
 Focused offline tests cover default database ordering in [mastery order tests](../../arknights_mower/tests/mastery_order_tests.py), the matching [frontend ordering utility](../../ui/src/utils/masteryPlanOrder.test.js) and the [plan dialog](../../ui/src/components/GrowthCraftingOrder.test.js).
 
+Stage admission, assistant substitution and mood observations follow [Mastery Assistant Endurance](base-scheduler.md#mastery-assistant-endurance).
+
 <a id="bounded-page-loading"></a>
 ### Bounded Page Loading
 

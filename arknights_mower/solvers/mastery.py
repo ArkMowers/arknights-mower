@@ -30,6 +30,7 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.mastery_support_types import (
     DEFAULT_SWAP_BUFFER_MINUTES,
     TrainingObservationError,
+    has_planned_supports,
 )
 from arknights_mower.utils.scene import Scene
 
@@ -1127,7 +1128,7 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
 
 
 def _defer_support_mood(solver, plan, error):
-    """Retain the start task until its assistants can cover the complete skill."""
+    """Retain the start task until its assistants can cover the current stage."""
     from arknights_mower.utils.mastery_db import update_plan_status
     from arknights_mower.utils.mastery_mood import support_mood_context
 
@@ -1136,11 +1137,35 @@ def _defer_support_mood(solver, plan, error):
     if task is not None:
         task.mastery_mood_wait = {
             "required": error.required,
+            "alternatives": getattr(error, "alternatives", []),
             "plan_id": plan["id"],
             "context": support_mood_context(plan["id"], solver.op_data),
         }
         solver._retain_failed_task(task, str(error), (), dependency=True)
+    _notify_support_mood_wait(plan, error)
     solver.back_to_infrastructure()
+
+
+def _notify_support_mood_wait(plan, error):
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.device.recovery import DeviceRecoveryError
+    from arknights_mower.utils.email import send_message
+    from arknights_mower.utils.mastery_db import should_notify
+
+    message = f"{_plan_fail_label(plan)}：{error}"
+    if any(value is None for value in error.shortages.values()):
+        message += "；选人页仍未确认心情，可在游戏内将协助干员放入宿舍后由正常巡检读取"
+    if getattr(error, "alternatives", None):
+        message += "；当前也没有心情足够且符合本阶段要求的替代协助方案"
+    logger.warning(message)
+    try:
+        key = f"{plan['id']}:{sorted(error.required.items())}:{sorted(error.shortages)}"
+        if should_notify("mastery_mood", key):
+            send_message(message, subject="专精协助干员心情待确认", level="WARNING")
+    except (MowerExit, DeviceRecoveryError):
+        raise
+    except Exception as exc:
+        logger.warning(f"专精心情提醒发送失败：{exc}")
 
 
 def _defer_amiya_form(solver, plan, room, available):
@@ -1354,7 +1379,7 @@ def _confirm_training_started(
                         recovery.mastery_swap_verify_only = True
                         support_pending = True
                         notes.append("已保留换人任务，后续实读后继续安排")
-                if plan.get("support_plan") and not support_pending:
+                if has_planned_supports(plan) and not support_pending:
                     from arknights_mower.solvers.mastery_support_state import (
                         refresh_end,
                     )
@@ -1506,7 +1531,7 @@ def _arrange_support(solver, plan, step_level=None) -> Optional[str]:
     logger.info(f"安排协助位：{support_name}")
     logger.debug(f"[mastery] 协助位判定 id={plan['id']} 期望={support_name} 动作=安排")
     try:
-        if plan.get("support_plan"):
+        if has_planned_supports(plan):
             plan["swap_frozen"] = 0
             if "exclude_reducer" in route:
                 from arknights_mower.solvers.mastery_support_state import save_runtime
@@ -1563,7 +1588,7 @@ def _schedule_swap_if_needed(
     if config.conf.assistant_follows_schedule:
         return None
 
-    if plan.get("support_plan"):
+    if has_planned_supports(plan):
         from arknights_mower.solvers.mastery_support_state import schedule_support_swap
 
         return schedule_support_swap(solver, plan, execute_time, step_level)
@@ -1780,7 +1805,7 @@ def run_swap_support(solver):
     # （#80）、空位一步定夺（#101）。只在倒计时 active（训练确认）时动协助位——
     # 00:00:00 收取边界不动（铁律 6）；读失败（reliable=False，OCR 坏名等）不动作
     # （稳为先：读不到就不动，防基于不可靠读撤销已减半）。
-    if plan.get("support_plan"):
+    if has_planned_supports(plan):
         from arknights_mower.solvers.mastery_support_dispatch import run_planned_swap
 
         run_planned_swap(solver, plan, panel)
@@ -2178,13 +2203,14 @@ def _get_plan_route(plan, step_level=None) -> dict | None:
     from arknights_mower.utils.mastery_order import halving_successor
 
     successor = halving_successor(plan, step_level)
-    if plan.get("support_plan"):
+    if has_planned_supports(plan):
         from arknights_mower.utils.mastery_support import stage_for
 
         route = stage_for(plan, level)
         if route and not successor:
             route["swap_target"] = None
-        return route_without_unusable_reducer(plan, step_level, route)
+        if route is not None or plan.get("support_plan"):
+            return route_without_unusable_reducer(plan, step_level, route)
     try:
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 

@@ -30,6 +30,11 @@ from arknights_mower.utils.scheduler_task import (
 )
 
 
+@pytest.fixture(autouse=True)
+def disable_wait_notifications(monkeypatch):
+    monkeypatch.setattr(db, "should_notify", lambda *a: False)
+
+
 def stage(level, name="快教官", efficiency=100, **extra):
     return {"level": level, "operator": name, "efficiency": efficiency, **extra}
 
@@ -43,22 +48,20 @@ def moods(**values):
     )
 
 
-def test_complete_skill_accumulates_one_assistants_duty_without_central_bonus():
+def test_current_stage_budgets_one_assistants_duty_without_central_bonus():
     routes = [stage(level, central_bonus=5) for level in (1, 2, 3)]
-    required = support_mood_requirements(routes)
-    assert required == {"快教官": pytest.approx(48 / 2.05)}
-    solver = SimpleNamespace(op_data=moods(快教官=48 / 2.10))
+    required = support_mood_requirements(routes[0])
+    assert required == {"快教官": pytest.approx(8 / 2.05)}
+    solver = SimpleNamespace(op_data=moods(快教官=8 / 2.10))
     with pytest.raises(SupportMoodWait, match="快教官"):
-        require_support_mood(solver, routes)
-    solver.op_data = moods(快教官=48 / 2.05)
-    require_support_mood(solver, routes)
+        require_support_mood(solver, routes[0])
+    solver.op_data = moods(快教官=8 / 2.05)
+    require_support_mood(solver, routes[0])
 
 
-def test_reducer_duty_and_earned_halving_accumulate_across_stages():
+def test_reducer_duty_does_not_include_future_stages():
     routes = [stage(level, "艾丽妮", 30) for level in (1, 2, 3)]
-    assert support_mood_requirements(routes) == {
-        "艾丽妮": pytest.approx((8 + 8 + 12) / 1.35)
-    }
+    assert support_mood_requirements(routes[0]) == {"艾丽妮": pytest.approx(8 / 1.35)}
 
 
 def test_swap_and_primary_duty_are_budgeted_separately():
@@ -67,32 +70,33 @@ def test_swap_and_primary_duty_are_budgeted_separately():
         stage(2, swap_target="艾丽妮", swap_efficiency=30, configured_swap_buffer=10),
         stage(3),
     ]
-    required = support_mood_requirements(routes)
+    required = support_mood_requirements(routes[0])
     tail = 5 + 10 / 60
     first = (8 - tail * 1.35) / 2.05
-    assert required["艾丽妮"] == pytest.approx(2 * tail, abs=0.001)
-    assert required["快教官"] == pytest.approx(first * 2 + 12 / 2.05, abs=0.001)
+    assert required["艾丽妮"] == pytest.approx(tail, abs=0.001)
+    assert required["快教官"] == pytest.approx(first, abs=0.001)
 
 
 def test_saved_halving_does_not_replace_confirmed_carry():
     route = stage(3, half_inherited=True, central_bonus=5)
-    assert support_mood_requirements([route])["快教官"] == pytest.approx(24 / 2.05)
-    assert support_mood_requirements([route], inherited=True)[
-        "快教官"
-    ] == pytest.approx(12 / 2.05)
+    assert support_mood_requirements(route)["快教官"] == pytest.approx(24 / 2.05)
+    assert support_mood_requirements(route, inherited=True)["快教官"] == pytest.approx(
+        12 / 2.05
+    )
 
 
 @pytest.mark.parametrize("value", [None, -1, float("nan")])
 def test_unknown_or_invalid_list_mood_does_not_allow_training(value):
     with pytest.raises(SupportMoodWait):
-        require_support_mood(SimpleNamespace(op_data=moods(快教官=value)), [stage(1)])
+        require_support_mood(SimpleNamespace(op_data=moods(快教官=value)), stage(1))
 
 
 @pytest.mark.parametrize(
     "follow,replacement_mood", [(False, None), (True, 24), (True, 1), (False, 24)]
 )
+@pytest.mark.parametrize("legacy_wait", [False, True])
 def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
-    database, monkeypatch, follow, replacement_mood
+    database, monkeypatch, follow, replacement_mood, legacy_wait
 ):
     monkeypatch.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
     from arknights_mower.solvers import base_schedule
@@ -187,6 +191,18 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
         assert (
             restored.time == at and restored.mastery_mood_wait == task.mastery_mood_wait
         )
+        if legacy_wait:
+            restored.mastery_mood_wait["required"] = {"艾丽妮": 35.56}
+            restored.mastery_mood_wait["context"].pop("mood_scope")
+            solver.task, solver.tasks = restored, [restored, other]
+            task = restored
+            resume()
+            assert task.time == at and not hasattr(task, "execution_failure")
+            mastery._start_new_training(solver, db.get_plan_by_id(pid), room=room)
+            assert task.mastery_mood_wait["required"] == {
+                "艾丽妮": pytest.approx(8 / 1.35)
+            }
+            assert task.execution_failure
         for _ in range(3):
             resume()
             assert task.execution_failure and task.time == at
@@ -205,7 +221,7 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
             )
             occupant[0] = "新协助"
             resume()
-            if follow:
+            if follow or replacement_mood == 24:
                 assert not hasattr(task, "execution_failure")
                 assert task.time == at and solver.tasks == [task, other]
                 mastery._start_new_training(solver, db.get_plan_by_id(pid), room=room)
@@ -241,8 +257,9 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
 
 
 @pytest.mark.parametrize("follow", [False, True])
-def test_real_preparation_requires_later_assistants_and_schedule_occupant(
-    monkeypatch, follow
+@pytest.mark.parametrize("later_mood", [None, 1])
+def test_real_preparation_only_requires_current_assistants_or_schedule_occupant(
+    monkeypatch, follow, later_mood
 ):
     plan = {
         "id": 1,
@@ -263,7 +280,7 @@ def test_real_preparation_requires_later_assistants_and_schedule_occupant(
         }
         for name in ("快教官", "后续教官", "排班教官")
     }
-    solver = SimpleNamespace(op_data=moods(快教官=24, 后续教官=1, 排班教官=1))
+    solver = SimpleNamespace(op_data=moods(快教官=24, 后续教官=later_mood, 排班教官=1))
     monkeypatch.setattr(
         mastery_support_runtime, "candidates", lambda *a, **k: (options, 5)
     )
@@ -281,18 +298,24 @@ def test_real_preparation_requires_later_assistants_and_schedule_occupant(
     )
     save = Mock()
     monkeypatch.setattr(mastery_support_runtime, "save_runtime", save)
-    with pytest.raises(SupportMoodWait) as wait:
+    if follow:
+        with pytest.raises(SupportMoodWait) as wait:
+            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+        assert set(wait.value.required) == {"排班教官"}
+        save.assert_not_called()
+    else:
         mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
-    assert set(wait.value.required) == (
-        {"排班教官"} if follow else {"快教官", "后续教官"}
-    )
-    save.assert_not_called()
+        assert save.call_args.args[1]["central_bonus"] == 5
+        solver.op_data = moods(快教官=1, 后续教官=later_mood, 排班教官=1)
+        with pytest.raises(SupportMoodWait) as wait:
+            mastery_support_runtime.prepare_plan_supports(solver, plan, 2)
+        assert set(wait.value.required) == {"后续教官"}
     solver.op_data = moods(快教官=24, 后续教官=24, 排班教官=24)
-    mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
-    assert save.call_args.args[1]["central_bonus"] == 5
+    mastery_support_runtime.prepare_plan_supports(solver, plan, 2)
+    assert save.call_args.args[1]["level"] == 2
 
 
-def test_legacy_route_uses_the_same_complete_skill_mood_gate(monkeypatch):
+def test_legacy_route_uses_the_same_current_stage_mood_gate(monkeypatch):
     plan = {"id": 1, "char_id": "trainee", "char_name": "学员", "target_level": 3}
     monkeypatch.setattr(mastery, "_get_plan_route", lambda p, level: stage(level))
     monkeypatch.setattr(
@@ -302,11 +325,12 @@ def test_legacy_route_uses_the_same_complete_skill_mood_gate(monkeypatch):
         "arknights_mower.utils.config.conf",
         SimpleNamespace(assistant_follows_schedule=False),
     )
+    monkeypatch.setattr(mastery_support_runtime, "candidates", lambda *a, **k: ({}, 0))
     with pytest.raises(SupportMoodWait) as wait:
         mastery_support_runtime.prepare_legacy_support_mood(
-            SimpleNamespace(op_data=moods(快教官=10)), plan, 1
+            SimpleNamespace(op_data=moods(快教官=1)), plan, 1
         )
-    assert wait.value.required["快教官"] == pytest.approx(48 / 2.05)
+    assert wait.value.required["快教官"] == pytest.approx(8 / 2.05)
 
 
 def test_central_speed_is_excluded_while_explicit_swap_margin_is_preserved():
@@ -321,7 +345,7 @@ def test_central_speed_is_excluded_while_explicit_swap_margin_is_preserved():
             "central_unhalved_m2": 40,
         },
     )
-    required = support_mood_requirements([route])
+    required = support_mood_requirements(route)
     assert required["艾丽妮"] == pytest.approx(5 + 40 / 60, abs=0.001)
     assert required["快教官"] == pytest.approx(
         (16 - (5 + 40 / 60) * 1.35) / 2.05, abs=0.001
@@ -371,11 +395,14 @@ def test_each_remaining_stage_uses_its_own_candidate_policy(
     solver = SimpleNamespace(op_data=moods(假日威龙陈=24, 左乐=24))
     save = Mock()
     monkeypatch.setattr(mastery_support_runtime, "save_runtime", save)
+    mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+    assert save.call_args.args[1]["operator"] == first_name
+    save.reset_mock()
     if not allowed:
         with pytest.raises(
             mastery_support_runtime.SupportPlanError, match="计划协助者已不可用"
         ):
-            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+            mastery_support_runtime.prepare_plan_supports(solver, plan, 2)
         save.assert_not_called()
         return
     mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
@@ -429,7 +456,7 @@ def test_follow_schedule_ignores_saved_assistants_but_checks_occupant_mood(
         with pytest.raises(
             mastery_support_runtime.SupportPlanError, match="计划协助者已不可用"
         ):
-            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+            mastery_support_runtime.prepare_plan_supports(solver, plan, blocked_level)
         save.assert_not_called()
     elif mood == 1:
         with pytest.raises(SupportMoodWait) as wait:
@@ -442,3 +469,125 @@ def test_follow_schedule_ignores_saved_assistants_but_checks_occupant_mood(
         prepared = save.call_args.args[1]
         assert prepared["operator"] == occupant
         assert prepared["swap_target"] is None
+
+
+@pytest.mark.parametrize(
+    "level,needed", [(1, 8 / 1.35), (2, 16 / 1.35), (3, 24 / 1.35)]
+)
+@pytest.mark.parametrize("legacy", [False, True])
+def test_each_stage_admits_full_mood_without_budgeting_later_stages(
+    monkeypatch, level, needed, legacy
+):
+    routes = [stage(i, "格拉尼", 30) for i in (1, 2, 3)]
+    plan = {
+        "id": 1,
+        "char_id": "trainee",
+        "char_name": "学员",
+        "target_level": 3,
+        "support_plan": {"stages": routes},
+    }
+    options = {
+        "格拉尼": {
+            i: {"name": "格拉尼", "efficiency": 30, "halves": False} for i in (1, 2, 3)
+        }
+    }
+    monkeypatch.setattr(
+        mastery_support_runtime, "candidates", lambda *a, **k: (options, 5)
+    )
+    monkeypatch.setattr(mastery_support_runtime, "schedule_context", lambda: ({}, 5))
+    monkeypatch.setattr(
+        mastery_support_runtime, "_observed_support", lambda _: ("格拉尼", "学员")
+    )
+    monkeypatch.setattr(mastery_support_runtime, "halving_successor", lambda *a: None)
+    monkeypatch.setattr(
+        mastery_support_runtime, "basic_mastery_successor", lambda *a: False
+    )
+    monkeypatch.setattr(mastery_support_runtime, "save_runtime", Mock())
+    monkeypatch.setattr(mastery, "_get_plan_route", lambda p, i: routes[i - 1])
+    monkeypatch.setattr(
+        "arknights_mower.utils.config.conf",
+        SimpleNamespace(assistant_follows_schedule=False),
+    )
+    prepare = (
+        mastery_support_runtime.prepare_legacy_support_mood
+        if legacy
+        else mastery_support_runtime.prepare_plan_supports
+    )
+    solver = SimpleNamespace(op_data=moods(格拉尼=24))
+    prepare(solver, plan, level)
+    solver.op_data = moods(格拉尼=needed - 0.1)
+    with pytest.raises(SupportMoodWait) as wait:
+        prepare(solver, plan, level)
+    assert wait.value.required == {"格拉尼": pytest.approx(needed)}
+    solver.op_data = moods(格拉尼=needed)
+    prepare(solver, plan, level)
+
+
+@pytest.mark.parametrize("calculated", [False, True])
+@pytest.mark.parametrize("observed", [None, 1, 24])
+def test_unknown_current_assistant_observed_once_before_wait(
+    monkeypatch, calculated, observed
+):
+    solver = SimpleNamespace(op_data=moods(), task=SimpleNamespace())
+    solver.op_data.mood_calculation_enabled = calculated
+    solver.op_data.calculated_mood = lambda *a: None
+
+    def scan(**kwargs):
+        assert kwargs == {"mastery": True}
+        if observed is not None:
+            solver.op_data.dorm_mood_estimates["快教官"] = (observed, datetime.now())
+
+    solver._scan_card_moods = Mock(side_effect=scan)
+    solver.enter_room = Mock()
+    for _ in range(3):
+        if observed == 24:
+            mastery_support_runtime._require_stage_mood(
+                solver, stage(2), inherited=False
+            )
+        else:
+            with pytest.raises(SupportMoodWait) as wait:
+                mastery_support_runtime._require_stage_mood(
+                    solver, stage(2), inherited=False
+                )
+            assert wait.value.shortages == {"快教官": observed}
+    solver._scan_card_moods.assert_called_once()
+    solver.enter_room.assert_called_once_with("train", max_attempts=1)
+
+
+def test_stale_card_mood_remains_unknown_in_calculation_mode():
+    from arknights_mower.utils.mastery_mood import support_mood_shortages
+
+    data = moods(快教官=24)
+    data.mood_calculation_enabled = True
+    data.calculated_mood = lambda *a: None
+    data.dorm_mood_estimates["快教官"] = (24, datetime.now() - timedelta(hours=2))
+    assert support_mood_shortages(data, {"快教官": 5}) == {"快教官": None}
+
+
+def test_wait_reports_unknown_mood_and_deduplicates_notifications(monkeypatch):
+    send = Mock()
+    warning = Mock()
+    notify = Mock(side_effect=[True, False])
+    monkeypatch.setattr("arknights_mower.utils.email.send_message", send)
+    monkeypatch.setattr(mastery.logger, "warning", warning)
+    monkeypatch.setattr(db, "should_notify", notify)
+    plan = {"id": 1, "char_name": "学员", "skill_index": 0, "target_level": 2}
+    error = SupportMoodWait({"快教官": 8}, {"快教官": None})
+    for _ in range(2):
+        mastery._notify_support_mood_wait(plan, error)
+    send.assert_called_once()
+    assert "确认心情" in send.call_args.args[0]
+    assert "宿舍" in send.call_args.args[0]
+    assert warning.call_count == 2
+    assert notify.call_args_list[0] == notify.call_args_list[1]
+
+
+def test_interrupted_observation_preserves_next_attempt():
+    from arknights_mower.utils.csleep import MowerExit
+
+    solver = SimpleNamespace(op_data=moods(), task=SimpleNamespace(), enter_room=Mock())
+    solver._scan_card_moods = Mock(side_effect=MowerExit())
+    with pytest.raises(MowerExit):
+        mastery_support_runtime._require_stage_mood(solver, stage(1), inherited=False)
+    assert not hasattr(solver.task, "mastery_mood_observation")
+    solver.enter_room.assert_not_called()
