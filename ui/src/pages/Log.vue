@@ -171,10 +171,8 @@ function show_operator_hint(name, event) {
     y: bounds.top - 4
   }
 }
-const task_queue = ref(null)
-function set_task_queue(element) {
-  task_queue.value = element
-}
+const task_queue_elements = ref([])
+const task_queue = computed(() => task_queue_elements.value[0])
 const layout_preference = { ...workspace.layout }
 let layoutObserver
 let restoring_log_layout = false
@@ -1383,7 +1381,7 @@ async function db_delete(keys) {
               v-if="task_list.length > 0"
               v-show="task_table_visible"
               :id="`${toolbar_id}-queue`"
-              :ref="set_task_queue"
+              ref="task_queue_elements"
               class="task-table-scroll"
               role="region"
               aria-label="任务列表"

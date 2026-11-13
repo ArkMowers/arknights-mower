@@ -366,7 +366,13 @@ def load_task_queue_display() -> str:
 def _is_valid_running_log_layout(value: object) -> bool:
     if not isinstance(value, str):
         return False
-    if value in ("right_rail", "left_rail", "right_rail_log", "left_rail_log", "stacked"):
+    if value in (
+        "right_rail",
+        "left_rail",
+        "right_rail_log",
+        "left_rail_log",
+        "stacked",
+    ):
         return True
     modules = {"screenshot", "tasks", "daily", "log"}
     if value.startswith("custom:single:"):

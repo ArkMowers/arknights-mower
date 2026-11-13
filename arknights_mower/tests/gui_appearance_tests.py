@@ -371,7 +371,10 @@ class GuiAppearanceTests(unittest.TestCase):
             "custom:single:daily,log,screenshot, tasks",
         ):
             with self.subTest(value=value):
-                payload = {"task_queue_display": "portraits", "running_log_layout": value}
+                payload = {
+                    "task_queue_display": "portraits",
+                    "running_log_layout": value,
+                }
                 response = self.client.put(
                     "/gui/appearance", json=payload, headers=self.headers
                 )
@@ -380,7 +383,12 @@ class GuiAppearanceTests(unittest.TestCase):
                 self.assertEqual(self.path.read_bytes(), before)
 
     def test_invalid_saved_running_log_layout_defaults_without_rewriting_the_file(self):
-        for value in (None, [], "unsupported", "custom:split:daily,log,screenshot,tasks|"):
+        for value in (
+            None,
+            [],
+            "unsupported",
+            "custom:split:daily,log,screenshot,tasks|",
+        ):
             with self.subTest(value=value):
                 gui._update_gui_data(running_log_layout=value)
                 before = self.path.read_bytes()

@@ -1386,7 +1386,7 @@ describe('log page', () => {
       state.client.get.mockResolvedValue({ data: {} })
       onMounted.mock.lastCall[0]()
       component.layout_preference.task_height = 132
-      component.task_queue.value = queue
+      component.task_queue_elements.value = [queue]
       await nextTick()
       await nextTick()
 
@@ -2817,6 +2817,26 @@ describe('log page', () => {
     ])
     expect(all().some((target) => classes(target).includes('log-daily-toggle'))).toBe(false)
     expect(find((target) => target.props['data-log-content'])).toBe(log)
+  })
+
+  it('reveals the task queue through its hash after moving it into the log column', async () => {
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { find, page } = mountWidePane()
+    page.sc_blob = 'blob:preview'
+    page.apply_log_layout()
+    await nextTick()
+    const original = find((target) => target.props.class === 'task-table-scroll')
+
+    useGuiStore().runningLogLayout = 'custom:split:tasks,daily,log|screenshot'
+    await nextTick()
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    expect(queue).not.toBe(original)
+
+    state.route.hash = '#task-queue'
+    await nextTick()
+    await nextTick()
+    expect(queue.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ block: 'nearest' })
+    expect(original.scrollIntoView).not.toHaveBeenCalled()
   })
 
   it.each([false, true])(
