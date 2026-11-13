@@ -8,10 +8,10 @@ import AddOutline from '@vicons/ionicons5/es/AddOutline'
 import ArrowDownOutline from '@vicons/ionicons5/es/ArrowDownOutline'
 import ArrowUpOutline from '@vicons/ionicons5/es/ArrowUpOutline'
 import Stop from '@vicons/ionicons5/es/Stop'
+import Play from '@vicons/ionicons5/es/Play'
 import Attach from '@vicons/ionicons5/es/Attach'
 import EllipsisHorizontal from '@vicons/ionicons5/es/EllipsisHorizontal'
 import InformationCircleOutline from '@vicons/ionicons5/es/InformationCircleOutline'
-import CheckmarkOutline from '@vicons/ionicons5/es/CheckmarkOutline'
 import CloseOutline from '@vicons/ionicons5/es/CloseOutline'
 import CopyOutline from '@vicons/ionicons5/es/CopyOutline'
 import DocumentTextOutline from '@vicons/ionicons5/es/DocumentTextOutline'
@@ -310,6 +310,7 @@ function restoreConversation(data) {
     {
       role: 'user',
       content: turn.continued_from ? turn.continue_instruction || '继续处理' : turn.user,
+      silent: Boolean(turn.continued_from && !turn.continue_instruction),
       attachments: turn.attachments || []
     },
     {
@@ -326,8 +327,7 @@ function restoreConversation(data) {
           : ''),
       error:
         !['complete', 'cancelled'].includes(turn.status) &&
-        !(data.busy && index === data.turns.length - 1),
-      followUpState: null
+        !(data.busy && index === data.turns.length - 1)
     }
   ])
   if (data.busy && chatHistory.value.length) {
@@ -843,6 +843,7 @@ function sendTurn(text, options = {}) {
   chatHistory.value.push({
     role: 'user',
     content: options.continue_of ? options.continue_instruction || '继续处理' : text,
+    silent: Boolean(options.continue_of && !options.continue_instruction),
     attachments: files.map((file) => ({
       id: file.id,
       name: file.name,
@@ -855,7 +856,6 @@ function sendTurn(text, options = {}) {
     content: '',
     draft: '',
     events: [],
-    followUpState: null,
     error: false,
     mode: options.mode || 'chat'
   })
@@ -908,9 +908,8 @@ async function copyMessage(msg) {
     notice.error('复制失败，请选中文字手动复制')
   }
 }
-function openFeedbackFlow(msg) {
+function openFeedback() {
   if (!showFeedback) return
-  msg.followUpState = 'feedback'
   showFeedback.value = true
   show.value = false
 }
@@ -1163,6 +1162,7 @@ onBeforeUnmount(() => {
               <article
                 v-for="(msg, idx) in chatHistory"
                 :key="idx"
+                v-show="!msg.silent || msg.attachments?.length"
                 class="chat-row"
                 :class="[msg.role, { 'message-error': msg.error }]"
               >
@@ -1239,10 +1239,10 @@ onBeforeUnmount(() => {
                     </template>
                   </details>
                 </div>
-                <div v-if="msg.role === 'user'" class="message-content user-content">
+                <div v-if="msg.role === 'user' && !msg.silent" class="message-content user-content">
                   {{ msg.content }}
                 </div>
-                <div v-else class="message-content assistant-content">
+                <div v-else-if="msg.role === 'bot'" class="message-content assistant-content">
                   <div
                     v-if="msg.content || msg.draft"
                     class="message-markdown"
@@ -1289,29 +1289,13 @@ onBeforeUnmount(() => {
                     >
                     将这份摘要作为后续对话的历史背景？请先核对其中的事实与未完成事项。
                   </n-popconfirm>
-                  <template v-if="!isIncomplete(msg)">
-                    <n-button
-                      v-if="!msg.followUpState"
-                      quaternary
-                      class="reply-action"
-                      @click="msg.followUpState = 'resolved'"
-                      ><template #icon><n-icon :component="CheckmarkOutline" /></template
-                      >已解决</n-button
-                    >
-                    <n-button
-                      v-if="!msg.followUpState && feedbackAvailable"
-                      quaternary
-                      class="reply-action"
-                      @click="openFeedbackFlow(msg)"
-                      >反馈问题</n-button
-                    >
-                    <span v-if="msg.followUpState === 'resolved'" class="follow-up-result"
-                      ><n-icon :component="CheckmarkOutline" />已标记解决</span
-                    >
-                    <span v-else-if="msg.followUpState === 'feedback'" class="follow-up-result"
-                      >已打开反馈窗口</span
-                    >
-                  </template>
+                  <n-button
+                    v-if="!isIncomplete(msg) && feedbackAvailable"
+                    quaternary
+                    class="reply-action"
+                    @click="openFeedback"
+                    >打开反馈</n-button
+                  >
                 </div>
               </article>
             </div>
@@ -1371,18 +1355,20 @@ onBeforeUnmount(() => {
               <n-button
                 quaternary
                 circle
+                size="small"
                 aria-label="添加文件"
                 title="添加文件"
                 :loading="attachmentsBusy"
                 :disabled="attachmentsBusy || loading"
                 @click="fileInputRef?.click()"
-                ><template #icon><n-icon :component="Attach" /></template
+                ><template #icon><n-icon :component="AddOutline" /></template
               ></n-button>
               <n-dropdown :options="composerActions" trigger="click" @select="selectComposerAction">
-                <n-button quaternary circle aria-label="更多操作" title="更多操作">
+                <n-button quaternary circle size="small" aria-label="更多操作" title="更多操作">
                   <template #icon><n-icon :component="EllipsisHorizontal" /></template>
                 </n-button>
               </n-dropdown>
+              <span class="composer-spacer" />
               <n-icon
                 v-if="contextInfo?.limited"
                 :component="InformationCircleOutline"
@@ -1390,13 +1376,13 @@ onBeforeUnmount(() => {
                 :aria-label="contextHint"
                 class="context-info"
               />
-              <span class="composer-spacer" />
               <span v-if="userInput.length > 3500" class="input-count"
                 >{{ userInput.length }} / 4000</span
               >
               <n-button
                 v-if="loading"
                 circle
+                size="small"
                 class="send-button"
                 :title="stopping ? '停止中' : '停止'"
                 :aria-label="stopping ? '停止中' : '停止'"
@@ -1409,12 +1395,14 @@ onBeforeUnmount(() => {
                 v-else
                 type="primary"
                 circle
+                size="small"
                 class="send-button"
                 :title="continueMode ? '继续处理' : '发送'"
                 :aria-label="continueMode ? '继续处理' : '发送'"
                 :disabled="!canSend"
                 @click="sendMessage"
-                ><template #icon><n-icon :component="ArrowUpOutline" /></template
+                ><template #icon
+                  ><n-icon :component="continueMode ? Play : ArrowUpOutline" /></template
               ></n-button>
             </div>
           </div>
@@ -1982,14 +1970,6 @@ onBeforeUnmount(() => {
   font-size: 12px;
   color: var(--mower-text-muted);
 }
-.follow-up-result {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 0 10px;
-  font-size: 12px;
-  color: var(--mower-success-text);
-}
 .jump-latest {
   position: absolute;
   bottom: 12px;
@@ -2077,7 +2057,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 4px 2px 8px;
+  padding: 4px 4px 2px;
 }
 .composer-spacer {
   flex: 1;
@@ -2091,11 +2071,6 @@ onBeforeUnmount(() => {
   color: var(--mower-text-muted);
 }
 .send-button {
-  width: 40px;
-  height: 40px;
-  min-width: 40px;
-  padding: 0;
-  border-radius: 50%;
   transition: transform 0.15s;
 }
 @media (max-width: 640px) {
@@ -2124,9 +2099,6 @@ onBeforeUnmount(() => {
   }
   .chatbot-input-area {
     padding: 10px 12px max(10px, env(safe-area-inset-bottom));
-  }
-  .composer-toolbar {
-    padding-left: 4px;
   }
 }
 @media (max-width: 360px) {

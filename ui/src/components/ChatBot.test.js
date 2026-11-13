@@ -542,13 +542,21 @@ describe('AI chat interactions', () => {
     expect(state.notice.error).toHaveBeenCalledOnce()
   })
 
-  it('opens feedback even while its provided visibility starts false', () => {
+  it('can reopen feedback after dismissal without submitting or changing the reply', () => {
     expect(component.feedbackAvailable).toBe(true)
-    const message = { followUpState: null }
-    component.openFeedbackFlow(message)
-    expect(state.feedback.value).toBe(true)
-    expect(message.followUpState).toBe('feedback')
-    expect(emit).toHaveBeenCalledWith('update:show', false)
+    const socket = send()
+    socket.open()
+    socket.receive({ reply: '排查建议', done: true })
+    const reply = { ...component.chatHistory.value.at(-1) }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      component.openFeedback()
+      expect(state.feedback.value).toBe(true)
+      expect(emit).toHaveBeenCalledWith('update:show', false)
+      state.feedback.value = false
+      props.show = true
+    }
+    expect(component.chatHistory.value.at(-1)).toEqual(reply)
+    expect(state.axios.post).not.toHaveBeenCalled()
   })
 
   it('closes the socket and connection timer on component disposal', () => {
@@ -859,7 +867,7 @@ describe('retained execution controls', () => {
     component.sendMessage()
     component.sendMessage()
     expect(component.chatHistory.value).toHaveLength(4)
-    expect(component.chatHistory.value[2].content).toBe('继续处理')
+    expect(component.chatHistory.value[2].silent).toBe(true)
     const next = FakeSocket.instances.at(-1)
     next.open()
     const request = JSON.parse(next.send.mock.calls[1][0])
@@ -887,7 +895,7 @@ describe('retained execution controls', () => {
         status: 'cancelled',
         continued_from: 7
       })
-      expect(component.chatHistory.value[0].content).toBe('继续处理')
+      expect(component.chatHistory.value[0].silent).toBe(true)
       const socket = send(text)
       socket.open()
       const request = JSON.parse(socket.send.mock.calls[1][0])
@@ -917,6 +925,7 @@ describe('retained execution controls', () => {
       expect(request.continue_of).toBe(7)
       expect(request.continue_instruction).toBe(text)
       expect(component.chatHistory.value.at(-2).content).toBe(text)
+      expect(component.chatHistory.value.at(-2).silent).toBe(false)
       expect(component.userInput.value).toBe('')
     }
   )
@@ -930,6 +939,7 @@ describe('retained execution controls', () => {
       continue_instruction: '先不要发邮件'
     })
     expect(component.chatHistory.value[0].content).toBe('先不要发邮件')
+    expect(component.chatHistory.value[0].silent).toBe(false)
     component.userInput.value = '只核对计划 A'
     component.sendMessage()
     const socket = FakeSocket.instances.at(-1)
