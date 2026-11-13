@@ -20,6 +20,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
 import { configProfilesKey } from '@/composables/configProfiles'
 import { themeSelectionKey } from '@/composables/themeSelection'
+import { windowMinimizedKey } from '@/window-shell/context.js'
 import { routes } from './routes'
 
 const state = vi.hoisted(() => ({
@@ -48,6 +49,7 @@ const state = vi.hoisted(() => ({
   shellMetadata: null,
   shellActive: false,
   shellConnected: null,
+  shellState: null,
   sidebarInitialize: vi.fn(async () => true),
   sidebarFlush: vi.fn(async () => {}),
   settingsDialogClose: null,
@@ -116,7 +118,7 @@ vi.mock('@/window-shell/adapter.js', () => ({
     active: ref(state.shellActive),
     connected: state.shellConnected,
     capabilities: ref({ enabled: true, move: 'bridge', resize: 'native' }),
-    state: { maximized: false },
+    state: state.shellState,
     initialize: vi.fn(),
     dispose: vi.fn()
   }),
@@ -254,6 +256,7 @@ describe('desktop page startup', () => {
     state.shellMetadata = { version: '' }
     state.shellActive = false
     state.shellConnected = ref(false)
+    state.shellState = ref({ maximized: false, minimized: false })
     state.route = reactive({ meta: {} })
     state.navigated = []
     state.settingsDialogClose = null
@@ -397,6 +400,16 @@ describe('desktop page startup', () => {
   it('shares the title-bar profile controller with settings actions', async () => {
     const component = await mount()
     expect(provide).toHaveBeenCalledWith(configProfilesKey, component.configProfiles)
+  })
+
+  it('provides the native minimized state to page components', async () => {
+    await mount()
+    const minimized = provide.mock.calls.find(([key]) => key === windowMinimizedKey)[1]
+    expect(minimized.value).toBe(false)
+    state.shellState.value = { maximized: false, minimized: true }
+    expect(minimized.value).toBe(true)
+    state.shellState.value = { maximized: true, minimized: false }
+    expect(minimized.value).toBe(false)
   })
 
   it.each([

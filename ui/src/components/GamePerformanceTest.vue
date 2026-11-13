@@ -3,11 +3,13 @@ import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { sameDeviceProfile } from '@/utils/deviceSettings'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
+import { windowMinimizedKey } from '@/window-shell/context.js'
 
 const props = defineProps({ disabled: { type: Boolean, default: false } })
 const emit = defineEmits(['running'])
 const config = useConfigStore()
 const axios = inject('axios')
+const windowMinimized = inject(windowMinimizedKey, ref(false))
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/device/performance-test`
 const labels = { xhigh: '极高', high: '高', medium: '中', low: '低' }
 const job = ref({ status: 'idle' })
@@ -53,14 +55,15 @@ const screenshotPreview = createScreenshotPreview({
 function updateScreenshotPreview() {
   if (!mounted) return
   const id = running.value && !document.hidden ? job.value.id : null
-  if (id !== previewJobId) screenshotPreview.stop()
+  if (!id || id !== previewJobId) screenshotPreview.stop()
   previewJobId = id
-  if (id) screenshotPreview.start()
-  else screenshotPreview.stop()
+  if (!id) return
+  if (windowMinimized.value) screenshotPreview.pause()
+  else screenshotPreview.start()
 }
 
 watch(running, (value) => emit('running', value), { immediate: true })
-watch(() => [running.value, job.value.id], updateScreenshotPreview)
+watch([running, () => job.value.id, windowMinimized], updateScreenshotPreview)
 
 async function readStatus() {
   if (pending.value) return

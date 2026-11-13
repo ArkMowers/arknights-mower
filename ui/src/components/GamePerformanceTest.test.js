@@ -1,18 +1,29 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, reactive } from 'vue'
+import { effectScope, nextTick, reactive, ref } from 'vue'
+import { windowMinimizedKey } from '@/window-shell/context.js'
 import GamePerformanceTest from './GamePerformanceTest.vue'
 
-const state = vi.hoisted(() => ({ config: null, http: null, mounted: [], unmounted: [] }))
+const state = vi.hoisted(() => ({
+  config: null,
+  http: null,
+  mounted: [],
+  unmounted: [],
+  windowMinimized: null
+}))
 vi.mock('vue', async (original) => ({
   ...(await original()),
-  inject: () => state.http,
+  inject: (key, fallback) => {
+    if (key === 'axios') return state.http
+    if (key === windowMinimizedKey) return state.windowMinimized ?? fallback
+    return fallback
+  },
   onMounted: (callback) => state.mounted.push(callback),
   onUnmounted: (callback) => state.unmounted.push(callback),
   useSSRContext: () => ({ modules: new Set() })
 }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 let scope
-function setup() {
+function setup(windowMinimized = null) {
   state.config = reactive({
     device_profile: { last_serial: 'USB-123', screenshot_backend: 'adb_gzip' },
     performance_mode: 'auto',
@@ -25,6 +36,7 @@ function setup() {
   state.http = { get: vi.fn(), post: vi.fn(), delete: vi.fn() }
   state.mounted = []
   state.unmounted = []
+  state.windowMinimized = windowMinimized
   const props = reactive({ disabled: false })
   scope = effectScope()
   let component
@@ -186,6 +198,99 @@ it('shows the current test frame and stops preview when hidden or finished', asy
   expect(state.http.get.mock.calls.filter(([url]) => url.endsWith('/screenshot'))).toHaveLength(
     previewCalls.length
   )
+})
+
+it('pauses the native minimized preview while preserving its frame and polling test status', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false }))
+  stubImage()
+  const createUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:current-frame')
+  const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const windowMinimized = ref(false)
+  const { component } = setup(windowMinimized)
+  const pending = Promise.withResolvers()
+  const fetchScreenshot = vi
+    .fn()
+    .mockResolvedValue({ status: 304, headers: {} })
+    .mockResolvedValueOnce({ status: 200, data: new Blob(['frame']), headers: { etag: '"frame"' } })
+    .mockReturnValueOnce(pending.promise)
+  const fetchStatus = vi.fn(() => ({ data: component.job.value }))
+  state.http.get.mockImplementation(async (url, options) =>
+    url.endsWith('/screenshot') ? fetchScreenshot(options) : fetchStatus()
+  )
+  component.job.value = { status: 'running', id: 'current' }
+  state.mounted.forEach((callback) => callback())
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(component.screenshot.value).toBe('blob:current-frame')
+  expect(fetchScreenshot).toHaveBeenCalledTimes(2)
+
+  windowMinimized.value = true
+  await nextTick()
+  expect(fetchScreenshot.mock.calls[1][0].signal.aborted).toBe(true)
+  pending.resolve({ status: 200, data: new Blob(['late']), headers: { etag: '"late"' } })
+  await vi.advanceTimersByTimeAsync(3000)
+  expect(fetchScreenshot).toHaveBeenCalledTimes(2)
+  expect(fetchStatus).toHaveBeenCalledTimes(3)
+  expect(createUrl).toHaveBeenCalledOnce()
+  expect(revokeUrl).not.toHaveBeenCalled()
+  expect(component.screenshot.value).toBe('blob:current-frame')
+
+  windowMinimized.value = false
+  await vi.advanceTimersByTimeAsync(0)
+  expect(fetchScreenshot).toHaveBeenCalledTimes(3)
+  expect(fetchScreenshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({ params: { id: 'current' }, headers: { 'If-None-Match': '"frame"' } })
+  )
+  expect(component.screenshot.value).toBe('blob:current-frame')
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fetchScreenshot).toHaveBeenCalledTimes(4)
+  expect(createUrl).toHaveBeenCalledOnce()
+  expect(revokeUrl).not.toHaveBeenCalled()
+})
+
+it('drops an old job frame while minimized and waits for browser visibility to request the new one', async () => {
+  vi.useFakeTimers()
+  const page = Object.assign(new EventTarget(), { hidden: false })
+  vi.stubGlobal('document', page)
+  stubImage()
+  vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce('blob:old').mockReturnValueOnce('blob:new')
+  const revokeUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+  const windowMinimized = ref(false)
+  const { component } = setup(windowMinimized)
+  const fetchScreenshot = vi.fn(async ({ params: { id } }) => ({
+    status: 200,
+    data: new Blob([id]),
+    headers: { etag: `"${id}"` }
+  }))
+  state.http.get.mockImplementation(async (url, options) =>
+    url.endsWith('/screenshot') ? fetchScreenshot(options) : { data: component.job.value }
+  )
+  component.job.value = { status: 'running', id: 'old' }
+  state.mounted.forEach((callback) => callback())
+  await vi.advanceTimersByTimeAsync(0)
+  expect(component.screenshot.value).toBe('blob:old')
+
+  windowMinimized.value = true
+  await nextTick()
+  component.job.value = { status: 'running', id: 'new' }
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fetchScreenshot).toHaveBeenCalledOnce()
+  expect(component.screenshot.value).toBe('')
+  expect(revokeUrl).toHaveBeenCalledWith('blob:old')
+
+  page.hidden = true
+  page.dispatchEvent(new Event('visibilitychange'))
+  windowMinimized.value = false
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(fetchScreenshot).toHaveBeenCalledOnce()
+  page.hidden = false
+  page.dispatchEvent(new Event('visibilitychange'))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(fetchScreenshot).toHaveBeenCalledTimes(2)
+  expect(fetchScreenshot).toHaveBeenLastCalledWith(
+    expect.objectContaining({ params: { id: 'new' }, headers: {} })
+  )
+  expect(component.screenshot.value).toBe('blob:new')
 })
 
 it('discards a pending frame when another test replaces its owner', async () => {

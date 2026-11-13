@@ -65,6 +65,35 @@ describe('memory screenshot preview', () => {
     expect(signal.aborted).toBe(true)
   })
 
+  it('releases the replaced URL when polling is paused during a frame update', async () => {
+    const src = ref('')
+    preview = createScreenshotPreview({
+      fetchSnapshot,
+      onChange: (url) => {
+        src.value = url
+        if (url === 'blob:next') preview.pause()
+      }
+    })
+    preview.start()
+    await vi.advanceTimersByTimeAsync(0)
+
+    createUrl.mockReturnValue('blob:next')
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(src.value).toBe('blob:next')
+    expect(revokeUrl).toHaveBeenCalledExactlyOnceWith('blob:frame')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(fetchSnapshot).toHaveBeenCalledTimes(2)
+
+    fetchSnapshot.mockResolvedValue({ status: 304, headers: {} })
+    preview.start()
+    expect(fetchSnapshot).toHaveBeenCalledTimes(3)
+    expect(fetchSnapshot.mock.lastCall[0].headers).toEqual({ 'If-None-Match': '"frame-1"' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(src.value).toBe('blob:next')
+    preview.stop()
+    expect(revokeUrl.mock.calls).toEqual([['blob:frame'], ['blob:next']])
+  })
+
   it('restores a cached frame before its refresh reply and releases only component URLs on stop', async () => {
     let snapshot = { blob: new Blob(['cached']), etag: 'cached-etag', aspect: 4 / 3 }
     fetchSnapshot.mockImplementation(() => new Promise(() => {}))
