@@ -240,7 +240,7 @@ def dialog_context(monkeypatch, tmp_path):
         },
     )
     automatic = MagicMock()
-    monkeypatch.setattr(mastery, "_dispatch_new_plans_immediately", automatic)
+    monkeypatch.setattr(mastery, "_dispatch_new_plans_async", automatic)
     monkeypatch.setattr(mastery, "refresh_workshop_after_plan_change", MagicMock())
     app = Flask(__name__)
     app.token = "private"

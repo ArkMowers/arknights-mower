@@ -45,10 +45,14 @@ class cultivate:
                 body = {"gameId": 1, "uid": i.get("uid")}
                 ingame = f"https://zonai.skland.com/api/v1/game/cultivate/player?uid={i.get('uid')}"
                 observed_at = time()
+                # 用 headers_factory 每次尝试现算签名头：重试不再携带过期时间戳，
+                # 否则第一次超时后重试带旧 timestamp 会被判「请勿修改设备本地时间」
                 resp = request_with_retry(
                     "get",
                     ingame,
-                    headers=get_sign_header(ingame, "get", body, self.sign_token),
+                    headers_factory=lambda: get_sign_header(
+                        ingame, "get", body, self.sign_token
+                    ),
                 ).json()
 
                 if isinstance(resp, dict) and resp.get("code") != 0:
@@ -60,10 +64,11 @@ class cultivate:
                 if not conditions:
                     info_url = f"{player_info_url}?{urlencode({'uid': i['uid']})}"
                     try:
+                        # 同上：headers_factory 保证重试时签名时间戳现算
                         info = request_with_retry(
                             "get",
                             info_url,
-                            headers=get_sign_header(
+                            headers_factory=lambda: get_sign_header(
                                 info_url, "get", None, self.sign_token
                             ),
                             timeout=10,
