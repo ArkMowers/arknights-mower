@@ -5,6 +5,7 @@ import { resourceActivityBadges, resourceActivityHint } from '@/utils/versionBad
 const props = defineProps({ metadata: Object })
 const now = ref(Date.now())
 const activities = computed(() => resourceActivityBadges(props.metadata, now.value))
+const needsRefresh = computed(() => activities.value.some((activity) => activity.refresh))
 let clock
 let stopWatch
 
@@ -19,10 +20,10 @@ onMounted(() => {
     () => {
       stopClock()
       now.value = Date.now()
-      if (activities.value.length) {
+      if (needsRefresh.value) {
         clock = setInterval(() => {
           now.value = Date.now()
-          if (!activities.value.length) stopClock()
+          if (!needsRefresh.value) stopClock()
         }, 60000)
       }
     },

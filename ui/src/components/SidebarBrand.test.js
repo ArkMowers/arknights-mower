@@ -205,7 +205,7 @@ describe('sidebar version badges', () => {
     expect(html).toContain('sidebar-brand-resource--dated')
     expect(html).toContain('--resource-badge-hue:70')
     expect(html).toContain('tabindex="0"')
-    expect(html).toContain('活动「昨日海」结束')
+    expect(html).toContain('活动「昨日海」作战关闭')
     expect(html).not.toContain('sidebar-brand-version-label')
     expect(vi.getTimerCount()).toBe(0)
   })
@@ -219,7 +219,7 @@ describe('sidebar version badges', () => {
     )
     expect(html).toContain('sidebar-brand-channel--nightly')
     expect(html).not.toContain('sidebar-brand-resource--dated')
-    expect(html).toContain('未提供有效的活动或卡池结束时间')
+    expect(html).toContain('当前资源中没有未结束的活动')
   })
 
   it.each(['4.1.6-alpha.12+deadbee', '4.1.6-alpha.12.gdeadbeef'])(
@@ -788,6 +788,36 @@ describe('sidebar version badges', () => {
 
   it('does not run a clock when the installed metadata has no known interval', () => {
     mountClock({ resourceVersion: '当前资源', resourceMetadata: {} })
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('uses the next active deadline after expiry and ignores a permanent version label', async () => {
+    const now = Date.now() / 1000
+    const permanent = { name: '卫戍协议:规程', time: now - 30, endTime: 4092580799 }
+    const view = mountClock(
+      {
+        resourceVersion: '卫戍协议:规程#1111',
+        resourceMetadata: {
+          activity: permanent,
+          activities: [
+            permanent,
+            { name: '先关闭', time: now - 60, endTime: now + 60 },
+            { name: '后关闭', time: now - 120, endTime: now + 120 }
+          ]
+        }
+      },
+      ClientBrand
+    )
+    expect(textContent(view.resourceButton())).toBe('卫戍协议:规程#1111')
+    expect(view.resourceButton().props.style['--resource-badge-hue']).toBe(70)
+    expect(view.resourceButton().props['aria-label']).toContain('长期开放')
+    expect(view.resourceButton().props['aria-label']).not.toContain('2099')
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(view.resourceButton().props.style['--resource-badge-hue']).toBe(35)
+    expect(view.resourceButton().props['aria-label']).not.toContain('先关闭')
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(view.resourceButton().props.class).not.toContain('sidebar-brand-resource--dated')
+    expect(view.resourceButton().props['aria-label']).toContain('长期开放')
     expect(vi.getTimerCount()).toBe(0)
   })
 })

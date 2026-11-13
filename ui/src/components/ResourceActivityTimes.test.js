@@ -72,10 +72,23 @@ it('renders all battle deadlines and removes ended activities as time advances o
   await nextTick()
   expect(text(root)).not.toContain('较早活动')
   expect(vi.getTimerCount()).toBe(0)
+  metadata.value = { activities: [{ name: '更新后活动', time: now, endTime: now + 60 }] }
+  await nextTick()
+  expect(text(root)).not.toContain('更新后活动')
+  expect(vi.getTimerCount()).toBe(0)
   metadata.value = { activities: [{ name: '更新后活动', time: now, endTime: now + 3600 }] }
   await nextTick()
   expect(text(root)).toContain('更新后活动')
   expect(vi.getTimerCount()).toBe(1)
+  metadata.value = {
+    activity: { name: '卫戍协议:规程', time: now, endTime: 4092580799 },
+    activities: []
+  }
+  await nextTick()
+  expect(text(root)).toContain('卫戍协议:规程')
+  expect(text(root)).toContain('长期开放')
+  expect(text(root)).not.toContain('2099')
+  expect(vi.getTimerCount()).toBe(0)
   app.unmount()
   app = null
   expect(vi.getTimerCount()).toBe(0)
