@@ -146,10 +146,7 @@ const dailyState = (state) =>
 
 .daily-status--view {
   align-items: stretch;
-  height: 100%;
   padding: 0 var(--log-scroll-padding) 8px var(--log-inset);
-  overflow: auto;
-  overscroll-behavior: contain;
 }
 
 .daily-status--view::before {

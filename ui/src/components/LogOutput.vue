@@ -44,6 +44,15 @@ const props = defineProps({
 const MAX_BATCH_ANIMATION = 8
 
 const output = ref(null)
+const hiddenViewportHeight = ref(0)
+watch(
+  () => props.showAlternateView,
+  (show) => {
+    if (!show) return
+    const scrollbar = output.value?.querySelector('.log-output__scroll')
+    hiddenViewportHeight.value = scrollbar?.offsetHeight ?? 0
+  }
+)
 const { filters: sheenFilters, refresh: refreshSheen } = useLogSheen(output)
 const nowMs = ref(Date.now())
 const expandedDetails = ref(new Set())
@@ -757,7 +766,11 @@ function lineClasses(row) {
 </script>
 
 <template>
-  <div ref="output" class="log-output" :class="{ 'log-output--compact': compact }">
+  <div
+    ref="output"
+    class="log-output"
+    :class="{ 'log-output--compact': compact, 'log-output--alternate': showAlternateView }"
+  >
     <slot name="header" />
     <div class="log-output__body">
       <svg class="log-sheen-filter" width="0" height="0" aria-hidden="true" focusable="false">
@@ -850,10 +863,7 @@ function lineClasses(row) {
       <div
         v-if="!compact || running || $slots.title || items.some((item) => item.groupBar)"
         class="log-sticky"
-        :class="{
-          'log-sticky--titled': compact || $slots.title,
-          'log-sticky--alternate': showAlternateView
-        }"
+        :class="{ 'log-sticky--titled': compact || $slots.title }"
         :aria-hidden="$slots.title ? undefined : true"
       >
         <slot v-if="$slots.title" name="title" />
@@ -867,6 +877,7 @@ function lineClasses(row) {
       <n-scrollbar
         class="log-output__scroll"
         :class="{ 'log-output__scroll--hidden': showAlternateView }"
+        :style="showAlternateView ? { height: `${hiddenViewportHeight}px` } : undefined"
         :inert="showAlternateView || undefined"
         :x-scrollable="false"
         :container-style="{ overflowX: 'hidden', overscrollBehaviorX: 'none' }"
@@ -1608,13 +1619,16 @@ function lineClasses(row) {
   --log-gutter: var(--log-compact-time-column, 64px);
 }
 
-/* 吸顶提示独占一小段高度，正文从渐隐带下方开始。 */
 .log-output__body {
   position: relative;
   display: grid;
   flex: 1 1 0;
   grid-template: auto minmax(0, 1fr) / minmax(0, 1fr);
   min-height: 0;
+}
+
+.log-output--alternate .log-output__body {
+  flex-basis: auto;
 }
 
 .log-jump-latest {
@@ -1638,6 +1652,9 @@ function lineClasses(row) {
 }
 
 .log-output__body > :deep(.log-output__scroll--hidden) {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-start: 0;
   visibility: hidden;
 }
 
@@ -1671,19 +1688,6 @@ function lineClasses(row) {
   letter-spacing: 0.06em;
   pointer-events: none;
   user-select: none;
-}
-
-.log-sticky:not(.log-sticky--alternate)::before {
-  content: '';
-  position: absolute;
-  z-index: -1;
-  inset-inline: 0;
-  inset-block-end: 0;
-  height: 12px;
-  background: color-mix(in srgb, var(--mower-surface) 55%, transparent);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
-  mask-image: linear-gradient(transparent, #000 40%, transparent);
 }
 
 .log-sticky__label {

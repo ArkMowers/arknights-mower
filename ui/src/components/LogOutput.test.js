@@ -3535,6 +3535,27 @@ describe('running log output', () => {
     expect(page.rows().map(text)).toEqual(lines.map((line) => line.text))
   })
 
+  it('keeps the hidden log viewport at its previous height when the checklist opens', async () => {
+    const page = mount({ showAlternateView: false }, { alternate: () => h('div', '今日任务') })
+    const root = page.all().find((entry) => hasClass(entry, 'log-output'))
+    const scrollbar = page.all().find((entry) => hasClass(entry, 'log-output__scroll'))
+    scrollbar.offsetHeight = 266
+    root.querySelector = (selector) => (selector === '.log-output__scroll' ? scrollbar : null)
+
+    page.props.showAlternateView = true
+    await nextTick()
+    expect(scrollbar.props.style).toEqual({ height: '266px' })
+
+    page.props.showAlternateView = false
+    await nextTick()
+    expect(scrollbar.props.style?.height).toBeUndefined()
+
+    scrollbar.offsetHeight = 320
+    page.props.showAlternateView = true
+    await nextTick()
+    expect(scrollbar.props.style).toEqual({ height: '320px' })
+  })
+
   it.each([false, true])(
     'preserves the scroll position across resizes with follow %s',
     async (autoScroll) => {

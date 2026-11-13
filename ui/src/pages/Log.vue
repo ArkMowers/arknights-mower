@@ -344,7 +344,7 @@ function apply_rail_layout(container) {
   const { width, height } = fitRailLayout(
     layout_preference.rail_width,
     layout_preference.screenshot_height ?? 270,
-    container.clientWidth,
+    container.offsetWidth,
     container.getBoundingClientRect().height / logLayoutZoom(container),
     screenshot_aspect
   )
@@ -388,7 +388,7 @@ function clamp_stacked_task(value, availableHeight, bottomReserve) {
 function apply_log_layout() {
   const container = log_layout.value
   if (!container) return
-  rail_layout.value = !mobile.value && container.clientWidth >= RAIL_LAYOUT_MIN_WIDTH
+  rail_layout.value = !mobile.value && container.offsetWidth >= RAIL_LAYOUT_MIN_WIDTH
   if (rail_mode.value) return apply_rail_layout(container)
   container.style.removeProperty('--log-rail-w')
   const bounds = container.getBoundingClientRect()
@@ -499,7 +499,7 @@ function resize_log_pane(event, pane) {
         const fitted = fitRailLayout(
           null,
           dragged,
-          container.clientWidth,
+          container.offsetWidth,
           paneHeight,
           screenshot_aspect
         )
@@ -560,7 +560,7 @@ function resize_rail_column(event) {
   let savedWidth = null
   const onMove = (moveEvent) => {
     const bounds = container.getBoundingClientRect()
-    const paneWidth = container.clientWidth
+    const paneWidth = container.offsetWidth
     if (!bounds.width || !paneWidth) return
     const logRailMinWidth = Math.max(RAIL_LOG_MIN_WIDTH, Math.round(paneWidth * 0.4))
     const maxRailWidth = Math.min(RAIL_MAX_WIDTH, paneWidth - logRailMinWidth - RAIL_GAP)
@@ -884,7 +884,7 @@ onMounted(() => {
   updatePageVisibility()
   apply_log_layout()
   layoutObserver = new ResizeObserver(apply_log_layout)
-  if (log_layout.value) layoutObserver.observe(log_layout.value)
+  if (log_layout.value) layoutObserver.observe(log_layout.value, { box: 'border-box' })
   if (action_bar.value) layoutObserver.observe(action_bar.value)
   restore_log_layout()
   db_load_stats()
@@ -2583,6 +2583,10 @@ async function db_delete(keys) {
   height: auto !important;
   min-height: var(--log-min-h, 120px);
   overflow: hidden;
+}
+
+.log.log-output--alternate {
+  flex-basis: auto;
 }
 
 .log-daily-toggle {
