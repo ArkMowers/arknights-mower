@@ -10,9 +10,9 @@ import {
   watch
 } from 'vue'
 import { NScrollbar } from 'naive-ui'
-import ArrowDown from '@vicons/ionicons5/es/ArrowDownOutline'
 import DetailChevron from '@vicons/ionicons5/es/ChevronDownOutline'
 import logSheen from '@/assets/log/progress-sheen.svg?inline'
+import JumpToLatestButton from '@/components/JumpToLatestButton.vue'
 import LogOperator from '@/components/LogOperator.vue'
 import LogInventory from '@/components/LogInventory.vue'
 import LogItemToken from '@/components/LogItemToken.vue'
@@ -1560,15 +1560,11 @@ function lineClasses(row) {
           <p class="log-sr" role="status" aria-live="polite">{{ liveAnnouncement }}</p>
         </div>
       </n-scrollbar>
-      <button
+      <jump-to-latest-button
         v-if="showJumpToLatest && !showAlternateView"
-        type="button"
         class="log-jump-latest"
         @click="returnToLatest"
-      >
-        <ArrowDown aria-hidden="true" />
-        回到最新
-      </button>
+      />
       <div v-if="showAlternateView" class="log-output__alternate">
         <slot name="alternate" />
       </div>
@@ -1622,33 +1618,7 @@ function lineClasses(row) {
 }
 
 .log-jump-latest {
-  position: absolute;
   z-index: 2;
-  inset-inline-end: 16px;
-  bottom: 12px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
-  border: var(--log-hairline, 1px) solid var(--mower-divider);
-  border-radius: 7px;
-  background: var(--mower-surface);
-  color: var(--mower-text);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .log-jump-latest:hover {
-    background: color-mix(in srgb, var(--mower-surface), var(--mower-text) 6%);
-  }
-}
-
-.log-jump-latest:active {
-  background: color-mix(in srgb, var(--mower-surface), var(--mower-text) 10%);
-  transition-duration: var(--log-press-time, 60ms);
 }
 
 .log-jump-latest:focus-visible {
@@ -1656,30 +1626,8 @@ function lineClasses(row) {
   outline-offset: 2px;
 }
 
-.log-jump-latest svg {
-  width: 13px;
-  height: 13px;
-}
-
 .log-output--compact .log-jump-latest {
   min-height: 44px;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .log-jump-latest {
-    animation: log-jump-in var(--log-feedback-time, 120ms) ease-out;
-    transition: background-color var(--log-feedback-time, 120ms) var(--log-feedback-ease, ease-out);
-  }
-
-  .log-jump-latest:focus-visible {
-    animation: none;
-  }
-}
-
-@keyframes log-jump-in {
-  from {
-    opacity: 0;
-  }
 }
 
 .log-output__body > :deep(.log-output__scroll),

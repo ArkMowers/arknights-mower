@@ -2,9 +2,9 @@ import { readFileSync } from 'node:fs'
 import { parse } from '@vue/compiler-sfc'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { compile, createRenderer, h, nextTick, reactive, ssrContextKey } from 'vue'
-import { NPopover, NScrollbar } from 'naive-ui'
-import ArrowDown from '@vicons/ionicons5/es/ArrowDownOutline'
+import { NButton, NIcon, NPopover, NScrollbar } from 'naive-ui'
 import DetailChevron from '@vicons/ionicons5/es/ChevronDownOutline'
+import JumpToLatestButton from './JumpToLatestButton.vue'
 import LogOperator from './LogOperator.vue'
 import LogInventory from './LogInventory.vue'
 import LogItemToken from './LogItemToken.vue'
@@ -16,6 +16,16 @@ const instances = vi.hoisted(() => ({ operator: 0 }))
 vi.mock('naive-ui', async () => {
   const { defineComponent, h } = await import('vue')
   return {
+    NButton: defineComponent({
+      setup:
+        (_, { slots }) =>
+        () =>
+          h('button', [slots.icon?.(), slots.default?.()])
+    }),
+    NIcon: defineComponent({
+      props: ['component'],
+      setup: (props) => () => h(props.component)
+    }),
     NPopover: defineComponent({
       props: { show: Boolean },
       setup:
@@ -74,7 +84,16 @@ const clientOutput = {
   ...LogOutput,
   components: {
     NScrollbar,
-    ArrowDown,
+    JumpToLatestButton: {
+      ...JumpToLatestButton,
+      components: { NButton, NIcon },
+      ssrRender: undefined,
+      render: compile(
+        parse(readFileSync(new URL('./JumpToLatestButton.vue', import.meta.url), 'utf8')).descriptor
+          .template.content
+      ),
+      setup: (props, context) => ({ ...JumpToLatestButton.setup(props, context) })
+    },
     DetailChevron,
     LogOperator,
     TaskActionSubjects: clientSubjects,
