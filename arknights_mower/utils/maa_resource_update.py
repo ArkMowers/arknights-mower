@@ -7,7 +7,6 @@ import json
 import os
 import shutil
 import stat
-import tempfile
 import time
 from dataclasses import dataclass, replace
 from datetime import datetime, timezone
@@ -21,12 +20,16 @@ import requests
 from arknights_mower.utils.github_download import request_download
 from arknights_mower.utils.maa_backup import maa_in_use, update_transaction
 from arknights_mower.utils.maa_update import (
+    MaaRollbackError,
     MaaUpdateError,
+    _copy_install_entry,
+    _remove_path,
     backup_path_for,
     has_maa_installation,
     mirrorchyan_sp_id,
     missing_maa_resource_files,
     replace_with_backup,
+    update_workspace,
 )
 from arknights_mower.utils.zip_safe import is_unsafe_zip_member
 
@@ -516,9 +519,7 @@ def install_maa_resource_update(
 
     with (
         maa_installation_transaction(target_path),
-        tempfile.TemporaryDirectory(
-            prefix=".maa-resource-update-", dir=target_path
-        ) as temp,
+        update_workspace(target_path, "resource-") as temp,
     ):
         work_dir = Path(temp)
         archive_path = work_dir / "MaaResource.zip"
@@ -549,18 +550,31 @@ def install_maa_resource_update(
             )
         except OSError as e:
             raise MaaUpdateError(f"替换 MAA 资源目录失败：{e}") from e
-        installed = read_maa_resource_info(target_path)
-        if installed["version"] != release.version:
+        try:
+            installed = read_maa_resource_info(target_path)
+            if installed["version"] != release.version:
+                raise MaaUpdateError("安装后的资源版本不匹配")
+        except Exception as validation_error:
             failed_resource = work_dir / "failed-resource"
             previous_backup = work_dir / "previous.old"
             try:
-                os.replace(resource_path, failed_resource)
+                if os.environ.get("MOWER_ANDROID") == "1":
+                    os.replace(resource_path, failed_resource)
+                else:
+                    _remove_path(resource_path)
                 os.replace(backup, resource_path)
                 if previous_backup.exists():
-                    os.replace(previous_backup, backup)
+                    if os.environ.get("MOWER_ANDROID") == "1":
+                        os.replace(previous_backup, backup)
+                    else:
+                        _copy_install_entry(previous_backup, backup)
             except OSError as e:
-                raise MaaUpdateError(f"MAA 资源版本校验失败且回滚失败：{e}") from e
-            raise MaaUpdateError("更新后重新读取 MAA 资源版本失败，已回滚")
+                raise MaaRollbackError(
+                    f"MAA 资源版本校验失败且回滚失败：{e}；更新现场保留在 {work_dir}"
+                ) from e
+            raise MaaUpdateError(
+                "更新后重新读取 MAA 资源版本失败，已回滚"
+            ) from validation_error
 
     return {
         "updated": True,

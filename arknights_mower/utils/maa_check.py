@@ -38,8 +38,10 @@ try:
         pass
 
     callback_func = Asst.CallBackType(callback)
-    if not Asst.load(path=maa_path, incremental_path=maa_path / "cache"):
-        raise RuntimeError(f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 MAA 目录/debug/asst.log")
+    from arknights_mower.utils.maa_storage import load_options
+    options = params.get("load_options") or load_options(maa_path)
+    if not Asst.load(**options):
+        raise RuntimeError(f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 Mower 数据目录/tmp/maa 下的日志")
     asst = Asst(callback=callback_func)
     version = asst.get_version()
     asst.set_instance_option(2, params["maa_touch_option"])
@@ -57,12 +59,16 @@ print(json.dumps(result, ensure_ascii=True))
 """
 
 
-def maa_check_params(
-    adb: str | None = None, *, device: "Device | None" = None
-) -> dict[str, str]:
+def maa_check_params(adb: str | None = None, *, device: "Device | None" = None) -> dict:
     """Reuse the active session's transport when the caller supplies its device."""
+    from arknights_mower.utils.maa_storage import load_options
+
+    target = resolve_config_path(str(config.conf.maa_path))
     return {
-        "maa_path": resolve_config_path(str(config.conf.maa_path)),
+        "maa_path": target,
+        "load_options": {
+            key: str(value) for key, value in load_options(target).items()
+        },
         "maa_adb_path": (
             getattr(device.client, "adb_bin", None) if device is not None else None
         )
@@ -106,9 +112,12 @@ def run_maa_check(params: dict) -> dict[str, str]:
             pass
 
         callback_func = Asst.CallBackType(callback)
-        if not Asst.load(path=maa_path, incremental_path=maa_path / "cache"):
+        from arknights_mower.utils.maa_storage import load_options
+
+        options = params.get("load_options") or load_options(maa_path)
+        if not Asst.load(**options):
             raise RuntimeError(
-                f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 MAA 目录/debug/asst.log"
+                f"MAA 资源加载失败：{maa_path}，请检查资源文件读取权限及 Mower 数据目录/tmp/maa 下的日志"
             )
         asst = Asst(callback=callback_func)
         version = asst.get_version()

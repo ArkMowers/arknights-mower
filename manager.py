@@ -6,6 +6,11 @@ import sys
 from pathlib import Path
 
 # The copied manager executable also serves as the detached software updater.
+if __name__ == "__main__" and sys.argv[1:2] == ["--repair-permissions"]:
+    from arknights_mower.utils.windows_permissions import main as repair_permissions
+
+    sys.exit(repair_permissions(sys.argv[2:]))
+
 if __name__ == "__main__" and sys.argv[1:2] == ["--software-update-worker"]:
     from arknights_mower.utils.software_update_worker import main as update_main
 

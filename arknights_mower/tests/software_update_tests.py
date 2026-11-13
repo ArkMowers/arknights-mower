@@ -1438,6 +1438,49 @@ class WorkerTests(unittest.TestCase):
         ):
             worker.prepare_package()
 
+    def test_portable_update_does_not_write_installation_parent(self):
+        self.job.update(deployment="release")
+        worker = self.worker()
+        self.state.mkdir()
+        executable = "mower.exe" if sys.platform == "win32" else "mower"
+        (self.root / executable).write_text("old launcher")
+        (self.root / "config").mkdir()
+        (self.root / "config/conf.yml").write_text("saved: true")
+
+        def prepare(payload_dir):
+            payload = payload_dir / "mower"
+            (payload / "_internal/arknights_mower/utils").mkdir(parents=True)
+            (payload / executable).write_text("new launcher")
+            (payload / "_internal/arknights_mower/utils/update_runtime.py").write_text(
+                "runtime"
+            )
+
+        real_mkdir = os.mkdir
+
+        def deny_parent(directory, *args, **kwargs):
+            if (
+                Path(directory).parent == self.root.parent
+                and not Path(directory).exists()
+            ):
+                raise PermissionError("installation parent is read only")
+            return real_mkdir(directory, *args, **kwargs)
+
+        with (
+            patch.object(worker, "prepare_full_package", side_effect=prepare),
+            patch(
+                "arknights_mower.utils.software_update_worker.instances",
+                return_value=[],
+            ),
+            patch.object(os, "mkdir", side_effect=deny_parent),
+        ):
+            worker.prepare_package()
+            worker.install_package()
+        self.assertEqual((self.root / executable).read_text(), "new launcher")
+        self.assertEqual(
+            (worker.bundle_backup / executable).read_text(), "old launcher"
+        )
+        self.assertEqual((self.root / "config/conf.yml").read_text(), "saved: true")
+
     def test_silent_restart_restores_unified_tray_and_managed_instances(self):
         records = [
             {"kind": "manager", "unified_tray": True},

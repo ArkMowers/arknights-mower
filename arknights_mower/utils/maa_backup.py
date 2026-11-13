@@ -175,7 +175,7 @@ class MaaCallError(RuntimeError):
             target += f" | stage={stage or '上次作战'}"
         super().__init__(
             f"MAA {label}{target}：{detail or '核心未接受调用'}。"
-            "请检查 MAA 核心及资源版本，并查看 MAA 目录/debug/asst.log"
+            "请检查 MAA 核心及资源版本，并查看 Mower 数据目录/tmp/maa 下的日志（Android 查看宿主日志）"
         )
 
 

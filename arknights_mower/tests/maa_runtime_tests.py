@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from arknights_mower.utils import maa_runtime as runtime
+from arknights_mower.utils.maa_storage import storage_root
 
 
 class MaaRuntimeTests(unittest.TestCase):
@@ -46,7 +47,9 @@ class MaaRuntimeTests(unittest.TestCase):
     def test_first_load_verifies_actual_core_before_connection(self):
         self.assertIs(self.load(), self.instance)
         self.asst_type.load.assert_called_once_with(
-            path=self.target, incremental_path=self.target / "cache"
+            path=self.target,
+            incremental_path=storage_root(self.target) / "cache",
+            user_dir=storage_root(self.target) / "user",
         )
         self.probe.assert_called_once_with(self.target, fresh=True)
         self.instance.connect.assert_not_called()

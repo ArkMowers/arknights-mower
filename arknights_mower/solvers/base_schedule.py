@@ -20476,12 +20476,14 @@ class BaseSchedulerSolver(
             if isinstance(resource, dict)
             else "未知"
         )
+        from arknights_mower.utils.maa_storage import storage_root
+
         logger.info(
             "MAA 资源加载成功 | core=%s | resource=%s | path=%s | incremental_path=%s",
             self.MAA.get_version(),
             resource_version,
             path,
-            path / "cache",
+            storage_root(path) / "cache",
             extra={"log_group": "maa-runtime"},
         )
         self.stages = []

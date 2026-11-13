@@ -20,6 +20,7 @@ from arknights_mower.utils.config_profile_groups import (
     CONFIG_FILE_GROUPS,
     GROUPS,
 )
+from arknights_mower.utils.path import temporary_root
 
 WEEKLY_SELECTION_FILE = "profile-weekly.json"
 TABLE_GROUPS = {
@@ -177,7 +178,10 @@ def merge_databases(incoming, current, selected):
     limit = backup.get_backup_limit_bytes()
     deadline = monotonic() + 10
     try:
-        with TemporaryDirectory() as directory, ExitStack() as stack:
+        with (
+            TemporaryDirectory(dir=temporary_root()) as directory,
+            ExitStack() as stack,
+        ):
             directory = Path(directory)
             sources, schemas = {}, {}
             for key, content in (("incoming", incoming), ("current", current)):

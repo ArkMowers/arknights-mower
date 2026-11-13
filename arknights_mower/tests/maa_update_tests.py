@@ -944,6 +944,37 @@ class TestInstallAndBackup(unittest.TestCase):
         ):
             mu.install_latest_maa("")
 
+    def test_update_needs_no_parent_write_and_preserves_installation_directory(self):
+        self.target.mkdir()
+        (self.target / "original.txt").write_text("original")
+        identity = self.target.stat().st_ino
+        real_open, real_mkdir, real_replace = Path.open, os.mkdir, os.replace
+
+        def open_file(path, mode="r", *args, **kwargs):
+            if path.parent == self.root and any(flag in mode for flag in "wax+"):
+                raise PermissionError("parent is read only")
+            return real_open(path, mode, *args, **kwargs)
+
+        def mkdir(path, *args, **kwargs):
+            if Path(path).parent == self.root and not Path(path).exists():
+                raise PermissionError("parent is read only")
+            return real_mkdir(path, *args, **kwargs)
+
+        def replace(source, destination):
+            if Path(source) == self.target or Path(destination) == self.target:
+                raise PermissionError("cannot replace installation directory")
+            return real_replace(source, destination)
+
+        with (
+            patch.object(Path, "open", open_file),
+            patch.object(os, "mkdir", mkdir),
+            patch.object(os, "replace", replace),
+        ):
+            self._install()
+        self.assertEqual(self.target.stat().st_ino, identity)
+        self.assertEqual((self.target / "resource/new.txt").read_text(), "new")
+        self.assertEqual((self.backup / "original.txt").read_text(), "original")
+
     def test_original_becomes_old_and_previous_old_is_cleared(self):
         self.target.mkdir()
         (self.target / "original.txt").write_text("original", encoding="utf-8")
@@ -1198,15 +1229,13 @@ class TestInstallAndBackup(unittest.TestCase):
         staged = work_dir / "new"
         staged.mkdir()
         (staged / "new.txt").write_text("new", encoding="utf-8")
-        real_replace = os.replace
 
         def fail_new_install(source, destination):
-            if Path(source) == staged and Path(destination) == self.target:
-                raise OSError("swap failed")
-            return real_replace(source, destination)
+            destination.write_text("partial replacement")
+            raise OSError("copy failed")
 
         with (
-            patch.object(mu.os, "replace", side_effect=fail_new_install),
+            patch.object(mu, "_copy_install_entry", side_effect=fail_new_install),
             self.assertRaises(OSError),
         ):
             mu.replace_with_backup(staged, self.target, work_dir)

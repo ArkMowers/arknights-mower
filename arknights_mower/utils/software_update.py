@@ -1039,7 +1039,9 @@ def info():
             source_changes = str(exc)
         except Exception as exc:
             blockers.append(str(exc))
-    elif not os.access(root.parent, os.W_OK) or not os.access(root, os.W_OK):
+    elif not os.access(root, os.W_OK) or (
+        root.suffix == ".app" and not os.access(root.parent, os.W_OK)
+    ):
         blockers.append(
             "安装位置不可写；请先将程序移至可写目录（macOS 请移出 DMG 后运行）"
         )

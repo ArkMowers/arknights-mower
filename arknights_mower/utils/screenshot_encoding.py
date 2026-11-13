@@ -7,7 +7,6 @@ import socket
 import struct
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 from threading import Event, Lock, RLock, Thread
@@ -22,6 +21,7 @@ from arknights_mower.utils.jpeg_worker import (
     authenticate,
     receive_exact,
 )
+from arknights_mower.utils.path import temporary_root
 
 ENCODE_TIMEOUT = 5
 REAP_TIMEOUT = 0.2
@@ -65,9 +65,7 @@ class _EncodingSlot:
     def _start(self, deadline):
         with self._state:
             self._remaining(deadline)
-            path = (
-                Path(tempfile.gettempdir()) / f"mower-jpeg-{secrets.token_hex(16)}.bin"
-            )
+            path = temporary_root() / f"mower-jpeg-{secrets.token_hex(16)}.bin"
             flags = os.O_CREAT | os.O_EXCL | os.O_RDWR | getattr(os, "O_BINARY", 0)
             # Both ends use O_TEMPORARY: Windows deletes on the last kernel handle.
             flags |= getattr(os, "O_TEMPORARY", 0)

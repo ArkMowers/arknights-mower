@@ -226,8 +226,12 @@ def load_conf():
     operation_feedback_cap = None
     operation_failure_streak = 0
     operation_recovery_successes = 0
-    if not conf_path.is_file():
-        conf_path.parent.mkdir(exist_ok=True)
+    try:
+        with conf_path.open("r", encoding="utf-8") as f:
+            # 读文件与配置提交均由 Conf 校验层迁移旧字段。
+            raw = yaml.load(f, Loader=CoreLoader) or {}
+    except FileNotFoundError:
+        conf_path.parent.mkdir(parents=True, exist_ok=True)
         # A fresh Mac/Linux host has no chosen endpoint. Keep legacy migration
         # unchanged, but do not give new users the old MuMu default port.
         conf = (
@@ -239,9 +243,6 @@ def load_conf():
         _load_rescue_plan({})
         save_conf()
         return
-    with conf_path.open("r", encoding="utf-8") as f:
-        # 读文件与配置提交均由 Conf 校验层迁移旧字段。
-        raw = yaml.load(f, Loader=CoreLoader) or {}
     _legacy_dorm_order = str(raw.get("dorm_order", "") or "")
     _retired_dorm_conf = bool(
         {
@@ -289,15 +290,17 @@ def load_plan():
         _retired_dorm_conf, \
         retired_backup_indices, \
         retired_backup_migrated
-    created = not plan_path.is_file()
-    if created:
-        plan_path.parent.mkdir(exist_ok=True)
-        plan = PlanModel()
-        data = {}
-    else:
+    try:
         # ZIP restores preserve original bytes, including an optional UTF-8 BOM.
         with plan_path.open("r", encoding="utf-8-sig") as f:
             data = json.load(f)
+    except FileNotFoundError:
+        created = True
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        plan = PlanModel()
+        data = {}
+    else:
+        created = False
         migrated_data, retired_backup_indices = retire_rescue_backups(data)
         retired_backup_migrated = len(migrated_data.get("backup_plans", [])) != len(
             data.get("backup_plans", [])

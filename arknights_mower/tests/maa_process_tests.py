@@ -24,7 +24,7 @@ from pathlib import Path
 
 class Asst:
     @classmethod
-    def load(cls, path, incremental_path):
+    def load(cls, path, incremental_path, user_dir):
         cls.settings = json.loads((Path(path) / "settings.json").read_text())
         return not cls.settings.get("bad_resource")
 
@@ -282,6 +282,21 @@ def test_shared_leases_allow_instances_and_reject_concurrent_installation(instal
         child.stdout.close()
     with processes.maa_installation_transaction(installation):
         pass
+
+
+def test_worker_load_does_not_create_files_beside_installation(
+    installation, monkeypatch
+):
+    real_open = Path.open
+
+    def open_file(path, mode="r", *args, **kwargs):
+        if path.parent == installation.parent and any(x in mode for x in "wax+"):
+            raise PermissionError("parent is read only")
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_file)
+    instance = runtime.load_maa_process(installation, None)
+    instance.close()
 
 
 def test_frozen_worker_command_uses_launcher_not_python_c(monkeypatch):
