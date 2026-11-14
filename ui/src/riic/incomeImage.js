@@ -395,12 +395,28 @@ export async function renderIncomeImage(
         ctx.font = `${badgeFontSize * scale}px sans-serif`
         ctx.fillStyle = color
         const text = incomeImageMetricText(metric)
-        if (text.startsWith('-')) {
-          ctx.textAlign = 'right'
-          ctx.fillText('-', (x + 29) * scale, (y + 17) * scale, 3 * scale)
-          ctx.textAlign = 'left'
+        const label = text.replace(/^-/, '')
+        ctx.save()
+        ctx.translate((x + 31) * scale, (y + 17) * scale)
+        ctx.scale(Math.min(1, (88 * scale) / ctx.measureText(label).width), 1)
+        const signWidth = ctx.measureText('-').width
+        const drawSign = (offset) => {
+          ctx.save()
+          ctx.translate(offset + signWidth * 0.075, 0)
+          ctx.scale(0.85, 1)
+          ctx.fillText('-', 0, 0)
+          ctx.restore()
         }
-        ctx.fillText(text.replace(/^-/, ''), (x + 30) * scale, (y + 17) * scale, 89 * scale)
+        if (text.startsWith('-')) {
+          drawSign(-scale - signWidth)
+        }
+        let offset = 0
+        for (const part of label.split(/(-)/)) {
+          if (part === '-') drawSign(offset)
+          else ctx.fillText(part, offset, 0)
+          offset += ctx.measureText(part).width
+        }
+        ctx.restore()
       })
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
