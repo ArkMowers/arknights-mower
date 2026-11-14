@@ -1,6 +1,7 @@
 import { MOWER_INVENTORY_ITEMS } from './vendor/domain/simulationInventory'
 
 export function applyIncomeCache(settings, cache) {
+  settings.cachedRecruitment = cache.recruitment ?? null
   settings.cachedOperators = cache.has_roster
     ? cache.operators
         .filter((op) => op.owned === true)

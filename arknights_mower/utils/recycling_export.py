@@ -144,19 +144,14 @@ def write_recycling_workbook(start_date, end_date, summary, records):
                 "100%效率每两天完成一次生产周期；不是实测日产量",
             ),
             (
-                "设定效率下理论日产理智",
-                calculator["configured_daily_sanity"],
-                "按价值参数中的回收站效率计算",
-            ),
-            (
-                "等效制造站效率",
+                "100%回收站等效制造站效率",
                 calculator["manufacturing_equivalent"],
                 "理论换算，以每日8000经验为100%制造站效率",
             ),
             (
                 "10%回收站效率等效制造站效率",
                 calculator["ten_percent_equivalent"],
-                "固定按10%回收站效率换算，不随设定效率变化",
+                "固定按10%回收站效率换算",
             ),
         ]
     )
@@ -222,11 +217,6 @@ def write_recycling_workbook(start_date, end_date, summary, records):
                 ),
                 ("赤金价值比例", valuation["ratios"]["gold"], "用于制造站效率换算"),
                 ("订单价值比例", valuation["ratios"]["order"], "用于制造站效率换算"),
-                (
-                    "回收站效率",
-                    valuation["ratios"]["efficiency"],
-                    "1表示100%，只用于理论换算",
-                ),
                 ("龙门币", valuation["lmd_sanity"], "理智/龙门币"),
                 *(
                     (

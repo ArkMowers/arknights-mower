@@ -217,7 +217,7 @@ def unlocked_skills(name, facility, snapshot):
 
 def load_income_cache():
     """Expose only cached growth and simulation resources, without syncing or writing."""
-    from arknights_mower.data import key_mapping
+    from arknights_mower.data import key_mapping, recruit_agent
 
     payload = get_cultivate_snapshot() or {}
     snapshot = load_skill_snapshot(payload)
@@ -254,7 +254,29 @@ def load_income_cache():
     observed_at = payload.get("_mower_inventory_observed_at")
     if type(observed_at) not in (int, float) or not 0 < observed_at < 1e12:
         observed_at = None
+    characters = {
+        entry["id"]: entry for entry in payload.get("data", {}).get("characters", [])
+    }
+    recruitment = None
+    if snapshot["has_data"]:
+        recruitment = []
+        for cid, operator in recruit_agent.items():
+            if operator["stars"] not in (3, 4, 5, 6):
+                continue
+            character = characters.get(cid)
+            rank = character.get("potentialRank") if character is not None else None
+            recruitment.append(
+                {
+                    "name": operator["name"],
+                    "stars": operator["stars"],
+                    "owned": character is not None,
+                    "potential": rank + 1
+                    if type(rank) is int and 0 <= rank <= 5
+                    else None,
+                }
+            )
     return {
+        "recruitment": recruitment,
         "has_roster": snapshot["has_data"],
         "operators": [
             {key: entry[key] for key in ("name", "owned", "phase", "level")}

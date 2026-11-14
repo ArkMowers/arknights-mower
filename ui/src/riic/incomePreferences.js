@@ -7,7 +7,7 @@ const numericFields = { warmupDays: [0, 30], sampleDays: [1, 90], fixedSeed: [0,
 const enumFields = {
   inventorySource: ['cache', 'manual'],
   operatorMode: ['cache', 'maximum', 'custom'],
-  weightMode: ['mower', 'custom']
+  weightMode: ['mower', 'custom', 'sanity']
 }
 const booleanFields = ['finiteInventory', 'allowMaterialDebt', 'jayeElite0', 'expectationMode']
 

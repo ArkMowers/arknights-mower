@@ -14,6 +14,7 @@ import {
 import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
 import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
+import { createIncomeSanityValuation, validateIncomeSanityValuation } from './incomeSanity'
 
 export const CALCULATOR_REVISION = '5529403'
 export const MOWER_REFERENCE = '80c97ee6'
@@ -32,9 +33,11 @@ export function defaultIncomeSettings() {
     dailyExternalResources: Object.fromEntries(
       MOWER_RAW_MATERIALS.map(({ resource }) => [resource, 0])
     ),
-    weightMode: 'mower',
+    weightMode: 'sanity',
     mowerWeights: null,
     mowerAlgorithm: null,
+    sanityValuation: null,
+    cachedRecruitment: null,
     initialInventory: {},
     jayeElite0: false,
     operatorMode: 'cache',
@@ -152,6 +155,10 @@ export function incomeRequest(plan, settings) {
 }
 
 export function incomeWeights(settings) {
+  if (settings.weightMode === 'sanity') {
+    validateIncomeSanityValuation(settings.sanityValuation)
+    return normalizeProductionWeights()
+  }
   if (settings.weightMode === 'mower') {
     if (!settings.mowerWeights)
       throw new Error('Mower 收益算法尚未读取，请重试或选择本次自定义权重')
@@ -162,6 +169,7 @@ export function incomeWeights(settings) {
 }
 
 export function applyMowerIncomeSettings(settings, value) {
+  settings.sanityValuation = createIncomeSanityValuation(value, settings.cachedRecruitment)
   settings.mowerAlgorithm = value.base_algorithm
   settings.mowerWeights = normalizeProductionWeights({
     exp: value.ratios.experience,
@@ -197,13 +205,45 @@ export function incomeMetrics(summary, days) {
 }
 
 export function incomeImageMetrics(summary, days) {
-  return [
+  const parts = summary.sanity?.parts
+  const part = (key) => parts?.find((item) => item.key === key)
+  const savedValue = (key) => {
+    const item = part(key)
+    return item?.quantity === 0 ? 0 : (item?.value ?? null)
+  }
+  const priced = (quantity, key) =>
+    quantity === 0
+      ? 0
+      : Number.isFinite(quantity) && Number.isFinite(part(key)?.unitValue)
+        ? quantity * part(key).unitValue
+        : null
+  const sum = (...values) =>
+    values.some(Number.isFinite) ? values.reduce((total, value) => total + (value ?? 0), 0) : null
+  const goldMade = priced(summary.goldCount, 'gold')
+  const goldUsed = part('gold') ? summary.goldCount - part('gold').quantity : undefined
+  const fragmentUsed = part('fragment') ? summary.fragments - part('fragment').quantity : undefined
+  const values = parts
+    ? {
+        exp: savedValue('exp'),
+        gold: goldMade,
+        lmd: sum(priced(summary.orderLmd, 'lmd'), priced(-goldUsed, 'gold')),
+        lmdCost: priced(-summary.lmdConsumed, 'lmd'),
+        orirockCost: savedValue('orirock'),
+        deviceCost: savedValue('device'),
+        fragment: priced(summary.fragments, 'fragment'),
+        orundum: sum(savedValue('orundum'), priced(-fragmentUsed, 'fragment')),
+        recycle: savedValue('recycle'),
+        recruitment: savedValue('recruitment'),
+        clue: sum(savedValue('clue'), savedValue('exchange'))
+      }
+    : null
+  const rows = [
     { key: 'exp', icon: '/product/exp3.png', daily: summary.exp, unit: '经验值' },
     {
       key: 'gold',
       icon: '/product/gold.png',
-      daily: incomeGoldEquivalentLmd(summary),
-      unit: '龙门币'
+      daily: parts ? summary.goldCount : incomeGoldEquivalentLmd(summary),
+      unit: parts ? '个' : '龙门币'
     },
     {
       key: 'lmd',
@@ -229,12 +269,65 @@ export function incomeImageMetrics(summary, days) {
       daily: -summary.deviceConsumed,
       unit: '个'
     },
-    { key: 'fragment', icon: '/product/orirock.png', daily: summary.fragments, unit: '个' },
+    {
+      key: 'fragment',
+      icon: '/product/orirock.png',
+      daily: summary.fragments,
+      unit: '个'
+    },
     { key: 'orundum', icon: '/product/orundum.png', daily: summary.orundum, unit: '个' },
     { key: 'recycle', icon: recycleTemplate, daily: summary.recycleCount, unit: '次' },
     { key: 'recruitment', icon: officeTemplate, daily: summary.recruitmentCount, unit: '次' },
     { key: 'clue', icon: receptionTemplate, daily: summary.clueCount, unit: '个' }
   ]
-    .filter((row) => Math.abs(row.daily ?? 0) > 1e-8)
-    .map((row) => ({ ...row, daily: row.daily ?? 0, total: (row.daily ?? 0) * days }))
+    .filter(
+      (row) =>
+        Math.abs(row.daily ?? 0) > 1e-8 ||
+        (parts && row.key === 'clue' && part('exchange')?.quantity > 0) ||
+        (values && Math.abs(values[row.key] ?? 0) > 0)
+    )
+    .map((row) => ({
+      ...row,
+      daily: row.daily ?? 0,
+      total: (row.daily ?? 0) * days,
+      ...(values
+        ? {
+            sanityValue: values[row.key],
+            sanityPartial:
+              row.key === 'lmd'
+                ? [priced(summary.orderLmd, 'lmd'), priced(-goldUsed, 'gold')].includes(null)
+                : row.key === 'orundum'
+                  ? [savedValue('orundum'), priced(-fragmentUsed, 'fragment')].includes(null)
+                  : row.key === 'clue'
+                    ? [savedValue('clue'), savedValue('exchange')].includes(null)
+                    : values[row.key] === null
+          }
+        : {})
+    }))
+  if (values) {
+    // Allocate displayed cents so independently rounded badges still match the saved total.
+    const cents = (value) =>
+      Math.round(
+        Number(value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 2 })) *
+          100
+      )
+    const pricedRows = rows.filter((row) => Number.isFinite(row.sanityValue))
+    for (const row of pricedRows) row.sanityDisplayValue = cents(row.sanityValue) / 100
+    const difference =
+      cents(summary.sanity.total) -
+      pricedRows.reduce((total, row) => total + cents(row.sanityDisplayValue), 0)
+    const direction = Math.sign(difference)
+    const candidates = pricedRows
+      .filter((row) => row.sanityValue !== 0)
+      .sort(
+        (a, b) =>
+          direction *
+          (b.sanityValue - b.sanityDisplayValue - (a.sanityValue - a.sanityDisplayValue))
+      )
+    for (let index = 0; index < Math.abs(difference) && index < candidates.length; index++) {
+      const row = candidates[index]
+      row.sanityDisplayValue = (cents(row.sanityDisplayValue) + direction) / 100
+    }
+  }
+  return rows
 }
