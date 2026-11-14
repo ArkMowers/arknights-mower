@@ -194,7 +194,7 @@ export async function renderIncomeImage(
       ...algorithmLines.slice(1),
       ...(result.dormRecovery
         ? [
-            `宿舍填充理论恢复${result.dormRecovery.partial ? '（部分）' : ''} ${number(result.dormRecovery.daily)} 心情/天`
+            `空闲${result.dormRecovery.partial ? '（部分）' : ''} ${number(result.dormRecovery.daily)} 心情/天`
           ]
         : [])
     ].flatMap((line) =>

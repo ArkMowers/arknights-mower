@@ -775,7 +775,7 @@ onBeforeUnmount(() => {
             </p>
             <h3>日均加权产出 {{ format(state.result.summary.totalScore82) }}</h3>
             <p v-if="state.result.dormRecovery">
-              宿舍填充干员理论恢复量：{{ format(state.result.dormRecovery.daily) }} 心情/天
+              空闲 {{ format(state.result.dormRecovery.daily) }} 心情/天
               <span v-if="state.result.dormRecovery.partial">（部分技能未量化）</span>
             </p>
             <n-table size="small"
