@@ -19,6 +19,7 @@ import requests
 
 from arknights_mower.utils.github_download import request_download
 from arknights_mower.utils.maa_backup import maa_in_use, update_transaction
+from arknights_mower.utils.maa_storage import protected_storage_paths
 from arknights_mower.utils.maa_update import (
     MaaRollbackError,
     MaaUpdateError,
@@ -514,6 +515,17 @@ def install_maa_resource_update(
             "backup": str(resource_backup_path(target_path)),
             "downloaded": 0,
         }
+
+    if os.environ.get("MOWER_ANDROID") != "1":
+        storage_paths = protected_storage_paths(target_path)
+        for replaced in (resource_path, resource_backup_path(target_path)):
+            absolute, resolved = replaced.absolute(), replaced.resolve()
+            for storage in storage_paths:
+                if storage.is_relative_to(absolute) or storage.is_relative_to(resolved):
+                    raise MaaUpdateError(
+                        f"Mower 数据目录或更新工作区位于将被替换的 MAA 资源目录内：{storage}，"
+                        "请移出该目录后更新资源"
+                    )
 
     from arknights_mower.utils.maa_process import maa_installation_transaction
 

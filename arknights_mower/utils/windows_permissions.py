@@ -9,6 +9,9 @@ import sys
 import time
 from pathlib import Path
 
+SID_TYPE_USER = 1
+ERROR_INSUFFICIENT_BUFFER = 122
+
 
 def current_user_sid():
     import ctypes
@@ -62,11 +65,78 @@ def current_user_sid():
         kernel.CloseHandle(token)
 
 
+def _lookup_sid_type(sid):
+    import ctypes
+    from ctypes import wintypes
+
+    security = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.LocalFree.argtypes = [wintypes.LPVOID]
+    kernel.LocalFree.restype = wintypes.LPVOID
+    convert = security.ConvertStringSidToSidW
+    convert.argtypes = [wintypes.LPCWSTR, ctypes.POINTER(wintypes.LPVOID)]
+    convert.restype = wintypes.BOOL
+    lookup = security.LookupAccountSidW
+    lookup.argtypes = [
+        wintypes.LPCWSTR,
+        wintypes.LPVOID,
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+        wintypes.LPWSTR,
+        ctypes.POINTER(wintypes.DWORD),
+        ctypes.POINTER(ctypes.c_int),
+    ]
+    lookup.restype = wintypes.BOOL
+    native_sid = wintypes.LPVOID()
+    if not convert(sid, ctypes.byref(native_sid)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        name_size = wintypes.DWORD()
+        domain_size = wintypes.DWORD()
+        sid_type = ctypes.c_int()
+        if lookup(
+            None,
+            native_sid,
+            None,
+            ctypes.byref(name_size),
+            None,
+            ctypes.byref(domain_size),
+            ctypes.byref(sid_type),
+        ):
+            return sid_type.value
+        error = ctypes.get_last_error()
+        if error != ERROR_INSUFFICIENT_BUFFER:
+            raise ctypes.WinError(error)
+        name = ctypes.create_unicode_buffer(name_size.value)
+        domain = ctypes.create_unicode_buffer(domain_size.value)
+        if not lookup(
+            None,
+            native_sid,
+            name,
+            ctypes.byref(name_size),
+            domain,
+            ctypes.byref(domain_size),
+            ctypes.byref(sid_type),
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return sid_type.value
+    finally:
+        kernel.LocalFree(native_sid)
+
+
 def repair_permissions(roots, sid, *, apply=False):
     """Grant only the selected account; never take ownership or follow links."""
     if not re.fullmatch(r"S-1-(?:\d+-)+\d+", sid):
         raise ValueError("用户 SID 格式无效")
     deadline = time.monotonic() + 120
+    try:
+        sid_type = _lookup_sid_type(sid)
+    except OSError as error:
+        raise ValueError(
+            f"无法确认 Windows 用户账户的 SID：{sid}（{error}）"
+        ) from error
+    if sid_type != SID_TYPE_USER:
+        raise ValueError(f"请指定单个 Windows 用户账户的 SID：{sid}")
     executable = Path(os.environ["SystemRoot"]) / "System32/icacls.exe"
     targets = []
     seen = set()

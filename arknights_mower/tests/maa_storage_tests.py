@@ -125,6 +125,7 @@ def test_windows_permission_repair_preview_and_links(tmp_path, monkeypatch):
     from arknights_mower.utils import windows_permissions as permissions
 
     monkeypatch.setenv("SystemRoot", str(tmp_path / "Windows"))
+    monkeypatch.setattr(permissions, "_lookup_sid_type", lambda sid: 1)
     folder = tmp_path / "Mower"
     folder.mkdir()
     file = folder / "config.json"
@@ -156,6 +157,7 @@ def test_permission_repair_rejects_parent_links_and_normalizes_scope(
     from arknights_mower.utils import windows_permissions as permissions
 
     monkeypatch.setenv("SystemRoot", str(tmp_path / "Windows"))
+    monkeypatch.setattr(permissions, "_lookup_sid_type", lambda sid: 1)
     monkeypatch.setattr(Path, "home", lambda: tmp_path)
     sid = "S-1-5-21-1-2-3-1001"
     with pytest.raises(ValueError, match="整个磁盘或用户目录"):
@@ -169,6 +171,38 @@ def test_permission_repair_rejects_parent_links_and_normalizes_scope(
         pytest.skip("symlink creation unavailable")
     with pytest.raises(ValueError, match="链接"):
         permissions.repair_permissions([link / "Mower"], sid)
+
+
+@pytest.mark.parametrize(
+    ("sid", "sid_type"),
+    [
+        ("S-1-1-0", 5),  # Everyone
+        ("S-1-5-32-545", 4),  # Built-in Users
+        ("S-1-5-21-1-2-3-1002", OSError("account not mapped")),
+    ],
+)
+@pytest.mark.parametrize("apply", [False, True])
+def test_permission_repair_requires_one_user_account(
+    tmp_path, monkeypatch, sid, sid_type, apply
+):
+    from arknights_mower.utils import windows_permissions as permissions
+
+    outcome = (
+        {"side_effect": sid_type}
+        if isinstance(sid_type, OSError)
+        else {"return_value": sid_type}
+    )
+    lookup = Mock(**outcome)
+    run = Mock()
+    monkeypatch.setenv("SystemRoot", str(tmp_path / "Windows"))
+    monkeypatch.setattr(permissions, "_lookup_sid_type", lookup)
+    monkeypatch.setattr(permissions.subprocess, "run", run)
+
+    with pytest.raises(ValueError, match="Windows 用户账户的 SID"):
+        permissions.repair_permissions([tmp_path], sid, apply=apply)
+
+    lookup.assert_called_once_with(sid)
+    run.assert_not_called()
 
 
 def test_unreadable_saved_json_never_becomes_default(tmp_path, monkeypatch):
@@ -275,6 +309,20 @@ def test_permission_repair_entry_precedes_configuration_loading(tmp_path, entry)
     assert result.returncode == 0, result.stderr
     assert b"--user-sid" in result.stdout
     assert invalid_data.read_text() == "unusable data root"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows ACL APIs")
+@pytest.mark.parametrize("sid", ["S-1-1-0", "S-1-5-32-545"])
+def test_native_windows_repair_rejects_group_sids(tmp_path, monkeypatch, sid):
+    from arknights_mower.utils import windows_permissions as permissions
+
+    run = Mock()
+    monkeypatch.setattr(permissions.subprocess, "run", run)
+
+    with pytest.raises(ValueError, match="请指定单个 Windows 用户账户的 SID"):
+        permissions.repair_permissions([tmp_path], sid, apply=True)
+
+    run.assert_not_called()
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows ACL APIs")

@@ -1059,6 +1059,8 @@ def apply_windows_ota_package(
     archive_path: Path,
     destination: Path,
     callback: ProgressCallback | None = None,
+    *,
+    data_entries: frozenset[str] = frozenset(),
 ) -> None:
     """在已复制的 Windows MAA 目录上应用官方 OTA 差异包。"""
     control_files = {"removelist.txt", "changes.json"}
@@ -1086,6 +1088,11 @@ def apply_windows_ota_package(
                         )
                     seen.add(key)
                 payload.append((info, parts))
+
+            for parts in removals:
+                _reject_protected_core_entry(parts[0], data_entries)
+            for _, parts in payload:
+                _reject_protected_core_entry(parts[0], data_entries)
 
             total = len(removals) + sum(
                 1 for info, _parts in payload if not info.is_dir()
@@ -1562,6 +1569,45 @@ def backup_path_for(target: Path | str) -> Path:
     return path / ".old"
 
 
+def _core_entry_key(name: str) -> str:
+    return name.rstrip(" .").casefold()
+
+
+def _protected_core_entry(name: str, data_entries: frozenset[str]) -> bool:
+    key = _core_entry_key(name)
+    return key == ".old" or key.startswith(".mower-previous-") or key in data_entries
+
+
+def _core_data_entries(target: Path) -> frozenset[str]:
+    from arknights_mower.utils.maa_storage import protected_storage_paths
+
+    roots = (target.resolve(), target.absolute())
+    protected = set()
+    for directory in protected_storage_paths(target):
+        if directory in roots:
+            raise MaaUpdateError(
+                "Mower 数据目录或更新工作区与 MAA 安装目录相同，无法安全更新 MAA"
+            )
+        root = next(
+            (candidate for candidate in roots if directory.is_relative_to(candidate)),
+            None,
+        )
+        if root is None:
+            continue
+        name = directory.relative_to(root).parts[0]
+        if _protected_core_entry(name, frozenset({"python", "resource"})):
+            raise MaaUpdateError(
+                f"Mower 数据目录或更新工作区位于 MAA 程序或备份目录内，无法安全更新：{directory}"
+            )
+        protected.add(_core_entry_key(name))
+    return frozenset(protected)
+
+
+def _reject_protected_core_entry(name: str, data_entries: frozenset[str]) -> None:
+    if _protected_core_entry(name, data_entries):
+        raise MaaUpdateError(f"MAA 更新包与 Mower 数据或备份路径冲突：{name}")
+
+
 def replace_with_backup(
     staged: Path, target: Path, work_dir: Path, *, installation: Path | None = None
 ) -> Path:
@@ -1628,6 +1674,10 @@ def replace_with_backup(
 def _replace_core_with_backup(staged: Path, target: Path, work_dir: Path) -> Path:
     backup = backup_path_for(target)
     previous = target / f".mower-previous-{uuid.uuid4().hex}"
+    data_entries = _core_data_entries(target)
+    incoming = list(staged.iterdir())
+    for entry in incoming:
+        _reject_protected_core_entry(entry.name, data_entries)
     moved, installed = [], []
     previous_moved = backup_created = False
     target.mkdir(parents=True, exist_ok=True)
@@ -1640,13 +1690,16 @@ def _replace_core_with_backup(staged: Path, target: Path, work_dir: Path) -> Pat
         backup.mkdir()
         backup_created = True
         for entry in list(target.iterdir()):
-            if entry in (backup, previous) or entry.name.startswith(".mower-previous-"):
+            if _protected_core_entry(entry.name, data_entries):
                 continue
             os.replace(entry, backup / entry.name)
             moved.append(entry.name)
-        for entry in list(staged.iterdir()):
+        for entry in incoming:
+            destination = target / entry.name
+            if destination.exists() or destination.is_symlink():
+                raise MaaUpdateError(f"MAA 更新包与安装目录现有路径冲突：{destination}")
             installed.append(entry.name)
-            _copy_install_entry(entry, target / entry.name)
+            _copy_install_entry(entry, destination)
     except BaseException:
         try:
             for name in reversed(installed):
@@ -2043,6 +2096,7 @@ def install_latest_maa(
     if repair_installation and release.package_type != "full":
         raise MaaUpdateError("MAA 安装已损坏，更新源必须提供完整包，不能使用 OTA 修复")
 
+    data_entries = _core_data_entries(target_path)
     target_path.mkdir(parents=True, exist_ok=True)
     from arknights_mower.utils.maa_process import maa_installation_transaction
 
@@ -2102,10 +2156,21 @@ def install_latest_maa(
                     staged,
                     dirs_exist_ok=True,
                     ignore=lambda path, names: (
-                        {".old"} if Path(path) == target_path else set()
+                        {
+                            name
+                            for name in names
+                            if _protected_core_entry(name, data_entries)
+                        }
+                        if Path(path) == target_path
+                        else set()
                     ),
                 )
-                apply_windows_ota_package(archive_path, staged, callback=callback)
+                apply_windows_ota_package(
+                    archive_path,
+                    staged,
+                    callback=callback,
+                    data_entries=data_entries,
+                )
             else:
                 extract_windows_package(archive_path, staged, callback=callback)
             python_downloaded = 0
@@ -2163,14 +2228,21 @@ def install_latest_maa(
         if system == "windows" and release.package_type == "ota":
             preserved = []
         else:
+            for entry in staged.iterdir():
+                _reject_protected_core_entry(entry.name, data_entries)
+            user_entries = (
+                WINDOWS_PRESERVED_USER_ENTRIES
+                if system == "windows"
+                else PRESERVED_USER_ENTRIES
+            )
             preserved = preserve_user_data(
                 target_path,
                 staged,
                 callback=callback,
-                entries=(
-                    WINDOWS_PRESERVED_USER_ENTRIES
-                    if system == "windows"
-                    else PRESERVED_USER_ENTRIES
+                entries=tuple(
+                    entry
+                    for entry in user_entries
+                    if not _protected_core_entry(entry.split("/", 1)[0], data_entries)
                 ),
             )
 

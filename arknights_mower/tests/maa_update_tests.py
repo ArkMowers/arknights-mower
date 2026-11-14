@@ -1,5 +1,6 @@
 import ctypes
 import io
+import json
 import os
 import stat
 import sys
@@ -12,6 +13,7 @@ from unittest.mock import ANY, patch
 from zipfile import ZipFile, ZipInfo
 
 from arknights_mower.utils import maa_update as mu
+from arknights_mower.utils import path as mower_path
 
 
 def _asset(name: str, size: int = 100) -> dict:
@@ -692,6 +694,33 @@ class TestArchiveExtraction(unittest.TestCase):
             mu.apply_windows_ota_package(archive_path, destination)
         self.assertFalse((self.root / "outside.dll").exists())
 
+    def test_windows_ota_rejects_changes_to_protected_top_level_entries(self):
+        destination = self.root / "new"
+        (destination / "resource").mkdir(parents=True)
+        original = destination / "resource/original.json"
+        original.write_text("old", encoding="utf-8")
+        archive_path = self.root / "ota.zip"
+        for name, remove in (
+            (".OLD/restore.txt", False),
+            (".Mower-Previous-Retained/keep.txt", True),
+            ("LOCAL/mower-data/state.txt", False),
+            ("LOCAL/mower-data/state.txt", True),
+        ):
+            with self.subTest(name=name, remove=remove):
+                with ZipFile(archive_path, "w") as archive:
+                    removals = "resource/original.json\n"
+                    if remove:
+                        removals += f"{name}\n"
+                    else:
+                        archive.writestr(name, "incoming")
+                    archive.writestr("removelist.txt", removals)
+                with self.assertRaisesRegex(mu.MaaUpdateError, "路径冲突"):
+                    mu.apply_windows_ota_package(
+                        archive_path, destination, data_entries=frozenset({"local"})
+                    )
+            self.assertEqual(original.read_text(encoding="utf-8"), "old")
+            self.assertFalse((destination / name).exists())
+
     @staticmethod
     def _add_tar_file(archive, name, content=b"fixture", mode=0o644):
         info = tarfile.TarInfo(name)
@@ -801,7 +830,9 @@ class TestInstalledVersion(unittest.TestCase):
                 self.assertEqual(mu.read_installed_version(root, fresh=True), "v6.18.0")
             parent_load.assert_not_called()
             self.assertEqual(probe.call_args.kwargs["timeout"], 30)
-            self.assertIn(str(root), str(probe.call_args.args[0]))
+            params = json.loads(probe.call_args.args[0][-1])
+            self.assertEqual(params["core_path"], str(root / "libMaaCore.dylib"))
+            self.assertEqual(params["maa_path"], str(root))
             self.assertEqual(list(root.iterdir()), [root / "libMaaCore.dylib"])
 
     def test_fresh_probe_failures_do_not_load_parent_library(self):
@@ -888,6 +919,7 @@ class TestInstallAndBackup(unittest.TestCase):
         self.backup.mkdir()
         (self.backup / "original.txt").write_text("backup")
         with (
+            patch.object(mower_path, "_data_dir", self.target),
             patch.object(mu, "read_installed_version", return_value="v6.19.0"),
             patch.object(
                 mu,
@@ -897,7 +929,7 @@ class TestInstallAndBackup(unittest.TestCase):
             patch.object(mu, "download_asset") as download,
             patch.object(mu, "replace_with_backup") as replace,
             patch.object(mu, "clear_loaded_maa_cache") as clear,
-            patch.object(mu.tempfile, "TemporaryDirectory") as staging,
+            patch.object(mu, "update_workspace") as staging,
         ):
             result = mu.install_latest_maa(
                 self.target,
@@ -974,6 +1006,90 @@ class TestInstallAndBackup(unittest.TestCase):
         self.assertEqual(self.target.stat().st_ino, identity)
         self.assertEqual((self.target / "resource/new.txt").read_text(), "new")
         self.assertEqual((self.backup / "original.txt").read_text(), "original")
+
+    def test_full_update_keeps_nested_mower_data_in_place(self):
+        data = self.target / "config/mower-data"
+        data.mkdir(parents=True)
+        state = data / "state.txt"
+        state.write_text("kept", encoding="utf-8")
+        (self.target / "config/shared.txt").write_text("shared", encoding="utf-8")
+        (self.target / "original.txt").write_text("original", encoding="utf-8")
+        identity = data.parent.stat().st_ino
+
+        with patch.object(mower_path, "_data_dir", data):
+            result = self._install()
+
+        self.assertTrue(result["updated"])
+        self.assertEqual(data.parent.stat().st_ino, identity)
+        self.assertEqual(state.read_text(encoding="utf-8"), "kept")
+        self.assertEqual((data.parent / "shared.txt").read_text(), "shared")
+        self.assertEqual((self.target / "resource/new.txt").read_text(), "new")
+        self.assertEqual((self.backup / "original.txt").read_text(), "original")
+        self.assertFalse((self.backup / "config").exists())
+
+    def test_core_update_rejects_data_root_overlapping_owned_directories(self):
+        release = mu.MaaRelease(
+            tag="v6.18.0",
+            runtime=mu.ReleaseAsset("MAA.zip", "https://example.test/maa", 100),
+        )
+        for parts in ((), ("resource", "Mower"), (".OLD", "Mower")):
+            data = self.target.joinpath(*parts)
+            with (
+                self.subTest(data=data),
+                patch.object(mower_path, "_data_dir", data),
+                patch.object(mu, "get_latest_release", return_value=release),
+                patch.object(mu, "download_asset") as download,
+                self.assertRaisesRegex(mu.MaaUpdateError, "无法安全更新"),
+            ):
+                mu.install_latest_maa(self.target)
+            download.assert_not_called()
+            self.assertFalse(self.target.exists())
+
+    @unittest.skipUnless(os.name == "nt", "requires Windows junctions")
+    def test_full_update_keeps_redirected_workspace_inside_maa(self):
+        from _winapi import CreateJunction
+
+        runtime = self.target / "runtime"
+        runtime.mkdir(parents=True)
+        state = runtime / "state.txt"
+        state.write_text("kept", encoding="utf-8")
+        data = self.root / "mower-data"
+        data.mkdir()
+        alias = data / "tmp"
+        CreateJunction(str(runtime), str(alias))
+        try:
+            with patch.object(mower_path, "_data_dir", data):
+                result = self._install()
+            self.assertTrue(result["updated"])
+            self.assertTrue(alias.is_junction())
+            self.assertEqual(state.read_text(encoding="utf-8"), "kept")
+            self.assertFalse((self.backup / runtime.name).exists())
+        finally:
+            alias.rmdir()
+
+    @unittest.skipUnless(os.name == "nt", "requires Windows junctions")
+    def test_full_update_keeps_configured_junction_to_external_mower_data(self):
+        from _winapi import CreateJunction
+
+        self.target.mkdir()
+        data = self.root / "mower-data"
+        data.mkdir()
+        state = data / "state.txt"
+        state.write_text("kept", encoding="utf-8")
+        alias = self.target / "Local"
+        CreateJunction(str(data), str(alias))
+        try:
+            with (
+                patch.object(mower_path, "_data_dir", data),
+                patch.dict(os.environ, {"MOWER_DATA_DIR": str(alias)}),
+            ):
+                result = self._install()
+            self.assertTrue(result["updated"])
+            self.assertTrue(alias.is_junction())
+            self.assertEqual((alias / state.name).read_text(), "kept")
+            self.assertFalse((self.backup / alias.name).exists())
+        finally:
+            alias.rmdir()
 
     def test_original_becomes_old_and_previous_old_is_cleared(self):
         self.target.mkdir()
@@ -1172,6 +1288,13 @@ class TestInstallAndBackup(unittest.TestCase):
         (self.target / "config.json").write_text("user")
         self.backup.mkdir()
         (self.backup / "older.txt").write_text("previous backup")
+        retained = self.target / ".mower-previous-retained"
+        retained.mkdir()
+        (retained / "keep.txt").write_text("retained backup", encoding="utf-8")
+        data = self.target / "local/mower-data"
+        data.mkdir(parents=True)
+        (data / "state.txt").write_text("kept", encoding="utf-8")
+        identities = (retained.stat().st_ino, data.parent.stat().st_ino)
         ota_release = mu.MaaRelease(
             tag="v6.18.0",
             runtime=mu.ReleaseAsset(
@@ -1190,6 +1313,7 @@ class TestInstallAndBackup(unittest.TestCase):
             return destination.stat().st_size
 
         with (
+            patch.object(mower_path, "_data_dir", data),
             patch.object(mu, "read_installed_version", return_value="v6.17.0"),
             patch.object(mu, "get_latest_release", return_value=ota_release) as latest,
             patch.object(mu, "download_asset", side_effect=fake_download),
@@ -1218,6 +1342,35 @@ class TestInstallAndBackup(unittest.TestCase):
         self.assertEqual((self.backup / "MaaCore.dll").read_bytes(), b"old-core")
         self.assertFalse((self.backup / ".old").exists())
         self.assertFalse((self.backup / "older.txt").exists())
+        self.assertFalse((self.backup / retained.name).exists())
+        self.assertFalse((self.backup / data.parent.name).exists())
+        self.assertEqual(
+            (retained.stat().st_ino, data.parent.stat().st_ino), identities
+        )
+        self.assertEqual((retained / "keep.txt").read_text(), "retained backup")
+        self.assertEqual((data / "state.txt").read_text(), "kept")
+
+    def test_core_replacement_rejects_protected_destinations_before_moving_old(self):
+        data = self.target / "local/mower-data"
+        data.mkdir(parents=True)
+        (data / "state.txt").write_text("kept", encoding="utf-8")
+        self.backup.mkdir()
+        (self.backup / "older.txt").write_text("older", encoding="utf-8")
+        work = self.root / "work"
+        staged = work / "new"
+        staged.mkdir(parents=True)
+        for name in ("LOCAL", ".OLD", ".Mower-Previous-Retained"):
+            entry = staged / name
+            entry.mkdir()
+            with (
+                self.subTest(name=name),
+                patch.object(mower_path, "_data_dir", data),
+                self.assertRaisesRegex(mu.MaaUpdateError, "路径冲突"),
+            ):
+                mu.replace_with_backup(staged, self.target, work)
+            entry.rmdir()
+        self.assertEqual((self.backup / "older.txt").read_text(), "older")
+        self.assertEqual((data / "state.txt").read_text(), "kept")
 
     def test_swap_failure_restores_target_and_previous_old(self):
         self.target.mkdir()

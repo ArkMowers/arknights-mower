@@ -91,6 +91,7 @@ class BackupCheckpoint:
                 installation_lease,
                 maa_client_guard,
             )
+            from arknights_mower.utils.maa_storage import protected_storage_paths
 
             lease = installation_lease(self.target, exclusive=True)
             if self.installation != installation_identity(self.target):
@@ -99,6 +100,12 @@ class BackupCheckpoint:
                 for path, expected in self.backups.items():
                     if expected is None or expected != identity(path):
                         continue
+                    resolved = path.resolve()
+                    if any(
+                        root.is_relative_to(path) or root.is_relative_to(resolved)
+                        for root in protected_storage_paths(self.target)
+                    ):
+                        return False
                     if path.is_symlink():
                         path.unlink()
                     elif path.is_dir():

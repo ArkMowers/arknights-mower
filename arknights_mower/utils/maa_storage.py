@@ -19,6 +19,20 @@ def storage_root(target):
     return get_path("@app/tmp/maa", space="") / installation_key(target)
 
 
+def protected_storage_paths(target):
+    """Include configured aliases and their actual storage locations."""
+    root = get_path("@app", space="").resolve()
+    runtime = storage_root(target)
+    updates = runtime / "updates"
+    paths = [root, runtime, runtime.resolve(), updates, updates.resolve()]
+    configured = os.environ.get("MOWER_DATA_DIR")
+    if configured:
+        alias = Path(os.path.abspath(Path(configured).expanduser()))
+        if alias != root and alias.resolve() == root:
+            paths.append(alias)
+    return tuple(dict.fromkeys(paths))
+
+
 def load_options(target):
     if os.environ.get("MOWER_ANDROID") == "1":
         return {"path": Path(target), "incremental_path": Path(target) / "cache"}
