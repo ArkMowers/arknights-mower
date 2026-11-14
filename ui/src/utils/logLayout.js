@@ -3,12 +3,14 @@ export const LOG_MIN_SHARE = 1 / 3
 export const RESIZER_HEIGHT = 8
 export const PANE_MIN_HEIGHT = 90
 export const SCREENSHOT_MAX_HEIGHT = 500
+export const STACKED_SCREENSHOT_MAX_WIDTH = 480
 export const TASK_MAX_HEIGHT = 600
 export const RAIL_GAP = 24
 export const RAIL_MIN_WIDTH = 320
 export const RAIL_MAX_WIDTH = 720
 export const RAIL_LOG_MIN_WIDTH = 440
 export const RAIL_LAYOUT_MIN_WIDTH = 900
+export const RAIL_LOG_MIN_SHARE = 0.24
 
 export function logLayoutZoom(element) {
   const zoom = Number(element.ownerDocument?.documentElement.style.zoom)

@@ -60,6 +60,9 @@
       :profile-write-disabled="profileWriteDisabled"
       :profile-read-disabled="profileReadDisabled"
       :sidebar-visible="sidebarVisible"
+      :log-view-options="logViewOptions"
+      :zoom-availability="zoomAvailability"
+      :zoom-shortcuts="zoomShortcuts"
       @connection-action="$emit('connection-action', $event)"
       @profile-action="(action, profileId) => $emit('profile-action', action, profileId)"
       @help-action="$emit('help-action', $event)"
@@ -155,6 +158,9 @@ const props = defineProps({
   profileWriteDisabled: { type: Boolean, default: true },
   profileReadDisabled: { type: Boolean, default: true },
   sidebarVisible: { type: Boolean, default: true },
+  logViewOptions: { type: Array, default: () => [] },
+  zoomAvailability: { type: Object, default: null },
+  zoomShortcuts: { type: Object, default: null },
   onControl: { type: Function, required: true },
   onToggleMaximize: { type: Function, required: true },
   resizable: { type: Boolean, required: true },

@@ -15,7 +15,8 @@ import {
   onUnmounted,
   reactive,
   ref,
-  shallowReactive
+  shallowReactive,
+  shallowRef
 } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 
@@ -24,6 +25,7 @@ import LogDailyStatus from '@/components/LogDailyStatus.vue'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 import { useLogBackgroundStore } from '@/stores/logBackground'
 import { useGuiStore } from '@/stores/gui'
+import { logViewMenuKey } from '@/stores/logWorkspace'
 import { windowMinimizedKey } from '@/window-shell/context.js'
 
 const { descriptor } = parse(readFileSync(new URL('./Log.vue', import.meta.url), 'utf8'))
@@ -66,6 +68,7 @@ const state = vi.hoisted(() => ({
   mobile: null,
   chatPanelVisible: null,
   windowMinimized: null,
+  logViewMenu: null,
   preview: null,
   previewOptions: null,
   realPreview: false,
@@ -88,6 +91,7 @@ vi.mock('vue', async (original) => ({
     if (key === 'mobile') return state.mobile
     if (key === 'chat_panel_visible') return state.chatPanelVisible
     if (key === windowMinimizedKey) return state.windowMinimized
+    if (key === logViewMenuKey) return state.logViewMenu
     return ref(false)
   },
   onBeforeUnmount: vi.fn(),
@@ -177,6 +181,7 @@ describe('log page', () => {
     state.mobile = ref(false)
     state.chatPanelVisible = ref(false)
     state.windowMinimized = ref(false)
+    state.logViewMenu = null
     state.preview = { start: vi.fn(), pause: vi.fn(), stop: vi.fn() }
     state.realPreview = false
     vi.stubGlobal('localStorage', { setItem: vi.fn(), getItem: vi.fn(() => null) })
@@ -766,6 +771,15 @@ describe('log page', () => {
     await nextTick()
   }
 
+  function resizePointer({ x = 0, y = 0, left = x - 4, top = y, width = 8 } = {}) {
+    return {
+      preventDefault: vi.fn(),
+      clientX: x,
+      clientY: y,
+      currentTarget: { getBoundingClientRect: () => ({ left, top, width }) }
+    }
+  }
+
   it('fits the default mobile screenshot height to the loaded frame and current pane width', async () => {
     state.mobile.value = true
     const { find } = mountWorkspace()
@@ -784,11 +798,6 @@ describe('log page', () => {
     page.apply_log_layout()
     expect(screenshotHeight()).toBe('360px')
 
-    screenshot.clientWidth = 240
-    page.apply_log_layout()
-    expect(screenshotHeight()).toBe('135px')
-
-    screenshot.clientWidth = 0
     pane.clientWidth = 360
     await publishScreenshot('blob:http://portrait', 9 / 16)
     expect(screenshotHeight()).toBe('640px')
@@ -820,8 +829,8 @@ describe('log page', () => {
     const listeners = new Map()
     document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
     state.client.post.mockResolvedValue({})
-    page.resize_log_pane({ preventDefault: vi.fn() }, 'screenshot')
-    listeners.get('pointermove')({ clientY: 190 })
+    page.resize_log_pane(resizePointer({ y: 215, top: 203 }), 'screenshot')
+    listeners.get('pointermove')({ clientY: 202 })
     listeners.get('pointerup')()
     await publishScreenshot('blob:http://portrait', 9 / 16)
     expect(screenshotHeight()).toBe('190px')
@@ -1538,8 +1547,8 @@ describe('log page', () => {
     const listeners = new Map()
     document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
     state.client.post.mockResolvedValue({})
-    page.resize_log_pane({ preventDefault: vi.fn() }, 'task')
-    listeners.get('pointermove')({ clientY: 478 })
+    page.resize_log_pane(resizePointer({ y: 413, top: 410 }), 'task')
+    listeners.get('pointermove')({ clientY: 481 })
     listeners.get('pointerup')()
     page.apply_log_layout()
     expect(taskHeight()).toBe('200px')
@@ -1745,6 +1754,39 @@ describe('log page', () => {
     expect(page.db_limit.value).toBe(64)
     expect(page.db_busy.value).toBe(false)
     expect(page.db_result.value).toBe('')
+  })
+
+  it('keeps the five toolbar toggles in sync with the View menu while mounted', async () => {
+    const controller = (state.logViewMenu = shallowRef(null))
+    const { find, all } = mountWorkspace()
+    onMounted.mock.lastCall[0]()
+    await nextTick()
+    const toolbar = find((target) => target.props.class === 'view-toggle-island')
+    expect(
+      all(toolbar).filter((target) => typeof target.props['aria-pressed'] === 'boolean')
+    ).toHaveLength(5)
+    expect(controller.value.options.value).toEqual([
+      { key: 'log-view-log-detail-mode-toggle', label: '简洁日志', checked: false },
+      { key: 'log-view-task-table-toggle', label: '任务列表', checked: true },
+      { key: 'log-view-daily-tasks-toggle', label: '今日任务', checked: true },
+      { key: 'log-view-screenshot-toggle', label: '预览截图', checked: true },
+      { key: 'log-view-scroll-toggle', label: '跟随最新日志', checked: true }
+    ])
+    controller.value.toggle('log-view-log-detail-mode-toggle')
+    controller.value.toggle('log-view-screenshot-toggle')
+    await nextTick()
+    expect(find((target) => target.props['data-log-content']).props.concise).toBe(true)
+    expect(localStorage.setItem).toHaveBeenCalledWith('sc_preview', 'false')
+    expect(controller.value.options.value[0].checked).toBe(true)
+    expect(controller.value.options.value[3].checked).toBe(false)
+
+    expect(viewControl(find, '预览截图').props['aria-pressed']).toBe(false)
+    viewControl(find, '预览截图').props.onClick()
+    await nextTick()
+    expect(controller.value.options.value[3].checked).toBe(true)
+    onBeforeUnmount.mock.lastCall[0]()
+    expect(controller.value).toBeNull()
+    onUnmounted.mock.lastCall[0]()
   })
 
   it.each([false, true])(
@@ -2254,10 +2296,10 @@ describe('log page', () => {
   })
 
   it.each([
-    { mobile: false, width: 1000, imageWidth: 480, shot: 90 },
-    { mobile: true, width: 366, imageWidth: 360, shot: 640 }
+    { mobile: false, width: 1000, shot: 90 },
+    { mobile: true, width: 360, shot: 640 }
   ])('retains the panels in a short explicit single layout (mobile=$mobile)', (fixture) => {
-    const { mobile, width, imageWidth, shot } = fixture
+    const { mobile, width, shot } = fixture
     state.mobile.value = mobile
     useGuiStore().runningLogLayout = 'custom:single:log,daily,tasks,screenshot'
     const sizes = new Map()
@@ -2268,7 +2310,6 @@ describe('log page', () => {
       clientWidth: width,
       getBoundingClientRect: () => ({ top: 0, bottom: 250, height: 250 }),
       querySelector: (selector) => {
-        if (selector === '.log-screenshot') return { clientWidth: imageWidth }
         if (selector === '.log-daily-module')
           return { getBoundingClientRect: () => ({ height: 64 }) }
         if (selector === '.task-table-scroll')
@@ -2323,10 +2364,10 @@ describe('log page', () => {
       }
       const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
       component.log_layout.value = container
-      const event = { preventDefault: vi.fn() }
+      const event = resizePointer({ y: 594 * zoom, top: 590 * zoom })
 
       component.resize_log_pane(event, 'screenshot')
-      listeners.get('pointermove')({ clientY: 510 * zoom })
+      listeners.get('pointermove')({ clientY: 514 * zoom })
       listeners.get('pointerup')()
 
       expect(event.preventDefault).toHaveBeenCalledOnce()
@@ -2366,8 +2407,8 @@ describe('log page', () => {
     expect(sizes.get('--log-min-h')).toBe('240px')
     expect(sizes.get('--log-task-h')).toBe('372px')
 
-    component.resize_log_pane({ preventDefault: vi.fn() }, 'task')
-    listeners.get('pointermove')({ clientY: 280 })
+    component.resize_log_pane(resizePointer({ y: 382, top: 377.6 }), 'task')
+    listeners.get('pointermove')({ clientY: 284.4 })
     listeners.get('pointerup')()
 
     expect(sizes.get('--log-task-h')).toBe('250px')
@@ -2436,8 +2477,8 @@ describe('log page', () => {
     }
     const pointer = (type, x, y) =>
       document.dispatchEvent(Object.assign(new Event(type), { clientX: x, clientY: y }))
-    if (pane === 'rail') component.resize_rail_column({ preventDefault: vi.fn() })
-    else component.resize_log_pane({ preventDefault: vi.fn() }, pane)
+    if (pane === 'rail') component.resize_rail_column(resizePointer({ x: 800 }))
+    else component.resize_log_pane(resizePointer({ y: 120 }), pane)
     pointer('pointermove', 800, 180)
     expect(setProperty).toHaveBeenCalled()
     setProperty.mockClear()
@@ -2879,6 +2920,7 @@ describe('log page', () => {
   it('moves real panels into the saved order and retains the log across rearrangement', async () => {
     vi.setSystemTime(new Date('2026-11-01T05:00:00Z'))
     state.mower.refs.running.value = true
+    state.mower.refs.log_lines.value = ['2026-11-01 13:00:00 INFO 基建排班']
     state.config.report_enable = true
     state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
     mockDailyStatus(() => ({
@@ -2921,6 +2963,12 @@ describe('log page', () => {
       ['log-daily-module', 'task-table-scroll'],
       ['log-screenshot', 'log']
     ])
+    const daily = find((target) => classes(target).includes('log-daily-module'))
+    expect(daily.props['aria-label']).toBe('今日任务')
+    expect(all(daily).find((target) => classes(target).includes('daily-status__date'))?.text).toBe(
+      '2026-11-01'
+    )
+    expect(all(daily).some((target) => target.tag === 'h2')).toBe(false)
     expect(find((target) => target.props['data-log-content'])).toBe(log)
 
     state.mobile.value = true
@@ -3002,8 +3050,8 @@ describe('log page', () => {
         restoreLayout = page.restore_log_layout()
       }
 
-      page.resize_log_pane({ preventDefault: vi.fn() }, 'screenshot')
-      listeners.get('pointermove')({ clientY: 360 })
+      page.resize_log_pane(resizePointer({ y: 274, top: 270 }), 'screenshot')
+      listeners.get('pointermove')({ clientY: 364 })
       listeners.get('pointerup')()
 
       if (pending) {
@@ -3053,8 +3101,10 @@ describe('log page', () => {
         restoreLayout = page.restore_log_layout()
       }
 
-      page.resize_rail_column({ preventDefault: vi.fn() })
-      listeners.get('pointermove')({ clientX: 800 * zoom })
+      page.resize_rail_column(
+        resizePointer({ x: 800 * zoom + 2, left: 796 * zoom, width: 8 * zoom })
+      )
+      listeners.get('pointermove')({ clientX: 800 * zoom + 2 })
       listeners.get('pointerup')()
 
       if (pending) {
@@ -3087,6 +3137,39 @@ describe('log page', () => {
     expect(sizes()['--log-sc-h']).toBe('480px')
   })
 
+  it('fits the screenshot above the log when daily tasks share its short column', async () => {
+    const gui = useGuiStore()
+    gui.runningLogLayout = 'custom:split:daily,screenshot,log|tasks'
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { page, pane, sizes, classes } = mountWidePane(1046)
+    pane.getBoundingClientRect = () => ({ top: 48, bottom: 338, height: 290 })
+    pane.querySelector = (selector) => {
+      if (selector !== '.log-column--with-screenshot') return null
+      return {
+        querySelector: (selector) =>
+          selector === '.log-daily-module' && gui.runningLogLayout.startsWith('custom:split:daily')
+            ? { getBoundingClientRect: () => ({ height: 94 }) }
+            : null
+      }
+    }
+    page.sc_blob = 'blob:http://latest'
+    page.layout_preference.rail_width = 320
+    await nextTick()
+    page.apply_log_layout()
+    await nextTick()
+
+    expect(classes(pane)).toContain('log-pane--rail-left')
+    expect(sizes()['--log-rail-w']).toBe('320px')
+    expect(sizes()['--log-sc-h']).toBe('118px')
+
+    gui.runningLogLayout = 'custom:split:screenshot,log|tasks,daily'
+    await nextTick()
+    await nextTick()
+
+    expect(sizes()['--log-rail-w']).toBe('320px')
+    expect(sizes()['--log-sc-h']).toBe('162px')
+  })
+
   it('keeps screenshot dragging proportional after a saved rail-width adjustment', async () => {
     const { page, pane, sizes } = mountWidePane()
     pane.querySelector = (selector) =>
@@ -3099,8 +3182,8 @@ describe('log page', () => {
     document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
     state.client.post.mockResolvedValue({})
 
-    page.resize_log_pane({ preventDefault: vi.fn() }, 'screenshot')
-    listeners.get('pointermove')({ clientY: 180 })
+    page.resize_log_pane(resizePointer({ y: 363, top: 360 }), 'screenshot')
+    listeners.get('pointermove')({ clientY: 183 })
     listeners.get('pointerup')()
 
     expect(sizes()['--log-rail-w']).toBe('320px')
@@ -3109,6 +3192,83 @@ describe('log page', () => {
       screenshot_height: 180,
       rail_width: 320
     })
+  })
+
+  it.each([null, 490])(
+    'resizes gradually when a short pane caps the screenshot with rail width %s',
+    async (savedWidth) => {
+      useGuiStore().runningLogLayout = 'custom:split:daily,log|tasks,screenshot'
+      state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+      const { page, pane, find, sizes } = mountWidePane(1466)
+      pane.getBoundingClientRect = () => ({ top: 0, bottom: 320, height: 320 })
+      pane.querySelector = (selector) =>
+        selector === '.log-screenshot'
+          ? { getBoundingClientRect: () => ({ top: 120, height: 192 }) }
+          : null
+      page.sc_blob = 'blob:http://latest'
+      page.layout_preference.screenshot_height = 276
+      page.layout_preference.rail_width = savedWidth
+      page.apply_log_layout()
+      await nextTick()
+      expect(sizes()['--log-rail-w']).toBe(savedWidth ? '490px' : '491px')
+      expect(sizes()['--log-sc-h']).toBe('192px')
+
+      const listeners = new Map()
+      document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+      state.client.post.mockResolvedValue({})
+      const handle = find((target) => target.props['aria-label'] === '调整截图预览大小')
+      handle.props.onPointerdown(resizePointer({ y: 116, top: 112 }))
+      listeners.get('pointermove')({ clientY: 115 })
+      listeners.get('pointerup')()
+
+      expect(sizes()['--log-rail-w']).toBe('492px')
+      expect(sizes()['--log-sc-h']).toBe('192px')
+      expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+        screenshot_height: 277,
+        ...(savedWidth ? { rail_width: 492 } : {})
+      })
+    }
+  )
+
+  it('resizes a screenshot from the edge facing the task list', async () => {
+    const gui = useGuiStore()
+    gui.runningLogLayout = 'custom:split:daily,log|tasks,screenshot'
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { page, pane, find, sizes, classes } = mountWidePane()
+    const listeners = new Map()
+    document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+    state.client.post.mockResolvedValue({})
+    page.sc_blob = 'blob:http://latest'
+    page.layout_preference.rail_width = 480
+    page.apply_log_layout()
+    await nextTick()
+
+    const screenshot = find((target) => target.props.class === 'log-screenshot')
+    const screenshotHandle = find((target) => target.props['aria-label'] === '调整截图预览大小')
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    const inColumn = (target) => screenshot.parent.children.indexOf(target)
+    expect(classes(screenshot.parent)).toContain('log-column--screenshot-at-bottom')
+    expect(inColumn(queue)).toBeLessThan(inColumn(screenshotHandle))
+    expect(inColumn(screenshotHandle)).toBeLessThan(inColumn(screenshot))
+
+    const getScreenshotBounds = () => ({ top: 300, height: 270 })
+    pane.querySelector = (selector) =>
+      selector === '.log-screenshot' ? { getBoundingClientRect: getScreenshotBounds } : null
+    screenshotHandle.props.onPointerdown(resizePointer({ y: 296, top: 292 }))
+    listeners.get('pointermove')({ clientY: 338 })
+    listeners.get('pointerup')()
+
+    expect(sizes()['--log-sc-h']).toBe('228px')
+    expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+      screenshot_height: 228,
+      rail_width: 405
+    })
+
+    gui.runningLogLayout = 'right_rail'
+    await nextTick()
+    expect(classes(screenshot.parent)).not.toContain('log-column--screenshot-at-bottom')
+    expect(inColumn(screenshot)).toBeLessThan(inColumn(screenshotHandle))
+    expect(inColumn(screenshotHandle)).toBeLessThan(inColumn(queue))
   })
 
   it('keeps the task list in the right column without a screenshot and stacks on mobile', async () => {

@@ -109,9 +109,35 @@ const props = defineProps({
   profileState: { type: Object, default: null },
   profileWriteDisabled: { type: Boolean, default: true },
   profileReadDisabled: { type: Boolean, default: true },
-  sidebarVisible: { type: Boolean, default: true }
+  sidebarVisible: { type: Boolean, default: true },
+  logViewOptions: { type: Array, default: () => [] },
+  zoomAvailability: { type: Object, default: null },
+  zoomShortcuts: { type: Object, default: null }
 })
 const emit = defineEmits(['connection-action', 'profile-action', 'view-action', 'help-action'])
+
+const zoomCommands = [
+  ['zoom-in', '放大'],
+  ['zoom-out', '缩小'],
+  ['actual-size', '实际大小']
+]
+const zoomOptions = computed(() =>
+  zoomCommands.map(([key, label]) => {
+    const shortcut = props.zoomShortcuts?.[key]
+    return {
+      key,
+      disabled: !props.zoomAvailability[key],
+      accessibleLabel: label,
+      label: shortcut
+        ? () =>
+            h('span', { class: 'window-titlebar__menu-row' }, [
+              h('span', label),
+              h('span', { class: 'window-titlebar__menu-detail', 'aria-hidden': 'true' }, shortcut)
+            ])
+        : label
+    }
+  })
+)
 
 const menuBar = ref(null)
 const menuId = useId()
@@ -176,7 +202,19 @@ const menus = computed(() => [
       },
       { label: '编辑侧边栏', key: 'view-edit-sidebar' },
       { type: 'divider', key: 'view-log-layout-divider' },
-      { label: '运行日志布局…', key: 'view-custom-log-layout' }
+      { label: '运行日志布局…', key: 'view-custom-log-layout' },
+      ...(props.logViewOptions.length
+        ? [
+            { type: 'divider', key: 'view-log-options-divider' },
+            ...props.logViewOptions.map((option) => ({
+              ...option,
+              icon: option.checked ? checkIcon : undefined
+            }))
+          ]
+        : []),
+      ...(props.zoomAvailability
+        ? [{ type: 'divider', key: 'view-zoom-divider' }, ...zoomOptions.value]
+        : [])
     ]
   },
   {
@@ -234,6 +272,9 @@ function brandOption(menuKey, option) {
 }
 
 function dropdownMenuProps(menu, option) {
+  const maxWidth = 'calc(100vw / var(--mower-zoom, 1) - 32px)'
+  const minWidth = props.mode === 'brand' && !option ? '180px' : '200px'
+  const menuTopSpace = option?.menuKey === 'view' ? '136px' : '60px'
   return {
     id: `${menuId}-${menu.key}${option ? `-${option.key}` : ''}`,
     class: [
@@ -244,9 +285,9 @@ function dropdownMenuProps(menu, option) {
     role: 'menu',
     'aria-label': option?.accessibleLabel || menu.label,
     style: {
-      minWidth: props.mode === 'brand' && !option ? '180px' : '200px',
-      maxWidth: 'calc(100vw - 32px)',
-      maxHeight: 'calc(100dvh - 60px)'
+      minWidth: `min(${minWidth}, ${maxWidth})`,
+      maxWidth,
+      maxHeight: `max(36px, calc(100dvh / var(--mower-zoom, 1) - ${menuTopSpace}))`
     },
     ...(props.mode === 'brand' && option?.menuKey
       ? {
@@ -261,13 +302,19 @@ function dropdownMenuProps(menu, option) {
 
 function dropdownNodeProps(option) {
   const key = option.commandKey || option.key
+  const logViewOption = key.startsWith('log-view-')
   return {
-    role: key === 'current' || option.profileId ? 'menuitemradio' : 'menuitem',
-    'aria-checked': option.profileId
-      ? option.checked
-      : key === 'current'
-        ? !option.disabled
-        : undefined,
+    role: logViewOption
+      ? 'menuitemcheckbox'
+      : key === 'current' || option.profileId
+        ? 'menuitemradio'
+        : 'menuitem',
+    'aria-checked':
+      logViewOption || option.profileId
+        ? option.checked
+        : key === 'current'
+          ? !option.disabled
+          : undefined,
     'aria-disabled': Boolean(option.disabled),
     'aria-label': option.accessibleLabel,
     'aria-haspopup': option.children ? 'menu' : undefined,
@@ -281,6 +328,19 @@ function prepareBrandMenu(key) {
   if (!props.active || openMenu.value !== 'brand' || activeBrandMenu.value === key) return
   activeBrandMenu.value = key
   prepareMenu(key)
+}
+
+function checkIcon() {
+  return h('svg', { viewBox: '0 0 16 16', width: 16, height: 16, 'aria-hidden': 'true' }, [
+    h('path', {
+      d: 'm3.5 8 3 3 6-6',
+      fill: 'none',
+      stroke: 'currentColor',
+      'stroke-width': 1.5,
+      'stroke-linecap': 'round',
+      'stroke-linejoin': 'round'
+    })
+  ])
 }
 
 function currentOption(label, detail, disabled = false) {
@@ -300,19 +360,7 @@ function currentOption(label, detail, disabled = false) {
         h('span', label),
         detail && h('span', { class: 'window-titlebar__menu-detail' }, detail)
       ]),
-    icon: disabled
-      ? undefined
-      : () =>
-          h('svg', { viewBox: '0 0 16 16', width: 16, height: 16, 'aria-hidden': 'true' }, [
-            h('path', {
-              d: 'm3.5 8 3 3 6-6',
-              fill: 'none',
-              stroke: 'currentColor',
-              'stroke-width': 1.5,
-              'stroke-linecap': 'round',
-              'stroke-linejoin': 'round'
-            })
-          ])
+    icon: disabled ? undefined : checkIcon
   }
 }
 
@@ -368,6 +416,10 @@ function selectMenuItem(key, option) {
   }
   if (viewActions[key]) {
     emit('view-action', viewActions[key])
+    return
+  }
+  if (props.zoomAvailability?.[key] || props.logViewOptions.some((option) => option.key === key)) {
+    emit('view-action', key)
     return
   }
   const connectionActions = {

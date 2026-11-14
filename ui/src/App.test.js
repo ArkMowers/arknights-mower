@@ -20,6 +20,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
 import { configProfilesKey } from '@/composables/configProfiles'
 import { themeSelectionKey } from '@/composables/themeSelection'
+import { logViewMenuKey } from '@/stores/logWorkspace'
 import { windowMinimizedKey } from '@/window-shell/context.js'
 import { routes } from './routes'
 
@@ -117,6 +118,7 @@ vi.mock('@/window-shell/adapter.js', () => ({
     metadata: state.shellMetadata,
     active: ref(state.shellActive),
     connected: state.shellConnected,
+    platform: ref('windows'),
     capabilities: ref({ enabled: true, move: 'bridge', resize: 'native' }),
     state: state.shellState,
     initialize: vi.fn(),
@@ -400,6 +402,34 @@ describe('desktop page startup', () => {
   it('shares the title-bar profile controller with settings actions', async () => {
     const component = await mount()
     expect(provide).toHaveBeenCalledWith(configProfilesKey, component.configProfiles)
+  })
+
+  it('dispatches View commands to the mounted log controls and applies the shared scale', async () => {
+    state.route.name = 'log'
+    const component = await mount()
+    const [, logMenu] = provide.mock.calls.find(([key]) => key === logViewMenuKey)
+    const toggle = vi.fn()
+    logMenu.value = {
+      options: ref([{ key: 'log-view-screenshot-toggle', checked: true }]),
+      toggle
+    }
+    expect(component.logViewOptions.value).toEqual(logMenu.value.options.value)
+    component.handleViewAction('log-view-screenshot-toggle')
+    expect(toggle).toHaveBeenCalledExactlyOnceWith('log-view-screenshot-toggle')
+    state.route.name = 'settings'
+    expect(component.logViewOptions.value).toEqual([])
+    state.route.name = 'log'
+    logMenu.value = null
+    expect(component.logViewOptions.value).toEqual([])
+
+    state.loaded.value = true
+    component.handleViewAction('zoom-in')
+    await nextTick()
+    expect(state.config.webview.scale).toBe(1.25)
+    expect(document.documentElement.style.zoom).toBe(1.25)
+    component.handleViewAction('actual-size')
+    await nextTick()
+    expect(document.documentElement.style.zoom).toBe(1)
   })
 
   it('provides the native minimized state to page components', async () => {

@@ -3,7 +3,7 @@ import { useConfigStore } from '@/stores/config'
 import { useMowerStore } from '@/stores/mower'
 import { useGuiStore } from '@/stores/gui'
 import { storeToRefs } from 'pinia'
-import { computed, inject, onMounted, onUnmounted, provide, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
 import MaaUpdates from '@/components/MaaUpdates.vue'
@@ -12,6 +12,7 @@ import ConfigBackup from '@/components/ConfigBackup.vue'
 import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
 import { settingsSectionKey } from '@/composables/settingsNavigation'
 import { themeSelectionKey } from '@/composables/themeSelection'
+import { interfaceZoomLimits } from '@/composables/interfaceZoom'
 import SettingsSection from '@/components/SettingsSection.vue'
 import SoftwareVersionPreference from '@/components/SoftwareVersionPreference.vue'
 import VersionWatermarkPreference from '@/components/VersionWatermarkPreference.vue'
@@ -98,11 +99,17 @@ const hide_macos_menu_bar = computed({
 
 const scale_marks = {}
 const display_marks = [0.5, 1.0, 1.5, 2.0, 3.0]
-for (let i = 0.5; i <= 3.0; i += 0.25) {
+for (let i = interfaceZoomLimits.min; i <= interfaceZoomLimits.max; i += interfaceZoomLimits.step) {
   scale_marks[i] = display_marks.includes(i) ? `${i * 100}%` : ''
 }
 
 const new_scale = ref(webview.value.scale)
+watch(
+  () => webview.value.scale,
+  (scale, previous) => {
+    if (new_scale.value === previous) new_scale.value = scale
+  }
+)
 
 const desktopPreferencesReady = ref(false)
 const desktopTrayEnabled = ref(true)
@@ -202,9 +209,9 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
               <div class="desktop-scale-controls">
                 <n-slider
                   v-model:value="new_scale"
-                  :step="0.25"
-                  :min="0.5"
-                  :max="3.0"
+                  :step="interfaceZoomLimits.step"
+                  :min="interfaceZoomLimits.min"
+                  :max="interfaceZoomLimits.max"
                   :marks="scale_marks"
                   :format-tooltip="(x) => `${x * 100}%`"
                   aria-label="界面缩放"

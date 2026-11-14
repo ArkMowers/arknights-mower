@@ -3,6 +3,8 @@ import { ref, shallowRef, watch } from 'vue'
 
 import { useMowerStore } from './mower'
 
+export const logViewMenuKey = Symbol('logViewMenu')
+
 const DAY_MS = 24 * 60 * 60 * 1000
 const GAME_DAY_OFFSET_MS = 4 * 60 * 60 * 1000
 
