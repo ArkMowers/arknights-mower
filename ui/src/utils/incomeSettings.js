@@ -1,7 +1,7 @@
 export const incomeSettingsUrl = `${import.meta.env.VITE_HTTP_URL}/report/recycling_settings`
 export const incomeAlgorithms = [
   { value: 0, label: '82 算法', ratios: { experience: 1, gold: 0.8, order: 0.2 } },
-  { value: 3, label: '无人机算法', ratios: { experience: 1, gold: 0.8, order: 0.4 } },
+  { value: 3, label: '84 算法', ratios: { experience: 1, gold: 0.8, order: 0.4 } },
   {
     value: 1,
     label: '0.245 算法（CE6 & LS6，经验 = 1）',
