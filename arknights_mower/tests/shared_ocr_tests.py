@@ -849,8 +849,21 @@ def test_stale_endpoint_after_coordinator_kill_self_heals(tmp_path, monkeypatch)
     monkeypatch.setattr(mower_path, "_data_dir", tmp_path)
     directory = tmp_path / "shared"
     state = runtime.state_dir()
+    read_text = Path.read_text
+    endpoint_was_busy = False
+
+    def read_during_publication(path, *args, **kwargs):
+        nonlocal endpoint_was_busy
+        content = read_text(path, *args, **kwargs)
+        if path == endpoint_path(directory) and not endpoint_was_busy:
+            endpoint_was_busy = True
+            raise PermissionError(13, "endpoint temporarily unavailable", path)
+        return content
+
+    monkeypatch.setattr(Path, "read_text", read_during_publication)
     with service(directory, factory=fake_engine, idle=10) as process:
         try:
+            assert endpoint_was_busy
             client = ocr_shared.SharedOCREngine(directory=directory, timeout=15)
             client(np.zeros((32, 64, 3), np.uint8))
             stale = read_endpoint(directory)

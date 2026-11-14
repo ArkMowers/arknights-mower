@@ -25,6 +25,7 @@ import tarfile
 import tempfile
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
@@ -77,6 +78,28 @@ ProgressCallback = Callable[[str, int, int, str], None]
 
 class MaaUpdateError(RuntimeError):
     """MAA 下载或更新流程中的可展示错误。"""
+
+
+class MaaRollbackError(MaaUpdateError):
+    """Keep the update workspace when prior files cannot be restored."""
+
+
+@contextmanager
+def update_workspace(target, prefix):
+    from arknights_mower.utils.maa_storage import storage_root
+
+    root = storage_root(target) / "updates"
+    root.mkdir(parents=True, exist_ok=True)
+    work = Path(tempfile.mkdtemp(prefix=prefix, dir=root))
+    try:
+        yield work
+    except MaaRollbackError:
+        raise
+    except BaseException:
+        shutil.rmtree(work, ignore_errors=True)
+        raise
+    else:
+        shutil.rmtree(work, ignore_errors=True)
 
 
 @dataclass(frozen=True)
@@ -1036,6 +1059,8 @@ def apply_windows_ota_package(
     archive_path: Path,
     destination: Path,
     callback: ProgressCallback | None = None,
+    *,
+    data_entries: frozenset[str] = frozenset(),
 ) -> None:
     """在已复制的 Windows MAA 目录上应用官方 OTA 差异包。"""
     control_files = {"removelist.txt", "changes.json"}
@@ -1063,6 +1088,11 @@ def apply_windows_ota_package(
                         )
                     seen.add(key)
                 payload.append((info, parts))
+
+            for parts in removals:
+                _reject_protected_core_entry(parts[0], data_entries)
+            for _, parts in payload:
+                _reject_protected_core_entry(parts[0], data_entries)
 
             total = len(removals) + sum(
                 1 for info, _parts in payload if not info.is_dir()
@@ -1539,12 +1569,51 @@ def backup_path_for(target: Path | str) -> Path:
     return path / ".old"
 
 
+def _core_entry_key(name: str) -> str:
+    return name.rstrip(" .").casefold()
+
+
+def _protected_core_entry(name: str, data_entries: frozenset[str]) -> bool:
+    key = _core_entry_key(name)
+    return key == ".old" or key.startswith(".mower-previous-") or key in data_entries
+
+
+def _core_data_entries(target: Path) -> frozenset[str]:
+    from arknights_mower.utils.maa_storage import protected_storage_paths
+
+    roots = (target.resolve(), target.absolute())
+    protected = set()
+    for directory in protected_storage_paths(target):
+        if directory in roots:
+            raise MaaUpdateError(
+                "Mower 数据或 MAA 运行目录与 MAA 安装目录相同，无法安全更新 MAA"
+            )
+        root = next(
+            (candidate for candidate in roots if directory.is_relative_to(candidate)),
+            None,
+        )
+        if root is None:
+            continue
+        name = directory.relative_to(root).parts[0]
+        if _protected_core_entry(name, frozenset({"python", "resource"})):
+            raise MaaUpdateError(
+                f"Mower 数据或 MAA 运行目录位于 MAA 程序或备份目录内，无法安全更新：{directory}"
+            )
+        protected.add(_core_entry_key(name))
+    return frozenset(protected)
+
+
+def _reject_protected_core_entry(name: str, data_entries: frozenset[str]) -> None:
+    if _protected_core_entry(name, data_entries):
+        raise MaaUpdateError(f"MAA 更新包与 Mower 数据或备份路径冲突：{name}")
+
+
 def replace_with_backup(
     staged: Path, target: Path, work_dir: Path, *, installation: Path | None = None
 ) -> Path:
     """在安装目录的 ``.old`` 保存原文件，再换入已完成的 staging 目录。
 
-    上一次的 ``.old`` 会先移入本次临时目录；成功后随临时目录清理，失败时恢复。
+    保留上一次备份直到替换成功，替换失败时恢复原安装及备份。
     """
     android = os.environ.get("MOWER_ANDROID") == "1"
     if installation is None and not android:
@@ -1559,54 +1628,112 @@ def replace_with_backup(
     backup.parent.mkdir(parents=True, exist_ok=True)
     previous_backup = work_dir / "previous.old"
     had_previous_backup = backup.exists() or backup.is_symlink()
-    target_moved = False
+    target_moved = copy_started = previous_saved = False
 
     try:
         if had_previous_backup:
-            os.replace(backup, previous_backup)
+            if android:
+                os.replace(backup, previous_backup)
+            else:
+                _copy_install_entry(backup, previous_backup)
+                previous_saved = True
+                _remove_path(backup)
         if target.exists() or target.is_symlink():
             os.replace(target, backup)
             target_moved = True
-        os.replace(staged, target)
-    except Exception:
-        if target_moved and not target.exists() and backup.exists():
-            os.replace(backup, target)
-        if had_previous_backup and previous_backup.exists():
-            if backup.exists() or backup.is_symlink():
-                _remove_path(backup)
-            os.replace(previous_backup, backup)
+        if android:
+            os.replace(staged, target)
+        else:
+            copy_started = True
+            _copy_install_entry(staged, target)
+    except BaseException:
+        try:
+            if not android and copy_started and target.exists():
+                _remove_path(target)
+            if target_moved and not target.exists() and backup.exists():
+                os.replace(backup, target)
+            if (
+                had_previous_backup
+                and (android or previous_saved)
+                and previous_backup.exists()
+            ):
+                if backup.exists() or backup.is_symlink():
+                    _remove_path(backup)
+                if android:
+                    os.replace(previous_backup, backup)
+                else:
+                    _copy_install_entry(previous_backup, backup)
+        except BaseException as error:
+            raise MaaRollbackError(
+                f"MAA 回滚未完成，请保留安装和备份，并检查权限；更新现场保留在 {work_dir}"
+            ) from error
         raise
     return backup
 
 
 def _replace_core_with_backup(staged: Path, target: Path, work_dir: Path) -> Path:
     backup = backup_path_for(target)
-    previous = work_dir / "previous.old"
-    displaced = work_dir / "current.old"
-    previous_moved = target_moved = installed = backup_moved = False
+    previous = target / f".mower-previous-{uuid.uuid4().hex}"
+    data_entries = _core_data_entries(target)
+    incoming = list(staged.iterdir())
+    for entry in incoming:
+        _reject_protected_core_entry(entry.name, data_entries)
+    moved, installed = [], []
+    previous_moved = backup_created = False
+    target.mkdir(parents=True, exist_ok=True)
     try:
-        if backup.exists() or backup.is_symlink():
+        if backup.is_symlink():
+            raise MaaUpdateError("MAA .old 备份目录不能是符号链接")
+        if backup.exists():
             os.replace(backup, previous)
             previous_moved = True
-        if target.exists() or target.is_symlink():
-            os.replace(target, displaced)
-            target_moved = True
-        os.replace(staged, target)
-        installed = True
-        if target_moved:
-            os.replace(displaced, backup)
-            backup_moved = True
-    except Exception:
-        if backup_moved:
-            os.replace(backup, displaced)
-        if installed:
-            os.replace(target, staged)
-        if target_moved:
-            os.replace(displaced, target)
-        if previous_moved:
-            os.replace(previous, backup)
+        backup.mkdir()
+        backup_created = True
+        for entry in list(target.iterdir()):
+            if _protected_core_entry(entry.name, data_entries):
+                continue
+            os.replace(entry, backup / entry.name)
+            moved.append(entry.name)
+        for entry in incoming:
+            destination = target / entry.name
+            if destination.exists() or destination.is_symlink():
+                raise MaaUpdateError(f"MAA 更新包与安装目录现有路径冲突：{destination}")
+            installed.append(entry.name)
+            _copy_install_entry(entry, destination)
+    except BaseException:
+        try:
+            for name in reversed(installed):
+                _remove_path(target / name)
+            for name in reversed(moved):
+                os.replace(backup / name, target / name)
+            if backup_created and backup.is_dir() and not backup.is_symlink():
+                backup.rmdir()
+            if previous_moved:
+                os.replace(previous, backup)
+        except BaseException as error:
+            raise MaaRollbackError(
+                f"MAA 回滚未完成，请保留安装和备份，并检查权限；更新现场保留在 {work_dir}"
+            ) from error
         raise
+    if previous_moved:
+        try:
+            _remove_path(previous)
+        except OSError:
+            from arknights_mower.utils.log import logger
+
+            logger.warning("MAA 已更新，较早备份无法清理，保留在 %s", previous)
     return backup
+
+
+def _copy_install_entry(source, destination):
+    # Copy into the existing installation so new Windows files inherit its ACL;
+    # moving a private temporary tree can retain the elevated creator's ACL.
+    if source.is_symlink():
+        destination.symlink_to(os.readlink(source), target_is_directory=source.is_dir())
+    elif source.is_dir():
+        shutil.copytree(source, destination, symlinks=True)
+    else:
+        shutil.copy2(source, destination)
 
 
 def _find_maa_core_library(target: Path | str) -> Path | None:
@@ -1969,12 +2096,13 @@ def install_latest_maa(
     if repair_installation and release.package_type != "full":
         raise MaaUpdateError("MAA 安装已损坏，更新源必须提供完整包，不能使用 OTA 修复")
 
-    prefix = f".{target_path.name}.maa-update-"
+    data_entries = _core_data_entries(target_path)
+    target_path.mkdir(parents=True, exist_ok=True)
     from arknights_mower.utils.maa_process import maa_installation_transaction
 
     with (
         maa_installation_transaction(target_path),
-        tempfile.TemporaryDirectory(prefix=prefix, dir=target_path.parent) as temp,
+        update_workspace(target_path, "core-") as temp,
     ):
         work_dir = Path(temp)
         archive_path = work_dir / release.runtime.name
@@ -2028,10 +2156,21 @@ def install_latest_maa(
                     staged,
                     dirs_exist_ok=True,
                     ignore=lambda path, names: (
-                        {".old"} if Path(path) == target_path else set()
+                        {
+                            name
+                            for name in names
+                            if _protected_core_entry(name, data_entries)
+                        }
+                        if Path(path) == target_path
+                        else set()
                     ),
                 )
-                apply_windows_ota_package(archive_path, staged, callback=callback)
+                apply_windows_ota_package(
+                    archive_path,
+                    staged,
+                    callback=callback,
+                    data_entries=data_entries,
+                )
             else:
                 extract_windows_package(archive_path, staged, callback=callback)
             python_downloaded = 0
@@ -2089,14 +2228,21 @@ def install_latest_maa(
         if system == "windows" and release.package_type == "ota":
             preserved = []
         else:
+            for entry in staged.iterdir():
+                _reject_protected_core_entry(entry.name, data_entries)
+            user_entries = (
+                WINDOWS_PRESERVED_USER_ENTRIES
+                if system == "windows"
+                else PRESERVED_USER_ENTRIES
+            )
             preserved = preserve_user_data(
                 target_path,
                 staged,
                 callback=callback,
-                entries=(
-                    WINDOWS_PRESERVED_USER_ENTRIES
-                    if system == "windows"
-                    else PRESERVED_USER_ENTRIES
+                entries=tuple(
+                    entry
+                    for entry in user_entries
+                    if not _protected_core_entry(entry.split("/", 1)[0], data_entries)
                 ),
             )
 

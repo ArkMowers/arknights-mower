@@ -129,9 +129,15 @@ def recovery_failure_details(previous, *, reason, message, exit_code=None):
     return details
 
 
-def read_json(path, default=None):
+def read_json(path, default=None, *, preserve_on_permission_error=False):
     try:
         return json.loads(Path(path).read_text(encoding="utf-8"))
+    except PermissionError as error:
+        if preserve_on_permission_error:
+            raise PermissionError(
+                f"无法读取已保存文件：{path}；请检查目录权限，原文件保持不变"
+            ) from error
+        return default
     except (OSError, ValueError):
         return default
 

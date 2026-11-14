@@ -72,8 +72,6 @@ def _gui_file_lock(timeout=3.0):
 
 
 def read_gui_data(*, strict=False) -> dict:
-    if not gui_path.is_file():
-        return {}
     try:
         with gui_path.open("r", encoding="utf-8") as stream:
             data = yaml.load(stream, Loader=CoreLoader)
@@ -84,6 +82,8 @@ def read_gui_data(*, strict=False) -> dict:
                 raise ValueError("gui.yml 必须包含配置对象")
             return {}
         return data
+    except FileNotFoundError:
+        return {}
     except (OSError, ValueError, yaml.YAMLError) as exc:
         if strict:
             raise GuiStorageError("无法读取已保存的界面配置") from exc

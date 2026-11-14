@@ -116,7 +116,7 @@ def get_settings():
             if not destination.exists() and legacy.is_file():
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 os.replace(legacy, destination)
-    saved = runtime.read_json(destination, {})
+    saved = runtime.read_json(destination, {}, preserve_on_permission_error=True)
     return {
         "channel": saved.get(
             "channel",
@@ -254,6 +254,10 @@ def request_auto_check():
                         _auto_check_thread = None
                         return
                 time.sleep(0.5)
+        except PermissionError as error:
+            from arknights_mower.utils.log import logger
+
+            logger.warning("自动检查软件更新失败：%s", error)
         finally:
             with _auto_check_lock:
                 if _auto_check_thread is current_thread():
@@ -1039,7 +1043,9 @@ def info():
             source_changes = str(exc)
         except Exception as exc:
             blockers.append(str(exc))
-    elif not os.access(root.parent, os.W_OK) or not os.access(root, os.W_OK):
+    elif not os.access(root, os.W_OK) or (
+        root.suffix == ".app" and not os.access(root.parent, os.W_OK)
+    ):
         blockers.append(
             "安装位置不可写；请先将程序移至可写目录（macOS 请移出 DMG 后运行）"
         )
@@ -1300,6 +1306,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         require_clean_source(
             tools["git"], root, force=force, environment=tools.get("source_environment")
         )
+    previous_settings = get_settings()
     state = runtime.state_dir()
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = state / "active"
@@ -1313,11 +1320,11 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
     except FileExistsError as exc:
         raise ValueError("其他实例正在提交更新任务") from exc
     job_id = uuid4().hex
-    runtime.write_json(lock / "owner.json", {"id": job_id, "pid": os.getpid()})
     work = state / "jobs" / job_id
-    work.mkdir(parents=True, mode=0o700)
-    previous_settings = get_settings()
+    settings_written = False
     try:
+        runtime.write_json(lock / "owner.json", {"id": job_id, "pid": os.getpid()})
+        work.mkdir(parents=True, mode=0o700)
         job = {
             **{key: value for key, value in plan.items() if key != "_upload"},
             **tools,
@@ -1335,7 +1342,11 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         job.pop("github_token", None)
         job_path = work / "job.json"
         runtime.write_json(job_path, job)
-        settings = {**get_settings(), **{k: job[k] for k in ("channel", "background")}}
+        settings = {
+            **previous_settings,
+            "channel": job["channel"],
+            "background": job["background"],
+        }
         if plan.get("operation") == "source-pr":
             settings["auto_update"] = False
             settings["channel"] = previous_settings["channel"]
@@ -1345,6 +1356,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
                 # Remember the confirmed URL, not a local alias that may be retargeted.
                 settings["source_remote"] = plan["source_url"]
         runtime.write_json(settings_path(), settings)
+        settings_written = True
         runtime.write_json(
             state / "status.json",
             {
@@ -1408,8 +1420,9 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
         runtime.write_json(lock / "owner.json", {"id": job_id, "pid": process.pid})
         return {"ok": True, "id": job_id, "message": "更新任务已启动"}
     except Exception:
-        runtime.write_json(settings_path(), previous_settings)
         shutil.rmtree(lock, ignore_errors=True)
+        if settings_written:
+            runtime.write_json(settings_path(), previous_settings)
         runtime.write_json(
             state / "status.json",
             {

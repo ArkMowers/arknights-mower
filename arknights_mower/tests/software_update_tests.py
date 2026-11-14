@@ -357,6 +357,37 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                     ]
                 )
 
+    def test_auto_check_worker_logs_unreadable_preferences_and_releases_its_slot(self):
+        from arknights_mower.utils import config
+        from arknights_mower.utils.log import logger
+
+        settings = dict(
+            channel="beta",
+            source_branch="alpha",
+            source_remote="origin",
+            auto_check=True,
+            auto_update=False,
+        )
+        for reads in ((settings,), (settings, settings)):
+            error = PermissionError("preferences.json")
+            with (
+                self.subTest(reads=len(reads)),
+                patch.object(config, "updates_enabled", True),
+                patch.object(update, "get_settings", side_effect=(*reads, error)),
+                patch.object(update, "check_on_launch", return_value=True) as check,
+                patch.object(update, "_auto_check_revision", 0),
+                patch.object(update, "_auto_check_thread", None),
+                patch.object(logger, "warning") as warning,
+            ):
+                self.assertTrue(update.request_auto_check()["scheduled"])
+                with update._auto_check_lock:
+                    thread = update._auto_check_thread
+                if thread is not None:
+                    thread.join(5)
+                self.assertIsNone(update._auto_check_thread)
+                warning.assert_called_once_with("自动检查软件更新失败：%s", error)
+                self.assertEqual(check.call_count, len(reads) - 1)
+
     def test_source_release_listing_reads_later_pages(self):
         first_page = [release("v4.1.6-alpha.4", prerelease=True)] * 100
         target = release(
@@ -1118,6 +1149,34 @@ class AdmissionAndRoutesTests(unittest.TestCase):
                 update.start_job({"deployment": "source"})
             process.assert_not_called()
 
+    def test_unreadable_preferences_do_not_reserve_an_update_job(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            saved = state / "preferences.json"
+            contents = b'{"channel":"beta","background":true}'
+            saved.write_bytes(contents)
+            read_text = Path.read_text
+
+            def denied(path, *args, **kwargs):
+                if path == saved:
+                    raise PermissionError(13, "denied", path)
+                return read_text(path, *args, **kwargs)
+
+            with (
+                patch.object(runtime, "state_dir", return_value=state),
+                patch.object(update, "info", return_value={"blockers": []}),
+                patch.object(update, "settings_path", return_value=saved),
+                patch.object(Path, "read_text", denied),
+                patch.object(subprocess, "Popen") as process,
+                self.assertRaisesRegex(PermissionError, saved.name),
+            ):
+                update.start_job({"deployment": "release", "version": "v4.2.0"})
+
+            process.assert_not_called()
+            self.assertFalse((state / "active").exists())
+            self.assertFalse((state / "jobs").exists())
+            self.assertEqual(saved.read_bytes(), contents)
+
 
 class WorkerTests(unittest.TestCase):
     def setUp(self):
@@ -1437,6 +1496,49 @@ class WorkerTests(unittest.TestCase):
             self.assertRaisesRegex(ValueError, "缺少正在运行的多开管理器"),
         ):
             worker.prepare_package()
+
+    def test_portable_update_does_not_write_installation_parent(self):
+        self.job.update(deployment="release")
+        worker = self.worker()
+        self.state.mkdir()
+        executable = "mower.exe" if sys.platform == "win32" else "mower"
+        (self.root / executable).write_text("old launcher")
+        (self.root / "config").mkdir()
+        (self.root / "config/conf.yml").write_text("saved: true")
+
+        def prepare(payload_dir):
+            payload = payload_dir / "mower"
+            (payload / "_internal/arknights_mower/utils").mkdir(parents=True)
+            (payload / executable).write_text("new launcher")
+            (payload / "_internal/arknights_mower/utils/update_runtime.py").write_text(
+                "runtime"
+            )
+
+        real_mkdir = os.mkdir
+
+        def deny_parent(directory, *args, **kwargs):
+            if (
+                Path(directory).parent == self.root.parent
+                and not Path(directory).exists()
+            ):
+                raise PermissionError("installation parent is read only")
+            return real_mkdir(directory, *args, **kwargs)
+
+        with (
+            patch.object(worker, "prepare_full_package", side_effect=prepare),
+            patch(
+                "arknights_mower.utils.software_update_worker.instances",
+                return_value=[],
+            ),
+            patch.object(os, "mkdir", side_effect=deny_parent),
+        ):
+            worker.prepare_package()
+            worker.install_package()
+        self.assertEqual((self.root / executable).read_text(), "new launcher")
+        self.assertEqual(
+            (worker.bundle_backup / executable).read_text(), "old launcher"
+        )
+        self.assertEqual((self.root / "config/conf.yml").read_text(), "saved: true")
 
     def test_silent_restart_restores_unified_tray_and_managed_instances(self):
         records = [
@@ -1859,7 +1961,15 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                     patch("arknights_mower.utils.lifecycle.shutdown", shutdown)
                 )
                 auto_check = stack.enter_context(
-                    patch.object(update, "request_auto_check")
+                    patch.object(
+                        update,
+                        "request_auto_check",
+                        side_effect=(
+                            PermissionError("preferences.json")
+                            if system == "win32" and (restart or automatic)
+                            else None
+                        ),
+                    )
                 )
                 queue = stack.enter_context(patch.object(webview_ui.mp, "Queue"))
                 process = stack.enter_context(

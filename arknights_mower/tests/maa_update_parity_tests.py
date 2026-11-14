@@ -179,7 +179,7 @@ def test_busy_official_mutex_preserves_entire_backup_before_deleting_any_file(
     kernel.CloseHandle.assert_called_once_with(17)
 
 
-def test_failed_final_backup_move_restores_installation_and_previous_backup(
+def test_failed_backup_entry_move_restores_installation_and_previous_backup(
     tmp_path, monkeypatch
 ):
     target = tmp_path / "MAA"
@@ -194,7 +194,10 @@ def test_failed_final_backup_move_restores_installation_and_previous_backup(
     original = update.os.replace
 
     def replace(source, destination):
-        if Path(source) == work / "current.old" and Path(destination) == old:
+        if (
+            Path(source) == target / "resource"
+            and Path(destination) == old / "resource"
+        ):
             raise PermissionError("backup destination locked")
         return original(source, destination)
 

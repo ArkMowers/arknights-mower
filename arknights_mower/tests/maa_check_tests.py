@@ -16,6 +16,7 @@ from arknights_mower.utils.maa_check import (
     run_maa_check,
     worker_main,
 )
+from arknights_mower.utils.maa_storage import storage_root
 
 
 def run_worker(mode, params):
@@ -199,7 +200,9 @@ class TestMaaCheck(unittest.TestCase):
                     ):
                         self.assertEqual(run_worker(mode, params), expected)
                     asst.load.assert_called_once_with(
-                        path=Path("/MAA"), incremental_path=Path("/MAA/cache")
+                        path=Path("/MAA"),
+                        incremental_path=storage_root("/MAA") / "cache",
+                        user_dir=storage_root("/MAA") / "user",
                     )
                     instance.set_instance_option.assert_called_once_with(2, "maatouch")
                     instance.connect.assert_called_once_with(

@@ -14,7 +14,7 @@ from pathlib import Path
 
 class Asst:
     @staticmethod
-    def load(path, incremental_path=None):
+    def load(path, incremental_path=None, user_dir=None):
         library = ctypes.CDLL(str(Path(path) / CORE_NAME))
         Asst.__lib = library
         library.AsstGetVersion.restype = ctypes.c_char_p
