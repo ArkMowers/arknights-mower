@@ -392,30 +392,19 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 24 * scale, 24 * scale)
         }
-        ctx.font = `${badgeFontSize * scale}px sans-serif`
+        ctx.font = `${badgeFontSize * scale}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`
         ctx.fillStyle = color
         const text = incomeImageMetricText(metric)
         const label = text.replace(/^-/, '')
         ctx.save()
         ctx.translate((x + 31) * scale, (y + 17) * scale)
         ctx.scale(Math.min(1, (88 * scale) / ctx.measureText(label).width), 1)
-        const signWidth = ctx.measureText('-').width
-        const drawSign = (offset) => {
-          ctx.save()
-          ctx.translate(offset + signWidth * 0.075, 0)
-          ctx.scale(0.85, 1)
-          ctx.fillText('-', 0, 0)
-          ctx.restore()
-        }
         if (text.startsWith('-')) {
-          drawSign(-scale - signWidth)
+          ctx.textAlign = 'right'
+          ctx.fillText('-', -scale, 0)
+          ctx.textAlign = 'left'
         }
-        let offset = 0
-        for (const part of label.split(/(-)/)) {
-          if (part === '-') drawSign(offset)
-          else ctx.fillText(part, offset, 0)
-          offset += ctx.measureText(part).width
-        }
+        ctx.fillText(label, 0, 0)
         ctx.restore()
       })
     annotationLines.forEach((line, index) => {
