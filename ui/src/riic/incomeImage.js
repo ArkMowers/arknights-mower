@@ -111,7 +111,7 @@ export function incomeReportLines(result, settings, plan, label) {
             .join('；')}。`,
           ...(settings.sanityValuation.fragmentValueSource
             ? [
-                `源石碎片单价 ${settings.sanityValuation.unitValues.fragment ?? '未估值'} 理智/个，来源：${settings.sanityValuation.fragmentValueSource === 'manual' ? '手动覆盖' : settings.sanityValuation.fragmentValueSource === 'exp_manufacturing_time' ? '中级作战记录单价 × 60 ÷ 180（基础制造工时，不含耗材）' : settings.sanityValuation.fragmentValueSource === 'gold_ratio' ? '10 × 合成玉单价 × 赤金单价 ÷（500 × 龙门币单价）（历史兑换比例）' : '已保存估值'}。两种配方的耗材按实际消耗另行扣除；负净收益保留，比较排班须使用相同估值和演算条件。`
+                `源石碎片单价 ${settings.sanityValuation.unitValues.fragment ?? '未估值'} 理智/个，来源：${settings.sanityValuation.fragmentValueSource === 'manual' ? '手动覆盖' : settings.sanityValuation.fragmentValueSource === 'material_table' ? '材料价值表（不含耗材）' : settings.sanityValuation.fragmentValueSource === 'exp_manufacturing_time' ? '中级作战记录单价 × 60 ÷ 180（历史工时估值，不含耗材）' : settings.sanityValuation.fragmentValueSource === 'gold_ratio' ? '10 × 合成玉单价 × 赤金单价 ÷（500 × 龙门币单价）（历史兑换比例）' : '已保存估值'}。两种配方的耗材按实际消耗另行扣除；负净收益保留，比较排班须使用相同估值和演算条件。`
               ]
             : []),
           ...(result.summary.sanity?.orundumChain

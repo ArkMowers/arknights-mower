@@ -58,6 +58,15 @@
     },
     "license_url": "https://creativecommons.org/licenses/by-nc/4.0/deed.zh",
     "method": "Offline supplied calculator snapshot: CE6 LMD; CE6/LS6 EXP, base-report algorithm 0.23456; SideStory pricing includes token-to-LMD value, four retired materials use token-equivalent LMD. Green materials use Nine-Colored Deer simultaneous equations with causality value 0.4920881261849738; blue-to-purple uses Corroserum with 18% fixed Oriron Cluster byproducts; purple-to-gold uses Nian/Arene with 20% random byproducts. White materials and other prices retain the supplied calculator values. EXP uses intermediate battle record / 1000; inventory is not deducted; unknown items are excluded.",
+    "supplemental_items": {
+      "3141": {
+        "source": "Mower fixed manufacturing-time valuation",
+        "formula": "Medium Battle Record snapshot value 3.44448 * 60 / 180",
+        "value": 1.14816,
+        "reference": "https://prts.wiki/w/罗德岛基建/制造站",
+        "method": "Fixed value excluding recipe inputs; not recalculated when other material prices change."
+      }
+    },
     "snapshot": {
       "archive": "准备发给果果.zip",
       "workbook": "mower默认旅骨效率计算器.xlsx",
@@ -342,6 +351,10 @@
     "3303": {
       "name": "技巧概要·卷3",
       "value": 10.12552033975421
+    },
+    "3141": {
+      "name": "源石碎片",
+      "value": 1.14816
     },
     "3003": {
       "name": "赤金",

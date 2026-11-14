@@ -1,4 +1,5 @@
 import { expect, it } from 'vitest'
+import materialCatalog from '../../../arknights_mower/data/growth_values.json'
 import {
   createIncomeSanityValuation,
   calculateIncomeSanity,
@@ -46,13 +47,15 @@ const simulation = () => ({
   }
 })
 const sharedPrices = {
-  lmd_sanity: 0.0036,
-  prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225, 固源岩: 3.35648, 装置: 8.142283 }
+  lmd_sanity: materialCatalog.items['4001'].value,
+  prices: Object.fromEntries(
+    Object.values(materialCatalog.items).map(({ name, value }) => [name, value])
+  )
 }
-it('derives a shared shard price from basic EXP manufacturing time and preserves explicit overrides', () => {
+it('reads the fixed shard material price and preserves independent overrides', () => {
   const automatic = createIncomeSanityValuation(sharedPrices)
-  expect(automatic.unitValues.fragment).toBeCloseTo(1.14816)
-  expect(automatic.fragmentValueSource).toBe('exp_manufacturing_time')
+  expect(automatic.unitValues.fragment).toBe(1.14816)
+  expect(automatic.fragmentValueSource).toBe('material_table')
   for (const fragment of [0, 5]) {
     const manual = createIncomeSanityValuation({
       ...sharedPrices,
@@ -66,30 +69,41 @@ it('derives a shared shard price from basic EXP manufacturing time and preserves
     prices: { ...sharedPrices.prices, 中级作战记录: 6.88896 },
     income_unit_values: { fragment: null }
   })
-  expect(changed.unitValues.fragment).toBeCloseTo(2.29632)
-  expect(automatic.unitValues.fragment).toBeCloseTo(1.14816)
+  expect(changed.unitValues.fragment).toBe(1.14816)
+  expect(changed.unitValues.exp).toBeCloseTo(0.00688896)
+  expect(automatic.unitValues.fragment).toBe(1.14816)
 })
-it.each([
-  { prices: { 合成玉: 0.9225 }, lmd_sanity: 0.0036 },
-  { prices: { 中级作战记录: null } },
-  { prices: { 中级作战记录: -1 } }
-])('keeps automatic shard value unknown when its anchors are unavailable: %j', (input) => {
-  expect(createIncomeSanityValuation(input).unitValues.fragment).toBeNull()
-  expect(
-    createIncomeSanityValuation({ ...input, income_unit_values: { fragment: 0 } }).unitValues
-      .fragment
-  ).toBe(0)
-})
-it('does not use recipe costs, gold, Orundum or LMD prices to value shard manufacturing', () => {
-  for (const record of [0, 3.44448]) {
-    for (const lmd of [0, null]) {
-      const input = { prices: { 中级作战记录: record }, lmd_sanity: lmd }
-      expect(createIncomeSanityValuation(input).unitValues.fragment).toBeCloseTo(
-        (record * 60) / 180
-      )
-    }
+it.each([undefined, null, -1, Infinity])(
+  'keeps a missing or invalid shard material price unpriced: %s',
+  (fragment) => {
+    const input = { prices: { 中级作战记录: 3.44448, 源石碎片: fragment } }
+    expect(createIncomeSanityValuation(input).unitValues.fragment).toBeNull()
+    expect(
+      createIncomeSanityValuation({ ...input, income_unit_values: { fragment: 0 } }).unitValues
+        .fragment
+    ).toBe(0)
   }
-})
+)
+it.each([0, 2.5])(
+  'uses edited shard material prices independently of other materials: %s',
+  (fragment) => {
+    const input = { prices: { 源石碎片: fragment } }
+    expect(createIncomeSanityValuation(input).unitValues.fragment).toBe(fragment)
+    expect(
+      createIncomeSanityValuation({
+        ...sharedPrices,
+        prices: {
+          ...sharedPrices.prices,
+          源石碎片: fragment,
+          中级作战记录: 0,
+          赤金: 99,
+          合成玉: 10
+        },
+        lmd_sanity: 0.1
+      }).unitValues.fragment
+    ).toBe(fragment)
+  }
+)
 it('splits Orundum manufacturing and sales while preserving negative total and stock valuation', () => {
   const input = Object.fromEntries(Object.keys(summary()).map((key) => [key, 0]))
   Object.assign(input, { fragments: 2, orundum: 20, orirockConsumed: 4, lmdConsumed: 3200 })

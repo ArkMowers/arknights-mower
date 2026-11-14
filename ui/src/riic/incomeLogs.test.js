@@ -112,7 +112,7 @@ it('exports saved shard pricing and signed Orundum stages without recalculating 
     finiteInventory: false,
     inventorySource: 'manual',
     sanityValuation: createIncomeSanityValuation({
-      prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225 },
+      prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225, 源石碎片: 1.14816 },
       lmd_sanity: 0.0036
     })
   }
@@ -139,7 +139,9 @@ it('exports saved shard pricing and signed Orundum stages without recalculating 
   }
   const plan = { default: 'plan1', plan1: {}, conf: {}, backup_plans: [] }
   const lines = () => incomeReportLines(result, settings, plan, '排班').join('\n')
-  expect(lines()).toContain('来源：中级作战记录单价 × 60 ÷ 180')
+  expect(lines()).toContain('来源：材料价值表（不含耗材）')
+  settings.sanityValuation.fragmentValueSource = 'exp_manufacturing_time'
+  expect(lines()).toContain('来源：中级作战记录单价 × 60 ÷ 180（历史工时估值')
   settings.sanityValuation.fragmentValueSource = 'gold_ratio'
   expect(lines()).toContain('来源：10 × 合成玉单价')
   expect(lines()).toContain('历史兑换比例')

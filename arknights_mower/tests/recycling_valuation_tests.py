@@ -30,6 +30,7 @@ def value_file(
     only_new=False,
     optional_unpriced=False,
     lmd_price="0.01",
+    shard_price=None,
 ):
     from arknights_mower.utils.recycling import recycling_model
 
@@ -47,6 +48,8 @@ def value_file(
                 )
             )
     rows.append(("4001", "龙门币", lmd_price, "1"))
+    if shard_price is not None:
+        rows.append(("3141", "源石碎片", str(shard_price), "1"))
     if optional_unpriced:
         rows.append(("future_unpriced", "未定价新物品", "Infinity", "3"))
     if duplicate:
@@ -464,7 +467,10 @@ def test_default_prices_and_production_conversion(db):
         }
         for index in range(3, 150)
     }
-    assert price_catalog()["items"] == source
+    assert price_catalog()["items"] == {
+        **source,
+        "3141": {"name": "源石碎片", "value": 1.14816},
+    }
     record.save_recycling_collection("new-default", at(10), ["旅骨"], {"装置": 2})
     report = record.get_recycling_history("2026-10-10", "2026-10-10")
     result = report["comparison"]
@@ -663,3 +669,43 @@ def test_certificate_presets_persist_and_reject_invalid_options_atomically(db):
     )
     assert cleared["income_options"] == {"yellow_preset": "royal_token"}
     assert "income_options" not in record.update_recycling_valuation(reset=True)
+
+
+def test_missing_shard_price_in_saved_table_uses_fixed_default(db):
+    import json
+
+    saved = default_valuation()
+    del saved["prices"]["源石碎片"]
+    del saved["item_ids"]["源石碎片"]
+    saved["prices"]["中级作战记录"] = 10
+    saved["income_unit_values"] = {"fragment": 0}
+    with record._conn() as connection:
+        connection.execute(
+            "INSERT INTO recycling_valuation VALUES (1, ?)", (json.dumps(saved),)
+        )
+    restored = record.get_recycling_valuation()
+    assert restored["prices"]["源石碎片"] == 1.14816
+    assert restored["item_ids"]["源石碎片"] == "3141"
+    assert restored["prices"]["中级作战记录"] == 10
+    assert restored["income_unit_values"]["fragment"] == 0
+    changed = record.update_recycling_valuation(prices={"中级作战记录": 0})
+    assert changed["prices"]["源石碎片"] == 1.14816
+
+
+@pytest.mark.parametrize("price", [0, 2.5])
+def test_shard_table_prices_survive_imports_edits_and_reset(db, price):
+    imported = import_yituliu_values(value_file(shard_price=price))
+    assert imported["prices"]["源石碎片"] == price
+    saved = record.update_recycling_valuation(imported=imported)
+    assert saved["prices"]["源石碎片"] == price
+    record.update_recycling_valuation(prices={"中级作战记录": 12})
+    assert record.get_recycling_valuation()["prices"]["源石碎片"] == price
+    record.update_recycling_valuation(prices={"源石碎片": 4})
+    retained = record.update_recycling_valuation(
+        imported=import_yituliu_values(value_file())
+    )
+    assert retained["prices"]["源石碎片"] == 4
+    assert record.get_recycling_valuation()["prices"]["源石碎片"] == 4
+    assert (
+        record.update_recycling_valuation(reset=True)["prices"]["源石碎片"] == 1.14816
+    )

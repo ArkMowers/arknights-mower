@@ -213,7 +213,7 @@ def import_yituliu_values(content):
                 if (
                     (canonical or name) in key_mapping
                     and key_mapping[canonical or name][3] != "MATERIAL"
-                    and item_id != "4001"
+                    and item_id not in {"4001", "3141"}
                 ):
                     continue
                 if item_id in by_id and by_id[item_id] != name:

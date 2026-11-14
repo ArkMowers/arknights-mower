@@ -706,7 +706,7 @@ it('reads fresh sanity values before running and freezes them with the completed
   io.client.get.mockResolvedValueOnce({
     data: {
       ...valuation(),
-      prices: { 中级作战记录: 4, 赤金: 2, 合成玉: 0.9 },
+      prices: { 中级作战记录: 4, 赤金: 2, 合成玉: 0.9, 源石碎片: 2.5 },
       lmd_sanity: 0.0036,
       income_unit_values: { yellow_certificate: 0, green_certificate: 0, credit: 0 }
     }
@@ -716,17 +716,20 @@ it('reads fresh sanity values before running and freezes them with the completed
   expect(input.settings.sanityValuation.unitValues).toMatchObject({
     exp: 0.004,
     gold: 2,
-    fragment: 10,
+    fragment: 2.5,
     recruitment: 0,
     clue: 0
   })
   workers[0].onmessage({ data: { type: 'complete', result: success() } })
-  page.applySavedValues({ ...valuation(), prices: { 赤金: 99 }, lmd_sanity: 1 })
+  page.applySavedValues({ ...valuation(), prices: { 赤金: 99, 源石碎片: 9 }, lmd_sanity: 1 })
   expect(page.state.input.settings.sanityValuation.unitValues.gold).toBe(2)
-  expect(page.state.input.settings.sanityValuation.unitValues.fragment).toBe(10)
+  expect(page.state.input.settings.sanityValuation.unitValues.fragment).toBe(2.5)
   expect(
     saveIncomeArchive.mock.calls.at(-1)[0].input.settings.sanityValuation.unitValues.gold
   ).toBe(2)
+  expect(
+    saveIncomeArchive.mock.calls.at(-1)[0].input.settings.sanityValuation.unitValues.fragment
+  ).toBe(2.5)
   reopenDialog()
   expect(page.settings.weightMode).toBe('sanity')
   expect(page.settings.sanityValuation).toBeNull()

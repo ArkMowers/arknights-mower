@@ -48,7 +48,7 @@ export function createIncomeSanityValuation(valuation, roster) {
   const orundum = price('合成玉')
   const gold = price('赤金')
   const fragmentOverride = valueOrNull(overrides.fragment)
-  const fragment = fragmentOverride ?? (record === null ? null : valueOrNull((record * 60) / 180))
+  const fragment = fragmentOverride ?? price('源石碎片')
   const certificateModel = createCertificateValuation(valuation, roster)
   const certificates = certificateModel.refreshYellow
   const yellowCertificateValue = certificateModel.yellow
@@ -57,7 +57,7 @@ export function createIncomeSanityValuation(valuation, roster) {
   return {
     version: 1,
     source: valuation?.source ?? '',
-    fragmentValueSource: fragmentOverride === null ? 'exp_manufacturing_time' : 'manual',
+    fragmentValueSource: fragmentOverride === null ? 'material_table' : 'manual',
     certificateModel,
     recruitmentCertificates: certificates,
     yellowCertificateValue,

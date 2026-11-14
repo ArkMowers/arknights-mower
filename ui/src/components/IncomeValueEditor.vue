@@ -23,7 +23,7 @@ const unitValues = reactive({
   credit_daily_limit: null
 })
 const unitFields = [
-  { key: 'fragment', label: '源石碎片（理智/个）', placeholder: '留空按经验基础制造工时估值' },
+  { key: 'fragment', label: '源石碎片覆盖值（理智/个）', placeholder: '留空使用材料表价格' },
   { key: 'recycle', label: '回收站产出（理智/次）', placeholder: '留空时按材料概率表估值' },
   {
     key: 'recruitment_certificates',
@@ -200,8 +200,8 @@ const display = (value) =>
       </label>
     </div>
     <p>
-      源石碎片自动单价 = 中级作战记录单价 × 60 ÷ 180。按碎片 60 分钟、中级作战记录 180
-      分钟的基础制造工时折算，两种碎片配方使用同一单价，不含材料成本；龙门币、固源岩和装置按实际消耗另行扣除。可手填非负单价覆盖，清空恢复自动估值。当前碎片单价：{{
+      源石碎片读取材料表价格，内置值为 1.14816 理智/个，由内置中级作战记录价格 × 60 ÷ 180
+      折算后固定。后续修改经验或其他材料价格不会联动修改碎片价格，可在上方材料中选择源石碎片自行修改。两种配方使用同一单价，不含材料成本；龙门币、固源岩和装置按实际消耗另行扣除。独立覆盖值优先，清空后使用材料表价格。当前碎片单价：{{
         display(prices.fragment)
       }}
       理智/个。

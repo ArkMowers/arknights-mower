@@ -92,9 +92,9 @@ it('saves independent presets and clears only their manual overrides', async () 
   })
 })
 
-it('previews automatic shard prices and restores them when the saved override is cleared', async () => {
+it('previews the shard table price after clearing an independent override', async () => {
   props.valuation = {
-    prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225 },
+    prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225, 源石碎片: 1.14816 },
     lmd_sanity: 0.0036,
     income_unit_values: { fragment: 5 }
   }
@@ -110,4 +110,21 @@ it('previews automatic shard prices and restores them when the saved override is
   props.valuation = { ...props.valuation, income_unit_values: {}, prices: {} }
   await nextTick()
   expect(page.prices.value.fragment).toBeNull()
+})
+
+it('edits shards through the shared material table without changing experience', async () => {
+  props.valuation = { prices: { 中级作战记录: 3.44448, 源石碎片: 1.14816 } }
+  page.material.value = '源石碎片'
+  await nextTick()
+  expect(page.materialOptions.value).toContainEqual({ label: '源石碎片', value: '源石碎片' })
+  expect(page.materialValue.value).toBe(1.14816)
+  page.materialValue.value = 0
+  const confirmed = { prices: { 中级作战记录: 3.44448, 源石碎片: 0 } }
+  io.client.put.mockResolvedValueOnce({ data: confirmed })
+  await page.saveValues('material')
+  expect(io.client.put.mock.calls[0][1]).toEqual({ prices: { 源石碎片: 0 } })
+  props.valuation = confirmed
+  await nextTick()
+  expect(page.prices.value.fragment).toBe(0)
+  expect(page.prices.value.exp).toBeCloseTo(0.00344448)
 })
