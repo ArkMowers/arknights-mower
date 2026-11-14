@@ -2,10 +2,13 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { managerCall } from './bridge.js'
 import {
+  deviceSettingsState,
   deviceDetectionDraft,
   editedDevicePatch,
   presetLabels
 } from '../src/utils/deviceSettings.js'
+import DeviceProfileField from '../src/components/DeviceProfileField.vue'
+import HelpText from '../src/components/HelpText.vue'
 import WaitingSceneEditor from './WaitingSceneEditor.vue'
 import { connectionFields, idleAction, idleActionPatch, idleOptions } from './connectionSettings.js'
 
@@ -22,8 +25,13 @@ const fields = ref([])
 const pending = ref(false)
 const error = ref('')
 const discovery = ref(null)
+const testResult = ref(null)
+const testing = ref(false)
 const confirmedSerial = ref(null)
 const manualConfirmation = ref(null)
+const advanced = ref(false)
+const selectedKey = ref(null)
+const confirmShared = ref(false)
 const preflightResult = computed(() => discovery.value?.kind === 'preflight')
 const candidateOptions = computed(() =>
   (discovery.value?.candidates || []).map((item) =>
@@ -72,13 +80,108 @@ const editableField = (key) =>
     ? usesLocalValue(key)
     : !sharedConfiguration.value || instanceFields.has(key)
 const patchField = (key) => editableField(key) || derivedIdentityFields.has(key)
-const visibleFields = computed(() =>
-  connectionFields(fields.value, draft.value).filter(
-    (field) =>
-      !field.read_only && (editableField(field.key) || overrideKeys.value.includes(field.key))
+const profile = computed(() =>
+  Object.fromEntries(
+    Object.entries(draft.value)
+      .filter(([key]) => key.startsWith('device.'))
+      .map(([key, value]) => [key.slice(7), value])
   )
 )
-const groups = computed(() => [...new Set(visibleFields.value.map((field) => field.group))])
+const deviceState = computed(() =>
+  deviceSettingsState({
+    profile: profile.value,
+    result:
+      testResult.value ||
+      (discovery.value ? { ...discovery.value, kind: discovery.value.kind || 'discovery' } : null),
+    busy: pending.value,
+    advanced: true,
+    selectedKey: selectedKey.value,
+    confirmedPackage: profile.value.game_package
+  })
+)
+const profileKeys = computed(
+  () =>
+    new Set(
+      [...deviceState.value.fields, ...deviceState.value.connectionFields].map(
+        ({ key }) => `device.${key}`
+      )
+    )
+)
+function fieldSource(key) {
+  if (!policySupported.value) return ''
+  if (overrideKeys.value.includes(key)) return usesLocalValue(key) ? '本实例值' : '来自通用设置'
+  return !editableField(key) ? '来自通用设置' : '本实例值'
+}
+const profileFields = computed(() =>
+  deviceState.value.fields.flatMap((field) => {
+    const definition = fields.value.find(({ key }) => key === `device.${field.key}`)
+    if (!definition || definition.read_only) return []
+    const repair = testResult.value?.error?.fields || discovery.value?.error?.fields || []
+    if (!advanced.value && !['preset_id', ...repair].includes(field.key)) return []
+    return [
+      {
+        ...field,
+        value: profile.value[field.key] ?? '',
+        options: field.key === 'preset_id' ? options(definition) : field.options,
+        source: fieldSource(definition.key),
+        disabled: disabled.value || !editableField(definition.key)
+      }
+    ]
+  })
+)
+const backendFields = computed(() =>
+  deviceState.value.connectionFields
+    .filter((field) => fields.value.some(({ key }) => key === `device.${field.key}`))
+    .map((field) => ({
+      ...field,
+      source: fieldSource(`device.${field.key}`),
+      disabled: disabled.value || !editableField(`device.${field.key}`)
+    }))
+)
+const visibleFields = computed(() =>
+  connectionFields(fields.value, draft.value).filter((field) => !field.read_only)
+)
+const additionalFields = computed(() =>
+  visibleFields.value.filter(
+    (field) =>
+      !profileKeys.value.has(field.key) &&
+      ![
+        'device.instance_id',
+        'device.instance_name',
+        'device.config_path',
+        'device.manager_path'
+      ].includes(field.key)
+  )
+)
+const groups = computed(() => [...new Set(additionalFields.value.map((field) => field.group))])
+const discardedFields = computed(() =>
+  fields.value
+    .filter(
+      (field) =>
+        !instanceFields.has(field.key) &&
+        !overrideKeys.value.includes(field.key) &&
+        JSON.stringify(draft.value[field.key]) !==
+          JSON.stringify(
+            originalPolicy.value?.shared_values?.[field.key] ?? initial.value[field.key]
+          )
+    )
+    .map((field) => field.label || field.key)
+)
+function confirmIndependentChange() {
+  setIndependent(false)
+  confirmShared.value = false
+}
+function requestIndependent(value) {
+  if (!value && discardedFields.value.length) confirmShared.value = true
+  else setIndependent(value)
+}
+function editProfile(key, value) {
+  edit(`device.${key}`, value)
+}
+function browseProfile(key) {
+  const field = fields.value.find((item) => item.key === `device.${key}`)
+  if (field) return browse(field)
+}
 const policyChanged = computed(
   () =>
     policySupported.value &&
@@ -106,6 +209,8 @@ const hasChanges = computed(() => policyChanged.value || Object.keys(changes.val
 let disposed = false
 
 async function load() {
+  testResult.value = null
+  selectedKey.value = null
   pending.value = true
   original.value = null
   error.value = ''
@@ -152,9 +257,11 @@ async function load() {
 }
 
 function edit(key, value) {
+  testResult.value = null
   const field = fields.value.find((item) => item.key === key)
   if (!field || disabled.value || !editableField(key) || field.read_only) return
   discovery.value = null
+  selectedKey.value = null
   const targetChanged =
     [...templateFields, 'device.instance_id', 'device.instance_name'].includes(key) &&
     draft.value[key] !== value
@@ -186,6 +293,7 @@ function editIdleAction(value) {
 }
 
 function setIndependent(value) {
+  testResult.value = null
   if (disabled.value || !policySupported.value) return
   independentConfiguration.value = value === true
   discovery.value = null
@@ -211,6 +319,7 @@ function setIndependent(value) {
 }
 
 function setLocalValue(key, local) {
+  testResult.value = null
   if (disabled.value || !overrideKeys.value.includes(key)) return
   if (managerOnlyKeys.has(key)) {
     if (local) instanceOverride.value.manager_values[key] = draft.value[key]
@@ -261,8 +370,29 @@ function options(field) {
   }))
 }
 
+async function testConnection() {
+  if (disabled.value || typeof props.api.test_device_settings !== 'function') return
+  pending.value = true
+  testing.value = true
+  error.value = ''
+  testResult.value = null
+  try {
+    const args = [props.idx, { ...changes.value }, props.target, original.value]
+    if (policySupported.value) args.push(requestPolicy())
+    const result = await managerCall(() => props.api.test_device_settings(...args), 60000)
+    if (!disposed) testResult.value = result
+  } catch (reason) {
+    error.value = reason?.message || '无法测试设备连接'
+  } finally {
+    pending.value = false
+    testing.value = false
+  }
+}
+
 async function detect() {
   if (disabled.value) return
+  testResult.value = null
+  selectedKey.value = null
   pending.value = true
   error.value = ''
   discovery.value = null
@@ -279,6 +409,7 @@ async function detect() {
 }
 
 function selectCandidate(key) {
+  testResult.value = null
   if (disabled.value) return
   if (preflightResult.value) {
     if (!discovery.value.candidates.some((item) => item.serial === key)) return
@@ -321,6 +452,7 @@ function selectCandidate(key) {
     return
   }
   error.value = ''
+  selectedKey.value = key
   confirmedSerial.value = null
   if (
     Object.hasOwn(binding, 'instance_id') &&
@@ -406,11 +538,25 @@ onUnmounted(() => {
 
 <template>
   <div class="device-editor">
-    <n-alert type="info" :show-icon="false"
-      >修改
-      {{ target.name }}
-      的连接与启动配置，保存后下次启动生效。自定义截图命令会在主机上执行，请确认命令来源。
-    </n-alert>
+    <div class="device-summary" v-if="original">
+      <div class="device-title-row">
+        <strong>{{ deviceState.presetTitle }}</strong>
+        <n-tag size="small" :type="deviceState.statusTagType">{{
+          selectedKey && !preflightResult && !testResult
+            ? '已选择，未测试连接'
+            : deviceState.statusDisplayLabel
+        }}</n-tag>
+        <n-tag v-if="hasChanges" size="small" type="warning">未保存</n-tag>
+      </div>
+      <p>
+        {{ target.name }} ·
+        {{ profile.instance_name || profile.instance_id || '尚未选择模拟器实例' }}
+      </p>
+      <n-text depth="3"
+        >ADB 地址：{{ testResult?.serial || profile.last_serial || '待连接验证' }}</n-text
+      >
+    </div>
+    <n-text depth="3">配置保存后下次启动生效。检测与选择不会启动模拟器，也不会自动保存。</n-text>
     <n-alert v-if="draft['device.mumu_manual_serial']" type="warning" :show-icon="false">
       请确认手动地址属于当前 MuMu
       实例。端口可能变化或被其他实例复用，地址错误时任务可能操作其他账号。管理器未提供或复用创建时间时，无法识别同名实例被替换；手动地址不能使用
@@ -423,12 +569,17 @@ onUnmounted(() => {
       ></n-alert
     >
     <n-skeleton v-if="!original && pending" :height="160" />
-    <n-form-item v-if="original && policySupported" label="独立配置" :show-feedback="false">
+    <n-form-item
+      v-if="original && policySupported"
+      label="独立配置"
+      label-placement="left"
+      :show-feedback="false"
+    >
       <n-switch
         :value="independentConfiguration"
         :disabled="disabled"
         aria-label="独立配置"
-        @update:value="setIndependent"
+        @update:value="requestIndependent"
       />
     </n-form-item>
     <n-alert
@@ -436,59 +587,113 @@ onUnmounted(() => {
       type="info"
       :show-icon="false"
     >
-      模拟器预设、连接、游戏启动、性能和页面等待参数使用通用设置。开启独立配置后可单独设置这些参数；关闭会放弃这些参数的未保存修改。MAA
-      安装目录、截图保存、实例启动及页面打开方式可分别选择使用本实例值，本实例值优先。
+      连接参数来自通用设置。开启独立配置后，可为此实例单独设置。
     </n-alert>
     <n-text v-else-if="original && policySupported" depth="3">
-      连接、游戏启动、性能和页面等待参数仅应用于此实例，下次启动生效。其他通用配置可逐项选择使用本实例值；任务设置仍由此实例单独保存。
+      连接参数仅应用于此实例，下次启动生效。
     </n-text>
-    <n-space v-if="original" vertical>
-      <n-button :disabled="disabled" :loading="pending" @click="detect">检测可用实例</n-button>
-      <n-select
-        v-if="candidateOptions.length"
-        :placeholder="preflightResult ? '选择明确的 ADB 连接地址' : '选择明确的模拟器实例'"
-        :disabled="disabled"
-        :options="candidateOptions"
-        @update:value="selectCandidate"
-      />
-      <n-text v-if="discovery?.candidates?.length" depth="3"
-        >选择后仍需保存；检测与选择不会改写配置或启动模拟器。</n-text
-      >
-      <n-alert v-if="discovery?.error" type="warning">{{ discovery.error.message }}</n-alert>
-      <n-text v-else-if="discovery && !discovery.candidates?.length">{{
-        discovery.ok ? '已完成当前设备检测。' : '未找到可选实例，请检查模拟器安装路径。'
-      }}</n-text>
-      <n-alert v-if="discovery?.guidance" type="info" :show-icon="false">{{
-        discovery.guidance
-      }}</n-alert>
-    </n-space>
     <div v-if="original" class="device-editor-fields">
-      <n-collapse :default-expanded-names="['模拟器与设备']">
-        <n-collapse-item v-for="group in groups" :key="group" :title="group" :name="group">
+      <section class="device-primary-fields" aria-label="设备连接">
+        <n-grid cols="2" :x-gap="16" :y-gap="4">
+          <n-gi v-for="field in profileFields" :key="field.key" :span="field.span || 1"
+            ><DeviceProfileField :field="field" @edit="editProfile" @browse="browseProfile"
+          /></n-gi>
+        </n-grid>
+        <n-alert
+          v-if="testResult"
+          :type="testResult.ok ? 'success' : 'warning'"
+          :show-icon="true"
+          role="status"
+        >
+          {{
+            testResult.ok
+              ? `连接测试通过。设备、游戏包与截图检查正常。${hasChanges ? '修改仍需手动保存。' : ''}`
+              : ['instance_stopped', 'start_confirmation_required'].includes(testResult.error?.code)
+                ? '所选模拟器实例尚未启动，请在模拟器中启动后再测试连接。'
+                : testResult.error?.message || '连接测试未通过，请检查所选设备。'
+          }}
+        </n-alert>
+        <n-space vertical>
+          <n-space align="center">
+            <n-button type="primary" :disabled="disabled" :loading="pending" @click="detect"
+              >检测可用实例</n-button
+            >
+            <n-button
+              :disabled="disabled || typeof api.test_device_settings !== 'function'"
+              :loading="testing"
+              @click="testConnection"
+              >测试连接</n-button
+            >
+            <n-button quaternary :aria-expanded="advanced" @click="advanced = !advanced">{{
+              advanced ? '收起高级设置' : '高级设置'
+            }}</n-button>
+          </n-space>
+          <n-select
+            v-if="candidateOptions.length"
+            :value="preflightResult ? confirmedSerial : selectedKey"
+            aria-label="选择实例"
+            :placeholder="preflightResult ? '选择明确的 ADB 连接地址' : '选择明确的模拟器实例'"
+            :disabled="disabled"
+            :options="candidateOptions"
+            @update:value="selectCandidate"
+          />
+          <n-text v-if="discovery?.candidates?.length" depth="3"
+            >选择后仍需保存；检测与选择不会改写配置或启动模拟器。</n-text
+          >
+          <n-alert v-if="discovery?.error" type="warning">{{ discovery.error.message }}</n-alert>
+          <n-text v-else-if="discovery && !discovery.candidates?.length">{{
+            discovery.ok ? '已完成当前设备检测。' : '未找到可选实例，请检查模拟器安装路径。'
+          }}</n-text>
+          <n-alert v-if="discovery?.guidance" type="info" :show-icon="false">{{
+            discovery.guidance
+          }}</n-alert>
+        </n-space>
+
+        <n-divider title-placement="left">截图与触控</n-divider>
+        <n-grid cols="2" :x-gap="16" :y-gap="4">
+          <n-gi v-for="field in backendFields" :key="field.key" :span="field.span || 1"
+            ><DeviceProfileField :field="field" @edit="editProfile"
+          /></n-gi>
+        </n-grid>
+      </section>
+      <n-collapse :default-expanded-names="['截图与触控', '游戏启动与空闲', '实例启动']">
+        <n-collapse-item
+          v-for="group in groups.filter(
+            (name) => advanced || !['模拟器与设备', '连接恢复', '性能', '运行参数'].includes(name)
+          )"
+          :key="group"
+          :title="group === '截图与触控' ? '更多截图与连接选项' : group"
+          :name="group"
+        >
           <n-form label-placement="top" :show-feedback="false">
             <div class="device-editor-grid">
               <n-form-item
-                v-for="field in visibleFields.filter((item) => item.group === group)"
+                v-for="field in additionalFields.filter((item) => item.group === group)"
                 :key="field.key"
-                :label="field.label"
                 :class="{
                   'device-editor-wide':
                     ['file', 'directory', 'waiting_scene'].includes(field.kind) ||
                     field.key.endsWith('.command')
                 }"
               >
+                <template #label
+                  ><span>{{ field.label }}</span
+                  ><HelpText v-if="field.help">{{ field.help }}</HelpText></template
+                >
                 <div class="device-editor-field-value">
-                  <n-text v-if="field.help" depth="3">{{ field.help }}</n-text>
+                  <n-text v-if="fieldSource(field.key)" depth="3" class="field-source">{{
+                    fieldSource(field.key)
+                  }}</n-text>
                   <n-select
                     v-if="overrideKeys.includes(field.key)"
-                    :value="usesLocalValue(field.key)"
+                    :value="usesLocalValue(field.key) ? 'local' : 'common'"
                     :options="[
-                      { value: false, label: '使用通用设置' },
-                      { value: true, label: '使用本实例值' }
+                      { value: 'common', label: '使用通用设置' },
+                      { value: 'local', label: '使用本实例值' }
                     ]"
                     :disabled="disabled"
                     :aria-label="`${field.label}配置来源`"
-                    @update:value="(value) => setLocalValue(field.key, value)"
+                    @update:value="(value) => setLocalValue(field.key, value === 'local')"
                   />
                   <n-select
                     v-if="field.kind === 'idle_action'"
@@ -557,6 +762,9 @@ onUnmounted(() => {
       </n-collapse>
     </div>
     <div class="device-editor-actions">
+      <n-text depth="3" role="status"
+        >{{ hasChanges ? '有未保存的修改' : '当前显示已保存的配置' }} · 下次启动生效</n-text
+      >
       <n-button type="primary" :loading="pending" :disabled="disabled || !hasChanges" @click="save"
         >保存连接与启动配置</n-button
       >
@@ -575,17 +783,58 @@ onUnmounted(() => {
       无法自动确认手动地址是否属于所选实例。地址错误或被其他实例复用时，任务可能操作其他账号；模拟器重启后也请检查端口。管理器未提供或复用创建时间时，无法识别同名实例被替换。启停仍按所选实例执行，手动地址不能使用
       MuMu IPC。
     </n-modal>
+    <n-modal
+      :show="confirmShared"
+      preset="dialog"
+      title="改用通用连接配置？"
+      positive-text="放弃这些修改并切换"
+      negative-text="保留独立配置"
+      @positive-click="confirmIndependentChange"
+      @negative-click="confirmShared = false"
+      @close="confirmShared = false"
+      @update:show="(value) => (confirmShared = value)"
+    >
+      <p>以下设置将恢复通用值，其他本实例设置保留：</p>
+      <ul>
+        <li v-for="label in discardedFields" :key="label">{{ label }}</li>
+      </ul>
+    </n-modal>
   </div>
 </template>
 
 <style scoped>
+.device-summary {
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: var(--mower-control-surface);
+}
+.device-summary p {
+  margin: 6px 0;
+}
+.device-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.device-title-row strong {
+  font-size: 18px;
+}
+.device-primary-fields {
+  padding: 0 12px;
+}
+.field-source {
+  font-size: 12px;
+}
 .device-editor {
-  display: grid;
-  gap: 16px;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 150px);
+  gap: 12px;
 }
 .device-editor-fields {
-  max-height: calc(100dvh - 340px);
-  min-height: 160px;
+  flex: 1;
+  min-height: 140px;
   overflow: auto;
 }
 .device-editor-grid {
@@ -609,9 +858,16 @@ onUnmounted(() => {
 .device-editor-wide {
   grid-column: 1 / -1;
 }
+.device-editor > :not(.device-editor-fields) {
+  flex-shrink: 0;
+}
 .device-editor-actions {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--mower-divider);
 }
 @media (max-width: 560px) {
   .device-editor-grid {

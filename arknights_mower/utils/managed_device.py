@@ -202,8 +202,8 @@ def validate_patch(values):
     return patch
 
 
-def discover(configuration):
-    """Reuse bounded device discovery without installing a process-wide Conf."""
+def _device_services(configuration):
+    """Build device inspection services with an isolated configuration."""
     from .device.avd import AVDController
     from .device.discovery import DiscoveryService
     from .device.genymotion import GenymotionController
@@ -228,9 +228,41 @@ def discover(configuration):
         redroid=redroid,
         genymotion=genymotion,
     )
+    return preflight, service
+
+
+def discover(configuration):
+    """Reuse bounded device discovery without installing a process-wide Conf."""
+    preflight, service = _device_services(configuration)
     return service.discover(
         configuration.device, preflight.host_platform(), preflight
     ).to_dict()
+
+
+def test_connection(configuration):
+    """Check the selected device without starting it or saving configuration."""
+    from time import monotonic
+
+    from .device.io_budget import device_io_budget
+
+    preflight, service = _device_services(configuration)
+    deadline = monotonic() + 45
+
+    def remaining():
+        seconds = deadline - monotonic()
+        if seconds <= 0:
+            raise TimeoutError("连接测试超时，请检查设备后重试。")
+        return seconds
+
+    with device_io_budget(remaining):
+        profile = configuration.device
+        if profile.preset_id.startswith("manual."):
+            result = preflight.check(profile, confirmed_package=profile.game_package)
+        else:
+            result = service.check_binding(
+                profile, preflight, confirmed_package=profile.game_package
+            )
+        return result.to_dict()
 
 
 def project_shared_candidates(result, shared_values):

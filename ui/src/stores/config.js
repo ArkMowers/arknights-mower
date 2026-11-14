@@ -1090,6 +1090,32 @@ export const useConfigStore = defineStore('config', () => {
     return configSaveRequest
   }
 
+  function save_web_access({ port, token }) {
+    if (manager_owned_device.value || runtime_platform.value === 'android') {
+      return Promise.reject(new Error('请通过启动此实例的管理器修改端口和 Token'))
+    }
+    if (!Number.isInteger(port) || port < 0 || port > 65535 || typeof token !== 'string') {
+      return Promise.reject(new Error('端口必须是 0 到 65535 之间的整数'))
+    }
+    configSaveRequest = configSaveRequest
+      .catch(() => {})
+      .then(async () => {
+        config_saving.value = true
+        try {
+          const response = await axios.patch(`${import.meta.env.VITE_HTTP_URL}/conf`, {
+            webview: { port, token }
+          })
+          savedConfig ??= configSnapshot(build_config())
+          savedConfig.webview = { ...savedConfig.webview, port, token }
+          webview.value = { ...webview.value, port, token }
+          return response
+        } finally {
+          config_saving.value = false
+        }
+      })
+    return configSaveRequest
+  }
+
   async function flush_config_saves() {
     if (weeklyPlanSyncTimer) {
       clearTimeout(weeklyPlanSyncTimer)
@@ -1122,6 +1148,7 @@ export const useConfigStore = defineStore('config', () => {
     adb,
     load_config,
     save_config,
+    save_web_access,
     drone_count_limit,
     drone_room,
     right_side_room_order,

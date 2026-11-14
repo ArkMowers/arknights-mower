@@ -8,6 +8,7 @@ import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
 import MaaUpdates from '@/components/MaaUpdates.vue'
 import NetworkSettings from '@/components/NetworkSettings.vue'
+import WebAccessSettings from '@/components/WebAccessSettings.vue'
 import ConfigBackup from '@/components/ConfigBackup.vue'
 import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
 import { settingsSectionKey } from '@/composables/settingsNavigation'
@@ -374,6 +375,12 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       <ResourceUpdate v-if="updates_enabled === true" />
       <div v-if="updates_enabled === true" class="settings-card-wide"><MaaUpdates /></div>
       <div class="settings-card-wide"><NetworkSettings /></div>
+      <div
+        v-if="!config_store.manager_owned_device && runtime_platform !== 'android'"
+        class="settings-card-wide"
+      >
+        <WebAccessSettings />
+      </div>
     </SettingsSection>
     <SettingsSection
       v-if="showExtraSettings"

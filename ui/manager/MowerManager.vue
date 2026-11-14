@@ -1,16 +1,14 @@
 <script setup>
+import SearchIcon from '@vicons/ionicons5/es/SearchOutline'
+import MoreIcon from '@vicons/ionicons5/es/EllipsisHorizontal'
 import PlusIcon from '@vicons/ionicons5/es/Add'
-import FolderIcon from '@vicons/ionicons5/es/FolderOpenOutline'
-import PencilIcon from '@vicons/ionicons5/es/Pencil'
 import PlayIcon from '@vicons/ionicons5/es/Play'
 import StopIcon from '@vicons/ionicons5/es/Stop'
 import SettingsIcon from '@vicons/ionicons5/es/SettingsOutline'
-import TrashIcon from '@vicons/ionicons5/es/TrashOutline'
 import WarningIcon from '@vicons/ionicons5/es/WarningOutline'
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { initializeManager, managerCall } from './bridge.js'
 
-import BrowserIcon from '@vicons/ionicons5/es/GlobeOutline'
 import CommonSettings from './CommonSettings.vue'
 import ManagerTools from './ManagerTools.vue'
 import DeviceSettingsEditor from './DeviceSettingsEditor.vue'
@@ -21,11 +19,136 @@ const preview = ref(null)
 const previewLoading = ref(false)
 const previewRevision = ref(0)
 const instances = ref([])
+const search = ref('')
+const stateFilter = ref('all')
+const selectedKeys = ref([])
+const selectedConfirmation = ref(null)
+const displayedSelection = ref(null)
+watch(
+  selectedConfirmation,
+  (value) => {
+    if (value) displayedSelection.value = value
+  },
+  { flush: 'sync' }
+)
+const selectedResult = ref(null)
+const instanceKey = (instance) => JSON.stringify([instance.name, instance.path])
+const needsAttention = (instance) =>
+  instance.state === 'stopped' && Boolean(instance.reason || !instance.path)
+const visibleInstances = computed(() => {
+  const query = search.value.trim().toLowerCase()
+  return instances.value
+    .map((instance, idx) => ({ instance, idx }))
+    .filter(
+      ({ instance }) =>
+        (!query ||
+          [instance.name, instance.path, instance.port || '随机']
+            .join(' ')
+            .toLowerCase()
+            .includes(query)) &&
+        (stateFilter.value === 'all' ||
+          (stateFilter.value === 'attention'
+            ? needsAttention(instance)
+            : instance.state === stateFilter.value))
+    )
+})
+const selectedInstances = computed(() =>
+  instances.value.flatMap((instance, idx) =>
+    selectedKeys.value.includes(instanceKey(instance)) ? [{ ...instance, idx }] : []
+  )
+)
+const visibleSelectedCount = computed(
+  () =>
+    visibleInstances.value.filter(({ instance }) =>
+      selectedKeys.value.includes(instanceKey(instance))
+    ).length
+)
+const allVisibleSelected = computed(
+  () =>
+    visibleInstances.value.length > 0 &&
+    visibleSelectedCount.value === visibleInstances.value.length
+)
+const selectionSummary = computed(() => {
+  const results = selectedResult.value?.results || []
+  return `已派发 ${results.filter((row) => row.status === 'dispatched').length} 项，跳过 ${results.filter((row) => row.status === 'skipped').length} 项，失败 ${results.filter((row) => row.status === 'failed').length} 项`
+})
+function clearFilters() {
+  search.value = ''
+  stateFilter.value = 'all'
+}
+function selectInstance(instance, selected) {
+  if (unavailable.value) return
+  const key = instanceKey(instance)
+  selectedKeys.value = selected
+    ? [...new Set([...selectedKeys.value, key])]
+    : selectedKeys.value.filter((item) => item !== key)
+}
+function selectVisible(selected) {
+  if (unavailable.value) return
+  const keys = visibleInstances.value.map(({ instance }) => instanceKey(instance))
+  selectedKeys.value = selected
+    ? [...new Set([...selectedKeys.value, ...keys])]
+    : selectedKeys.value.filter((key) => !keys.includes(key))
+}
+function confirmSelected(action) {
+  if (
+    unavailable.value ||
+    !['start', 'stop'].includes(action) ||
+    !selectedInstances.value.length ||
+    typeof api()?.control_instances !== 'function'
+  )
+    return
+  selectedConfirmation.value = {
+    action,
+    targets: selectedInstances.value.map(({ idx, name, path }) => ({ idx, name, path }))
+  }
+}
+async function applySelected() {
+  const request = selectedConfirmation.value
+  if (!request || unavailable.value) return
+  selectedConfirmation.value = null
+  selectedResult.value = null
+  await execute(async () => {
+    const result = await api().control_instances(request.action, request.targets)
+    if (!Array.isArray(result?.results)) throw new Error(result?.message || '无法读取批量操作结果')
+    selectedResult.value = result
+    return { ok: true }
+  })
+}
+function instanceMenu(instance) {
+  const locked = unavailable.value || !instance.editable
+  return [
+    { label: '实例配置', key: 'settings', disabled: locked || !instance.path },
+    { label: '重命名', key: 'name', disabled: locked },
+    { label: '选择保存目录', key: 'path', disabled: locked },
+    {
+      label: '打开内置窗口',
+      key: 'window',
+      disabled: unavailable.value || !instance.can_open_browser
+    },
+    { type: 'divider', key: 'divider' },
+    { label: '移除实例', key: 'remove', disabled: locked }
+  ]
+}
+function handleInstanceMenu(key, idx) {
+  if (key === 'path') return selectPath(idx)
+  if (key === 'remove') return confirmDelete(idx)
+  if (key === 'window')
+    return execute(() =>
+      api().start(idx, { name: instances.value[idx].name, path: instances.value[idx].path })
+    )
+  if (['settings', 'name'].includes(key)) edit(idx, key)
+}
+function handleGlobalAction(key) {
+  if (key === 'pages') return openAllInstancePages()
+  if (['start', 'stop'].includes(key)) confirmBulk(key)
+}
 const loading = ref(true)
 const ready = ref(false)
 const connected = ref(false)
 const busy = ref(false)
 const error = ref('')
+const savedNotice = ref('')
 const initializationError = ref('')
 const confirmation = ref(null)
 const pageOpening = ref(null)
@@ -142,6 +265,7 @@ function deviceSettingsAvailable() {
 }
 
 function editDevice(idx) {
+  savedNotice.value = ''
   if (
     !deviceSettingsAvailable() ||
     unavailable.value ||
@@ -168,11 +292,15 @@ function closeDevice() {
 }
 
 function deviceSaved() {
+  savedNotice.value = `${deviceEditor.value?.target.name || '实例'}的连接与启动配置已保存，下次启动生效。`
   closeDevice()
   void initialize()
 }
 
 function acceptInstances(loaded) {
+  selectedKeys.value = selectedKeys.value.filter((key) =>
+    loaded.some((instance) => instanceKey(instance) === key)
+  )
   instances.value = loaded
   connected.value = true
   if (pageOpening.value) {
@@ -631,7 +759,7 @@ async function applyDelete() {
 }
 
 function addInstance() {
-  return execute(() => api().add('新实例', ''))
+  return execute(() => api().add('新实例', null))
 }
 </script>
 
@@ -682,8 +810,14 @@ function addInstance() {
         </ul>
       </n-alert>
     </div>
+    <n-alert v-if="savedNotice" type="success" closable @close="savedNotice = ''">{{
+      savedNotice
+    }}</n-alert>
     <div class="manager-heading">
       <div>
+        <div class="manager-brand">
+          <img src="/favicon.ico" alt="" /><span>ARKNIGHTS MOWER</span>
+        </div>
         <h1>多开管理器</h1>
         <p v-if="ready">
           {{ instances.length }} 个实例 ·
@@ -691,150 +825,285 @@ function addInstance() {
         </p>
         <p v-else>{{ loading ? '正在加载实例列表…' : '实例列表未加载' }}</p>
       </div>
+      <div class="heading-actions">
+        <slot name="appearance" />
+        <n-button type="primary" :disabled="unavailable" @click="addInstance"
+          ><template #icon
+            ><n-icon><plus-icon /></n-icon></template
+          >添加实例</n-button
+        >
+      </div>
     </div>
-    <div class="bulk-actions">
-      <n-button
-        :disabled="unavailable || !instances.some((i) => i.can_start)"
-        @click="confirmBulk('start')"
+    <div class="workspace-toolbar">
+      <n-input
+        v-model:value="search"
+        class="instance-search"
+        clearable
+        placeholder="搜索实例名称、目录或端口"
+        aria-label="搜索实例"
       >
-        <template #icon
-          ><n-icon><play-icon /></n-icon></template
-        >全部打开
-      </n-button>
-      <n-button
-        :disabled="unavailable || !instances.some((i) => i.can_open_browser)"
-        @click="openAllInstancePages"
-      >
-        <template #icon
-          ><n-icon><browser-icon /></n-icon
+        <template #prefix
+          ><n-icon><SearchIcon /></n-icon
         ></template>
-        一键开启页面
-      </n-button>
-      <n-button
-        :disabled="unavailable || !instances.some((i) => i.can_stop)"
-        @click="confirmBulk('stop')"
-      >
-        <template #icon
-          ><n-icon><stop-icon /></n-icon></template
-        >全部关闭
-      </n-button>
-      <n-button :disabled="unavailable" @click="editBatch">
-        <template #icon
+      </n-input>
+      <n-button :disabled="unavailable" @click="editBatch"
+        ><template #icon
           ><n-icon><settings-icon /></n-icon></template
-        >配置管理
-      </n-button>
+        >配置管理</n-button
+      >
       <n-button :disabled="unavailable" @click="toolsOpen = true">维护工具</n-button>
+      <n-dropdown
+        trigger="click"
+        :options="[
+          {
+            label: '启动全部可启动实例',
+            key: 'start',
+            disabled: unavailable || !instances.some((item) => item.can_start)
+          },
+          {
+            label: '打开全部实例页面',
+            key: 'pages',
+            disabled: unavailable || !instances.some((item) => item.can_open_browser)
+          },
+          {
+            label: '停止全部运行实例',
+            key: 'stop',
+            disabled: unavailable || !instances.some((item) => item.can_stop)
+          }
+        ]"
+        @select="handleGlobalAction"
+      >
+        <n-button :disabled="unavailable" aria-label="全部实例操作"
+          ><template #icon
+            ><n-icon><MoreIcon /></n-icon></template
+        ></n-button>
+      </n-dropdown>
     </div>
-    <n-empty
-      v-if="ready && !instances.length"
-      description="添加实例，或先在配置管理中设置通用参数"
-    />
+    <div class="instance-filters" role="group" aria-label="筛选实例状态">
+      <n-button
+        v-for="filter in [
+          { key: 'all', label: '全部', count: instances.length },
+          {
+            key: 'running',
+            label: '运行中',
+            count: instances.filter((item) => item.state === 'running').length
+          },
+          {
+            key: 'stopped',
+            label: '已停止',
+            count: instances.filter((item) => item.state === 'stopped').length
+          },
+          {
+            key: 'attention',
+            label: '需处理',
+            count: instances.filter(needsAttention).length
+          }
+        ]"
+        :key="filter.key"
+        size="small"
+        :type="stateFilter === filter.key ? 'primary' : 'default'"
+        :quaternary="stateFilter !== filter.key"
+        :aria-pressed="stateFilter === filter.key"
+        @click="stateFilter = filter.key"
+      >
+        {{ filter.label }} <span class="filter-count">{{ filter.count }}</span>
+      </n-button>
+      <span class="visible-count">显示 {{ visibleInstances.length }} 个实例</span>
+    </div>
+    <div class="selection-toolbar">
+      <n-checkbox
+        :checked="allVisibleSelected"
+        :indeterminate="visibleSelectedCount > 0 && !allVisibleSelected"
+        :disabled="unavailable || !visibleInstances.length"
+        aria-label="全选当前筛选的实例"
+        @update:checked="selectVisible"
+        >全选当前列表</n-checkbox
+      >
+      <template v-if="selectedInstances.length">
+        <span class="selection-count"
+          >已选 {{ selectedInstances.length }} 项<span
+            v-if="selectedInstances.length > visibleSelectedCount"
+            >（{{ selectedInstances.length - visibleSelectedCount }} 项在筛选外）</span
+          ></span
+        >
+        <n-button
+          size="small"
+          :disabled="
+            unavailable ||
+            !selectedInstances.some((item) => item.can_start) ||
+            typeof api()?.control_instances !== 'function'
+          "
+          @click="confirmSelected('start')"
+          >启动所选</n-button
+        >
+        <n-button
+          size="small"
+          :disabled="
+            unavailable ||
+            !selectedInstances.some((item) => item.can_stop) ||
+            typeof api()?.control_instances !== 'function'
+          "
+          @click="confirmSelected('stop')"
+          >停止所选</n-button
+        >
+        <n-button text size="small" :disabled="unavailable" @click="selectedKeys = []"
+          >清除选择</n-button
+        >
+      </template>
+      <n-text v-else depth="3" class="selection-hint">勾选实例后可批量启动或停止</n-text>
+    </div>
+    <n-alert
+      v-if="selectedResult"
+      :type="selectedResult.results.some((row) => row.status === 'failed') ? 'warning' : 'success'"
+      :title="selectionSummary"
+      closable
+      @close="selectedResult = null"
+    >
+      <ul class="batch-results">
+        <li v-for="row in selectedResult.results" :key="row.idx">
+          {{ row.name }}：{{ row.message }}
+        </li>
+      </ul>
+    </n-alert>
     <n-skeleton v-if="loading" :height="140" />
-    <n-card v-for="(instance, idx) in instances" :key="idx" size="small">
-      <div class="instance-heading">
+    <div v-else-if="visibleInstances.length" class="instance-list" aria-label="实例列表">
+      <div class="instance-list-header" aria-hidden="true">
+        <span></span><span>实例 / 保存目录</span><span>状态</span><span>运行配置</span
+        ><span class="actions-column">操作</span>
+      </div>
+      <article
+        v-for="{ instance, idx } in visibleInstances"
+        :key="instanceKey(instance)"
+        class="instance-row"
+        :class="{ 'instance-row-selected': selectedKeys.includes(instanceKey(instance)) }"
+        :aria-label="instance.name"
+      >
+        <n-checkbox
+          :checked="selectedKeys.includes(instanceKey(instance))"
+          :disabled="unavailable"
+          :aria-label="`选择 ${instance.name}`"
+          @update:checked="(checked) => selectInstance(instance, checked)"
+        />
         <div class="instance-identity">
           <strong class="instance-name">{{ instance.name }}</strong>
-          <n-button
-            text
+          <span class="folder-content" :title="instance.path">{{
+            instance.path || '未选择保存目录'
+          }}</span>
+          <div v-if="needsAttention(instance) && instance.reason" class="reason">
+            {{ instance.reason }}
+          </div>
+        </div>
+        <div class="instance-status">
+          <n-tag
             size="small"
-            class="instance-page-action"
-            type="primary"
+            :bordered="false"
+            :type="
+              needsAttention(instance)
+                ? 'warning'
+                : instance.state === 'running'
+                  ? 'success'
+                  : 'default'
+            "
+            >{{ statuses[instance.state] || '状态未知' }}</n-tag
+          >
+        </div>
+        <div class="instance-meta">
+          <span>端口 {{ instance.port || '随机' }}</span
+          ><span>{{ instance.start_automatically ? '启动后自动执行' : '手动开始任务' }}</span>
+        </div>
+        <div class="instance-actions">
+          <n-button
+            size="small"
             :disabled="unavailable || !instance.can_open_browser"
             :aria-label="`${instance.name} 打开实例页面`"
             @click="openInstancePage(idx)"
+            >打开页面</n-button
+          >
+          <n-button
+            :type="instance.state === 'stopped' ? 'primary' : 'default'"
+            size="small"
+            :disabled="
+              unavailable ||
+              (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
+            "
+            :aria-label="`${instance.state === 'stopped' ? '启动' : '停止'} ${instance.name}`"
+            @click="lifecycle(idx)"
           >
             <template #icon
-              ><n-icon><browser-icon /></n-icon
+              ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
             ></template>
-            打开实例页面
+            {{ instance.state === 'stopped' ? '启动' : '停止' }}
           </n-button>
-        </div>
-        <n-tag size="small" :type="instance.state === 'running' ? 'success' : 'default'">{{
-          statuses[instance.state]
-        }}</n-tag>
-        <n-button
-          :type="instance.state === 'stopped' ? 'primary' : 'error'"
-          size="small"
-          :disabled="
-            unavailable || (instance.state === 'stopped' ? !instance.can_start : !instance.can_stop)
-          "
-          @click="lifecycle(idx)"
-        >
-          <template #icon
-            ><n-icon><play-icon v-if="instance.state === 'stopped'" /><stop-icon v-else /></n-icon
-          ></template>
-          {{ instance.state === 'stopped' ? '启动' : '停止' }}
-        </n-button>
-      </div>
-      <div class="instance-toolbar">
-        <div class="instance-tools">
           <n-button
-            v-if="instance.can_open_browser"
-            size="tiny"
-            :disabled="unavailable"
-            @click="execute(() => api().start(idx, { name: instance.name, path: instance.path }))"
-            >打开窗口</n-button
-          >
-          <n-button
-            size="tiny"
-            title="修改实例名称"
-            aria-label="修改实例名称"
-            :disabled="unavailable || !instance.editable"
-            @click="edit(idx, 'name')"
-            ><template #icon
-              ><n-icon><pencil-icon /></n-icon></template
-          ></n-button>
-          <n-button
-            size="tiny"
-            title="实例配置"
-            aria-label="实例配置"
+            v-if="deviceSettingsAvailable()"
+            size="small"
             :disabled="unavailable || !instance.editable || !instance.path"
-            @click="edit(idx, 'settings')"
-            ><template #icon
-              ><n-icon><settings-icon /></n-icon></template
-          ></n-button>
-          <n-button
-            size="tiny"
-            title="选择保存目录"
-            aria-label="选择保存目录"
-            :disabled="unavailable || !instance.editable"
-            @click="selectPath(idx)"
-            ><template #icon
-              ><n-icon><folder-icon /></n-icon></template
-          ></n-button>
-          <n-button
-            size="tiny"
-            type="error"
-            ghost
-            title="删除实例"
-            aria-label="删除实例"
-            :disabled="unavailable || !instance.editable"
-            @click="confirmDelete(idx)"
-            ><template #icon
-              ><n-icon><trash-icon /></n-icon></template
-          ></n-button>
+            :title="
+              instance.editable ? '配置设备连接与启动方式' : '请先停止此 Mower 实例，再修改连接配置'
+            "
+            @click="editDevice(idx)"
+            >连接与启动</n-button
+          >
+          <n-dropdown
+            trigger="click"
+            :options="instanceMenu(instance)"
+            @select="(key) => handleInstanceMenu(key, idx)"
+          >
+            <n-button
+              quaternary
+              size="small"
+              :disabled="unavailable"
+              :aria-label="`${instance.name} 更多操作`"
+              ><template #icon
+                ><n-icon><MoreIcon /></n-icon></template
+            ></n-button>
+          </n-dropdown>
         </div>
-      </div>
-      <code class="folder-content">{{ instance.path || '未选择保存目录' }}</code>
-      <div class="connection-info">
-        <span>端口：{{ instance.port || '随机' }}</span
-        ><span>Token：{{ instance.token ? '已设置' : '未设置' }}</span
-        ><span>自动开始任务：{{ instance.start_automatically ? '开' : '关' }}</span>
-      </div>
-      <div v-if="instance.reason && instance.state === 'stopped'" class="reason">
-        {{ instance.reason }}
-      </div>
-    </n-card>
-    <n-button v-if="ready" dashed :disabled="unavailable" @click="addInstance"
-      ><template #icon
-        ><n-icon><plus-icon /></n-icon></template
-      >添加实例</n-button
+      </article>
+    </div>
+    <n-empty
+      v-else-if="ready"
+      class="instance-empty"
+      :description="instances.length ? '没有符合条件的实例' : '添加第一个实例，开始管理设备与任务'"
     >
+      <template #extra
+        ><n-button v-if="instances.length" @click="clearFilters">清除筛选</n-button
+        ><n-button v-else type="primary" :disabled="unavailable" @click="addInstance"
+          >添加实例</n-button
+        ></template
+      >
+    </n-empty>
+    <n-modal
+      :show="!!selectedConfirmation"
+      preset="dialog"
+      :title="displayedSelection?.action === 'start' ? '启动所选实例？' : '停止所选实例？'"
+      positive-text="确认操作"
+      negative-text="取消"
+      @positive-click="applySelected"
+      @negative-click="selectedConfirmation = null"
+      @close="selectedConfirmation = null"
+      @update:show="
+        (show) => {
+          if (!show) selectedConfirmation = null
+        }
+      "
+    >
+      <p>
+        仅操作以下 {{ displayedSelection?.targets.length }} 个实例{{
+          displayedSelection?.action === 'stop'
+            ? '，停止会结束这些实例正在进行的自动化'
+            : '，不符合启动条件的实例将跳过'
+        }}。
+      </p>
+      <ul class="batch-results">
+        <li v-for="target in displayedSelection?.targets" :key="target.idx">{{ target.name }}</li>
+      </ul>
+    </n-modal>
     <n-modal
       :show="!!deviceEditor"
       preset="card"
       :title="`${deviceEditor?.target.name || ''} · 连接与启动`"
-      :style="{ width: 'min(800px, calc(100vw - 24px))' }"
+      :style="{ width: 'min(960px, calc(100vw - 24px))' }"
       @update:show="
         (show) => {
           if (!show) closeDevice()
@@ -914,8 +1183,7 @@ function addInstance() {
         width:
           displayedEditing?.kind === 'batch'
             ? 'min(920px, calc(100vw - 24px))'
-            : 'min(420px, calc(100vw - 24px))',
-        borderRadius: '6px'
+            : 'min(420px, calc(100vw - 24px))'
       }"
       :mask-closable="!busy && !assistantConfirmation"
       :closable="!busy && !assistantConfirmation"
@@ -988,7 +1256,7 @@ function addInstance() {
                   <col class="batch-token-col" />
                   <col class="batch-port-col" />
                   <col class="batch-ai-col" />
-                  <col class="batch-updates-col" />
+                  <col class="batch-autostart-col" />
                   <col class="batch-updates-col" />
                 </colgroup>
                 <thead>
@@ -1229,11 +1497,13 @@ function addInstance() {
 .mower-list {
   box-sizing: border-box;
   width: 100%;
-  padding: 20px;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 24px clamp(16px, 4vw, 48px);
   -webkit-font-smoothing: antialiased;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 16px;
 }
 .manager-feedback {
   display: grid;
@@ -1253,6 +1523,35 @@ function addInstance() {
   align-items: center;
   gap: 8px;
 }
+.manager-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 8px;
+}
+.manager-brand {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: 1.4px;
+  color: var(--mower-text-muted);
+}
+.manager-brand img {
+  width: 22px;
+  height: 22px;
+}
+.heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bulk-actions {
+  padding: 12px 0 20px;
+  border-bottom: 1px solid var(--mower-divider);
+}
 .manager-heading h1 {
   margin: 0;
   font-size: 21px;
@@ -1260,8 +1559,8 @@ function addInstance() {
   text-wrap: balance;
 }
 .manager-heading p {
-  margin: 6px 0 12px;
-  color: #666;
+  margin: 6px 0 0;
+  color: var(--mower-text-muted);
   font-variant-numeric: tabular-nums;
 }
 .section-title {
@@ -1270,7 +1569,7 @@ function addInstance() {
 }
 .section-description {
   margin: 0 0 14px;
-  color: #666;
+  color: var(--mower-text-muted);
 }
 .preview-section {
   display: flex;
@@ -1279,13 +1578,13 @@ function addInstance() {
   gap: 10px;
 }
 .preview-section > span {
-  color: #666;
+  color: var(--mower-text-muted);
   font-size: 12px;
 }
 .preview-results {
   width: 100%;
   padding: 12px;
-  background: #f7f8fa;
+  background: var(--mower-control-surface);
   border-radius: 8px;
   overflow-wrap: anywhere;
 }
@@ -1293,57 +1592,176 @@ function addInstance() {
   cursor: pointer;
   padding: 10px 0;
 }
-.instance-tools :deep(.n-button) {
-  min-height: 40px;
-  min-width: 40px;
-}
-.connection-info,
-.batch-change-count {
-  font-variant-numeric: tabular-nums;
-}
-.bulk-actions {
-  flex-wrap: wrap;
-}
-.instance-heading {
-  min-height: 32px;
-}
-.instance-identity {
+.workspace-toolbar,
+.instance-filters,
+.selection-toolbar,
+.instance-actions {
   display: flex;
   align-items: center;
-  flex: 1;
-  min-width: 0;
+  gap: 10px;
+}
+.workspace-toolbar {
+  margin: 4px 0;
+}
+.instance-search {
+  max-width: 440px;
+  margin-right: auto;
+}
+.instance-filters {
   flex-wrap: wrap;
-  gap: 12px;
+  padding: 4px 0;
+}
+.filter-count {
+  margin-left: 8px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+.visible-count {
+  margin-left: auto;
+  color: var(--mower-text-muted);
+  font-size: 12px;
+}
+.selection-toolbar {
+  min-height: 36px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.selection-count {
+  color: var(--mower-primary-text);
+}
+.selection-hint {
+  font-size: 12px;
+  margin-left: auto;
+}
+.instance-list {
+  isolation: isolate;
+  max-height: calc(100dvh - 320px);
+  border: 1px solid var(--mower-border);
+  border-radius: 12px;
+  overflow: auto;
+  background: var(--mower-surface);
+}
+.instance-list-header,
+.instance-row {
+  display: grid;
+  grid-template-columns: 24px minmax(140px, 1fr) 80px 124px 300px;
+  align-items: center;
+  column-gap: 16px;
+}
+.instance-list-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  padding: 12px 18px;
+  font-size: 12px;
+  color: var(--mower-text-muted);
+  background: var(--mower-surface);
+  border-bottom: 1px solid var(--mower-border);
+}
+.instance-row {
+  position: relative;
+  z-index: 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--mower-divider);
+}
+.instance-row:first-of-type {
+  border-top: none;
+}
+.instance-row:hover {
+  background: var(--mower-control-hover);
+}
+.instance-row-selected {
+  background: var(--mower-primary-block);
+}
+.instance-identity,
+.instance-meta {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
 }
 .instance-name {
-  min-width: 0;
+  font-size: 14px;
   overflow-wrap: anywhere;
-  font-size: 15px;
-}
-.instance-toolbar {
-  flex-wrap: wrap;
-  margin: 10px 0;
-}
-.instance-page-action {
-  flex-shrink: 0;
 }
 .folder-content {
-  display: block;
-  overflow-wrap: anywhere;
-  color: inherit;
-  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--mower-text-muted);
   font-size: 12px;
 }
-.connection-info {
-  flex-wrap: wrap;
-  margin-top: 8px;
-  color: inherit;
-  opacity: 0.65;
+.instance-meta {
   font-size: 12px;
+  color: var(--mower-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.instance-actions {
+  display: grid;
+  grid-template-columns: 76px 68px 96px 30px;
+  justify-content: end;
+  gap: 6px;
+}
+.actions-column {
+  min-width: 300px;
+  text-align: right;
+}
+.instance-empty {
+  padding: 64px 16px;
+  border: 1px dashed var(--mower-border);
+  border-radius: 12px;
+}
+@media (max-width: 900px) {
+  .instance-list {
+    max-height: none;
+  }
+  .instance-list-header {
+    display: none;
+  }
+  .instance-row {
+    grid-template-columns: 24px minmax(0, 1fr) auto;
+    gap: 12px;
+  }
+  .instance-meta {
+    grid-column: 2;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .instance-actions {
+    grid-column: 2 / -1;
+    justify-content: start;
+  }
+}
+@media (max-width: 420px) {
+  .instance-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .workspace-toolbar {
+    flex-wrap: wrap;
+  }
+  .instance-search {
+    max-width: none;
+    flex-basis: 100%;
+  }
+  .selection-hint {
+    display: none;
+  }
+  .manager-heading {
+    align-items: flex-start;
+  }
+  .heading-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .visible-count {
+    width: 100%;
+  }
 }
 .reason {
   margin-top: 8px;
-  color: #a15812;
+  color: var(--mower-warning-text);
   font-size: 12px;
   overflow-wrap: anywhere;
 }
@@ -1368,9 +1786,10 @@ function addInstance() {
   opacity: 0.65;
 }
 .batch-table-scroll {
+  isolation: isolate;
   max-height: min(440px, calc(100dvh - 260px));
   overflow: auto;
-  border: 1px solid var(--n-border-color, #e5e7eb);
+  border: 1px solid var(--mower-border);
 }
 .settings-content {
   max-height: calc(100dvh - 200px);
@@ -1381,7 +1800,7 @@ function addInstance() {
 }
 .batch-table {
   width: 100%;
-  min-width: 960px;
+  min-width: 1020px;
   table-layout: fixed;
   border-spacing: 0;
   font-size: 13px;
@@ -1395,31 +1814,40 @@ function addInstance() {
 .batch-port-col {
   width: 180px;
 }
-.batch-ai-col {
-  width: 140px;
+.batch-ai-col,
+.batch-autostart-col {
+  width: 160px;
 }
 .batch-updates-col {
-  width: 120px;
+  width: 140px;
 }
 .batch-table th,
 .batch-table td {
   padding: 10px;
   text-align: left;
-  border-bottom: 1px solid var(--n-border-color, #e5e7eb);
-  background: var(--n-color, #fff);
+  border-bottom: 1px solid var(--mower-border);
+  background: var(--mower-surface);
+}
+.batch-table td {
+  position: relative;
+  z-index: 0;
 }
 .batch-table thead th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--n-action-color, #f5f6f8);
+  background: var(--mower-surface);
   font-weight: 500;
+  white-space: nowrap;
+}
+.batch-table thead :deep(.n-checkbox__label) {
+  white-space: nowrap;
 }
 .batch-table th:first-child {
   position: sticky;
   left: 0;
   z-index: 1;
-  border-right: 1px solid var(--n-border-color, #e5e7eb);
+  border-right: 1px solid var(--mower-border);
 }
 .batch-table thead th:first-child {
   z-index: 3;

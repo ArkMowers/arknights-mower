@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite  --profile --open",
+    "preview:manager": "vite --mode manager-preview --host 127.0.0.1 --port 5188 --strictPort --open /manager/preview.html",
     "preview:mock": "vite --mode mock-preview --host 127.0.0.1 --port 5179 --strictPort",
     "prototype:tasks": "vite --mode mock-preview --host 127.0.0.1 --port 5191 --strictPort",
     "build": "node ../scripts/build_mood_runtime.mjs && vite build && node copy.js",
