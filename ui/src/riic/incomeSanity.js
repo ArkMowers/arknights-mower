@@ -46,6 +46,13 @@ export function createIncomeSanityValuation(valuation, roster) {
   const lmd = valueOrNull(valuation?.lmd_sanity)
   const record = price('中级作战记录')
   const orundum = price('合成玉')
+  const gold = price('赤金')
+  const fragmentOverride = valueOrNull(overrides.fragment)
+  const fragment =
+    fragmentOverride ??
+    (gold === null || orundum === null || lmd === null || lmd <= 0
+      ? null
+      : valueOrNull((10 * orundum * gold) / (500 * lmd)))
   const certificateModel = createCertificateValuation(valuation, roster)
   const certificates = certificateModel.refreshYellow
   const yellowCertificateValue = certificateModel.yellow
@@ -54,6 +61,7 @@ export function createIncomeSanityValuation(valuation, roster) {
   return {
     version: 1,
     source: valuation?.source ?? '',
+    fragmentValueSource: fragmentOverride === null ? 'gold_ratio' : 'manual',
     certificateModel,
     recruitmentCertificates: certificates,
     yellowCertificateValue,
@@ -61,9 +69,9 @@ export function createIncomeSanityValuation(valuation, roster) {
     creditDailyLimit: valueOrNull(overrides.credit_daily_limit),
     unitValues: {
       exp: record === null ? null : record / 1000,
-      gold: price('赤金'),
+      gold,
       lmd,
-      fragment: valueOrNull(overrides.fragment),
+      fragment,
       orundum,
       orirock: price('固源岩'),
       device: price('装置'),
@@ -102,11 +110,12 @@ export function calculateIncomeSanity(summary, valuation, simulation) {
     expected
       ? (expected.costs[resource] ?? 0) / days
       : orders.reduce((sum, order) => sum + order[orderKey], 0) / days
+  const fragmentConsumed = consumed('fragment', 'fragmentCost')
   const quantities = {
     exp: summary.exp,
     gold: summary.goldCount - consumed('gold', 'goldCost'),
     lmd: summary.orderLmd - summary.lmdConsumed,
-    fragment: summary.fragments - consumed('fragment', 'fragmentCost'),
+    fragment: summary.fragments - fragmentConsumed,
     orundum: summary.orundum,
     orirock: -summary.orirockConsumed,
     device: -summary.deviceConsumed,
@@ -145,8 +154,46 @@ export function calculateIncomeSanity(summary, valuation, simulation) {
   const unpriced = parts.filter((part) => part.unitValue === null && Math.abs(part.quantity) > 1e-9)
   const total = parts.reduce((sum, part) => sum + (part.value ?? 0), 0)
   if (!Number.isFinite(total)) throw new Error('理智算法的收益超出有效数值范围')
+  const chainInputs = [
+    [summary.fragments, 'fragment'],
+    [-summary.lmdConsumed, 'lmd'],
+    [-summary.orirockConsumed, 'orirock'],
+    [-summary.deviceConsumed, 'device']
+  ]
+  const chainOrders = [
+    [summary.orundum, 'orundum'],
+    [-fragmentConsumed, 'fragment']
+  ]
+  const sumValue = (entries) => {
+    const missing = entries.some(
+      ([quantity, key]) => Math.abs(quantity) > 1e-9 && valuation.unitValues[key] === null
+    )
+    const value = entries.reduce(
+      (sum, [quantity, key]) => sum + quantity * (valuation.unitValues[key] ?? 0),
+      0
+    )
+    return { value, partial: missing }
+  }
+  const manufacturing = sumValue(chainInputs)
+  const trading = sumValue(chainOrders)
+  const chainTotal = sumValue([
+    [quantities.fragment, 'fragment'],
+    ...chainInputs.slice(1),
+    chainOrders[0]
+  ])
+  const orundumChain = [...chainInputs, ...chainOrders].some(([quantity]) => quantity !== 0)
+    ? {
+        fragmentConsumed,
+        fragmentNet: quantities.fragment,
+        manufacturing: manufacturing.partial ? null : manufacturing.value,
+        trading: trading.partial ? null : trading.value,
+        total: chainTotal.value,
+        partial: chainTotal.partial
+      }
+    : null
   return {
     total,
+    orundumChain,
     credits: {
       produced: 40 * quantities.clue + 210 * quantities.exchange,
       valued: exchangeCredits + clueCredits

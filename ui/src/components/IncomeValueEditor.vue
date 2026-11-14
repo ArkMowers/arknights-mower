@@ -23,7 +23,7 @@ const unitValues = reactive({
   credit_daily_limit: null
 })
 const unitFields = [
-  { key: 'fragment', label: '源石碎片（理智/个）', placeholder: '留空时未估值' },
+  { key: 'fragment', label: '源石碎片（理智/个）', placeholder: '留空按赤金与订单的价值比例估值' },
   { key: 'recycle', label: '回收站产出（理智/次）', placeholder: '留空时按材料概率表估值' },
   {
     key: 'recruitment_certificates',
@@ -199,6 +199,16 @@ const display = (value) =>
         />
       </label>
     </div>
+    <p>
+      源石碎片自动单价 = 10 × 合成玉单价 × 赤金单价 ÷（500 ×
+      龙门币单价）。按普通赤金兑换的价值比例分配制造与贸易收益，不包含特殊订单溢价，也不表示两条生产链耗时相同。可手填非负单价覆盖，清空恢复自动估值。当前碎片单价：{{
+        display(prices.fragment)
+      }}
+      理智/个。
+    </p>
+    <p>
+      搓玉与其他生产共用理智算法：制造产出计价并扣除耗材，卖玉收入扣除碎片消耗；负净收益保留。比较排班时请使用同一份材料价格和演算条件，并同时检查合成玉产出及碎片净结余。
+    </p>
     <p>
       公招刷新收益 = 新增黄票期望 × 黄票单价 + 新增绿票期望 ×
       绿票单价。仅刷新无保底标签，以三星结果为对照；按公开标签统计近似，不是实测净增或官方概率，不计掉标签及无保底时的高星结果。

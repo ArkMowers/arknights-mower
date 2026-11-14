@@ -91,3 +91,23 @@ it('saves independent presets and clears only their manual overrides', async () 
     income_unit_values: { yellow_certificate: null, recruitment_certificates: null, credit: 0 }
   })
 })
+
+it('previews automatic shard prices and restores them when the saved override is cleared', async () => {
+  props.valuation = {
+    prices: { 赤金: 1.377792, 合成玉: 0.9225 },
+    lmd_sanity: 0.0036,
+    income_unit_values: { fragment: 5 }
+  }
+  await nextTick()
+  expect(page.prices.value.fragment).toBe(5)
+  page.unitValues.fragment = 0
+  expect(page.prices.value.fragment).toBe(0)
+  page.unitValues.fragment = null
+  expect(page.prices.value.fragment).toBeCloseTo(7.061184)
+  io.client.put.mockResolvedValueOnce({ data: props.valuation })
+  await page.saveValues('units')
+  expect(io.client.put.mock.calls[0][1].income_unit_values.fragment).toBeNull()
+  props.valuation = { ...props.valuation, income_unit_values: {}, prices: { 赤金: 1.377792 } }
+  await nextTick()
+  expect(page.prices.value.fragment).toBeNull()
+})

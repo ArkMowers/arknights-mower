@@ -864,6 +864,62 @@ onBeforeUnmount(() => {
                       </tr>
                     </tbody></n-table
                   >
+                </n-collapse-item>
+                <n-collapse-item
+                  v-if="state.result.summary.sanity.orundumChain"
+                  title="搓玉收益明细（每日）"
+                  name="orundum-breakdown"
+                >
+                  <p>
+                    合成玉 {{ format(state.result.summary.orundum) }}；源石碎片产出
+                    {{ format(state.result.summary.fragments) }}、交付消耗
+                    {{ format(state.result.summary.sanity.orundumChain.fragmentConsumed) }}、净结余
+                    {{ format(state.result.summary.sanity.orundumChain.fragmentNet) }}。
+                    制造消耗：龙门币 {{ format(state.result.summary.lmdConsumed) }}，固源岩
+                    {{ format(state.result.summary.orirockConsumed) }}，装置
+                    {{ format(state.result.summary.deviceConsumed) }}。
+                  </p>
+                  <n-table size="small" :single-line="false">
+                    <thead>
+                      <tr>
+                        <th>环节</th>
+                        <th>净理智收益</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>制造碎片（扣除耗材）</td>
+                        <td>
+                          {{
+                            state.result.summary.sanity.orundumChain.manufacturing === null
+                              ? '未完整估值'
+                              : format(state.result.summary.sanity.orundumChain.manufacturing)
+                          }}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>卖出碎片（扣除碎片价值）</td>
+                        <td>
+                          {{
+                            state.result.summary.sanity.orundumChain.trading === null
+                              ? '未完整估值'
+                              : format(state.result.summary.sanity.orundumChain.trading)
+                          }}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>
+                          搓玉合计{{
+                            state.result.summary.sanity.orundumChain.partial ? '（部分）' : ''
+                          }}
+                        </td>
+                        <td>{{ format(state.result.summary.sanity.orundumChain.total) }}</td>
+                      </tr>
+                    </tbody>
+                  </n-table>
+                  <p>
+                    以上金额已包含在总收益中，不另行累加。负数表示按本次材料价格计算的净价值减少；碎片净结余包含在合计中，非零结余会受碎片单价影响。
+                  </p>
                 </n-collapse-item></n-collapse
               >
             </template>

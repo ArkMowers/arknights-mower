@@ -45,6 +45,89 @@ const simulation = () => ({
     expected: { costs: { gold: 8, fragment: 4 } }
   }
 })
+const sharedPrices = {
+  lmd_sanity: 0.0036,
+  prices: { 赤金: 1.377792, 合成玉: 0.9225, 固源岩: 3.35648, 装置: 8.142283 }
+}
+it('derives a shared shard price from ordinary gold sales and preserves explicit overrides', () => {
+  const automatic = createIncomeSanityValuation(sharedPrices)
+  expect(automatic.unitValues.fragment).toBeCloseTo(7.061184)
+  expect(automatic.fragmentValueSource).toBe('gold_ratio')
+  for (const fragment of [0, 5]) {
+    const manual = createIncomeSanityValuation({
+      ...sharedPrices,
+      income_unit_values: { fragment }
+    })
+    expect(manual.unitValues.fragment).toBe(fragment)
+    expect(manual.fragmentValueSource).toBe('manual')
+  }
+  const changed = createIncomeSanityValuation({
+    ...sharedPrices,
+    prices: { ...sharedPrices.prices, 合成玉: 1.845 },
+    income_unit_values: { fragment: null }
+  })
+  expect(changed.unitValues.fragment).toBeCloseTo(14.122368)
+  expect(automatic.unitValues.fragment).toBeCloseTo(7.061184)
+})
+it.each([
+  { prices: { 合成玉: 0.9225 }, lmd_sanity: 0.0036 },
+  { prices: { 赤金: 1.377792 }, lmd_sanity: 0.0036 },
+  { ...sharedPrices, lmd_sanity: 0 },
+  { ...sharedPrices, lmd_sanity: null }
+])('keeps automatic shard value unknown when its anchors are unavailable: %j', (input) => {
+  expect(createIncomeSanityValuation(input).unitValues.fragment).toBeNull()
+  expect(
+    createIncomeSanityValuation({ ...input, income_unit_values: { fragment: 0 } }).unitValues
+      .fragment
+  ).toBe(0)
+})
+it('splits Orundum manufacturing and sales while preserving negative total and stock valuation', () => {
+  const input = Object.fromEntries(Object.keys(summary()).map((key) => [key, 0]))
+  Object.assign(input, { fragments: 2, orundum: 20, orirockConsumed: 4, lmdConsumed: 3200 })
+  const sim = simulation()
+  sim.production.expected.costs.gold = 0
+  const automatic = createIncomeSanityValuation(sharedPrices)
+  const result = calculateIncomeSanity(input, automatic, sim)
+  expect(result.orundumChain.fragmentNet).toBe(0)
+  expect(result.orundumChain.fragmentConsumed).toBe(2)
+  expect(result.orundumChain.manufacturing).toBeCloseTo(-10.823552)
+  expect(result.orundumChain.trading).toBeCloseTo(4.327632)
+  expect(result.orundumChain.total).toBeCloseTo(-6.49592)
+  expect(result.total).toBeCloseTo(-6.49592)
+  expect(result.orundumChain.partial).toBe(false)
+  const changed = createIncomeSanityValuation({
+    ...sharedPrices,
+    income_unit_values: { fragment: 5 }
+  })
+  expect(calculateIncomeSanity(input, changed, sim).total).toBeCloseTo(result.total)
+  input.fragments = 3
+  const stock = calculateIncomeSanity(input, automatic, sim)
+  expect(stock.orundumChain.fragmentNet).toBe(1)
+  expect(stock.orundumChain.total).toBeCloseTo(0.565264)
+  input.orderLmd = 5000
+  expect(calculateIncomeSanity(input, automatic, sim).orundumChain.total).toBeCloseTo(
+    stock.orundumChain.total
+  )
+})
+it('distinguishes unknown stage values from a fully priced balanced chain', () => {
+  const input = Object.fromEntries(Object.keys(summary()).map((key) => [key, 0]))
+  const sim = simulation()
+  sim.production.expected.costs = { fragment: 4 }
+  Object.assign(input, { fragments: 2, orundum: 20, deviceConsumed: 2, lmdConsumed: 2000 })
+  const values = createIncomeSanityValuation(sharedPrices)
+  values.unitValues.fragment = null
+  const balanced = calculateIncomeSanity(input, values, sim)
+  expect(balanced.orundumChain).toMatchObject({
+    manufacturing: null,
+    trading: null,
+    partial: false
+  })
+  expect(balanced.orundumChain.total).toBeCloseTo(-5.034566)
+  input.fragments = 3
+  expect(calculateIncomeSanity(input, values, sim).orundumChain.partial).toBe(true)
+  values.unitValues.device = null
+  expect(calculateIncomeSanity(input, values, sim).partial).toBe(true)
+})
 it('prices physical net production without counting order premiums as gold again', () => {
   const result = calculateIncomeSanity(summary(), valuation(), simulation())
   // 4 EXP + 12 net gold + 10.8 net LMD + 10 fragments + 7.5 jade - 6 rocks - 8 devices + 5 recycle + refresh + 6 clues.

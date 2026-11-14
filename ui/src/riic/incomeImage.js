@@ -107,6 +107,17 @@ export function incomeReportLines(result, settings, plan, label) {
           `理智单价：${Object.entries(settings.sanityValuation.unitValues)
             .map(([key, value]) => `${key}=${value === null ? '未估值' : value}`)
             .join('；')}。`,
+          ...(settings.sanityValuation.fragmentValueSource
+            ? [
+                `源石碎片单价 ${settings.sanityValuation.unitValues.fragment ?? '未估值'} 理智/个，来源：${settings.sanityValuation.fragmentValueSource === 'manual' ? '手动覆盖' : '10 × 合成玉单价 × 赤金单价 ÷（500 × 龙门币单价）'}。自动估值沿用普通赤金兑换的价值比例，不代表相同工时；负净收益保留，比较排班须使用相同估值和演算条件。`
+              ]
+            : []),
+          ...(result.summary.sanity?.orundumChain
+            ? [
+                `搓玉日均：合成玉 ${number(result.summary.orundum)}；碎片产出 ${number(result.summary.fragments)}、交付消耗 ${number(result.summary.sanity.orundumChain.fragmentConsumed)}、净结余 ${number(result.summary.sanity.orundumChain.fragmentNet)}；消耗龙门币 ${number(result.summary.lmdConsumed)}、固源岩 ${number(result.summary.orirockConsumed)}、装置 ${number(result.summary.deviceConsumed)}。`,
+                `搓玉净理智收益：制造 ${result.summary.sanity.orundumChain.manufacturing === null ? '未完整估值' : number(result.summary.sanity.orundumChain.manufacturing)}，贸易 ${result.summary.sanity.orundumChain.trading === null ? '未完整估值' : number(result.summary.sanity.orundumChain.trading)}，合计${result.summary.sanity.orundumChain.partial ? '（部分）' : ''} ${number(result.summary.sanity.orundumChain.total)}。已包含在总收益中，不另行累加；碎片净结余包含在合计中。`
+              ]
+            : []),
           ...(settings.sanityValuation.certificateModel
             ? [
                 `公招凭证估值：潜能预设 ${settings.sanityValuation.certificateModel.potentialPreset}，黄票兑换预设 ${settings.sanityValuation.certificateModel.yellowPreset}；每次刷新相对三星新增 ${settings.sanityValuation.certificateModel.refreshYellow ?? '未估值'} 黄票、${settings.sanityValuation.certificateModel.refreshGreen ?? '未估值'} 绿票。黄票 ${settings.sanityValuation.certificateModel.yellow ?? '未估值'} 理智/张，绿票 ${settings.sanityValuation.certificateModel.green ?? '未估值'} 理智/张。`,
