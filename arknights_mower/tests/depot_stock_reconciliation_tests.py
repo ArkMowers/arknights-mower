@@ -47,6 +47,7 @@ def view_counts(categories):
         ("应急理智小样", 999999),
         ("高级资深干员特训装置", 40000),
         ("应急救援包", 999999),
+        ("技术调查补给", 8987),
     ],
 )
 def test_orphaned_rows_do_not_reappear_in_current_export_or_history(stock, name, count):
@@ -178,3 +179,26 @@ def test_active_battle_defers_removal_of_orphaned_rows(stock, monkeypatch):
     active.clear()
     depot.读取仓库()
     assert "应急理智小样" not in record.get_inventory_counts()
+
+
+@pytest.mark.parametrize("name,old_count", [("应急理智小样", 3), ("罗德岛迎春红包", 1)])
+def test_invalidated_quantity_stays_unknown_until_a_new_explicit_observation(
+    stock, name, old_count
+):
+    scans(stock, [(100, {name: old_count}), (200, {"至纯源石": 12})])
+    depot.读取仓库()
+    with patch.object(record, "datetime") as clock:
+        clock.now.return_value.timestamp.return_value = 150
+        record.invalidate_workshop_inventory([name])
+
+    for _ in range(2):
+        categories, exported, _ = depot.读取仓库()
+        assert name not in view_counts(categories)
+        assert name not in record.get_inventory_counts()
+        assert key_mapping[name][0] not in json.loads(exported)
+
+    scans(stock, [(100, {name: old_count}), (300, {name: 0})])
+    categories, exported, _ = depot.读取仓库()
+    assert view_counts(categories)[name] == 0
+    assert record.get_inventory_counts()[name] == 0
+    assert json.loads(exported)[key_mapping[name][0]] == 0
