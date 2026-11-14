@@ -23,7 +23,7 @@ const unitValues = reactive({
   credit_daily_limit: null
 })
 const unitFields = [
-  { key: 'fragment', label: '源石碎片（理智/个）', placeholder: '留空按赤金与订单的价值比例估值' },
+  { key: 'fragment', label: '源石碎片（理智/个）', placeholder: '留空按经验基础制造工时估值' },
   { key: 'recycle', label: '回收站产出（理智/次）', placeholder: '留空时按材料概率表估值' },
   {
     key: 'recruitment_certificates',
@@ -200,8 +200,8 @@ const display = (value) =>
       </label>
     </div>
     <p>
-      源石碎片自动单价 = 10 × 合成玉单价 × 赤金单价 ÷（500 ×
-      龙门币单价）。按普通赤金兑换的价值比例分配制造与贸易收益，不包含特殊订单溢价，也不表示两条生产链耗时相同。可手填非负单价覆盖，清空恢复自动估值。当前碎片单价：{{
+      源石碎片自动单价 = 中级作战记录单价 × 60 ÷ 180。按碎片 60 分钟、中级作战记录 180
+      分钟的基础制造工时折算，两种碎片配方使用同一单价，不含材料成本；龙门币、固源岩和装置按实际消耗另行扣除。可手填非负单价覆盖，清空恢复自动估值。当前碎片单价：{{
         display(prices.fragment)
       }}
       理智/个。

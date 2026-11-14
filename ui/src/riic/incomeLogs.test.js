@@ -112,7 +112,7 @@ it('exports saved shard pricing and signed Orundum stages without recalculating 
     finiteInventory: false,
     inventorySource: 'manual',
     sanityValuation: createIncomeSanityValuation({
-      prices: { 赤金: 1.377792, 合成玉: 0.9225 },
+      prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225 },
       lmd_sanity: 0.0036
     })
   }
@@ -129,8 +129,8 @@ it('exports saved shard pricing and signed Orundum stages without recalculating 
         orundumChain: {
           fragmentConsumed: 2,
           fragmentNet: 0,
-          manufacturing: -10.823552,
-          trading: 4.327632,
+          manufacturing: -22.6496,
+          trading: 16.15368,
           total: -6.49592,
           partial: false
         }
@@ -139,8 +139,11 @@ it('exports saved shard pricing and signed Orundum stages without recalculating 
   }
   const plan = { default: 'plan1', plan1: {}, conf: {}, backup_plans: [] }
   const lines = () => incomeReportLines(result, settings, plan, '排班').join('\n')
+  expect(lines()).toContain('来源：中级作战记录单价 × 60 ÷ 180')
+  settings.sanityValuation.fragmentValueSource = 'gold_ratio'
   expect(lines()).toContain('来源：10 × 合成玉单价')
-  expect(lines()).toContain('制造 -10.82，贸易 4.33，合计 -6.5')
+  expect(lines()).toContain('历史兑换比例')
+  expect(lines()).toContain('制造 -22.65，贸易 16.15，合计 -6.5')
   expect(lines()).toContain('交付消耗 2、净结余 0')
   settings.sanityValuation.fragmentValueSource = 'manual'
   settings.sanityValuation.unitValues.fragment = 0

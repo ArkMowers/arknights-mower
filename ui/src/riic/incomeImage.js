@@ -96,7 +96,9 @@ export function incomeReportLines(result, settings, plan, label) {
     settings.masteryPlanPresent === undefined
       ? '本次演算固定为无未完成训练计划且未在训练，不模拟训练进度或计划完成时刻。'
       : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
-    '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
+    settings.weightMode === 'sanity'
+      ? '图中赤金显示制造数量及其价值，龙门币显示订单金额及扣除赤金后的价值；源石碎片显示产出减交付消耗的净增，合成玉显示产出价值，制造耗材单列负值。所有理智明细计入总收益一次；显示到两位小数的尾差按舍入误差分摊，合计与总收益一致。'
+      : '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
     '制造配方默认已解锁，当前制造站等级不限制配方；各站容量及材料库存仍按本次配置计算。',
     continuous
       ? '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期有效工作量分摊，保留小数，排除预热部分。'
@@ -109,7 +111,7 @@ export function incomeReportLines(result, settings, plan, label) {
             .join('；')}。`,
           ...(settings.sanityValuation.fragmentValueSource
             ? [
-                `源石碎片单价 ${settings.sanityValuation.unitValues.fragment ?? '未估值'} 理智/个，来源：${settings.sanityValuation.fragmentValueSource === 'manual' ? '手动覆盖' : '10 × 合成玉单价 × 赤金单价 ÷（500 × 龙门币单价）'}。自动估值沿用普通赤金兑换的价值比例，不代表相同工时；负净收益保留，比较排班须使用相同估值和演算条件。`
+                `源石碎片单价 ${settings.sanityValuation.unitValues.fragment ?? '未估值'} 理智/个，来源：${settings.sanityValuation.fragmentValueSource === 'manual' ? '手动覆盖' : settings.sanityValuation.fragmentValueSource === 'exp_manufacturing_time' ? '中级作战记录单价 × 60 ÷ 180（基础制造工时，不含耗材）' : settings.sanityValuation.fragmentValueSource === 'gold_ratio' ? '10 × 合成玉单价 × 赤金单价 ÷（500 × 龙门币单价）（历史兑换比例）' : '已保存估值'}。两种配方的耗材按实际消耗另行扣除；负净收益保留，比较排班须使用相同估值和演算条件。`
               ]
             : []),
           ...(result.summary.sanity?.orundumChain
@@ -208,30 +210,6 @@ export async function renderIncomeImage(
   const sourceUrl = URL.createObjectURL(planImage)
   try {
     const metrics = incomeImageMetrics(result.summary, result.observedHours / 24)
-    const parts = result.summary.sanity?.parts
-    const facilityValues = parts
-      ? [
-          { label: '回收站', keys: ['recycle'] },
-          { label: '会客室', keys: ['clue', 'exchange'] },
-          { label: '办公室', keys: ['recruitment'] }
-        ].map(({ label, keys }) => {
-          const values = keys.map((key) => {
-            const part = parts.find((item) => item.key === key)
-            return part?.quantity === 0 ? 0 : part?.value
-          })
-          return {
-            label,
-            value: values.every(Number.isFinite)
-              ? values.reduce((sum, value) => sum + value, 0)
-              : null
-          }
-        })
-      : []
-    const facilityTop = metrics.some(({ key }) =>
-      ['fragment', 'lmdCost', 'orirockCost', 'deviceCost'].includes(key)
-    )
-      ? 110
-      : 86
     const [source, drone, ...icons] = await Promise.all([
       loadImage(sourceUrl),
       loadImage('/product/drone.svg'),
@@ -259,11 +237,7 @@ export async function renderIncomeImage(
     const orders = result.orderDistribution ?? incomeOrderDistribution(result.simulationReport)
     const annotationTop = Math.max(73 + weightLines.length * 14, orders?.other ? 100 : 87)
     const headerHeight = Math.ceil(
-      Math.max(
-        100,
-        annotationTop + annotationLines.length * 16 + 3,
-        facilityValues.length ? facilityTop + 42 : 0
-      ) * scale
+      Math.max(100, annotationTop + annotationLines.length * 16 + 3) * scale
     )
     const dark = theme === 'dark'
     const planTop = headerHeight - imageTopWhitespace(source, scale, dark)
@@ -339,6 +313,14 @@ export async function renderIncomeImage(
     ctx.textAlign = 'left'
 
     write('日均产出', 570, 24, 12, muted)
+    let badgeFontSize = result.summary.sanity?.parts ? 11 : 14
+    if (result.summary.sanity?.parts) {
+      ctx.font = `${badgeFontSize * scale}px sans-serif`
+      const widest = Math.max(
+        ...metrics.map((metric) => ctx.measureText(incomeImageMetricText(metric)).width / scale)
+      )
+      if (widest > 89) badgeFontSize *= 89 / widest
+    }
     const colors = {
       exp: ['#f7d833', '#172338'],
       lmd: ['#087ead', '#ffffff'],
@@ -417,36 +399,10 @@ export async function renderIncomeImage(
         } else {
           ctx.drawImage(metric.image, x * scale, y * scale, 24 * scale, 24 * scale)
         }
-        const negative = metric.daily < 0
-        const value = `${compactIncomeNumber(Math.abs(metric.daily))}${metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''}`
-        ctx.font = `${14 * scale}px sans-serif`
+        ctx.font = `${badgeFontSize * scale}px sans-serif`
         ctx.fillStyle = color
-        const baseline = (y + 17) * scale
-        let valueX = (x + 30) * scale
-        if (negative) {
-          const digits = ctx.measureText('0')
-          const center =
-            baseline - (digits.actualBoundingBoxAscent - digits.actualBoundingBoxDescent) / 2
-          ctx.fillRect(valueX, center - 0.5 * scale, 6 * scale, scale)
-          valueX += 8 * scale
-        }
-        ctx.fillText(value, valueX, baseline, (negative ? 81 : 89) * scale)
+        ctx.fillText(incomeImageMetricText(metric), (x + 30) * scale, (y + 17) * scale, 89 * scale)
       })
-    if (facilityValues.length) {
-      write('附加收益 · 理智/天', 570, facilityTop, 10, muted)
-      facilityValues.forEach(({ label, value }, index) => {
-        const x = 570 + index * 130
-        write(label, x, facilityTop + 16, 10, muted)
-        ctx.font = `bold ${14 * scale}px sans-serif`
-        ctx.fillStyle = foreground
-        ctx.fillText(
-          value === null ? '未估值' : number(value),
-          x * scale,
-          (facilityTop + 35) * scale,
-          120 * scale
-        )
-      })
-    }
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
     })
@@ -499,6 +455,12 @@ export function incomeImageAlgorithmLines(settings) {
     `经验 ${weights.exp} · 赤金 ${weights.gold} · 订单 ${weights.orders}`,
     `源石碎片 ${weights.fragments} · 合成玉 ${weights.orundum}`
   ]
+}
+export function incomeImageMetricText(metric) {
+  const unit = metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''
+  const quantity = `${metric.prefix ?? ''}${compactIncomeNumber(metric.daily)}${unit}`
+  if (!Object.hasOwn(metric, 'sanityValue')) return quantity
+  return `${quantity} / ${metric.sanityValue === null ? '未估值' : `${number(metric.sanityDisplayValue ?? metric.sanityValue)}理智${metric.sanityPartial ? '（部分）' : ''}`}`
 }
 export function compactIncomeNumber(value) {
   const magnitude = Math.abs(value)

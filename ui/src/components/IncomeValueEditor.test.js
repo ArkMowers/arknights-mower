@@ -94,7 +94,7 @@ it('saves independent presets and clears only their manual overrides', async () 
 
 it('previews automatic shard prices and restores them when the saved override is cleared', async () => {
   props.valuation = {
-    prices: { 赤金: 1.377792, 合成玉: 0.9225 },
+    prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225 },
     lmd_sanity: 0.0036,
     income_unit_values: { fragment: 5 }
   }
@@ -103,11 +103,11 @@ it('previews automatic shard prices and restores them when the saved override is
   page.unitValues.fragment = 0
   expect(page.prices.value.fragment).toBe(0)
   page.unitValues.fragment = null
-  expect(page.prices.value.fragment).toBeCloseTo(7.061184)
+  expect(page.prices.value.fragment).toBeCloseTo(1.14816)
   io.client.put.mockResolvedValueOnce({ data: props.valuation })
   await page.saveValues('units')
   expect(io.client.put.mock.calls[0][1].income_unit_values.fragment).toBeNull()
-  props.valuation = { ...props.valuation, income_unit_values: {}, prices: { 赤金: 1.377792 } }
+  props.valuation = { ...props.valuation, income_unit_values: {}, prices: {} }
   await nextTick()
   expect(page.prices.value.fragment).toBeNull()
 })

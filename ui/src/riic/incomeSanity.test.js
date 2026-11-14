@@ -47,12 +47,12 @@ const simulation = () => ({
 })
 const sharedPrices = {
   lmd_sanity: 0.0036,
-  prices: { 赤金: 1.377792, 合成玉: 0.9225, 固源岩: 3.35648, 装置: 8.142283 }
+  prices: { 中级作战记录: 3.44448, 赤金: 1.377792, 合成玉: 0.9225, 固源岩: 3.35648, 装置: 8.142283 }
 }
-it('derives a shared shard price from ordinary gold sales and preserves explicit overrides', () => {
+it('derives a shared shard price from basic EXP manufacturing time and preserves explicit overrides', () => {
   const automatic = createIncomeSanityValuation(sharedPrices)
-  expect(automatic.unitValues.fragment).toBeCloseTo(7.061184)
-  expect(automatic.fragmentValueSource).toBe('gold_ratio')
+  expect(automatic.unitValues.fragment).toBeCloseTo(1.14816)
+  expect(automatic.fragmentValueSource).toBe('exp_manufacturing_time')
   for (const fragment of [0, 5]) {
     const manual = createIncomeSanityValuation({
       ...sharedPrices,
@@ -63,23 +63,32 @@ it('derives a shared shard price from ordinary gold sales and preserves explicit
   }
   const changed = createIncomeSanityValuation({
     ...sharedPrices,
-    prices: { ...sharedPrices.prices, 合成玉: 1.845 },
+    prices: { ...sharedPrices.prices, 中级作战记录: 6.88896 },
     income_unit_values: { fragment: null }
   })
-  expect(changed.unitValues.fragment).toBeCloseTo(14.122368)
-  expect(automatic.unitValues.fragment).toBeCloseTo(7.061184)
+  expect(changed.unitValues.fragment).toBeCloseTo(2.29632)
+  expect(automatic.unitValues.fragment).toBeCloseTo(1.14816)
 })
 it.each([
   { prices: { 合成玉: 0.9225 }, lmd_sanity: 0.0036 },
-  { prices: { 赤金: 1.377792 }, lmd_sanity: 0.0036 },
-  { ...sharedPrices, lmd_sanity: 0 },
-  { ...sharedPrices, lmd_sanity: null }
+  { prices: { 中级作战记录: null } },
+  { prices: { 中级作战记录: -1 } }
 ])('keeps automatic shard value unknown when its anchors are unavailable: %j', (input) => {
   expect(createIncomeSanityValuation(input).unitValues.fragment).toBeNull()
   expect(
     createIncomeSanityValuation({ ...input, income_unit_values: { fragment: 0 } }).unitValues
       .fragment
   ).toBe(0)
+})
+it('does not use recipe costs, gold, Orundum or LMD prices to value shard manufacturing', () => {
+  for (const record of [0, 3.44448]) {
+    for (const lmd of [0, null]) {
+      const input = { prices: { 中级作战记录: record }, lmd_sanity: lmd }
+      expect(createIncomeSanityValuation(input).unitValues.fragment).toBeCloseTo(
+        (record * 60) / 180
+      )
+    }
+  }
 })
 it('splits Orundum manufacturing and sales while preserving negative total and stock valuation', () => {
   const input = Object.fromEntries(Object.keys(summary()).map((key) => [key, 0]))
@@ -90,8 +99,8 @@ it('splits Orundum manufacturing and sales while preserving negative total and s
   const result = calculateIncomeSanity(input, automatic, sim)
   expect(result.orundumChain.fragmentNet).toBe(0)
   expect(result.orundumChain.fragmentConsumed).toBe(2)
-  expect(result.orundumChain.manufacturing).toBeCloseTo(-10.823552)
-  expect(result.orundumChain.trading).toBeCloseTo(4.327632)
+  expect(result.orundumChain.manufacturing).toBeCloseTo(-22.6496)
+  expect(result.orundumChain.trading).toBeCloseTo(16.15368)
   expect(result.orundumChain.total).toBeCloseTo(-6.49592)
   expect(result.total).toBeCloseTo(-6.49592)
   expect(result.orundumChain.partial).toBe(false)
@@ -103,7 +112,7 @@ it('splits Orundum manufacturing and sales while preserving negative total and s
   input.fragments = 3
   const stock = calculateIncomeSanity(input, automatic, sim)
   expect(stock.orundumChain.fragmentNet).toBe(1)
-  expect(stock.orundumChain.total).toBeCloseTo(0.565264)
+  expect(stock.orundumChain.total).toBeCloseTo(-5.34776)
   input.orderLmd = 5000
   expect(calculateIncomeSanity(input, automatic, sim).orundumChain.total).toBeCloseTo(
     stock.orundumChain.total
