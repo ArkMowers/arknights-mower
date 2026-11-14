@@ -539,12 +539,31 @@ class InstanceController(ManagerTools):
         )
         return effective, independent, policy
 
-    def add(self, name, path, targets=None):
-        if not isinstance(name, str) or not name.strip() or not isinstance(path, str):
+    def add(self, name, path=None, targets=None):
+        if (
+            not isinstance(name, str)
+            or not name.strip()
+            or (path is not None and not isinstance(path, str))
+        ):
             raise ValueError("实例名称不能为空，保存目录必须是文本")
         with self._operation():
             self._check_targets(targets)
+            if path is None:
+                path = self._default_instance_path()
             self._save([*self.instances, {"name": name, "path": path}])
+
+    def _default_instance_path(self):
+        root = self._storage_path.parent.resolve() / "instances"
+        reserved = {
+            instance_key(item["path"]) for item in self.instances if item["path"]
+        }
+        for number in range(1, 10001):
+            candidate = root / f"instance-{number}"
+            if instance_key(str(candidate)) not in reserved and not os.path.lexists(
+                candidate
+            ):
+                return str(candidate)
+        raise ValueError("没有可用的默认实例目录，请手动指定保存目录")
 
     def _check_targets(self, targets):
         if targets is not None and targets != [
@@ -1226,12 +1245,9 @@ class InstanceController(ManagerTools):
                     raise
                 threading.Thread(target=process.wait, daemon=True).start()
             return {"ok": True}
-        except (
-            OSError,
-            ValueError,
-            yaml.YAMLError,
-            runtime.InstanceScanError,
-        ) as error:
+        except runtime.InstanceScanError as error:
+            return {"ok": False, "code": "instance_scan_failed", "message": str(error)}
+        except (OSError, ValueError, yaml.YAMLError) as error:
             return {"ok": False, "message": str(error)}
 
     def stop(self, idx, target=None):
@@ -1244,7 +1260,9 @@ class InstanceController(ManagerTools):
                 for record in matches:
                     runtime.send_instance_command(record, "exit")
             return {"ok": True}
-        except (OSError, ValueError, runtime.InstanceScanError) as error:
+        except runtime.InstanceScanError as error:
+            return {"ok": False, "code": "instance_scan_failed", "message": str(error)}
+        except (OSError, ValueError) as error:
             return {"ok": False, "message": str(error)}
 
     def open_browser(self, idx, target):
@@ -1435,7 +1453,7 @@ class InstanceController(ManagerTools):
             for target in targets:
                 idx = target["idx"]
                 item = {"idx": idx, "name": target["name"]}
-                if scan_error:
+                if scan_error is not None:
                     results.append({**item, "status": "failed", "message": scan_error})
                     continue
                 if monotonic() >= deadline:
@@ -1479,6 +1497,8 @@ class InstanceController(ManagerTools):
                 result = getattr(self, action)(
                     idx, {"name": target["name"], "path": target["path"]}
                 )
+                if result.get("code") == "instance_scan_failed":
+                    scan_error = result["message"]
                 results.append(
                     {
                         **item,

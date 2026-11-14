@@ -154,7 +154,12 @@ function nested(flat) {
   return result
 }
 const api = {
-  add: async (name, path) => {
+  add: async (name, path = null) => {
+    if (path === null) {
+      let number = 1
+      while (rows.some((row) => row.path === `/Mower/instances/instance-${number}`)) number++
+      path = `/Mower/instances/instance-${number}`
+    }
     const idx = rows.length
     rows.push({
       name,

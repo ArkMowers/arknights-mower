@@ -167,7 +167,7 @@ describe('manager instance controls', () => {
     await component.initialize()
     expect(component.unavailable.value).toBe(false)
     await component.addInstance()
-    expect(api.add).toHaveBeenCalledWith('新实例', '')
+    expect(api.add).toHaveBeenCalledWith('新实例', null)
     expect(hooks.axios.get).not.toHaveBeenCalled()
     expect(hooks.axios.post).not.toHaveBeenCalled()
   })

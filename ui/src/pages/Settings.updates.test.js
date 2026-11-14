@@ -43,6 +43,9 @@ vi.mock('@/components/MaaUpdates.vue', () => ({
   default: { setup: () => () => 'MAA 本体与资源更新' }
 }))
 vi.mock('@/components/NetworkSettings.vue', () => ({ default: { setup: () => () => '网络设置' } }))
+vi.mock('@/components/WebAccessSettings.vue', () => ({
+  default: { setup: () => () => '访问端口与 Token' }
+}))
 vi.mock('@/components/ConfigBackup.vue', () => ({ default: { setup: () => () => '' } }))
 vi.mock('@/components/ConfigProfilesSettings.vue', () => ({ default: { setup: () => () => '' } }))
 vi.mock('@/components/SoftwareVersionPreference.vue', () => ({
@@ -93,6 +96,18 @@ async function render() {
 }
 
 describe('network and update settings', () => {
+  it.each([
+    [false, 'darwin', true],
+    [true, 'darwin', false],
+    [false, 'android', false]
+  ])(
+    'shows access settings only on independent desktop instances (%s, %s)',
+    async (managed, platform, visible) => {
+      state.config.manager_owned_device = managed
+      state.config.runtime_platform = platform
+      expect((await render()).includes('访问端口与 Token')).toBe(visible)
+    }
+  )
   it('places MAA updates immediately after Mower resources in an authorized managed instance', async () => {
     const html = await render()
     const section = html.split('id="mower-updates"')[1].split('</section>')[0]

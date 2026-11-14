@@ -759,7 +759,7 @@ async function applyDelete() {
 }
 
 function addInstance() {
-  return execute(() => api().add('新实例', ''))
+  return execute(() => api().add('新实例', null))
 }
 </script>
 
@@ -1256,7 +1256,7 @@ function addInstance() {
                   <col class="batch-token-col" />
                   <col class="batch-port-col" />
                   <col class="batch-ai-col" />
-                  <col class="batch-updates-col" />
+                  <col class="batch-autostart-col" />
                   <col class="batch-updates-col" />
                 </colgroup>
                 <thead>
@@ -1800,7 +1800,7 @@ function addInstance() {
 }
 .batch-table {
   width: 100%;
-  min-width: 960px;
+  min-width: 1020px;
   table-layout: fixed;
   border-spacing: 0;
   font-size: 13px;
@@ -1814,11 +1814,12 @@ function addInstance() {
 .batch-port-col {
   width: 180px;
 }
-.batch-ai-col {
-  width: 140px;
+.batch-ai-col,
+.batch-autostart-col {
+  width: 160px;
 }
 .batch-updates-col {
-  width: 120px;
+  width: 140px;
 }
 .batch-table th,
 .batch-table td {
@@ -1837,6 +1838,10 @@ function addInstance() {
   z-index: 2;
   background: var(--mower-surface);
   font-weight: 500;
+  white-space: nowrap;
+}
+.batch-table thead :deep(.n-checkbox__label) {
+  white-space: nowrap;
 }
 .batch-table th:first-child {
   position: sticky;

@@ -678,3 +678,80 @@ describe('各组心情阈值保存', () => {
     }
   )
 })
+
+describe('standalone web access settings', () => {
+  async function setup() {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    const loaded = ref(false)
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    store.webview = { port: 58000, token: '', scale: 1, tray: true }
+    store.runtime_platform = 'darwin'
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+  }
+
+  it('saves only confirmed access fields and preserves concurrent window edits', async () => {
+    await setup()
+    let complete
+    axios.patch.mockImplementationOnce(() => new Promise((resolve) => (complete = resolve)))
+    const saving = store.save_web_access({ port: 58010, token: 'synthetic-fixed-token' })
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(store.webview.token).toBe('')
+    expect(axios.patch.mock.calls[0][1]).toEqual({
+      webview: { port: 58010, token: 'synthetic-fixed-token' }
+    })
+    store.webview.scale = 1.25
+    await nextTick()
+    complete({ data: {} })
+    await saving
+    await nextTick()
+    await store.flush_config_saves()
+    expect(store.webview).toEqual({
+      port: 58010,
+      token: 'synthetic-fixed-token',
+      scale: 1.25,
+      tray: true
+    })
+    expect(axios.patch.mock.calls[1][1]).toEqual({ webview: { scale: 1.25 } })
+    expect(axios.patch).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not apply or silently retry a failed access draft during later autosaves', async () => {
+    await setup()
+    axios.patch.mockRejectedValueOnce(new Error('offline'))
+    await expect(store.save_web_access({ port: 58010, token: 'synthetic-token' })).rejects.toThrow(
+      'offline'
+    )
+    expect(store.webview).toMatchObject({ port: 58000, token: '' })
+    store.webview.scale = 1.5
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.calls[1][1]).toEqual({ webview: { scale: 1.5 } })
+    await store.save_web_access({ port: 58010, token: 'synthetic-token' })
+    await store.save_web_access({ port: 0, token: '' })
+    expect(store.webview).toMatchObject({ port: 0, token: '' })
+  })
+
+  it.each([-1, 65536, 1.5, null])('rejects invalid port %s without a request', async (port) => {
+    await setup()
+    await expect(store.save_web_access({ port, token: '' })).rejects.toThrow('端口')
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it.each(['managed', 'android'])('does not submit desktop access edits for %s', async (mode) => {
+    await setup()
+    if (mode === 'managed') store.manager_owned_device = true
+    else store.runtime_platform = 'android'
+    await expect(store.save_web_access({ port: 58010, token: 'synthetic' })).rejects.toThrow(
+      '管理器'
+    )
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+})

@@ -1302,7 +1302,11 @@ def test_unreadable_registration_blocks_start_and_edit_without_overwrite(
         runtime, "instances", Mock(side_effect=runtime.InstanceScanError("unreadable"))
     )
     before = manager._storage_path.read_bytes()
-    assert manager.start(0) == {"ok": False, "message": "unreadable"}
+    assert manager.start(0) == {
+        "ok": False,
+        "code": "instance_scan_failed",
+        "message": "unreadable",
+    }
     with pytest.raises(runtime.InstanceScanError):
         manager.remove(0)
     controls.subprocess.Popen.assert_not_called()
@@ -1707,3 +1711,87 @@ def test_selected_lifecycle_rechecks_budget_after_registration_scan(
     result = manager.control_instances("start", selected_targets(manager, [0]))
     assert result["results"][0]["status"] == "skipped"
     start.assert_not_called()
+
+
+def test_add_default_path_uses_manager_data_directory_and_reloads_reservations(manager):
+    other = Api(manager._storage_path)
+    manager.add("new")
+    other.add("another", None)
+    root = manager._storage_path.parent.resolve() / "instances"
+    saved = Api(manager._storage_path).instances
+    assert saved[-2:] == [
+        {"name": "new", "path": str(root / "instance-1")},
+        {"name": "another", "path": str(root / "instance-2")},
+    ]
+    assert not root.exists()
+    controls.subprocess.Popen.assert_not_called()
+
+
+def test_add_default_path_skips_existing_entries_and_registered_aliases(manager):
+    root = manager._storage_path.parent.resolve() / "instances"
+    root.mkdir()
+    (root / "instance-1").write_text("keep file")
+    (root / "instance-2").mkdir()
+    (root / "instance-2/conf.yml").write_text("keep configuration")
+    (root / "instance-3").symlink_to(root / "missing")
+    manager.add("reserved", str(root / "alias/../instance-4"))
+    manager.add("new", None)
+    assert manager.instances[-1]["path"] == str(root / "instance-5")
+    assert (root / "instance-1").read_text() == "keep file"
+    assert (root / "instance-2/conf.yml").read_text() == "keep configuration"
+    assert (root / "instance-3").is_symlink()
+    assert not (root / "instance-5").exists()
+
+
+def test_add_default_path_rejects_stale_list_without_persisting(manager):
+    targets = [dict(item) for item in manager.instances]
+    manager.add("changed", "")
+    before = manager._storage_path.read_bytes()
+    with pytest.raises(controls.InstanceTargetChangedError):
+        manager.add("new", None, targets)
+    assert manager._storage_path.read_bytes() == before
+    assert not (manager._storage_path.parent / "instances").exists()
+
+
+def test_add_keeps_explicit_and_legacy_empty_paths(manager):
+    explicit = str(manager._storage_path.parent / "custom")
+    manager.add("custom", explicit)
+    manager.add("legacy", "")
+    assert Api(manager._storage_path).instances[-2:] == [
+        {"name": "custom", "path": explicit},
+        {"name": "legacy", "path": ""},
+    ]
+    assert not (manager._storage_path.parent / "instances").exists()
+
+
+@pytest.mark.parametrize("action", ["start", "stop"])
+def test_selected_lifecycle_stops_after_scan_failure_inside_real_action(
+    manager, monkeypatch, action
+):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    records = []
+    if action == "stop":
+        records = [record(manager)]
+        records.append(
+            {**records[0], "id": "second", "space": manager.instances[1]["path"]}
+        )
+    scan = Mock(
+        side_effect=[
+            records,
+            runtime.InstanceScanError("无法读取登记"),
+            records,
+            records,
+        ]
+    )
+    monkeypatch.setattr(manager, "_records", scan)
+    send = Mock()
+    monkeypatch.setattr(runtime, "send_instance_command", send)
+
+    result = manager.control_instances(action, selected_targets(manager, [0, 1]))
+
+    assert not result["ok"]
+    assert [row["status"] for row in result["results"]] == ["failed", "failed"]
+    assert all(row["message"] == "无法读取登记" for row in result["results"])
+    assert scan.call_count == 2
+    send.assert_not_called()
+    controls.subprocess.Popen.assert_not_called()
