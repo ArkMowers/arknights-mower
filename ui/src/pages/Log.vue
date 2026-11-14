@@ -2716,6 +2716,7 @@ async function db_delete(keys) {
 
 .home-container:not(.home-container--mobile) .task-table-scroll:has(~ .log.log-output--alternate) {
   flex-shrink: 1;
+  min-height: 48px;
 }
 
 .log-daily-toggle {
