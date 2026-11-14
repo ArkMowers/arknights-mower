@@ -1,0 +1,21 @@
+{
+  "title": "Rescue backup condition",
+  "status": "archived",
+  "category": "feature",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-10]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.rescue_needed",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.overtake_room"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/rescue_backup_condition_tests.py",
+    "arknights_mower/tests/exhaust_replacement_tests.py"
+  ]
+}

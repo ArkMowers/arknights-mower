@@ -384,7 +384,9 @@ class SecretFront(BaseSolver):
 
             if scene == Scene.SF_END:
                 send_message(
-                    f"隐秘战线成功完成{config.conf.secret_front.target}", level="INFO"
+                    f"隐秘战线成功完成{config.conf.secret_front.target}",
+                    subject="隐秘战线任务已完成",
+                    level="INFO",
                 )
 
         # 关闭说明
@@ -423,7 +425,9 @@ class SecretFront(BaseSolver):
             if not self.unknown_time:
                 self.unknown_time = now
             elif now - self.unknown_time > self.timeout:
-                logger.warning("连续识别到未知场景")
+                logger.warning(
+                    "连续识别到未知场景", extra={"archive_screenshots": True}
+                )
                 try:
                     self.properties = None
                     self.route_matcher = None

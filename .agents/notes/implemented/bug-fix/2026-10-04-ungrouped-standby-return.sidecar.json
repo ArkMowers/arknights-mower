@@ -1,0 +1,19 @@
+{
+  "title": "Ungrouped Standby Return",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-19]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.plan_metadata",
+    "arknights_mower.utils.operators.Operators.is_standby"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/group_resting_capacity_tests.py"
+  ]
+}

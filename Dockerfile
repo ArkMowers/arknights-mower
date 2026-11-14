@@ -15,13 +15,13 @@ RUN apt-get update && \
 # 设置默认语言环境
 ENV LANG=C.UTF-8
 
-# 使用官方 Node.js 20 镜像作为基础镜像构建前端
-FROM node:20 AS node-base
+# 使用官方 Node.js 24 镜像作为基础镜像构建前端
+FROM node:24 AS node-base
 ENV LANG=C.UTF-8
 WORKDIR /arknights-mower/ui
 COPY ui/ ./
 # 安装前端依赖
-RUN npm install
+RUN npm ci
 # 构建前端应用
 RUN npm run build
 
@@ -37,6 +37,8 @@ COPY --from=node-base /arknights-mower/ui/dist ./ui/dist
 RUN python3 -m venv venv && \
     . venv/bin/activate && \
     pip install -r requirements.in && \
+    python -m pip check && \
+    python scripts/prune_opencv.py && \
     pip install pyinstaller && \
     pyinstaller webui_zip_for_linux.spec && \
     deactivate

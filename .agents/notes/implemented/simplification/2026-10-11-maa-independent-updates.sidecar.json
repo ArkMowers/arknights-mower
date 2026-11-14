@@ -1,0 +1,29 @@
+{
+  "title": "Independent MAA Updates",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-MAA-10]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config.conf.MaaPart",
+    "server.start_maa_resource_update",
+    "arknights_mower.utils.maa_resource_update.read_maa_resource_info",
+    "arknights_mower.utils.maa_resource_update.merge_resource_archive"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_update_policy_tests.py",
+    "arknights_mower/tests/maa_update_route_tests.py",
+    "arknights_mower/tests/maa_resource_update_tests.py",
+    "arknights_mower/tests/maa_admission_tests.py",
+    "arknights_mower/tests/maa_check_tests.py",
+    "arknights_mower/tests/config_tests.py",
+    "ui/src/components/MaaBasic.test.js",
+    "ui/src/stores/maaUpdatePolicy.test.js",
+    "ui/src/stores/configPartial.test.js"
+  ]
+}

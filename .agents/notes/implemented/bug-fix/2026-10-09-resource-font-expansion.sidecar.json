@@ -1,0 +1,18 @@
+{
+  "title": "Automatic Resource Font Expansion",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-RES-01]"
+  ],
+  "code_symbols": [
+    "build_font_subsets.ensure_font_characters"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/font_subset_generation_tests.py"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "title": "Cache Save Log Visibility",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DIAG-06]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.record.save_state_to_db"
+  ],
+  "test_suites": []
+}

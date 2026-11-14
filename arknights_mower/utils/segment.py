@@ -195,7 +195,15 @@ def add_gamingroom(base_x1, base_x2, base_y1, base_y2, alpha, room_name, ret):
 
 
 def base(
-    img: tp.Image, central: tp.Scope, draw: bool = False
+    img: tp.Image,
+    central: tp.Scope,
+    draw: bool = False,
+    *,
+    right_side_room_order: tuple[str, ...] | list[str] = (
+        "contact",
+        "train",
+        "recycle",
+    ),
 ) -> dict[str, tp.Rectangle]:
     """
     基建布局的图像分割算法
@@ -222,9 +230,6 @@ def base(
             else:
                 dormitory = get_poly(x1 + 158 * alpha, x2, y1, y2)
             ret[f"dormitory_{i}"] = dormitory
-            print(
-                f"Dormitory {i} Length: {abs(ret[f'dormitory_{i}'][2][0] - ret[f'dormitory_{i}'][0][0]) / alpha}"
-            )
         x1, y1 = ret["dormitory_1"][0]
         x2, y2 = ret["dormitory_1"][2]
         # 根据1号宿舍计算出加工站
@@ -249,6 +254,9 @@ def base(
         y2 = y1 + 134 * alpha
         train = get_poly(x1, x2, y1, y2)
         ret["train"] = train
+
+        # 先建立右侧三个物理位置，再应用本机设施顺序。
+        ret["recycle"] = get_poly(x1, x2, y2 + 25 * alpha, y2 + 159 * alpha)
 
         add_gamingroom(
             ret["factory"][0][0],
@@ -280,6 +288,14 @@ def base(
             ret,
         )
 
+        right_rooms = ("contact", "train", "recycle")
+        if len(right_side_room_order) != 3 or set(right_side_room_order) != set(
+            right_rooms
+        ):
+            raise ValueError("右侧设施顺序必须包含办公室、训练室和回收站各一次")
+        positions = [ret[room] for room in right_rooms]
+        ret.update(zip(right_side_room_order, positions))
+
         for floor in range(1, 4):
             x1, y1 = ret[f"dormitory_{floor}"][0]
             x2, y2 = ret[f"dormitory_{floor}"][2]
@@ -308,7 +324,6 @@ def base(
             plt.imshow(img)
             plt.show()
 
-        logger.debug(f"segment.base: {ret}")
         return ret
 
     except Exception as e:

@@ -1,0 +1,26 @@
+{
+  "title": "Low-rarity growth goals",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-GROWTH-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.growth.level_goal_targets",
+    "arknights_mower.utils.growth.material_entries",
+    "arknights_mower.utils.mastery_recommendation.get_mastery_recommendations",
+    "arknights_mower.utils.operator_statistics.personal_statistics"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/low_rarity_growth_tests.py",
+    "arknights_mower/tests/growth_planning_tests.py",
+    "arknights_mower/tests/operator_statistics_tests.py",
+    "ui/src/utils/growthPlanning.test.js",
+    "ui/src/utils/operatorStatistics.test.js",
+    "ui/src/utils/growthStatistics.test.js"
+  ]
+}

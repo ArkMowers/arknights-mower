@@ -1,0 +1,102 @@
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
+
+import pytest
+
+import server
+from arknights_mower.utils import depot
+from arknights_mower.utils import resource_pkg as rp
+
+
+@pytest.mark.parametrize(
+    "path,reader",
+    [("/depot/readdepot", "读取仓库"), ("/depot/history", "读取仓库历史")],
+)
+@pytest.mark.parametrize("method", ["get", "head"])
+@pytest.mark.parametrize("token", [None, "wrong", "current-instance"])
+def test_depot_inventory_requires_token_before_reading(
+    monkeypatch, tmp_path, path, reader, method, token
+):
+    monkeypatch.setattr(server.app, "token", "current-instance", raising=False)
+    monkeypatch.setattr(server, "get_path", lambda _: tmp_path / "absent")
+    read = Mock(return_value=[])
+    monkeypatch.setattr(depot, reader, read)
+    headers = {} if token is None else {"token": token}
+
+    with getattr(server.app.test_client(), method)(path, headers=headers) as response:
+        assert response.status_code == (200 if token == "current-instance" else 403)
+    if token == "current-instance":
+        read.assert_called_once()
+    else:
+        read.assert_not_called()
+
+
+class DepotRouteTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.client = server.app.test_client()
+
+    def test_depot_api_returns_inventory_with_active_resource_package(self):
+        inventory = [
+            {"A常用": {"龙门币": {"number": 123, "sort": 1, "icon": "龙门币"}}},
+            '{"4001": 123}',
+            "2026-09-08 12:00:00",
+        ]
+        with (
+            patch.object(rp, "resource_ui_path", return_value=self.root),
+            patch.object(depot, "读取仓库", return_value=inventory) as read_inventory,
+            patch.object(server, "get_path", return_value=self.root / "cultivate.json"),
+        ):
+            response = self.client.get("/depot/readdepot")
+
+        self.addCleanup(response.close)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.is_json)
+        self.assertEqual(response.get_json()["depot"], inventory)
+        self.assertFalse(response.get_json()["cultivate_ok"])
+        read_inventory.assert_called_once_with()
+
+    def test_resource_images_still_use_active_package(self):
+        for directory in ("depot", "avatar", "building_skill"):
+            with self.subTest(directory=directory):
+                image = self.root / directory / "test.webp"
+                image.parent.mkdir()
+                image.write_bytes(b"resource image")
+                with patch.object(rp, "resource_ui_path", return_value=self.root):
+                    response = self.client.get(f"/{directory}/test.webp")
+                try:
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(response.data, b"resource image")
+                    self.assertEqual(response.mimetype, "image/webp")
+                    self.assertEqual(response.headers["Cache-Control"], "no-cache")
+                finally:
+                    response.close()
+
+    def test_facility_state_api_uses_last_saved_runtime_cache(self):
+        states = {
+            "room_1_2": {
+                "facility": "manufacture",
+                "product": "exp3",
+                "updated_at": "2026-09-20T12:00:00",
+            }
+        }
+        with (
+            patch.object(server, "mower_thread", None),
+            patch.object(
+                server, "load_state", return_value={"facility_states": states}
+            ),
+        ):
+            response = self.client.get("/facility-state")
+        self.addCleanup(response.close)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json(), states)
+
+
+if __name__ == "__main__":
+    unittest.main()

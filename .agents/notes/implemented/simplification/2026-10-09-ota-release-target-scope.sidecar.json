@@ -1,0 +1,16 @@
+{
+  "title": "OTA release target scope",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UPD-05]"
+  ],
+  "code_symbols": [],
+  "test_suites": [
+    "scripts/tests/release_workflow_tests.py"
+  ]
+}

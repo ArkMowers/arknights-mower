@@ -1,0 +1,25 @@
+{
+  "title": "Start Selected Instances During Detection",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-02]",
+    "[INV-DEV-11]",
+    "[INV-DEV-13]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.mumu_pro.MuMuProController",
+    "arknights_mower.utils.device.session.DeviceSession.ensure_ready"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_mumu_pro_discovery_tests.py",
+    "arknights_mower/tests/device_mumu_pro_tests.py",
+    "arknights_mower/tests/device_start_bound_tests.py",
+    "ui/src/components/DeviceSettings.test.js",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

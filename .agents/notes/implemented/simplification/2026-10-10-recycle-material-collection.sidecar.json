@@ -1,0 +1,20 @@
+{
+  "title": "Recycling Material Collection",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-10]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.todo_list",
+    "arknights_mower.utils.recognize.Recognizer.find",
+    "arknights_mower.utils.graph.materiel"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/infra_collection_tests.py"
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "title": "Preservation Review Repairs",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-02]",
+    "[INV-DEV-03]",
+    "[INV-DEV-04]",
+    "[INV-DIAG-03]",
+    "[INV-DIAG-04]",
+    "[INV-DEV-08]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.screenshot.ScreenshotStore",
+    "arknights_mower.utils.device.application.DeviceControl",
+    "arknights_mower.utils.device.adb_client.session.Session"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/screenshot_tests.py",
+    "arknights_mower/tests/screenshot_pipeline_tests.py",
+    "arknights_mower/tests/device_preparation_tests.py",
+    "arknights_mower/tests/device_adb_input_tests.py",
+    "arknights_mower/tests/adb_client_tests.py",
+    "arknights_mower/tests/performance_profile_tests.py",
+    "arknights_mower/tests/software_ota_tests.py",
+    "ui/src/components/DeviceSettings.test.js",
+    "ui/src/stores/configPartial.test.js",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

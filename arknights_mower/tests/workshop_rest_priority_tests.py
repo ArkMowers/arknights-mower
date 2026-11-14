@@ -1,0 +1,792 @@
+"""待加工配方沿用用户保存的干员收益偏好安排普通空闲恢复。"""
+
+import pytest
+
+from arknights_mower.tests import dorm_release_tests
+from arknights_mower.tests.resting_priority_tests import set_tier
+from arknights_mower.utils import config
+from arknights_mower.utils.dorm_candidates import dorm_candidates
+from arknights_mower.utils.resting_priority import (
+    RestingTier,
+    crafting_rest_candidates,
+    crafting_rest_order,
+    resting_key,
+    resting_tier,
+)
+
+op_data = dorm_release_tests.op_data
+
+
+@pytest.fixture
+def crafting(op_data, monkeypatch):
+    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    monkeypatch.setattr(config.conf, "workshop_auto_active", True)
+    monkeypatch.setattr(config.conf, "fodder_operators", ["九色鹿", "号角", "蜜莓"])
+    monkeypatch.setattr(config.conf, "t5_operators", ["年", "蜜莓"])
+    monkeypatch.setattr(config.conf, "book_operators", ["赫拉格", "司霆惊蛰", "年"])
+    for name in ["九色鹿", "年", "赫拉格", "号角", "蜜莓", "司霆惊蛰", "芬", "香草"]:
+        op = set_tier(op_data, name, RestingTier.IDLE, 23)
+        op.current_room = ""
+    monkeypatch.setattr(
+        "arknights_mower.utils.dorm_candidates.busy_resting_names", lambda: set()
+    )
+    return op_data
+
+
+def test_no_pending_recipe_prioritizes_crafters_with_fallback_order(crafting):
+    names = ["九色鹿", "年", "赫拉格", "号角", "蜜莓", "司霆惊蛰"]
+    baseline = ["年", "芬", "赫拉格", "司霆惊蛰", "香草", "九色鹿", "蜜莓", "号角"]
+    for mood, name in enumerate(baseline, 1):
+        crafting.operators[name].mood = mood
+    expected = ["九色鹿", "年", "赫拉格", "号角", "蜜莓", "司霆惊蛰", "芬", "香草"]
+    assert crafting_rest_order(crafting, baseline) == expected
+    candidates = dorm_candidates(crafting).recovering
+    assert [n for n in candidates if n in names + ["芬", "香草"]] == expected
+    assert baseline[1] == "芬"
+    assert baseline[4] == "香草"
+
+
+@pytest.mark.parametrize("switch", ["enable_mastery", "workshop_auto_active"])
+def test_disabled_crafting_retains_mood_order(crafting, monkeypatch, switch):
+    monkeypatch.setattr(config.conf, switch, False)
+    crafting.operators["芬"].mood = 1
+    assert crafting_rest_order(crafting, ["年", "芬", "九色鹿"]) == [
+        "年",
+        "芬",
+        "九色鹿",
+    ]
+
+
+@pytest.mark.parametrize(
+    "tier",
+    [
+        RestingTier.PRIORITY,
+        RestingTier.MAIN,
+        RestingTier.LOW_MAIN,
+        RestingTier.PRIORITY_REPLACEMENT,
+        RestingTier.STANDBY,
+        RestingTier.REPLACEMENT,
+    ],
+)
+def test_crafting_does_not_override_other_identity(crafting, tier):
+    set_tier(crafting, "九色鹿", tier, 23)
+    set_tier(crafting, "芬", tier, 1)
+    if tier == RestingTier.PRIORITY:
+        assert resting_key(crafting, "九色鹿") < resting_key(crafting, "芬")
+    else:
+        assert resting_key(crafting, "芬") < resting_key(crafting, "九色鹿")
+    assert resting_key(crafting, "九色鹿") < resting_key(crafting, "年")
+
+
+def test_training_support_remains_replacement(crafting):
+    crafting.operators["芬"].resting_from_train = True
+    assert resting_tier(crafting, "芬") == RestingTier.REPLACEMENT
+    assert resting_key(crafting, "芬") < resting_key(crafting, "九色鹿")
+
+
+def test_blacklist_still_excludes_crafter(crafting):
+    crafting.config.free_blacklist.append("九色鹿")
+    assert resting_tier(crafting, "九色鹿") == RestingTier.EXCLUDED
+    assert "九色鹿" not in dorm_candidates(crafting).recovering
+
+
+def test_configuration_change_takes_effect_without_cached_order(crafting, monkeypatch):
+    monkeypatch.setattr(config.conf, "fodder_operators", ["号角", "九色鹿"])
+    assert crafting_rest_order(crafting, ["年", "芬", "九色鹿", "号角"]) == [
+        "号角",
+        "年",
+        "九色鹿",
+        "芬",
+    ]
+
+
+def test_crafter_takes_ordinary_idle_bed_but_preserves_other_crafters(crafting):
+    from arknights_mower.utils.operators import Dormitory
+    from arknights_mower.utils.plan import Room
+
+    room = dorm_release_tests.ROOM
+    crafting.plan[room][3] = Room("Free", "", [])
+    crafting.dorm = [Dormitory((room, 3), "九色鹿"), Dormitory((room, 4), "芬")]
+    for bed in crafting.dorm:
+        op = crafting.operators[bed.name]
+        op.current_room, op.current_index = bed.position
+    crafting.operators["芬"].mood = 1
+    crafting.operators["银灰"].mood = 10
+    assert crafting._find_dorm_slot("银灰", set()) == 0
+    assert crafting._find_dorm_slot("年", set()) == 1
+    assert crafting._find_dorm_slot("香草", set()) is None
+
+
+@pytest.mark.parametrize("reservation", ["none", "operator", "bed"])
+@pytest.mark.parametrize("source", ["automatic", "manual", "ordinary"])
+@pytest.mark.parametrize("reading", ["measured", "card"])
+def test_real_fill_task_replaces_idle_resident_after_crafting(
+    crafting, reservation, source, reading, monkeypatch
+):
+    from datetime import datetime, timedelta
+
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+
+    if source != "automatic":
+        monkeypatch.setattr(config.conf, "enable_mastery", False)
+        monkeypatch.setattr(config.conf, "workshop_auto_active", False)
+        monkeypatch.setattr(
+            config.conf,
+            "workshop_settings",
+            [
+                RIICPart.WorkShopSetting(
+                    operator="九色鹿", items=[WorkShopItem(item_names=["糖聚块"])]
+                )
+            ]
+            if source == "manual"
+            else [],
+        )
+    room = dorm_release_tests.ROOM
+    for op in crafting.operators.values():
+        op.mood = 24
+    crafting.operators["红"].current_room = "meeting"
+    resident = crafting.operators["芬"]
+    resident.current_room, resident.current_index = room, 4
+    resident.mood = 1
+    crafting.operators["空爆"].current_room = ""
+    crafting.dorm[0].name = resident.name
+    crafting.dorm[0].time = datetime.now() + timedelta(hours=5)
+    crafting.operators["九色鹿"].mood = 23
+    if reading == "card":
+        crafting.operators["九色鹿"].mood = -1
+        crafting.operators["九色鹿"].time_stamp = None
+        crafting.dorm_mood_estimates["九色鹿"] = (23, datetime.now())
+    tasks = []
+
+    try_add_release_dorm(
+        {},
+        None,
+        crafting,
+        tasks,
+        reserved_names={"九色鹿"} if reservation == "operator" else (),
+        reserved_slots={(room, 4)} if reservation == "bed" else (),
+    )
+
+    assert [task.plan for task in tasks] == (
+        [{room: ["Current"] * 4 + ["九色鹿"]}]
+        if reservation == "none" and source != "ordinary"
+        else []
+    )
+    assert crafting.get_current_operator(room, 4).name == resident.name
+    assert crafting.operators["九色鹿"].current_room == ""
+    if reading == "card":
+        assert crafting.operators["九色鹿"].mood == -1
+        assert crafting.operators["九色鹿"].time_stamp is None
+
+
+@pytest.mark.parametrize("enabled,items", [(True, True), (False, True), (True, False)])
+def test_manual_crafting_priority_requires_enabled_recipe(
+    crafting, monkeypatch, enabled, items
+):
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    monkeypatch.setattr(config.conf, "enable_mastery", False)
+    monkeypatch.setattr(config.conf, "workshop_auto_active", False)
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator="芬",
+                enabled=enabled,
+                items=[WorkShopItem(item_names=["糖聚块"])] if items else [],
+            )
+        ],
+    )
+    assert crafting_rest_order(crafting, ["香草", "芬"]) == (
+        ["芬", "香草"] if enabled and items else ["香草", "芬"]
+    )
+
+
+@pytest.mark.parametrize("tier", list(RestingTier)[:6])
+def test_crafting_priority_never_takes_higher_identity_beds(crafting, tier):
+    from datetime import datetime, timedelta
+
+    room = dorm_release_tests.ROOM
+    resident = set_tier(crafting, "芬", tier, 1)
+    resident.current_room, resident.current_index = room, 4
+    crafting.operators["空爆"].current_room = ""
+    crafting.dorm[0].name = resident.name
+    crafting.dorm[0].time = datetime.now() + timedelta(hours=5)
+    crafting.operators["九色鹿"].mood = 0
+
+    assert crafting._find_dorm_slot("九色鹿", set()) is None
+
+
+@pytest.mark.parametrize("mood", [None, 0, 1, 23])
+def test_crafters_without_comparable_recipes_keep_unfinished_beds(crafting, mood):
+    from datetime import datetime, timedelta
+
+    room = dorm_release_tests.ROOM
+    resident = crafting.operators["九色鹿"]
+    resident.current_room, resident.current_index = room, 4
+    if mood is None:
+        resident.time_stamp = None
+    else:
+        resident.mood = mood
+    crafting.operators["空爆"].current_room = ""
+    crafting.dorm[0].name = resident.name
+    crafting.dorm[0].time = datetime.now() + timedelta(hours=5)
+    crafting.operators["年"].mood = 0
+
+    assert crafting._find_dorm_slot("年", set()) is None
+
+
+@pytest.mark.parametrize(
+    "requester,resident,material,allowed",
+    [
+        ("号角", "空爆", "炽合金块", True),  # 100% 高于 80%。
+        ("号角", "空爆", "糖聚块", False),  # 当前配方不适用号角加成。
+        ("空爆", "号角", "炽合金块", False),
+        ("蜜莓", "空爆", "糖聚块", False),  # 同为 80%，名单偏好不接管。
+        ("空爆", "蜜莓", "糖聚块", False),
+    ],
+)
+@pytest.mark.parametrize("reading", ["measured", "card"])
+def test_real_fill_compares_strict_current_recipe_bonus(
+    crafting, monkeypatch, requester, resident, material, allowed, reading
+):
+    from datetime import datetime, timedelta
+
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = ["号角", "空爆", "蜜莓"]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator=name, items=[WorkShopItem(item_names=[material])]
+            )
+            for name in names
+        ],
+    )
+    for op in crafting.operators.values():
+        op.mood, op.current_room = 24, ""
+    crafting.operators["红"].current_room = "meeting"
+    room = dorm_release_tests.ROOM
+    crafting.operators[resident].current_room = room
+    crafting.operators[resident].current_index = 4
+    crafting.operators[resident].mood = 1
+    crafting.operators[requester].mood = 23
+    if reading == "card":
+        crafting.operators[requester].mood = -1
+        crafting.operators[requester].time_stamp = None
+        crafting.dorm_mood_estimates[requester] = (23, datetime.now())
+    crafting.dorm[0].name = resident
+    crafting.dorm[0].time = datetime.now() + timedelta(hours=5)
+    tasks = []
+
+    try_add_release_dorm({}, None, crafting, tasks)
+
+    assert [task.plan for task in tasks] == (
+        [{room: ["Current"] * 4 + [requester]}] if allowed else []
+    )
+    assert crafting.get_current_operator(room, 4).name == resident
+    if reading == "card":
+        assert crafting.operators[requester].mood == -1
+        assert crafting.operators[requester].time_stamp is None
+
+
+@pytest.mark.parametrize(
+    "constraint",
+    [
+        "none",
+        "reserved_operator",
+        "reserved_bed",
+        "missing_requester_recipe",
+        "missing_resident_recipe",
+        "unknown_resident_recipe",
+        "scoped_resident_recipe",
+        "disabled_requester",
+        "unknown_requester_bonus",
+        "unknown_resident_bonus",
+        "unavailable_roster",
+    ],
+)
+def test_high_bonus_takeover_requires_current_recipes_and_respects_reservations(
+    crafting, monkeypatch, constraint
+):
+    from datetime import datetime, timedelta
+
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    resident_name = "九色鹿" if constraint == "scoped_resident_recipe" else "空爆"
+    names = ["号角", resident_name]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    if constraint.startswith("unknown_"):
+        available.pop("号角" if constraint == "unknown_requester_bonus" else "空爆")
+
+    def roster():
+        if constraint == "unavailable_roster":
+            raise workshop.WorkshopRecommendationError("没有缓存的干员数据")
+        return available
+
+    monkeypatch.setattr(workshop, "available_operators", roster)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    settings = [
+        RIICPart.WorkShopSetting(
+            operator=name, items=[WorkShopItem(item_names=["炽合金块"])]
+        )
+        for name in names
+    ]
+    if constraint == "missing_requester_recipe":
+        settings[0].items = []
+    if constraint == "missing_resident_recipe":
+        settings[1].items = []
+    if constraint == "unknown_resident_recipe":
+        settings[1].items = [WorkShopItem(item_names=["不存在的配方"])]
+    if constraint == "scoped_resident_recipe":
+        settings[1].items = [WorkShopItem(item_names=["D32钢"])]
+    if constraint == "disabled_requester":
+        settings[0].enabled = False
+    monkeypatch.setattr(config.conf, "workshop_settings", settings)
+    for op in crafting.operators.values():
+        op.mood, op.current_room = 24, ""
+    crafting.operators["红"].current_room = "meeting"
+    room = dorm_release_tests.ROOM
+    resident = crafting.operators[resident_name]
+    resident.current_room, resident.current_index, resident.mood = room, 4, 1
+    crafting.operators["号角"].mood = 23
+    crafting.dorm[0].name = resident.name
+    crafting.dorm[0].time = datetime.now() + timedelta(hours=5)
+    tasks = []
+
+    try_add_release_dorm(
+        {},
+        None,
+        crafting,
+        tasks,
+        reserved_names={"号角"} if constraint == "reserved_operator" else (),
+        reserved_slots={(room, 4)} if constraint == "reserved_bed" else (),
+    )
+
+    assert [task.plan for task in tasks] == (
+        [{room: ["Current"] * 4 + ["号角"]}] if constraint == "none" else []
+    )
+    if constraint == "scoped_resident_recipe":
+        assert settings[1].items[0].item_names == ["D32钢"]
+
+
+def test_fixed_dorm_manager_does_not_become_idle_candidate(crafting):
+    manager = crafting.operators["杜林"]
+    config.conf.fodder_operators.insert(0, manager.name)
+    manager.current_room = dorm_release_tests.ROOM
+    manager.current_index = 0
+    manager.mood = 10
+    assert resting_tier(crafting, manager.name) != RestingTier.IDLE
+    assert manager.name not in dorm_candidates(crafting).recovering
+
+
+def test_unadmitted_first_choice_moves_ahead_before_bed_limit(crafting):
+    crafting.operators["年"].mood = 1
+    crafting.operators["芬"].mood = 2
+    crafting.operators["九色鹿"].mood = 20
+    candidates = dorm_candidates(crafting).recovering
+    relevant = [name for name in candidates if name in {"年", "芬", "九色鹿"}]
+    assert relevant[:1] == ["九色鹿"]
+    assert relevant == ["九色鹿", "年", "芬"]
+
+
+def test_unavailable_first_choice_does_not_replace_eligible_crafter(crafting):
+    crafting.operators["九色鹿"].current_room = "factory"
+    crafting.operators["年"].mood = 1
+    assert "九色鹿" not in dorm_candidates(crafting).recovering
+    assert dorm_candidates(crafting).recovering.index("年") < dorm_candidates(
+        crafting
+    ).recovering.index("赫拉格")
+
+
+def test_crafting_order_applies_to_single_target_allocation(crafting):
+    from arknights_mower.utils.operators import Dormitory
+    from arknights_mower.utils.plan import Room
+    from arknights_mower.utils.scheduler_task import prioritize_new_dorm_recovery
+
+    room = dorm_release_tests.ROOM
+    crafting.plan[room][3] = Room("Free", "", [])
+    crafting.dorm = [Dormitory((room, 3)), Dormitory((room, 4), "年")]
+    crafting.operators["空爆"].current_room = ""
+    crafting.operators["年"].current_room = room
+    crafting.operators["年"].current_index = 4
+    crafting.operators["年"].mood = 1
+    plan = {room: ["Current"] * 3 + ["九色鹿", "Current"]}
+    assert prioritize_new_dorm_recovery(crafting, plan)[room][3:] == [
+        "九色鹿",
+        "Current",
+    ]
+    assert crafting.operators["年"].current_index == 4
+
+
+def test_completed_crafter_does_not_take_an_unfinished_candidates_position(crafting):
+    crafting.operators["九色鹿"].mood = 24
+    assert crafting_rest_order(crafting, ["年", "芬", "九色鹿"]) == [
+        "年",
+        "芬",
+        "九色鹿",
+    ]
+
+
+def test_card_estimated_candidates_share_internal_order(crafting):
+    from datetime import datetime
+
+    for name, mood in (("年", 1), ("芬", 2), ("九色鹿", 20)):
+        crafting.operators[name].time_stamp = None
+        crafting.dorm_mood_estimates[name] = (mood, datetime.now())
+    candidates = dorm_candidates(crafting)
+    expected = ["九色鹿", "年", "芬"]
+    for names in (
+        candidates.unknown,
+        candidates.estimated_recovering,
+        candidates.filling,
+    ):
+        assert [name for name in names if name in expected] == expected
+
+
+def test_green_card_does_not_join_crafting_recovery_order(crafting):
+    from datetime import datetime
+
+    crafting.operators["九色鹿"].time_stamp = None
+    crafting.dorm_mood_estimates["九色鹿"] = (24, datetime.now())
+    candidates = dorm_candidates(crafting)
+    assert "九色鹿" not in candidates.estimated_recovering
+    assert crafting_rest_order(crafting, ["年", "芬", "九色鹿"]) == [
+        "年",
+        "芬",
+        "九色鹿",
+    ]
+
+
+def test_fill_task_preserves_crafting_order_after_candidate_merge(crafting):
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+
+    room = dorm_release_tests.ROOM
+    crafting.dorm[0].reset()
+    crafting.operators["空爆"].current_room = "meeting"
+    crafting.operators["红"].current_room = "meeting"
+    crafting.operators["九色鹿"].mood = 20
+    crafting.operators["年"].mood = 1
+    tasks = []
+    try_add_release_dorm({}, None, crafting, tasks)
+    assert tasks[0].plan[room][4] == "九色鹿"
+
+
+@pytest.mark.parametrize("occupied", [False, True])
+def test_crafting_order_preserves_existing_targets_and_global_order(crafting, occupied):
+    from arknights_mower.utils.operators import Dormitory
+    from arknights_mower.utils.plan import Room
+    from arknights_mower.utils.scheduler_task import prioritize_new_dorm_recovery
+
+    room, other = dorm_release_tests.ROOM, "dormitory_2"
+    crafting.plan[room][3] = Room("Free", "", [])
+    crafting.plan[other] = [Room("Free", "", []), Room("Free", "", [])]
+    crafting.operators["空爆"].current_room = ""
+    crafting.dorm = [
+        Dormitory((room, 3), "年" if occupied else ""),
+        Dormitory((room, 4), "" if occupied else "年"),
+        Dormitory((other, 0), "芬"),
+        Dormitory((other, 1), "九色鹿"),
+    ]
+    for bed in crafting.dorm:
+        if bed.name:
+            op = crafting.operators[bed.name]
+            op.current_room, op.current_index = bed.position
+    crafting.operators["九色鹿"].mood = 1
+    crafting.operators["赫拉格"].mood = 2
+    plan = {
+        room: ["Current"] * 3
+        + (["Current", "赫拉格"] if occupied else ["赫拉格", "Current"])
+    }
+    result = prioritize_new_dorm_recovery(crafting, plan)
+    projected = crafting.project_arrangements([result])
+    assert projected.get_current_operator(room, 3).name == (
+        "年" if occupied else "九色鹿"
+    )
+    # 新单回归属触发全宿舍重排，加工名单仍按九色鹿、年、赫拉格排序。
+    assert projected.get_current_operator(other, 0).name == ("芬" if occupied else "年")
+    assert projected.get_current_operator(other, 1).name == (
+        "九色鹿" if occupied else "芬"
+    )
+    assert projected.get_current_operator(room, 4).name == "赫拉格"
+    assert set(result) == ({room} if occupied else {room, other})
+
+
+def test_current_t4_assignments_keep_saved_order_before_unassigned_workers(
+    crafting, monkeypatch
+):
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = ["九色鹿", "镜匠", "蚀清", "年", "号角"]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    settings = workshop.allocate_workshop_items(
+        [("fodder_operators", names, [{"item_names": ["炽合金块"]}])],
+        available=available,
+    )
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [RIICPart.WorkShopSetting(**entry) for entry in settings],
+    )
+    for name in names:
+        set_tier(crafting, name, RestingTier.IDLE, 0).current_room = ""
+    crafting.operators["号角"].mood = 20
+    assert crafting_rest_candidates(crafting, names) == [
+        "九色鹿",
+        "镜匠",
+        "蚀清",
+        "号角",
+        "年",
+    ]
+    assert [entry["operator"] for entry in settings if entry["items"]] == [
+        "九色鹿",
+        "镜匠",
+        "蚀清",
+        "号角",
+    ]
+
+
+def test_unconfigured_special_operators_receive_no_crafting_rest_priority(
+    crafting, monkeypatch
+):
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    monkeypatch.setattr(config.conf, "fodder_operators", ["蜜莓"])
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator="蜜莓", items=[WorkShopItem(item_names=["糖聚块"])]
+            )
+        ],
+    )
+    names = ["镜匠", "蜜莓", "蚀清", "九色鹿", "年"]
+    for name in names:
+        set_tier(crafting, name, RestingTier.IDLE, 5)
+    assert crafting_rest_candidates(crafting, names) == ["蜜莓"]
+    assert crafting_rest_order(crafting, names) == [
+        "蜜莓",
+        "镜匠",
+        "蚀清",
+        "九色鹿",
+        "年",
+    ]
+
+
+@pytest.mark.parametrize(
+    "material,expected",
+    [
+        ("炽合金块", ["空爆", "蜜莓", "号角"]),
+        ("糖聚块", ["空爆", "蜜莓", "号角"]),
+    ],
+)
+@pytest.mark.parametrize("moods", [[0, 3, 20], [20, 3, 0]])
+@pytest.mark.parametrize("automatic", [False, True])
+def test_current_recipe_saved_order_reaches_real_fill_task(
+    crafting, monkeypatch, material, expected, moods, automatic
+):
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = ["空爆", "蜜莓", "号角"]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(config.conf, "enable_mastery", automatic)
+    monkeypatch.setattr(config.conf, "workshop_auto_active", automatic)
+    settings = workshop.allocate_workshop_items(
+        [("fodder_operators", names, [{"item_names": [material]}])],
+        available=available,
+    )
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                **entry, source="mastery" if automatic else "manual"
+            )
+            for entry in settings
+        ],
+    )
+    for name, mood in zip(names, moods):
+        op = set_tier(crafting, name, RestingTier.IDLE, mood)
+        op.current_room = ""
+    assert crafting_rest_order(crafting, names) == expected
+    crafting.dorm[0].reset()
+    crafting.operators["红"].current_room = "meeting"
+    for name in ["九色鹿", "年", "赫拉格", "司霆惊蛰", "芬", "香草"]:
+        crafting.operators[name].mood = 24
+    tasks = []
+    try_add_release_dorm({}, None, crafting, tasks)
+    assert tasks[0].plan[dorm_release_tests.ROOM][4] == expected[0]
+
+
+def test_runtime_assignments_and_manual_edits_are_read_again(crafting, monkeypatch):
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = ["空爆", "蜜莓", "号角"]
+    roster = owned(ids, "空爆", "号角") + owned(ids, "蜜莓", elite=0)
+    available = workshop.available_operators(roster, metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    for name in names:
+        set_tier(crafting, name, RestingTier.IDLE, 5).current_room = ""
+    settings = [
+        RIICPart.WorkShopSetting(
+            operator=name, items=[WorkShopItem(item_names=["炽合金块"])]
+        )
+        for name in names
+    ]
+    runtime_conf = config.conf.model_copy(deep=True)
+    runtime_conf.workshop_settings = settings
+    crafting.runtime_conf = runtime_conf
+    assert crafting_rest_order(crafting, names) == names
+    runtime_conf.workshop_settings = settings = [settings[1], settings[2], settings[0]]
+    assert crafting_rest_order(crafting, names) == ["蜜莓", "号角", "空爆"]
+    for entry in settings:
+        entry.items = [WorkShopItem(item_names=["糖聚块"])]
+    assert crafting_rest_order(crafting, names) == ["蜜莓", "号角", "空爆"]
+    settings[0].enabled = False
+    assert crafting_rest_order(crafting, names) == ["号角", "空爆", "蜜莓"]
+    settings[1].items = []
+    assert crafting_rest_order(crafting, names) == ["空爆", "蜜莓", "号角"]
+
+
+@pytest.mark.parametrize("earlier,later", [("空爆", "号角"), ("九色鹿", "号角")])
+def test_later_higher_bonus_crafter_cannot_take_the_earlier_workers_bed(
+    crafting, monkeypatch, earlier, later
+):
+    from datetime import datetime, timedelta
+
+    from arknights_mower.tests.workshop_fixtures import owned
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+    from arknights_mower.utils.scheduler_task import try_add_release_dorm
+    from arknights_mower.utils.workshop_data import operator_metadata
+
+    metadata = operator_metadata()
+    ids = {entry["name"]: cid for cid, entry in metadata.items()}
+    names = [earlier, later]
+    available = workshop.available_operators(owned(ids, *names), metadata)
+    monkeypatch.setattr(workshop, "available_operators", lambda: available)
+    monkeypatch.setattr(config.conf, "fodder_operators", names)
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator=name, items=[WorkShopItem(item_names=["炽合金块"])]
+            )
+            for name in names
+        ],
+    )
+    for op in crafting.operators.values():
+        op.mood, op.current_room = 24, ""
+    crafting.operators["红"].current_room = "meeting"
+    room = dorm_release_tests.ROOM
+    resident = crafting.operators[earlier]
+    resident.mood, resident.current_room, resident.current_index = 1, room, 4
+    crafting.operators[later].mood = 23
+    crafting.dorm[0].name = earlier
+    crafting.dorm[0].time = datetime.now() + timedelta(hours=5)
+    tasks = []
+
+    try_add_release_dorm({}, None, crafting, tasks)
+
+    assert tasks == []
+    assert crafting.get_current_operator(room, 4).name == earlier
+    assert crafting.operators[later].current_room == ""
+
+
+def test_pending_recipe_fallback_does_not_require_a_cached_roster(
+    crafting, monkeypatch
+):
+    from arknights_mower.utils import workshop_recommendation as workshop
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    def unavailable():
+        raise workshop.WorkshopRecommendationError("没有缓存的干员数据")
+
+    monkeypatch.setattr(workshop, "available_operators", unavailable)
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator="蜜莓", items=[WorkShopItem(item_names=["糖聚块"])]
+            )
+        ],
+    )
+    assert crafting_rest_order(crafting, ["号角", "芬", "蜜莓"]) == [
+        "蜜莓",
+        "号角",
+        "芬",
+    ]
+
+
+def test_repeated_operator_keeps_its_first_saved_recipe_position(crafting, monkeypatch):
+    from arknights_mower.utils.config.conf import RIICPart, WorkShopItem
+
+    monkeypatch.setattr(config.conf, "fodder_operators", ["号角", "蜜莓"])
+    monkeypatch.setattr(config.conf, "t5_operators", [])
+    monkeypatch.setattr(config.conf, "book_operators", [])
+    monkeypatch.setattr(
+        config.conf,
+        "workshop_settings",
+        [
+            RIICPart.WorkShopSetting(
+                operator=name, items=[WorkShopItem(item_names=[material])]
+            )
+            for name, material in [
+                ("蜜莓", "糖聚块"),
+                ("号角", "炽合金块"),
+                ("蜜莓", "炽合金块"),
+            ]
+        ],
+    )
+    assert crafting_rest_candidates(crafting, ["号角", "蜜莓"]) == ["蜜莓", "号角"]

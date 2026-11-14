@@ -1,0 +1,24 @@
+{
+  "title": "Intelligent Rescue Observation Budget",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-07]",
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators._slot_takable",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_read_rooms",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_handoff_feasible",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_finish_handoff"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_observation_budget_tests.py"
+  ]
+}

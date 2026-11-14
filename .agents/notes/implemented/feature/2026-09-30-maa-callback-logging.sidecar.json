@@ -1,0 +1,37 @@
+{
+  "title": "MAA Callback Logging",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-30",
+  "authors": [
+    "DeepSeek"
+  ],
+  "invariants": [
+    "[INV-MAA-01]",
+    "[INV-MAA-02]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.maa_callback.parse_details",
+    "arknights_mower.utils.maa_callback.MaaLogLine",
+    "arknights_mower.utils.maa_callback.MaaCallbackLog",
+    "arknights_mower.utils.maa_callback.MaaCallbackLog.describe",
+    "arknights_mower.utils.maa_callback.MaaCallbackLog.heartbeat",
+    "arknights_mower.utils.maa_callback.HEARTBEAT_INTERVAL",
+    "arknights_mower.utils.maa_callback.STALL_AFTER",
+    "arknights_mower.utils.maa_callback.TASK_CHAIN_TEXT",
+    "arknights_mower.utils.maa_callback.CONNECTION_TEXT",
+    "arknights_mower.utils.maa_callback.SUB_TASK_INFO",
+    "arknights_mower.utils.maa_callback.PROCESS_TASK_START",
+    "arknights_mower.utils.maa_callback.PROCESS_TASK_COMPLETED",
+    "arknights_mower.utils.maa_callback.SUB_TASK_ERROR",
+    "arknights_mower.utils.maa_callback.REPORT_WHY_TEXT",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.maa_callback",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.initialize_maa",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.on_maa_callback",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.report_maa_progress",
+    "arknights_mower.solvers.base_schedule.reset_stage_drop"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_callback_tests.py"
+  ]
+}

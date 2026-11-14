@@ -2,7 +2,6 @@
 """Generate server-only requirements from the full pinned requirements.
 
 - Drops desktop/GUI-specific packages to reduce image size.
-- Swaps OpenCV to the headless build for server use.
 
 Usage:
     python gen_server_requirements.py requirements.txt requirements-server.txt
@@ -28,11 +27,6 @@ EXCLUDE = {
     "pytweening",
     "pyperclip",
     "proxy-tools",
-}
-
-# Mapping of package name -> replacement name (keep version specifier)
-RENAME = {
-    "opencv-python": "opencv-python-headless",
 }
 
 
@@ -73,17 +67,7 @@ def transform_lines(lines: Iterable[str]) -> Iterable[str]:
         if name in EXCLUDE:
             continue
 
-        if name in RENAME:
-            replacement = RENAME[name]
-            # replace first occurrence of package name (case-insensitive) with headless variant
-            # while keeping the rest (version, extras, comments)
-            prefix, sep, suffix = original.partition(name)
-            if sep:
-                yield f"{prefix}{replacement}{suffix}"
-            else:
-                yield original
-        else:
-            yield original
+        yield original
 
 
 def main() -> int:
@@ -101,9 +85,9 @@ def main() -> int:
         print(f"Input requirements file not found: {src}", file=sys.stderr)
         return 1
 
-    lines = src.read_text().splitlines(keepends=True)
+    lines = src.read_text(encoding="utf-8-sig").splitlines(keepends=True)
     transformed = list(transform_lines(lines))
-    dst.write_text("".join(transformed))
+    dst.write_text("".join(transformed), encoding="utf-8")
     print(f"Generated server requirements: {dst}")
     return 0
 

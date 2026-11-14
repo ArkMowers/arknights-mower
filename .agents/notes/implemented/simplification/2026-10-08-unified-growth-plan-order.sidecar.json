@@ -1,0 +1,20 @@
+{
+  "title": "Unified growth plan order",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-GROWTH-01]",
+    "[INV-GROWTH-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.growth_order.crafting_order_state"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/growth_crafting_order_tests.py",
+    "ui/src/components/GrowthCraftingOrder.test.js"
+  ]
+}

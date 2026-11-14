@@ -1,5 +1,6 @@
 <script setup>
-import { inject, watch } from 'vue'
+defineProps({ showEnable: { type: Boolean, default: true } })
+import { computed, inject, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 const config_store = useConfigStore()
@@ -11,13 +12,19 @@ const {
   maa_rcl_theme,
   rcl
 } = storeToRefs(config_store)
+const longTaskEnabled = computed({
+  get: () => maa_rg_enable.value === true || maa_rg_enable.value === 1,
+  set: (value) => (maa_rg_enable.value = value)
+})
 
 const mobile = inject('mobile')
 
 const maa_long_task_options = [
-  { label: '集成战略 (Maa)', value: 'rogue' },
-  { label: '保全派驻 (Maa)', value: 'sss' },
-  { label: '生息演算 (Maa)', value: 'rcl' },
+  { label: '集成战略 (MAA)', value: 'rogue' },
+  { label: '自动战斗／作业 (MAA)', value: 'copilot' },
+  { label: '悖论模拟 (MAA)', value: 'paradox' },
+  { label: '保全派驻 (MAA)', value: 'sss' },
+  { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
   { label: '隐秘战线', value: 'sf' }
 ]
@@ -48,33 +55,44 @@ watch(
 
 <template>
   <n-card>
-    <template #header>
-      <n-checkbox v-model:checked="maa_rg_enable">
-        <div class="card-title">大型任务</div>
-      </n-checkbox>
-      <help-text>
-        <div>开始与结束时间设置为相同值时全天开启。</div>
-        <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
-        <ul>
-          <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
-          <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
-        </ul>
-      </help-text>
-      <n-select v-model:value="maa_long_task_type" :options="maa_long_task_options" />
-    </template>
+    <template v-if="showEnable" #header>大型任务</template>
     <n-form
+      class="long-task-setup"
       :label-placement="mobile ? 'top' : 'left'"
       :show-feedback="false"
-      style="margin-bottom: 12px"
     >
-      <n-grid cols="2">
-        <n-form-item-gi label="开始时间">
-          <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
-        </n-form-item-gi>
-        <n-form-item-gi label="停止时间">
-          <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
-        </n-form-item-gi>
-      </n-grid>
+      <n-form-item v-if="showEnable" label="启用大型任务">
+        <n-switch v-model:value="longTaskEnabled" aria-label="启用大型任务" />
+      </n-form-item>
+      <n-form-item label="任务类型">
+        <n-select
+          v-model:value="maa_long_task_type"
+          :options="maa_long_task_options"
+          :consistent-menu-width="false"
+          aria-label="任务类型"
+        />
+      </n-form-item>
+      <div class="long-task-time-container">
+        <div class="long-task-times">
+          <n-form-item label-placement="top">
+            <template #label>
+              开始时间
+              <help-text label="大型任务时段说明">
+                <div>开始与结束时间设置为相同值时全天开启。</div>
+                <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
+                <ul>
+                  <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
+                  <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
+                </ul>
+              </help-text>
+            </template>
+            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
+          </n-form-item>
+          <n-form-item label="停止时间" label-placement="top">
+            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
+          </n-form-item>
+        </div>
+      </div>
     </n-form>
     <template v-if="maa_long_task_type == 'rcl'">
       <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
@@ -95,6 +113,7 @@ watch(
           </template>
           <n-select
             v-model:value="maa_rcl_theme"
+            :consistent-menu-width="false"
             :options="[
               { label: '沙洲遗闻', value: 'Tales' },
               { label: '重启锚点', value: 'RelaunchAnchor' }
@@ -104,6 +123,7 @@ watch(
         <n-form-item label="模式">
           <n-select
             v-model:value="rcl.mode"
+            :consistent-menu-width="false"
             :options="
               maa_rcl_theme == 'Tales'
                 ? [
@@ -119,9 +139,13 @@ watch(
           />
         </n-form-item>
         <template v-if="maa_rcl_theme == 'Tales'">
+          <n-form-item v-if="rcl.mode === 0" :show-label="false">
+            <n-checkbox v-model:checked="rcl.clear_store">刷满后清空商店</n-checkbox>
+          </n-form-item>
           <n-form-item label="支援道具名称" v-if="rcl.mode == 1">
             <n-select
               v-model:value="rcl.tools_to_craft"
+              :consistent-menu-width="false"
               multiple
               filterable
               tag
@@ -132,21 +156,65 @@ watch(
           <n-form-item label="增加方式" v-if="rcl.mode == 1">
             <n-select
               v-model:value="rcl.increment_mode"
+              :consistent-menu-width="false"
               :options="[
                 { label: '连点', value: 0 },
                 { label: '长按', value: 1 }
               ]"
             />
           </n-form-item>
-          <n-form-item label="单次最大组装轮数">
-            <n-input-number v-model:value="rcl.num_craft_batches" :min="1" :max="2147483647" />
+          <n-form-item v-if="rcl.mode === 1" label="单次最大组装轮数">
+            <mower-input-number v-model:value="rcl.num_craft_batches" :min="1" :max="2147483647" />
           </n-form-item>
         </template>
       </n-form>
     </template>
     <maa-rogue v-else-if="maa_long_task_type == 'rogue'" />
+    <maa-copilot v-else-if="maa_long_task_type == 'copilot'" :key="'copilot'" />
+    <maa-copilot v-else-if="maa_long_task_type == 'paradox'" :key="'paradox'" paradox />
     <maa-sss v-else-if="maa_long_task_type == 'sss'" />
     <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
     <secret-front v-else-if="maa_long_task_type == 'sf'" />
   </n-card>
 </template>
+
+<style scoped>
+.long-task-setup {
+  margin-bottom: 16px;
+}
+
+.long-task-time-container {
+  container: long-task-times / inline-size;
+}
+
+.long-task-times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.long-task-setup .long-task-times :deep(.n-form-item) {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  grid-template-rows: 32px auto auto;
+}
+
+.long-task-times :deep(.n-form-item-label) {
+  min-height: 24px;
+  padding: 0 0 8px;
+  align-items: center;
+  gap: 6px;
+}
+
+.long-task-times :deep(.n-time-picker) {
+  width: 100%;
+  min-width: 0;
+}
+
+@container long-task-times (max-width: 440px) {
+  .long-task-times {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+</style>

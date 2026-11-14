@@ -1,0 +1,757 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createApp, nextTick, ref } from 'vue'
+import { createPinia, setActivePinia } from 'pinia'
+import axios from 'axios'
+import { useConfigStore } from './config'
+import { performanceProfile } from '../utils/performanceProfile'
+
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
+let pinia
+let store
+afterEach(() => {
+  store?.$dispose()
+  vi.clearAllMocks()
+})
+
+describe('workshop config autosave', () => {
+  it('saves same-operator skill continuity independently and defaults it off', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.mastery_consecutive_skills).toBe(false)
+    expect(store.build_config().mastery_consecutive_skills).toBe(false)
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.mastery_consecutive_skills = true
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ mastery_consecutive_skills: true })
+    expect(store.assistant_follows_schedule).toBe(false)
+    loaded.value = false
+  })
+
+  it.each([undefined, false, true])(
+    'hydrates the saved continuity preference %s',
+    async (value) => {
+      pinia = createPinia()
+      setActivePinia(pinia)
+      const app = createApp({})
+      app.use(pinia)
+      app.provide('loaded', ref(false))
+      store = app.runWithContext(() => useConfigStore())
+      for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+      const data = { ...store.build_config(), maa_weekly_plan_active: '默认' }
+      if (value === undefined) delete data.mastery_consecutive_skills
+      else data.mastery_consecutive_skills = value
+      axios.get.mockResolvedValue({ data })
+      await store.load_config()
+      expect(store.mastery_consecutive_skills).toBe(value ?? false)
+      expect(store.build_config().mastery_consecutive_skills).toBe(value ?? false)
+    }
+  )
+
+  it('saves the medicine expiry threshold without retired weekend settings', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.medicine_expire_days).toBe(0)
+    expect(store).not.toHaveProperty('expiring_medicine_on_weekend')
+    expect(store.build_config()).not.toHaveProperty('expiring_medicine_on_weekend')
+    expect(store.build_config()).not.toHaveProperty('exipring_medicine_on_weekend')
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.medicine_expire_days = 3
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ medicine_expire_days: 3 })
+    loaded.value = false
+  })
+
+  it('saves the automatic rescue checkbox independently', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.automatic_rescue_enable).toBe(false)
+    expect(store.build_advanced_settings()).not.toHaveProperty('automatic_rescue_enable')
+    expect(store.build_advanced_settings()).not.toHaveProperty('automatic_rescue_plan')
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.automatic_rescue_enable = true
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ automatic_rescue_enable: true })
+    loaded.value = false
+  })
+
+  it('defaults T2 protection off and saves it without changing manual materials', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.workshop_protect_t2_device_rock).toBe(false)
+    expect(store.workshop_t1_reserve).toBe(100)
+    expect(store.workshop_t2_reserve).toBe(100)
+    const manual = [{ operator: '空爆', items: [{ item_names: ['固源岩组', '异铁组'] }] }]
+    store.workshop_manual_settings = manual
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.workshop_protect_t2_device_rock = true
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toMatchObject({
+      workshop_protect_t2_device_rock: true
+    })
+    store.workshop_t1_reserve = 0
+    store.workshop_t2_reserve = 230
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(2))
+    expect(axios.patch.mock.calls[1][1]).toEqual({
+      workshop_t1_reserve: 0,
+      workshop_t2_reserve: 230
+    })
+    loaded.value = false
+  })
+
+  it('omits retired dorm controls while saving workshop selections', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store).not.toHaveProperty('experimental_dorm_logic')
+    expect(store).not.toHaveProperty('workshop_low_priority_rest')
+    expect(store).not.toHaveProperty('dorm_order')
+    expect(store).not.toHaveProperty('refresh_backup_plan_after_mood')
+    store.fodder_operators = ['空爆']
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.fodder_operators = ['红']
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toMatchObject({
+      fodder_operators: ['红']
+    })
+    loaded.value = false
+  })
+
+  it('tracks nested edits and sends the latest manual draft with the acknowledged revision', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    store.workshop_settings = [{ operator: '赫拉格', source: 'mastery' }]
+    const replies = []
+    axios.patch.mockImplementation(
+      (url, sent) =>
+        new Promise((resolve) => {
+          replies.push(() =>
+            resolve({
+              data: {
+                workshop_manual_settings: sent.workshop_manual_settings,
+                workshop_manual_revision: sent.workshop_manual_settings_revision + 1,
+                workshop_settings: [{ operator: '赫拉格', source: 'mastery' }],
+                workshop_generation: 1
+              }
+            })
+          )
+        })
+    )
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.workshop_manual_settings.push({ operator: '空爆', items: [] })
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    store.workshop_manual_settings.push({ operator: '月见夜', items: [] })
+    await nextTick()
+    replies.shift()()
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(2))
+    const sent = axios.patch.mock.calls[1][1]
+    expect(sent.workshop_manual_settings).toEqual([
+      { operator: '空爆', items: [] },
+      { operator: '月见夜', items: [] }
+    ])
+    expect(sent.workshop_manual_settings_revision).toBe(1)
+    expect(sent).not.toHaveProperty('workshop_settings')
+    expect(sent).not.toHaveProperty('workshop_manual_backup')
+    loaded.value = false
+    axios.patch.mockResolvedValue({ data: {} })
+    replies.shift()()
+  })
+})
+
+describe('weekly plan inventory config', () => {
+  it('sends source rules before switching and replaces them with target rules', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+
+    store.maa_weekly_plan_active = '活动'
+    store.maa_weekly_plan_options = ['活动', '常规']
+    store.maa_stage_inventory_enable = true
+    store.maa_stage_limit_rules = [
+      {
+        stage: 'ACT-1',
+        operator: 'and',
+        enabled: true,
+        items: [{ item_id: '30012', item_name: '固源岩', limit: 100 }]
+      }
+    ]
+    const targetInventory = {
+      enabled: false,
+      limit_rules: [
+        {
+          stage: '1-7',
+          operator: 'and',
+          enabled: true,
+          items: [{ item_id: '30011', item_name: '源岩', limit: 300 }]
+        }
+      ],
+      ratio_rules: []
+    }
+    axios.post.mockResolvedValue({
+      data: {
+        active: '常规',
+        plan: [],
+        inventory_config: targetInventory,
+        activity_fallbacks: {},
+        activity_fallback_switch_times: {},
+        activity_plan_end_times: {}
+      }
+    })
+
+    await store.update_weekly_plan_active('常规')
+
+    expect(axios.post).toHaveBeenCalledTimes(1)
+    expect(axios.post.mock.calls[0][0]).toContain('/weekly-plans/active')
+    expect(axios.post.mock.calls[0][1]).toMatchObject({
+      active: '常规',
+      source_inventory_config: {
+        enabled: true,
+        limit_rules: [
+          {
+            stage: 'ACT-1',
+            items: [{ item_id: '30012', limit: 100 }]
+          }
+        ],
+        ratio_rules: []
+      }
+    })
+    expect(store.maa_weekly_plan_active).toBe('常规')
+    expect(store.maa_stage_inventory_enable).toBe(false)
+    expect(store.maa_stage_limit_rules).toEqual(targetInventory.limit_rules)
+  })
+})
+
+describe('native Android setting ownership', () => {
+  it('omits native idle, screenshot and theme fields only on Android', () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    store.return_home_when_idle = true
+    store.screenshot = 2.5
+    store.screenshot_archive_limit_mb = 256
+    store.theme = 'dark'
+    store.runtime_platform = 'android'
+    expect(store.build_config()).not.toHaveProperty('return_home_when_idle')
+    expect(store.build_config()).not.toHaveProperty('exit_game_when_idle')
+    expect(store.build_config()).not.toHaveProperty('close_simulator_when_idle')
+    expect(store.build_config()).not.toHaveProperty('screenshot')
+    expect(store.build_config().screenshot_archive_limit_mb).toBe(256)
+    expect(store.build_config()).not.toHaveProperty('theme')
+    for (const platform of ['linux', 'windows', 'darwin']) {
+      store.runtime_platform = platform
+      expect(store.build_config()).toMatchObject({
+        return_home_when_idle: true,
+        exit_game_when_idle: false,
+        close_simulator_when_idle: false,
+        screenshot: 2.5,
+        screenshot_archive_limit_mb: 256,
+        theme: 'dark'
+      })
+    }
+  })
+})
+
+describe('low frame rate adaptation', () => {
+  it('keeps saved timing values when switching performance modes', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    axios.get.mockResolvedValue({
+      data: {
+        runtime_platform: 'darwin',
+        performance_mode: 'high',
+        screenshot_interval: 640,
+        selection_poll_interval: 0.7,
+        selection_transition_timeout: 8,
+        run_order_delay: 12,
+        run_order_grandet_mode: { buffer_time: 41 },
+        free_blacklist: '',
+        reload_room: '',
+        maa_mall_buy: '',
+        maa_mall_blacklist: '',
+        favorite: '',
+        reclamation_algorithm: {},
+        secret_front: {},
+        maa_weekly_plan: []
+      }
+    })
+    await store.load_config()
+    for (const mode of ['xhigh', 'medium', 'low', 'auto']) {
+      store.performance_mode = mode
+      const payload = store.build_config()
+      expect(payload.performance_mode).toBe(mode)
+      expect(payload.screenshot_interval).toBe(640)
+      expect(payload.selection_poll_interval).toBe(0.7)
+      expect(payload.selection_transition_timeout).toBe(8)
+      expect(payload.run_order_delay).toBe(12)
+      expect(payload.run_order_grandet_mode.buffer_time).toBe(41)
+    }
+  })
+  it.each([
+    ['android', undefined, false],
+    ['android', false, false],
+    ['android', true, true],
+    ['darwin', undefined, false],
+    ['windows', undefined, false],
+    ['linux', undefined, false],
+    ['darwin', true, true]
+  ])('loads %s with setting %s as %s and saves user changes', async (platform, value, expected) => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    // Minimal /conf response containing the fields that require string/object operations.
+    const response = {
+      runtime_platform: platform,
+      low_frame_rate_mode: value,
+      free_blacklist: '',
+      reload_room: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: response })
+    axios.patch.mockResolvedValue({ data: {} })
+    await store.load_config()
+    expect(store.low_frame_rate_mode).toBe(expected)
+    const initialMode = store.performance_mode
+    expect(initialMode).toBe('auto')
+    expect(store.build_config().low_frame_rate_mode).toBe(
+      performanceProfile(initialMode, platform).lowFrameRateMode
+    )
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.performance_mode = 'medium'
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    const savedValue = performanceProfile(store.performance_mode, platform).lowFrameRateMode
+    expect(store.build_config().low_frame_rate_mode).toBe(savedValue)
+    loaded.value = false
+    response.performance_mode = store.performance_mode
+    response.low_frame_rate_mode = store.build_config().low_frame_rate_mode
+    await store.load_config()
+    expect(store.low_frame_rate_mode).toBe(savedValue)
+  })
+
+  it('loads and saves stage plan and mall settings with backward-compatible defaults', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+
+    // 1. Old response with only maa_enable: 1
+    const legacyResponse = {
+      maa_enable: 1,
+      free_blacklist: '',
+      reload_room: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: legacyResponse })
+    await store.load_config()
+    expect(store.stage_plan_enable).toBe(true)
+    expect(store.stage_plan_runner).toBe('maa')
+    expect(store.maa_mall_enable).toBe(true)
+    expect(store.maa_mall_mode).toBe('maa')
+
+    // 2. Modify values and check build_config output
+    store.stage_plan_enable = false
+    store.stage_plan_runner = 'mower'
+    store.maa_mall_enable = false
+    store.maa_mall_mode = 'mower'
+    store.maa_adb_path = '/custom/adb'
+    let payload = store.build_config()
+    expect(payload.maa_adb_path).toBe('/custom/adb')
+    expect(payload.stage_plan_enable).toBe(false)
+    expect(payload.stage_plan_runner).toBe('mower')
+    expect(payload.maa_mall_enable).toBe(false)
+    expect(payload.maa_mall_mode).toBe('mower')
+    expect(payload.maa_enable).toBe(0)
+
+    // 2b. stage_plan disabled but maa_mall executed by maa -> maa_enable must be 1
+    store.stage_plan_enable = false
+    store.stage_plan_runner = 'mower'
+    store.maa_mall_enable = true
+    store.maa_mall_mode = 'maa'
+    payload = store.build_config()
+    expect(payload.maa_enable).toBe(1)
+
+    // 2c. stage_plan enabled with maa but maa_mall executed by mower -> maa_enable must be 1
+    store.stage_plan_enable = true
+    store.stage_plan_runner = 'maa'
+    store.maa_mall_enable = true
+    store.maa_mall_mode = 'mower'
+    payload = store.build_config()
+    expect(payload.maa_enable).toBe(1)
+
+    // 3. New response with explicit settings
+    const modernResponse = {
+      stage_plan_enable: true,
+      stage_plan_runner: 'mower',
+      maa_mall_enable: false,
+      maa_mall_mode: 'mower',
+      free_blacklist: '',
+      reload_room: '',
+      maa_mall_buy: '',
+      maa_mall_blacklist: '',
+      favorite: '',
+      reclamation_algorithm: {},
+      secret_front: {},
+      maa_weekly_plan: []
+    }
+    axios.get.mockResolvedValue({ data: modernResponse })
+    await store.load_config()
+    expect(store.stage_plan_enable).toBe(true)
+    expect(store.stage_plan_runner).toBe('mower')
+    expect(store.maa_mall_enable).toBe(false)
+    expect(store.maa_mall_mode).toBe('mower')
+  })
+})
+
+describe('factory product switching policy', () => {
+  it('defaults switching on with 30-second drone loss tolerance and serializes edits', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    axios.get.mockResolvedValue({
+      data: {
+        free_blacklist: '',
+        reload_room: '',
+        maa_mall_buy: '',
+        maa_mall_blacklist: '',
+        favorite: '',
+        reclamation_algorithm: {},
+        secret_front: {},
+        maa_weekly_plan: []
+      }
+    })
+
+    await store.load_config()
+    expect(store.product_switching).toEqual({
+      enable: false,
+      max_drones_per_switch: 0,
+      grandet_mode: true,
+      use_drones_when_leaving_orirock: true,
+      direct_when_drones_insufficient: false,
+      drone_loss_seconds: 30,
+      waiting_seconds: 2
+    })
+
+    store.product_switching.enable = false
+    store.product_switching.max_drones_per_switch = 12
+    store.product_switching.grandet_mode = false
+    store.product_switching.use_drones_when_leaving_orirock = false
+    store.product_switching.direct_when_drones_insufficient = true
+    store.product_switching.drone_loss_seconds = 45
+    store.product_switching.waiting_seconds = 4
+    expect(store.build_config().product_switching).toEqual({
+      enable: false,
+      max_drones_per_switch: 12,
+      grandet_mode: false,
+      use_drones_when_leaving_orirock: false,
+      direct_when_drones_insufficient: true,
+      drone_loss_seconds: 45,
+      waiting_seconds: 4
+    })
+  })
+})
+
+describe('version update mood policy', () => {
+  it('defaults to 80% and 12 hours and serializes user edits', () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+
+    expect(store.version_update_resting_threshold).toBe(80)
+    expect(store.version_update_threshold_advance_hours).toBe(12)
+    store.version_update_resting_threshold = 85
+    store.version_update_threshold_advance_hours = 18
+
+    expect(store.build_config()).toMatchObject({
+      version_update_resting_threshold: 0.85,
+      version_update_threshold_advance_hours: 18
+    })
+  })
+})
+
+describe('资源更新后的周计划元数据', () => {
+  it('重新读取结束时间时保留本地库存规则和所选关卡', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    store.maa_weekly_plan_active = '活动'
+    store.maa_weekly_plan = [{ weekday: '周一', stage: ['YW-8'] }]
+    store.maa_stage_limit_rules = [{ stage: 'YW-8', items: [] }]
+    store.maa_weekly_plan_activity_switch_times = { 活动: 1234 }
+    const plans = JSON.stringify(store.maa_weekly_plan)
+    const rules = JSON.stringify(store.maa_stage_limit_rules)
+    axios.get.mockResolvedValue({
+      data: {
+        plans: ['活动', '常规'],
+        activity_plan_end_times: { 活动: 1792699199 },
+        activity_fallback_switch_times: { 活动: 1234 },
+        inventory_config: { enabled: false, limit_rules: [] }
+      }
+    })
+    await store.refresh_weekly_plan_metadata()
+    expect(store.maa_weekly_plan_activity_end_times).toEqual({ 活动: 1792699199 })
+    expect(store.maa_weekly_plan_activity_switch_times).toEqual({ 活动: 1234 })
+    expect(JSON.stringify(store.maa_weekly_plan)).toBe(plans)
+    expect(JSON.stringify(store.maa_stage_limit_rules)).toBe(rules)
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+})
+
+describe('managed maintenance visibility', () => {
+  it.each([
+    [undefined, false],
+    [false, false],
+    [true, true],
+    ['true', false]
+  ])(
+    'loads visibility %s as %s without adding a writable instance preference',
+    async (value, expected) => {
+      pinia = createPinia()
+      setActivePinia(pinia)
+      const app = createApp({})
+      app.use(pinia)
+      app.provide('loaded', ref(false))
+      store = app.runWithContext(() => useConfigStore())
+      expect(store.extra_settings_visible).toBe(false)
+      expect(store.manager_inherited_settings).toEqual([])
+      axios.get.mockResolvedValue({
+        data: {
+          manager_owned_device: true,
+          manager_inherited_settings: ['screenshot', 42],
+          extra_settings_visible: value,
+          free_blacklist: '',
+          reload_room: '',
+          maa_mall_buy: '',
+          maa_mall_blacklist: '',
+          favorite: '',
+          reclamation_algorithm: {},
+          secret_front: {},
+          maa_weekly_plan: []
+        }
+      })
+      await store.load_config()
+      expect(store.manager_owned_device).toBe(true)
+      expect(store.manager_inherited_settings).toEqual(['screenshot'])
+      expect(store.extra_settings_visible).toBe(expected)
+      expect(store.build_config()).not.toHaveProperty('extra_settings_visible')
+      expect(store.build_config()).not.toHaveProperty('manager_inherited_settings')
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+})
+
+describe('各组心情阈值保存', () => {
+  it.each([undefined, { 主表组: 0.35, 副表组: 0.65 }])(
+    '加载兼容配置并单独保存组阈值 %s',
+    async (thresholds) => {
+      pinia = createPinia()
+      setActivePinia(pinia)
+      const app = createApp({})
+      const loaded = ref(false)
+      app.use(pinia)
+      app.provide('loaded', loaded)
+      store = app.runWithContext(() => useConfigStore())
+      const response = {
+        resting_threshold: 0.35,
+        group_resting_thresholds: thresholds,
+        free_blacklist: '',
+        reload_room: '',
+        maa_mall_buy: '',
+        maa_mall_blacklist: '',
+        favorite: '',
+        reclamation_algorithm: {},
+        secret_front: {},
+        maa_weekly_plan: []
+      }
+      axios.get.mockResolvedValue({ data: response })
+      axios.patch.mockResolvedValue({ data: {} })
+      await store.load_config()
+      expect(store.resting_threshold).toBe(35)
+      expect(store.group_resting_thresholds).toEqual(thresholds ?? {})
+      loaded.value = true
+      await nextTick()
+      await store.flush_config_saves()
+      store.group_resting_thresholds = { 主表组: 0.5 }
+      await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+      expect(axios.patch.mock.lastCall[1]).toEqual({ group_resting_thresholds: { 主表组: 0.5 } })
+      const settings = store.build_advanced_settings()
+      store.group_resting_thresholds.主表组 = 0.35
+      expect(settings.group_resting_thresholds).toEqual({ 主表组: 0.5 })
+      expect(store.build_config().group_resting_thresholds).toEqual({ 主表组: 0.35 })
+      expect(response.group_resting_thresholds).toEqual(thresholds)
+      loaded.value = false
+    }
+  )
+})
+
+describe('standalone web access settings', () => {
+  async function setup() {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    const loaded = ref(false)
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    store.webview = { port: 58000, token: '', scale: 1, tray: true }
+    store.runtime_platform = 'darwin'
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+  }
+
+  it('saves only confirmed access fields and preserves concurrent window edits', async () => {
+    await setup()
+    let complete
+    axios.patch.mockImplementationOnce(() => new Promise((resolve) => (complete = resolve)))
+    const saving = store.save_web_access({ port: 58010, token: 'synthetic-fixed-token' })
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(store.webview.token).toBe('')
+    expect(axios.patch.mock.calls[0][1]).toEqual({
+      webview: { port: 58010, token: 'synthetic-fixed-token' }
+    })
+    store.webview.scale = 1.25
+    await nextTick()
+    complete({ data: {} })
+    await saving
+    await nextTick()
+    await store.flush_config_saves()
+    expect(store.webview).toEqual({
+      port: 58010,
+      token: 'synthetic-fixed-token',
+      scale: 1.25,
+      tray: true
+    })
+    expect(axios.patch.mock.calls[1][1]).toEqual({ webview: { scale: 1.25 } })
+    expect(axios.patch).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not apply or silently retry a failed access draft during later autosaves', async () => {
+    await setup()
+    axios.patch.mockRejectedValueOnce(new Error('offline'))
+    await expect(store.save_web_access({ port: 58010, token: 'synthetic-token' })).rejects.toThrow(
+      'offline'
+    )
+    expect(store.webview).toMatchObject({ port: 58000, token: '' })
+    store.webview.scale = 1.5
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.calls[1][1]).toEqual({ webview: { scale: 1.5 } })
+    await store.save_web_access({ port: 58010, token: 'synthetic-token' })
+    await store.save_web_access({ port: 0, token: '' })
+    expect(store.webview).toMatchObject({ port: 0, token: '' })
+  })
+
+  it.each([-1, 65536, 1.5, null])('rejects invalid port %s without a request', async (port) => {
+    await setup()
+    await expect(store.save_web_access({ port, token: '' })).rejects.toThrow('端口')
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it.each(['managed', 'android'])('does not submit desktop access edits for %s', async (mode) => {
+    await setup()
+    if (mode === 'managed') store.manager_owned_device = true
+    else store.runtime_platform = 'android'
+    await expect(store.save_web_access({ port: 58010, token: 'synthetic' })).rejects.toThrow(
+      '管理器'
+    )
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+})

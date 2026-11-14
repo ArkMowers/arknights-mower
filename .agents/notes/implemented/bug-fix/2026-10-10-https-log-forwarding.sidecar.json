@@ -1,0 +1,25 @@
+{
+  "title": "Log forwarding with explicit credentials",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-WEB-01]",
+    "[INV-WEB-02]"
+  ],
+  "code_symbols": [
+    "server._authorize_websocket",
+    "server._local_log_request_allowed",
+    "ui.src.stores.mower.listen_ws"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/log_access_tests.py",
+    "arknights_mower/tests/ai_security_tests.py",
+    "arknights_mower/tests/log_stream_tests.py",
+    "arknights_mower/tests/verify_governance_tests.py",
+    "ui/src/stores/mower.test.js"
+  ]
+}

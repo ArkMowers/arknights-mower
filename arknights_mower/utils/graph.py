@@ -1,17 +1,118 @@
 import functools
+from heapq import heappop, heappush
+from itertools import count
 
-import networkx as nx
-
-from arknights_mower.utils import config
-from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.device.adb_client.session import Session
-from arknights_mower.utils.device.scrcpy import Scrcpy
+from arknights_mower.utils.csleep import MowerExit, csleep
+from arknights_mower.utils.device.adb_client.server import SharedADBError
+from arknights_mower.utils.device.application import RECOVERABLE_DEVICE_ERRORS
+from arknights_mower.utils.device.io_budget import io_timeout
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    input_reconciliation_scope,
+    wait_for_recovery,
+)
+from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene, SceneComment
-from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.solver import BaseSolver
 
-DG = nx.DiGraph()
+
+class _SceneGraph:
+    def __init__(self):
+        self._outgoing = {}
+        self._incoming = {}
+
+    def __contains__(self, scene):
+        return scene in self._outgoing
+
+    def add_edge(self, source, target, *, weight, transition):
+        if weight < 0:
+            raise ValueError("场景转移权重不能为负数")
+        edge = weight, transition
+        self._outgoing.setdefault(source, {})[target] = edge
+        self._outgoing.setdefault(target, {})
+        self._incoming.setdefault(target, {})[source] = edge
+        self._incoming.setdefault(source, {})
+
+    def transition(self, source, target):
+        return self._outgoing[source][target][1]
+
+    def shortest_path(self, source, target):
+        if source == target:
+            return [source]
+
+        sequence = count()
+        ends = source, target
+        queues = tuple([(0, next(sequence), scene)] for scene in ends)
+        routes = tuple({scene: (0, [scene])} for scene in ends)
+        settled = set(), set()
+        neighbors = self._outgoing, self._incoming
+        best_cost = float("inf")
+        best_path = None
+        direction, reverse = 1, 0
+
+        # Alternate search directions and keep the first equally short path.
+        while queues[0] and queues[1]:
+            direction, reverse = reverse, direction
+            cost, _, scene = heappop(queues[direction])
+            if scene in settled[direction]:
+                continue
+            if scene in settled[reverse]:
+                return best_path
+            settled[direction].add(scene)
+
+            for neighbor, (weight, _) in neighbors[direction][scene].items():
+                next_cost = cost + weight
+                previous = routes[direction].get(neighbor)
+                if previous is not None and previous[0] <= next_cost:
+                    continue
+                trail = routes[direction][scene][1] + [neighbor]
+                routes[direction][neighbor] = next_cost, trail
+                heappush(queues[direction], (next_cost, next(sequence), neighbor))
+
+                match = routes[reverse].get(neighbor)
+                if match is not None and next_cost + match[0] < best_cost:
+                    best_cost = next_cost + match[0]
+                    forward_path = routes[0][neighbor][1]
+                    backward_path = routes[1][neighbor][1]
+                    best_path = forward_path + list(reversed(backward_path[:-1]))
+
+        raise ValueError(f"No path between {source} and {target}.")
+
+
+DG = _SceneGraph()
+SCENE_RECONCILABLE_TRANSITIONS = frozenset(
+    {
+        "back_to_index",
+        "index_to_infra",
+        "index_to_friend",
+        "index_to_mission",
+        "index_to_recruit",
+        "index_to_shop",
+        "index_to_terminal",
+        "index_to_depot",
+        "index_to_mail",
+        "index_nav",
+        "nav_mission",
+        "nav_index",
+        "nav_terminal",
+        "nav_recruit",
+        "nav_shop",
+        "nav_friend",
+        "mission_to_weekly",
+        "mission_trainee_to_daily",
+        "shop_to_credit",
+        "shop_confirm",
+        "friend_list",
+        "business_card",
+        "infra_back",
+        "riic_back",
+        "riic",
+        "control_central",
+        "recruit_back",
+    }
+)
 
 
 def edge(v_from: int, v_to: int, interval: int = 1):
@@ -321,6 +422,11 @@ def upgrade(solver: BaseSolver):
 # 基建
 
 
+@edge(Scene.CLUE_ACCESS_RECORD, Scene.CLUE_MESSAGE_BOARD)
+def clue_access_record(solver: BaseSolver):
+    return solver.dismiss_clue_access_record()
+
+
 @edge(Scene.INFRA_TODOLIST, Scene.INFRA_MAIN)
 def todo_complete(solver: BaseSolver):
     solver.tap((1840, 140))
@@ -336,9 +442,13 @@ def todo_complete(solver: BaseSolver):
 @edge(Scene.CLUE_GIVE_AWAY, Scene.INFRA_CONFIDENTIAL)
 @edge(Scene.CLUE_SUMMARY, Scene.INFRA_CONFIDENTIAL)
 @edge(Scene.CLUE_PLACE, Scene.INFRA_CONFIDENTIAL)
+@edge(Scene.CLUE_MESSAGE_BOARD, Scene.INFRA_DETAILS)
 @edge(Scene.INFRA_ARRANGE_ORDER, Scene.INFRA_DETAILS)
 @edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
 @edge(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS)
+@edge(Scene.MANUFACTURE_PRODUCT_SELECT, Scene.FACTORY_ROOMS)
+@edge(Scene.MANUFACTURE_PRODUCT_CHANGE_CONFIRM, Scene.FACTORY_ROOMS)
+@edge(Scene.TRADE_STRATEGY_SELECT, Scene.ORDER_LIST)
 @edge(Scene.DRONE_ACCELERATE, Scene.ORDER_LIST)
 @edge(Scene.FACTORY_FORMULA, Scene.FACTORY_DASHBOARD)
 @edge(Scene.FACTORY_DASHBOARD, Scene.FACTORY_ROOM)
@@ -415,19 +525,40 @@ def network_check_cancel(solver: BaseSolver):
 
 class SceneGraphSolver(BaseSolver):
     def scene_graph_navigation(self, scene: int):
-        if scene not in DG.nodes:
+        if scene not in DG:
             logger.error(f"{SceneComment[scene]}不在场景图中")
             return
 
         error_count = 0
+        game_restarted = False
 
         unknown_count = 0
+        cancelled_login_attempts = 0
+        access_record_dismissed = False
         while (current := self.scene()) != scene:
+            if (
+                current != Scene.CLUE_ACCESS_RECORD
+                and current not in self.waiting_scene
+            ):
+                self._clue_access_record_exhausted = False
+            if current == Scene.CLUE_ACCESS_RECORD:
+                if access_record_dismissed:
+                    self._clue_access_record_exhausted = True
+                    logger.warning(
+                        "访问记录关闭后再次出现，结束本次导航",
+                        extra={"archive_screenshots": True},
+                    )
+                    return
+                access_record_dismissed = True
+            if current == Scene.LOGIN_CANCELLED:
+                cancelled_login_attempts += 1
+                self.retry_cancelled_login(cancelled_login_attempts)
+                continue
             if current in self.waiting_scene and current != Scene.UNKNOWN:
                 self.waiting_solver()
                 continue
 
-            if current not in DG.nodes:
+            if current not in DG:
                 logger.debug(f"{SceneComment[current]}不在场景图中")
                 unknown_count += 1
                 if unknown_count <= 3:
@@ -446,27 +577,43 @@ class SceneGraphSolver(BaseSolver):
                 continue
 
             try:
-                sp = nx.shortest_path(DG, current, scene, weight="weight")
+                sp = DG.shortest_path(current, scene)
             except Exception as e:
+                # 纯图计算错误（如无路径），与设备无关：不重启模拟器，放弃本次导航
                 logger.exception(f"场景图路径计算异常：{e}")
-                restart_simulator()
-                self.device.client.check_server_alive()
-                Session().connect(config.conf.adb)
-                if config.conf.droidcast.enable:
-                    self.device.start_droidcast()
-                if config.conf.touch_method == "scrcpy":
-                    self.device.control.scrcpy = Scrcpy(self.device.client)
                 return
 
             logger.debug(sp)
 
             next_scene = sp[1]
-            transition = DG.edges[current, next_scene]["transition"]
+            transition = DG.transition(current, next_scene)
 
             try:
-                transition(self)
+                mode = (
+                    "scene"
+                    if getattr(transition, "__name__", "")
+                    in SCENE_RECONCILABLE_TRANSITIONS
+                    else "task"
+                )
+                with input_reconciliation_scope(mode):
+                    completed = transition(self)
+                    if current == Scene.CLUE_ACCESS_RECORD and completed is False:
+                        return
                 error_count = 0
-            except MowerExit:
+            except TouchFailure as exc:
+                if exc.reconciliation != "scene" or exc.cleanup_failed:
+                    raise
+
+                def resume_navigation():
+                    self.device.reconnect()
+                    self.recog.update()
+
+                csleep(io_timeout(30))
+                wait_for_recovery(
+                    resume_navigation, retry_errors=RECOVERABLE_DEVICE_ERRORS
+                )
+                continue
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
@@ -474,17 +621,15 @@ class SceneGraphSolver(BaseSolver):
                     self.sleep()
                     error_count += 1
                     continue
-                if restart_simulator():
-                    self.device.client.check_server_alive()
-                    Session().connect(config.conf.adb)
-                    if config.conf.droidcast.enable:
-                        self.device.start_droidcast()
-                    if config.conf.touch_method == "scrcpy":
-                        self.device.control.scrcpy = Scrcpy(self.device.client)
-                    self.check_current_focus()
-                else:
-                    self.restart_game()
+                if game_restarted:
+                    raise RecognizeError("场景转移在游戏重启后仍持续失败") from e
+                self.device.reconnect()
+                self.restart_game()
+                game_restarted = True
                 error_count = 0
+            # 每圈强制清场景缓存：转移静默失败（如 tap_element 找不到元素直接返回
+            # False）时缓存不失效，get_scene 一直返回陈旧场景导致死循环刷日志
+            self.recog.update()
 
     def back_to_index(self):
         logger.info("场景图导航：back_to_index")

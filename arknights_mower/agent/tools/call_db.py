@@ -1,4 +1,7 @@
+import html
 import sqlite3
+import time
+from contextlib import closing
 
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -10,33 +13,64 @@ def call_db(query: str):
     """
     try:
         database_path = get_path("@app/tmp/data.db")
-        print(query)
-        conn = sqlite3.connect(database_path)
-        cursor = conn.cursor()
-        cursor.execute(query)
-        logger.debug(f"执行 SQL 查询: {query}")
-        # 只返回前 100 行，防止数据量过大
-        rows = cursor.fetchmany(100)
-        columns = [desc[0] for desc in cursor.description]
-        result = [dict(zip(columns, row)) for row in rows]
-        cursor.close()
-        conn.close()
+        logger.debug("执行 SQL 查询: %s", query)
+        deadline = time.monotonic() + 2
+        with closing(
+            sqlite3.connect(
+                database_path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2
+            )
+        ) as conn:
+            conn.setlimit(sqlite3.SQLITE_LIMIT_LENGTH, 1048576)
+            conn.setlimit(sqlite3.SQLITE_LIMIT_SQL_LENGTH, 8000)
+            conn.setlimit(sqlite3.SQLITE_LIMIT_COLUMN, 64)
+            conn.execute("PRAGMA query_only=ON")
+            allowed = {
+                sqlite3.SQLITE_SELECT,
+                sqlite3.SQLITE_FUNCTION,
+                sqlite3.SQLITE_RECURSIVE,
+            }
+
+            def authorize(action, arg1, arg2, database, source):
+                if action == sqlite3.SQLITE_READ:
+                    return (
+                        sqlite3.SQLITE_OK
+                        if arg1 in {"log", "agent_action", "trading_history"}
+                        else sqlite3.SQLITE_DENY
+                    )
+                if action == sqlite3.SQLITE_FUNCTION and (arg2 or "").lower() in {
+                    "load_extension",
+                    "readfile",
+                    "writefile",
+                }:
+                    return sqlite3.SQLITE_DENY
+                return sqlite3.SQLITE_OK if action in allowed else sqlite3.SQLITE_DENY
+
+            conn.set_authorizer(authorize)
+            conn.set_progress_handler(lambda: time.monotonic() >= deadline, 1000)
+            cursor = conn.execute(query)
+            if cursor.description is None:
+                raise ValueError("仅支持只读查询")
+            columns = [desc[0] for desc in cursor.description]
+            result = [dict(zip(columns, row)) for row in cursor.fetchmany(100)]
         if not result:
             return "<p>无查询结果</p>"
-        html = (
+        table = (
             "<table border='1'><tr>"
-            + "".join(f"<th>{col}</th>" for col in columns)
+            + "".join(f"<th>{html.escape(str(col))}</th>" for col in columns)
             + "</tr>"
         )
         for row in result:
-            html += (
+            table += (
                 "<tr>"
-                + "".join(f"<td>{row.get(col, '')}</td>" for col in columns)
+                + "".join(
+                    f"<td>{html.escape(str(row.get(col, ''))[:2000])}</td>"
+                    for col in columns
+                )
                 + "</tr>"
             )
-        html += "</table>"
-        print(html)
-        return html
+        table += "</table>"
+        logger.debug("SQL 查询返回 %s 行", len(result))
+        return table
     except Exception as e:
         return f"SQL 执行失败: {e}"
 
@@ -46,47 +80,42 @@ call_db_tool_def = {
     "function": {
         "name": "call_db",
         "description": (
-            # 基本规则
-            "ALWAYS return the HTML table string exactly as received from the tool."
-            "Execute a SQL query on the specified database and return the result. "
-            "DO NOT reformat the result. "
-            "You must generate a valid SQL SELECT statement according to the user's request and the provided table schema. "
-            "If the query is not a SELECT, return an error. "
-            "If the query is too complex or dangerous, ask the user for confirmation."
-            "表定义和专用规则："
+            "查询本地 SQLite 数据库。只生成 SELECT 查询，不生成写入、删表或修改结构的 SQL。"
+            "返回 HTML 表格、无查询结果或 SQL 执行失败信息；"
+            "将表格转成 Markdown 或纯文本，空结果和错误按实际含义说明。"
+            "最多返回100行，查询最近记录时显式 ORDER BY 时间 DESC LIMIT N，N 不超过100。\n"
+            "表定义和专用规则：\n"
             "1. agent_action表 - 干员基建活动:"
-            "   字段: name TEXT,agent_current_room TEXT,current_room TEXT,is_high INTEGER,agent_group TEXT,mood REAL,`current_time` TEXT"
-            "   规则: 如果current_room是空值则表示该干员不在任何房间中; dorm_开头表示在宿舍"
-            "   示例查询: SELECT name AS 干员名称, current_room AS 当前位置 FROM agent_action WHERE agent_current_room LIKE 'dorm_%'"
+            "   字段: name TEXT,agent_current_room TEXT,current_room TEXT,is_high INTEGER,agent_group TEXT,mood REAL,`current_time` TEXT,related_operator TEXT,mood_event TEXT。"
+            "agent_current_room 是更新前位置，current_room 是更新后位置；"
+            "current_room 为空表示不在房间，dorm_ 开头表示宿舍。记录是历史观测，不保证代表实时位置。"
+            "示例查询: SELECT name AS 干员名称, current_room AS 更新后位置, `current_time` AS 时间 FROM agent_action WHERE current_room LIKE 'dorm_%' ORDER BY `current_time` DESC LIMIT 10;\n"
             "2. trading_history表 - 龙门币交易记录/订单记录:"
             "   字段: time INTEGER PRIMARY KEY,server_date TEXT,type TEXT,price INTEGER"
             "   订单类别/ type：龙舌兰，但书，佩佩，可露希尔，漏单"
             "   规则: 时间查询需转换: strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS local_time"
-            "   示例查询: SELECT strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS 交易时间, type AS 类型 FROM trading_history WHERE type = '漏单'"
+            "   示例查询: SELECT strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS 交易时间, type AS 类型 FROM trading_history WHERE type = '漏单' ORDER BY time DESC LIMIT 10;\n"
             "3. log表 - 系统任务记录/报错记录/日志:"
             "   字段: time INTEGER, task TEXT, level TEXT, message TEXT"
             "   专用: 当用户查询'任务'、'报错'、'错误'、'日志'时必须使用此表"
-            "   示例查询: SELECT strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS 时间, task AS 任务, message AS 错误信息 FROM log WHERE level = 'ERROR'"
-            # 强制规则
-            "强制规则:"
+            "   示例查询: SELECT strftime('%Y-%m-%d %H:%M:%S', time, 'unixepoch', 'localtime') AS 时间, task AS 任务, message AS 错误信息 FROM log WHERE level = 'ERROR' ORDER BY time DESC LIMIT 10;\n"
+            "查询规则:"
             "- 任务，日志相关查询必须使用log表，不得使用trading_history表"
             "- 列名必须与用户查询语言一致"
-            "- 用户查询‘漏单’时候你需要向用户确认是想查询任务记录还是查询账单/龙门币记录"
+            "- 明确查询原始漏单记录时按用户指定的表查询，仅记录类型有歧义时询问"
             "- 如果用户是要分析漏单原因而不是单纯查表，应优先使用 analyze_missed_order 工具"
             "- agent_action 的 `current_time` 你必须用``包住 例子: Select `current_time` from agent_action"
-            # 时间处理
             "时间处理规则:"
-            "- trading_history,log 的时间字段需转换 需要调用 parse_datetime 工具"
+            "- trading_history、log 的 time 是 Unix 秒级时间戳，展示时用上述 SQLite 表达式转换"
+            "- 按本地时间筛选可比较 datetime(time, 'unixepoch', 'localtime') 与 'YYYY-MM-DD HH:MM:SS'，不要猜测时间戳"
             "- agent_action的`current_time`已是本地时间"
-            "- 在以下情况必须暂停执行，向用户确认后再继续:"
-            "- 查询漏单的时候，如果用户没有规定是订单还是任务记录，则必须暂停执行，向用户确认"
         ),
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {
                     "type": "string",
-                    "description": "A valid SQL SELECT statement to execute, e.g. 'SELECT * FROM users WHERE id=1'.",
+                    "description": "针对上述表的 SQLite SELECT 查询，包含明确排序和不超过100行的 LIMIT。",
                 }
             },
             "required": ["query"],

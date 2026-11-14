@@ -1,0 +1,26 @@
+{
+  "title": "Base Report Field Integrity",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "DeepSeek",
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-07]",
+    "[INV-REC-03]",
+    "[INV-DEV-18]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.report.match_digit",
+    "arknights_mower.solvers.report.ReportSolver.get_number",
+    "arknights_mower.solvers.report.ReportSolver.crop_report",
+    "arknights_mower.solvers.report.ReportSolver.record_report",
+    "arknights_mower.solvers.report.ReportSolver.read_report",
+    "arknights_mower.solvers.report.ReportSolver.run"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/base_report_read_tests.py"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "title": "Confirmed crafting mastery dispatch",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-40]",
+    "[INV-SCHED-29]",
+    "[INV-STOCK-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.generate_product",
+    "arknights_mower.utils.mastery_recommendation.auto_schedule_mastery_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/workshop_mastery_dispatch_tests.py"
+  ]
+}

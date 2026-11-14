@@ -106,7 +106,13 @@ class CaptchaClickSolver(BaseSolver):
         # 2. 超过最大次数 → 发邮件放弃
         if self._attempt_count >= self.MAX_ATTEMPTS:
             logger.error(f"点选验证码已连续失败 {self.MAX_ATTEMPTS} 次，放弃求解")
-            send_message("点选验证码自动求解失败，请手动处理", level="ERROR")
+            send_message(
+                "点选验证码自动求解失败，请手动处理",
+                subject="点选验证码自动求解失败",
+                level="ERROR",
+                archive_screenshots=True,
+                screenshot_source=getattr(self, "device", None),
+            )
             return True
 
         # 3. 根据不同阶段执行
@@ -134,7 +140,10 @@ class CaptchaClickSolver(BaseSolver):
         if not self._title_text:
             title = self._recognize_title(img)
             if not title:
-                logger.error("无法识别题目文字，刷新重试")
+                logger.error(
+                    "无法识别题目文字，刷新重试",
+                    extra={"archive_screenshots": False},
+                )
                 return self._fail_retry()
             self._title_text = title
             logger.info(f"题目文字：'{self._title_text}'")
@@ -142,9 +151,17 @@ class CaptchaClickSolver(BaseSolver):
         # 2) ddddocr 检测点击区所有汉字
         items = self._detect_click_items(img)
         if not items:
-            logger.error("点击区域内未检测到任何汉字，刷新重试")
+            logger.error(
+                "点击区域内未检测到任何汉字，刷新重试",
+                extra={"archive_screenshots": False},
+            )
             return self._fail_retry()
-        logger.info(f"检测到 {len(items)} 个汉字, 结果如下：{str(items)}")
+        logger.debug("验证码候选汉字与坐标：%s", items)
+        logger.info(
+            "识别到%s个候选汉字：%s",
+            len(items),
+            "、".join(item["word"] for item in items),
+        )
         for i, it in enumerate(items):
             logger.debug(f"  [{i}] '{it['word']}' {it['coords']}")
         self._click_items = items
@@ -152,24 +169,32 @@ class CaptchaClickSolver(BaseSolver):
         # 检测到的汉字少于题目字数 → 直接刷新，不调 LLM
         if len(items) < len(self._title_text):
             logger.error(
-                f"检测到 {len(items)} 个汉字，少于题目 {len(self._title_text)} 个字，刷新重试"
+                f"检测到 {len(items)} 个汉字，少于题目 {len(self._title_text)} 个字，刷新重试",
+                extra={"archive_screenshots": False},
             )
             return self._fail_retry()
 
         # 3) LLM 排序（复用 agent/tools/captcha_ocr_match.py）
         order = match_captcha_order(self._title_text, items)
         if not order:
-            logger.error("LLM 排序失败，刷新重试")
+            logger.error("LLM 排序失败，刷新重试", extra={"archive_screenshots": False})
             return self._fail_retry()
 
         # 校验索引合法性
         valid = [i for i in order if 0 <= i < len(items)]
         if not valid:
-            logger.error("LLM 返回的索引全部越界，刷新重试")
+            logger.error(
+                "LLM 返回的索引全部越界，刷新重试",
+                extra={"archive_screenshots": False},
+            )
             return self._fail_retry()
 
         self._click_order = valid
-        logger.info(f"点击顺序：{self._click_order}")
+        logger.debug("验证码准备点击的索引：%s", self._click_order)
+        logger.info(
+            "准备按顺序点击：%s",
+            " → ".join(items[index]["word"] for index in self._click_order),
+        )
 
         # 4) debug 模式：在截图上标注顺序，保存到 solve_captcha/
         if self.debug:
@@ -198,9 +223,15 @@ class CaptchaClickSolver(BaseSolver):
         item = self._click_items[idx]
         cx = (item["coords"][0] + item["coords"][2]) // 2
         cy = (item["coords"][1] + item["coords"][3]) // 2
-        logger.info(
+        logger.debug(
             f"点击 [{idx}] '{item['word']}'  ({cx},{cy})  "
             f"[{self._click_idx + 1}/{len(self._click_order)}]"
+        )
+        logger.info(
+            "点击汉字：%s（%s/%s）",
+            item["word"],
+            self._click_idx + 1,
+            len(self._click_order),
         )
         self.tap((cx, cy), interval=0.3)
         self._click_idx += 1
@@ -276,7 +307,13 @@ class CaptchaClickSolver(BaseSolver):
         self._attempt_count += 1
         if self._attempt_count >= self.MAX_ATTEMPTS:
             logger.error(f"已达最大尝试次数 {self.MAX_ATTEMPTS}，放弃")
-            send_message("点选验证码自动求解失败，请手动处理", level="ERROR")
+            send_message(
+                "点选验证码自动求解失败，请手动处理",
+                subject="点选验证码自动求解失败",
+                level="ERROR",
+                archive_screenshots=True,
+                screenshot_source=getattr(self, "device", None),
+            )
             return True
 
         logger.info(f"刷新验证码（第 {self._attempt_count}/{self.MAX_ATTEMPTS} 次）")
@@ -312,7 +349,7 @@ class CaptchaClickSolver(BaseSolver):
         from arknights_mower.utils import rapidocr
 
         if not rapidocr.engine:
-            logger.error("RapidOCR 未初始化")
+            logger.error("RapidOCR 未初始化", extra={"archive_screenshots": False})
             return ""
 
         x1, y1, x2, y2 = self.title_area

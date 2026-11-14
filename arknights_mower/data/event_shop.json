@@ -1,0 +1,22 @@
+[
+  {
+    "activity": "时间啊，向前！",
+    "activity_id": "act55side",
+    "start_ts": 1793487600,
+    "end_ts": 1795291199,
+    "reward_end_ts": 1795895999,
+    "entry_names": [
+      "世纪之春",
+      "残照终尽",
+      "长冬初青"
+    ],
+    "chapters": {
+      "normal": "残照终尽",
+      "ex": "长冬初青",
+      "s": "世纪之春"
+    },
+    "token_ids": [
+      "act55side_token_record"
+    ]
+  }
+]
