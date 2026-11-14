@@ -2641,10 +2641,10 @@ async function db_delete(keys) {
 
 .plan-condition {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  min-height: 0;
   font-size: 13px;
 }
 
