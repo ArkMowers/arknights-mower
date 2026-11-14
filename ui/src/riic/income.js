@@ -33,7 +33,7 @@ export function defaultIncomeSettings() {
     dailyExternalResources: Object.fromEntries(
       MOWER_RAW_MATERIALS.map(({ resource }) => [resource, 0])
     ),
-    weightMode: 'mower',
+    weightMode: 'sanity',
     mowerWeights: null,
     mowerAlgorithm: null,
     sanityValuation: null,

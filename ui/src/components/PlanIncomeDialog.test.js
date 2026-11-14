@@ -174,7 +174,7 @@ it('restores defaults without changing shared settings or the retained result', 
     expectationMode: true,
     operatorMode: 'cache',
     inventorySource: 'cache',
-    weightMode: 'mower',
+    weightMode: 'sanity',
     cachedInventory: { gold: 10 },
     productionWeights: { exp: 1 },
     mowerAlgorithm: 2
