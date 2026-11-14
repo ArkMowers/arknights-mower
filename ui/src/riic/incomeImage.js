@@ -208,6 +208,30 @@ export async function renderIncomeImage(
   const sourceUrl = URL.createObjectURL(planImage)
   try {
     const metrics = incomeImageMetrics(result.summary, result.observedHours / 24)
+    const parts = result.summary.sanity?.parts
+    const facilityValues = parts
+      ? [
+          { label: '回收站', keys: ['recycle'] },
+          { label: '会客室', keys: ['clue', 'exchange'] },
+          { label: '办公室', keys: ['recruitment'] }
+        ].map(({ label, keys }) => {
+          const values = keys.map((key) => {
+            const part = parts.find((item) => item.key === key)
+            return part?.quantity === 0 ? 0 : part?.value
+          })
+          return {
+            label,
+            value: values.every(Number.isFinite)
+              ? values.reduce((sum, value) => sum + value, 0)
+              : null
+          }
+        })
+      : []
+    const facilityTop = metrics.some(({ key }) =>
+      ['fragment', 'lmdCost', 'orirockCost', 'deviceCost'].includes(key)
+    )
+      ? 110
+      : 86
     const [source, drone, ...icons] = await Promise.all([
       loadImage(sourceUrl),
       loadImage('/product/drone.svg'),
@@ -235,7 +259,11 @@ export async function renderIncomeImage(
     const orders = result.orderDistribution ?? incomeOrderDistribution(result.simulationReport)
     const annotationTop = Math.max(73 + weightLines.length * 14, orders?.other ? 100 : 87)
     const headerHeight = Math.ceil(
-      Math.max(100, annotationTop + annotationLines.length * 16 + 3) * scale
+      Math.max(
+        100,
+        annotationTop + annotationLines.length * 16 + 3,
+        facilityValues.length ? facilityTop + 42 : 0
+      ) * scale
     )
     const dark = theme === 'dark'
     const planTop = headerHeight - imageTopWhitespace(source, scale, dark)
@@ -404,6 +432,21 @@ export async function renderIncomeImage(
         }
         ctx.fillText(value, valueX, baseline, (negative ? 81 : 89) * scale)
       })
+    if (facilityValues.length) {
+      write('附加收益 · 理智/天', 570, facilityTop, 10, muted)
+      facilityValues.forEach(({ label, value }, index) => {
+        const x = 570 + index * 130
+        write(label, x, facilityTop + 16, 10, muted)
+        ctx.font = `bold ${14 * scale}px sans-serif`
+        ctx.fillStyle = foreground
+        ctx.fillText(
+          value === null ? '未估值' : number(value),
+          x * scale,
+          (facilityTop + 35) * scale,
+          120 * scale
+        )
+      })
+    }
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
     })
