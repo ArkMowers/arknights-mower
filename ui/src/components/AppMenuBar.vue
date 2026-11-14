@@ -272,6 +272,9 @@ function brandOption(menuKey, option) {
 }
 
 function dropdownMenuProps(menu, option) {
+  const maxWidth = 'calc(100vw / var(--mower-zoom, 1) - 32px)'
+  const minWidth = props.mode === 'brand' && !option ? '180px' : '200px'
+  const menuTopSpace = option?.menuKey === 'view' ? '136px' : '60px'
   return {
     id: `${menuId}-${menu.key}${option ? `-${option.key}` : ''}`,
     class: [
@@ -282,9 +285,9 @@ function dropdownMenuProps(menu, option) {
     role: 'menu',
     'aria-label': option?.accessibleLabel || menu.label,
     style: {
-      minWidth: props.mode === 'brand' && !option ? '180px' : '200px',
-      maxWidth: 'calc(100vw - 32px)',
-      maxHeight: 'calc(100dvh - 60px)'
+      minWidth: `min(${minWidth}, ${maxWidth})`,
+      maxWidth,
+      maxHeight: `max(36px, calc(100dvh / var(--mower-zoom, 1) - ${menuTopSpace}))`
     },
     ...(props.mode === 'brand' && option?.menuKey
       ? {

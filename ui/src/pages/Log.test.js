@@ -3194,11 +3194,47 @@ describe('log page', () => {
     })
   })
 
+  it.each([null, 490])(
+    'resizes gradually when a short pane caps the screenshot with rail width %s',
+    async (savedWidth) => {
+      useGuiStore().runningLogLayout = 'custom:split:daily,log|tasks,screenshot'
+      state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+      const { page, pane, find, sizes } = mountWidePane(1466)
+      pane.getBoundingClientRect = () => ({ top: 0, bottom: 320, height: 320 })
+      pane.querySelector = (selector) =>
+        selector === '.log-screenshot'
+          ? { getBoundingClientRect: () => ({ top: 120, height: 192 }) }
+          : null
+      page.sc_blob = 'blob:http://latest'
+      page.layout_preference.screenshot_height = 276
+      page.layout_preference.rail_width = savedWidth
+      page.apply_log_layout()
+      await nextTick()
+      expect(sizes()['--log-rail-w']).toBe(savedWidth ? '490px' : '491px')
+      expect(sizes()['--log-sc-h']).toBe('192px')
+
+      const listeners = new Map()
+      document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+      state.client.post.mockResolvedValue({})
+      const handle = find((target) => target.props['aria-label'] === '调整截图预览大小')
+      handle.props.onPointerdown(resizePointer({ y: 116, top: 112 }))
+      listeners.get('pointermove')({ clientY: 115 })
+      listeners.get('pointerup')()
+
+      expect(sizes()['--log-rail-w']).toBe('492px')
+      expect(sizes()['--log-sc-h']).toBe('192px')
+      expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+        screenshot_height: 277,
+        ...(savedWidth ? { rail_width: 492 } : {})
+      })
+    }
+  )
+
   it('resizes a screenshot from the edge facing the task list', async () => {
     const gui = useGuiStore()
     gui.runningLogLayout = 'custom:split:daily,log|tasks,screenshot'
     state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
-    const { page, pane, find, sizes } = mountWidePane()
+    const { page, pane, find, sizes, classes } = mountWidePane()
     const listeners = new Map()
     document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
     state.client.post.mockResolvedValue({})
@@ -3211,6 +3247,7 @@ describe('log page', () => {
     const screenshotHandle = find((target) => target.props['aria-label'] === '调整截图预览大小')
     const queue = find((target) => target.props.class === 'task-table-scroll')
     const inColumn = (target) => screenshot.parent.children.indexOf(target)
+    expect(classes(screenshot.parent)).toContain('log-column--screenshot-at-bottom')
     expect(inColumn(queue)).toBeLessThan(inColumn(screenshotHandle))
     expect(inColumn(screenshotHandle)).toBeLessThan(inColumn(screenshot))
 
@@ -3229,6 +3266,7 @@ describe('log page', () => {
 
     gui.runningLogLayout = 'right_rail'
     await nextTick()
+    expect(classes(screenshot.parent)).not.toContain('log-column--screenshot-at-bottom')
     expect(inColumn(screenshot)).toBeLessThan(inColumn(screenshotHandle))
     expect(inColumn(screenshotHandle)).toBeLessThan(inColumn(queue))
   })

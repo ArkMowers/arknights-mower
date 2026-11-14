@@ -37,6 +37,7 @@ import {
   RAIL_MAX_WIDTH,
   RAIL_MIN_WIDTH,
   RESIZER_HEIGHT,
+  SCREENSHOT_MAX_HEIGHT,
   STACKED_SCREENSHOT_MAX_WIDTH
 } from '@/utils/logLayout'
 import { latestLogDate } from '@/utils/logSource'
@@ -522,6 +523,16 @@ function resize_log_pane(event, pane, fromTop = false) {
   const initialHeight = fromTop
     ? initialBounds.height
     : event.currentTarget.getBoundingClientRect().top - initialBounds.top
+  const initialRailWidth =
+    pane === 'screenshot' && rail_mode.value
+      ? fitRailLayout(
+          layout_preference.rail_width,
+          layout_preference.screenshot_height ?? 270,
+          container.offsetWidth,
+          container.getBoundingClientRect().height / logLayoutZoom(container),
+          screenshot_aspect
+        ).width
+      : null
   const direction = fromTop ? -1 : 1
   const variable = pane === 'screenshot' ? '--log-sc-h' : '--log-task-h'
   const stateKey = pane === 'screenshot' ? 'screenshot_height' : 'task_height'
@@ -532,22 +543,26 @@ function resize_log_pane(event, pane, fromTop = false) {
     const zoom = logLayoutZoom(container)
     const paneHeight = bounds.height / zoom
     const bottomReserve = logMinHeight(paneHeight) + resizer_height.value
-    const dragged = (initialHeight + direction * (moveEvent.clientY - event.clientY)) / zoom
+    const delta = (direction * (moveEvent.clientY - event.clientY)) / zoom
+    const dragged = initialHeight / zoom + delta
     let size
     if (pane === 'screenshot') {
       if (rail_mode.value) {
         const fitted = fitRailLayout(
-          null,
+          initialRailWidth + delta * screenshot_aspect,
           dragged,
           container.offsetWidth,
           paneHeight,
           screenshot_aspect
         )
-        size = reserve_rail_screenshot_space(container, fitted.height, paneHeight, zoom)
         if (restoring_log_layout || layout_preference.rail_width !== null) {
           savedRailWidth = fitted.width
           layout_preference.rail_width = fitted.width
         }
+        size = Math.min(
+          SCREENSHOT_MAX_HEIGHT,
+          Math.max(PANE_MIN_HEIGHT, Math.round(fitted.width / screenshot_aspect))
+        )
       } else {
         size = clamp_stacked_screenshot(
           dragged,
@@ -1418,7 +1433,9 @@ async function db_delete(keys) {
         class="log-column"
         :class="{
           'log-column--with-log': column.includes('log'),
-          'log-column--with-screenshot': column.includes('screenshot')
+          'log-column--with-screenshot': column.includes('screenshot'),
+          'log-column--screenshot-at-bottom':
+            has_screenshot && column.length > 1 && column.at(-1) === 'screenshot'
         }"
       >
         <template v-for="module in column" :key="module">
@@ -2161,7 +2178,9 @@ async function db_delete(keys) {
   --log-mono-font:
     'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC', monospace;
   --log-rule: rgb(128 128 128 / 18%);
-  --log-shot-shadow: drop-shadow(0 1px 3px rgba(24, 25, 28, 0.12));
+  --log-shot-shadow: drop-shadow(0 5px 8px rgba(24, 25, 28, 0.24));
+  --log-bottom-shot-shadow: drop-shadow(0 2px 4px rgba(24, 25, 28, 0.22));
+  --log-bottom-shot-shadow-space: 8px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(120px, 1fr) auto;
@@ -2226,6 +2245,10 @@ async function db_delete(keys) {
   min-height: 0;
 }
 
+.log-column--screenshot-at-bottom {
+  --log-shot-shadow: var(--log-bottom-shot-shadow);
+}
+
 .log-daily-module {
   overflow: hidden;
 }
@@ -2253,8 +2276,18 @@ async function db_delete(keys) {
   column-gap: var(--log-rail-spacing);
   overflow: hidden;
 
+  &:has(> .log-column--screenshot-at-bottom) {
+    overflow: clip;
+    overflow-clip-margin: var(--log-bottom-shot-shadow-space);
+  }
+
   .log-column {
     overflow: hidden auto;
+  }
+
+  .log-column--screenshot-at-bottom {
+    margin: calc(-1 * var(--log-bottom-shot-shadow-space));
+    padding: var(--log-bottom-shot-shadow-space);
   }
 
   &.log-pane--rail-left {
@@ -3270,7 +3303,8 @@ html[data-window-shell-theme='dark'] .home-container {
   --lg-btn-info-label: #b3def7;
   --log-label-weight: 500;
   --log-rule: rgb(244 240 229 / 12%);
-  --log-shot-shadow: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.25));
+  --log-shot-shadow: drop-shadow(0 6px 9px rgba(0, 0, 0, 0.55));
+  --log-bottom-shot-shadow: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.42));
 }
 
 .execution-control :deep(.n-button),
