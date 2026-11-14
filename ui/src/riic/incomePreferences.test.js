@@ -175,3 +175,20 @@ it('stores a shared optional fixed seed and migrates the old tailor value withou
   }
   expect(loadIncomePreferences().settings).not.toHaveProperty('tailorSeed')
 })
+
+it.each(['mower', 'custom', 'sanity'])(
+  'defaults to sanity while retaining an explicit saved %s choice',
+  (weightMode) => {
+    expect({ ...defaultIncomeSettings(), ...loadIncomePreferences().settings }.weightMode).toBe(
+      'sanity'
+    )
+    saveIncomePreferences({ ...defaultIncomeSettings(), weightMode }, {})
+    expect({ ...defaultIncomeSettings(), ...loadIncomePreferences().settings }.weightMode).toBe(
+      weightMode
+    )
+    clearIncomePreferences()
+    expect({ ...defaultIncomeSettings(), ...loadIncomePreferences().settings }.weightMode).toBe(
+      'sanity'
+    )
+  }
+)

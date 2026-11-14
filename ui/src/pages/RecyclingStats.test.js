@@ -130,7 +130,8 @@ describe('回收站理论收益换算', () => {
     expect(html).toContain('收益计算')
     expect(html).toContain('生产换算')
     expect(html).toContain('数据来源')
-    expect(html).toContain('不随设定效率变化')
+    expect(html).toContain('不使用手填效率')
+    expect(html).not.toContain('设定效率理论日产')
     expect(html).toContain('href="/settings?token=session-token#task-accounts"')
   })
   it('缺少计算器结果时保留材料比较说明', async () => {

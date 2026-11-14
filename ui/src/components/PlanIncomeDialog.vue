@@ -22,6 +22,8 @@ import { incomeLogTime } from '@/riic/incomeLogs'
 import IncomeTimeline from './IncomeTimeline.vue'
 import IncomeActivity from './IncomeActivity.vue'
 import IncomeDiagnostics from './IncomeDiagnostics.vue'
+import IncomeValueEditor from './IncomeValueEditor.vue'
+import { incomeScore, incomeScoreLabel } from '@/riic/incomeSanity'
 import { validateRosterWorkspace } from '@/riic/vendor/workbench/validate'
 import { renderIncomeImage, downloadIncomeImage, incomeImageFilename } from '@/riic/incomeImage'
 import {
@@ -43,6 +45,8 @@ const axios = inject('axios')
 const cacheLoading = ref(false)
 const cacheError = ref('')
 const weightsBusy = ref(false)
+const valuesBusy = ref(false)
+const valuation = ref(null)
 const weightsError = ref('')
 const submitting = ref(false)
 const validating = ref(false)
@@ -54,7 +58,11 @@ const stock = computed(() =>
   settings.inventorySource === 'cache' ? settings.cachedInventory : settings.initialInventory
 )
 const weightValues = computed(() =>
-  settings.weightMode === 'mower' ? settings.mowerWeights : settings.productionWeights
+  settings.weightMode === 'sanity'
+    ? null
+    : settings.weightMode === 'mower'
+      ? settings.mowerWeights
+      : settings.productionWeights
 )
 const cachedRosterCount = computed(() => settings.cachedOperators?.length ?? 0)
 async function readCache({ preserveOverrides = false } = {}) {
@@ -70,6 +78,7 @@ async function readCache({ preserveOverrides = false } = {}) {
       try {
         if (!preserveOverrides) cachedInventoryOverrides = {}
         applyIncomeCache(settings, data)
+        if (valuation.value) applyMowerIncomeSettings(settings, valuation.value)
         cachedInventoryBaseline = settings.cachedInventory ? { ...settings.cachedInventory } : null
         if (settings.cachedInventory)
           Object.assign(settings.cachedInventory, cachedInventoryOverrides)
@@ -94,6 +103,7 @@ async function readWeights() {
       signal: controller.signal
     })
     if (alive) {
+      valuation.value = data
       applyMowerIncomeSettings(settings, data)
       sharedRatios = data.ratios
     }
@@ -106,7 +116,7 @@ async function readWeights() {
 }
 async function selectAlgorithm(value) {
   const preset = incomeAlgorithms.find((item) => item.value === value)
-  if (!preset?.ratios || !sharedRatios || weightsBusy.value) return
+  if (!preset?.ratios || !sharedRatios || weightsBusy.value || valuesBusy.value) return
   weightsBusy.value = true
   weightsError.value = ''
   try {
@@ -124,6 +134,7 @@ async function selectAlgorithm(value) {
       { timeout: 15000, signal: controller.signal }
     )
     if (alive) {
+      valuation.value = data
       applyMowerIncomeSettings(settings, data)
       sharedRatios = data.ratios
     }
@@ -136,6 +147,11 @@ async function selectAlgorithm(value) {
 onMounted(() =>
   Promise.allSettled([readCache({ preserveOverrides: true }), readWeights(), restoreResult()])
 )
+function applySavedValues(data) {
+  valuation.value = data
+  applyMowerIncomeSettings(settings, data)
+  sharedRatios = data.ratios
+}
 const state = reactive({
   running: false,
   result: null,
@@ -193,7 +209,8 @@ function persistPreferences() {
     : '参数修改未能保存到本浏览器，当前窗口仍可使用。'
 }
 function resetSettings() {
-  if (state.running || exporting.value || submitting.value || weightsBusy.value) return
+  if (state.running || exporting.value || submitting.value || weightsBusy.value || valuesBusy.value)
+    return
   applyingPreferences = true
   try {
     const current = {
@@ -201,7 +218,9 @@ function resetSettings() {
       cachedInventory: cachedInventoryBaseline ? { ...cachedInventoryBaseline } : null,
       cacheObservedAt: settings.cacheObservedAt,
       mowerWeights: settings.mowerWeights,
-      mowerAlgorithm: settings.mowerAlgorithm
+      mowerAlgorithm: settings.mowerAlgorithm,
+      cachedRecruitment: settings.cachedRecruitment,
+      sanityValuation: settings.sanityValuation
     }
     Object.assign(settings, defaultIncomeSettings(), current)
     cachedInventoryOverrides = {}
@@ -330,13 +349,27 @@ function saveName() {
     persistResult()
 }
 async function start() {
-  if (archiveLoading.value || submitting.value || state.running || exporting.value) return
+  if (
+    archiveLoading.value ||
+    submitting.value ||
+    state.running ||
+    exporting.value ||
+    valuesBusy.value
+  )
+    return
   submitting.value = true
   state.error = null
   state.bottleneck = null
   attemptDiagnostics.value = []
   try {
-    if (settings.weightMode === 'mower') await readWeights()
+    if (settings.weightMode === 'mower' || settings.weightMode === 'sanity') await readWeights()
+    if (
+      settings.weightMode === 'sanity' &&
+      valuation.value?.income_options?.potential_preset === 'skland'
+    ) {
+      await readCache({ preserveOverrides: true })
+      if (cacheError.value) throw new Error(cacheError.value)
+    }
     if (!alive) return
     const { image, ...snapshot } = props.snapshot
     const captured = { ...JSON.parse(JSON.stringify(snapshot)), image }
@@ -475,7 +508,7 @@ onBeforeUnmount(() => {
             <span>参数修改会保留在本浏览器，下次打开继续使用。</span>
             <n-button
               size="small"
-              :disabled="state.running || exporting || submitting || weightsBusy"
+              :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
               @click="resetSettings"
               >恢复默认</n-button
             >
@@ -493,7 +526,7 @@ onBeforeUnmount(() => {
             使用打开窗口时的排班，无人机加速跟随排班表中的高级设置，校验通过后开始演算。预热不计收益，结果为离线估算。
           </n-alert>
           <n-form
-            :disabled="state.running || exporting || submitting || weightsBusy"
+            :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
             label-placement="left"
             label-width="150"
             :show-feedback="false"
@@ -561,7 +594,7 @@ onBeforeUnmount(() => {
             <n-button
               size="small"
               :loading="cacheLoading"
-              :disabled="state.running || exporting || submitting || weightsBusy"
+              :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
               @click="readCache"
               >重新读取缓存</n-button
             >
@@ -578,7 +611,9 @@ onBeforeUnmount(() => {
             <n-form-item label="使用有限库存"
               ><n-switch
                 :value="required || settings.finiteInventory"
-                :disabled="required || state.running || exporting || submitting || weightsBusy"
+                :disabled="
+                  required || state.running || exporting || submitting || weightsBusy || valuesBusy
+                "
                 @update:value="settings.finiteInventory = $event"
             /></n-form-item>
             <template v-if="required || settings.finiteInventory">
@@ -623,7 +658,9 @@ onBeforeUnmount(() => {
                 :label="item.label"
                 ><n-input-number
                   :value="stock?.[item.resource] ?? 0"
-                  :disabled="!stock || state.running || exporting || submitting || weightsBusy"
+                  :disabled="
+                    !stock || state.running || exporting || submitting || weightsBusy || valuesBusy
+                  "
                   placeholder="0"
                   :min="0"
                   :max="Number.MAX_SAFE_INTEGER"
@@ -652,12 +689,16 @@ onBeforeUnmount(() => {
               </n-collapse-item>
             </n-collapse>
             <n-collapse
-              ><n-collapse-item title="产出权重" name="weights">
-                <n-form-item label="权重来源"
+              ><n-collapse-item title="收益算法与产出权重" name="weights">
+                <n-form-item label="收益算法"
                   ><n-select
                     v-model:value="settings.weightMode"
+                    :disabled="
+                      weightsBusy || valuesBusy || state.running || exporting || submitting
+                    "
                     :options="[
                       { label: '同步 Mower 基报算法', value: 'mower' },
+                      { label: '理智算法', value: 'sanity' },
                       { label: '自定义', value: 'custom' }
                     ]"
                 /></n-form-item>
@@ -674,6 +715,7 @@ onBeforeUnmount(() => {
                       :disabled="
                         !settings.mowerWeights ||
                         weightsBusy ||
+                        valuesBusy ||
                         state.running ||
                         exporting ||
                         submitting
@@ -685,7 +727,22 @@ onBeforeUnmount(() => {
                     Mower 设置中修改。
                   </p>
                 </template>
-                <n-alert v-if="weightsError" type="warning">{{ weightsError }}</n-alert>
+                <IncomeValueEditor
+                  v-if="settings.weightMode === 'sanity'"
+                  :valuation="valuation"
+                  :recruitment="settings.cachedRecruitment"
+                  :disabled="weightsBusy || state.running || exporting || submitting"
+                  @saved="applySavedValues"
+                  @busy="valuesBusy = $event" />
+                <n-alert v-if="weightsError" type="warning"
+                  >{{ weightsError }}
+                  <n-button
+                    size="small"
+                    :disabled="weightsBusy || valuesBusy || submitting || state.running"
+                    @click="readWeights().catch(() => undefined)"
+                    >重新读取</n-button
+                  >
+                </n-alert>
                 <div v-if="weightValues" class="two-columns">
                   <n-form-item
                     v-for="[key, label] in weights.filter(
@@ -719,7 +776,7 @@ onBeforeUnmount(() => {
                 :maxlength="60"
                 :disabled="exporting"
             /></n-form-item>
-            <p>排班名称仅用于 JPG 文件名，后附日均加权收益和采样天数；图片不显示名称。</p>
+            <p>排班名称仅用于 JPG 文件名，后附本次日均收益和采样天数；图片不显示名称。</p>
             <n-form-item label="作者" :show-feedback="false">
               <n-input
                 v-model:value="exportDetails.author"
@@ -763,17 +820,109 @@ onBeforeUnmount(() => {
               {{ format(state.result.goldInventory.closing) }}。负数表示赤金缺口。
             </p>
             <p>
-              权重：{{
+              算法：{{
                 state.input.settings.weightMode === 'mower'
                   ? incomeAlgorithmLabel(state.input.settings.mowerAlgorithm)
-                  : '自定义'
-              }}；回收站仅计产出次数。
+                  : state.input.settings.weightMode === 'sanity'
+                    ? '理智算法'
+                    : '自定义'
+              }}。<span v-if="!state.result.summary.sanity">回收站仅计产出次数。</span>
             </p>
             <p>
               赤金等价龙门币 = 制造赤金 × 500 + 龙舌兰等特殊订单溢价；不扣除交付消耗的赤金。
               <span v-if="state.result.inventoryMode === 'finite'">实际消耗及余额见库存收支。</span>
             </p>
-            <h3>日均加权产出 {{ format(state.result.summary.totalScore82) }}</h3>
+            <h3>{{ incomeScoreLabel(state.result) }} {{ format(incomeScore(state.result)) }}</h3>
+            <template v-if="state.result.summary.sanity">
+              <p v-if="state.result.summary.sanity.credits">
+                会客室日均信用：{{ format(state.result.summary.sanity.credits.produced) }}，其中
+                {{ format(state.result.summary.sanity.credits.valued) }}
+                计入估值。假设自搜线索全部赠送、好友补齐线索并连续交流；有效单价按每日额度折算。
+              </p>
+              <n-alert v-if="state.result.summary.sanity.partial" type="warning"
+                >以下产出或消耗尚未估值，当前总额仅包含已估值部分：{{
+                  state.result.summary.sanity.unpriced.join('、')
+                }}。可在理智算法设置中填写后重新演算。</n-alert
+              >
+              <n-collapse
+                ><n-collapse-item title="理智收益明细（每日）" name="sanity-breakdown">
+                  <n-table size="small" :single-line="false"
+                    ><thead>
+                      <tr>
+                        <th>产出</th>
+                        <th>净数量</th>
+                        <th>有效理智单价</th>
+                        <th>理智收益</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="part in state.result.summary.sanity.parts" :key="part.key">
+                        <td>{{ part.label }}</td>
+                        <td>{{ format(part.quantity) }}</td>
+                        <td>{{ part.unitValue === null ? '未估值' : format(part.unitValue) }}</td>
+                        <td>{{ part.value === null ? '未估值' : format(part.value) }}</td>
+                      </tr>
+                    </tbody></n-table
+                  >
+                </n-collapse-item>
+                <n-collapse-item
+                  v-if="state.result.summary.sanity.orundumChain"
+                  title="搓玉收益明细（每日）"
+                  name="orundum-breakdown"
+                >
+                  <p>
+                    合成玉 {{ format(state.result.summary.orundum) }}；源石碎片产出
+                    {{ format(state.result.summary.fragments) }}、交付消耗
+                    {{ format(state.result.summary.sanity.orundumChain.fragmentConsumed) }}、净结余
+                    {{ format(state.result.summary.sanity.orundumChain.fragmentNet) }}。
+                    制造消耗：龙门币 {{ format(state.result.summary.lmdConsumed) }}，固源岩
+                    {{ format(state.result.summary.orirockConsumed) }}，装置
+                    {{ format(state.result.summary.deviceConsumed) }}。
+                  </p>
+                  <n-table size="small" :single-line="false">
+                    <thead>
+                      <tr>
+                        <th>环节</th>
+                        <th>净理智收益</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td>制造碎片（扣除耗材）</td>
+                        <td>
+                          {{
+                            state.result.summary.sanity.orundumChain.manufacturing === null
+                              ? '未完整估值'
+                              : format(state.result.summary.sanity.orundumChain.manufacturing)
+                          }}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>卖出碎片（扣除碎片价值）</td>
+                        <td>
+                          {{
+                            state.result.summary.sanity.orundumChain.trading === null
+                              ? '未完整估值'
+                              : format(state.result.summary.sanity.orundumChain.trading)
+                          }}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td>
+                          搓玉合计{{
+                            state.result.summary.sanity.orundumChain.partial ? '（部分）' : ''
+                          }}
+                        </td>
+                        <td>{{ format(state.result.summary.sanity.orundumChain.total) }}</td>
+                      </tr>
+                    </tbody>
+                  </n-table>
+                  <p>
+                    以上金额已包含在总收益中，不另行累加。负数表示按本次材料价格计算的净价值减少；碎片净结余包含在合计中，非零结余会受碎片单价影响。
+                  </p>
+                </n-collapse-item></n-collapse
+              >
+            </template>
             <n-table size="small"
               ><thead>
                 <tr>
@@ -1049,7 +1198,7 @@ onBeforeUnmount(() => {
         <n-button
           v-if="state.result?.success"
           :loading="exporting"
-          :disabled="state.running || exporting || submitting || weightsBusy"
+          :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
           @click="exportImage"
           >{{ exported ? '再次导出收益图' : '导出收益图' }}</n-button
         >
@@ -1063,6 +1212,7 @@ onBeforeUnmount(() => {
             exporting ||
             submitting ||
             weightsBusy ||
+            valuesBusy ||
             cacheLoading
           "
           :loading="submitting"

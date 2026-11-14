@@ -401,3 +401,36 @@ def test_income_cache_valid_empty_items_default_all_resources_to_zero(snapshot_p
         ("gold", "fragment", "orirock", "device", "lmd", "exp"), 0
     )
     assert snapshot_path.read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "rank,expected", [(0, 1), (5, 6), (None, None), (6, None), (True, None)]
+)
+def test_income_cache_exposes_public_recruitment_potentials_without_private_data(
+    snapshot_path, rank, expected
+):
+    payload = {
+        "code": 0,
+        "data": {
+            "characters": [
+                {
+                    "id": "char_108_silent",
+                    "evolvePhase": 0,
+                    "level": 25,
+                    "potentialRank": rank,
+                }
+            ],
+            "items": [],
+        },
+        "_mower_player": {"uid": "private-user"},
+    }
+    snapshot_path.write_text(json.dumps(payload), encoding="utf-8")
+    before = snapshot_path.read_bytes()
+    cache = module.load_income_cache()
+    silent = next(op for op in cache["recruitment"] if op["name"] == "赫默")
+    assert silent == {"name": "赫默", "stars": 5, "owned": True, "potential": expected}
+    absent = next(op for op in cache["recruitment"] if op["name"] == "芬")
+    assert absent["owned"] is False and absent["potential"] is None
+    assert all(op["stars"] in (3, 4, 5, 6) for op in cache["recruitment"])
+    assert "private-user" not in json.dumps(cache)
+    assert snapshot_path.read_bytes() == before

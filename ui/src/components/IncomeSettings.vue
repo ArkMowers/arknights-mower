@@ -21,6 +21,7 @@ function applySettings(value) {
   algorithm.value = value.base_algorithm
 }
 async function loadSettings() {
+  if (settingsLoading.value || settingsBusy.value) return
   settingsLoading.value = true
   settingsError.value = ''
   try {
@@ -144,16 +145,14 @@ onMounted(loadSettings)
           @update:value="selectAlgorithm"
       /></label>
       <p class="settings-description">
-        基建报表与回收站等效制造站效率使用同一组产物系数。回收站效率仅用于理论日产量换算，100% 填
-        1。
+        基建报表与回收站等效制造站效率使用同一组产物系数。回收站理论收益采用固定效率作参考，排班演算按实际驻员计算产出次数。
       </p>
       <div class="ratio-fields">
         <label
           v-for="field in [
             { key: 'experience', label: '经验书价值比例' },
             { key: 'gold', label: '赤金价值比例' },
-            { key: 'order', label: '订单价值比例' },
-            { key: 'efficiency', label: '回收站效率（1 = 100%）' }
+            { key: 'order', label: '订单价值比例' }
           ]"
           :key="field.key"
         >
@@ -162,12 +161,7 @@ onMounted(loadSettings)
             v-model:value="ratios[field.key]"
             :min="field.key === 'experience' ? 0.000001 : 0"
             :max="1000"
-            :disabled="
-              !valuation ||
-              settingsBusy ||
-              settingsLoading ||
-              (algorithm !== -1 && field.key !== 'efficiency')
-            "
+            :disabled="!valuation || settingsBusy || settingsLoading || algorithm !== -1"
             :show-button="false"
           />
         </label>

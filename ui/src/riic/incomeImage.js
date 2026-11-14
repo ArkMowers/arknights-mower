@@ -11,6 +11,7 @@ import { MOWER_RAW_MATERIALS } from './vendor/domain/simulationInventory'
 import { incomeInitialInventory } from './incomeCache'
 import { incomeOrderDistribution } from './incomeOrders'
 import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
+import { incomeScore, incomeScoreLabel } from './incomeSanity'
 
 const number = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 export function incomeReportLines(result, settings, plan, label) {
@@ -100,11 +101,46 @@ export function incomeReportLines(result, settings, plan, label) {
     continuous
       ? '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期有效工作量分摊，保留小数，排除预热部分。'
       : '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期实际开工批次计算，包含尚未完成的批次，预热期已支付的材料不重复计入。',
-    `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
-      incomeWeights(settings)
-    )
-      .map(([key, value]) => `${key}=${value}`)
-      .join('；')}。加权产出不是龙门币结算额。`,
+    ...(settings.weightMode === 'sanity'
+      ? [
+          `理智算法：按本次保存的材料单价与现有净产出计算，扣除赤金、源石碎片交付及制造耗材；特殊订单溢价已包含在龙门币产出中，不重复计价。`,
+          `理智单价：${Object.entries(settings.sanityValuation.unitValues)
+            .map(([key, value]) => `${key}=${value === null ? '未估值' : value}`)
+            .join('；')}。`,
+          ...(settings.sanityValuation.fragmentValueSource
+            ? [
+                `源石碎片单价 ${settings.sanityValuation.unitValues.fragment ?? '未估值'} 理智/个，来源：${settings.sanityValuation.fragmentValueSource === 'manual' ? '手动覆盖' : '10 × 合成玉单价 × 赤金单价 ÷（500 × 龙门币单价）'}。自动估值沿用普通赤金兑换的价值比例，不代表相同工时；负净收益保留，比较排班须使用相同估值和演算条件。`
+              ]
+            : []),
+          ...(result.summary.sanity?.orundumChain
+            ? [
+                `搓玉日均：合成玉 ${number(result.summary.orundum)}；碎片产出 ${number(result.summary.fragments)}、交付消耗 ${number(result.summary.sanity.orundumChain.fragmentConsumed)}、净结余 ${number(result.summary.sanity.orundumChain.fragmentNet)}；消耗龙门币 ${number(result.summary.lmdConsumed)}、固源岩 ${number(result.summary.orirockConsumed)}、装置 ${number(result.summary.deviceConsumed)}。`,
+                `搓玉净理智收益：制造 ${result.summary.sanity.orundumChain.manufacturing === null ? '未完整估值' : number(result.summary.sanity.orundumChain.manufacturing)}，贸易 ${result.summary.sanity.orundumChain.trading === null ? '未完整估值' : number(result.summary.sanity.orundumChain.trading)}，合计${result.summary.sanity.orundumChain.partial ? '（部分）' : ''} ${number(result.summary.sanity.orundumChain.total)}。已包含在总收益中，不另行累加；碎片净结余包含在合计中。`
+              ]
+            : []),
+          ...(settings.sanityValuation.certificateModel
+            ? [
+                `公招凭证估值：潜能预设 ${settings.sanityValuation.certificateModel.potentialPreset}，黄票兑换预设 ${settings.sanityValuation.certificateModel.yellowPreset}；每次刷新相对三星新增 ${settings.sanityValuation.certificateModel.refreshYellow ?? '未估值'} 黄票、${settings.sanityValuation.certificateModel.refreshGreen ?? '未估值'} 绿票。黄票 ${settings.sanityValuation.certificateModel.yellow ?? '未估值'} 理智/张，绿票 ${settings.sanityValuation.certificateModel.green ?? '未估值'} 理智/张。`,
+                `合成玉按已保存材料单价 ${settings.sanityValuation.certificateModel.orundum ?? '未估值'} 理智/个计价，不计抽卡回流。绿票按 50 换 30 合成玉，忽略前置兑换；皇家信物按 135 黄票或 720 采购凭证折算。森空岛预设以公招池同星级等权估算，潜能近似获取次数，不模拟掉标签或潜能变化。`
+              ]
+            : [
+                `公招刷新按每次新增 ${settings.sanityValuation.recruitmentCertificates ?? '未设置'} 黄票 × ${settings.sanityValuation.yellowCertificateValue} 理智/黄票；此历史结果不计抽卡回流。`
+              ]),
+          `信用有效单价 ${settings.sanityValuation.creditValue ?? '未估值'} 理智/点，会客室按自搜线索全部赠送（40 信用/条）和连续交流（210 信用/天）估值，需要好友持续补齐线索；每日有效信用额度 ${settings.sanityValuation.creditDailyLimit ?? '不限'}，超过额度不计价值。不模拟招募、商店或实际交流完成时刻。`,
+          '回收站按现有产出次数乘以单次价值，默认使用材料概率表的普通池与额外池长期期望，不模拟随机材料或新增库存；当前演算未提供投入提效材料的消耗。',
+          ...(result.summary.sanity?.partial
+            ? [
+                `未估值产出：${result.summary.sanity.unpriced.join('、')}；显示收益仅包含已估值部分。`
+              ]
+            : [])
+        ]
+      : [
+          `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
+            incomeWeights(settings)
+          )
+            .map(([key, value]) => `${key}=${value}`)
+            .join('；')}。加权产出不是龙门币结算额。`
+        ]),
     theoretical
       ? '模型假设：理想跑单；按关键事件推进，忽略页面操作耗时；宿舍氛围按等级上限。'
       : '模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。',
@@ -117,16 +153,18 @@ export function incomeReportLines(result, settings, plan, label) {
     provenance
       ? `计算器基线 ${provenance.calculatorBaseRevision}，选择性同步 ${provenance.calculatorSyncRevision}（含本地适配）；调度基线 Mower alpha ${provenance.mowerBaseReference}，本轮核对 ${provenance.mowerCheckedRevision}，后续本体逻辑不自动同步。`
       : `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察、公招与线索观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
-    '公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工，不计入加权收益。',
+    `公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工${settings.weightMode === 'sanity' ? '。' : '，不计入加权收益。'}`,
     ...(result.summary?.clueCount == null
       ? ['这份历史记录未统计会客室线索，重新演算后可查看。']
       : [
-          '会客室线索仅统计驻员搜集完成的个数，初始进度为零，预热进度延续但预热完成数不计；假设及时领取及清理库存，不模拟满库停工、每日赠送和好友赠送，不计算信用点或加权收益。',
+          `会客室线索仅统计驻员搜集完成的个数，初始进度为零，预热进度延续但预热完成数不计；假设及时领取及清理库存，不模拟满库停工、每日赠送和好友赠送${settings.weightMode === 'sanity' ? '。' : '，不计算信用点或加权收益。'}`,
           result.clueExchangeMode === 'always-on'
             ? '线索产量按全程开启交流计算，计入已解锁且非涣散驻员的交流加速技能；不模拟集齐线索或交流开关，调度侧 Party Time 仍为空。'
             : '这份历史记录按线索交流关闭计算；重新演算后按全程开启交流计算线索产量。'
         ]),
-    '回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。',
+    ...(settings.weightMode === 'sanity'
+      ? []
+      : ['回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。']),
     '这是离线模型估算，不是实测收益或实际排班可执行性的证明。图片导入不恢复本次计算参数和结果。'
   ]
 }
@@ -170,6 +208,30 @@ export async function renderIncomeImage(
   const sourceUrl = URL.createObjectURL(planImage)
   try {
     const metrics = incomeImageMetrics(result.summary, result.observedHours / 24)
+    const parts = result.summary.sanity?.parts
+    const facilityValues = parts
+      ? [
+          { label: '回收站', keys: ['recycle'] },
+          { label: '会客室', keys: ['clue', 'exchange'] },
+          { label: '办公室', keys: ['recruitment'] }
+        ].map(({ label, keys }) => {
+          const values = keys.map((key) => {
+            const part = parts.find((item) => item.key === key)
+            return part?.quantity === 0 ? 0 : part?.value
+          })
+          return {
+            label,
+            value: values.every(Number.isFinite)
+              ? values.reduce((sum, value) => sum + value, 0)
+              : null
+          }
+        })
+      : []
+    const facilityTop = metrics.some(({ key }) =>
+      ['fragment', 'lmdCost', 'orirockCost', 'deviceCost'].includes(key)
+    )
+      ? 110
+      : 86
     const [source, drone, ...icons] = await Promise.all([
       loadImage(sourceUrl),
       loadImage('/product/drone.svg'),
@@ -197,7 +259,11 @@ export async function renderIncomeImage(
     const orders = result.orderDistribution ?? incomeOrderDistribution(result.simulationReport)
     const annotationTop = Math.max(73 + weightLines.length * 14, orders?.other ? 100 : 87)
     const headerHeight = Math.ceil(
-      Math.max(100, annotationTop + annotationLines.length * 16 + 3) * scale
+      Math.max(
+        100,
+        annotationTop + annotationLines.length * 16 + 3,
+        facilityValues.length ? facilityTop + 42 : 0
+      ) * scale
     )
     const dark = theme === 'dark'
     const planTop = headerHeight - imageTopWhitespace(source, scale, dark)
@@ -228,8 +294,8 @@ export async function renderIncomeImage(
       ctx.fillStyle = color
       ctx.fillText(text, x * scale, y * scale)
     }
-    write('日均加权收益', 28, 24, 13)
-    const score = number(result.summary.totalScore82)
+    write(incomeScoreLabel(result), 28, 24, 13)
+    const score = number(incomeScore(result))
     let scoreSize = 38
     ctx.font = `bold ${scoreSize * scale}px sans-serif`
     while (ctx.measureText(score).width > 252 * scale && scoreSize > 18) {
@@ -366,6 +432,21 @@ export async function renderIncomeImage(
         }
         ctx.fillText(value, valueX, baseline, (negative ? 81 : 89) * scale)
       })
+    if (facilityValues.length) {
+      write('附加收益 · 理智/天', 570, facilityTop, 10, muted)
+      facilityValues.forEach(({ label, value }, index) => {
+        const x = 570 + index * 130
+        write(label, x, facilityTop + 16, 10, muted)
+        ctx.font = `bold ${14 * scale}px sans-serif`
+        ctx.fillStyle = foreground
+        ctx.fillText(
+          value === null ? '未估值' : number(value),
+          x * scale,
+          (facilityTop + 35) * scale,
+          120 * scale
+        )
+      })
+    }
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
     })
@@ -408,6 +489,7 @@ export function incomeImageAnnotationLines(details, measure, maxWidth, prefix = 
   return lines
 }
 export function incomeImageAlgorithmLines(settings) {
+  if (settings.weightMode === 'sanity') return ['理智算法']
   if (settings.weightMode !== 'custom' && settings.mowerAlgorithm !== -1) {
     return [incomeAlgorithmLabel(settings.mowerAlgorithm).split('（')[0].trim()]
   }
@@ -431,9 +513,9 @@ export function incomeImageFilename(name, result) {
       .join('')
       .replace(/[. ]+$/g, '')
       .slice(0, 60) || '排班'
-  const score = Number(result.summary.totalScore82.toFixed(2))
+  const score = Number(incomeScore(result).toFixed(2))
   const days = Number((result.observedHours / 24).toFixed(2))
-  return `${safe}_日均收益${score}_${days}天.jpg`
+  return `${safe}_日均${result.summary.sanity ? `理智${result.summary.sanity.partial ? '部分' : ''}` : '收益'}${score}_${days}天.jpg`
 }
 export function downloadIncomeImage(blob, filename) {
   const url = URL.createObjectURL(blob)

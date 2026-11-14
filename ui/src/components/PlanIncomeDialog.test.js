@@ -174,7 +174,7 @@ it('restores defaults without changing shared settings or the retained result', 
     expectationMode: true,
     operatorMode: 'cache',
     inventorySource: 'cache',
-    weightMode: 'mower',
+    weightMode: 'sanity',
     cachedInventory: { gold: 10 },
     productionWeights: { exp: 1 },
     mowerAlgorithm: 2
@@ -706,4 +706,80 @@ it('shows roster warnings without blocking or archiving them', async () => {
   expect(io.warning).toHaveBeenCalledWith('未持有干员', { duration: 0, closable: true })
   expect(workers).toHaveLength(1)
   expect(saveIncomeArchive).not.toHaveBeenCalled()
+})
+
+it('reads fresh sanity values before running and freezes them with the completed result', async () => {
+  await page.readCache()
+  page.settings.weightMode = 'sanity'
+  io.client.get.mockResolvedValueOnce({
+    data: {
+      ...valuation(),
+      prices: { 中级作战记录: 4, 赤金: 2, 合成玉: 0.9 },
+      lmd_sanity: 0.0036,
+      income_unit_values: { yellow_certificate: 0, green_certificate: 0, credit: 0 }
+    }
+  })
+  await page.start()
+  const input = workers[0].postMessage.mock.calls[0][0]
+  expect(input.settings.sanityValuation.unitValues).toMatchObject({
+    exp: 0.004,
+    gold: 2,
+    fragment: 10,
+    recruitment: 0,
+    clue: 0
+  })
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  page.applySavedValues({ ...valuation(), prices: { 赤金: 99 }, lmd_sanity: 1 })
+  expect(page.state.input.settings.sanityValuation.unitValues.gold).toBe(2)
+  expect(page.state.input.settings.sanityValuation.unitValues.fragment).toBe(10)
+  expect(
+    saveIncomeArchive.mock.calls.at(-1)[0].input.settings.sanityValuation.unitValues.gold
+  ).toBe(2)
+  reopenDialog()
+  expect(page.settings.weightMode).toBe('sanity')
+  expect(page.settings.sanityValuation).toBeNull()
+})
+it('prevents a run during price saving and after a failed sanity settings read', async () => {
+  await page.readCache()
+  page.settings.weightMode = 'sanity'
+  page.valuesBusy.value = true
+  await page.start()
+  expect(workers).toHaveLength(0)
+  page.valuesBusy.value = false
+  io.client.get.mockRejectedValueOnce(new Error('offline'))
+  await page.start()
+  expect(workers).toHaveLength(0)
+  expect(page.state.error).toContain('读取失败')
+})
+
+it('refreshes Skland potential estimates before freezing a run and rejects a failed cache read', async () => {
+  let potential = 5
+  const values = {
+    ...valuation(),
+    prices: { 合成玉: 0.9225 },
+    income_options: { potential_preset: 'skland' }
+  }
+  io.client.get.mockImplementation(async (url) => ({
+    data: url.includes('income-cache')
+      ? {
+          ...cache(),
+          recruitment: [3, 4, 5, 6].map((stars) => ({ stars, owned: true, potential }))
+        }
+      : values
+  }))
+  await page.readCache()
+  await page.readWeights()
+  expect(page.settings.sanityValuation.certificateModel.rewards[5].yellow).toBe(5)
+  potential = 6
+  await page.start()
+  const input = workers[0].postMessage.mock.calls[0][0]
+  expect(input.settings.sanityValuation.certificateModel.rewards[5].yellow).toBe(13)
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  io.client.get.mockImplementation(async (url) => {
+    if (url.includes('income-cache')) throw new Error('offline')
+    return { data: values }
+  })
+  await page.start()
+  expect(workers).toHaveLength(1)
+  expect(page.state.error).toContain('缓存读取失败')
 })

@@ -30,8 +30,11 @@ import {
   compactIncomeNumber,
   incomeImageFilename,
   incomeImageAlgorithmLines,
-  incomeImageAnnotationLines
+  incomeImageAnnotationLines,
+  incomeReportLines
 } from './incomeImage'
+import { defaultIncomeSettings } from './income'
+import { createIncomeSanityValuation } from './incomeSanity'
 it('keeps short author and remarks together and omits empty annotations', () => {
   const measure = (text) => Array.from(text).length
   expect(
@@ -91,4 +94,64 @@ it.each(['mower', 'custom'])('prints every exact custom weight from %s', (weight
       productionWeights: weights
     })
   ).toEqual(['自定义', '经验 0.9568 · 赤金 0.76544 · 订单 0.23456', '源石碎片 12.5 · 合成玉 0'])
+})
+
+it('labels sanity images and filenames with their saved score and partial state', () => {
+  expect(incomeImageAlgorithmLines({ weightMode: 'sanity' })).toEqual(['理智算法'])
+  const result = {
+    summary: { totalScore82: 999, sanity: { total: 12.5, partial: false } },
+    observedHours: 48
+  }
+  expect(incomeImageFilename('排班', result)).toBe('排班_日均理智12.5_2天.jpg')
+  result.summary.sanity.partial = true
+  expect(incomeImageFilename('排班', result)).toBe('排班_日均理智部分12.5_2天.jpg')
+})
+
+it('exports saved shard pricing and signed Orundum stages without recalculating legacy results', () => {
+  const settings = {
+    ...defaultIncomeSettings(),
+    finiteInventory: false,
+    inventorySource: 'manual',
+    sanityValuation: createIncomeSanityValuation({
+      prices: { 赤金: 1.377792, 合成玉: 0.9225 },
+      lmd_sanity: 0.0036
+    })
+  }
+  const result = {
+    observedHours: 24,
+    summary: {
+      fragments: 2,
+      orundum: 20,
+      lmdConsumed: 3200,
+      orirockConsumed: 4,
+      deviceConsumed: 0,
+      sanity: {
+        total: -6.49592,
+        orundumChain: {
+          fragmentConsumed: 2,
+          fragmentNet: 0,
+          manufacturing: -10.823552,
+          trading: 4.327632,
+          total: -6.49592,
+          partial: false
+        }
+      }
+    }
+  }
+  const plan = { default: 'plan1', plan1: {}, conf: {}, backup_plans: [] }
+  const lines = () => incomeReportLines(result, settings, plan, '排班').join('\n')
+  expect(lines()).toContain('来源：10 × 合成玉单价')
+  expect(lines()).toContain('制造 -10.82，贸易 4.33，合计 -6.5')
+  expect(lines()).toContain('交付消耗 2、净结余 0')
+  settings.sanityValuation.fragmentValueSource = 'manual'
+  settings.sanityValuation.unitValues.fragment = 0
+  expect(lines()).toContain('源石碎片单价 0 理智/个，来源：手动覆盖')
+  result.summary.sanity.orundumChain.manufacturing = null
+  result.summary.sanity.orundumChain.partial = true
+  expect(lines()).toContain('制造 未完整估值')
+  expect(lines()).toContain('合计（部分） -6.5')
+  delete result.summary.sanity.orundumChain
+  delete settings.sanityValuation.fragmentValueSource
+  expect(lines()).not.toContain('搓玉净理智收益')
+  expect(lines()).not.toContain('来源：10 × 合成玉单价')
 })

@@ -450,13 +450,6 @@ onUnmounted(() => {
             >
           </div>
           <div>
-            <span>设定效率理论日产</span
-            ><strong
-              >{{ number(comparison.calculator.configured_daily_sanity, 3)
-              }}<small> 理智/天</small></strong
-            >
-          </div>
-          <div>
             <span>等效制造站效率</span
             ><strong>{{ percent(comparison.calculator.manufacturing_equivalent) }}</strong>
           </div>
@@ -466,7 +459,8 @@ onUnmounted(() => {
           </div>
         </div>
         <p class="model-summary">
-          100%回收站效率每两天完成一次生产周期，100%制造站效率每日产出8000经验。设定效率用于换算理论日产与等效制造站效率；10%回收站效率的换算不随设定效率变化。
+          100%回收站效率每两天完成一次生产周期，100%制造站效率每日产出8000经验。理论换算分别以固定
+          100% 和 10% 回收站效率作参考，不使用手填效率。
         </p>
         <n-collapse
           class="model-collapse"
@@ -495,7 +489,7 @@ onUnmounted(() => {
               </section>
               <section>
                 <h4>生产换算</h4>
-                <p>100%效率理论日产 = 单件材料期望 ÷ 2；设定效率理论日产再乘以设定的回收站效率。</p>
+                <p>100%效率理论日产 = 单件材料期望 ÷ 2。</p>
                 <p>
                   等效制造站效率 = 理论日产理智 ÷ 龙门币理智价值 ×（赤金价值比例 + 订单价值比例）÷
                   经验书价值比例 ÷ 8000。

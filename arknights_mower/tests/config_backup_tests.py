@@ -1683,12 +1683,24 @@ def test_income_cache_endpoint_requires_token_and_does_not_save(
 ):
     from arknights_mower.utils import building_skills
 
-    monkeypatch.setattr(building_skills, "get_cultivate_snapshot", lambda: None)
+    reads = []
+
+    def read_snapshot():
+        reads.append(True)
+        return None
+
+    monkeypatch.setattr(building_skills, "get_cultivate_snapshot", read_snapshot)
     before = config.conf.model_dump()
-    assert plan_client.get("/riic/income-cache").status_code in (401, 403)
+    for method in ("GET", "HEAD"):
+        for headers in ({}, {"token": "invalid"}):
+            assert plan_client.open(
+                "/riic/income-cache", method=method, headers=headers
+            ).status_code in (401, 403)
+    assert reads == []
     response = plan_client.get("/riic/income-cache", headers={"token": "test-token"})
     assert response.status_code == 200
     assert response.json == {
+        "recruitment": None,
         "has_roster": False,
         "operators": [],
         "has_inventory": False,

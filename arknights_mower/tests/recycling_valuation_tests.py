@@ -174,8 +174,8 @@ def test_saved_import_revalues_history_and_export_using_same_snapshot(db):
     assert result["actual_sanity"] == pytest.approx(20)
     assert result["expected_sanity"] == pytest.approx(20)
     assert result["calculator"]["daily_sanity"] == pytest.approx(5)
-    assert result["calculator"]["configured_daily_sanity"] == pytest.approx(7.5)
-    assert result["calculator"]["manufacturing_equivalent"] == pytest.approx(0.046875)
+    assert result["calculator"]["configured_daily_sanity"] == pytest.approx(5)
+    assert result["calculator"]["manufacturing_equivalent"] == pytest.approx(0.03125)
     assert result["calculator"]["ten_percent_equivalent"] == pytest.approx(0.003125)
     assert "replacement" not in result["calculator"]
     assert "elite0_equivalent" not in result["calculator"]
@@ -186,8 +186,8 @@ def test_saved_import_revalues_history_and_export_using_same_snapshot(db):
         assert float(values["总理智收益"]) == 20
         assert float(values["理论期望收益"]) == 20
         assert float(values["100%回收站理论日产理智"]) == pytest.approx(5)
-        assert float(values["设定效率下理论日产理智"]) == pytest.approx(7.5)
-        assert float(values["等效制造站效率"]) == pytest.approx(0.046875)
+        assert "设定效率下理论日产理智" not in values
+        assert float(values["100%回收站等效制造站效率"]) == pytest.approx(0.03125)
         assert float(values["10%回收站效率等效制造站效率"]) == pytest.approx(0.003125)
         assert not any("旅骨" in key or "顶替" in key for key in values)
         _, _, inputs = workbook_rows(workbook, 5)
@@ -258,6 +258,7 @@ def test_import_and_settings_routes_preserve_previous_snapshot_on_errors(
         assert client.put(route, headers=headers, json=payload).status_code == 400
         assert client.get(route, headers=headers).json == before
     assert client.delete(route, headers=headers).json == {
+        "credit_shop_value_threshold": server.config.conf.credit_shop_value_threshold,
         **default_valuation(),
         "base_algorithm_saved": True,
     }
@@ -501,19 +502,15 @@ def test_default_prices_and_production_conversion(db):
 
 
 @pytest.mark.parametrize("efficiency", [0, 0.1, 2])
-def test_ten_percent_conversion_is_independent_of_configured_efficiency(db, efficiency):
+def test_fixed_reference_conversions_ignore_retired_efficiency(db, efficiency):
     record.update_recycling_valuation(
         ratios={**DEFAULT_RATIOS, "efficiency": efficiency}
     )
     calculator = record.get_recycling_history("2026-10-10", "2026-10-10")["comparison"][
         "calculator"
     ]
-    assert calculator["configured_daily_sanity"] == pytest.approx(
-        11.374512896194027 * efficiency
-    )
-    assert calculator["manufacturing_equivalent"] == pytest.approx(
-        0.4127804812407833 * efficiency
-    )
+    assert calculator["configured_daily_sanity"] == pytest.approx(11.374512896194027)
+    assert calculator["manufacturing_equivalent"] == pytest.approx(0.4127804812407833)
     assert calculator["ten_percent_equivalent"] == pytest.approx(0.04127804812407833)
 
 
@@ -551,3 +548,131 @@ def test_previous_ss_snapshot_upgrades_defaults_and_preserves_saved_choices(
         assert saved["prices"] == default_valuation()["prices"]
         assert saved["source"] == default_valuation()["source"]
         assert saved["metadata"] == default_valuation()["metadata"]
+
+
+def test_manual_material_and_marginal_values_persist_independently(db):
+    before = record.get_recycling_valuation()
+    saved = record.update_recycling_valuation(
+        prices={"装置": 0},
+        lmd_sanity=0.004,
+        income_unit_values={
+            "recruitment_certificates": 0.2,
+            "yellow_certificate": 0,
+            "credit": 0,
+            "credit_daily_limit": 100,
+        },
+    )
+    assert saved == record.get_recycling_valuation()
+    assert saved["prices"]["装置"] == 0
+    assert saved["prices"]["赤金"] == before["prices"]["赤金"]
+    assert saved["ratios"] == before["ratios"]
+    assert saved["income_unit_values"]["yellow_certificate"] == 0
+    reset_one = record.update_recycling_valuation(
+        income_unit_values={"credit_daily_limit": None}
+    )
+    assert "credit_daily_limit" not in reset_one["income_unit_values"]
+    assert reset_one["income_unit_values"]["credit"] == 0
+    imported = record.update_recycling_valuation(
+        imported=import_yituliu_values(value_file())
+    )
+    assert imported["income_unit_values"] == reset_one["income_unit_values"]
+    assert imported["prices"]["装置"] == 10
+    assert "income_unit_values" not in record.update_recycling_valuation(reset=True)
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"prices": {"不存在": 1}},
+        {"prices": {"装置": None}},
+        {"prices": {"装置": -1}},
+        {"prices": {"装置": float("nan")}},
+        {"income_unit_values": {"bad": 1}},
+        {"income_unit_values": {"credit": True}},
+        {"income_unit_values": {"yellow_certificate": float("inf")}},
+        {"lmd_sanity": 0},
+        {"lmd_sanity": 1000001},
+    ],
+)
+def test_invalid_manual_values_reject_atomically(db, patch):
+    before = record.get_recycling_valuation()
+    with pytest.raises(ValueError):
+        record.update_recycling_valuation(
+            ratios={**DEFAULT_RATIOS, "order": 0.5}, **patch
+        )
+    assert record.get_recycling_valuation() == before
+
+
+def test_material_price_route_requires_token_and_validates_partial_updates(
+    db, monkeypatch
+):
+    import server
+
+    monkeypatch.setattr(server.app, "token", "sanity-test", raising=False)
+    monkeypatch.setattr(server.config.conf, "credit_shop_value_threshold", 0.037)
+    client = server.app.test_client()
+    route = "/report/recycling_settings"
+    before = record.get_recycling_valuation()
+    patch = {
+        "prices": {"装置": 0},
+        "income_unit_values": {"yellow_certificate": 0, "credit": 0},
+        "income_options": {"potential_preset": "full", "yellow_preset": "royal_token"},
+    }
+    for headers in ({}, {"token": "wrong"}):
+        for method, path in [
+            (method, route) for method in ("GET", "HEAD", "PUT", "DELETE")
+        ] + [("POST", route + "/import")]:
+            assert (
+                client.open(
+                    path, method=method, headers=headers, json=patch
+                ).status_code
+                == 403
+            )
+    assert record.get_recycling_valuation() == before
+    headers = {"token": "sanity-test"}
+    response = client.put(route, headers=headers, json=patch)
+    assert response.status_code == 200
+    saved = response.get_json()
+    assert (
+        saved.pop("credit_shop_value_threshold")
+        == server.config.conf.credit_shop_value_threshold
+    )
+    assert saved["prices"]["装置"] == 0
+    assert saved["ratios"] == before["ratios"]
+    for invalid in (
+        {"prices": None},
+        {"income_unit_values": []},
+        {"income_options": None},
+        {"income_options": {"potential_preset": "invalid"}},
+        {"lmd_sanity": None},
+        {"prices": {"装置": "5"}},
+    ):
+        assert client.put(route, headers=headers, json=invalid).status_code == 400
+        assert record.get_recycling_valuation() == saved
+
+
+def test_certificate_presets_persist_and_reject_invalid_options_atomically(db):
+    saved = record.update_recycling_valuation(
+        income_options={"potential_preset": "skland", "yellow_preset": "royal_token"},
+        income_unit_values={"green_certificate": 0},
+    )
+    assert saved == record.get_recycling_valuation()
+    for options in (
+        {"bad": "full"},
+        {"potential_preset": "bad"},
+        {"yellow_preset": []},
+    ):
+        with pytest.raises(ValueError):
+            record.update_recycling_valuation(
+                prices={"装置": 99}, income_options=options
+            )
+        assert record.get_recycling_valuation() == saved
+    imported = record.update_recycling_valuation(
+        imported=import_yituliu_values(value_file())
+    )
+    assert imported["income_options"] == saved["income_options"]
+    cleared = record.update_recycling_valuation(
+        income_options={"potential_preset": None}
+    )
+    assert cleared["income_options"] == {"yellow_preset": "royal_token"}
+    assert "income_options" not in record.update_recycling_valuation(reset=True)

@@ -258,12 +258,12 @@ describe('income export calculation', () => {
   }, 30000)
 })
 
-it('defaults to cached growth, cached finite stock, Mower weights and material debt', () => {
+it('defaults to cached growth, cached finite stock, sanity valuation and material debt', () => {
   expect(defaultIncomeSettings()).toMatchObject({
     operatorMode: 'cache',
     inventorySource: 'cache',
     finiteInventory: true,
-    weightMode: 'mower',
+    weightMode: 'sanity',
     allowMaterialDebt: true,
     warmupDays: 3,
     sampleDays: 28
