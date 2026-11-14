@@ -1151,11 +1151,13 @@ def save_inventory_counts(
     *,
     scanned_counts=None,
     scanned_at=0,
+    scanned_observed_at=None,
     cloud_counts=None,
     cloud_at=0,
     force_cloud=False,
     invalidate_missing=False,
     invalidation_scope=None,
+    discard_unobserved=False,
 ):
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1173,13 +1175,24 @@ def save_inventory_counts(
             )
         }
         invalidated = set()
+        if discard_unobserved and not battle_inventory_active.is_set():
+            # Rows without a source or observation marker can outlive cleaned CSVs.
+            invalidated = (
+                current.keys()
+                - effective.keys()
+                - protected.keys()
+                - pending.keys()
+                - (scanned_counts or {}).keys()
+                - (cloud_counts or {}).keys()
+            )
         if invalidate_missing and cloud_at > 0 and not battle_inventory_active.is_set():
             missing = current.keys() - (cloud_counts or {}).keys()
             if invalidation_scope is not None:
                 missing &= set(invalidation_scope)
-            invalidated = {
+            invalidated |= {
                 name for name in missing if protected.get(name, 0) < cloud_at
             }
+        if invalidated:
             conn.executemany(
                 "DELETE FROM inventory WHERE item_name = ?",
                 [(name,) for name in invalidated],
@@ -1191,23 +1204,27 @@ def save_inventory_counts(
             conn.executemany(
                 "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?) "
                 "ON CONFLICT(item_name) DO UPDATE SET observed_at = excluded.observed_at",
-                [(name, cloud_at) for name in invalidated],
+                [(name, cloud_at) for name in invalidated if invalidate_missing],
             )
             for name in invalidated:
                 effective.pop(name, None)
                 current.pop(name, None)
         if scanned_counts is not None:
-            for name in protected.keys() | (cloud_counts or {}).keys():
+            for name in (
+                protected.keys()
+                | (scanned_counts.keys() & effective.keys())
+                | (cloud_counts or {}).keys()
+            ):
                 observed_at = protected.get(name, 0)
                 # Depot scans cover only some categories. An absent item is not
                 # an observed zero and must not advance its freshness marker.
                 scanned = scanned_counts.get(name)
-                source_at = scanned_at
+                source_at = (scanned_observed_at or {}).get(name, scanned_at)
                 from_cloud = False
                 if (
                     cloud_counts is not None
                     and name in cloud_counts
-                    and (scanned is None or cloud_at >= scanned_at)
+                    and (scanned is None or cloud_at >= source_at)
                 ):
                     scanned = cloud_counts[name]
                     source_at = cloud_at
@@ -1302,7 +1319,12 @@ def save_inventory_counts(
             ):
                 for name, count in counts.items():
                     if name in effective and effective[name] == count:
-                        observed[name] = max(timestamp, observed.get(name, 0))
+                        source_at = (
+                            (scanned_observed_at or {}).get(name, timestamp)
+                            if counts is scanned_counts
+                            else timestamp
+                        )
+                        observed[name] = max(source_at, observed.get(name, 0))
         clear_workshop_recipe_rejections(observed)
         if (
             invalidated

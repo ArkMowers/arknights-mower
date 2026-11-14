@@ -1008,7 +1008,7 @@ def test_partial_scan_does_not_record_unmarked_stock_as_new_history(
     def respond(*args, **kwargs):
         if "/cultivate/player" in args[1]:
             view = depot.读取仓库(记录快照时刻=250)[0]
-            assert view["A常用"]["龙门币"]["number"] == 999
+            assert view["A常用"]["龙门币"]["number"] == 0
         return SimpleNamespace(json=lambda: completed_manual_goal)
 
     monkeypatch.setattr(module, "request_with_retry", respond)

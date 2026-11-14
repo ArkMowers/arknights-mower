@@ -30,6 +30,9 @@ def pixel_solver(monkeypatch):
     solver = module.depotREC.__new__(module.depotREC)
     solver.物品数字 = module.导入_数字模板()
     solver.结果字典 = {}
+    solver._seen_names = set()
+    solver._unconfirmed_names = set()
+    solver._category_frames = Mock(side_effect=lambda: iter([(0, solver.recog.img)]))
     return solver
 
 
