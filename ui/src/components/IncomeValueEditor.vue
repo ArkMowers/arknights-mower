@@ -2,8 +2,9 @@
 import { computed, inject, reactive, ref, watch, onBeforeUnmount } from 'vue'
 import { incomeSettingsUrl } from '@/utils/incomeSettings'
 import { createIncomeSanityValuation, sanityItems } from '@/riic/incomeSanity'
+import { potentialPresets, yellowValuePresets } from '@/riic/incomeCertificates'
 
-const props = defineProps({ valuation: Object, disabled: Boolean })
+const props = defineProps({ valuation: Object, recruitment: Array, disabled: Boolean })
 const emit = defineEmits(['saved', 'busy'])
 const axios = inject('axios')
 const material = ref('中级作战记录')
@@ -11,11 +12,13 @@ const materialValue = ref(null)
 const busy = ref(false)
 const error = ref('')
 const saved = ref('')
+const options = reactive({ potential_preset: 'default', yellow_preset: 'vouchers' })
 const unitValues = reactive({
   fragment: null,
   recycle: null,
   recruitment_certificates: null,
   yellow_certificate: null,
+  green_certificate: null,
   credit: null,
   credit_daily_limit: null
 })
@@ -25,12 +28,17 @@ const unitFields = [
   {
     key: 'recruitment_certificates',
     label: '刷新新增黄票期望（黄票/次）',
-    placeholder: '默认参考值 0.2，可按潜能与招募策略修改'
+    placeholder: '留空按潜能预设估算；填写则覆盖黄票期望'
   },
   {
     key: 'yellow_certificate',
     label: '黄票有效单价（理智/张）',
-    placeholder: '默认约 66.279；溢出时可填 0'
+    placeholder: '留空按兑换预设估值；溢出时可填 0'
+  },
+  {
+    key: 'green_certificate',
+    label: '绿票有效单价（理智/张）',
+    placeholder: '留空按 50 绿票换 30 合成玉；可填 0'
   },
   {
     key: 'credit',
@@ -43,13 +51,32 @@ const unitFields = [
     placeholder: '扣除其他信用收入后填写；留空不设上限'
   }
 ]
-const options = computed(() =>
+const materialOptions = computed(() =>
   ['龙门币', ...Object.keys(props.valuation?.prices ?? {})].map((name) => ({
     label: name,
     value: name
   }))
 )
-const prices = computed(() => createIncomeSanityValuation(props.valuation).unitValues)
+const preview = computed(() =>
+  createIncomeSanityValuation(
+    {
+      ...props.valuation,
+      income_unit_values: { ...unitValues },
+      income_options: { ...options }
+    },
+    props.recruitment
+  )
+)
+const prices = computed(() => preview.value.unitValues)
+const certificates = computed(() => preview.value.certificateModel)
+function selectPotentialPreset(value) {
+  options.potential_preset = value
+  unitValues.recruitment_certificates = null
+}
+function selectYellowPreset(value) {
+  options.yellow_preset = value
+  unitValues.yellow_certificate = null
+}
 watch(
   [() => props.valuation, material],
   () => {
@@ -63,6 +90,8 @@ watch(
 watch(
   () => props.valuation,
   (value) => {
+    options.potential_preset = value?.income_options?.potential_preset ?? 'default'
+    options.yellow_preset = value?.income_options?.yellow_preset ?? 'vouchers'
     for (const key of Object.keys(unitValues))
       unitValues[key] = value?.income_unit_values?.[key] ?? null
   },
@@ -83,7 +112,7 @@ async function saveValues(kind) {
       ? material.value === '龙门币'
         ? { lmd_sanity: materialValue.value }
         : { prices: { [material.value]: materialValue.value } }
-      : { income_unit_values: { ...unitValues } }
+      : { income_unit_values: { ...unitValues }, income_options: { ...options } }
   busy.value = true
   emit('busy', true)
   error.value = ''
@@ -121,7 +150,7 @@ const display = (value) =>
         ><span>材料</span
         ><n-select
           v-model:value="material"
-          :options="options"
+          :options="materialOptions"
           filterable
           :disabled="disabled || busy || !valuation"
       /></label>
@@ -139,6 +168,24 @@ const display = (value) =>
       >
     </div>
     <div class="unit-values">
+      <label
+        ><span>办公室潜能估值预设</span>
+        <n-select
+          :value="options.potential_preset"
+          :options="potentialPresets"
+          :disabled="disabled || busy || !valuation"
+          @update:value="selectPotentialPreset"
+        />
+      </label>
+      <label
+        ><span>黄票兑换预设</span>
+        <n-select
+          :value="options.yellow_preset"
+          :options="yellowValuePresets"
+          :disabled="disabled || busy || !valuation"
+          @update:value="selectYellowPreset"
+        />
+      </label>
       <label v-for="field in unitFields" :key="field.key">
         <span>{{ field.label }}</span>
         <n-input-number
@@ -153,22 +200,37 @@ const display = (value) =>
       </label>
     </div>
     <p>
-      公招刷新收益 = 新增黄票期望 × 黄票有效单价。黄票默认按 258 张换 38 抽、每抽 600 合成玉、每源石
-      180 合成玉或 135 理智折算；不计抽卡回流。黄票溢出时可将单价设为 0。
-    </p>
-    <p>
-      刷新新增黄票默认参考值为 0.2：假设只刷新无保底标签、四星满潜，五星和六星分别按 5、10
-      黄票估值；不是实测净收益或官方概率。该期望应计算刷新相对不刷新增添的黄票，受已有潜能、可招募干员和标签选择策略影响；当前不根据干员潜能自动推算，可填写自己的估计。
-      <n-a href="https://www.bilibili.com/read/cv27513934" target="_blank" rel="noopener noreferrer"
-        >参考推导</n-a
-      >
-      ·
+      公招刷新收益 = 新增黄票期望 × 黄票单价 + 新增绿票期望 ×
+      绿票单价。仅刷新无保底标签，以三星结果为对照；按公开标签统计近似，不是实测净增或官方概率，不计掉标签及无保底时的高星结果。
       <n-a
         href="https://ark.yituliu.cn/survey/maarecruitdata"
         target="_blank"
         rel="noopener noreferrer"
-        >一图流公招标签统计</n-a
+        >一图流标签统计</n-a
       >
+    </p>
+    <p>
+      默认预设按三星 0 黄票/10 绿票、四星 1 黄票/30 绿票、五星 5 黄票、六星 10 黄票；满潜改为五星
+      13、六星 25 黄票。
+      森空岛预设按当前公招池内同星级干员等权估计，未拥有按首次入职，已拥有按潜能近似重复获取次数，并计可兑换的多余信物。潜能不能区分通用信物提升、未使用信物或中坚获取次数，因此只作近似；不模拟潜能随招募变化。
+    </p>
+    <n-alert v-if="!certificates.rewards" type="warning"
+      >缺少可用的公招池潜能数据，当前预设无法完整估值。请同步森空岛后重新读取缓存，或选择其他预设。</n-alert
+    >
+    <p>
+      抽卡券按 258 黄票换 38 抽；通用信物按一枚六星皇家信物 135 黄票或 720
+      采购凭证折算，使用当前采购凭证材料单价，不按持有黄票超过 258 自动切换。 绿票按 50 张换 30
+      合成玉，忽略前置兑换。合成玉直接使用当前材料表单价，不计算抽卡回流，也不模拟兑换库存。
+      <n-a href="https://prts.wiki/w/采购中心/凭证交易所" target="_blank" rel="noopener noreferrer"
+        >凭证兑换规则</n-a
+      >
+    </p>
+    <p>
+      估值预览（保存后生效）：每次刷新新增 {{ display(certificates.refreshYellow) }} 黄票、{{
+        display(certificates.refreshGreen)
+      }}
+      绿票； 黄票 {{ display(certificates.yellow) }} 理智/张，绿票
+      {{ display(certificates.green) }} 理智/张。
     </p>
     <p>
       会客室日均信用 = 自搜线索数 × 40（搜集 20、赠送 20）+ 连续交流

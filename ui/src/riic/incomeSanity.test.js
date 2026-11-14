@@ -13,7 +13,13 @@ const valuation = () =>
   createIncomeSanityValuation({
     prices,
     lmd_sanity: 0.0036,
-    income_unit_values: { fragment: 5, recycle: 10, credit: 0.05, recruitment_certificates: 0.2 }
+    income_unit_values: {
+      fragment: 5,
+      recycle: 10,
+      credit: 0.05,
+      green_certificate: 0,
+      recruitment_certificates: 0.2
+    }
   })
 const summary = () => ({
   exp: 1000,
@@ -73,7 +79,8 @@ it('uses editable marginal yellow certificate and credit values, including zero'
   const defaults = createIncomeSanityValuation({
     prices,
     lmd_sanity: 0.0036,
-    credit_shop_value_threshold: 0.045
+    credit_shop_value_threshold: 0.045,
+    income_unit_values: { recruitment_certificates: 0.2, green_certificate: 0 }
   })
   expect(defaults.yellowCertificateValue).toBeCloseTo(66.2790697674)
   expect(defaults.unitValues.recruitment).toBeCloseTo(13.2558139535)
@@ -81,14 +88,19 @@ it('uses editable marginal yellow certificate and credit values, including zero'
   const zero = createIncomeSanityValuation({
     prices,
     lmd_sanity: 0.0036,
-    income_unit_values: { yellow_certificate: 0, credit: 0 }
+    income_unit_values: { yellow_certificate: 0, green_certificate: 0, credit: 0 }
   })
-  expect(zero.recruitmentCertificates).toBe(0.2)
+  expect(zero.recruitmentCertificates).toBeCloseTo(0.2016555, 5)
   expect(zero.unitValues.recruitment).toBe(0)
   expect(zero.unitValues.clue).toBe(0)
   const changed = createIncomeSanityValuation({
     prices,
-    income_unit_values: { yellow_certificate: 10, recruitment_certificates: 0.28, credit: 0.01 }
+    income_unit_values: {
+      yellow_certificate: 10,
+      recruitment_certificates: 0.28,
+      credit: 0.01,
+      green_certificate: 0
+    }
   })
   expect(changed.unitValues.recruitment).toBeCloseTo(2.8)
   expect(changed.unitValues.clue).toBe(0.4)
@@ -214,7 +226,13 @@ it('allows negative sanity income when producing and selling Orundum at a lower 
   const snapshot = createIncomeSanityValuation({
     prices,
     lmd_sanity: 0.0036,
-    income_unit_values: { fragment: 3 + 800 * 0.0036, recycle: 0, credit: 0, yellow_certificate: 0 }
+    income_unit_values: {
+      fragment: 3 + 800 * 0.0036,
+      recycle: 0,
+      credit: 0,
+      yellow_certificate: 0,
+      green_certificate: 0
+    }
   })
   const result = calculateIncome(plan, {
     ...defaultIncomeSettings(),

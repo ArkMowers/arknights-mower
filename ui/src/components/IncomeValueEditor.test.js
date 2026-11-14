@@ -46,7 +46,7 @@ it('preserves explicit zero and nullable overrides without writing unrelated set
   page.unitValues.credit = 0
   await page.saveValues('units')
   const patch = io.client.put.mock.calls[0][1]
-  expect(Object.keys(patch)).toEqual(['income_unit_values'])
+  expect(Object.keys(patch)).toEqual(['income_unit_values', 'income_options'])
   expect(patch.income_unit_values).toMatchObject({
     yellow_certificate: 0,
     credit: 0,
@@ -76,4 +76,18 @@ it('retains the edit on failure and suppresses duplicate saves and late unmounte
   resolve({ data: props.valuation })
   await pending
   expect(emit).not.toHaveBeenCalledWith('saved', expect.anything())
+})
+
+it('saves independent presets and clears only their manual overrides', async () => {
+  io.client.put.mockResolvedValueOnce({ data: props.valuation })
+  page.unitValues.yellow_certificate = 0
+  page.unitValues.recruitment_certificates = 0.1
+  page.unitValues.credit = 0
+  page.selectPotentialPreset('full')
+  page.selectYellowPreset('royal_token')
+  await page.saveValues('units')
+  expect(io.client.put.mock.calls[0][1]).toMatchObject({
+    income_options: { potential_preset: 'full', yellow_preset: 'royal_token' },
+    income_unit_values: { yellow_certificate: null, recruitment_certificates: null, credit: 0 }
+  })
 })

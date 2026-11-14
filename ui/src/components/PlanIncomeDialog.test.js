@@ -708,7 +708,7 @@ it('reads fresh sanity values before running and freezes them with the completed
       ...valuation(),
       prices: { 中级作战记录: 4, 赤金: 2 },
       lmd_sanity: 0.0036,
-      income_unit_values: { yellow_certificate: 0, credit: 0 }
+      income_unit_values: { yellow_certificate: 0, green_certificate: 0, credit: 0 }
     }
   })
   await page.start()
@@ -740,4 +740,36 @@ it('prevents a run during price saving and after a failed sanity settings read',
   await page.start()
   expect(workers).toHaveLength(0)
   expect(page.state.error).toContain('读取失败')
+})
+
+it('refreshes Skland potential estimates before freezing a run and rejects a failed cache read', async () => {
+  let potential = 5
+  const values = {
+    ...valuation(),
+    prices: { 合成玉: 0.9225 },
+    income_options: { potential_preset: 'skland' }
+  }
+  io.client.get.mockImplementation(async (url) => ({
+    data: url.includes('income-cache')
+      ? {
+          ...cache(),
+          recruitment: [3, 4, 5, 6].map((stars) => ({ stars, owned: true, potential }))
+        }
+      : values
+  }))
+  await page.readCache()
+  await page.readWeights()
+  expect(page.settings.sanityValuation.certificateModel.rewards[5].yellow).toBe(5)
+  potential = 6
+  await page.start()
+  const input = workers[0].postMessage.mock.calls[0][0]
+  expect(input.settings.sanityValuation.certificateModel.rewards[5].yellow).toBe(13)
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  io.client.get.mockImplementation(async (url) => {
+    if (url.includes('income-cache')) throw new Error('offline')
+    return { data: values }
+  })
+  await page.start()
+  expect(workers).toHaveLength(1)
+  expect(page.state.error).toContain('缓存读取失败')
 })

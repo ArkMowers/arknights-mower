@@ -603,6 +603,7 @@ def test_material_price_route_requires_token_and_validates_partial_updates(
     patch = {
         "prices": {"装置": 0},
         "income_unit_values": {"yellow_certificate": 0, "credit": 0},
+        "income_options": {"potential_preset": "full", "yellow_preset": "royal_token"},
     }
     for headers in ({}, {"token": "wrong"}):
         for method, path in [
@@ -628,8 +629,37 @@ def test_material_price_route_requires_token_and_validates_partial_updates(
     for invalid in (
         {"prices": None},
         {"income_unit_values": []},
+        {"income_options": None},
+        {"income_options": {"potential_preset": "invalid"}},
         {"lmd_sanity": None},
         {"prices": {"装置": "5"}},
     ):
         assert client.put(route, headers=headers, json=invalid).status_code == 400
         assert record.get_recycling_valuation() == saved
+
+
+def test_certificate_presets_persist_and_reject_invalid_options_atomically(db):
+    saved = record.update_recycling_valuation(
+        income_options={"potential_preset": "skland", "yellow_preset": "royal_token"},
+        income_unit_values={"green_certificate": 0},
+    )
+    assert saved == record.get_recycling_valuation()
+    for options in (
+        {"bad": "full"},
+        {"potential_preset": "bad"},
+        {"yellow_preset": []},
+    ):
+        with pytest.raises(ValueError):
+            record.update_recycling_valuation(
+                prices={"装置": 99}, income_options=options
+            )
+        assert record.get_recycling_valuation() == saved
+    imported = record.update_recycling_valuation(
+        imported=import_yituliu_values(value_file())
+    )
+    assert imported["income_options"] == saved["income_options"]
+    cleared = record.update_recycling_valuation(
+        income_options={"potential_preset": None}
+    )
+    assert cleared["income_options"] == {"yellow_preset": "royal_token"}
+    assert "income_options" not in record.update_recycling_valuation(reset=True)

@@ -78,6 +78,7 @@ async function readCache({ preserveOverrides = false } = {}) {
       try {
         if (!preserveOverrides) cachedInventoryOverrides = {}
         applyIncomeCache(settings, data)
+        if (valuation.value) applyMowerIncomeSettings(settings, valuation.value)
         cachedInventoryBaseline = settings.cachedInventory ? { ...settings.cachedInventory } : null
         if (settings.cachedInventory)
           Object.assign(settings.cachedInventory, cachedInventoryOverrides)
@@ -218,6 +219,7 @@ function resetSettings() {
       cacheObservedAt: settings.cacheObservedAt,
       mowerWeights: settings.mowerWeights,
       mowerAlgorithm: settings.mowerAlgorithm,
+      cachedRecruitment: settings.cachedRecruitment,
       sanityValuation: settings.sanityValuation
     }
     Object.assign(settings, defaultIncomeSettings(), current)
@@ -361,6 +363,13 @@ async function start() {
   attemptDiagnostics.value = []
   try {
     if (settings.weightMode === 'mower' || settings.weightMode === 'sanity') await readWeights()
+    if (
+      settings.weightMode === 'sanity' &&
+      valuation.value?.income_options?.potential_preset === 'skland'
+    ) {
+      await readCache({ preserveOverrides: true })
+      if (cacheError.value) throw new Error(cacheError.value)
+    }
     if (!alive) return
     const { image, ...snapshot } = props.snapshot
     const captured = { ...JSON.parse(JSON.stringify(snapshot)), image }
@@ -721,6 +730,7 @@ onBeforeUnmount(() => {
                 <IncomeValueEditor
                   v-if="settings.weightMode === 'sanity'"
                   :valuation="valuation"
+                  :recruitment="settings.cachedRecruitment"
                   :disabled="weightsBusy || state.running || exporting || submitting"
                   @saved="applySavedValues"
                   @busy="valuesBusy = $event" />

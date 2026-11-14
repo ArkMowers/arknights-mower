@@ -86,7 +86,22 @@ def validate_income_value(value, *, optional=False, minimum=0):
     return value
 
 
-def validate_income_value_updates(prices, unit_values, known_prices):
+def validate_income_value_updates(prices, unit_values, known_prices, options=None):
+    allowed_options = {
+        "potential_preset": {"default", "skland", "full"},
+        "yellow_preset": {"vouchers", "royal_token"},
+    }
+    if options is not None:
+        if (
+            not isinstance(options, dict)
+            or not options.keys() <= allowed_options.keys()
+        ):
+            raise ValueError("请选择有效的理智估值预设")
+        for key, option in options.items():
+            if option is not None and (
+                not isinstance(option, str) or option not in allowed_options[key]
+            ):
+                raise ValueError("请选择有效的理智估值预设")
     for values, allowed, optional in (
         (prices, known_prices, False),
         (
@@ -96,6 +111,7 @@ def validate_income_value_updates(prices, unit_values, known_prices):
                 "recycle",
                 "recruitment_certificates",
                 "yellow_certificate",
+                "green_certificate",
                 "credit",
                 "credit_daily_limit",
             },

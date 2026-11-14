@@ -1,3 +1,4 @@
+import { createCertificateValuation } from './incomeCertificates'
 import recyclingModel from '../../../arknights_mower/data/recycling_model.json'
 import { simulationOutputOrders } from './vendor/simulator/productionScore'
 
@@ -39,20 +40,21 @@ export function recyclingIncomeValue(prices, model = recyclingModel) {
   return ordinary + (points / model.point_threshold) * extra
 }
 
-export function createIncomeSanityValuation(valuation) {
+export function createIncomeSanityValuation(valuation, roster) {
   const price = (name) => valueOrNull(valuation?.prices?.[name])
   const overrides = valuation?.income_unit_values ?? {}
   const lmd = valueOrNull(valuation?.lmd_sanity)
   const record = price('中级作战记录')
   const orundum = price('合成玉')
-  const certificates = valueOrNull(overrides.recruitment_certificates) ?? 0.2
-  const yellowCertificateValue =
-    valueOrNull(overrides.yellow_certificate) ?? (38 / 258) * 600 * (135 / 180)
+  const certificateModel = createCertificateValuation(valuation, roster)
+  const certificates = certificateModel.refreshYellow
+  const yellowCertificateValue = certificateModel.yellow
   const creditValue =
     valueOrNull(overrides.credit) ?? valueOrNull(valuation?.credit_shop_value_threshold)
   return {
     version: 1,
     source: valuation?.source ?? '',
+    certificateModel,
     recruitmentCertificates: certificates,
     yellowCertificateValue,
     creditValue,
@@ -66,7 +68,7 @@ export function createIncomeSanityValuation(valuation) {
       orirock: price('固源岩'),
       device: price('装置'),
       recycle: valueOrNull(overrides.recycle) ?? recyclingIncomeValue(valuation?.prices),
-      recruitment: certificates * yellowCertificateValue,
+      recruitment: certificateModel.recruitmentValue,
       clue: creditValue === null ? null : 40 * creditValue,
       exchange: creditValue === null ? null : 210 * creditValue
     }
@@ -78,8 +80,11 @@ export function validateIncomeSanityValuation(valuation) {
     throw new Error('理智算法的材料价值尚未读取，请重新读取 Mower 设置')
   for (const { key } of sanityItems) {
     const value = valuation.unitValues[key]
-    if (value !== null && valueOrNull(value) === null)
-      throw new Error('理智算法的单价必须是有限的非负数，未估值项目请留空')
+    if (
+      value !== null &&
+      (typeof value !== 'number' || !Number.isFinite(value) || (key !== 'recruitment' && value < 0))
+    )
+      throw new Error('理智算法的估值必须是有限数值，材料单价不可为负；未估值项目请留空')
   }
   if (valuation.creditDailyLimit !== null && valueOrNull(valuation.creditDailyLimit) === null)
     throw new Error('每日有效信用额度必须是有限的非负数，或留空不设上限')

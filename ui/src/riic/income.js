@@ -37,6 +37,7 @@ export function defaultIncomeSettings() {
     mowerWeights: null,
     mowerAlgorithm: null,
     sanityValuation: null,
+    cachedRecruitment: null,
     initialInventory: {},
     jayeElite0: false,
     operatorMode: 'cache',
@@ -168,7 +169,7 @@ export function incomeWeights(settings) {
 }
 
 export function applyMowerIncomeSettings(settings, value) {
-  settings.sanityValuation = createIncomeSanityValuation(value)
+  settings.sanityValuation = createIncomeSanityValuation(value, settings.cachedRecruitment)
   settings.mowerAlgorithm = value.base_algorithm
   settings.mowerWeights = normalizeProductionWeights({
     exp: value.ratios.experience,

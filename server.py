@@ -4013,12 +4013,18 @@ def recycling_settings():
             payload = request.get_json(silent=True)
             if not isinstance(payload, dict) or not any(
                 key in payload
-                for key in ("ratios", "prices", "lmd_sanity", "income_unit_values")
+                for key in (
+                    "ratios",
+                    "prices",
+                    "lmd_sanity",
+                    "income_unit_values",
+                    "income_options",
+                )
             ):
                 raise ValueError("请提供产物价值比例")
             if any(
                 key in payload and not isinstance(payload[key], dict)
-                for key in ("prices", "income_unit_values")
+                for key in ("prices", "income_unit_values", "income_options")
             ) or ("lmd_sanity" in payload and payload["lmd_sanity"] is None):
                 raise ValueError("请提供有效的理智价值")
             value = record.update_recycling_valuation(
@@ -4029,6 +4035,7 @@ def recycling_settings():
                 prices=payload.get("prices"),
                 lmd_sanity=payload.get("lmd_sanity"),
                 income_unit_values=payload.get("income_unit_values"),
+                income_options=payload.get("income_options"),
             )
         else:
             value = record.get_recycling_valuation()

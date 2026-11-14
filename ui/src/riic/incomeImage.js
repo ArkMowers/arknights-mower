@@ -107,7 +107,15 @@ export function incomeReportLines(result, settings, plan, label) {
           `理智单价：${Object.entries(settings.sanityValuation.unitValues)
             .map(([key, value]) => `${key}=${value === null ? '未估值' : value}`)
             .join('；')}。`,
-          `公招刷新按每次新增 ${settings.sanityValuation.recruitmentCertificates ?? '未设置'} 黄票 × ${settings.sanityValuation.yellowCertificateValue} 理智/黄票；黄票默认按 258 张换 38 抽、每抽 600 合成玉、每源石 180 合成玉或 135 理智折算，不计抽卡回流。信用有效单价 ${settings.sanityValuation.creditValue ?? '未估值'} 理智/点，会客室按自搜线索全部赠送（40 信用/条）和连续交流（210 信用/天）估值，需要好友持续补齐线索；每日有效信用额度 ${settings.sanityValuation.creditDailyLimit ?? '不限'}，超过额度不计价值。不模拟招募、商店或实际交流完成时刻。`,
+          ...(settings.sanityValuation.certificateModel
+            ? [
+                `公招凭证估值：潜能预设 ${settings.sanityValuation.certificateModel.potentialPreset}，黄票兑换预设 ${settings.sanityValuation.certificateModel.yellowPreset}；每次刷新相对三星新增 ${settings.sanityValuation.certificateModel.refreshYellow ?? '未估值'} 黄票、${settings.sanityValuation.certificateModel.refreshGreen ?? '未估值'} 绿票。黄票 ${settings.sanityValuation.certificateModel.yellow ?? '未估值'} 理智/张，绿票 ${settings.sanityValuation.certificateModel.green ?? '未估值'} 理智/张。`,
+                `合成玉按已保存材料单价 ${settings.sanityValuation.certificateModel.orundum ?? '未估值'} 理智/个计价，不计抽卡回流。绿票按 50 换 30 合成玉，忽略前置兑换；皇家信物按 135 黄票或 720 采购凭证折算。森空岛预设以公招池同星级等权估算，潜能近似获取次数，不模拟掉标签或潜能变化。`
+              ]
+            : [
+                `公招刷新按每次新增 ${settings.sanityValuation.recruitmentCertificates ?? '未设置'} 黄票 × ${settings.sanityValuation.yellowCertificateValue} 理智/黄票；此历史结果不计抽卡回流。`
+              ]),
+          `信用有效单价 ${settings.sanityValuation.creditValue ?? '未估值'} 理智/点，会客室按自搜线索全部赠送（40 信用/条）和连续交流（210 信用/天）估值，需要好友持续补齐线索；每日有效信用额度 ${settings.sanityValuation.creditDailyLimit ?? '不限'}，超过额度不计价值。不模拟招募、商店或实际交流完成时刻。`,
           '回收站按现有产出次数乘以单次价值，默认使用材料概率表的普通池与额外池长期期望，不模拟随机材料或新增库存；当前演算未提供投入提效材料的消耗。',
           ...(result.summary.sanity?.partial
             ? [

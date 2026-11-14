@@ -985,6 +985,7 @@ def update_recycling_valuation(
     prices=None,
     lmd_sanity=None,
     income_unit_values=None,
+    income_options=None,
 ):
     """Atomically update assumptions while retaining independent saved inputs."""
     from arknights_mower.utils.recycling_valuation import (
@@ -1014,7 +1015,7 @@ def update_recycling_valuation(
         connection.execute("BEGIN IMMEDIATE")
         current = default_valuation() if reset else _recycling_valuation(connection)
         validate_income_value_updates(
-            prices, income_unit_values, current["prices"].keys()
+            prices, income_unit_values, current["prices"].keys(), income_options
         )
         if lmd_sanity is not None:
             validate_income_value(lmd_sanity, minimum=0.000000001)
@@ -1062,14 +1063,18 @@ def update_recycling_valuation(
                 "source": current["source"],
                 "pricing_mode": "custom",
             }
-        if income_unit_values is not None:
-            values = dict(current.get("income_unit_values", {}))
-            for key, value in income_unit_values.items():
-                if value is None:
-                    values.pop(key, None)
-                else:
-                    values[key] = value
-            current["income_unit_values"] = values
+        for field, patch in (
+            ("income_unit_values", income_unit_values),
+            ("income_options", income_options),
+        ):
+            if patch is not None:
+                values = dict(current.get(field, {}))
+                for key, value in patch.items():
+                    if value is None:
+                        values.pop(key, None)
+                    else:
+                        values[key] = value
+                current[field] = values
         connection.execute(
             "INSERT OR REPLACE INTO recycling_valuation VALUES (1, ?)",
             (json.dumps(current, ensure_ascii=False, allow_nan=False),),
