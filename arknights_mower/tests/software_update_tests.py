@@ -1118,6 +1118,34 @@ class AdmissionAndRoutesTests(unittest.TestCase):
                 update.start_job({"deployment": "source"})
             process.assert_not_called()
 
+    def test_unreadable_preferences_do_not_reserve_an_update_job(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            state = Path(temporary)
+            saved = state / "preferences.json"
+            contents = b'{"channel":"beta","background":true}'
+            saved.write_bytes(contents)
+            read_text = Path.read_text
+
+            def denied(path, *args, **kwargs):
+                if path == saved:
+                    raise PermissionError(13, "denied", path)
+                return read_text(path, *args, **kwargs)
+
+            with (
+                patch.object(runtime, "state_dir", return_value=state),
+                patch.object(update, "info", return_value={"blockers": []}),
+                patch.object(update, "settings_path", return_value=saved),
+                patch.object(Path, "read_text", denied),
+                patch.object(subprocess, "Popen") as process,
+                self.assertRaisesRegex(PermissionError, saved.name),
+            ):
+                update.start_job({"deployment": "release", "version": "v4.2.0"})
+
+            process.assert_not_called()
+            self.assertFalse((state / "active").exists())
+            self.assertFalse((state / "jobs").exists())
+            self.assertEqual(saved.read_bytes(), contents)
+
 
 class WorkerTests(unittest.TestCase):
     def setUp(self):

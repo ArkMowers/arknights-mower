@@ -257,11 +257,13 @@ def test_permission_repair_requires_one_user_account(
     run.assert_not_called()
 
 
-def test_unreadable_saved_json_never_becomes_default(tmp_path, monkeypatch):
-    from arknights_mower.utils import update_runtime
+def test_unreadable_software_update_settings_are_not_replaced(tmp_path, monkeypatch):
+    from arknights_mower.utils import software_update
 
-    saved = tmp_path / "network.json"
-    saved.write_text('{"token": "preserved"}')
+    saved = tmp_path / "software-update.json"
+    original = b'{"channel": "beta", "background": true}'
+    saved.write_bytes(original)
+    monkeypatch.setattr(software_update, "settings_path", lambda: saved)
     real_read = Path.read_text
 
     def denied(file, *args, **kwargs):
@@ -270,9 +272,9 @@ def test_unreadable_saved_json_never_becomes_default(tmp_path, monkeypatch):
         return real_read(file, *args, **kwargs)
 
     monkeypatch.setattr(Path, "read_text", denied)
-    with pytest.raises(PermissionError, match="network.json"):
-        update_runtime.read_json(saved, {})
-    assert saved.read_bytes() == b'{"token": "preserved"}'
+    with pytest.raises(PermissionError, match="software-update.json"):
+        software_update.save_settings({"auto_check": True})
+    assert saved.read_bytes() == original
 
 
 @pytest.mark.parametrize("kind", ["conf", "plan"])
