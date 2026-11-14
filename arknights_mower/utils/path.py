@@ -135,3 +135,10 @@ class SpecialDir:
 
 app_dir = SpecialDir(get_app_path)
 internal_dir = SpecialDir(get_internal_path)
+
+
+def temporary_root():
+    """Shared scratch files follow MOWER_DATA_DIR without changing system TEMP."""
+    directory = get_path("@app/tmp/work", space="")
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory

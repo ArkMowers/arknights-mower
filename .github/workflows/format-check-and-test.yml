@@ -43,6 +43,8 @@ jobs:
               # Updater, shared runtime helpers and their regression tests.
               - 'arknights_mower/{utils,views,tests}/**/*{update,resource,process,network,proxy,version,download,source,backup}*.py'
               - 'arknights_mower/utils/{config/**,path.py,log.py,csv_utils.py,zip_safe.py,git_rev.py}'
+              - 'arknights_mower/utils/{maa_storage,maa_host_lock,windows_permissions}.py'
+              - 'arknights_mower/tests/maa_storage_tests.py'
               - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
               # Furniture safety and native OCR run on all three desktop platforms.
               - 'arknights_mower/{solvers,utils,tests}/furniture*.py'
@@ -370,6 +372,7 @@ jobs:
         run: |
           python -m pytest -q -o faulthandler_timeout=60 \
             arknights_mower/tests/maa_process_tests.py \
+            arknights_mower/tests/maa_storage_tests.py \
             arknights_mower/tests/maa_update_parity_tests.py \
             arknights_mower/tests/maa_navigation_tests.py \
             arknights_mower/tests/maa_admission_tests.py \

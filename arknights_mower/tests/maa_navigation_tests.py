@@ -15,6 +15,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.tests.maa_process_helpers import fake_sdk_worker  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
+from arknights_mower.utils.maa_storage import storage_root  # noqa: E402
 
 
 @pytest.fixture
@@ -23,12 +24,12 @@ def runtime(tmp_path, monkeypatch):
     installed = tmp_path / "resource" / "tasks" / "tasks.json"
     installed.parent.mkdir(parents=True)
     installed.write_text('{"FightBegin": {"algorithm": "JustReturn"}}')
-    hotfix = tmp_path / "cache/resource/tasks/hotfix/ocr_replace.json"
+    hotfix = storage_root(tmp_path) / "cache/resource/tasks/hotfix/ocr_replace.json"
     hotfix.parent.mkdir(parents=True)
     hotfix.write_text('{"BattleStageNameHotfix": {"ocrReplace": [["YVV", "YW"]]}}')
-    legacy = tmp_path / "cache/resource/tasks.json"
+    legacy = storage_root(tmp_path) / "cache/resource/tasks.json"
     legacy.write_text('{"Expired-8": {"algorithm": "JustReturn"}}')
-    navigation = tmp_path / "cache/resource/tasks/tasks.json"
+    navigation = storage_root(tmp_path) / "cache/resource/tasks/tasks.json"
     payload = {"YW-8": {"algorithm": "JustReturn", "sub": ["YW-8@YW-OpenOpt"]}}
     response = MagicMock()
     response.__enter__.return_value.content = json.dumps(payload).encode()
@@ -69,7 +70,7 @@ def runtime(tmp_path, monkeypatch):
     )
     loaded = {}
 
-    def load(*, path, incremental_path):
+    def load(*, path, incremental_path, user_dir):
         loaded.clear()
         for root in (path, incremental_path):
             resource = Path(root) / "resource"
@@ -108,6 +109,7 @@ def runtime(tmp_path, monkeypatch):
     )
     solver.maybe_switch_expired_activity_plan = MagicMock()
     yield SimpleNamespace(
+        target=tmp_path,
         solver=solver,
         asst=asst,
         navigation=navigation,
@@ -221,7 +223,7 @@ def test_other_mower_reader_skips_navigation_download_and_allows_connection(runt
 
     previous = b'{"Previous": {}}'
     runtime.navigation.write_bytes(previous)
-    with installation_lease(runtime.navigation.parents[3]):
+    with installation_lease(runtime.target):
         runtime.solver.initialize_maa()
     assert runtime.navigation.read_bytes() == previous
     runtime.get.assert_not_called()
@@ -245,7 +247,7 @@ def test_loaded_client_does_not_block_normal_initialization(runtime, monkeypatch
 def test_concurrent_navigation_refresh_uses_cache_without_download(runtime):
     from arknights_mower.utils.maa_process import installation_lease, navigation_lease
 
-    target = runtime.navigation.parents[3]
+    target = runtime.target
     previous = b'{"Previous": {}}'
     runtime.navigation.write_bytes(previous)
     with navigation_lease(target), installation_lease(target):
@@ -261,10 +263,10 @@ def test_navigation_refresh_allows_readers_and_serializes_other_refreshes(runtim
     response = runtime.response
 
     def get(*args, **kwargs):
-        with installation_lease(runtime.navigation.parents[3]):
+        with installation_lease(runtime.target):
             pass
         with pytest.raises(RuntimeError, match="其他实例"):
-            navigation_lease(runtime.navigation.parents[3])
+            navigation_lease(runtime.target)
         return response
 
     runtime.get.side_effect = get

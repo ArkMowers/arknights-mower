@@ -49,10 +49,11 @@ class _JsonResponse:
 
 class TestMaaResourceVersion(unittest.TestCase):
     def test_read_denied_version_exposes_path_and_guidance(self):
+        target = Path("/test/MAA")
         with patch.object(Path, "read_text", side_effect=PermissionError("denied")):
-            info = mru.read_maa_resource_info("/test/MAA")
+            info = mru.read_maa_resource_info(target)
         self.assertEqual(info["version"], "")
-        self.assertIn("/test/MAA/resource/version.json", info["error"])
+        self.assertIn(str(target / "resource/version.json"), info["error"])
         self.assertIn("访问被拒绝", info["error"])
 
     def test_resource_merge_updates_readonly_staged_files_without_changing_original(
@@ -359,6 +360,47 @@ class TestInstallMaaResource(unittest.TestCase):
         self.assertEqual((self.resource / "new.txt").read_text(), "new")
         self.assertEqual((old_backup / "old.txt").read_text(), "current")
         self.assertFalse((old_backup / "older.txt").exists())
+
+    def test_resource_update_rejects_data_inside_replaced_directories(self):
+        from arknights_mower.utils import path
+
+        release = mru.MaaResourceRelease(
+            version="2026-09-04 01:07:54.000",
+            source="github",
+            url="https://example.test/resource.zip",
+        )
+        for replaced in (self.resource, self.target / ".old/resource"):
+            with self.subTest(replaced=replaced):
+                data_root = replaced / "mower-data"
+                data_root.mkdir(parents=True)
+                config = data_root / "config.yml"
+                config.write_text("keep: true", encoding="utf-8")
+                with (
+                    patch.object(path, "_data_dir", data_root),
+                    patch.object(mru, "get_maa_resource_release", return_value=release),
+                    patch.object(mru, "download_resource_archive") as download,
+                    self.assertRaisesRegex(mru.MaaUpdateError, "Mower 数据目录"),
+                ):
+                    mru.install_maa_resource_update(self.target)
+                download.assert_not_called()
+                self.assertEqual(config.read_text(encoding="utf-8"), "keep: true")
+                self.assertEqual((self.resource / "old.txt").read_text(), "current")
+
+    def test_no_resource_update_preserves_data_in_resource_tree(self):
+        from arknights_mower.utils import path
+
+        release = mru.MaaResourceRelease(
+            version="2026-09-03 01:00:00.000", source="github", available=False
+        )
+        with (
+            patch.object(path, "_data_dir", self.resource),
+            patch.object(mru, "get_maa_resource_release", return_value=release),
+            patch.object(mru, "update_workspace") as workspace,
+        ):
+            result = mru.install_maa_resource_update(self.target)
+        self.assertFalse(result["updated"])
+        workspace.assert_not_called()
+        self.assertEqual((self.resource / "old.txt").read_text(), "current")
 
     def test_archive_version_mismatch_keeps_current_resource(self):
         release = mru.MaaResourceRelease(

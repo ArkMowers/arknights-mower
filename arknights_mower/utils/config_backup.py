@@ -26,7 +26,7 @@ from arknights_mower.utils.config.plan import (
     migrate_legacy_dorm_order,
     parse_plan_document,
 )
-from arknights_mower.utils.path import get_path
+from arknights_mower.utils.path import get_path, temporary_root
 from arknights_mower.utils.workshop_config import workshop_lock
 
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
@@ -178,7 +178,7 @@ def _tmp_snapshot(total):
             continue
         if name == "data.db":
             try:
-                with TemporaryDirectory() as directory:
+                with TemporaryDirectory(dir=temporary_root()) as directory:
                     snapshot = Path(directory) / "data.db"
                     _copy_database(path, snapshot)
                     content = snapshot.read_bytes()
@@ -474,7 +474,11 @@ def _prepare_database(content, path):
 
 def import_configuration(raw, *, replace_tmp=False, commit=None):
     """Restore files and commit caller metadata before publishing runtime models."""
-    with backup_lock, workshop_lock, TemporaryDirectory() as directory:
+    with (
+        backup_lock,
+        workshop_lock,
+        TemporaryDirectory(dir=temporary_root()) as directory,
+    ):
         files, tmp_files = read_archive(raw, include_tmp=True)
         for name in LEGACY_TMP_CONFIG_FILES:
             if name not in files and name in tmp_files:

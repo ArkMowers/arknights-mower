@@ -91,6 +91,7 @@ class BackupCheckpoint:
                 installation_lease,
                 maa_client_guard,
             )
+            from arknights_mower.utils.maa_storage import protected_storage_paths
 
             lease = installation_lease(self.target, exclusive=True)
             if self.installation != installation_identity(self.target):
@@ -99,6 +100,12 @@ class BackupCheckpoint:
                 for path, expected in self.backups.items():
                     if expected is None or expected != identity(path):
                         continue
+                    resolved = path.resolve()
+                    if any(
+                        root.is_relative_to(path) or root.is_relative_to(resolved)
+                        for root in protected_storage_paths(self.target)
+                    ):
+                        return False
                     if path.is_symlink():
                         path.unlink()
                     elif path.is_dir():
@@ -175,7 +182,7 @@ class MaaCallError(RuntimeError):
             target += f" | stage={stage or '上次作战'}"
         super().__init__(
             f"MAA {label}{target}：{detail or '核心未接受调用'}。"
-            "请检查 MAA 核心及资源版本，并查看 MAA 目录/debug/asst.log"
+            "请检查 MAA 核心及资源版本，并查看 Mower 数据目录/tmp/maa 下的日志（Android 查看宿主日志）"
         )
 
 

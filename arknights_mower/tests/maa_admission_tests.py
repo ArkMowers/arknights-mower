@@ -7,6 +7,8 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
+from arknights_mower.utils.maa_storage import storage_root
+
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
@@ -135,10 +137,12 @@ def test_rejected_resource_load_reports_read_denied_config(desktop, monkeypatch)
 
 def test_download_is_loaded_before_success_is_reported(desktop):
     desktop.scheduler.initialize_maa()
-    cached = desktop.root / "cache/resource/tasks/tasks.json"
+    cached = storage_root(desktop.root) / "cache/resource/tasks/tasks.json"
     assert json.loads(cached.read_text()) == {"YW-8": {"algorithm": "JustReturn"}}
     desktop.asst.load.assert_called_once_with(
-        path=desktop.root, incremental_path=desktop.root / "cache"
+        path=desktop.root,
+        incremental_path=storage_root(desktop.root) / "cache",
+        user_dir=storage_root(desktop.root) / "user",
     )
     assert any(
         "MAA 资源加载成功" in str(call)
@@ -175,7 +179,7 @@ def test_external_core_reload_uses_new_sdk_and_instance_options(desktop, monkeyp
     "payload", [b"<html>error</html>", b"[]", b"{}", b'{"error": "offline"}']
 )
 def test_invalid_download_preserves_existing_navigation(desktop, payload):
-    cached = desktop.root / "cache/resource/tasks/tasks.json"
+    cached = storage_root(desktop.root) / "cache/resource/tasks/tasks.json"
     cached.parent.mkdir(parents=True)
     previous = b'{"OLD": {"algorithm": "JustReturn"}}'
     cached.write_bytes(previous)
@@ -189,7 +193,7 @@ def test_invalid_download_preserves_existing_navigation(desktop, payload):
 def test_failed_atomic_write_preserves_existing_navigation(desktop, monkeypatch):
     from arknights_mower.utils import update_runtime
 
-    cached = desktop.root / "cache/resource/tasks/tasks.json"
+    cached = storage_root(desktop.root) / "cache/resource/tasks/tasks.json"
     cached.parent.mkdir(parents=True)
     previous = b'{"OLD": {"algorithm": "JustReturn"}}'
     cached.write_bytes(previous)

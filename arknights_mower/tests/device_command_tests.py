@@ -197,13 +197,15 @@ def test_inherited_writes_during_collection_preserve_existing_output(
     assert all(wait_for(Path(stream.name), 3, exists=False) for stream in streams)
 
 
-def test_captured_binary_streams_preserve_bytes_and_close(monkeypatch):
+def test_captured_binary_streams_preserve_bytes_and_close(monkeypatch, tmp_path):
+    monkeypatch.setattr("arknights_mower.utils.path._data_dir", tmp_path)
     processes, streams = record_processes(monkeypatch)
     result = run_python(
         "import os; os.write(1, b'\\x00\\xff\\r\\n'); os.write(2, b'diagnostic\\r\\n')",
         capture_output=True,
         check=True,
     )
+    assert all(Path(stream.name).parent == tmp_path / "tmp/work" for stream in streams)
     assert result.stdout == b"\x00\xff\r\n"
     assert result.stderr == b"diagnostic\r\n"
     assert all(process.poll() is not None for process in processes)
@@ -421,8 +423,8 @@ def test_launch_failure_closes_every_temporary_stream(monkeypatch, tmp_path):
     streams = []
     original = manager_io.tempfile.NamedTemporaryFile
 
-    def open_stream():
-        stream = original()
+    def open_stream(**kwargs):
+        stream = original(**kwargs)
         streams.append(stream)
         return stream
 
@@ -442,8 +444,8 @@ def test_reader_open_failure_closes_output_before_process_creation(monkeypatch):
     streams = []
     original = manager_io.tempfile.NamedTemporaryFile
 
-    def open_stream():
-        stream = original()
+    def open_stream(**kwargs):
+        stream = original(**kwargs)
         streams.append(stream)
         return stream
 

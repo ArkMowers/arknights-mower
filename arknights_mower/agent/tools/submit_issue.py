@@ -39,7 +39,7 @@ from arknights_mower.utils.diagnostics import (
 from arknights_mower.utils.email import Email
 from arknights_mower.utils.git_rev import revision_info
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.path import get_path
+from arknights_mower.utils.path import get_path, temporary_root
 
 
 def _feedback_archive_name(start, description):
@@ -312,7 +312,9 @@ def inspect_feedback(
 ):
     """只读准备反馈证据和源码引用，不发送邮件或保存配置。"""
     try:
-        with TemporaryDirectory(prefix="mower-feedback-inspect-") as temporary:
+        with TemporaryDirectory(
+            prefix="mower-feedback-inspect-", dir=temporary_root()
+        ) as temporary:
             _, details = _collect_bug_bundle(
                 "反馈证据检查",
                 start_time,
@@ -373,7 +375,9 @@ def submit_issue(
     """上报问题，附带原始材料、来源引用和单列的 AI 推断。"""
     try:
         version = _required_version()
-        with TemporaryDirectory(prefix="mower-feedback-") as temporary:
+        with TemporaryDirectory(
+            prefix="mower-feedback-", dir=temporary_root()
+        ) as temporary:
             attachments = None
             body = f"<p>Mower 版本（反馈生成时）：{escape(version)}</p><p>{escape(description)}</p>"
             if issue_type == "Bug":

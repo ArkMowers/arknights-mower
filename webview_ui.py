@@ -5,6 +5,11 @@ import platform
 import sys
 from urllib.parse import quote
 
+if __name__ == "__main__" and sys.argv[1:2] == ["--repair-permissions"]:
+    from arknights_mower.utils.windows_permissions import main as repair_permissions
+
+    sys.exit(repair_permissions(sys.argv[2:]))
+
 if __name__ == "__main__" and sys.argv[1:2] == ["--shared-ocr-service"]:
     from arknights_mower.utils.ocr_service import main as shared_ocr_main
 
@@ -1046,7 +1051,10 @@ def _run_desktop():
     from arknights_mower.utils.software_update import request_auto_check
 
     if config.updates_enabled:
-        request_auto_check()
+        try:
+            request_auto_check()
+        except PermissionError as error:
+            logger.warning("启动时无法检查软件更新：%s", error)
 
     def startup_cancelled():
         if (

@@ -9,6 +9,7 @@ from time import monotonic
 import cv2
 import numpy as np
 
+from arknights_mower.data import key_mapping
 from arknights_mower.utils import config, depot, vision_np
 from arknights_mower.utils.graph import SceneGraphSolver
 
@@ -84,7 +85,14 @@ class _DepotRecoveryExhausted(Exception):
     pass
 
 
+class _DepotScanIncomplete(Exception):
+    pass
+
+
 class depotREC(SceneGraphSolver):
+    CATEGORY_SWIPE_LIMIT = 32
+    CATEGORY_SCAN_TIMEOUT = 60
+
     def __init__(self, device: Device = None, recog: Recognizer = None) -> None:
         super().__init__(device, recog)
 
@@ -107,13 +115,25 @@ class depotREC(SceneGraphSolver):
         ) as pkl:
             self.knn模型_NORMAL = pickle.load(pkl)
         self.物品数字 = 导入_数字模板()
+        self._category_scopes = {
+            x: {
+                key_mapping[name][2]
+                for name in model["classes"]
+                if name in key_mapping and not depot.is_skland_only_item(name)
+            }
+            for x, model in (
+                (1063, self.knn模型_CONSUME),
+                (1298, self.knn模型_NORMAL),
+            )
+        }
 
         self.结果字典 = {}
 
         logger.debug("仓库扫描：初始化识别模型用时 %.2f 秒", monotonic() - start_time)
 
-    def 切图主程序(self, 拼接好的图片):
-        横坐标 = [188 + 234 * i for i in range(0, 8)]
+    def 切图主程序(self, 拼接好的图片, 横坐标=None):
+        if 横坐标 is None:
+            横坐标 = [188 + 234 * i for i in range(0, 8)]
         纵坐标 = [144, 430, 715]
         切图列表 = 切图(横坐标, 纵坐标, 拼接好的图片)
         return 切图列表
@@ -174,6 +194,10 @@ class depotREC(SceneGraphSolver):
                 self.结果字典 = {}
                 logger.warning("仓库扫描: 游戏恢复后仍未就绪，本次扫描失败")
                 return False
+            except _DepotScanIncomplete:
+                self.结果字典 = {}
+                logger.warning("仓库扫描: 未确认分类扫描范围，本次扫描失败")
+                return False
         return False
 
     def waiting_solver(self):
@@ -222,6 +246,9 @@ class depotREC(SceneGraphSolver):
 
     def transition(self, report_progress=None) -> bool:
         self.结果字典 = {}
+        self._seen_names = set()
+        self._unconfirmed_names = set()
+        zero_scope = set()
         logger.debug("仓库扫描：返回游戏首页")
         self.back_to_index()
         if self.scene() == Scene.INDEX:
@@ -239,9 +266,12 @@ class depotREC(SceneGraphSolver):
             有非空分类 = 0
             森空岛已覆盖分类 = 0
             for 任务 in 任务组:
+                self._category_x = 任务[0]
                 self.tap((任务[0], 70))
                 if not self._wait_for_depot_ready():
                     return False
+                if not self._category_selected(任务[0]):
+                    raise _DepotScanIncomplete
                 if report_progress is not None:
                     report_progress(f"正在识别{任务[2]}")
                 if not self.find("depot_empty"):
@@ -255,6 +285,7 @@ class depotREC(SceneGraphSolver):
                     )
                 else:
                     logger.debug("仓库扫描：%s分类为空", 任务[2])
+                zero_scope.update(self._category_scopes[任务[0]])
             if not self.结果字典 and 有非空分类 != 森空岛已覆盖分类:
                 logger.warning("仓库扫描: 未确认任何物品数量，本次扫描失败")
                 return False
@@ -264,7 +295,13 @@ class depotREC(SceneGraphSolver):
             扫描时刻 = int(datetime.now().timestamp())
             result = [
                 扫描时刻,
-                json.dumps(self.结果字典, ensure_ascii=False),
+                json.dumps(
+                    {
+                        **dict.fromkeys(zero_scope - self._seen_names, 0),
+                        **self.结果字典,
+                    },
+                    ensure_ascii=False,
+                ),
                 {"森空岛输出仅占位": ""},
             ]
             import csv
@@ -307,24 +344,97 @@ class depotREC(SceneGraphSolver):
         similarity = len(matches) / max(len(descriptors1), len(descriptors2))
         return similarity * 100
 
-    def 分类扫描(self, knn模型: vision_np.Knn1Model):
-        截图列表 = []
-        旧的截图 = self.recog.img
-        旧的截图 = 旧的截图[140:1000, :]
-        截图列表.append(旧的截图)
-        拼接好的图片 = 截图列表[0]
-        切图列表 = self.切图主程序(拼接好的图片)
-        logger.debug("仓库扫描：待识别物品格 %s 个", len(切图列表))
+    def _category_selected(self, x):
+        gray = self.recog.gray
+        return np.median(gray[80:90, x - 50 : x + 50]) < 100 and all(
+            np.median(gray[80:90, other - 50 : other + 50]) > 150
+            for other in (835, 1063, 1298)
+            if other != x
+        )
 
+    @staticmethod
+    def _same_depot_view(before, after):
+        before = cv2.cvtColor(before[140:950], cv2.COLOR_RGB2GRAY)
+        after = cv2.cvtColor(after[140:950], cv2.COLOR_RGB2GRAY)
+        return np.mean(cv2.absdiff(before, after)) < 0.5
+
+    @staticmethod
+    def _depot_scroll_distance(before, after):
+        before = cv2.cvtColor(before[140:950], cv2.COLOR_RGB2GRAY)
+        after = cv2.cvtColor(after[140:950], cv2.COLOR_RGB2GRAY)
+        template = before[:, 900:1400]
+        if np.std(template) < 5:
+            raise _DepotScanIncomplete
+        scores = cv2.matchTemplate(after[:, 100:1400], template, cv2.TM_CCOEFF_NORMED)
+        _, score, _, position = cv2.minMaxLoc(scores)
+        distance = 800 - position[0]
+        if score < 0.9 or not 0 < distance <= 800:
+            raise _DepotScanIncomplete
+        return distance
+
+    def _category_frames(self):
+        deadline = monotonic() + self.CATEGORY_SCAN_TIMEOUT
+
+        def move(start, movement):
+            if monotonic() >= deadline:
+                raise _DepotScanIncomplete
+            self.swipe_noinertia(start, movement, duration=400, capture=True)
+            if (
+                not self._wait_for_depot_ready()
+                or not self._category_selected(self._category_x)
+                or monotonic() >= deadline
+            ):
+                raise _DepotScanIncomplete
+            return self.recog.img.copy()
+
+        frame = self.recog.img
+        for _ in range(self.CATEGORY_SWIPE_LIMIT):
+            after = move((400, 900), (702, 0))
+            if self._same_depot_view(frame, after):
+                frame = after
+                break
+            frame = after
+        else:
+            raise _DepotScanIncomplete
+
+        offset = 0
+        yield offset, frame
+        for _ in range(self.CATEGORY_SWIPE_LIMIT):
+            after = move((1600, 900), (-702, 0))
+            if self._same_depot_view(frame, after):
+                return
+            offset += self._depot_scroll_distance(frame, after)
+            frame = after
+            yield offset, frame
+        raise _DepotScanIncomplete
+
+    def 分类扫描(self, knn模型: vision_np.Knn1Model):
+        seen_columns = set()
+        visible_items = 0
         已覆盖物品数 = 0
-        for [物品, 物品灰, id] in 切图列表:
-            [物品名称, 物品数字] = self.匹配物品一次(物品, 物品灰, knn模型)
-            if depot.is_skland_only_item(物品名称):
-                已覆盖物品数 += 1
+        for offset, frame in self._category_frames():
+            first = max(0, (offset - 58 + 233) // 234)
+            last = (offset + 1652) // 234
+            columns = [i for i in range(first, last + 1) if i not in seen_columns]
+            if not columns:
                 continue
-            if 物品数字 is None:
-                logger.warning(f"仓库扫描: 无法识别 {物品名称} 的数量，跳过")
-                continue
-            logger.debug([物品名称, 物品数字])
-            self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
-        return bool(切图列表) and 已覆盖物品数 == len(切图列表)
+            centers = [188 + 234 * i - offset for i in columns]
+            items = self.切图主程序(frame[140:1000], centers)
+            seen_columns.update(columns)
+            visible_items += len(items)
+            for 物品, 物品灰, _ in items:
+                物品名称, 物品数字 = self.匹配物品一次(物品, 物品灰, knn模型)
+                if 物品名称 in key_mapping:
+                    物品名称 = key_mapping[物品名称][2]
+                self._seen_names.add(物品名称)
+                if depot.is_skland_only_item(物品名称):
+                    已覆盖物品数 += 1
+                    continue
+                if 物品数字 is None:
+                    self._unconfirmed_names.add(物品名称)
+                    self.结果字典.pop(物品名称, None)
+                    logger.warning(f"仓库扫描: 无法识别 {物品名称} 的数量，跳过")
+                    continue
+                if 物品名称 not in self._unconfirmed_names:
+                    self.结果字典[物品名称] = self.结果字典.get(物品名称, 0) + 物品数字
+        return visible_items > 0 and 已覆盖物品数 == visible_items

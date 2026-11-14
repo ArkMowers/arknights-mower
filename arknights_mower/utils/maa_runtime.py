@@ -53,7 +53,14 @@ def _core_generation(core_path):
 
 
 def resource_load_error(target):
-    detail = f"目录={target}，增量目录={target / 'cache'}"
+    from arknights_mower.utils.maa_storage import storage_root
+
+    cache = (
+        target / "cache"
+        if os.environ.get("MOWER_ANDROID") == "1"
+        else storage_root(target) / "cache"
+    )
+    detail = f"目录={target}，增量目录={cache}"
     try:
         with (target / "resource" / "config.json").open(encoding="utf-8") as file:
             json.load(file)
@@ -70,7 +77,9 @@ def resource_load_error(target):
 
 def navigation_cache_path(target, *, android=False):
     resource = Path(target) / "resource"
-    cache = Path(target) / "cache/resource"
+    from arknights_mower.utils.maa_storage import prepare_cache
+
+    cache = (Path(target) / "cache" if android else prepare_cache(target)) / "resource"
     if not android and (resource / "tasks").is_dir():
         cache /= "tasks"
     return cache / "tasks.json"
@@ -222,10 +231,10 @@ def _load_verified_maa(asst_type, target, callback):
         or old_loads[3] != generation
     ):
         raise MaaCoreRestartRequired()
+    from arknights_mower.utils.maa_storage import load_options
+
     try:
-        loaded_resources = asst_type.load(
-            path=target, incremental_path=target / "cache"
-        )
+        loaded_resources = asst_type.load(**load_options(target))
     finally:
         library = vars(asst_type).get("_Asst__lib")
         if library is not None and library is not old_library:

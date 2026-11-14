@@ -674,8 +674,10 @@ class Worker:
         self.switched = False
         self.old_commit = None
         self.old_branch = None
-        self.bundle_backup = self.root.with_name(
-            f"{self.root.name}.backup-{self.job['id']}"
+        self.bundle_backup = (
+            self.root.with_name(f"{self.root.name}.backup-{self.job['id']}")
+            if self.root.suffix == ".app"
+            else self.root / f".mower-backup-{self.job['id']}"
         )
         self.replacements = []
         self.new_processes = []
@@ -1372,7 +1374,11 @@ class Worker:
                 "此安装包尚未包含软件更新与实例恢复功能，请手动安装或等待新版；当前程序未停止"
             )
         # Prepare on the same filesystem as the installation for atomic renames.
-        self.prepared = self.root.with_name(f"{self.root.name}.new-{self.job['id']}")
+        self.prepared = (
+            self.root.with_name(f"{self.root.name}.new-{self.job['id']}")
+            if self.root.suffix == ".app"
+            else self.root / f".mower-new-{self.job['id']}"
+        )
         shutil.rmtree(self.prepared, ignore_errors=True)
         shutil.copytree(
             payload, self.prepared, symlinks=True, copy_function=self.copy_package_file
@@ -1921,8 +1927,9 @@ def retry_backup_cleanup(directory, root, manifests=None, *, logger=None):
                         .isdigit()
                         and path.name.endswith(".backup")
                     )
-                    bundle_backup = path == root.with_name(
-                        f"{root.name}.backup-{record['id']}"
+                    bundle_backup = path in (
+                        root.with_name(f"{root.name}.backup-{record['id']}"),
+                        root / f".mower-backup-{record['id']}",
                     )
                     release = record.get("deployment") == "release"
                     runner = release and path == manifest.parent / "runner"

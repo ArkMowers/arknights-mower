@@ -251,9 +251,12 @@ it.each([true, false])(
       default: 'plan1',
       conf: { workaholic: ['梓兰', '塞雷娅'] },
       backup_plans: [],
+      facility_levels: { dormitory_1: 5 },
       plan1: {
         contact: { name: '', plans: [{ agent: '梓兰' }] },
         meeting: { name: '', plans: [{ agent: '塞雷娅' }] },
+        dormitory_1: { plans: Array.from({ length: 5 }, () => ({ agent: 'Free' })) },
+        room_1_2: { name: '发电站', plans: [] },
         room_1_1: { name: '制造站', product: 'gold', plans: [] },
         room_1_3: { name: '发电站', plans: [] }
       }
@@ -274,7 +277,9 @@ it.each([true, false])(
       weightMode: 'sanity',
       sanityValuation: valuation()
     })
-    expect(after.success, after.error).toBe(true)
+    expect(after.success, JSON.stringify(after.diagnostics)).toBe(true)
+    expect(after.dormRecovery.daily).toBeCloseTo(5 * 4 * 24)
+    expect(after.dormRecovery).toEqual(before.dormRecovery)
     expect(after.resources).toEqual(before.resources)
     expect(after.simulationReport.segments).toEqual(before.simulationReport.segments)
     expect(after.summary.totalScore82).toBe(before.summary.totalScore82)

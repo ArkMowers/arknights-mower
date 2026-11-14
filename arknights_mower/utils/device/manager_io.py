@@ -9,6 +9,8 @@ import tempfile
 import time
 from contextlib import ExitStack
 
+from arknights_mower.utils.path import temporary_root
+
 MAX_OUTPUT = 1024 * 1024
 MAX_INSTANCES = 64
 MAX_COMMAND_OUTPUT = 32 * 1024 * 1024
@@ -26,7 +28,7 @@ class CommandOutputLimit(subprocess.SubprocessError, ValueError):
 
 
 def _capture_stream(stack):
-    writer = stack.enter_context(tempfile.NamedTemporaryFile())
+    writer = stack.enter_context(tempfile.NamedTemporaryFile(dir=temporary_root()))
     # Reopening gives the reader its own offset; duplicated handles share one.
     # Windows readers also share delete access with the temporary writer.
     reader = stack.enter_context(

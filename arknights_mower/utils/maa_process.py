@@ -108,21 +108,56 @@ def _reap(process, channel, lease=None):
 
 
 def installation_lease(target, *, exclusive=False):
-    """Coordinate native workers and installation across Mower instances."""
-    target = Path(target).expanduser().resolve()
-    lock_path = target.parent / f".{target.name}.mower-maa.lock"
-    return _file_lease(lock_path, exclusive=exclusive)
+    """Coordinate workers and installers without writing beside MAA."""
+    return _installation_lease(target, exclusive=exclusive, purpose="installation")
 
 
 def navigation_lease(target):
-    """Admit one navigation refresh without blocking installation readers."""
+    return _installation_lease(target, exclusive=True, purpose="navigation")
+
+
+def _installation_lease(target, *, exclusive, purpose):
+    from arknights_mower.utils.maa_host_lock import host_lease
+    from arknights_mower.utils.maa_storage import storage_root
+    from arknights_mower.utils.maa_update import MaaUpdateError
+
     target = Path(target).expanduser().resolve()
-    lock_path = target.parent / f".{target.name}.mower-maa-navigation.lock"
-    return _file_lease(lock_path, exclusive=True)
+    stack = ExitStack()
+    try:
+        stack.enter_context(host_lease(target, exclusive=exclusive, purpose=purpose))
+        directory = storage_root(target)
+        directory.mkdir(parents=True, exist_ok=True)
+        stack.enter_context(
+            _file_lease(directory / f"{purpose}.lock", exclusive=exclusive)
+        )
+        # Existing releases use sibling locks. Never create another one there;
+        # when present, retain its exclusion until all old processes have exited.
+        suffix = "" if purpose == "installation" else "-navigation"
+        legacy = target.parent / f".{target.name}.mower-maa{suffix}.lock"
+        try:
+            stream = legacy.open("rb")
+        except FileNotFoundError:
+            pass
+        else:
+            stack.enter_context(_file_lease(legacy, exclusive=exclusive, stream=stream))
+        return stack
+    except BaseException as error:
+        stack.close()
+        if isinstance(error, PermissionError):
+            raise MaaUpdateError(
+                f"MAA 文件访问被拒绝：{getattr(error, 'filename', None) or target}；"
+                "请检查 Mower 数据目录和 MAA 目录的权限，旧管理员运行产生的文件可使用权限修复入口处理"
+            ) from error
+        if isinstance(error, OSError):
+            raise MaaUpdateError(
+                f"MAA 安装目录正在被其他实例使用或无法锁定：{target}（{error}）"
+            ) from error
+        raise
 
 
-def _file_lease(lock_path, *, exclusive):
-    stream = lock_path.open("a+b")
+def _file_lease(lock_path, *, exclusive, stream=None):
+    if stream is None:
+        stream = lock_path.open("a+b")
     try:
         if os.name == "nt":
             import ctypes
@@ -349,10 +384,16 @@ class MaaProcess:
                         pass
 
                 threading.Thread(target=collect_errors, daemon=True).start()
+                from arknights_mower.utils.maa_storage import load_options
+
                 startup = {
                     "port": listener.getsockname()[1],
                     "token": token,
                     "target": str(self.target),
+                    "load_options": {
+                        key: str(value)
+                        for key, value in load_options(self.target).items()
+                    },
                 }
                 process.stdin.write(json.dumps(startup).encode("utf-8") + b"\n")
                 process.stdin.flush()
@@ -481,6 +522,9 @@ def worker_main():
 
         threading.Thread(target=parent_exit, daemon=True).start()
         target = Path(startup["target"])
+        load_paths = {
+            key: Path(value) for key, value in startup["load_options"].items()
+        }
         pending = deque()
         event_lock = threading.Lock()
         overflow = False
@@ -516,9 +560,7 @@ def worker_main():
                     sys.path.insert(0, str(target / "Python"))
                     asst_type = importlib.import_module("asst.asst").Asst
                     options = importlib.import_module("asst.utils").InstanceOptionType
-                    if not asst_type.load(
-                        path=target, incremental_path=target / "cache"
-                    ):
+                    if not asst_type.load(**load_paths):
                         from arknights_mower.utils.maa_runtime import (
                             resource_load_error,
                         )

@@ -83,6 +83,43 @@ class MaaBackupTests(unittest.TestCase):
                 self.assertEqual(self.settings.read_text(), "keep user data")
                 self.assertEqual(self.consumer.call_count, 3)
 
+    def test_success_preserves_backup_containing_mower_data(self):
+        from arknights_mower.utils import path
+
+        data = self.old / "mower-data"
+        data.mkdir()
+        settings = data / "conf.yml"
+        settings.write_text("keep: true", encoding="utf-8")
+        with patch.object(path, "_data_dir", data):
+            instance = self.asst()
+            instance.start()
+            self.finish(instance)
+
+        self.assertEqual(settings.read_text(encoding="utf-8"), "keep: true")
+        self.assertTrue((self.old / "old.bin").is_file())
+
+    @unittest.skipUnless(os.name == "nt", "requires Windows junctions")
+    def test_success_preserves_backup_containing_redirected_live_cache(self):
+        from _winapi import CreateJunction
+
+        from arknights_mower.utils import maa_storage, path
+
+        data = self.root / "mower-data"
+        state = self.old / "cache/state.json"
+        state.parent.mkdir()
+        state.write_text("{}", encoding="utf-8")
+        with patch.object(path, "_data_dir", data):
+            alias = maa_storage.storage_root(self.target) / "cache"
+            alias.parent.mkdir(parents=True)
+            CreateJunction(str(state.parent), str(alias))
+            try:
+                instance = self.asst()
+                instance.start()
+                self.finish(instance)
+                self.assertEqual((alias / state.name).read_text(), "{}")
+            finally:
+                alias.rmdir()
+
     def test_failed_stopped_empty_or_rejected_runs_keep_backups(self):
         for messages in ((10001, 10000, 10002, 3), (10001, 10004, 3), (3,)):
             with self.subTest(messages=messages):

@@ -29,6 +29,30 @@ macOS 和 Linux 虽提供独立包，仍建议优先使用 [源码部署](../../
 
 旧版 EXE 的提权清单在重新打包前保持不变。没有管理员凭据时，手动安装新的完整包到用户可写目录；已有实例配置需要迁移时，复制原数据目录。已提权旧版经更新器重启后仍会继承提升状态，退出并从普通桌面重新启动后再验证普通权限。
 
+<a id="windows-permission-recovery"></a>
+### 从管理员运行切回普通权限
+
+新版本不需要在 `C:\MAA` 的父目录创建锁或下载目录。MAA 实际更新仍需写入它自己的目录；普通运行只读取安装文件，运行数据位置见 [Arknights Mower MAA 运行时子系统说明](../subsystems/maa-runtime.md#4-runtime-file-storage)。
+
+旧文件的 ACL 已经限制普通账户时，按以下步骤处理：
+
+1. 关闭相关 Mower、多开管理器、MAA 客户端和更新器。先在日常使用的普通账户终端运行 `whoami /user`，记录该账户 SID；使用另一管理员账户执行修复时，必须显式指定这个 SID。
+2. 通过有权修改这些目录 ACL 的账户打开 PowerShell，先预览明确的 Mower 安装、数据或实例目录。下面路径仅为示例；自定义 `MOWER_DATA_DIR` 和外部实例目录需要分别列入。不要选择整个磁盘或用户主目录。
+
+   ```powershell
+   & 'C:\Mower\mower.exe' --repair-permissions 'C:\Mower' --user-sid 'S-1-5-21-111-222-333-1001'
+   ```
+
+3. 核对范围后添加 `--apply`。这只向指定账户添加修改权限，不删除配置、不授予 Everyone 权限，也不修改进程的权限。已有显式拒绝规则仍需由系统管理员处理；遇到目录联接或链接时停止，不跨到其他目录。需要更新且 ACL 受限的外部 MAA 目录可作为另一个明确路径传入。
+
+   ```powershell
+   & 'C:\Mower\mower.exe' --repair-permissions 'C:\Mower' 'C:\MAA' --user-sid 'S-1-5-21-111-222-333-1001' --apply
+   ```
+
+4. 退出管理员进程，从普通桌面重新启动，验证配置保存、截图、MAA 加载及更新。源代码部署可使用 `python -m arknights_mower.utils.windows_permissions`，参数相同。修复授权不会随代码回退撤销；需要撤销时由目录管理员按原 ACL 备份恢复。
+
+发布前应分别验证全程普通权限、同一账户先提权再普通运行，以及用另一管理员账户修复明确指定的普通账户。原生锁和 ACL 的定向测试不能替代 UAC 与完整桌面启动验证。
+
 ## 3. Linux
 
 1. 确保构建环境可以导入 PyGObject，并提供 GTK/WebKit2 typelib、ADB 和 `patchelf`。Ubuntu 24.04 的源码环境已按 README 安装窗口依赖，还需：
