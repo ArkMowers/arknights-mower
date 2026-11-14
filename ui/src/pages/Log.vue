@@ -21,7 +21,7 @@ import { routeLocationKey, routerKey } from 'vue-router'
 import { useMowerStore } from '@/stores/mower'
 import { useGuiStore } from '@/stores/gui'
 import { useLogBackgroundStore } from '@/stores/logBackground'
-import { dailyStatusExpiry, useLogWorkspaceStore } from '@/stores/logWorkspace'
+import { dailyStatusExpiry, logViewMenuKey, useLogWorkspaceStore } from '@/stores/logWorkspace'
 import { useConfigStore } from '@/stores/config'
 import {
   clampScreenshotHeight,
@@ -32,10 +32,12 @@ import {
   PANE_MIN_HEIGHT,
   RAIL_GAP,
   RAIL_LAYOUT_MIN_WIDTH,
+  RAIL_LOG_MIN_SHARE,
   RAIL_LOG_MIN_WIDTH,
   RAIL_MAX_WIDTH,
   RAIL_MIN_WIDTH,
-  RESIZER_HEIGHT
+  RESIZER_HEIGHT,
+  STACKED_SCREENSHOT_MAX_WIDTH
 } from '@/utils/logLayout'
 import { latestLogDate } from '@/utils/logSource'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
@@ -123,6 +125,7 @@ async function cancel_pause() {
 const mobile = inject('mobile')
 const chat_panel_visible = inject('chat_panel_visible', ref(false))
 const windowMinimized = inject(windowMinimizedKey, ref(false))
+const log_view_menu = inject(logViewMenuKey, null)
 const resizer_height = computed(() => (mobile.value ? 24 : RESIZER_HEIGHT))
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
@@ -341,17 +344,36 @@ const rail_entry = use_panel_entry(rail_mode)
 const log_entry = use_panel_entry(computed(() => log_lines.value.length > 0))
 
 function apply_rail_layout(container) {
+  const zoom = logLayoutZoom(container)
+  const paneHeight = container.getBoundingClientRect().height / zoom
   const { width, height } = fitRailLayout(
     layout_preference.rail_width,
     layout_preference.screenshot_height ?? 270,
     container.offsetWidth,
-    container.getBoundingClientRect().height / logLayoutZoom(container),
+    paneHeight,
     screenshot_aspect
   )
   container.style.setProperty('--log-rail-w', `${width}px`)
-  if (has_screenshot.value) container.style.setProperty('--log-sc-h', `${height}px`)
-  else container.style.removeProperty('--log-sc-h')
+  if (has_screenshot.value) {
+    container.style.setProperty(
+      '--log-sc-h',
+      `${reserve_rail_screenshot_space(container, height, paneHeight, zoom)}px`
+    )
+  } else container.style.removeProperty('--log-sc-h')
   container.style.removeProperty('--log-task-h')
+}
+
+function reserve_rail_screenshot_space(container, height, paneHeight, zoom) {
+  const column = container.querySelector('.log-column--with-screenshot')
+  if (!column) return height
+  const fixedHeight = plan_condition_height(column, zoom) + standalone_daily_height(column, zoom)
+  if (!fixedHeight) return height
+  const logHeight =
+    screenshot_column_on_left.value !== log_column_on_right.value
+      ? paneHeight * RAIL_LOG_MIN_SHARE
+      : 0
+  const availableHeight = Math.floor(paneHeight - fixedHeight - logHeight - RESIZER_HEIGHT)
+  return Math.min(height, Math.max(PANE_MIN_HEIGHT, availableHeight))
 }
 
 function plan_condition_height(container, zoom) {
@@ -364,7 +386,9 @@ function standalone_daily_height(container, zoom) {
 
 // 上下排列时截图按当前宽度等比显示的高度；宽度未知时返回 0。
 function stacked_screenshot_fit(container) {
-  const width = container.querySelector('.log-screenshot')?.clientWidth || container.clientWidth
+  const width = mobile.value
+    ? container.clientWidth
+    : Math.min(container.clientWidth, STACKED_SCREENSHOT_MAX_WIDTH)
   return width > 0 ? Math.round(width / screenshot_aspect) : 0
 }
 
@@ -388,6 +412,7 @@ function clamp_stacked_task(value, availableHeight, bottomReserve) {
 function apply_log_layout() {
   const container = log_layout.value
   if (!container) return
+  container.style.setProperty('--log-sc-aspect', String(screenshot_aspect))
   rail_layout.value = !mobile.value && container.offsetWidth >= RAIL_LAYOUT_MIN_WIDTH
   if (rail_mode.value) return apply_rail_layout(container)
   container.style.removeProperty('--log-rail-w')
@@ -411,7 +436,6 @@ function apply_log_layout() {
       : clamp_stacked_screenshot(preferred, paneHeight, bottomReserve + fixedHeight, fit)
     screenshotTrack = height + resizer_height.value
     container.style.setProperty('--log-sc-h', `${height}px`)
-    container.style.setProperty('--log-sc-aspect', String(screenshot_aspect))
   } else {
     container.style.removeProperty('--log-sc-h')
   }
@@ -481,6 +505,10 @@ function resize_log_pane(event, pane) {
   const container = log_layout.value
   if (!container) return
   railWidthReveal?.cancel()
+  const selector = pane === 'screenshot' ? '.log-screenshot' : '.task-table-scroll'
+  const initialBounds = container.querySelector(selector)?.getBoundingClientRect()
+  if (!initialBounds) return
+  const initialHeight = event.currentTarget.getBoundingClientRect().top - initialBounds.top
   const variable = pane === 'screenshot' ? '--log-sc-h' : '--log-task-h'
   const stateKey = pane === 'screenshot' ? 'screenshot_height' : 'task_height'
   let savedSize = null
@@ -490,11 +518,9 @@ function resize_log_pane(event, pane) {
     const zoom = logLayoutZoom(container)
     const paneHeight = bounds.height / zoom
     const bottomReserve = logMinHeight(paneHeight) + resizer_height.value
+    const dragged = (initialHeight + moveEvent.clientY - event.clientY) / zoom
     let size
     if (pane === 'screenshot') {
-      const screenshotTop =
-        container.querySelector('.log-screenshot')?.getBoundingClientRect().top ?? bounds.top
-      const dragged = (moveEvent.clientY - screenshotTop) / zoom
       if (rail_mode.value) {
         const fitted = fitRailLayout(
           null,
@@ -503,7 +529,7 @@ function resize_log_pane(event, pane) {
           paneHeight,
           screenshot_aspect
         )
-        size = fitted.height
+        size = reserve_rail_screenshot_space(container, fitted.height, paneHeight, zoom)
         if (restoring_log_layout || layout_preference.rail_width !== null) {
           savedRailWidth = fitted.width
           layout_preference.rail_width = fitted.width
@@ -528,11 +554,7 @@ function resize_log_pane(event, pane) {
           standalone_daily_height(container, zoom) -
           (screenshot ? screenshot.height / zoom + resizer_height.value : 0)
         : (bounds.bottom - task.top) / zoom
-      size = clamp_stacked_task(
-        (moveEvent.clientY - task.top) / zoom,
-        availableHeight,
-        bottomReserve
-      )
+      size = clamp_stacked_task(dragged, availableHeight, bottomReserve)
     }
     savedSize = size
     if (pane === 'screenshot' && mobile.value) mobile_screenshot_height = size
@@ -557,6 +579,8 @@ function resize_rail_column(event) {
   const container = log_layout.value
   if (!container) return
   railWidthReveal?.cancel()
+  const handle = event.currentTarget.getBoundingClientRect()
+  const grabOffset = event.clientX - (handle.left + handle.width / 2)
   let savedWidth = null
   const onMove = (moveEvent) => {
     const bounds = container.getBoundingClientRect()
@@ -564,9 +588,8 @@ function resize_rail_column(event) {
     if (!bounds.width || !paneWidth) return
     const logRailMinWidth = Math.max(RAIL_LOG_MIN_WIDTH, Math.round(paneWidth * 0.4))
     const maxRailWidth = Math.min(RAIL_MAX_WIDTH, paneWidth - logRailMinWidth - RAIL_GAP)
-    const distance = screenshot_column_on_left.value
-      ? moveEvent.clientX - bounds.left
-      : bounds.right - moveEvent.clientX
+    const x = moveEvent.clientX - grabOffset
+    const distance = screenshot_column_on_left.value ? x - bounds.left : bounds.right - x
     const dragged = (distance * paneWidth) / bounds.width - RAIL_GAP / 2
     const width = Math.max(RAIL_MIN_WIDTH, Math.min(maxRailWidth, Math.round(dragged)))
     if (width <= 0) return
@@ -1023,6 +1046,27 @@ function toggle_log_view(option) {
   }
 }
 
+const log_view_controller = {
+  options: computed(() =>
+    log_view_options.map(({ className, label, state }) => ({
+      key: `log-view-${className}`,
+      label,
+      checked: state.value
+    }))
+  ),
+  toggle(key) {
+    const option = log_view_options.find(({ className }) => key === `log-view-${className}`)
+    if (option) toggle_log_view(option)
+  }
+}
+
+if (log_view_menu) {
+  onMounted(() => (log_view_menu.value = log_view_controller))
+  onBeforeUnmount(() => {
+    if (log_view_menu.value === log_view_controller) log_view_menu.value = null
+  })
+}
+
 function toggle_daily_view() {
   schedule_log_view_update(
     'daily-view',
@@ -1358,7 +1402,10 @@ async function db_delete(keys) {
         v-show="rail_mode || column.includes('log')"
         :key="column.includes('log') ? 'log' : 'side'"
         class="log-column"
-        :class="{ 'log-column--with-log': column.includes('log') }"
+        :class="{
+          'log-column--with-log': column.includes('log'),
+          'log-column--with-screenshot': column.includes('screenshot')
+        }"
       >
         <template v-for="module in column" :key="module">
           <template v-if="module === 'screenshot'">
@@ -1371,6 +1418,9 @@ async function db_delete(keys) {
             <div
               v-if="has_screenshot"
               class="log-resizer log-resizer-sc"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="调整截图预览大小"
               @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
             ></div>
           </template>
@@ -1602,6 +1652,9 @@ async function db_delete(keys) {
               v-if="task_list.length > 0"
               v-show="task_table_visible"
               class="log-resizer log-resizer-task"
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="调整任务列表高度"
               @pointerdown="(event) => resize_log_pane(event, 'task')"
             ></div>
           </template>
@@ -1610,6 +1663,7 @@ async function db_delete(keys) {
             class="log-daily-module"
             :items="daily_overview.items"
             :game-day="daily_overview.gameDay"
+            :log-date="log_date"
             standalone
           />
           <log-output
@@ -2076,7 +2130,7 @@ async function db_delete(keys) {
   --log-rail-gap: 24px;
   --log-hairline: 1px;
   --log-label-weight: 600;
-  --log-stack-max-width: 480px;
+  --log-stack-max-width: v-bind(STACKED_SCREENSHOT_MAX_WIDTH + 'px');
   --log-stack-shot-max-height: min(45vh, 500px);
   --log-mono-font:
     'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC', monospace;
@@ -2107,6 +2161,13 @@ async function db_delete(keys) {
 .log-pane {
   --log-resizer-size: 8px;
   --log-screenshot-size: calc(var(--log-sc-h, 270px) * var(--log-screenshot-entry, 1));
+  --log-screenshot-aspect: var(--log-sc-aspect, calc(16 / 9));
+  --log-screenshot-width: min(
+    var(--log-stack-max-width),
+    calc(
+      min(var(--log-sc-h, 270px), var(--log-stack-shot-max-height)) * var(--log-screenshot-aspect)
+    )
+  );
   grid-row: 1;
   z-index: 1;
   display: grid;
@@ -2158,9 +2219,17 @@ async function db_delete(keys) {
 .home-container .log-pane.log-pane--rail {
   --log-rail-track: calc(var(--log-rail-w, 480px) * var(--log-rail-entry, 1));
   --log-rail-spacing: calc(var(--log-rail-gap) * var(--log-rail-entry, 1));
+  --log-screenshot-width: min(
+    var(--log-rail-w, 480px),
+    calc(var(--log-sc-h, 270px) * var(--log-screenshot-aspect))
+  );
   grid-template-columns: minmax(0, 1fr) var(--log-rail-track);
   column-gap: var(--log-rail-spacing);
   overflow: hidden;
+
+  .log-column {
+    overflow: hidden auto;
+  }
 
   &.log-pane--rail-left {
     grid-template-columns: var(--log-rail-track) minmax(0, 1fr);
@@ -2196,17 +2265,15 @@ async function db_delete(keys) {
 
   .log {
     flex: 1 1 0;
-    min-height: min(var(--log-min-h, 120px), 24%);
+    min-height: min(var(--log-min-h, 120px), v-bind(RAIL_LOG_MIN_SHARE * 100 + '%'));
   }
 
   .log-screenshot {
-    flex: 0 1 auto;
-    max-width: none;
+    max-width: min(100%, var(--log-screenshot-width));
     max-height: none;
 
     :deep(img) {
-      width: var(--log-rail-w, 480px);
-      height: 100%;
+      width: var(--log-screenshot-width);
       max-width: none;
       max-height: none;
     }
@@ -2217,14 +2284,7 @@ async function db_delete(keys) {
   --log-stacked-task-width: min(100%, var(--log-stack-max-width));
 
   &.with-screenshot:not(.log-pane--single) {
-    --log-stacked-task-width: min(
-      100%,
-      var(--log-stack-max-width),
-      calc(
-        min(var(--log-sc-h, 270px), var(--log-stack-shot-max-height)) *
-          var(--log-sc-aspect, calc(16 / 9))
-      )
-    );
+    --log-stacked-task-width: min(100%, var(--log-screenshot-width));
   }
 
   .task-table-scroll,
@@ -2235,7 +2295,7 @@ async function db_delete(keys) {
 
 .log-screenshot {
   width: 100%;
-  max-width: min(var(--log-stack-max-width), 100%);
+  max-width: min(100%, var(--log-screenshot-width));
   align-self: start;
   flex: none;
   height: var(--log-screenshot-size);
@@ -2291,6 +2351,7 @@ async function db_delete(keys) {
 
 .log-resizer-sc {
   height: calc(var(--log-resizer-size) * var(--log-screenshot-entry, 1));
+  max-width: min(100%, var(--log-screenshot-width));
 }
 
 .log-resizer-rail {
@@ -2806,6 +2867,7 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
 
   .log-pane {
     --log-resizer-size: 24px;
+    --log-screenshot-width: calc(var(--log-sc-h, 270px) * var(--log-screenshot-aspect));
   }
 
   .task-table :is(th, td) {
@@ -2859,7 +2921,6 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   }
 
   .log-screenshot {
-    max-width: 100%;
     max-height: none;
     border-radius: 6px;
 

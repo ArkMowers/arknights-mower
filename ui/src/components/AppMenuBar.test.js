@@ -286,6 +286,35 @@ describe('WebUI Mower 菜单', () => {
 })
 
 describe('共用视图菜单', () => {
+  it('显示可勾选的运行日志选项，分派可用的缩放操作', async () => {
+    const logOption = { key: 'log-view-screenshot-toggle', label: '预览截图', checked: true }
+    const bar = mount({
+      logViewOptions: [logOption],
+      zoomAvailability: { 'zoom-in': true, 'zoom-out': true, 'actual-size': false },
+      zoomShortcuts: { 'zoom-in': 'Ctrl+=', 'zoom-out': 'Ctrl+-', 'actual-size': 'Ctrl+0' }
+    })
+    const menu = bar.menu('视图')
+    const findOption = (key) => menu.props.options.find((option) => option.key === key)
+    const preview = findOption(logOption.key)
+    expect(menu.props.nodeProps(preview)).toMatchObject({
+      role: 'menuitemcheckbox',
+      'aria-checked': true
+    })
+    expect(preview.icon()).toBeTruthy()
+    await bar.select(preview, '视图')
+    expect(bar.viewAction).toHaveBeenLastCalledWith(logOption.key)
+    bar.options.logViewOptions = [{ ...logOption, checked: false }]
+    await nextTick()
+    expect(menu.props.nodeProps(findOption(logOption.key))['aria-checked']).toBe(false)
+
+    const zoomIn = findOption('zoom-in')
+    expect(zoomIn.label().children.map((element) => element.children)).toEqual(['放大', 'Ctrl+='])
+    await bar.select(zoomIn, '视图')
+    expect(bar.viewAction).toHaveBeenLastCalledWith('zoom-in')
+    await bar.select(findOption('actual-size'), '视图')
+    expect(bar.viewAction).toHaveBeenCalledTimes(2)
+  })
+
   it.each([true, false])('分派侧栏显隐和编辑操作，可见=%s', async (sidebarVisible) => {
     const bar = mount({ sidebarVisible })
     await bar.toggle('视图')

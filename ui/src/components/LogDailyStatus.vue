@@ -32,8 +32,8 @@ const dailyState = (state) =>
     :tabindex="alternate ? 0 : undefined"
     :title="items.length ? `游戏日 ${gameDay}，北京时间每日凌晨 4 点开始新的游戏日` : undefined"
   >
-    <h2 v-if="standalone" class="daily-status__heading">今日任务</h2>
-    <p v-if="!alternate && logDate" class="daily-status__date">
+    <h2 v-if="standalone && !logDate" class="daily-status__heading">今日任务</h2>
+    <p v-else-if="!alternate && logDate" class="daily-status__date">
       {{ logDate }}
     </p>
     <ul v-if="items.length" class="daily-status__items" aria-label="任务概览">
@@ -101,13 +101,8 @@ const dailyState = (state) =>
   z-index: 1;
 }
 
-.daily-status--standalone {
-  align-items: flex-start;
-  padding: 8px 4px;
-}
-
 .daily-status--standalone::before {
-  content: none;
+  inset-inline: 0;
 }
 
 .daily-status__heading {
@@ -118,7 +113,6 @@ const dailyState = (state) =>
 }
 
 .daily-status--standalone .daily-status__items {
-  justify-content: flex-start;
   max-height: none;
 }
 
