@@ -69,6 +69,10 @@ def scan(monkeypatch, tmp_path):
     solver.结果字典 = {}
     solver.knn模型_CONSUME = "consume"
     solver.knn模型_NORMAL = "normal"
+    solver._category_scopes = {1063: set(), 1298: set()}
+    solver._seen_names = set()
+    solver._unconfirmed_names = set()
+    solver._category_selected = Mock(return_value=True)
     solver.recog = SimpleNamespace(
         update=Mock(),
         reset_after_external_control=Mock(),
@@ -110,12 +114,14 @@ def scan(monkeypatch, tmp_path):
         )
     )
     solver.切图主程序 = Mock(return_value=[(None, None, "one item")])
+    solver._category_frames = Mock(side_effect=lambda: iter([(0, solver.recog.img)]))
 
     def match_item(item, gray, model):
         Clock.current += timedelta(seconds=2)
         return state.quantities[model]
 
     solver.匹配物品一次 = Mock(side_effect=match_item)
+    real_merge = module.depot.读取仓库
     merge, cleanup = Mock(), Mock()
     monkeypatch.setattr(module.depot, "读取仓库", merge)
     monkeypatch.setattr(module.depot, "清理历史", cleanup)
@@ -129,6 +135,7 @@ def scan(monkeypatch, tmp_path):
         original=original,
         merge=merge,
         cleanup=cleanup,
+        real_merge=real_merge,
     )
 
 
@@ -733,6 +740,107 @@ def test_only_skland_items_need_no_extra_quantity_scan(scan):
     assert scan.solver.run() is True
     assert scan.solver.结果字典 == {}
     scan.merge.assert_called_once()
+
+
+def test_complete_categories_clear_consumed_items_in_database_current_and_history(
+    scan, monkeypatch, income_db
+):
+    from arknights_mower.data import key_mapping
+    from arknights_mower.solvers import record
+
+    depot = scan.module.depot
+    monkeypatch.setattr(depot, "读取仓库", scan.real_merge)
+    monkeypatch.setattr(
+        depot, "get_path", lambda key: scan.path.parent / key.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(depot, "_快照行缓存", None)
+    scan.solver._category_scopes = {
+        1063: {"技术调查补给", "应急理智顶液"},
+        1298: {"可露希尔珍藏券I", "合成玉"},
+    }
+    record.save_inventory_counts(
+        {"技术调查补给": 7, "可露希尔珍藏券I": 1},
+        scanned_counts={"技术调查补给": 7, "可露希尔珍藏券I": 1},
+        scanned_at=100,
+    )
+
+    assert scan.solver.run() is True
+
+    counts = record.get_inventory_counts()
+    assert counts["技术调查补给"] == counts["可露希尔珍藏券I"] == 0
+    for _ in range(2):
+        categories, exported, _ = scan.real_merge()
+        assert categories["K未分类"]["技术调查补给"]["number"] == 0
+        assert categories["K未分类"]["可露希尔珍藏券I"]["number"] == 0
+        assert json.loads(exported)[key_mapping["技术调查补给"][0]] == 0
+        assert json.loads(exported)[key_mapping["可露希尔珍藏券I"][0]] == 0
+        assert all(
+            snapshot["items"].get("技术调查补给", 0) == 0
+            for snapshot in depot.读取仓库历史()[-1:]
+        )
+    with scan.path.open(encoding="utf-8", newline="") as stream:
+        written = json.loads(list(csv.reader(stream))[-1][1])
+    assert written["技术调查补给"] == written["可露希尔珍藏券I"] == 0
+
+
+def test_visible_failed_quantity_is_not_replaced_by_an_absence_zero(scan):
+    scan.solver._category_scopes = {1063: {"技术调查补给"}, 1298: {"合成玉"}}
+    scan.state.quantities["consume"] = ("技术调查补给", None)
+
+    assert scan.solver.run() is True
+
+    with scan.path.open(encoding="utf-8", newline="") as stream:
+        written = json.loads(list(csv.reader(stream))[-1][1])
+    assert "技术调查补给" not in written
+
+
+def test_failed_slot_prevents_accepting_an_incomplete_sum_for_the_same_item(scan):
+    scan.solver._category_scopes = {1063: {"应急理智顶液"}, 1298: {"合成玉"}}
+    scan.solver.切图主程序.side_effect = [
+        [(None, None, "a"), (None, None, "b")],
+        [(None, None, "c")],
+    ]
+    scan.solver.匹配物品一次.side_effect = [
+        ("应急理智顶液", 3),
+        ("应急理智顶液", None),
+        ("合成玉", 100),
+    ]
+    assert scan.solver.run() is True
+    with scan.path.open(encoding="utf-8", newline="") as stream:
+        written = json.loads(list(csv.reader(stream))[-1][1])
+    assert written == {"合成玉": 100}
+
+
+def test_empty_categories_write_zeros_only_for_their_scan_scope(scan):
+    scan.state.empty_tabs = {1, 2}
+    scan.solver._category_scopes = {
+        1063: {"技术调查补给", "罗德岛迎春红包"},
+        1298: {"可露希尔珍藏券I"},
+    }
+    assert scan.solver.run() is True
+    with scan.path.open(encoding="utf-8", newline="") as stream:
+        written = json.loads(list(csv.reader(stream))[-1][1])
+    assert written == {
+        "技术调查补给": 0,
+        "罗德岛迎春红包": 0,
+        "可露希尔珍藏券I": 0,
+    }
+
+
+def test_ignored_category_input_cannot_clear_inventory(scan):
+    scan.solver._category_selected.return_value = False
+    assert scan.solver.run() is False
+    assert_preserved(scan)
+
+
+def test_incomplete_paging_preserves_previous_scan_and_inventory(scan):
+    def incomplete():
+        yield 0, scan.solver.recog.img
+        raise scan.module._DepotScanIncomplete
+
+    scan.solver._category_frames.side_effect = incomplete
+    assert scan.solver.run() is False
+    assert_preserved(scan)
 
 
 def test_skland_items_do_not_hide_failed_scan_only_quantities(scan):

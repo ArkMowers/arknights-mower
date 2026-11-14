@@ -1211,7 +1211,9 @@ def save_inventory_counts(
                 current.pop(name, None)
         if scanned_counts is not None:
             for name in (
-                protected.keys() | scanned_counts.keys() | (cloud_counts or {}).keys()
+                protected.keys()
+                | (scanned_counts.keys() & effective.keys())
+                | (cloud_counts or {}).keys()
             ):
                 observed_at = protected.get(name, 0)
                 # Depot scans cover only some categories. An absent item is not
