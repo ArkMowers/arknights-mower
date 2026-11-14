@@ -97,7 +97,7 @@ export function incomeReportLines(result, settings, plan, label) {
       ? '本次演算固定为无未完成训练计划且未在训练，不模拟训练进度或计划完成时刻。'
       : `历史演算的未完成训练计划：${settings.masteryPlanPresent ? '有' : '无'}，整段演算保持此条件，不模拟训练完成。`,
     settings.weightMode === 'sanity'
-      ? '图中赤金显示制造数量及其价值，龙门币显示订单金额及扣除赤金后的价值；源石碎片显示产出减交付消耗的净增，合成玉显示产出价值，制造耗材单列负值。所有理智明细计入总收益一次；显示到两位小数的尾差按舍入误差分摊，合计与总收益一致。'
+      ? '图中赤金显示制造数量及其价值，龙门币显示订单金额及扣除赤金后的价值；源石碎片显示制造数量及其价值，合成玉显示订单产量及扣除碎片后的价值，制造耗材单列负值。所有理智明细计入总收益一次；显示到两位小数的尾差按舍入误差分摊，合计与总收益一致。'
       : '赤金等价龙门币为制造赤金 × 500 加特殊订单溢价，不扣除交付消耗的赤金；该项不是实际龙门币入账。',
     '制造配方默认已解锁，当前制造站等级不限制配方；各站容量及材料库存仍按本次配置计算。',
     continuous
@@ -312,15 +312,8 @@ export async function renderIncomeImage(
     }
     ctx.textAlign = 'left'
 
-    write('日均产出', 570, 24, 12, muted)
-    let badgeFontSize = result.summary.sanity?.parts ? 11 : 14
-    if (result.summary.sanity?.parts) {
-      ctx.font = `${badgeFontSize * scale}px sans-serif`
-      const widest = Math.max(
-        ...metrics.map((metric) => ctx.measureText(incomeImageMetricText(metric)).width / scale)
-      )
-      if (widest > 89) badgeFontSize *= 89 / widest
-    }
+    write(result.summary.sanity?.parts ? '日均数量 / 理智' : '日均产出', 570, 24, 12, muted)
+    const badgeFontSize = result.summary.sanity?.parts ? 13 : 14
     const colors = {
       exp: ['#f7d833', '#172338'],
       lmd: ['#087ead', '#ffffff'],
@@ -458,9 +451,9 @@ export function incomeImageAlgorithmLines(settings) {
 }
 export function incomeImageMetricText(metric) {
   const unit = metric.key === 'clue' ? '个' : metric.unit === '次' ? '次' : ''
-  const quantity = `${metric.prefix ?? ''}${compactIncomeNumber(metric.daily)}${unit}`
+  const quantity = `${compactIncomeNumber(metric.daily)}${unit}`
   if (!Object.hasOwn(metric, 'sanityValue')) return quantity
-  return `${quantity} / ${metric.sanityValue === null ? '未估值' : `${number(metric.sanityDisplayValue ?? metric.sanityValue)}理智${metric.sanityPartial ? '（部分）' : ''}`}`
+  return `${quantity} / ${metric.sanityValue === null ? '未估值' : `${number(metric.sanityDisplayValue ?? metric.sanityValue)}${metric.sanityPartial ? '（部分）' : ''}`}`
 }
 export function compactIncomeNumber(value) {
   const magnitude = Math.abs(value)

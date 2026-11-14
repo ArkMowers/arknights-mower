@@ -221,6 +221,7 @@ export function incomeImageMetrics(summary, days) {
     values.some(Number.isFinite) ? values.reduce((total, value) => total + (value ?? 0), 0) : null
   const goldMade = priced(summary.goldCount, 'gold')
   const goldUsed = part('gold') ? summary.goldCount - part('gold').quantity : undefined
+  const fragmentUsed = part('fragment') ? summary.fragments - part('fragment').quantity : undefined
   const values = parts
     ? {
         exp: savedValue('exp'),
@@ -229,8 +230,8 @@ export function incomeImageMetrics(summary, days) {
         lmdCost: priced(-summary.lmdConsumed, 'lmd'),
         orirockCost: savedValue('orirock'),
         deviceCost: savedValue('device'),
-        fragment: savedValue('fragment'),
-        orundum: savedValue('orundum'),
+        fragment: priced(summary.fragments, 'fragment'),
+        orundum: sum(savedValue('orundum'), priced(-fragmentUsed, 'fragment')),
         recycle: savedValue('recycle'),
         recruitment: savedValue('recruitment'),
         clue: sum(savedValue('clue'), savedValue('exchange'))
@@ -271,9 +272,8 @@ export function incomeImageMetrics(summary, days) {
     {
       key: 'fragment',
       icon: '/product/orirock.png',
-      daily: parts ? part('fragment')?.quantity : summary.fragments,
-      unit: '个',
-      ...(parts ? { prefix: '净增' } : {})
+      daily: summary.fragments,
+      unit: '个'
     },
     { key: 'orundum', icon: '/product/orundum.png', daily: summary.orundum, unit: '个' },
     { key: 'recycle', icon: recycleTemplate, daily: summary.recycleCount, unit: '次' },
@@ -283,7 +283,6 @@ export function incomeImageMetrics(summary, days) {
     .filter(
       (row) =>
         Math.abs(row.daily ?? 0) > 1e-8 ||
-        (parts && row.key === 'fragment' && summary.fragments > 0) ||
         (parts && row.key === 'clue' && part('exchange')?.quantity > 0) ||
         (values && Math.abs(values[row.key] ?? 0) > 0)
     )
@@ -297,9 +296,11 @@ export function incomeImageMetrics(summary, days) {
             sanityPartial:
               row.key === 'lmd'
                 ? [priced(summary.orderLmd, 'lmd'), priced(-goldUsed, 'gold')].includes(null)
-                : row.key === 'clue'
-                  ? [savedValue('clue'), savedValue('exchange')].includes(null)
-                  : values[row.key] === null
+                : row.key === 'orundum'
+                  ? [savedValue('orundum'), priced(-fragmentUsed, 'fragment')].includes(null)
+                  : row.key === 'clue'
+                    ? [savedValue('clue'), savedValue('exchange')].includes(null)
+                    : values[row.key] === null
           }
         : {})
     }))

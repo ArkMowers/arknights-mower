@@ -52,7 +52,7 @@ const assertTotals = (summary, rows) => {
   expect(displayedCents).toBe(Math.round(Number(summary.sanity.total.toFixed(2)) * 100))
 }
 
-it('counts gold manufacturing, net trade, net shards and separate manufacturing costs exactly once', () => {
+it('counts gold manufacturing, net trade, manufactured shards and separate manufacturing costs exactly once', () => {
   const { summary, valuation } = makeSummary()
   // Export uses the completed values even if the editor's prices change later.
   valuation.unitValues.gold = 100
@@ -61,9 +61,9 @@ it('counts gold manufacturing, net trade, net shards and separate manufacturing 
   const row = (key) => rows.find((item) => item.key === key)
   expect(row('gold')).toMatchObject({ daily: 10, unit: '个', sanityValue: 20 })
   expect(row('lmd').sanityValue).toBeCloseTo(6000 * 0.0036 - 12 * 2)
-  expect(row('fragment')).toMatchObject({ daily: -2, total: -56, prefix: '净增', sanityValue: -10 })
-  expect(incomeImageMetricText(row('fragment'))).toBe('净增-2 / -10理智')
-  expect(row('orundum').sanityValue).toBeCloseTo(18.45)
+  expect(row('fragment')).toMatchObject({ daily: 2, total: 56, sanityValue: 10 })
+  expect(incomeImageMetricText(row('fragment'))).toBe('2 / 10')
+  expect(row('orundum').sanityValue).toBeCloseTo(-1.55)
   expect(row('lmdCost').sanityValue).toBeCloseTo(-11.52)
   expect(row('orirockCost').sanityValue).toBe(-12)
   expect(row('deviceCost').sanityValue).toBe(-8)
@@ -71,11 +71,11 @@ it('counts gold manufacturing, net trade, net shards and separate manufacturing 
   assertTotals(summary, rows)
 })
 
-it('keeps zero net shards and continuous exchange visible without manufactured gold', () => {
+it('shows manufactured shards when all are sold and continuous exchange without generated clues', () => {
   const { summary } = makeSummary({ goldCount: 0, fragments: 4, clueCount: 0 })
   const rows = incomeImageMetrics(summary, 1)
   expect(rows.some((row) => row.key === 'gold')).toBe(false)
-  expect(rows.find((row) => row.key === 'fragment')).toMatchObject({ daily: 0, sanityValue: 0 })
+  expect(rows.find((row) => row.key === 'fragment')).toMatchObject({ daily: 4, sanityValue: 20 })
   expect(rows.find((row) => row.key === 'clue')).toMatchObject({ daily: 0, sanityValue: 10.5 })
   assertTotals(summary, rows)
 })
@@ -89,6 +89,28 @@ it('keeps known contributions in partly unpriced trade and labels the missing pr
   expect(trade.sanityPartial).toBe(true)
   expect(incomeImageMetricText(trade)).toContain('（部分）')
   expect(incomeImageMetricText(rows.find((row) => row.key === 'deviceCost'))).toContain('未估值')
+  assertTotals(summary, rows)
+})
+
+it('deducts shard consumption only from orders when no shards are manufactured', () => {
+  const { summary } = makeSummary({ fragments: 0 })
+  const rows = incomeImageMetrics(summary, 1)
+  expect(rows.some((row) => row.key === 'fragment')).toBe(false)
+  expect(rows.find((row) => row.key === 'orundum').sanityValue).toBeCloseTo(-1.55)
+  assertTotals(summary, rows)
+})
+
+it('retains known Orundum value and marks trade partial when shard price is missing', () => {
+  const { summary } = makeSummary()
+  const shard = summary.sanity.parts.find((part) => part.key === 'fragment')
+  summary.sanity.total -= shard.value
+  shard.unitValue = shard.value = null
+  summary.sanity.partial = true
+  const rows = incomeImageMetrics(summary, 1)
+  expect(rows.find((row) => row.key === 'fragment').sanityValue).toBeNull()
+  const trade = rows.find((row) => row.key === 'orundum')
+  expect(trade.sanityValue).toBeCloseTo(18.45)
+  expect(trade.sanityPartial).toBe(true)
   assertTotals(summary, rows)
 })
 
