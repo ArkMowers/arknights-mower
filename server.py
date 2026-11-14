@@ -4006,18 +4006,36 @@ def recycling_settings():
 
     try:
         if request.method == "DELETE":
-            return record.update_recycling_valuation(reset=True)
-        if request.method == "PUT":
+            value = record.update_recycling_valuation(reset=True)
+        elif request.method == "PUT":
             from arknights_mower.utils.recycling_valuation import validate_ratios
 
             payload = request.get_json(silent=True)
-            if not isinstance(payload, dict) or "ratios" not in payload:
+            if not isinstance(payload, dict) or not any(
+                key in payload
+                for key in ("ratios", "prices", "lmd_sanity", "income_unit_values")
+            ):
                 raise ValueError("请提供产物价值比例")
-            return record.update_recycling_valuation(
-                ratios=validate_ratios(payload["ratios"]),
+            if any(
+                key in payload and not isinstance(payload[key], dict)
+                for key in ("prices", "income_unit_values")
+            ) or ("lmd_sanity" in payload and payload["lmd_sanity"] is None):
+                raise ValueError("请提供有效的理智价值")
+            value = record.update_recycling_valuation(
+                ratios=validate_ratios(payload["ratios"])
+                if "ratios" in payload
+                else None,
                 base_algorithm=payload.get("base_algorithm"),
+                prices=payload.get("prices"),
+                lmd_sanity=payload.get("lmd_sanity"),
+                income_unit_values=payload.get("income_unit_values"),
             )
-        return record.get_recycling_valuation()
+        else:
+            value = record.get_recycling_valuation()
+        return {
+            **value,
+            "credit_shop_value_threshold": config.conf.credit_shop_value_threshold,
+        }
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
@@ -4038,7 +4056,10 @@ def import_recycling_values():
         return {"error": "请选择一图流导出的 .xlsx 物品价值表"}, 400
     try:
         imported = import_yituliu_values(upload.stream.read(MAX_IMPORT_BYTES + 1))
-        return record.update_recycling_valuation(imported=imported)
+        return {
+            **record.update_recycling_valuation(imported=imported),
+            "credit_shop_value_threshold": config.conf.credit_shop_value_threshold,
+        }
     except ValueError as exc:
         return {"error": str(exc)}, 400
 

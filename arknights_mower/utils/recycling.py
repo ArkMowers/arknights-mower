@@ -338,8 +338,8 @@ def recycling_expectation(materials, unknown_collections=0, valuation=None):
     )
     calculator = {
         "daily_sanity": daily,
-        "configured_daily_sanity": daily * ratios["efficiency"],
-        "manufacturing_equivalent": manufacture * ratios["efficiency"],
+        "configured_daily_sanity": daily,
+        "manufacturing_equivalent": manufacture,
         "ten_percent_equivalent": manufacture * 0.1,
     }
     return {

@@ -977,13 +977,22 @@ def get_recycling_valuation():
 
 
 def update_recycling_valuation(
-    *, ratios=None, imported=None, reset=False, base_algorithm=None
+    *,
+    ratios=None,
+    imported=None,
+    reset=False,
+    base_algorithm=None,
+    prices=None,
+    lmd_sanity=None,
+    income_unit_values=None,
 ):
     """Atomically update assumptions while retaining independent saved inputs."""
     from arknights_mower.utils.recycling_valuation import (
         BASE_ALGORITHMS,
         default_valuation,
         validate_base_algorithm,
+        validate_income_value,
+        validate_income_value_updates,
         validate_ratios,
     )
 
@@ -1004,6 +1013,11 @@ def update_recycling_valuation(
     with _conn() as connection:
         connection.execute("BEGIN IMMEDIATE")
         current = default_valuation() if reset else _recycling_valuation(connection)
+        validate_income_value_updates(
+            prices, income_unit_values, current["prices"].keys()
+        )
+        if lmd_sanity is not None:
+            validate_income_value(lmd_sanity, minimum=0.000000001)
         if reset:
             current["base_algorithm_saved"] = True
         if ratios is not None:
@@ -1038,6 +1052,24 @@ def update_recycling_valuation(
                 "imported_at": current["imported_at"],
                 "pricing_mode": "imported",
             }
+        if prices or lmd_sanity is not None:
+            current["prices"].update(prices or {})
+            if lmd_sanity is not None:
+                current["lmd_sanity"] = lmd_sanity
+            current["source"] = "手动设置（未修改的价值保留原值）"
+            current["metadata"] = {
+                **current["metadata"],
+                "source": current["source"],
+                "pricing_mode": "custom",
+            }
+        if income_unit_values is not None:
+            values = dict(current.get("income_unit_values", {}))
+            for key, value in income_unit_values.items():
+                if value is None:
+                    values.pop(key, None)
+                else:
+                    values[key] = value
+            current["income_unit_values"] = values
         connection.execute(
             "INSERT OR REPLACE INTO recycling_valuation VALUES (1, ?)",
             (json.dumps(current, ensure_ascii=False, allow_nan=False),),

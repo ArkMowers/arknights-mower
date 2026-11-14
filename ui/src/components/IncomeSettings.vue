@@ -1,6 +1,7 @@
 <script setup>
 import { inject, onMounted, reactive, ref } from 'vue'
 import { incomeAlgorithms, incomeSettingsUrl, loadIncomeSettings } from '@/utils/incomeSettings'
+import IncomeValueEditor from './IncomeValueEditor.vue'
 const axios = inject('axios')
 const valuation = ref(null)
 const ratios = reactive({ experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1 })
@@ -11,6 +12,7 @@ const settingsMessage = ref('')
 const importInput = ref(null)
 const settingsUrl = incomeSettingsUrl
 const algorithm = ref(2)
+const valuesBusy = ref(false)
 function selectAlgorithm(value) {
   const preset = incomeAlgorithms.find((row) => row.value === value)
   if (preset?.ratios) Object.assign(ratios, preset.ratios)
@@ -21,6 +23,7 @@ function applySettings(value) {
   algorithm.value = value.base_algorithm
 }
 async function loadSettings() {
+  if (settingsLoading.value || settingsBusy.value || valuesBusy.value) return
   settingsLoading.value = true
   settingsError.value = ''
   try {
@@ -32,7 +35,7 @@ async function loadSettings() {
   }
 }
 async function updateSettings(action, file = null) {
-  if (settingsBusy.value || settingsLoading.value || !valuation.value) return
+  if (settingsBusy.value || valuesBusy.value || settingsLoading.value || !valuation.value) return
   settingsBusy.value = true
   settingsError.value = ''
   settingsMessage.value = ''
@@ -98,16 +101,19 @@ onMounted(loadSettings)
         <input ref="importInput" type="file" accept=".xlsx" hidden @change="importValues" />
         <n-button
           secondary
-          :disabled="!valuation || settingsBusy || settingsLoading"
+          :disabled="!valuation || settingsBusy || settingsLoading || valuesBusy"
           @click="importInput.click()"
           >导入一图流材料价值</n-button
         >
-        <n-button quaternary :disabled="settingsBusy || settingsLoading" @click="loadSettings"
+        <n-button
+          quaternary
+          :disabled="settingsBusy || settingsLoading || valuesBusy"
+          @click="loadSettings"
           >重新读取</n-button
         >
         <n-button
           quaternary
-          :disabled="!valuation || settingsBusy || settingsLoading"
+          :disabled="!valuation || settingsBusy || settingsLoading || valuesBusy"
           @click="updateSettings('reset')"
           >恢复全部默认值</n-button
         >
@@ -135,25 +141,34 @@ onMounted(loadSettings)
         </n-collapse-item>
       </n-collapse>
       <n-divider />
+      <n-collapse>
+        <n-collapse-item title="理智算法与材料单价" name="sanity-values">
+          <IncomeValueEditor
+            :valuation="valuation"
+            :disabled="settingsBusy || settingsLoading"
+            @saved="valuation = $event"
+            @busy="valuesBusy = $event"
+          />
+        </n-collapse-item>
+      </n-collapse>
+      <n-divider />
       <label class="algorithm-field"
         ><span>基报收益算法</span
         ><n-select
           v-model:value="algorithm"
           :options="incomeAlgorithms"
-          :disabled="!valuation || settingsBusy || settingsLoading"
+          :disabled="!valuation || settingsBusy || settingsLoading || valuesBusy"
           @update:value="selectAlgorithm"
       /></label>
       <p class="settings-description">
-        基建报表与回收站等效制造站效率使用同一组产物系数。回收站效率仅用于理论日产量换算，100% 填
-        1。
+        基建报表与回收站等效制造站效率使用同一组产物系数。回收站理论收益采用固定效率作参考，排班演算按实际驻员计算产出次数。
       </p>
       <div class="ratio-fields">
         <label
           v-for="field in [
             { key: 'experience', label: '经验书价值比例' },
             { key: 'gold', label: '赤金价值比例' },
-            { key: 'order', label: '订单价值比例' },
-            { key: 'efficiency', label: '回收站效率（1 = 100%）' }
+            { key: 'order', label: '订单价值比例' }
           ]"
           :key="field.key"
         >
@@ -163,10 +178,7 @@ onMounted(loadSettings)
             :min="field.key === 'experience' ? 0.000001 : 0"
             :max="1000"
             :disabled="
-              !valuation ||
-              settingsBusy ||
-              settingsLoading ||
-              (algorithm !== -1 && field.key !== 'efficiency')
+              !valuation || settingsBusy || settingsLoading || valuesBusy || algorithm !== -1
             "
             :show-button="false"
           />
@@ -175,7 +187,7 @@ onMounted(loadSettings)
       <n-button
         type="primary"
         :loading="settingsBusy"
-        :disabled="!valuation || settingsLoading"
+        :disabled="!valuation || settingsLoading || valuesBusy"
         @click="updateSettings('ratios')"
         >保存收益设置</n-button
       >

@@ -699,3 +699,45 @@ it('shows roster warnings without blocking or archiving them', async () => {
   expect(workers).toHaveLength(1)
   expect(saveIncomeArchive).not.toHaveBeenCalled()
 })
+
+it('reads fresh sanity values before running and freezes them with the completed result', async () => {
+  await page.readCache()
+  page.settings.weightMode = 'sanity'
+  io.client.get.mockResolvedValueOnce({
+    data: {
+      ...valuation(),
+      prices: { 中级作战记录: 4, 赤金: 2 },
+      lmd_sanity: 0.0036,
+      income_unit_values: { yellow_certificate: 0, credit: 0 }
+    }
+  })
+  await page.start()
+  const input = workers[0].postMessage.mock.calls[0][0]
+  expect(input.settings.sanityValuation.unitValues).toMatchObject({
+    exp: 0.004,
+    gold: 2,
+    recruitment: 0,
+    clue: 0
+  })
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  page.applySavedValues({ ...valuation(), prices: { 赤金: 99 }, lmd_sanity: 1 })
+  expect(page.state.input.settings.sanityValuation.unitValues.gold).toBe(2)
+  expect(
+    saveIncomeArchive.mock.calls.at(-1)[0].input.settings.sanityValuation.unitValues.gold
+  ).toBe(2)
+  reopenDialog()
+  expect(page.settings.weightMode).toBe('sanity')
+  expect(page.settings.sanityValuation).toBeNull()
+})
+it('prevents a run during price saving and after a failed sanity settings read', async () => {
+  await page.readCache()
+  page.settings.weightMode = 'sanity'
+  page.valuesBusy.value = true
+  await page.start()
+  expect(workers).toHaveLength(0)
+  page.valuesBusy.value = false
+  io.client.get.mockRejectedValueOnce(new Error('offline'))
+  await page.start()
+  expect(workers).toHaveLength(0)
+  expect(page.state.error).toContain('读取失败')
+})

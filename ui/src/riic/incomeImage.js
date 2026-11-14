@@ -11,6 +11,7 @@ import { MOWER_RAW_MATERIALS } from './vendor/domain/simulationInventory'
 import { incomeInitialInventory } from './incomeCache'
 import { incomeOrderDistribution } from './incomeOrders'
 import { incomeAlgorithmLabel } from '@/utils/incomeSettings'
+import { incomeScore, incomeScoreLabel } from './incomeSanity'
 
 const number = (value) => Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })
 export function incomeReportLines(result, settings, plan, label) {
@@ -100,11 +101,27 @@ export function incomeReportLines(result, settings, plan, label) {
     continuous
       ? '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期有效工作量分摊，保留小数，排除预热部分。'
       : '龙门币产出与制造源石碎片消耗的龙门币、固源岩及装置分别显示；消耗按统计期实际开工批次计算，包含尚未完成的批次，预热期已支付的材料不重复计入。',
-    `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
-      incomeWeights(settings)
-    )
-      .map(([key, value]) => `${key}=${value}`)
-      .join('；')}。加权产出不是龙门币结算额。`,
+    ...(settings.weightMode === 'sanity'
+      ? [
+          `理智算法：按本次保存的材料单价与现有净产出计算，扣除赤金、源石碎片交付及制造耗材；特殊订单溢价已包含在龙门币产出中，不重复计价。`,
+          `理智单价：${Object.entries(settings.sanityValuation.unitValues)
+            .map(([key, value]) => `${key}=${value === null ? '未估值' : value}`)
+            .join('；')}。`,
+          `公招刷新按每次新增 ${settings.sanityValuation.recruitmentCertificates ?? '未设置'} 黄票 × ${settings.sanityValuation.yellowCertificateValue} 理智/黄票；黄票默认按 258 张换 38 抽、每抽 600 合成玉、每源石 180 合成玉或 135 理智折算，不计抽卡回流。信用有效单价 ${settings.sanityValuation.creditValue ?? '未估值'} 理智/点，会客室按自搜线索全部赠送（40 信用/条）和连续交流（210 信用/天）估值，需要好友持续补齐线索；每日有效信用额度 ${settings.sanityValuation.creditDailyLimit ?? '不限'}，超过额度不计价值。不模拟招募、商店或实际交流完成时刻。`,
+          '回收站按现有产出次数乘以单次价值，默认使用材料概率表的普通池与额外池长期期望，不模拟随机材料或新增库存；当前演算未提供投入提效材料的消耗。',
+          ...(result.summary.sanity?.partial
+            ? [
+                `未估值产出：${result.summary.sanity.unpriced.join('、')}；显示收益仅包含已估值部分。`
+              ]
+            : [])
+        ]
+      : [
+          `收益权重（${settings.weightMode === 'mower' ? incomeAlgorithmLabel(settings.mowerAlgorithm) : '本次自定义'}）：${Object.entries(
+            incomeWeights(settings)
+          )
+            .map(([key, value]) => `${key}=${value}`)
+            .join('；')}。加权产出不是龙门币结算额。`
+        ]),
     theoretical
       ? '模型假设：理想跑单；按关键事件推进，忽略页面操作耗时；宿舍氛围按等级上限。'
       : '模型假设：理想跑单；部分读房与调度耗时已建模，其余点击识别耗时忽略；宿舍氛围按等级上限。',
@@ -117,16 +134,18 @@ export function incomeReportLines(result, settings, plan, label) {
     provenance
       ? `计算器基线 ${provenance.calculatorBaseRevision}，选择性同步 ${provenance.calculatorSyncRevision}（含本地适配）；调度基线 Mower alpha ${provenance.mowerBaseReference}，本轮核对 ${provenance.mowerCheckedRevision}，后续本体逻辑不自动同步。`
       : `计算器 ${CALCULATOR_REVISION}（含本地完成时刻精度、赤金透支、制造成本观察、公招与线索观察适配）；调度参考 Mower alpha ${MOWER_REFERENCE}，后续本体逻辑不自动同步。`,
-    '公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工，不计入加权收益。',
+    `公招刷新按办公室驻员、心情与已解锁技能计算联络产出；初始进度为零，预热进度延续但预热完成次数不计。假设及时使用刷新次数，不模拟存满 3 次停工${settings.weightMode === 'sanity' ? '。' : '，不计入加权收益。'}`,
     ...(result.summary?.clueCount == null
       ? ['这份历史记录未统计会客室线索，重新演算后可查看。']
       : [
-          '会客室线索仅统计驻员搜集完成的个数，初始进度为零，预热进度延续但预热完成数不计；假设及时领取及清理库存，不模拟满库停工、每日赠送和好友赠送，不计算信用点或加权收益。',
+          `会客室线索仅统计驻员搜集完成的个数，初始进度为零，预热进度延续但预热完成数不计；假设及时领取及清理库存，不模拟满库停工、每日赠送和好友赠送${settings.weightMode === 'sanity' ? '。' : '，不计算信用点或加权收益。'}`,
           result.clueExchangeMode === 'always-on'
             ? '线索产量按全程开启交流计算，计入已解锁且非涣散驻员的交流加速技能；不模拟集齐线索或交流开关，调度侧 Party Time 仍为空。'
             : '这份历史记录按线索交流关闭计算；重新演算后按全程开启交流计算线索产量。'
         ]),
-    '回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。',
+    ...(settings.weightMode === 'sanity'
+      ? []
+      : ['回收站仅统计产出次数，不推算随机材料，不增加材料库存，也不计材料收益价值。']),
     '这是离线模型估算，不是实测收益或实际排班可执行性的证明。图片导入不恢复本次计算参数和结果。'
   ]
 }
@@ -228,8 +247,8 @@ export async function renderIncomeImage(
       ctx.fillStyle = color
       ctx.fillText(text, x * scale, y * scale)
     }
-    write('日均加权收益', 28, 24, 13)
-    const score = number(result.summary.totalScore82)
+    write(incomeScoreLabel(result), 28, 24, 13)
+    const score = number(incomeScore(result))
     let scoreSize = 38
     ctx.font = `bold ${scoreSize * scale}px sans-serif`
     while (ctx.measureText(score).width > 252 * scale && scoreSize > 18) {
@@ -408,6 +427,7 @@ export function incomeImageAnnotationLines(details, measure, maxWidth, prefix = 
   return lines
 }
 export function incomeImageAlgorithmLines(settings) {
+  if (settings.weightMode === 'sanity') return ['理智算法']
   if (settings.weightMode !== 'custom' && settings.mowerAlgorithm !== -1) {
     return [incomeAlgorithmLabel(settings.mowerAlgorithm).split('（')[0].trim()]
   }
@@ -431,9 +451,9 @@ export function incomeImageFilename(name, result) {
       .join('')
       .replace(/[. ]+$/g, '')
       .slice(0, 60) || '排班'
-  const score = Number(result.summary.totalScore82.toFixed(2))
+  const score = Number(incomeScore(result).toFixed(2))
   const days = Number((result.observedHours / 24).toFixed(2))
-  return `${safe}_日均收益${score}_${days}天.jpg`
+  return `${safe}_日均${result.summary.sanity ? `理智${result.summary.sanity.partial ? '部分' : ''}` : '收益'}${score}_${days}天.jpg`
 }
 export function downloadIncomeImage(blob, filename) {
   const url = URL.createObjectURL(blob)

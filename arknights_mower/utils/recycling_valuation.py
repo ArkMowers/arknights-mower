@@ -74,6 +74,42 @@ def validate_ratios(values):
     return dict(values)
 
 
+def validate_income_value(value, *, optional=False, minimum=0):
+    if optional and value is None:
+        return value
+    if (
+        type(value) not in (int, float)
+        or not math.isfinite(value)
+        or not minimum <= value <= 1000000
+    ):
+        raise ValueError("理智价值必须是有效范围内的有限数值")
+    return value
+
+
+def validate_income_value_updates(prices, unit_values, known_prices):
+    for values, allowed, optional in (
+        (prices, known_prices, False),
+        (
+            unit_values,
+            {
+                "fragment",
+                "recycle",
+                "recruitment_certificates",
+                "yellow_certificate",
+                "credit",
+                "credit_daily_limit",
+            },
+            True,
+        ),
+    ):
+        if values is None:
+            continue
+        if not isinstance(values, dict) or not values.keys() <= allowed:
+            raise ValueError("请选择已有材料或支持的产出项目")
+        for value in values.values():
+            validate_income_value(value, optional=optional)
+
+
 def import_yituliu_values(content):
     """Read numeric item prices from the first worksheet without executing formulas."""
     if not content or len(content) > MAX_IMPORT_BYTES:

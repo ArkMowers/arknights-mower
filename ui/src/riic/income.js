@@ -14,6 +14,7 @@ import {
 import { normalizeProductionWeights } from './vendor/domain/productionWeights'
 import { incomeInitialInventory } from './incomeCache'
 import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
+import { createIncomeSanityValuation, validateIncomeSanityValuation } from './incomeSanity'
 
 export const CALCULATOR_REVISION = '5529403'
 export const MOWER_REFERENCE = '80c97ee6'
@@ -35,6 +36,7 @@ export function defaultIncomeSettings() {
     weightMode: 'mower',
     mowerWeights: null,
     mowerAlgorithm: null,
+    sanityValuation: null,
     initialInventory: {},
     jayeElite0: false,
     operatorMode: 'cache',
@@ -152,6 +154,10 @@ export function incomeRequest(plan, settings) {
 }
 
 export function incomeWeights(settings) {
+  if (settings.weightMode === 'sanity') {
+    validateIncomeSanityValuation(settings.sanityValuation)
+    return normalizeProductionWeights()
+  }
   if (settings.weightMode === 'mower') {
     if (!settings.mowerWeights)
       throw new Error('Mower 收益算法尚未读取，请重试或选择本次自定义权重')
@@ -162,6 +168,7 @@ export function incomeWeights(settings) {
 }
 
 export function applyMowerIncomeSettings(settings, value) {
+  settings.sanityValuation = createIncomeSanityValuation(value)
   settings.mowerAlgorithm = value.base_algorithm
   settings.mowerWeights = normalizeProductionWeights({
     exp: value.ratios.experience,

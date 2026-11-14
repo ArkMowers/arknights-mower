@@ -91,3 +91,14 @@ it.each(['mower', 'custom'])('prints every exact custom weight from %s', (weight
     })
   ).toEqual(['自定义', '经验 0.9568 · 赤金 0.76544 · 订单 0.23456', '源石碎片 12.5 · 合成玉 0'])
 })
+
+it('labels sanity images and filenames with their saved score and partial state', () => {
+  expect(incomeImageAlgorithmLines({ weightMode: 'sanity' })).toEqual(['理智算法'])
+  const result = {
+    summary: { totalScore82: 999, sanity: { total: 12.5, partial: false } },
+    observedHours: 48
+  }
+  expect(incomeImageFilename('排班', result)).toBe('排班_日均理智12.5_2天.jpg')
+  result.summary.sanity.partial = true
+  expect(incomeImageFilename('排班', result)).toBe('排班_日均理智部分12.5_2天.jpg')
+})
