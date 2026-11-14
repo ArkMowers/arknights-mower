@@ -301,15 +301,23 @@ it.each(['primary', 'active-backup', 'maintenance-backup'])(
     expect(input.settings).not.toHaveProperty('seed')
   }
 )
-it('saves the selected shared algorithm and preserves recycling efficiency', async () => {
+it.each([
+  [0, 0.2],
+  [3, 0.4]
+])('saves shared algorithm %s and uses its weights in the worker', async (algorithm, order) => {
+  await page.readCache()
   await page.readWeights()
   io.client.put.mockImplementation(async (_, value) => ({ data: value }))
-  await page.selectAlgorithm(0)
+  await page.selectAlgorithm(algorithm)
   expect(io.client.put.mock.calls[0][1]).toEqual({
-    base_algorithm: 0,
-    ratios: { experience: 1, gold: 0.8, order: 0.2, efficiency: 1.7 }
+    base_algorithm: algorithm,
+    ratios: { experience: 1, gold: 0.8, order, efficiency: 1.7 }
   })
-  expect(page.settings.mowerWeights.exp).toBe(1)
+  io.client.get.mockResolvedValueOnce({ data: io.client.put.mock.calls[0][1] })
+  await page.start()
+  const sent = workers[0].postMessage.mock.calls[0][0]
+  expect(sent.settings.mowerAlgorithm).toBe(algorithm)
+  expect(sent.settings.mowerWeights).toMatchObject({ exp: 1, gold: 0.8, orders: order })
 })
 it('retains the settings request failure as the cause of the displayed error', async () => {
   const failure = new Error('offline')

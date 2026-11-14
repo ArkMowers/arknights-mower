@@ -16,6 +16,7 @@ BASE_ALGORITHMS = {
     0: {"experience": 1.0, "gold": 0.8, "order": 0.2},
     1: {"experience": 1.0, "gold": 0.8, "order": 733 / 2990},
     2: {"experience": 0.9568, "gold": 0.76544, "order": 0.23456},
+    3: {"experience": 1.0, "gold": 0.8, "order": 0.4},
 }
 DEFAULT_RATIOS = {**BASE_ALGORITHMS[2], "efficiency": 1.0}
 MAX_IMPORT_BYTES = 2 * 1024 * 1024
@@ -50,7 +51,7 @@ def default_valuation():
 
 
 def validate_base_algorithm(algorithm, ratios):
-    if type(algorithm) is not int or algorithm not in (-1, 0, 1, 2):
+    if type(algorithm) is not int or algorithm not in (-1, 0, 1, 2, 3):
         raise ValueError("请选择有效的基报收益算法")
     if algorithm != -1 and any(
         ratios[key] != value for key, value in BASE_ALGORITHMS[algorithm].items()

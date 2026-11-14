@@ -76,7 +76,8 @@ it('keeps signed daily values compact without hiding small recycling counts', ()
 it.each([
   [0, '82 算法'],
   [1, '0.245 算法'],
-  [2, '0.23456 算法']
+  [2, '0.23456 算法'],
+  [3, '无人机算法']
 ])('labels the selected Mower algorithm %s', (mowerAlgorithm, label) => {
   expect(incomeImageAlgorithmLines({ weightMode: 'mower', mowerAlgorithm })).toEqual([label])
 })

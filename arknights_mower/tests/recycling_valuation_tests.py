@@ -313,7 +313,7 @@ def test_new_material_identity_conflict_leaves_saved_prices_unchanged(db):
     assert record.get_recycling_valuation() == before
 
 
-@pytest.mark.parametrize("algorithm", [0, 1, 2, -1])
+@pytest.mark.parametrize("algorithm", [0, 1, 2, 3, -1])
 def test_shared_base_algorithm_persists_and_rejects_mismatched_preset(db, algorithm):
     from arknights_mower.utils.recycling_valuation import BASE_ALGORITHMS
 
@@ -325,6 +325,19 @@ def test_shared_base_algorithm_persists_and_rejects_mismatched_preset(db, algori
     with pytest.raises(ValueError, match="不一致"):
         record.update_recycling_valuation(
             ratios={**ratios, "gold": 9}, base_algorithm=0
+        )
+    assert record.get_recycling_valuation() == saved
+
+
+def test_drone_algorithm_persists_exact_weights_and_rejects_82_weights(db):
+    ratios = {"experience": 1, "gold": 0.8, "order": 0.4, "efficiency": 1.7}
+    record.update_recycling_valuation(ratios=ratios, base_algorithm=3)
+    saved = record.get_recycling_valuation()
+    assert saved["base_algorithm"] == 3
+    assert saved["ratios"] == ratios
+    with pytest.raises(ValueError, match="不一致"):
+        record.update_recycling_valuation(
+            ratios={**ratios, "order": 0.2}, base_algorithm=3
         )
     assert record.get_recycling_valuation() == saved
 
