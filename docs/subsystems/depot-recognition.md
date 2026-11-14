@@ -12,6 +12,10 @@ Game-side quantity recognition excludes the 13 basic items confirmed in Skland i
 
 Cloud inventory reads complete integer counts directly. Historical CSV rows remain available, but these 13 items are excluded from `scanned_counts` when merging current inventory, so their old OCR quantities cannot be submitted again as game observations. Existing protection for confirmed crafting changes and battle settlement remains unchanged.
 
+Current inventory, exported quantities and merged history use the same reconciled counts. Retained scan rows supply each scan-only item's latest valid quantity and its original observation time, including an explicit zero. A later partial scan does not advance an absent item's observation time or erase its confirmed count. Newer local changes and cloud observations retain their existing precedence.
+
+When retained scan observations are available, warehouse reading removes database rows that have no retained source, observation marker or pending local change. Missing or unreadable scan history does not authorize this removal, and active battle settlement defers it. An unsupported legacy row is discarded as unknown rather than converted into a fabricated zero. Correcting a known erroneous quantity requires a confirmed replacement observation; deleting a historical row does not revoke an already timestamped observation.
+
 ## 3. Subsystem Invariants
 
 - **[INV-REC-07] Complete LMD Amount**: Depot LMD quantities use the complete integer count returned by Skland; game-side quantity OCR is not used for LMD.
@@ -33,3 +37,5 @@ After successful confirmation, the scan CSV, database and merged history are wri
 `pytest arknights_mower/tests/depot_quantity_tests.py arknights_mower/tests/knn_memory_tests.py` verifies that covered items never invoke quantity recognition while scan-only items retain their reader. `pytest arknights_mower/tests/depot_lmd_pixel_tests.py` replays recorded frames and verifies that LMD has no scanned quantity while scan-only items remain recognized. `pytest arknights_mower/tests/depot_history_tests.py` covers exclusion of the covered items from historical scan sources.
 
 `pytest arknights_mower/tests/depot_scene_tests.py` exercises the scan and its scheduling caller offline, covering login recovery after a restart, complete rescanning without partial-result duplication, restart exhaustion, scene and stability failures, preservation of prior snapshots, successful scans and explicitly empty categories.
+
+`pytest arknights_mower/tests/depot_stock_reconciliation_tests.py` covers orphaned legacy rows, current/export/history consistency, partial scans, original per-item observation times, explicit zero counts and newer local changes.

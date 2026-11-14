@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 
 from arknights_mower.data import key_mapping, workshop_formula
-from arknights_mower.solvers.record import get_inventory_counts, save_inventory_counts
+from arknights_mower.solvers.record import save_inventory_counts
 from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.csv_utils import (
     EmptyDataError,
@@ -409,39 +409,54 @@ def 读取仓库(记录快照时刻=None):
         logger.warning("仓库扫描: 没有可用的历史快照，仅使用本次扫描结果")
         最后一行时刻 = int(datetime.now().timestamp())
         最后一行物品 = {}
-    新物品 = {**最后一行物品, **新物品1}  # 合并字典
-    新物品json = {}
     db_dict = {}
     for k in workshop_formula.keys():
         db_dict[k] = 0
-    for item, count in 新物品.items():
-        entry = key_mapping.get(item)
-        if entry is None:
-            # 上一轮 CSV 里残留的旧物品名（key_mapping 更新后可能失效）也跳过，
-            # 避免合并历史数据时再次 KeyError。
-            logger.warning(f"仓库扫描: 忽略未知物品名 {item}")
-            continue
-        新物品json[entry[0]] = count
-        db_dict[entry[2]] = count
+    db_dict.update(
+        {
+            name: count
+            for name, count in 最后一行物品.items()
+            if name in key_mapping
+            and is_skland_only_item(name)
+            and type(count) is int
+            and count >= 0
+        }
+    )
+    db_dict.update(新物品1)
     time = 最后一行时刻
-    scanned_counts = {
-        key_mapping[name][2]: count
-        for name, count in 最后一行物品.items()
-        if name in key_mapping and not is_skland_only_item(name)
-    }
+    # 旧库存行没有观测时间，从保留的扫描记录补回来源；部分扫描不清空未出现的物品。
+    scanned_counts = {}
+    scanned_observed_at = {}
+    for row in depotinfo:
+        parsed = _解析快照行(row)
+        if parsed is None:
+            continue
+        at, counts = parsed
+        if at <= 0:
+            continue
+        for name, count in counts.items():
+            if (
+                name not in key_mapping
+                or is_skland_only_item(name)
+                or type(count) is not int
+                or count < 0
+            ):
+                continue
+            name = key_mapping[name][2]
+            if at >= scanned_observed_at.get(name, 0):
+                scanned_counts[name] = count
+                scanned_observed_at[name] = at
+    db_dict.update(scanned_counts)
     db_dict = save_inventory_counts(
         db_dict,
         scanned_counts=scanned_counts,
         scanned_at=float(最后一行时刻),
+        scanned_observed_at=scanned_observed_at,
         cloud_counts=cloud_counts,
         cloud_at=cloud_at,
+        discard_unobserved=bool(scanned_observed_at),
     )
-    快照物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
-    新物品 = {
-        name: count
-        for name, count in get_inventory_counts().items()
-        if name in key_mapping
-    }
+    新物品 = {name: count for name, count in db_dict.items() if name in key_mapping}
     新物品json = {key_mapping[name][0]: count for name, count in 新物品.items()}
     sort = {
         "A常用": [
@@ -602,7 +617,7 @@ def 读取仓库(记录快照时刻=None):
 
     # 合并库存包含信物，不包含页面派生条目。
     if 记录快照时刻 is not None:
-        记录合并快照(记录快照时刻, 快照物品)
+        记录合并快照(记录快照时刻, 新物品)
 
     return [
         classified_data,
