@@ -37,6 +37,13 @@ export function incomeReportLines(result, settings, plan, label) {
     .join('；')
   return [
     `原图：${label}；二维码包含完整主副表和高级设置，可在 Mower「导入排班」中读取。`,
+    ...(result.dormRecovery
+      ? [
+          `宿舍填充干员理论恢复量：${number(result.dormRecovery.daily)} 心情/天，统计期合计 ${number(result.dormRecovery.total)} 心情${result.dormRecovery.partial ? '（部分技能未量化）' : ''}。`,
+          '按填充干员占床时长与适用恢复速度累计；假设持续 0 心情、不受 24 上限限制，含宿管及中枢加成，不计真实休息干员或固定宿管自身恢复，不另行模拟合并任务耗时，不计入加权收益。',
+          ...result.dormRecovery.warnings
+        ]
+      : []),
     `预热 ${settings.warmupDays} 天，不计入收益；统计 ${number(result.observedHours / 24)} 天，共 ${settings.warmupDays + settings.sampleDays} 天；${expected ? (theoretical ? '理论期望模式' : continuous ? '数学期望模式（连续产出）' : '数学期望模式（平均订单模型）') : `随机种子 ${seed}`}。`,
     ...(expected
       ? [
@@ -183,11 +190,16 @@ export async function renderIncomeImage(
     canvas.width = width
     const ctx = canvas.getContext('2d')
     ctx.font = `${10 * scale}px sans-serif`
-    const weightLines = algorithmLines
-      .slice(1)
-      .flatMap((line) =>
-        incomeImageAnnotationLines({}, (text) => ctx.measureText(text).width / scale, 252, line)
-      )
+    const weightLines = [
+      ...algorithmLines.slice(1),
+      ...(result.dormRecovery
+        ? [
+            `空闲${result.dormRecovery.partial ? '（部分）' : ''} ${number(result.dormRecovery.daily)} 心情/天`
+          ]
+        : [])
+    ].flatMap((line) =>
+      incomeImageAnnotationLines({}, (text) => ctx.measureText(text).width / scale, 252, line)
+    )
     const annotationLines = incomeImageAnnotationLines(
       exportDetails,
       (text) => ctx.measureText(text).width / scale,

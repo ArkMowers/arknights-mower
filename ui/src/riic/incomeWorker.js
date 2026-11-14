@@ -6,6 +6,7 @@ import { incomeFailureMessage } from './incomeDiagnostics'
 import { incomeOrderDistribution } from './incomeOrders'
 import { createRecruitmentObservation } from './incomeRecruitment'
 import { createClueObservation } from './incomeClues'
+import { createDormRecoveryObservation } from './incomeDormRecovery'
 import { incomeStability } from './incomeStability'
 import { buildTimelineData } from './vendor/workbench/timeline/timelineModel'
 import { MOWER_FIAMMETTA_INITIAL_MORALE } from './vendor/scheduler/mowerInitialMorale'
@@ -19,6 +20,7 @@ import {
 export function calculateIncome(plan, settings, onProgress) {
   const { workspace, options } = incomeRequest(plan, settings)
   const recruitment = createRecruitmentObservation(settings.warmupDays * 24)
+  const dormRecovery = createDormRecoveryObservation(settings.warmupDays * 24)
   const clues = createClueObservation(
     settings.warmupDays * 24,
     options.simulationOptions.operatorInventory
@@ -26,6 +28,7 @@ export function calculateIncome(plan, settings, onProgress) {
   options.simulationOptions.observeInterval = (config, start, end, workHours) => {
     recruitment.observe(config, start, end)
     clues.observe(config, start, end, workHours)
+    dormRecovery.observe(config, start, end)
   }
   const result = runCalculationBridge(workspace, options, (p) =>
     onProgress?.({
@@ -95,6 +98,7 @@ export function calculateIncome(plan, settings, onProgress) {
       )
     ],
     clueExchangeMode: 'always-on',
+    dormRecovery: dormRecovery.result(simulation.observedHours),
     summary: {
       ...result.report.summary,
       netLmd,

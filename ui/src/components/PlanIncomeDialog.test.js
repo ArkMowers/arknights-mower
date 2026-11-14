@@ -437,8 +437,20 @@ const success = () => ({
 it('restores the last result with its original plan image after reopening with a different schedule', async () => {
   await page.readCache()
   await page.start()
-  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  const result = {
+    ...success(),
+    dormRecovery: {
+      model: 'neutral-filler-recovery-v1',
+      daily: 240,
+      total: 6720,
+      rooms: [],
+      partial: false,
+      warnings: []
+    }
+  }
+  workers[0].onmessage({ data: { type: 'complete', result } })
   const saved = saveIncomeArchive.mock.calls.at(-1)[0]
+  expect(saved.result.dormRecovery).toEqual(result.dormRecovery)
   expect(saved.input.plan).toEqual(props.snapshot.plan)
   expect(saved.snapshot.image).toBe(props.snapshot.image)
   io.cleanup()
@@ -457,6 +469,7 @@ it('restores the last result with its original plan image after reopening with a
   page.settings.sampleDays = 7
   await page.restoreResult()
   await page.exportImage()
+  expect(page.state.result.dormRecovery).toEqual(result.dormRecovery)
   expect(page.settings.sampleDays).toBe(7)
   expect(page.activeTab.value).toBe('results')
   expect(renderIncomeImage.mock.calls.at(-1)).toEqual([

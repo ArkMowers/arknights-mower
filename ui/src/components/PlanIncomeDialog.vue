@@ -774,6 +774,10 @@ onBeforeUnmount(() => {
               <span v-if="state.result.inventoryMode === 'finite'">实际消耗及余额见库存收支。</span>
             </p>
             <h3>日均加权产出 {{ format(state.result.summary.totalScore82) }}</h3>
+            <p v-if="state.result.dormRecovery">
+              空闲 {{ format(state.result.dormRecovery.daily) }} 心情/天
+              <span v-if="state.result.dormRecovery.partial">（部分技能未量化）</span>
+            </p>
             <n-table size="small"
               ><thead>
                 <tr>
@@ -792,6 +796,36 @@ onBeforeUnmount(() => {
             >
             <p v-if="exported" role="status">收益图片已生成并发起下载。</p>
             <n-collapse class="notice">
+              <n-collapse-item
+                v-if="state.result.dormRecovery"
+                title="宿舍填充干员理论恢复量"
+                name="dorm-recovery"
+              >
+                <p>
+                  按填充干员实际占床时长 × 理论恢复速度累计，扣除预热后取日均。 假设填充干员持续处于
+                  0 心情，计入适用的宿管和中枢加成，不受 24 心情上限限制。
+                  不计真实休息干员或固定宿管自身恢复，不计入加权收益；不另行模拟合并任务耗时。
+                </p>
+                <n-table size="small">
+                  <thead>
+                    <tr>
+                      <th>宿舍</th>
+                      <th>日均恢复</th>
+                      <th>统计期合计</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="room in state.result.dormRecovery.rooms" :key="room.roomId">
+                      <td>宿舍 {{ room.roomId.split('_')[1] }}</td>
+                      <td>{{ format(room.daily) }} 心情/天</td>
+                      <td>{{ format(room.total) }} 心情</td>
+                    </tr>
+                  </tbody>
+                </n-table>
+                <p v-for="warning in state.result.dormRecovery.warnings" :key="warning">
+                  {{ warning }}
+                </p>
+              </n-collapse-item>
               <n-collapse-item
                 v-if="state.result.stability"
                 title="轮换与无人机边界观察"
