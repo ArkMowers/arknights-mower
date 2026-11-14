@@ -48,7 +48,12 @@ beforeEach(async () => {
     get_device_settings: vi.fn(async () => ({
       values: original,
       fields: [
-        { key: 'device.preset_id', group: '设备', kind: 'select' },
+        {
+          key: 'device.preset_id',
+          group: '设备',
+          kind: 'select',
+          options: [['manual.other', '其他模拟器']]
+        },
         { key: 'device.installation_path', group: '设备', kind: 'directory' },
         { key: 'device.manager_path', group: '设备', kind: 'file' },
         { key: 'device.adb_path', group: '设备', kind: 'file' },
@@ -412,14 +417,16 @@ async function loadPolicy(independent = false) {
   return originalPolicy
 }
 
-it('shows only the three instance inputs with shared connection settings and rejects hidden edits', async () => {
+it('shows inherited connection values but rejects editing them', async () => {
   await loadPolicy()
-  expect(component.visibleFields.value.map(({ key }) => key)).toEqual([
-    'device.instance_id',
-    'device.instance_name',
-    'device.game_package'
-  ])
-  expect(component.groups.value).toEqual(['设备'])
+  expect(component.visibleFields.value.map(({ key }) => key)).toContain('device.screenshot_backend')
+  expect(
+    component.backendFields.value.find(({ key }) => key === 'screenshot_backend')
+  ).toMatchObject({
+    value: 'droidcast',
+    source: '来自通用设置',
+    disabled: true
+  })
   component.edit('custom_screenshot.command', 'hidden-command')
   component.edit('device.screenshot_backend', 'mumu_ipc')
   component.edit('device.preset_id', 'macos.avd')
@@ -929,5 +936,53 @@ it('keeps idle choices locked while using shared connection settings', async () 
   )
   component.editIdleAction('close')
   expect(component.changes.value).toEqual({})
-  expect(component.visibleFields.value.some(({ key }) => keys.includes(key))).toBe(false)
+  expect(component.visibleFields.value.some(({ key }) => keys.includes(key))).toBe(true)
+  expect(component.editableField('close_simulator_when_idle')).toBe(false)
+})
+
+it('tests the draft through the manager bridge without saving or replacing the target', async () => {
+  component.edit('device.last_serial', 'chosen:5555')
+  const result = { ok: true, status: 'ready', serial: 'chosen:5555' }
+  api.test_device_settings = vi.fn(async () => result)
+  await component.testConnection()
+  expect(api.test_device_settings).toHaveBeenCalledExactlyOnceWith(
+    0,
+    { 'device.last_serial': 'chosen:5555' },
+    target,
+    original
+  )
+  expect(component.testResult.value).toEqual(result)
+  expect(component.deviceState.value.statusDisplayLabel).toBe('连接正常')
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+  component.edit('device.instance_id', '2')
+  expect(component.testResult.value).toBeNull()
+  expect(component.draft.value['device.last_serial']).toBe('')
+})
+
+it('retains the draft on failed testing and reveals the native repair field', async () => {
+  api.test_device_settings = vi.fn(async () => ({
+    ok: false,
+    error: {
+      code: 'missing_adb',
+      message: '没有可用的 ADB',
+      fields: ['adb_path']
+    }
+  }))
+  await component.testConnection()
+  expect(component.testResult.value.error.message).toBe('没有可用的 ADB')
+  expect(component.profileFields.value.some(({ key }) => key === 'adb_path')).toBe(true)
+  expect(component.changes.value).toEqual({})
+  expect(api.update_device_settings).not.toHaveBeenCalled()
+})
+
+it('asks before discarding independent connection edits and leaves the draft intact until confirmed', async () => {
+  await loadPolicy(true)
+  component.edit('performance_mode', 'low')
+  component.requestIndependent(false)
+  expect(component.confirmShared.value).toBe(true)
+  expect(component.independentConfiguration.value).toBe(true)
+  expect(component.draft.value.performance_mode).toBe('low')
+  component.confirmIndependentChange()
+  expect(component.independentConfiguration.value).toBe(false)
+  expect(component.draft.value.performance_mode).toBe('high')
 })

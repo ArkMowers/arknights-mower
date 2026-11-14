@@ -1534,4 +1534,88 @@ describe('manager instance controls', () => {
     expect(component.draft.value.token).toBe('unsaved-token')
     expect(api.update_settings).not.toHaveBeenCalled()
   })
+
+  it('filters by name, directory, port and status while keeping the original row index', async () => {
+    rows.push({
+      ...stopped(),
+      name: 'second',
+      path: '/accounts/second',
+      port: 5802,
+      state: 'running'
+    })
+    await mount()
+    component.search.value = '5802'
+    expect(component.visibleInstances.value.map(({ idx }) => idx)).toEqual([1])
+    component.search.value = '/accounts'
+    expect(component.visibleInstances.value.map(({ idx }) => idx)).toEqual([1])
+    component.stateFilter.value = 'stopped'
+    expect(component.visibleInstances.value).toEqual([])
+    component.clearFilters()
+    expect(component.visibleInstances.value).toHaveLength(2)
+  })
+
+  it('selects only filtered rows, retains hidden selections, and prunes renamed targets', async () => {
+    rows.push({ ...stopped(), name: 'second', path: '/second' })
+    await mount()
+    component.search.value = 'first'
+    component.selectVisible(true)
+    expect(component.selectedInstances.value.map(({ name }) => name)).toEqual(['first'])
+    component.search.value = 'second'
+    expect(component.visibleSelectedCount.value).toBe(0)
+    component.selectVisible(true)
+    component.selectVisible(false)
+    expect(component.selectedInstances.value.map(({ name }) => name)).toEqual(['first'])
+    rows[0].name = 'renamed'
+    component.acceptInstances(rows)
+    expect(component.selectedInstances.value).toEqual([])
+  })
+
+  it('confirms the captured selection and never substitutes whole-list control', async () => {
+    rows.push({ ...stopped(), name: 'second', path: '/second' })
+    api.control_instances = vi.fn(async () => ({
+      ok: true,
+      results: [{ idx: 1, name: 'second', status: 'dispatched', message: '已派发启动请求' }]
+    }))
+    await mount()
+    component.selectInstance(rows[1], true)
+    component.confirmSelected('start')
+    expect(api.control_instances).not.toHaveBeenCalled()
+    component.selectedKeys.value = []
+    await component.applySelected()
+    expect(api.control_instances).toHaveBeenCalledExactlyOnceWith('start', [
+      { idx: 1, name: 'second', path: '/second' }
+    ])
+    expect(api.start_all).not.toHaveBeenCalled()
+    expect(api.start).not.toHaveBeenCalled()
+    expect(component.selectionSummary.value).toContain('已派发 1 项')
+  })
+
+  it('keeps mixed batch outcomes visible and does not retry failures', async () => {
+    api.control_instances = vi.fn(async () => ({
+      ok: false,
+      results: [{ idx: 0, name: 'first', status: 'failed', message: '端口被占用' }]
+    }))
+    await mount()
+    component.selectInstance(rows[0], true)
+    component.confirmSelected('start')
+    await component.applySelected()
+    expect(component.selectedResult.value.results[0].message).toBe('端口被占用')
+    expect(api.control_instances).toHaveBeenCalledOnce()
+    expect(component.busy.value).toBe(false)
+  })
+  it('does not classify an ordinary running-instance edit restriction as needing attention', async () => {
+    rows.push({
+      ...stopped(),
+      name: 'running',
+      path: '/running',
+      state: 'running',
+      reason: '实例正在运行或启动中，不能重复启动'
+    })
+    rows.push({ ...stopped(), name: 'blocked', path: '/blocked', reason: '端口被占用' })
+    await mount()
+    component.stateFilter.value = 'attention'
+    expect(component.visibleInstances.value.map(({ instance }) => instance.name)).toEqual([
+      'blocked'
+    ])
+  })
 })

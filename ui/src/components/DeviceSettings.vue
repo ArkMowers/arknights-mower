@@ -4,6 +4,7 @@ import { useDialog, useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 import { deviceConnectionNavigationKey } from '@/composables/deviceConnectionNavigation'
 import PerformanceSettings from './PerformanceSettings.vue'
+import DeviceProfileField from './DeviceProfileField.vue'
 import {
   deviceSettingsState,
   sameDeviceProfile,
@@ -76,7 +77,6 @@ const startupWait = computed({
     config.simulator.wait_time = value
   }
 })
-const pathFields = ['installation_path', 'manager_path', 'config_path', 'adb_path']
 
 async function browsePath(key) {
   if (state.value.locked) return
@@ -510,7 +510,7 @@ onUnmounted(() => {
   <section class="device-settings" aria-label="设备连接">
     <template v-if="managerOwned">
       <n-alert type="info" :show-icon="false"
-        >设备连接、截图命令、游戏启动与性能设置由多开管理器配置。请退出当前实例后，在多开管理器的“设备与性能”中修改。</n-alert
+        >设备连接、截图命令、游戏启动与性能设置由多开管理器配置。请退出当前实例后，在多开管理器的“连接与启动”中修改。</n-alert
       >
       <p>
         {{ config.device_profile?.preset_id }} ·
@@ -711,70 +711,17 @@ onUnmounted(() => {
             </n-form-item>
           </n-gi>
 
-          <n-gi v-for="field in state.fields" :key="field.key" :span="field.span || 1">
-            <n-form-item :label-width="158">
-              <template #label>
-                <span>{{ field.label }}</span>
-                <help-text v-if="field.help">
-                  <div style="white-space: pre-line">{{ field.help }}</div>
-                </help-text>
-              </template>
-              <n-select
-                v-if="field.kind === 'select'"
-                :value="field.value || null"
-                :options="field.options"
-                :disabled="field.disabled"
-                :tag="field.tag"
-                :filterable="field.tag"
-                :placeholder="field.placeholder || '请选择明确目标'"
-                @update:value="(value) => edit(field.key, value)"
-              />
-              <template v-else-if="pathFields.includes(field.key)">
-                <n-input
-                  :value="field.value"
-                  :disabled="field.disabled"
-                  :placeholder="field.placeholder"
-                  @update:value="(value) => edit(field.key, value)"
-                />
-                <n-button
-                  :disabled="field.disabled"
-                  class="dialog-btn"
-                  @click="browsePath(field.key)"
-                >
-                  ...
-                </n-button>
-              </template>
-              <n-input
-                v-else
-                :value="field.value"
-                :disabled="field.disabled"
-                :placeholder="field.placeholder"
-                @update:value="(value) => edit(field.key, value)"
-              />
-            </n-form-item>
-          </n-gi>
+          <n-gi v-for="field in state.fields" :key="field.key" :span="field.span || 1"
+            ><DeviceProfileField :field="field" @edit="edit" @browse="browsePath"
+          /></n-gi>
 
           <!-- 截图后端与触控后端是日常会换的选择项，且在“高级设置”之外修改即保存；
              超时、重试与老板键属于调参，仍随“高级设置”折叠。三行同处一个网格，
              行距才一致：拆成两个网格时“旋转截图”的上边距会比上面两行小。 -->
           <template v-if="state.connectionVisible">
-            <n-gi v-for="field in state.connectionFields" :key="field.key" :span="field.span || 1">
-              <n-form-item :label-width="158">
-                <template #label>
-                  <span>{{ field.label }}</span>
-                  <help-text v-if="field.help">
-                    <div style="white-space: pre-line">{{ field.help }}</div>
-                  </help-text>
-                </template>
-                <n-select
-                  :value="field.value || null"
-                  :options="field.options"
-                  :disabled="field.disabled"
-                  :placeholder="field.placeholder || '请选择明确目标'"
-                  @update:value="(value) => edit(field.key, value)"
-                />
-              </n-form-item>
-            </n-gi>
+            <n-gi v-for="field in state.connectionFields" :key="field.key" :span="field.span || 1"
+              ><DeviceProfileField :field="field" @edit="edit"
+            /></n-gi>
             <n-gi v-if="draft.screenshot_backend === 'droidcast'" :span="2">
               <n-form-item :label-width="158">
                 <template #label>

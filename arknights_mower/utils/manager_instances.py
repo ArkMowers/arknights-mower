@@ -966,6 +966,16 @@ class InstanceController(ManagerTools):
             return {"ok": True}
 
     def discover_device_settings(self, idx, changes, target, original, policy=None):
+        return self._inspect_device_settings(idx, changes, target, original, policy)
+
+    def test_device_settings(self, idx, changes, target, original, policy=None):
+        return self._inspect_device_settings(
+            idx, changes, target, original, policy, test_connection=True
+        )
+
+    def _inspect_device_settings(
+        self, idx, changes, target, original, policy=None, *, test_connection=False
+    ):
         from . import managed_device
 
         self._validate_device_policy(policy)
@@ -1016,8 +1026,12 @@ class InstanceController(ManagerTools):
             configuration = self._with_explicit_device_serial(
                 baseline.updated(patch), patch.get("device", {}).get("last_serial")
             )
-        result = managed_device.discover(configuration)
-        if not desired:
+        result = (
+            managed_device.test_connection(configuration)
+            if test_connection
+            else managed_device.discover(configuration)
+        )
+        if not desired and not test_connection:
             result = managed_device.project_shared_candidates(
                 result, current_policy["shared_values"]
             )
@@ -1392,6 +1406,94 @@ class InstanceController(ManagerTools):
                 }
         except (OSError, ValueError, runtime.InstanceScanError) as error:
             return {"ok": False, "message": str(error)}
+
+    def control_instances(self, action, targets):
+        if (
+            not isinstance(action, str)
+            or action not in {"start", "stop"}
+            or not isinstance(targets, list)
+            or not targets
+        ):
+            raise ValueError("请选择实例及启动或停止操作")
+        with self._operation():
+            seen = set()
+            for target in targets:
+                if (
+                    not isinstance(target, dict)
+                    or set(target) != {"idx", "name", "path"}
+                    or type(target["idx"]) is not int
+                    or target["idx"] in seen
+                ):
+                    raise ValueError("批量操作的实例列表无效")
+                seen.add(target["idx"])
+                self._target_instance(
+                    target["idx"], {"name": target["name"], "path": target["path"]}
+                )
+            results = []
+            deadline = monotonic() + 10
+            scan_error = None
+            for target in targets:
+                idx = target["idx"]
+                item = {"idx": idx, "name": target["name"]}
+                if scan_error:
+                    results.append({**item, "status": "failed", "message": scan_error})
+                    continue
+                if monotonic() >= deadline:
+                    results.append(
+                        {
+                            **item,
+                            "status": "skipped",
+                            "message": "本批操作已达时限，尚未派发此实例",
+                        }
+                    )
+                    continue
+                try:
+                    records = self._records()
+                except runtime.InstanceScanError as error:
+                    scan_error = str(error)
+                    results.append({**item, "status": "failed", "message": scan_error})
+                    continue
+                instance = self.instances[idx]
+                if action == "start":
+                    try:
+                        self._start_settings(instance, records)
+                    except (OSError, ValueError, yaml.YAMLError) as error:
+                        results.append(
+                            {**item, "status": "skipped", "message": str(error)}
+                        )
+                        continue
+                elif not self._matching(instance, records):
+                    results.append(
+                        {**item, "status": "skipped", "message": "实例已停止"}
+                    )
+                    continue
+                if monotonic() >= deadline:
+                    results.append(
+                        {
+                            **item,
+                            "status": "skipped",
+                            "message": "本批操作已达时限，尚未派发此实例",
+                        }
+                    )
+                    continue
+                result = getattr(self, action)(
+                    idx, {"name": target["name"], "path": target["path"]}
+                )
+                results.append(
+                    {
+                        **item,
+                        "status": "dispatched" if result["ok"] else "failed",
+                        "message": (
+                            "已派发启动请求" if action == "start" else "已派发停止请求"
+                        )
+                        if result["ok"]
+                        else result["message"],
+                    }
+                )
+            return {
+                "ok": all(row["status"] != "failed" for row in results),
+                "results": results,
+            }
 
     def start_all(self, targets=None):
         return self._bulk("start", targets=targets)

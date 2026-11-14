@@ -1511,3 +1511,199 @@ def test_live_instance_cannot_change_extra_settings_visibility(manager, monkeypa
     )
     assert result["results"][0]["status"] == "skipped"
     assert not (Path(manager.instances[0]["path"]) / "config/conf.yml").exists()
+
+
+@pytest.mark.parametrize("ok", [True, False])
+def test_manager_connection_test_uses_draft_without_writing(manager, monkeypatch, ok):
+    from arknights_mower.utils import managed_device
+
+    target = manager.instances[0].copy()
+    state = manager.get_device_settings(0, target)
+    result = {"ok": ok, "status": "ready" if ok else "failed"}
+    probe = Mock(return_value=result)
+    monkeypatch.setattr(managed_device, "test_connection", probe)
+    policy = {
+        "independent_configuration": True,
+        "original_policy": state["original_policy"],
+    }
+    assert (
+        manager.test_device_settings(
+            0, {"device.last_serial": "selected:5555"}, target, state["values"], policy
+        )
+        == result
+    )
+    assert probe.call_args.args[0].device.last_serial == "selected:5555"
+    assert not (Path(target["path"]) / "config/conf.yml").exists()
+    controls.subprocess.Popen.assert_not_called()
+
+
+@pytest.mark.parametrize("blocked", ["running", "target", "stale", "job", "invalid"])
+def test_manager_connection_test_rejects_before_device_io(
+    manager, monkeypatch, blocked
+):
+    from arknights_mower.utils import managed_device
+
+    target = manager.instances[0].copy()
+    state = manager.get_device_settings(0, target)
+    probe = Mock()
+    monkeypatch.setattr(managed_device, "test_connection", probe)
+    changes = {}
+    if blocked == "running":
+        monkeypatch.setattr(runtime, "instances", lambda **kwargs: [record(manager)])
+    elif blocked == "target":
+        target["name"] = "stale"
+    elif blocked == "stale":
+        state["values"]["performance_mode"] = "stale"
+    elif blocked == "job":
+        monkeypatch.setattr(runtime, "active_job", lambda: True)
+    else:
+        changes = {"webview.token": "invalid"}
+    with pytest.raises(ValueError):
+        manager.test_device_settings(0, changes, target, state["values"])
+    probe.assert_not_called()
+    controls.subprocess.Popen.assert_not_called()
+
+
+@pytest.mark.parametrize("preset", ["manual.other", "macos.mumu_pro"])
+def test_manager_probe_uses_native_read_only_preflight(monkeypatch, preset):
+    from arknights_mower.utils import managed_device
+    from arknights_mower.utils.config import Conf
+    from arknights_mower.utils.device.io_budget import io_timeout
+
+    configuration = Conf().updated({"device": {"preset_id": preset}})
+    preflight, discovery = Mock(), Mock()
+    result = Mock()
+    result.to_dict.return_value = {"ok": True}
+
+    def checked(*args, **kwargs):
+        assert 0 < io_timeout(100) <= 45
+        return result
+
+    preflight.check.side_effect = checked
+    discovery.check_binding.side_effect = checked
+    monkeypatch.setattr(
+        managed_device, "_device_services", lambda conf: (preflight, discovery)
+    )
+    assert managed_device.test_connection(configuration) == {"ok": True}
+    if preset.startswith("manual."):
+        preflight.check.assert_called_once_with(
+            configuration.device, confirmed_package=configuration.device.game_package
+        )
+        discovery.check_binding.assert_not_called()
+    else:
+        discovery.check_binding.assert_called_once_with(
+            configuration.device,
+            preflight,
+            confirmed_package=configuration.device.game_package,
+        )
+        preflight.check.assert_not_called()
+    discovery.discover.assert_not_called()
+    assert io_timeout(100) == 100
+
+
+def selected_targets(manager, indices):
+    return [{"idx": idx, **manager.instances[idx]} for idx in indices]
+
+
+def test_selected_lifecycle_dispatches_only_captured_targets(manager, monkeypatch):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    start = Mock(return_value={"ok": True})
+    monkeypatch.setattr(manager, "start", start)
+    result = manager.control_instances("start", selected_targets(manager, [1]))
+    start.assert_called_once_with(1, manager.instances[1])
+    assert result["results"] == [
+        {
+            "idx": 1,
+            "name": "second",
+            "status": "dispatched",
+            "message": "已派发启动请求",
+        }
+    ]
+
+
+@pytest.mark.parametrize("fault", ["renamed", "duplicate", "missing", "invalid_action"])
+def test_selected_lifecycle_validates_all_targets_before_dispatch(
+    manager, monkeypatch, fault
+):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    targets = selected_targets(manager, [0, 1])
+    action = "start"
+    if fault == "renamed":
+        targets[1]["name"] = "old-name"
+    elif fault == "duplicate":
+        targets[1] = targets[0].copy()
+    elif fault == "missing":
+        targets[1]["idx"] = 99
+    else:
+        action = "remove"
+    start = Mock()
+    monkeypatch.setattr(manager, "start", start)
+    with pytest.raises(ValueError):
+        manager.control_instances(action, targets)
+    start.assert_not_called()
+
+
+def test_selected_start_skips_running_targets_and_keeps_partial_failures(
+    manager, monkeypatch
+):
+    manager.add("second", str(Path(manager.instances[0]["path"]).parent / "second"))
+    monkeypatch.setattr(manager, "_records", lambda: [record(manager)])
+    start = Mock(return_value={"ok": False, "message": "启动失败"})
+    monkeypatch.setattr(manager, "start", start)
+    result = manager.control_instances("start", selected_targets(manager, [0, 1]))
+    assert [row["status"] for row in result["results"]] == ["skipped", "failed"]
+    start.assert_called_once_with(1, manager.instances[1])
+    assert not result["ok"]
+
+
+def test_selected_stop_skips_stopped_targets(manager, monkeypatch):
+    stop = Mock()
+    monkeypatch.setattr(manager, "stop", stop)
+    result = manager.control_instances("stop", selected_targets(manager, [0]))
+    assert result["results"][0]["status"] == "skipped"
+    stop.assert_not_called()
+
+
+@pytest.mark.parametrize("limit", ["deadline", "scan"])
+def test_selected_lifecycle_stops_remaining_dispatch_after_budget_or_scan_failure(
+    manager, monkeypatch, limit
+):
+    for name in ["second", "third"]:
+        manager.add(name, str(Path(manager.instances[0]["path"]).parent / name))
+    start = Mock(return_value={"ok": True})
+    monkeypatch.setattr(manager, "start", start)
+    if limit == "deadline":
+        times = iter([0, 0, 0, 11, 11])
+        monkeypatch.setattr(controls, "monotonic", lambda: next(times))
+    else:
+        monkeypatch.setattr(
+            manager,
+            "_records",
+            Mock(side_effect=[[], runtime.InstanceScanError("无法读取登记")]),
+        )
+    result = manager.control_instances("start", selected_targets(manager, [0, 1, 2]))
+    start.assert_called_once_with(0, manager.instances[0])
+    expected = "skipped" if limit == "deadline" else "failed"
+    assert [row["status"] for row in result["results"]] == [
+        "dispatched",
+        expected,
+        expected,
+    ]
+
+
+def test_selected_lifecycle_rechecks_budget_after_registration_scan(
+    manager, monkeypatch
+):
+    clock = {"now": 0}
+    monkeypatch.setattr(controls, "monotonic", lambda: clock["now"])
+
+    def slow_scan():
+        clock["now"] = 11
+        return []
+
+    monkeypatch.setattr(manager, "_records", slow_scan)
+    start = Mock()
+    monkeypatch.setattr(manager, "start", start)
+    result = manager.control_instances("start", selected_targets(manager, [0]))
+    assert result["results"][0]["status"] == "skipped"
+    start.assert_not_called()
