@@ -394,7 +394,13 @@ export async function renderIncomeImage(
         }
         ctx.font = `${badgeFontSize * scale}px sans-serif`
         ctx.fillStyle = color
-        ctx.fillText(incomeImageMetricText(metric), (x + 30) * scale, (y + 17) * scale, 89 * scale)
+        const text = incomeImageMetricText(metric)
+        if (text.startsWith('-')) {
+          ctx.textAlign = 'right'
+          ctx.fillText('-', (x + 29) * scale, (y + 17) * scale, 3 * scale)
+          ctx.textAlign = 'left'
+        }
+        ctx.fillText(text.replace(/^-/, ''), (x + 30) * scale, (y + 17) * scale, 89 * scale)
       })
     annotationLines.forEach((line, index) => {
       write(line, 28, annotationTop + 16 + index * 16, 10, muted)
