@@ -1759,10 +1759,11 @@ function lineClasses(row) {
 }
 
 .log-detail-toggle {
+  --log-detail-toggle-height: 16px;
   display: inline-grid;
   place-items: center;
   inline-size: var(--log-detail-toggle-width);
-  block-size: 16px;
+  block-size: var(--log-detail-toggle-height);
   margin-inline-start: var(--log-detail-toggle-gap);
   padding: 0;
   border: 0;
@@ -1770,7 +1771,8 @@ function lineClasses(row) {
   background: none;
   color: var(--log-muted-ink);
   cursor: pointer;
-  vertical-align: middle;
+  font-size: inherit;
+  vertical-align: calc(0.4em - var(--log-detail-toggle-height) / 2);
   user-select: none;
   touch-action: manipulation;
 }
