@@ -1586,7 +1586,7 @@ def _core_data_entries(target: Path) -> frozenset[str]:
     for directory in protected_storage_paths(target):
         if directory in roots:
             raise MaaUpdateError(
-                "Mower 数据目录或更新工作区与 MAA 安装目录相同，无法安全更新 MAA"
+                "Mower 数据或 MAA 运行目录与 MAA 安装目录相同，无法安全更新 MAA"
             )
         root = next(
             (candidate for candidate in roots if directory.is_relative_to(candidate)),
@@ -1597,7 +1597,7 @@ def _core_data_entries(target: Path) -> frozenset[str]:
         name = directory.relative_to(root).parts[0]
         if _protected_core_entry(name, frozenset({"python", "resource"})):
             raise MaaUpdateError(
-                f"Mower 数据目录或更新工作区位于 MAA 程序或备份目录内，无法安全更新：{directory}"
+                f"Mower 数据或 MAA 运行目录位于 MAA 程序或备份目录内，无法安全更新：{directory}"
             )
         protected.add(_core_entry_key(name))
     return frozenset(protected)

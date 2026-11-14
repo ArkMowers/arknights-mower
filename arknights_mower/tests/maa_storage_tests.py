@@ -47,6 +47,58 @@ def test_runtime_paths_follow_data_root_and_preserve_legacy_cache(
     assert json.loads(legacy.read_text()) == {"old": {}}
 
 
+@pytest.mark.parametrize("nested_data", ["resource/mower-data", "."])
+def test_cache_migration_excludes_storage_within_legacy_cache(
+    tmp_path, monkeypatch, nested_data
+):
+    target = tmp_path / "MAA"
+    legacy = target / "cache"
+    tasks = legacy / "resource/tasks.json"
+    tasks.parent.mkdir(parents=True)
+    tasks.write_text('{"old": {}}')
+    data = legacy / nested_data
+    (data / "config").mkdir(parents=True)
+    settings = data / "config/conf.yml"
+    settings.write_text("keep: true")
+    monkeypatch.setattr(path, "_data_dir", data)
+    other_runtime = maa_storage.storage_root(tmp_path / "another-maa")
+    other_runtime.mkdir(parents=True)
+    (other_runtime / "marker").write_text("other installation")
+
+    cache = maa_storage.prepare_cache(target)
+
+    assert (cache / "resource/tasks.json").read_text() == tasks.read_text()
+    assert not (cache / "resource/mower-data").exists()
+    assert not (cache / maa_storage.storage_root(target).relative_to(data)).exists()
+    assert not (cache / other_runtime.relative_to(data)).exists()
+    assert (other_runtime / "marker").read_text() == "other installation"
+    assert settings.read_text() == "keep: true"
+
+
+def test_cache_migration_skips_alias_to_mower_data(tmp_path, monkeypatch):
+    target = tmp_path / "MAA"
+    legacy = target / "cache"
+    tasks = legacy / "resource/tasks.json"
+    tasks.parent.mkdir(parents=True)
+    tasks.write_text("{}")
+    data = tmp_path / "mower-data"
+    data.mkdir()
+    alias = legacy / "linked-data"
+    if os.name == "nt":
+        from _winapi import CreateJunction
+
+        CreateJunction(str(data), str(alias))
+    else:
+        alias.symlink_to(data, target_is_directory=True)
+    monkeypatch.setattr(path, "_data_dir", data)
+
+    cache = maa_storage.prepare_cache(target)
+
+    assert (cache / "resource/tasks.json").read_text() == tasks.read_text()
+    assert not (cache / alias.name).exists()
+    assert alias.resolve() == data.resolve()
+
+
 def test_different_data_roots_still_exclude_update_and_recover_after_crash(
     tmp_path, monkeypatch
 ):

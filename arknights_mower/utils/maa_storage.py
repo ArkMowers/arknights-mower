@@ -23,8 +23,8 @@ def protected_storage_paths(target):
     """Include configured aliases and their actual storage locations."""
     root = get_path("@app", space="").resolve()
     runtime = storage_root(target)
-    updates = runtime / "updates"
-    paths = [root, runtime, runtime.resolve(), updates, updates.resolve()]
+    runtime_paths = (runtime, runtime / "updates", runtime / "cache", runtime / "user")
+    paths = [root, *runtime_paths, *(item.resolve() for item in runtime_paths)]
     configured = os.environ.get("MOWER_DATA_DIR")
     if configured:
         alias = Path(os.path.abspath(Path(configured).expanduser()))
@@ -60,7 +60,26 @@ def prepare_cache(target):
             ) as temporary:
                 staged = Path(temporary) / "cache"
                 if legacy.is_dir():
-                    shutil.copytree(legacy, staged)
+                    excluded = {
+                        get_path("@app", space="").resolve(),
+                        get_path("@app/tmp/maa", space="").resolve(),
+                        root.resolve(),
+                        staged.parent.resolve(),
+                    }
+
+                    def ignore_storage(directory, names):
+                        parent = Path(directory).resolve()
+                        return {
+                            name
+                            for name in names
+                            if (entry := parent / name) in excluded
+                            or (
+                                (entry.is_symlink() or entry.is_junction())
+                                and entry.resolve() in excluded
+                            )
+                        }
+
+                    shutil.copytree(legacy, staged, ignore=ignore_storage)
                 else:
                     staged.mkdir()
                 os.replace(staged, cache)

@@ -523,7 +523,7 @@ def install_maa_resource_update(
             for storage in storage_paths:
                 if storage.is_relative_to(absolute) or storage.is_relative_to(resolved):
                     raise MaaUpdateError(
-                        f"Mower 数据目录或更新工作区位于将被替换的 MAA 资源目录内：{storage}，"
+                        f"Mower 数据目录或 MAA 运行目录位于将被替换的 MAA 资源目录内：{storage}，"
                         "请移出该目录后更新资源"
                     )
 
