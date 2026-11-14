@@ -3194,6 +3194,45 @@ describe('log page', () => {
     })
   })
 
+  it('resizes a screenshot from the edge facing the task list', async () => {
+    const gui = useGuiStore()
+    gui.runningLogLayout = 'custom:split:daily,log|tasks,screenshot'
+    state.mower.refs.task_list.value = [{ time: '2026-11-01T14:20:00', plan: {}, type: '跑单' }]
+    const { page, pane, find, sizes } = mountWidePane()
+    const listeners = new Map()
+    document.addEventListener.mockImplementation((name, handler) => listeners.set(name, handler))
+    state.client.post.mockResolvedValue({})
+    page.sc_blob = 'blob:http://latest'
+    page.layout_preference.rail_width = 480
+    page.apply_log_layout()
+    await nextTick()
+
+    const screenshot = find((target) => target.props.class === 'log-screenshot')
+    const screenshotHandle = find((target) => target.props['aria-label'] === '调整截图预览大小')
+    const queue = find((target) => target.props.class === 'task-table-scroll')
+    const inColumn = (target) => screenshot.parent.children.indexOf(target)
+    expect(inColumn(queue)).toBeLessThan(inColumn(screenshotHandle))
+    expect(inColumn(screenshotHandle)).toBeLessThan(inColumn(screenshot))
+
+    const getScreenshotBounds = () => ({ top: 300, height: 270 })
+    pane.querySelector = (selector) =>
+      selector === '.log-screenshot' ? { getBoundingClientRect: getScreenshotBounds } : null
+    screenshotHandle.props.onPointerdown(resizePointer({ y: 296, top: 292 }))
+    listeners.get('pointermove')({ clientY: 338 })
+    listeners.get('pointerup')()
+
+    expect(sizes()['--log-sc-h']).toBe('228px')
+    expect(state.client.post).toHaveBeenCalledExactlyOnceWith('/ui-state/log-layout', {
+      screenshot_height: 228,
+      rail_width: 405
+    })
+
+    gui.runningLogLayout = 'right_rail'
+    await nextTick()
+    expect(inColumn(screenshot)).toBeLessThan(inColumn(screenshotHandle))
+    expect(inColumn(screenshotHandle)).toBeLessThan(inColumn(queue))
+  })
+
   it('keeps the task list in the right column without a screenshot and stacks on mobile', async () => {
     state.mower.refs.task_list.value = [
       { time: '2026-10-31T14:20:00.000', plan: {}, type: { display_value: '跑单' } }

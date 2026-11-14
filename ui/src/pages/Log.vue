@@ -127,6 +127,7 @@ const chat_panel_visible = inject('chat_panel_visible', ref(false))
 const windowMinimized = inject(windowMinimizedKey, ref(false))
 const log_view_menu = inject(logViewMenuKey, null)
 const resizer_height = computed(() => (mobile.value ? 24 : RESIZER_HEIGHT))
+const railLogMinHeightPercent = `${RAIL_LOG_MIN_SHARE * 100}%`
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
 
@@ -340,6 +341,16 @@ const layout_columns = computed(() => {
   if (single_layout.value) return [saved_layout.value.single]
   return [['screenshot', 'tasks', 'log']]
 })
+
+function screenshot_handle_on_top(column) {
+  const tasks = column.indexOf('tasks')
+  return (
+    tasks >= 0 &&
+    tasks < column.indexOf('screenshot') &&
+    (task_table_visible.value || plan_condition_visible.value)
+  )
+}
+
 const rail_entry = use_panel_entry(rail_mode)
 const log_entry = use_panel_entry(computed(() => log_lines.value.length > 0))
 
@@ -500,7 +511,7 @@ function listen_for_layout_resize(onMove, save) {
   document.addEventListener('pointercancel', cancel)
 }
 
-function resize_log_pane(event, pane) {
+function resize_log_pane(event, pane, fromTop = false) {
   event.preventDefault()
   const container = log_layout.value
   if (!container) return
@@ -508,7 +519,10 @@ function resize_log_pane(event, pane) {
   const selector = pane === 'screenshot' ? '.log-screenshot' : '.task-table-scroll'
   const initialBounds = container.querySelector(selector)?.getBoundingClientRect()
   if (!initialBounds) return
-  const initialHeight = event.currentTarget.getBoundingClientRect().top - initialBounds.top
+  const initialHeight = fromTop
+    ? initialBounds.height
+    : event.currentTarget.getBoundingClientRect().top - initialBounds.top
+  const direction = fromTop ? -1 : 1
   const variable = pane === 'screenshot' ? '--log-sc-h' : '--log-task-h'
   const stateKey = pane === 'screenshot' ? 'screenshot_height' : 'task_height'
   let savedSize = null
@@ -518,7 +532,7 @@ function resize_log_pane(event, pane) {
     const zoom = logLayoutZoom(container)
     const paneHeight = bounds.height / zoom
     const bottomReserve = logMinHeight(paneHeight) + resizer_height.value
-    const dragged = (initialHeight + moveEvent.clientY - event.clientY) / zoom
+    const dragged = (initialHeight + direction * (moveEvent.clientY - event.clientY)) / zoom
     let size
     if (pane === 'screenshot') {
       if (rail_mode.value) {
@@ -1409,20 +1423,32 @@ async function db_delete(keys) {
       >
         <template v-for="module in column" :key="module">
           <template v-if="module === 'screenshot'">
-            <n-image
-              v-if="has_screenshot"
-              class="log-screenshot"
-              :src="sc_blob"
-              object-fit="contain"
-            />
-            <div
-              v-if="has_screenshot"
-              class="log-resizer log-resizer-sc"
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="调整截图预览大小"
-              @pointerdown="(event) => resize_log_pane(event, 'screenshot')"
-            ></div>
+            <template v-if="has_screenshot">
+              <template
+                v-for="part in screenshot_handle_on_top(column)
+                  ? ['handle', 'image']
+                  : ['image', 'handle']"
+                :key="part"
+              >
+                <n-image
+                  v-if="part === 'image'"
+                  class="log-screenshot"
+                  :src="sc_blob"
+                  object-fit="contain"
+                />
+                <div
+                  v-else
+                  class="log-resizer log-resizer-sc"
+                  role="separator"
+                  aria-orientation="horizontal"
+                  aria-label="调整截图预览大小"
+                  @pointerdown="
+                    (event) =>
+                      resize_log_pane(event, 'screenshot', screenshot_handle_on_top(column))
+                  "
+                ></div>
+              </template>
+            </template>
           </template>
           <template v-else-if="module === 'tasks'">
             <div v-if="plan_condition_visible" class="plan-condition">
@@ -2135,7 +2161,7 @@ async function db_delete(keys) {
   --log-mono-font:
     'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC', monospace;
   --log-rule: rgb(128 128 128 / 18%);
-  --log-shot-shadow: drop-shadow(0 5px 8px rgba(24, 25, 28, 0.24));
+  --log-shot-shadow: drop-shadow(0 1px 3px rgba(24, 25, 28, 0.12));
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(120px, 1fr) auto;
@@ -2265,7 +2291,7 @@ async function db_delete(keys) {
 
   .log {
     flex: 1 1 0;
-    min-height: min(var(--log-min-h, 120px), v-bind(RAIL_LOG_MIN_SHARE * 100 + '%'));
+    min-height: min(var(--log-min-h, 120px), v-bind(railLogMinHeightPercent));
   }
 
   .log-screenshot {
@@ -3244,7 +3270,7 @@ html[data-window-shell-theme='dark'] .home-container {
   --lg-btn-info-label: #b3def7;
   --log-label-weight: 500;
   --log-rule: rgb(244 240 229 / 12%);
-  --log-shot-shadow: drop-shadow(0 6px 9px rgba(0, 0, 0, 0.55));
+  --log-shot-shadow: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.25));
 }
 
 .execution-control :deep(.n-button),
