@@ -357,6 +357,37 @@ class ReleaseDiscoveryTests(unittest.TestCase):
                     ]
                 )
 
+    def test_auto_check_worker_logs_unreadable_preferences_and_releases_its_slot(self):
+        from arknights_mower.utils import config
+        from arknights_mower.utils.log import logger
+
+        settings = dict(
+            channel="beta",
+            source_branch="alpha",
+            source_remote="origin",
+            auto_check=True,
+            auto_update=False,
+        )
+        for reads in ((settings,), (settings, settings)):
+            error = PermissionError("preferences.json")
+            with (
+                self.subTest(reads=len(reads)),
+                patch.object(config, "updates_enabled", True),
+                patch.object(update, "get_settings", side_effect=(*reads, error)),
+                patch.object(update, "check_on_launch", return_value=True) as check,
+                patch.object(update, "_auto_check_revision", 0),
+                patch.object(update, "_auto_check_thread", None),
+                patch.object(logger, "warning") as warning,
+            ):
+                self.assertTrue(update.request_auto_check()["scheduled"])
+                with update._auto_check_lock:
+                    thread = update._auto_check_thread
+                if thread is not None:
+                    thread.join(5)
+                self.assertIsNone(update._auto_check_thread)
+                warning.assert_called_once_with("自动检查软件更新失败：%s", error)
+                self.assertEqual(check.call_count, len(reads) - 1)
+
     def test_source_release_listing_reads_later_pages(self):
         first_page = [release("v4.1.6-alpha.4", prerelease=True)] * 100
         target = release(
@@ -1930,7 +1961,15 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                     patch("arknights_mower.utils.lifecycle.shutdown", shutdown)
                 )
                 auto_check = stack.enter_context(
-                    patch.object(update, "request_auto_check")
+                    patch.object(
+                        update,
+                        "request_auto_check",
+                        side_effect=(
+                            PermissionError("preferences.json")
+                            if system == "win32" and (restart or automatic)
+                            else None
+                        ),
+                    )
                 )
                 queue = stack.enter_context(patch.object(webview_ui.mp, "Queue"))
                 process = stack.enter_context(

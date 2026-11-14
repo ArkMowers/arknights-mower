@@ -254,6 +254,10 @@ def request_auto_check():
                         _auto_check_thread = None
                         return
                 time.sleep(0.5)
+        except PermissionError as error:
+            from arknights_mower.utils.log import logger
+
+            logger.warning("自动检查软件更新失败：%s", error)
         finally:
             with _auto_check_lock:
                 if _auto_check_thread is current_thread():

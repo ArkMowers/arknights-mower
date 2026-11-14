@@ -1051,7 +1051,10 @@ def _run_desktop():
     from arknights_mower.utils.software_update import request_auto_check
 
     if config.updates_enabled:
-        request_auto_check()
+        try:
+            request_auto_check()
+        except PermissionError as error:
+            logger.warning("启动时无法检查软件更新：%s", error)
 
     def startup_cancelled():
         if (
