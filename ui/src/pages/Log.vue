@@ -2641,10 +2641,10 @@ async function db_delete(keys) {
 
 .plan-condition {
   display: flex;
+  flex: none;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 4px 10px;
-  min-height: 0;
   font-size: 13px;
 }
 
@@ -2705,8 +2705,18 @@ async function db_delete(keys) {
   overflow: hidden;
 }
 
-.log.log-output--alternate {
+.home-container--mobile .log.log-output--alternate {
   flex-basis: auto;
+}
+
+.home-container:not(.home-container--mobile) :deep(.log-output__alternate) {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.home-container:not(.home-container--mobile) .task-table-scroll:has(~ .log.log-output--alternate) {
+  flex-shrink: 1;
+  min-height: 48px;
 }
 
 .log-daily-toggle {
