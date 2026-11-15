@@ -14,15 +14,82 @@ FIXTURES = Path(__file__).parent / "fixtures" / "selection"
 CHESTNUT_SCOPE = ((1699, 895), (1874, 922))
 
 
-def archived_frame(label="settled"):
+def archived_frame(label="settled", *, working=False):
+    filename = (
+        f"training_chestnut_working_{label}_bands_20261115.png"
+        if working
+        else f"training_chestnut_{label}_bands_20261012.png"
+    )
     bands = cv2.cvtColor(
-        cv2.imread(str(FIXTURES / f"training_chestnut_{label}_bands_20261012.png")),
+        cv2.imread(str(FIXTURES / filename)),
         cv2.COLOR_BGR2RGB,
     )
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
     frame[479:506, 545:1920] = bands[:27]
     frame[895:922, 545:1920] = bands[27:]
     return frame
+
+
+@pytest.mark.parametrize("swap_rows", [False, True])
+def test_working_peer_keeps_shadowed_chestnut_using_same_row_width(swap_rows):
+    frame = archived_frame(working=True)
+    if swap_rows:
+        frame[479:506], frame[895:922] = frame[895:922].copy(), frame[479:506].copy()
+    original = frame.copy()
+
+    page = recognition.operator_list_train(frame)
+
+    top = 479 if swap_rows else 895
+    assert ("褐果", ((1699, top), (1874, top + 27))) in page
+    assert len(page) == 12
+    assert [name for name, _ in page].count("褐果") == 1
+    np.testing.assert_array_equal(frame, original)
+
+
+@pytest.mark.parametrize("offset", [-1, 3])
+def test_working_peer_recovery_preserves_own_row_displacement(offset):
+    frame = archived_frame(working=True)
+    # 上行实测右边界为 1876，下行为 1874；位移后仍须在三像素容差内。
+    frame[895:922, 1670:] = np.roll(frame[895:922, 1670:], offset, axis=1)
+
+    assert recognition.operator_list_train(frame)[-1] == (
+        "褐果",
+        ((1699 + offset, 895), (1874 + offset, 922)),
+    )
+
+
+@pytest.mark.parametrize("offset", [-20, 12])
+def test_working_peer_does_not_supply_misaligned_tail(offset):
+    frame = archived_frame(working=True)
+    frame[895:922, 1670:] = np.roll(frame[895:922, 1670:], offset, axis=1)
+
+    assert "褐果" not in [name for name, _ in recognition.operator_list_train(frame)]
+
+
+@pytest.mark.parametrize("missing", ["peer", "same_row"])
+def test_working_peer_requires_both_geometry_references(missing):
+    frame = archived_frame(working=True)
+    if missing == "peer":
+        frame[479:506, 1670:] = 0
+    else:
+        frame[895:922, 545:1670] = 0
+
+    assert "褐果" not in [name for name, _ in recognition.operator_list_train(frame)]
+
+
+def test_working_peer_recovered_geometry_does_not_supply_identity():
+    frame = archived_frame(working=True)
+    frame[896:922, 1699:1874] = 20
+
+    assert recognition.operator_list_train(frame)[-1] == ("", CHESTNUT_SCOPE)
+
+
+def test_working_peer_does_not_recover_clipped_column():
+    frame = archived_frame(working=True)
+    for top in (479, 895):
+        frame[top : top + 27, 545:] = np.roll(frame[top : top + 27, 545:], 80, axis=1)
+
+    assert "褐果" not in [name for name, _ in recognition.operator_list_train(frame)]
 
 
 def test_settled_tail_keeps_chestnut_and_other_card_positions():
@@ -129,13 +196,15 @@ def test_scan_selects_chestnut_from_settled_tail(monkeypatch, mode):
 
 
 @pytest.mark.parametrize("mode", ["medium", "high", "xhigh"])
-def test_held_scan_selects_relocated_chestnut_after_release(monkeypatch, mode):
+@pytest.mark.parametrize("working", [False, True])
+def test_held_scan_selects_relocated_chestnut_after_release(monkeypatch, mode, working):
     from arknights_mower.solvers.base_mixin import BaseMixin
     from arknights_mower.utils import config
     from arknights_mower.utils.recognize import Recognizer
 
     monkeypatch.setattr(config.conf, "performance_mode", mode)
-    held, settled = archived_frame("held"), archived_frame()
+    held = archived_frame("held", working=working)
+    settled = archived_frame(working=working)
     solver = BaseMixin()
     solver.device = SimpleNamespace(
         screencap=MagicMock(return_value=(None, settled, settled[:, :, 0])),
