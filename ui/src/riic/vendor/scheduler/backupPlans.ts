@@ -16,7 +16,9 @@ import {parseProduct} from '../domain/mowerProducts'
 // Mower compatibility semantics: ArkMowers/arknights-mower (MIT, Copyright 2021 Nano).
 // See validation/mower-backup-2026-09-22/implementation-report.md for source contracts.
 import { OPERATOR_MAP } from '../domain/operators'
-import {MowerTask} from './mowerTaskQueue'
+import {MowerTask,MowerTaskQueue} from './mowerTaskQueue'
+import {cloneMowerShiftTask} from './mowerShiftCycle'
+import {planMowerAlphaMetadata} from './mowerAlphaMetadata'
 import {hasMowerPlanningWake} from './mowerOrdinaryPlanningWake'
 import { resolveOperatorCharId as resolveId } from '../domain/operatorIdentifiers'
 import type { MowerRoomId, RosterWorkspace } from '../domain/roster'
@@ -214,7 +216,7 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
     if(base.assumptions.dormOrder)dormOrder=base.assumptions.dormOrder
     const roomOrder=effectiveMowerDormOrder(dormOrder.split(','))
     const ruleErrors=validateMowerRosterRules(workspace);if(ruleErrors.length)fail(ruleErrors.map(error=>error.message).join('；'))
-    const compiled=compileRosterSchedule(workspace,{...base.assumptions,dormOrder:''});compiled.assumptions.defaultsApplied=[...base.assumptions.defaultsApplied]
+    const compiled=compileRosterSchedule(workspace,{...base.assumptions,dormOrder:'',freeRoom:typeof workspace.mainPlan.conf.free_room==='boolean'?workspace.mainPlan.conf.free_room:base.assumptions.freeRoom});compiled.assumptions.defaultsApplied=[...base.assumptions.defaultsApplied]
     if(compiled.diagnostics.some(d=>d.severity==='error'||d.code==='UNKNOWN_OPERATOR'))fail(compiled.diagnostics.map(d=>d.message).join('；'))
     const config=compiledScheduleToRuntimeConfig(compiled);config.mowerAlpha=true;config.mowerDormOrder=roomOrder;config.availableIdleOperators=state.config.availableIdleOperators;config.mowerSingleRecoverySkillNames=state.config.mowerSingleRecoverySkillNames;config.mowerJayeElite0=state.config.mowerJayeElite0;config.mowerDormFillers=state.config.mowerDormFillers
     for(const key of ['adjustForRunOrders','maintenance','maintenanceEndMicros','firstDailyResetMicros'] as const){
@@ -301,6 +303,12 @@ export function createBackupPlanController(base: CompiledSchedule, state: Runtim
       const snapshot=alphaConfiguration(conditions,activeGroup)
       conditions.forEach((value,i)=>{if(value!==active[i])state.events.push({time:state.time,type:'backup-plan',operators:[],backupIndex:i,backupName:plans[i]!.name,active:value,timing:'END'});active[i]=value})
       state.config=snapshot.config;effective=snapshot.compiled;getMowerSourceRuntime(state).data.planConditions=[...active];getMowerSourceRuntime(state).data.backupGroup=activeGroup
+      const source=getMowerSourceRuntime(state),preview=new MowerTaskQueue()
+      if(source.data.freeRoom){
+        preview.tasks=source.queue.tasks.map(cloneMowerShiftTask)
+        planMowerAlphaMetadata(projectMowerArrangements(source.data,[]),preview,[])
+      }
+      source.queue.tasks=[...source.queue.tasks.filter(queued=>queued.type!==T.RELEASE_DORM||queued.strictMoodLimit),...preview.tasks.filter(queued=>queued.type===T.RELEASE_DORM&&!queued.strictMoodLimit)]
       const cancelled=cancelMowerBackupRetentionAdmissions(getMowerSourceRuntime(state).data,getMowerSourceRuntime(state).queue.tasks.filter(pendingTask=>pendingTask!==task))
       getMowerSourceRuntime(state).queue.tasks=getMowerSourceRuntime(state).queue.tasks.filter(pendingTask=>!cancelled.has(pendingTask))
       invalidateMowerExhaustTasks(getMowerSourceRuntime(state).data,getMowerSourceRuntime(state).queue.tasks,exhaust,alphaModel.exhaustRoomContext!(getMowerSourceRuntime(state).data))

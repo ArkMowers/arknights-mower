@@ -136,6 +136,8 @@ class PlanConf(BaseModel):
 
 
 class BackupPlanConf(PlanConf):
+    free_room: Optional[bool] = None
+    "宿舍不养闲人；空值继承此前生效的设置"
     drone_room: Optional[str] = None
     "无人机使用房间；空值继承，空字符串表示加速任意跑单贸易站"
     drone_count_limit: Optional[int] = None

@@ -172,3 +172,50 @@ it('无人机设置随编辑表切换，副表独立保存且清空后继承', a
   expect(droneControls['无人机使用房间'].props.value).toBe('room_3_3')
   expect(droneControls['无人机使用阈值'].props.value).toBe(130)
 })
+
+it('副表不养闲人可继承、开启或关闭，保存重载后保持独立', async () => {
+  const app = createSSRApp(PlanAdvancedSettings)
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  app.provide('mobile', ref(false))
+  const config = app.runWithContext(() => useConfigStore())
+  const plan = app.runWithContext(() => usePlanStore())
+  stores.push(config, plan)
+  config.free_room = true
+  config.drone_room = 'room_3_3'
+  axios.get.mockResolvedValue({
+    data: {
+      plan1: {},
+      conf: {},
+      backup_plans: [
+        { plan: {}, conf: {} },
+        { plan: {}, conf: { free_room: false } }
+      ]
+    }
+  })
+  await plan.load_plan()
+  plan.sub_plan = 0
+  await renderToString(app)
+  let control = droneControls['副表宿舍不养闲人']
+  expect(control.props.value).toBe('inherit')
+  expect(control.props.options.map((option) => option.label)).toEqual(['继承', '开启', '关闭'])
+  control.update('enabled')
+  expect(plan.build_plan().backup_plans[0].conf.free_room).toBe(true)
+  control.update('disabled')
+  expect(plan.build_plan().backup_plans[0].conf.free_room).toBe(false)
+  plan.sub_plan = 1
+  await renderToString(app)
+  control = droneControls['副表宿舍不养闲人']
+  expect(control.props.value).toBe('disabled')
+  control.update('inherit')
+  const saved = plan.build_plan()
+  expect(saved.backup_plans[1].conf.free_room).toBeNull()
+  expect(config.free_room).toBe(true)
+  expect(config.drone_room).toBe('room_3_3')
+  axios.get.mockResolvedValue({ data: structuredClone(saved) })
+  await plan.load_plan()
+  expect(plan.build_plan()).toEqual(saved)
+  plan.sub_plan = 'main'
+  const html = await renderToString(app)
+  expect(html).not.toContain('副表宿舍不养闲人')
+})

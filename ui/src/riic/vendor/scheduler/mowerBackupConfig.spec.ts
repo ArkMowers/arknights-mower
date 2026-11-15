@@ -1,3 +1,4 @@
+import {MowerTask, MOWER_TASK_TYPES as T, toMowerMicros} from './mowerTaskQueue'
 import {getMowerSourceRuntime} from './mowerSourceRuntime'
 import {describe, expect, it} from 'vitest'
 import {createDefaultWorkspace} from '../workbench/defaults'
@@ -10,12 +11,13 @@ import {alphaRestingTier} from './mowerAlphaDorm'
 import {projectMowerArrangements} from './mowerObservations'
 
 const fields = ['rest_in_full', 'exhaust_require', 'workaholic', 'resting_priority', 'resting_priority_replacement', 'free_room_exclusions', 'resting_standby', 'free_blacklist', 'refresh_trading', 'refresh_drained', 'ope_resting_priority'] as const
-function setup(conf: Record<string, unknown>, backups: Record<string, unknown>[]) {
+function setup(conf: Record<string, unknown>, backups: Record<string, unknown>[], options: Parameters<typeof compileRosterSchedule>[1] = {}, withDorm = false) {
   const workspace = createDefaultWorkspace()
   Object.assign(workspace.mainPlan.conf, conf)
   workspace.mainPlan.facilities.room_1_1.slots = [{occupant: {kind: 'operator', operatorId: id('芬')}, groupId: null, replacements: [id('香草')]}]
+  if (withDorm) workspace.mainPlan.facilities.dormitory_1.slots = Array.from({length: 5}, () => ({occupant: {kind: 'free'}, groupId: null, replacements: []}))
   workspace.compatibility.backupPlans = backups.map(conf => ({trigger: 'False', conf}))
-  const base = compileRosterSchedule(workspace)
+  const base = compileRosterSchedule(workspace, options)
   const config = compiledScheduleToRuntimeConfig(base)
   config.mowerAlpha = true
   const state = createRosterRuntime(config)
@@ -277,4 +279,55 @@ it('layers drone settings through activation and restores the main selection on 
   }
   expect(base.rawConf.drone_room).toBe('room_3_3')
   expect(base.rawConf.drone_count_limit).toBe(130)
+})
+
+it.each([false, true])('layers idle-release switches and cancels only ordinary pending releases, main %s', main => {
+  const {state, base, activate} = setup({}, [{free_room: true}, {free_room: false}, {free_room: null}, {}], {freeRoom: main})
+  const before = structuredClone(base.sourceWorkspace)
+  for (const [flags, expected] of [
+    [[true,false,true,true], true],
+    [[true,true,true,true], false],
+    [[true,false,false,false], true],
+    [[false,true,false,false], false],
+    [[false,false,true,true], main],
+  ] as const) {
+    const source = getMowerSourceRuntime(state)
+    const ordinary = new MowerTask({type: T.RELEASE_DORM, time: 10, metadata: 'A'})
+    const strict = new MowerTask({type: T.RELEASE_DORM, time: 11, metadata: 'B', strictMoodLimit: true})
+    const unrelated = new MowerTask({type: T.SKLAND, time: 12})
+    source.queue.tasks.push(ordinary, strict, unrelated)
+    activate([...flags])
+    expect(state.config.mowerPolicy?.freeRoom).toBe(expected)
+    const active = getMowerSourceRuntime(state)
+    expect(active.data.freeRoom).toBe(expected)
+    if (!expected) expect(active.queue.tasks.includes(ordinary)).toBe(false)
+    expect(active.queue.tasks).toContain(strict)
+    expect(active.queue.tasks).toContain(unrelated)
+  }
+  expect(base.sourceWorkspace).toEqual(before)
+})
+
+
+it('creates ordinary releases immediately on activation and deletes them on exit', () => {
+  const {state, activate} = setup({}, [{free_room: true}], {freeRoom: false}, true)
+  const source = getMowerSourceRuntime(state), name = id('香草')
+  const bed = state.config.beds[0]!, index = Number(bed.id.slice(bed.id.lastIndexOf('_') + 1))
+  state.bedOccupants[bed.id] = name
+  const op = source.data.operators[name]!
+  op.currentRoom = bed.roomId; op.currentIndex = index; op.mood = 10; op.timeStampMicros = 0
+  source.data.dorms[0]!.name = name; source.data.dorms[0]!.timeMicros = toMowerMicros(2)
+  const unrelated = new MowerTask({type: T.SKLAND, time: 5})
+  const returning = new MowerTask({type: T.SHIFT_ON, time: 3, plan: {room_1_1: [id('芬')]}})
+  source.queue.tasks.push(unrelated, returning)
+  activate([true])
+  const active = getMowerSourceRuntime(state)
+  const release = active.queue.tasks.find(task => task.type === T.RELEASE_DORM && task.releaseDormTargets()[name])
+  expect(release).toBeDefined()
+  expect(release!.timeMicros).toBe(toMowerMicros(2))
+  expect(active.queue.tasks).toContain(unrelated)
+  expect(active.queue.tasks).toContain(returning)
+  expect(returning.timeMicros).toBe(toMowerMicros(3))
+  activate([false])
+  expect(getMowerSourceRuntime(state).queue.tasks.some(task => task.type === T.RELEASE_DORM && !task.strictMoodLimit)).toBe(false)
+  expect(getMowerSourceRuntime(state).queue.tasks).toContain(returning)
 })

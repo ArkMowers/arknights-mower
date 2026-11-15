@@ -3581,6 +3581,31 @@ class BaseSchedulerSolver(
             task.__dict__.pop(field, None)
         return True
 
+    def _sync_idle_release_tasks(self):
+        ordinary = []
+        if self.op_data.config.free_room:
+            # 复用普通规划的候选、预约和时刻，只替换普通清退；保留当前换班及其他任务。
+            planned = plan_metadata(
+                self.op_data,
+                copy.deepcopy(self.tasks),
+                excluded_names=self._protected_facility_names(),
+                excluded_replacements=self._protected_facility_names(
+                    include_configured=False
+                ),
+            )
+            ordinary = [
+                task
+                for task in planned
+                if task.type == TaskTypes.RELEASE_DORM
+                and not getattr(task, "strict_mood_limit", False)
+            ]
+        self.tasks[:] = [
+            task
+            for task in self.tasks
+            if task.type != TaskTypes.RELEASE_DORM
+            or getattr(task, "strict_mood_limit", False)
+        ] + ordinary
+
     def prepare_release_dorm(self, task):
         """合并任务逐人核验；一人失效不取消其他人的清退。"""
         if not hasattr(task, "release_targets"):
@@ -3620,7 +3645,10 @@ class BaseSchedulerSolver(
                 and getattr(task, "mood_limit", None) in (None, operator.upper_limit)
             )
             or (not strict)
-            and self.op_data.skip_idle_dorm_release(task.meta_data)
+            and (
+                not self.op_data.config.free_room
+                or self.op_data.skip_idle_dorm_release(task.meta_data)
+            )
         ):
             # 配置变化或宿舍保留使本人的清退失效，其他住客分别核验。
             task.plan = {}
@@ -8773,6 +8801,7 @@ class BaseSchedulerSolver(
                     generated_tasks.append(generated)
                 self._log_arrangement("已生成任务", task=generated)
 
+            self._sync_idle_release_tasks()
             # 只重建已有的回班队列，不凭切表制造普通回班。
             if had_rest_schedule:
                 self.plan_metadata()
@@ -11356,6 +11385,7 @@ class BaseSchedulerSolver(
         ):
             self.op_data.swap_plan(previous, refresh=True, backup_group=previous_group)
             raise ValueError(f"上下班最终排班生效失败：{error}")
+        self._sync_idle_release_tasks()
         task.backup_shift_active = True
         activated_changes = backup_changes(self.op_data, previous, conditions)
         if activated_changes:
