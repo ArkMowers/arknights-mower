@@ -3,9 +3,9 @@ import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useResolvedTheme } from '@/composables/theme'
-import { use } from 'echarts/core'
+import { format, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { PieChart } from 'echarts/charts'
+import { CustomChart, PieChart } from 'echarts/charts'
 import { TooltipComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import CubeOutline from '@vicons/ionicons5/es/CubeOutline'
@@ -15,7 +15,7 @@ import TimeOutline from '@vicons/ionicons5/es/TimeOutline'
 import PersonOutline from '@vicons/ionicons5/es/PersonOutline'
 import LeafOutline from '@vicons/ionicons5/es/LeafOutline'
 
-use([CanvasRenderer, PieChart, TooltipComponent])
+use([CanvasRenderer, PieChart, CustomChart, TooltipComponent])
 const axios = inject('axios')
 const { theme: themePreference } = storeToRefs(useConfigStore())
 const theme = useResolvedTheme(themePreference)
@@ -32,6 +32,7 @@ const retrying = ref('')
 const retryError = ref('')
 const emptyData = () => ({ total: 0, materials: [], qualities: [], records: [], comparison: null })
 const data = ref(emptyData())
+const qualityChart = ref(null)
 const failedIcons = reactive(new Set())
 let requestVersion = 0
 let refreshTimer
@@ -77,30 +78,95 @@ const qualityRows = computed(() => {
       probability: expected.find((row) => row.rarity === rarity)?.probability ?? null
     }))
 })
-const chart = computed(() => ({
-  backgroundColor: 'transparent',
-  animationDuration: 350,
-  tooltip: { trigger: 'item', formatter: '{b}：{c} 个（{d}%）' },
-  series: [
-    {
-      type: 'pie',
-      radius: ['66%', '83%'],
-      center: ['50%', '50%'],
-      label: { show: false },
-      itemStyle: {
-        borderRadius: 6,
-        borderWidth: 3,
-        borderColor: theme.value === 'dark' ? '#252a2f' : '#ffffff'
-      },
-      emphasis: { scaleSize: 5 },
-      data: data.value.qualities.map((row) => ({
-        name: qualityLabels[row.rarity] || qualityLabels[0],
-        value: row.count,
-        itemStyle: { color: qualityColors[row.rarity] || qualityColors[0] }
-      }))
+const chart = computed(() => {
+  const total = data.value.qualities.reduce((sum, row) => sum + row.count, 0)
+  let preceding = 0
+  const slices = data.value.qualities.map((row) => {
+    const angle = total ? (row.count / total) * Math.PI * 2 : 0
+    const middle = -Math.PI / 2 + preceding + angle / 2
+    preceding += angle
+    return {
+      name: qualityLabels[row.rarity] || qualityLabels[0],
+      value: row.count,
+      materials: data.value.materials.filter((item) => (item.rarity ?? 0) === (row.rarity ?? 0)),
+      itemStyle: { color: qualityColors[row.rarity] || qualityColors[0] },
+      angle,
+      middle
     }
-  ]
-}))
+  })
+  return {
+    backgroundColor: 'transparent',
+    animationDuration: 350,
+    tooltip: {
+      trigger: 'item',
+      renderMode: 'html',
+      confine: true,
+      enterable: true,
+      formatter: ({ name, value, percent, data: slice }) => {
+        const share = percent ?? Math.round((value / total) * 10000) / 100
+        const materials = slice.materials
+          .map(
+            (item) =>
+              `<div class="quality-tooltip-row"><span>${format.encodeHTML(item.name)}</span><strong>× ${item.count}</strong></div>`
+          )
+          .join('')
+        return `<div class="quality-tooltip"><div class="quality-tooltip-heading">${format.encodeHTML(name)}：${value} 个（${share}%）</div><div class="quality-tooltip-materials">${materials}</div></div>`
+      }
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['66%', '83%'],
+        center: ['50%', '50%'],
+        label: { show: false },
+        itemStyle: {
+          borderRadius: 6,
+          borderWidth: 3,
+          borderColor: theme.value === 'dark' ? '#252a2f' : '#ffffff'
+        },
+        emphasis: { scaleSize: 5 },
+        data: slices
+      },
+      {
+        type: 'custom',
+        coordinateSystem: 'none',
+        z: 3,
+        animation: false,
+        data: slices,
+        // 透明扇区扩大窄扇区的命中范围，可见扇区仍按实际数量绘制。
+        renderItem: (params, api) => {
+          const slice = slices[params.dataIndex]
+          const minimumAngle = Math.PI / 12
+          if (slice.angle <= 0 || slice.angle >= minimumAngle) return
+          const previous = slices[(params.dataIndex + slices.length - 1) % slices.length]
+          const next = slices[(params.dataIndex + 1) % slices.length]
+          const radius = Math.min(api.getWidth(), api.getHeight()) / 2
+          return {
+            type: 'sector',
+            shape: {
+              cx: api.getWidth() / 2,
+              cy: api.getHeight() / 2,
+              r0: radius * 0.61,
+              r: radius * 0.88,
+              startAngle:
+                slice.middle - Math.min(minimumAngle / 2, (previous.angle + slice.angle) / 4),
+              endAngle: slice.middle + Math.min(minimumAngle / 2, (slice.angle + next.angle) / 4)
+            },
+            style: { fill: 'transparent' }
+          }
+        }
+      }
+    ]
+  }
+})
+function showQualityTooltip(rarity) {
+  const dataIndex = data.value.qualities.findIndex((row) => row.rarity === rarity && row.count > 0)
+  if (dataIndex < 0) return
+  qualityChart.value?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex })
+}
+function hideQualityTooltip() {
+  qualityChart.value?.dispatchAction({ type: 'hideTip' })
+}
 function localDate(at) {
   const date = new Date(at)
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
@@ -350,7 +416,8 @@ onUnmounted(() => {
                         @error="failedIcons.add(name)"
                       /><span v-else>◇</span>
                     </div>
-                    <span>{{ name }}</span><strong>× {{ count }}</strong>
+                    <span>{{ name }}</span
+                    ><strong>× {{ count }}</strong>
                   </div>
                 </div>
                 <span v-else class="muted">材料未完整识别，请查看收取截图</span>
@@ -392,19 +459,21 @@ onUnmounted(() => {
             <div class="section-heading">
               <div>
                 <h2>材料品质分布</h2>
-                <p>按获得数量统计</p>
+                <p>悬停扇区或下方品质行，查看材料明细</p>
               </div>
               <n-icon :component="LeafOutline" class="section-icon" />
             </div>
             <div v-if="quantity" class="donut-wrap">
               <v-chart
+                ref="qualityChart"
                 :option="chart"
                 :theme="theme === 'dark' ? 'dark' : undefined"
                 autoresize
                 class="quality-chart"
               />
               <div class="donut-center">
-                <strong>{{ number(quantity, 0) }}</strong><span>材料总数</span>
+                <strong>{{ number(quantity, 0) }}</strong
+                ><span>材料总数</span>
               </div>
             </div>
             <n-empty v-else description="等待首次收取" class="empty-chart" />
@@ -412,7 +481,16 @@ onUnmounted(() => {
               <div class="quality-table-head">
                 <span>材料品质</span><span>实际数量 / 占比</span><span>理论占比</span>
               </div>
-              <div v-for="row in qualityRows" :key="row.rarity ?? 'unknown'" class="quality-row">
+              <div
+                v-for="row in qualityRows"
+                :key="row.rarity ?? 'unknown'"
+                class="quality-row"
+                :tabindex="row.count ? 0 : undefined"
+                @mouseenter="showQualityTooltip(row.rarity)"
+                @mouseleave="hideQualityTooltip"
+                @focus="showQualityTooltip(row.rarity)"
+                @blur="hideQualityTooltip"
+              >
                 <span
                   ><i :style="{ background: qualityColors[row.rarity] || qualityColors[0] }"></i
                   >{{ qualityLabels[row.rarity] || qualityLabels[0] }}</span
@@ -859,6 +937,41 @@ time .n-icon {
 .quality-chart {
   width: 100%;
   height: 100%;
+}
+.quality-chart :deep(.quality-tooltip) {
+  max-width: min(260px, 60vw);
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+}
+.quality-chart :deep(.quality-tooltip-heading) {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.quality-chart :deep(.quality-tooltip-materials) {
+  max-height: min(180px, 35vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.quality-chart :deep(.quality-tooltip-row) {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 3px 0;
+}
+.quality-chart :deep(.quality-tooltip-row span) {
+  overflow-wrap: anywhere;
+}
+.quality-chart :deep(.quality-tooltip-row strong) {
+  white-space: nowrap;
+}
+.quality-row[tabindex='0'] {
+  cursor: help;
+}
+.quality-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 .donut-center {
   position: absolute;
