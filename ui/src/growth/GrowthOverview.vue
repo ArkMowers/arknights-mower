@@ -326,7 +326,13 @@ function formatCount(value) {
           </div>
         </header>
 
-        <div v-if="recommended.length" class="gp-overview__cards">
+        <div
+          v-if="recommended.length"
+          class="gp-overview__cards"
+          role="region"
+          aria-labelledby="growth-pick-title"
+          tabindex="0"
+        >
           <GrowthOperatorCard
             v-for="(card, index) in recommended"
             :key="card.operator.char_id"
@@ -744,8 +750,17 @@ function formatCount(value) {
 
 .gp-overview__cards {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(min(100%, 220px), 1fr);
   gap: 10px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding: 4px;
+  margin: -4px;
+}
+
+.gp-overview__cards > * {
+  scroll-snap-align: start;
 }
 
 .gp-overview__pick-empty {
@@ -763,9 +778,6 @@ function formatCount(value) {
 }
 
 @media (max-width: 720px) {
-  .gp-overview__cards {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .gp-overview__readiness-value {
     font-size: 44px;
   }
