@@ -770,6 +770,7 @@ def test_backup_completion_message_only_follows_successful_activation(
     instance._capture_shift_refresh_rules = Mock()
     instance._invalidate_changed_exhaust_tasks = Mock(return_value=False)
     instance._sync_run_order_tasks = Mock()
+    instance._sync_idle_release_tasks = Mock()
     task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
     task.backup_shift_conditions = [False, True]
 
@@ -792,6 +793,7 @@ def test_backup_completion_message_only_follows_successful_activation(
         if "已激活的副表：" in record.getMessage()
     ]
     assert completed == ([] if failed else ["已激活的副表：夜班；已停用的副表：白班"])
+    assert instance._sync_idle_release_tasks.call_count == (0 if failed else 1)
 
 
 def test_mixed_primary_return_and_unbound_replacements_rest_together(solver):

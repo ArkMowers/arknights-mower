@@ -21,7 +21,7 @@ function schedule(){
 }
 afterEach(()=>vi.restoreAllMocks())
 
-function mandatoryRecoverySchedule(automatic=false){
+function mandatoryRecoverySchedule(automatic=false,freeRoom=false){
  const workspace=createDefaultWorkspace()
  for(const room of Object.values(workspace.mainPlan.facilities)){room.level=0;room.slots=[]}
  const manufacture=workspace.mainPlan.facilities.room_1_1
@@ -30,7 +30,7 @@ function mandatoryRecoverySchedule(automatic=false){
  workspace.mainPlan.conf.rest_in_full=automatic?[]:['char_123_fang']
  const dorm=workspace.mainPlan.facilities.dormitory_1;dorm.level=5
  dorm.slots=[{occupant:{kind:'operator',operatorId:'char_501_durin'},groupId:null,replacements:[]},{occupant:{kind:'free'},groupId:null,replacements:[]}]
- return compileRosterSchedule(workspace,{idleOperators:[]})
+ return compileRosterSchedule(workspace,{idleOperators:[],freeRoom})
 }
 
 function captureMandatoryReturn(kind:'return'|'release',automatic:boolean){
@@ -66,7 +66,7 @@ describe('unresolved native task failures in the final income report',()=>{
   vi.spyOn(productionTimeline,'createProductionTimeline').mockImplementation((...args)=>{
    controller=create(...args);vi.spyOn(controller,'finalize');return controller
   })
-  const report=simulateSchedule(mandatoryRecoverySchedule(automatic),{schedulingModel:'mower-alpha',sampleHours:2,maxEvents:2000,consumptionOverrides:{char_240_wyvern:0},recoveryOverrides:{char_123_fang:0},production:{outputMode:'potential',droneTarget:'none',expectationMode:true,theoreticalMode:true}})
+  const report=simulateSchedule(mandatoryRecoverySchedule(automatic,kind==='release'),{schedulingModel:'mower-alpha',sampleHours:2,maxEvents:2000,consumptionOverrides:{char_240_wyvern:0},recoveryOverrides:{char_123_fang:0},production:{outputMode:'potential',droneTarget:'none',expectationMode:true,theoreticalMode:true}})
   const state=captured.runtime(),source=getMowerSourceRuntime(state)
   expect(report.elapsedHours,JSON.stringify(report.diagnostics)).toBe(2)
   expect(report.success,JSON.stringify(report.diagnostics)).toBe(true)
@@ -88,7 +88,7 @@ describe('unresolved native task failures in the final income report',()=>{
  it.each(mandatoryWaits)('resumes the same real %s after a new full recovery observation, automatic=%s',(kind,automatic)=>{
   const captured=captureMandatoryReturn(kind,automatic),originalTime=captured.task.timeMicros
   let observed=false,failure:unknown
-  const report=simulateSchedule(mandatoryRecoverySchedule(automatic),{schedulingModel:'mower-alpha',sampleHours:4,maxEvents:2000,consumptionOverrides:{char_123_fang:0,char_240_wyvern:0},recoveryOverrides:{char_123_fang:0},production:{outputMode:'potential',droneTarget:'none',expectationMode:true,theoreticalMode:true}},progress=>{
+  const report=simulateSchedule(mandatoryRecoverySchedule(automatic,kind==='release'),{schedulingModel:'mower-alpha',sampleHours:4,maxEvents:2000,consumptionOverrides:{char_123_fang:0,char_240_wyvern:0},recoveryOverrides:{char_123_fang:0},production:{outputMode:'potential',droneTarget:'none',expectationMode:true,theoreticalMode:true}},progress=>{
    if(observed||progress.elapsedHours<1||!captured.task.executionFailure)return
    observed=true;failure=captured.task.executionFailure
    const state=captured.runtime(),data=getMowerSourceRuntime(state).data

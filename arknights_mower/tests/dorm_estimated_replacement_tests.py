@@ -79,11 +79,12 @@ def test_registered_low_card_replaces_full_resident_without_measured_sample(
             task_plan={ROOM: ["Current"] * 4 + ["Free"]},
             meta_data="空爆",
         )
-        if stopped:
-            # 暂停期间不执行普通清退；未登记候选仍等下一轮有效心情检查。
+        if stopped or not free_room:
+            # 暂停或关闭时不执行普通清退；未登记候选仍须等待合法清退。
             assert instance.prepare_release_dorm(instance.task) is False
             assert instance.task.plan == {}
-            assert data.idle_dorm_release_suspended
+            if stopped:
+                assert data.idle_dorm_release_suspended
             assert data.operators["空爆"].current_room.startswith("dormitory")
             assert name not in data.operators
             return
