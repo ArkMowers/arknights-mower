@@ -341,14 +341,19 @@ def operator_list_train(img, draw=False, full_scan=True):
         if front_edge is not None and (back_edge is None or front_edge > back_edge):
             trailing_fronts[yi] = front_edge
 
-    # 右侧阴影可能遮掉一行的亮色右边界；同帧另一行的完整卡片提供宽度。
-    # 两行均须有对齐的实际左边界，缺失或裁切列不能凭固定宽度补出。
+    # 右侧阴影可能遮掉一行的亮色右边界；用同帧完整卡片交叉确认范围。
+    # 工作中遮罩会改变另一行的左边界，此时以本行前一张卡的宽度核对右边界。
     for yi, front in enumerate(trailing_fronts):
         if front is None:
             continue
         for peer_front, peer_scope in zip(complete_fronts[1 - yi], name_p_row[1 - yi]):
             offset = front - peer_front
             left, right = peer_scope[0][0] + offset, peer_scope[1][0] + offset
+            if abs(offset) > 3 and complete_fronts[yi]:
+                previous_right = name_p_row[yi][-1][1][0]
+                right = previous_right + front - complete_fronts[yi][-1]
+                left = right - 175
+                offset = right - peer_scope[1][0]
             if abs(offset) <= 3 and right >= 1790 and right <= img.shape[1]:
                 name_p_row[yi].append(tuple(zip((left, right), name_y[yi])))
                 break
