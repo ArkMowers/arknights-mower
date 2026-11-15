@@ -188,15 +188,13 @@
                   <Feedback />
                   <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
                   <n-modal
-                    v-model:show="showUpdateNoticeModal"
+                    :show="showUpdateNoticeModal"
+                    @update:show="!$event && handleUpdateNoticeAck()"
                     preset="card"
                     style="width: min(720px, calc(100vw - 32px))"
                     title="版本更新"
                     content-style="display: flex; flex-direction: column; overflow: hidden"
-                    :mask-closable="false"
-                    :close-on-esc="false"
                     closable
-                    @close="handleUpdateNoticeAck"
                   >
                     <div style="flex: none; font-size: 18px; font-weight: 600">
                       {{ `已更新到 ${updateNotice.current_version}` }}
@@ -875,13 +873,10 @@ async function renderChangelog() {
 }
 
 async function handleUpdateNoticeAck() {
-  if (!updateNotice.value.current_version) {
-    showUpdateNoticeModal.value = false
-    return
-  }
+  showUpdateNoticeModal.value = false
+  if (!updateNotice.value.current_version) return
   try {
     await ackUpdateNotice(updateNotice.value.current_version)
-    showUpdateNoticeModal.value = false
   } catch (error) {
     console.error('failed to acknowledge update notice', error)
   }
