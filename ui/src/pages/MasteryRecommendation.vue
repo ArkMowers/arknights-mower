@@ -2145,7 +2145,7 @@ const recommendedCards = computed(() => {
     })
     // 候选按排序目标检查本地完成度；等级排序只保留未满级干员，已计划干员不出现。
     .filter((card) => hasRemainingTarget(card.operator, pickSort.value) && !card.plannedCount)
-  return sortRecommendedCards(cards, pickSort.value).slice(0, 4)
+  return sortRecommendedCards(cards, pickSort.value).slice(0, 12)
 })
 
 const operatorCards = computed(() =>
