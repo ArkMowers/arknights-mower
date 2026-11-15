@@ -253,7 +253,12 @@ function observeRoom(s:RuntimeState,rates:RuntimeRates,room:string,task?:MowerTa
   const bed=data.getDormByName(op.name)?.[1];if(bed?.name===op.name)bed.reset()
   if(measuredDeparture)op.depletionRate=0
   op.currentRoom='';currentRoomChanged(s,op);op.currentIndex=-1
-  if(data.alpha&&!measuredDeparture)op.timeStampMicros=undefined
+  if(data.alpha&&!measuredDeparture){
+   const mood=s.morale[op.name]
+   if(!data.policy.predictiveMoodControl&&room.startsWith('dorm')&&op.isHigh()&&op.restInFull&&!op.workaholic&&!op.room.startsWith('dorm')&&Number.isFinite(mood)&&mood!>=0&&mood!<op.upperLimit){
+    op.mood=mood!;op.timeStampMicros=data.nowMicros;op.moodIsPrediction=false;op.depletionRate=0
+   }else op.timeStampMicros=undefined
+  }
   if(data.alpha&&room.startsWith('dorm')&&task?.strictMoodLimit&&task.metadata===op.name)op.restMoodReleaseLimit=op.upperLimit
   if(data.freeRoom&&task&&task.type!==T.SHIFT_OFF){const release=queue.find({type:T.RELEASE_DORM,metadata:op.name});if(release&&release!==task){if(data.alpha){release.removeReleaseDormOperator(op.name);if(!Object.keys(release.plan).length)queue.consume(release)}else queue.consume(release)}}
  }
