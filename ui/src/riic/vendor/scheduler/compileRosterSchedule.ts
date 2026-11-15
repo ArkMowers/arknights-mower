@@ -74,7 +74,7 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
     catch (error) { diagnostics.push({code:'INVALID_POLICY',severity:'error',path:`mainPlan.conf.${key}`,message:error instanceof Error ? error.message : String(error)}) }
   }
   try {readMowerMoodLimits(rawConf,name=>{const id=resolveOperatorCharId(name);if(!isKnown(id))throw new Error('Unknown mood-limit operator: '+name);return id})}catch(error){diagnostics.push({code:'INVALID_MOOD_LIMITS',severity:'error',path:'mainPlan.conf',message:error instanceof Error?error.message:String(error)})}
-  const knownPolicyKeys = new Set(['ling_xi', 'free_blacklist','mood_limits','operator_mood_limits','dorm_order','dorm_order_override', ...LIST_POLICIES])
+  const knownPolicyKeys = new Set(['ling_xi', 'free_room', 'free_blacklist','mood_limits','operator_mood_limits','dorm_order','dorm_order_override', ...LIST_POLICIES])
   for (const key of Object.keys(rawConf)) if (!knownPolicyKeys.has(key)) diagnostics.push({ code: 'UNKNOWN_POLICY', severity: 'warning', path: `mainPlan.conf.${key}`, message: `保留但不执行未知策略 ${key}` })
 
   const operators: CompiledSchedule['operators'] = {}

@@ -50,6 +50,10 @@ export function mergeMowerBackupConfig(base: Record<string, unknown>, backup: Re
     base.dorm_order = typeof backup.dorm_order === 'string' ? backup.dorm_order : ''
     base.dorm_order_override = true
   }
+  if (backup.free_room != null) {
+    if (typeof backup.free_room !== 'boolean') throw new Error('宿舍不养闲人必须为布尔值或空值')
+    base.free_room = backup.free_room
+  }
   if (backup.drone_room != null) {
     if (typeof backup.drone_room !== 'string') throw new Error('无人机使用房间必须为字符串')
     base.drone_room = backup.drone_room

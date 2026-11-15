@@ -18,7 +18,7 @@ const {
   group_resting_thresholds,
   version_update_resting_threshold,
   version_update_threshold_advance_hours,
-  free_room,
+  free_room: main_free_room,
   dorm_isolation,
   merge_interval,
   test_mood_calculation,
@@ -36,6 +36,25 @@ const {
 const currentBackup = computed(() =>
   planStore.sub_plan === 'main' ? null : planStore.backup_plans[planStore.sub_plan]
 )
+const free_room = computed({
+  get: () =>
+    currentBackup.value ? (currentBackup.value.conf.free_room ?? null) : main_free_room.value,
+  set: (value) => {
+    if (currentBackup.value) currentBackup.value.conf.free_room = value
+    else if (value != null) main_free_room.value = value
+  }
+})
+const freeRoomOptions = [
+  { label: '继承', value: 'inherit' },
+  { label: '开启', value: 'enabled' },
+  { label: '关闭', value: 'disabled' }
+]
+const backupFreeRoom = computed({
+  get: () => (free_room.value == null ? 'inherit' : free_room.value ? 'enabled' : 'disabled'),
+  set: (value) => {
+    free_room.value = value === 'inherit' ? null : value === 'enabled'
+  }
+})
 const drone_room = computed({
   get: () =>
     currentBackup.value ? (currentBackup.value.conf.drone_room ?? null) : main_drone_room.value,
@@ -301,7 +320,19 @@ const excludedGroupOptions = computed(() =>
         </mower-input-number>
       </n-form-item>
 
-      <n-form-item :show-label="false">
+      <n-form-item v-if="currentBackup" label="宿舍不养闲人">
+        <n-select
+          v-model:value="backupFreeRoom"
+          aria-label="副表宿舍不养闲人"
+          :options="freeRoomOptions"
+          :disabled="disabled"
+        />
+        <help-text>
+          继承此前生效的设置；多张副表按列表顺序覆盖，退出后恢复主表和其余生效副表的设置。
+          关闭时取消普通满心情清退，仍安排恢复、补床和优先级接管；个人及令夕上限、宿舍保留规则仍生效。
+        </help-text>
+      </n-form-item>
+      <n-form-item v-else :show-label="false">
         <n-checkbox v-model:checked="free_room">
           宿舍不养闲人
           <help-text>
@@ -336,7 +367,7 @@ const excludedGroupOptions = computed(() =>
         </div>
       </n-form-item>
 
-      <n-form-item v-if="free_room">
+      <n-form-item v-if="currentBackup || free_room">
         <template #label>
           <span>任务合并间隔</span>
           <help-text>

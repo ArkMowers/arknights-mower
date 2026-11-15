@@ -326,7 +326,7 @@ def build_global_plan(
             group_resting_thresholds=conf.group_resting_thresholds,
             refresh_trading_config=i["conf"]["refresh_trading"],
             refresh_drained=i["conf"]["refresh_drained"],
-            free_room=conf.free_room,
+            free_room=i["conf"].get("free_room"),
             removed_operators=i["conf"].get("removed_operators", {}),
             drone_room=i["conf"].get("drone_room"),
             drone_count_limit=i["conf"].get("drone_count_limit"),

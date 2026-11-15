@@ -11,7 +11,7 @@ import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './mowerTaskQueu
 
 const room = 'dormitory_1'
 const rates = { workRate: () => 1, recoveryRate: () => 4 }
-function fixture(mood = 12, upperLimit = 12) {
+function fixture(mood = 12, upperLimit = 12, freeRoom = false) {
   const keepers = ['K1', 'K2', 'K3']
   const config: RuntimeConfig = {
     positions: [
@@ -22,7 +22,7 @@ function fixture(mood = 12, upperLimit = 12) {
     beds: [{ id: room + '_3', roomId: room, vip: true }, { id: room + '_4', roomId: room, vip: false }],
     initialMorale: { A: mood, B: 8, R: 24, S: 24, Incoming: 2 }, idleOperators: ['Incoming'],
     mowerAlpha: true,
-    mowerPolicy: { restingThreshold: .65, powerPlantCount: 2, opeRestingPriority: [] },
+    mowerPolicy: { freeRoom, restingThreshold: .65, powerPlantCount: 2, opeRestingPriority: [] },
     mowerTaskScheduling: { adjustForRunOrders: false },
     mowerDeviceTiming: { roomReturnMicros: 500_000 },
     mowerSourcePlan: {
@@ -59,7 +59,7 @@ function finish(f: ReturnType<typeof fixture>) {
 
 describe('confirmed ordinary dorm departure keeps measured morale', () => {
   it.each([12, 24])('stops the old recovery rate after leaving at personal limit %s', upperLimit => {
-    const f = fixture(upperLimit, upperLimit), op = f.source.data.operators.A!
+    const f = fixture(upperLimit, upperLimit, true), op = f.source.data.operators.A!
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.mood).toBe(upperLimit)
@@ -72,7 +72,7 @@ describe('confirmed ordinary dorm departure keeps measured morale', () => {
   })
 
   it('replaces a predicted full mood with the departure observation', () => {
-    const f = fixture(), op = f.source.data.operators.A!
+    const f = fixture(12, 12, true), op = f.source.data.operators.A!
     op.moodIsPrediction = true
     f.source.data.dorms[0]!.timeMicros = f.source.data.nowMicros
     finish(f)
@@ -486,7 +486,7 @@ describe('mandatory full recovery releases read actual recovery before freeing t
 
 describe.each(['direct', 'queued'] as const)('exhaust refresh after measured full departure: %s', path => {
   it.each(['idle-full', 'resting-full', 'resting-underfull', 'resting-predicted', 'resting-unknown', 'working', 'predicted'] as const)('preserves measured full recovery in resting and idle operators when another operator changes room: %s', mode => {
-    const f = fixture(24, 24), op = f.source.data.operators.A!
+    const f = fixture(24, 24, true), op = f.source.data.operators.A!
     finish(f)
     expect(op.currentRoom).toBe('')
     expect(op.timeStampMicros).toBe(toMowerMicros(1))
@@ -518,7 +518,7 @@ describe.each(['direct', 'queued'] as const)('exhaust refresh after measured ful
 
 
 it.each(['direct', 'queued'] as const)('keeps measured full departure when the departing operator triggers %s exhaust refresh', path => {
-  const f = fixture(24, 24), op = f.source.data.operators.A!
+  const f = fixture(24, 24, true), op = f.source.data.operators.A!
   op.exhaustRequire = true
   f.state.config.mowerSourceRules!.refreshDrained = ['A']
   const exhaust = new MowerTask({ time: f.state.time + 1, type: T.EXHAUST_OFF, metadata: 'A' })
@@ -867,4 +867,15 @@ describe('personal cap group return', () => {
     expect(f.source.data.operators.B!.isResting()).toBe(true)
     expect(f.source.data.groupIsResting('g')).toBe(true)
   })
+})
+
+it('cancels a queued ordinary departure at dispatch after its effective switch turns off', () => {
+  const f = fixture(24, 24, true)
+  f.source.data.freeRoom = false
+  f.state.config.mowerPolicy!.freeRoom = false
+  finish(f)
+  expect(f.source.data.operators.A!.currentRoom).toBe(room)
+  expect(f.state.bedOccupants[room + '_3']).toBe('A')
+  expect(f.source.data.operators.B!.currentRoom).toBe(room)
+  expect(f.source.queue.tasks.includes(f.task)).toBe(false)
 })

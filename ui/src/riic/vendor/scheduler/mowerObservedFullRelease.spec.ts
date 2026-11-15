@@ -183,7 +183,6 @@ it.each(['excluded', 'removed-limit', 'changed-limit'] as const)('discards an in
   expect(task.plan).toEqual({})
 })
 
-
 it('still requires measured full recovery for an explicitly configured shared resident release', () => {
   const { data, queue, task, operators } = fixture([{ mood: 23.8, restInFull: true }])
   Object.assign(operators.A!, { group: 'g', operatorType: 'high', room: 'room_1_1', groupBindings: [{ group: 'g', replacement: [] }, { group: 'h', replacement: [] }] })
@@ -224,4 +223,25 @@ describe('personal release alongside a group return', () => {
     expect(returning.timeMicros).toBe(toMowerMicros(5))
     expect(returning.plan.room_1_1).toEqual(['A'])
   })
+})
+
+it('revalidates a saved ordinary release before any mandatory observation when disabled', () => {
+  const {data, queue, task, operators} = fixture([{restInFull: true}])
+  data.freeRoom = false
+  operators.A!.mood = 10
+  const before = structuredClone(data.dorms)
+  expect(prepareMowerRelease(data, queue, task)).toBe(false)
+  expect(task.plan).toEqual({})
+  expect(data.dorms).toEqual(before)
+  expect(operators.A!.currentRoom).toBe('dormitory_1')
+})
+
+it('keeps a personal mood-limit release enabled when idle releases are disabled', () => {
+  const {data, queue, task, operators} = fixture([{restMoodLimit: true, upperLimit: 12, mood: 12}])
+  data.freeRoom = false
+  task.strictMoodLimit = true
+  task.moodLimit = 12
+  expect(prepareMowerRelease(data, queue, task)).toBe(true)
+  expect(task.plan.dormitory_1?.[2]).toBe('Free')
+  expect(operators.A!.currentRoom).toBe('dormitory_1')
 })

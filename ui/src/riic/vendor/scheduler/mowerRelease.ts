@@ -7,6 +7,7 @@ import {MowerResourceWaitError} from './mowerNativeErrors'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import type {MowerTaskSchedulingOptions} from './mowerTaskScheduling'
 export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueue,task:MowerTask,options:MowerTaskSchedulingOptions={}):boolean {
+ if(data.alpha&&!task.strictMoodLimit&&!data.freeRoom){task.plan={};task.releaseTargets={};return false}
  if(data.alpha){
   // Validate all mandatory members before changing a merged release's plan.
   for(const name of mowerMandatoryReleaseNames(data,task)){
@@ -35,7 +36,7 @@ export function prepareMowerRelease(data:MowerSchedulingData,queue:MowerTaskQueu
 
 /** Only mandatory recovery residents need a fresh physical observation before release. */
 export function mowerMandatoryReleaseNames(data:MowerSchedulingData,task:MowerTask):string[]{
- if(!data.alpha||task.strictMoodLimit)return []
+ if(!data.alpha||task.strictMoodLimit||!data.freeRoom)return []
  return Object.entries(task.releaseDormTargets()).flatMap(([name,[room,index]])=>{
   const op=data.operators[name]
   if(!op||op.currentRoom!==room||op.currentIndex!==index)return []

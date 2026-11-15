@@ -73,7 +73,7 @@ class PlanConfig:
         free_blacklist: str = "",
         resting_threshold: float = 0.5,
         refresh_trading_config: str = "",
-        free_room: bool = False,
+        free_room: Optional[bool] = None,
         refresh_drained: str = "",
         ope_resting_priority: str = "",
         resting_standby: str = "",
@@ -224,7 +224,7 @@ class PlanConfig:
         if target.mood_limits is not None:
             n.mood_limits = copy.deepcopy(target.mood_limits)
         n.operator_mood_limits.update(copy.deepcopy(target.operator_mood_limits))
-        for field in ("drone_room", "drone_count_limit"):
+        for field in ("drone_room", "drone_count_limit", "free_room"):
             value = getattr(target, field)
             if value is not None:
                 setattr(n, field, value)
