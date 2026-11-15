@@ -432,6 +432,7 @@ class Operators:
                 "is_resting",
                 "current_mood",
                 "current_room",
+                "current_index",
                 "inventory_count",
                 "facility_type",
                 "facility_product",
