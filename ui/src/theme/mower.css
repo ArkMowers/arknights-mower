@@ -117,6 +117,20 @@ html[data-mower-theme='dark'] .n-checkbox-box {
   color: var(--mower-segment-muted);
 }
 
+/* 弹窗覆盖页面内容，标题栏保留原生窗口操作。 */
+:root:has(.provider--window-shell) {
+  --mower-modal-top: 36px;
+}
+
+:root:has(.provider--window-shell .window-titlebar--native-controls) {
+  --mower-modal-top: calc(36px / var(--mower-zoom, 1));
+}
+
+:root .n-modal-mask,
+:root .n-modal-body-wrapper {
+  top: var(--mower-modal-top, 0px);
+}
+
 /* Cap the modal panel to the app viewport. We deliberately do NOT set
    `overflow: hidden` on the panel itself: naive-ui teleports inner popovers
    (select menus, tooltips, …) into the panel root, so an `overflow` there would
@@ -125,7 +139,7 @@ html[data-mower-theme='dark'] .n-checkbox-box {
    below, which is a separate node, so popovers still fly above it. */
 .n-modal {
   max-width: calc(100dvw / var(--mower-zoom, 1) - 32px);
-  max-height: calc(100dvh / var(--mower-zoom, 1) - 32px);
+  max-height: calc(100dvh / var(--mower-zoom, 1) - var(--mower-modal-top, 0px) - 32px);
 }
 
 .n-base-select-menu {

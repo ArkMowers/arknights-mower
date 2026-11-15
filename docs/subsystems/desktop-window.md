@@ -16,6 +16,20 @@ Managed instance windows close directly and leave the instance running under the
 
 For standalone windows, Cocoa's native close request opens the same frontend close choice as an HTML close button. Cancelling or deferring that choice keeps the window and normal-size tracking active. A confirmed close or supervisor exit proceeds directly. Native requests received before the page is ready wait until the frontend installs its close listener and confirms readiness. The listener acknowledges each delivered close event synchronously; a missing listener after page reload or a failed dispatch retains the request for the next readiness confirmation or native close request, without polling. Closing the window prevents further delivery.
 
+## Modal window access
+
+Modal masks and their content wrappers start below the active shared title bar.
+Dragging, double-click maximization and window controls remain available while a
+modal is open. The reserved height follows page zoom; Cocoa's native-control mode
+keeps its existing inverse-zoom compensation. Ordinary browser pages retain
+full-viewport modal masks. Modal panels fit the remaining viewport height.
+
+The startup version-update notice also closes through Escape or a mask click.
+All dismissal controls acknowledge the displayed version through the existing
+update-notice store. Dismissal hides the notice immediately; a failed
+acknowledgement is logged without blocking access to the page. If confirmation
+was not saved, a later startup can display the notice again.
+
 ## WebView2 response observation
 
 The desktop entry and offline preview register

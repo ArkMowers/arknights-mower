@@ -43,6 +43,8 @@ const state = vi.hoisted(() => ({
   gui: null,
   loaded: null,
   loadUpdateNotice: vi.fn(),
+  updateNotice: null,
+  ackUpdateNotice: vi.fn(),
   loadWatermark: vi.fn(async () => 'mower'),
   closeWindow: vi.fn(),
   route: null,
@@ -88,9 +90,9 @@ vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => stat
 vi.mock('@/stores/gui', () => ({ useGuiStore: () => state.gui }))
 vi.mock('@/stores/updateNotice', () => ({
   useUpdateNoticeStore: () => ({
-    notice: { changelog: '' },
+    notice: state.updateNotice,
     loadUpdateNotice: state.loadUpdateNotice,
-    ackUpdateNotice: vi.fn()
+    ackUpdateNotice: state.ackUpdateNotice
   })
 }))
 vi.mock('@/stores/watermark', () => ({
@@ -275,6 +277,8 @@ describe('desktop page startup', () => {
         return () => state.navigated.splice(state.navigated.indexOf(callback), 1)
       }
     }
+    state.updateNotice = reactive({ changelog: '', current_version: '4.1.6-alpha.15' })
+    state.ackUpdateNotice.mockReset().mockResolvedValue()
     state.client.post.mockResolvedValue({ data: {} })
     state.responseRejected = null
     state.client.interceptors.response.use.mockImplementation((_success, failure) => {
@@ -1348,6 +1352,42 @@ describe('desktop page startup', () => {
     state.loadUpdateNotice.mockResolvedValue({ should_show: true })
     await mount()
     expect(component.showUpdateNoticeModal.value).toBe(true)
+  })
+
+  it('dismisses the update notice immediately and acknowledges the displayed version', async () => {
+    const acknowledgement = deferred()
+    state.ackUpdateNotice.mockReturnValue(acknowledgement.promise)
+    const component = await mount()
+    component.showUpdateNoticeModal.value = true
+    const closing = component.handleUpdateNoticeAck()
+    expect(component.showUpdateNoticeModal.value).toBe(false)
+    expect(state.ackUpdateNotice).toHaveBeenCalledExactlyOnceWith('4.1.6-alpha.15')
+    acknowledgement.resolve()
+    await closing
+  })
+
+  it('keeps the interface accessible when acknowledging an update notice fails', async () => {
+    const error = new Error('offline')
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    state.ackUpdateNotice.mockRejectedValue(error)
+    const component = await mount()
+    component.showUpdateNoticeModal.value = true
+    try {
+      await component.handleUpdateNoticeAck()
+      expect(component.showUpdateNoticeModal.value).toBe(false)
+      expect(logged).toHaveBeenCalledWith('failed to acknowledge update notice', error)
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
+  it('dismisses an update notice without a version without sending an acknowledgement', async () => {
+    const component = await mount()
+    state.updateNotice.current_version = ''
+    component.showUpdateNoticeModal.value = true
+    await component.handleUpdateNoticeAck()
+    expect(component.showUpdateNoticeModal.value).toBe(false)
+    expect(state.ackUpdateNotice).not.toHaveBeenCalled()
   })
 
   it('loads the schedule in parallel and retains the complete initialization barrier', async () => {
