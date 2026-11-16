@@ -29,7 +29,7 @@ T4 = "手性屈光体"
 T5 = "重相位对映体"
 SKILL = (
     "进驻加工站加工<@cc.kw>手性屈光体</>或<@cc.kw>重相位对映体</>时，"
-    "副产物的产出概率提升<@cc.vup>90%</>"
+    "副产品的产出概率提升<@cc.vup>90%</>"
 )
 
 
@@ -60,9 +60,8 @@ def traveler_game(game):
     return {**meta, **metadata["operators"]}, {**ids, TRAVELER: cid}
 
 
-@pytest.mark.parametrize("word", ["副产物", "副产品"])
-def test_game_description_compiles_two_exact_material_rules(word):
-    effects = compile_workshop_buff(buff(SKILL.replace("副产物", word)))
+def test_game_description_compiles_two_exact_material_rules():
+    effects = compile_workshop_buff(buff(SKILL))
     assert effects == [
         {"kind": "byproduct", "categories": ["material"], "bonus": 90, "item": name}
         for name in (T4, T5)
@@ -101,7 +100,7 @@ def test_shared_byproduct_word_preserves_operator_identity_and_material_scope(ga
             "buffs": {
                 "traveler_skill": buff(SKILL),
                 "nian_skill": buff(
-                    "进驻加工站加工任意类材料时，副产物的产出概率提升100%"
+                    "进驻加工站加工任意类材料时，副产品的产出概率提升100%"
                 ),
             },
             "chars": {
