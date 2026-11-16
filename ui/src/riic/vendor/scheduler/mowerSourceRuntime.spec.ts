@@ -567,8 +567,8 @@ describe('calculated scheduling mood remains separate from observations',()=>{
 
 
 describe('calculated mood observations survive scheduling cache invalidation',()=>{
- it('readmits a partially recovered full-rest primary after actual departure invalidates its raw timestamp',()=>{
-  const {state,data}=calculatedMoodFixture()
+ it.each([true,false])('readmits a partially recovered full-rest primary (calculated mood: %s)',enabled=>{
+  const {state,data}=calculatedMoodFixture(enabled)
   data.operators.A!.restInFull=true;data.operators.A!.exhaustRequire=true
   mowerUpdateDetail(data,'R',24,'room_1_1',0,true)
   mowerUpdateDetail(data,'A',23.475943578706268,'dormitory_1',4,true)
@@ -578,7 +578,7 @@ describe('calculated mood observations survive scheduling cache invalidation',()
   departure.backupShiftActive=true;source.queue.tasks=[departure]
   for(let n=0;n<6&&source.queue.tasks.includes(departure);n++){settleRoster(state,rates);advanceRoster(state,.5/3600,rates)}
   const op=data.operators.A!
-  expect(op.currentRoom).toBe('');expect(op.timeStampMicros).toBeUndefined()
+  expect(op.currentRoom).toBe('');expect(op.timeStampMicros).toBe(enabled?undefined:data.nowMicros)
   getMowerSourceRuntime(state)
   expect(mowerSchedulingMoodObservation(data,'A')?.[0]).toBeLessThan(24)
   expect(mowerOffDutyFullRecoveryMembers(data).has('A')).toBe(true)
