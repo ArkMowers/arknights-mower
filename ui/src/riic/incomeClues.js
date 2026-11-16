@@ -1,3 +1,4 @@
+import { receptionOccupancyBonus } from './receptionEfficiency'
 import { operatorFor, hasOperatorSkill } from './vendor/domain/operatorContext'
 import {
   compileOperatorInventory,
@@ -28,7 +29,7 @@ export function clueEfficiency(config, phases, tenure = new Map()) {
     const operator = operatorFor(config, id)
     const phase = phases.get(id)
     if (!operator || phase === undefined) throw new Error(`缺少会客室干员练度：${id}`)
-    bonus += ({ 4: 2, 5: 4, 6: 5 }[operator.rarity] ?? 0) + phase * 8
+    bonus += receptionOccupancyBonus(operator.rarity, phase)
     if (!awake.includes(id)) continue
     bonus += 5
     for (const skill of operator.skills) {

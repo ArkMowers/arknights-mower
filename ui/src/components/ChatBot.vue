@@ -597,7 +597,7 @@ const suggestions = [
   { title: '排查连接', description: '设备连接失败，应该先检查什么？', icon: DocumentTextOutline },
   {
     title: '尝试排班',
-    description: '结合我的森空岛干员练度和基建组合，尝试安排基建主班。',
+    description: '结合我的森空岛干员练度和基建干员推荐，尝试安排基建主班。',
     icon: GridOutline
   },
   { title: '查看专精', description: '帮我查看当前专精计划的状态。', icon: SchoolOutline },

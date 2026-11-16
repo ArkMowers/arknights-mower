@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { builtinGroups } from '@/data/baseGroups'
+import { builtinGroups, singleRecommendations } from '@/data/baseGroups'
 import catalog from '../../../arknights_mower/data/building_skill.json'
 import { filterGroups, groupFacilities, groupMembers } from './baseGroups'
 
@@ -19,10 +19,9 @@ describe('只读基建组合', () => {
     expect(filterGroups([group], [], { search })).toEqual([group])
   })
 
-  it('预置顺序、分类与名称保持可解析，跑单干员置顶', () => {
+  it('预置顺序、分类与名称保持可解析，跑单干员归入散件', () => {
     const names = new Set(catalog.map((operator) => operator.name))
     expect(builtinGroups.map((group) => group.title)).toEqual([
-      '跑单干员',
       '人间烟火',
       '感知信息',
       '龙门近卫局',
@@ -31,19 +30,30 @@ describe('只读基建组合', () => {
       '深海猎人',
       '红松林',
       '精英干员',
-      '莱茵科技',
+      '莱茵生命',
       '结城理·S.E.E.S.',
       '鸿雪杜林组',
       '叙拉古',
-      '能天使',
+      '拉特兰贸易',
       '格拉斯哥帮',
-      '喀兰贸易',
+      '孑贸易',
       '金属工艺',
       '泡泡仓库',
       '红云经验',
-      '黑钢标准化'
+      '黑钢标准化',
+      '阿罗玛槐琥',
+      '熊团经验',
+      '魔物料理',
+      '巴别塔中枢',
+      '玛恩纳中枢减耗',
+      'Ave Mujica 乐队'
     ])
-    expect(builtinGroups[0].core).toEqual(['但书', '龙舌兰', '佩佩', '可露希尔'])
+    expect(singleRecommendations.find((group) => group.id === 'builtin-run-order')).toMatchObject({
+      kind: 'roster',
+      facility: '贸易',
+      core: ['但书', '龙舌兰', '可露希尔', '佩佩']
+    })
+    expect(builtinGroups.some((group) => group.id === 'builtin-run-order')).toBe(false)
     expect(new Set(builtinGroups.map((group) => group.id)).size).toBe(builtinGroups.length)
     expect(
       Object.fromEntries(
@@ -52,7 +62,18 @@ describe('只读基建组合', () => {
           builtinGroups.filter((group) => group.facility === facility).length
         ])
       )
-    ).toEqual({ 通用: 9, 金属: 3, 贸易: 6, 经验: 2 })
+    ).toEqual({
+      通用: 10,
+      金属: 4,
+      贸易: 5,
+      经验: 3,
+      源石: 0,
+      发电: 0,
+      中枢: 3,
+      办公: 0,
+      会客: 0,
+      回收: 0
+    })
     for (const group of builtinGroups) {
       const members = [...group.core, ...group.support, ...group.accessory]
       expect(group.core.length).toBeGreaterThan(0)
@@ -101,10 +122,10 @@ describe('只读基建组合', () => {
   it('搜索覆盖挂件、拼音和条件，同时保持原始预置顺序与内容', () => {
     const previous = JSON.stringify(builtinGroups)
     expect(filterGroups(builtinGroups, [], { search: 'Lancet-2' })).toEqual([automation])
-    expect(filterGroups(builtinGroups, [], { search: '0心情', facility: '金属' })).toEqual([
+    expect(filterGroups(builtinGroups, [], { search: '非153', facility: '金属' })).toEqual([
       automation
     ])
-    expect(filterGroups(builtinGroups, [], { search: 'dongshi' })).toEqual([automation])
+    expect(filterGroups(builtinGroups, [], { search: 'dongshi' })).toContain(automation)
     expect(filterGroups(builtinGroups, [], { search: '不存在' })).toEqual([])
     expect(JSON.stringify(builtinGroups)).toBe(previous)
   })
@@ -121,7 +142,22 @@ describe('只读基建组合', () => {
     expect(
       groupMembers(byTitle['精英干员'], []).find((member) => member.name === '真言')
     ).toMatchObject({ role: 'support', note: '目前5精干35%贸易' })
-    expect(byTitle['莱茵科技'].note).toBe('需要5名莱茵生命干员（不含缪尔赛思）')
+    expect(byTitle['莱茵生命'].note).toBe('需要5名莱茵生命干员（不含缪尔赛思）')
+    expect(byTitle['莱茵生命'].core).toEqual(['多萝西', '娜斯提'])
+    expect(byTitle['莱茵生命'].support).toEqual(['淬羽赫默', '缪尔赛思'])
+    expect(byTitle['莱茵生命'].accessory).toEqual([
+      '赫默',
+      '伊芙利特',
+      '塞雷娅',
+      '白面鸮',
+      '梅尔',
+      '麦哲伦',
+      '星源'
+    ])
+    for (const name of byTitle['莱茵生命'].accessory) {
+      expect(byTitle['莱茵生命'].memberNotes[name]).toBe('不可0心情')
+    }
+    expect(byTitle['黑钢标准化'].support).toEqual(['杏仁', '褐果'])
     expect(byTitle['感知信息'].note).toBe('如在意公招效率，不推荐使用')
     expect(byTitle['深海猎人'].support).toEqual(['深巡'])
     expect(byTitle['红松林'].facility).toBe('经验')
@@ -131,7 +167,7 @@ describe('只读基建组合', () => {
     for (const name of byTitle['鸿雪杜林组'].accessory) {
       expect(byTitle['鸿雪杜林组'].memberNotes[name]).toBe('不可0心情')
     }
-    expect(byTitle['泡泡仓库'].support).toEqual(['圣约送葬人', '贝娜'])
+    expect(byTitle['泡泡仓库'].support).toEqual(['圣约送葬人', '刻俄柏', '贝娜'])
     expect(byTitle['泡泡仓库'].memberNotes['圣约送葬人']).toBe('经验')
   })
   it('缺失快照保持未知，挂件缺员不影响核心持有筛选', () => {

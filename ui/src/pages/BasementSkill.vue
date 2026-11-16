@@ -101,8 +101,12 @@
             </template>
           </n-virtual-list>
         </n-tab-pane>
-        <n-tab-pane name="groups" tab="基建组合" display-directive="show:lazy">
-          <BaseGroups :items="skill_items" :base-conditions="snapshot?.base_conditions" />
+        <n-tab-pane name="groups" tab="基建干员推荐" display-directive="show:lazy">
+          <BaseGroups
+            :items="skill_items"
+            :base-conditions="baseConditions"
+            :condition-source="conditionSource"
+          />
         </n-tab-pane>
       </n-tabs>
     </div>
@@ -117,6 +121,8 @@ import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useBasementSkill } from '@/stores/basementSkill'
+import { usePlanStore } from '@/stores/plan'
+import { planRecommendationConditions } from '@/utils/baseRecommendationConditions'
 import {
   annotateBasementSkills,
   filterBasementSkills,
@@ -125,6 +131,25 @@ import {
 } from '@/utils/basementSkills'
 
 const { skill, load, snapshot, loadOwnedOperators: readOwnedOperators } = useBasementSkill()
+const planStore = usePlanStore()
+const planDefaults = computed(() => {
+  try {
+    return planRecommendationConditions(planStore.plan, planStore.facility_levels)
+  } catch {
+    return {}
+  }
+})
+const baseConditions = computed(() => ({
+  ...snapshot.value?.base_conditions,
+  ...planDefaults.value
+}))
+const conditionSource = computed(() =>
+  Object.keys(planDefaults.value).length
+    ? '默认条件取当前主排班；宿舍等级取最高。条件可手动调整。'
+    : Object.keys(snapshot.value?.base_conditions || {}).length
+      ? '默认条件取森空岛设施快照；宿舍等级取最高。条件可手动调整。'
+      : ''
+)
 const activePane = ref('skills')
 const showFilters = ref(false)
 const loading = ref(false)

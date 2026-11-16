@@ -91,7 +91,7 @@
         "phase_level": "精2 1级",
         "skillname": "指尖的光",
         "roomType": "加工站",
-        "des": "进驻加工站加工<@cc.kw>手性屈光体</>或<@cc.kw>重相位对映体</>时，副产物的产出概率提升<@cc.vup>90%</>",
+        "des": "进驻加工站加工<@cc.kw>手性屈光体</>或<@cc.kw>重相位对映体</>时，副产品的产出概率提升<@cc.vup>90%</>",
         "skillIcon": "bskill_ws_Refractor",
         "buffCategory": "FUNCTION"
       }
