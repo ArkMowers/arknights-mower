@@ -525,7 +525,7 @@ def test_queued_start_rechecks_joint_admission_before_any_room_mutation(
         "arknights_mower.utils.mastery_support_data.trainee_schedule_conflict",
         lambda _: None,
     )
-    solver = MagicMock()
+    solver = MagicMock(tasks=[], waiting_group_shifts=[])
     mastery._start_new_training(solver, db.get_plan_by_id(first))
     assert solver.mock_calls == []
     assert db.get_plan_by_id(first)["status"] == "idle"
