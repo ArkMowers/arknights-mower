@@ -1270,6 +1270,51 @@ class BaseMixin:
             return 0, self.observe_agent_page(actual, full_scan=full_scan, train=train)
         return 0
 
+    def agent_station_filter(self, status=None):
+        """读取或设置进驻筛选；确认菜单展开后才点击选项。"""
+        options = {"全部": 137, "宿舍锁定": 213, "未进驻": 289}
+        if status is not None and status not in options:
+            raise ValueError(f"未知进驻筛选：{status}")
+
+        def observe():
+            if config.stop_mower.is_set():
+                raise MowerExit
+            self.require_agent_selection_page()
+            text = self.read_screen(
+                self.recog.img, type="text", cord=((1600, 35), (1715, 82))
+            )
+            current = "全部" if text == "进驻状态" else text
+            if current not in options:
+                raise AgentSelectionNotReady("未识别进驻筛选，取消心情扫描")
+            opened = (
+                self.read_screen(
+                    self.recog.img, type="text", cord=((1645, 115), (1710, 163))
+                )
+                == "全部"
+            )
+            return current, opened
+
+        current, opened = observe()
+        if status is None:
+            return current
+        if current == status and not opened:
+            return current
+        poll_interval, max_attempts = self.selection_transition_timing()
+
+        def wait_for(predicate):
+            for _ in range(max_attempts):
+                self.sleep(poll_interval)
+                if predicate(*observe()):
+                    return
+            raise AgentSelectionNotReady("进驻筛选尚未生效，取消心情扫描")
+
+        if not opened:
+            self.tap((1675, 60), interval=0.1)
+            wait_for(lambda value, menu: menu)
+        self.tap((1675, options[status]), interval=0.1)
+        wait_for(lambda value, menu: value == status and not menu)
+        return status
+
     def profession_filter(self, profession=None):
         """
                     confirm_blue	confirm_train

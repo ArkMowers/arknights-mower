@@ -4,7 +4,7 @@ import copy
 import pickle
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -52,6 +52,7 @@ def solver(op_data, monkeypatch):
     instance.no_pending_task = MagicMock(return_value=True)
     instance.swipe_left = MagicMock()
     instance.switch_arrange_order = MagicMock()
+    instance.agent_station_filter = MagicMock(return_value="全部")
     instance.wait_for_agent_page = MagicMock(return_value=[("银灰", 0), ("红", 1)])
     instance.swipe_agent_page = MagicMock(return_value=(1, None))
     return instance
@@ -85,6 +86,94 @@ def test_startup_scans_cards_without_selection_or_occupancy_changes(solver, task
     solver.back_to_infrastructure.assert_called_once()
     assert not solver.enter_room.call_args.args[0].startswith("dorm")
     assert not has_resting_mood(data.operators["银灰"])
+
+
+@pytest.mark.parametrize("original", ["全部", "宿舍锁定", "未进驻"])
+@pytest.mark.parametrize("failure", [None, RuntimeError("page failed"), MowerExit()])
+def test_idle_scan_restores_station_filter_before_leaving(solver, original, failure):
+    solver.agent_station_filter.return_value = original
+    events = MagicMock()
+    events.attach_mock(solver.agent_station_filter, "filter")
+    events.attach_mock(solver.wait_for_agent_page, "scan")
+    events.attach_mock(solver.back_to_infrastructure, "leave")
+    if failure is not None:
+        solver.wait_for_agent_page.side_effect = failure
+    if isinstance(failure, MowerExit):
+        with pytest.raises(MowerExit):
+            solver._read_initial_card_mood()
+    else:
+        solver._read_initial_card_mood()
+    assert solver.agent_station_filter.call_args_list == [
+        call(),
+        call("未进驻"),
+        call(original),
+    ]
+    assert events.mock_calls.index(call.filter("未进驻")) < next(
+        i for i, entry in enumerate(events.mock_calls) if entry[0] == "scan"
+    )
+    assert events.mock_calls[-2:] == [call.filter(original), call.leave()]
+
+
+def test_idle_green_boundary_preserves_stationed_estimates_and_unknowns(
+    solver, monkeypatch
+):
+    from arknights_mower.utils import config
+
+    monkeypatch.setattr(config.conf, "test_mood_calculation", True)
+    now = datetime.now()
+    data = solver.op_data
+    data.operators["爱丽丝"].current_room = ROOM
+    data.operators["杜林"].current_room = "meeting"
+    data.operators["闪灵"].current_room = "train"
+    data.dorm_mood_estimates["爱丽丝"] = (5, now)
+    data.mood_model.observe("爱丽丝", 5, now)
+    solver.wait_for_agent_page.return_value = [("红", 1)]
+
+    solver._read_initial_card_mood()
+
+    assert data.dorm_mood_estimates["爱丽丝"] == (5, now)
+    assert data.mood_model.moods["爱丽丝"] == 5
+    for name in ("杜林", "闪灵"):
+        assert name not in data.dorm_mood_estimates
+        assert name not in data.mood_model.moods
+    assert data.dorm_mood_estimates["迷迭香"][0] == 24
+    assert data.mood_model.moods["迷迭香"] == 24
+
+
+@pytest.mark.parametrize("purpose", ["workshop", "mastery"])
+def test_special_mood_scan_includes_stationed_candidates_and_restores_filter(
+    solver, purpose
+):
+    if purpose == "workshop":
+        solver.op_data.plan["factory"] = [object()]
+    solver.agent_station_filter.return_value = "宿舍锁定"
+    solver.wait_for_agent_page.return_value = [("红", 1)]
+    solver._scan_card_moods(**{purpose: True})
+    assert solver.agent_station_filter.call_args_list == [
+        call(),
+        call("全部"),
+        call("宿舍锁定"),
+    ]
+    assert solver.op_data.dorm_mood_estimates["空爆"][0] == 24
+
+
+def test_unreadable_station_filter_skips_scan_without_guessing_original(solver):
+    solver.agent_station_filter.side_effect = RuntimeError("unreadable filter")
+    solver._read_initial_card_mood()
+    solver.wait_for_agent_page.assert_not_called()
+    solver.agent_station_filter.assert_called_once_with()
+    solver.back_to_infrastructure.assert_called_once()
+
+
+def test_failed_filter_restore_still_leaves_selection(solver):
+    solver.agent_station_filter.side_effect = [
+        "全部",
+        "未进驻",
+        RuntimeError("restore failed"),
+    ]
+    with pytest.raises(RuntimeError, match="restore failed"):
+        solver._read_initial_card_mood()
+    solver.back_to_infrastructure.assert_called_once()
 
 
 @pytest.mark.parametrize("failure", ["unreadable", "not_owned", "page_failed"])

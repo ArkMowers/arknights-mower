@@ -589,6 +589,7 @@ def test_initial_cards_seed_multiple_pages_without_overwriting_actual_room_mood(
         "tap",
         "swipe_left",
         "switch_arrange_order",
+        "agent_station_filter",
         "back_to_infrastructure",
     ):
         setattr(solver, method, MagicMock())
@@ -605,7 +606,8 @@ def test_initial_cards_seed_multiple_pages_without_overwriting_actual_room_mood(
     assert data.mood_model.moods["银灰"] == 3
     assert data.mood_model.moods["伊内丝"] == 7
     assert "能天使" not in data.mood_model.moods
-    assert data.mood_model.moods["讯使"] == 24
+    assert "讯使" not in data.mood_model.moods
+    assert data.mood_model.moods["迷迭香"] == 24
     assert solver.wait_for_agent_page.call_count == 2
     solver.defer_backup_plan_until_mood_read = False
     solver._card_moods_scanned_this_run = False
