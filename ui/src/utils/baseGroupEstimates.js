@@ -278,16 +278,17 @@ export function estimateGroup(group, selection, input = {}, items = []) {
   result.assumptions = [...assumedNames, ...missingNames]
   // Accessories supply roster conditions only, including explicit hypothetical ownership.
   const present = (name) => selected.has(name)
-  const externalHas = (name, key = 0) => {
-    if (!present(name)) return false
+  const externalSkill = (name, key = 0) => {
+    if (!present(name)) return undefined
     const entries = skillsFor(name)
     if (!entries?.length || entries.some((entry) => entry.status === 'unknown')) {
       result.valid = false
       result.warnings.push(`${name}缺少基建技能目录，无法计算`)
-      return false
+      return undefined
     }
-    return entries.some((entry) => entry.skill_key === key && entry.status === 'active')
+    return entries.find((entry) => entry.skill_key === key && entry.status === 'active')
   }
+  const externalHas = (name, key = 0) => Boolean(externalSkill(name, key))
   const count = (names, predicate = on) => names.filter(predicate).length
   const familyCount = (names, prefix) =>
     names
@@ -579,7 +580,7 @@ export function estimateGroup(group, selection, input = {}, items = []) {
       detail('按指定发电站和宿舍配置展示精二技能参考值，不用手填工程机器人数量')
     } else if (name === '玛露西尔')
       factoryMetric(
-        (has(name) ? (tier(name) === 1 ? 30 : 15) : 0) +
+        (has(name) ? (tier(name) === 1 ? 30 : 20) : 0) +
           (has(name, 1) && has('森西', 1) ? options.cuisineDorm : 0)
       )
     else if (name === '机械师')
@@ -739,7 +740,8 @@ export function estimateGroup(group, selection, input = {}, items = []) {
             (tier(name) === 1 ? 30 : 25) +
             (present('伊内丝') ? 5 : 0) +
             (tier(name) === 1 && present('W') ? 5 : 0)
-          cap = externalHas('维什戴尔') ? 2 : 0
+          const wisadel = externalSkill('维什戴尔')
+          cap = wisadel ? (wisadel.skill_level === 1 ? 2 : 1) : 0
         }
         if (name === '瑰盐') {
           base = has(name, 1) ? 30 : 0
@@ -784,7 +786,7 @@ export function estimateGroup(group, selection, input = {}, items = []) {
       break
     }
     case 'builtin-ursus': {
-      const winter = has('怒潮凛冬') ? 30 + (on('烈夏') ? 10 : 0) : 0
+      const winter = has('怒潮凛冬') ? 30 + (tier('怒潮凛冬') === 1 && on('烈夏') ? 10 : 0) : 0
       const leto = has('烈夏', 1) && on('古米') ? 35 : 0
       factoryMetric(winter + leto, '经验')
       if (has('古米')) tradeMetric(30)
@@ -807,7 +809,7 @@ export function estimateGroup(group, selection, input = {}, items = []) {
       const cuisine = has('森西', 1) ? options.cuisineDorm : 0
       if (on('玛露西尔'))
         factoryMetric(
-          (has('玛露西尔') ? (tier('玛露西尔') === 1 ? 30 : 15) : 0) +
+          (has('玛露西尔') ? (tier('玛露西尔') === 1 ? 30 : 20) : 0) +
             (has('玛露西尔', 1) ? cuisine : 0)
         )
       if (on('齐尔查克'))

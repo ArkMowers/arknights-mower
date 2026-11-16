@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import catalog from '../../../arknights_mower/data/building_skill.json'
-import { builtinGroups, singleRecommendations } from '@/data/baseGroups'
+import { allGroupOptions, builtinGroups, singleRecommendations } from '@/data/baseGroups'
 import {
   applyEstimateConditions,
   defaultEstimateOptions,
@@ -10,7 +10,7 @@ import {
 } from './baseGroupEstimates'
 
 const group = (suffix) =>
-  [...builtinGroups, ...singleRecommendations].find((entry) => entry.id === `builtin-${suffix}`)
+  [...allGroupOptions, ...singleRecommendations].find((entry) => entry.id === `builtin-${suffix}`)
 function roster(names, phases = {}) {
   return names.map((name) => {
     const source = catalog.find((entry) => entry.name === name)
@@ -42,6 +42,56 @@ function value(result, label) {
 }
 
 describe('基建组合效率估算', () => {
+  it.each([0, 1, 2])('精%s玛露西尔的散件和料理组合按当前技能计算制造加成', (phase) => {
+    const names = ['玛露西尔', '森西']
+    const items = roster(names, { 玛露西尔: phase })
+    const entries = [
+      singleRecommendations.find((entry) => entry.id === 'single-玛露西尔'),
+      group('cuisine')
+    ]
+    for (const entry of entries) {
+      const result = estimateGroup(entry, names, { cuisineDorm: 5 }, items)
+      expect(result.valid).toBe(true)
+      expect(result.assumptions).toEqual([])
+      expect(value(result, '通用制造生产力')).toBe(phase === 2 ? 35 : 20)
+      const alone = estimateGroup(entry, ['玛露西尔'], { cuisineDorm: 5 }, items)
+      expect(value(alone, '通用制造生产力')).toBe(phase === 2 ? 30 : 20)
+    }
+  })
+  it.each([0, 1, 2])('精%s怒潮凛冬仅在联动技能解锁且烈夏同站时获得额外加成', (phase) => {
+    const result = estimate('ursus', ['怒潮凛冬', '烈夏'], {}, { 怒潮凛冬: phase, 烈夏: 0 })
+    expect(result.valid).toBe(true)
+    expect(result.assumptions).toEqual([])
+    expect(value(result, '经验制造生产力')).toBe(phase === 2 ? 40 : 30)
+    expect(value(estimate('ursus', ['怒潮凛冬'], {}, { 怒潮凛冬: phase }), '经验制造生产力')).toBe(
+      30
+    )
+  })
+  it.each([0, 1, 2])('精%s维什戴尔按当前技能为赫德雷和精零孑提供订单上限', (phase) => {
+    const result = estimate(
+      'jaye-parts',
+      ['孑', '赫德雷', '维什戴尔'],
+      {},
+      { 孑: 0, 维什戴尔: phase }
+    )
+    expect(result.valid).toBe(true)
+    expect(result.assumptions).toEqual([])
+    expect(value(result, '赫德雷·搭档贡献')).toBe(phase === 2 ? 38 : 34)
+    expect(value(result, '贸易订单效率')).toBe(phase === 2 ? 78 : 74)
+    expect(result.details).toContain(
+      `其他干员 30% + 孑 ${phase === 2 ? 48 : 44}%，空单状态，订单上限${phase === 2 ? 12 : 11}`
+    )
+  })
+  it('未选维什戴尔不增加订单上限，缺少她的有效练度则明确采用满练假设', () => {
+    const names = ['孑', '赫德雷', '维什戴尔']
+    const items = roster(names, { 孑: 0, 维什戴尔: 0 })
+    const absent = estimateGroup(group('jaye-parts'), ['孑', '赫德雷'], {}, items)
+    expect(value(absent, '贸易订单效率')).toBe(70)
+    const assumed = estimateGroup(group('jaye-parts'), names, {}, items.slice(0, 2))
+    expect(assumed.valid).toBe(true)
+    expect(assumed.assumptions).toEqual(['维什戴尔'])
+    expect(value(assumed, '贸易订单效率')).toBe(78)
+  })
   it('未拥有默认按满练估算，保留已拥有实际练度且不修改快照', () => {
     const names = ['能天使', '蕾缪安']
     const items = roster(names, { 能天使: 0 })
