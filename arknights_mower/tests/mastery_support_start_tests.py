@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -23,6 +23,7 @@ from arknights_mower.utils import mastery_db as db
 from arknights_mower.utils import mastery_support as support
 from arknights_mower.utils.mastery_support_types import StageSpec
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
 def scene_solver(transient, readable, support_name="艾丽妮"):
@@ -167,3 +168,67 @@ def test_start_supports_legacy_room_without_slots_reliable(database, context_gam
         mastery._start_new_training(
             solver, plan, room=SimpleNamespace(train_slot="能天使")
         )
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+@pytest.mark.parametrize("mood", [None, 0, 1])
+@pytest.mark.parametrize("readable", [False, True])
+def test_schedule_following_starts_without_assistant_mood_gate(
+    database, context_game, monkeypatch, legacy, mood, readable
+):
+    _, ids = context_game
+    route = support.stage_route(stat("艾丽妮", 30, True), None, StageSpec(1, 8))
+    pid = db.insert_plan(
+        ids["能天使"],
+        0,
+        1,
+        char_name="能天使",
+        support_plan=None if legacy else {"stages": [route]},
+    )
+    plan = db.get_plan_by_id(pid)
+    solver, events = scene_solver(Scene.TRAIN_MAIN, readable)
+    solver.op_data.dorm_mood_estimates = (
+        {} if mood is None else {"艾丽妮": (mood, datetime.now())}
+    )
+    solver.task = SchedulerTask(datetime.now(), task_type=TaskTypes.SKILL_UPGRADE)
+    solver.tasks = [solver.task]
+    scan = Mock(side_effect=AssertionError("排班协助者不应触发专精心情扫描"))
+    solver._scan_card_moods = scan
+    monkeypatch.setattr(mastery, "get_route_config", lambda *a: route)
+    with (
+        patch(
+            "arknights_mower.solvers.mastery_support_runtime.schedule_context",
+            return_value=({}, 0),
+        ),
+        patch.object(mastery, "_read_train_countdown3", return_value=("failed", None)),
+        patch(
+            "arknights_mower.solvers.mastery_reader._read_slot_mastery_tier",
+            return_value=0,
+        ),
+        patch(
+            "arknights_mower.utils.config.conf",
+            SimpleNamespace(assistant_follows_schedule=True),
+        ),
+        patch.object(
+            mastery, "_confirm_training_started", return_value="started"
+        ) as confirm,
+        patch.object(mastery, "_exit_failed") as fail,
+    ):
+        mastery._start_new_training(
+            solver, plan, room=SimpleNamespace(train_slot="能天使", slots_reliable=True)
+        )
+    scan.assert_not_called()
+    solver.choose_train.assert_not_called()
+    assert not hasattr(solver.task, "mastery_mood_wait")
+    if readable:
+        confirm.assert_called_once()
+        fail.assert_not_called()
+        assert events[-2:] == ["select", "confirm"]
+        assert db.get_plan_by_id(pid)["status"] == "arranging"
+        if not legacy:
+            saved = support.decode_json(db.get_plan_by_id(pid)["support_runtime"])
+            assert saved["operator"] == "艾丽妮" and saved["swap_target"] is None
+    else:
+        confirm.assert_not_called()
+        fail.assert_called_once()
+        assert "无法确认当前训练室协助者" in fail.call_args.args[2]

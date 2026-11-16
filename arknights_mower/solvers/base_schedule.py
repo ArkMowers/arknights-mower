@@ -1384,7 +1384,8 @@ class BaseSchedulerSolver(
                     for required in waiting.get("alternatives", ())
                 )
                 if (
-                    not changed
+                    not config.conf.assistant_follows_schedule
+                    and not changed
                     and shortages
                     and not observation_pending
                     and not replacement_ready

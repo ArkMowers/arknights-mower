@@ -242,6 +242,10 @@ def prepare_legacy_support_mood(solver, plan, level):
 
 def _admit_or_replace(solver, plan, route, spec, carry, inputs):
     from arknights_mower.utils import config
+
+    if config.conf.assistant_follows_schedule:
+        return route
+
     from arknights_mower.utils.log import logger
     from arknights_mower.utils.mastery_mood import (
         SupportMoodWait,
@@ -253,8 +257,6 @@ def _admit_or_replace(solver, plan, route, spec, carry, inputs):
         _require_stage_mood(solver, route, inherited=bool(carry))
         return route
     except SupportMoodWait as error:
-        if config.conf.assistant_follows_schedule:
-            raise
         waiting = error
     options, central = candidates(plan["char_id"], inputs=inputs, include_dynamic=False)
     spec = replace(spec, central=central, manual=False)
