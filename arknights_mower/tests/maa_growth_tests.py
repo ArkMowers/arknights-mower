@@ -540,11 +540,15 @@ def test_chip_failure_restores_and_does_not_invent_output(case, chip_solver):
 
 
 @pytest.mark.parametrize(
-    "exhausted, expected",
-    [({"fast"}, "room_1_1"), ({"slow", "fast"}, "room_1_2"), (set(), "room_1_2")],
+    "exhausted, expected, surveyed",
+    [
+        ({"fast"}, "room_1_1", ["room_1_1"]),
+        ({"slow", "fast"}, "room_1_2", ["room_1_1", "room_1_2"]),
+        (set(), "room_1_2", ["room_1_1", "room_1_2"]),
+    ],
 )
 def test_chip_station_prefers_actual_occupants_without_exhaust_setting(
-    case, chip_solver, exhausted, expected
+    case, chip_solver, exhausted, expected, surveyed
 ):
     chip_solver.op_data.operators = {
         name: SimpleNamespace(name=name, current_room=room, exhaust_require=False)
@@ -555,7 +559,9 @@ def test_chip_station_prefers_actual_occupants_without_exhaust_setting(
     assert runner.manufacture_chips(
         chip_solver, {"dual": {"3213": 4}}, datetime.now() + timedelta(minutes=5)
     )
-    assert chip_solver._survey_manufacture_switch.call_count == 2
+    assert [
+        call.args[0] for call in chip_solver._survey_manufacture_switch.call_args_list
+    ] == surveyed
     assert (
         chip_solver._execute_manufacture_acceleration.call_args.args[0]["room"]
         == expected
@@ -596,6 +602,9 @@ def test_unusable_ordinary_station_does_not_borrow_exhaust_station(case, chip_so
     chip_solver._survey_manufacture_switch.side_effect = observe
     assert not runner.manufacture_chips(
         chip_solver, {"dual": {"3213": 4}}, datetime.now() + timedelta(minutes=5)
+    )
+    chip_solver._survey_manufacture_switch.assert_called_once_with(
+        "room_1_1", "growth_dualchip", growth_chip=True
     )
     chip_solver._execute_manufacture_acceleration.assert_not_called()
 

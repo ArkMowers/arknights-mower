@@ -88,7 +88,7 @@ def _chip_output_complete(solver, state):
 
 
 def manufacture_chips(solver, action, deadline):
-    """Survey all manufacturing rooms, finish the nearest unit and borrow its line."""
+    """Survey eligible manufacturing rooms, finish the nearest unit and borrow its line."""
     from arknights_mower.utils.mastery_recommendation import get_skill_data
 
     skills = get_skill_data()
@@ -108,7 +108,7 @@ def manufacture_chips(solver, action, deadline):
     }
     eligible_rooms = rooms - exhausted_rooms or rooms
     observations = []
-    for room in sorted(rooms):
+    for room in sorted(eligible_rooms):
         if datetime.now() >= deadline or config.stop_mower.is_set():
             return False
         try:
@@ -140,8 +140,7 @@ def manufacture_chips(solver, action, deadline):
         ready = observation.get("observed_at", datetime.now()) + timedelta(
             seconds=observation["current_remaining"] / rate
         )
-        if room in eligible_rooms:
-            observations.append((ready, room, observation))
+        observations.append((ready, room, observation))
     if not observations:
         return False
     _, room, observation = min(observations, key=lambda item: (item[0], item[1]))
