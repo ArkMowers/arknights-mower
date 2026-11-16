@@ -45,7 +45,7 @@ import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {MowerTask,MowerTaskQueue,MOWER_TASK_TYPES as T,toMowerMicros,fromMowerMicros,isMowerRunOrderTask,type MowerTaskPlan} from './mowerTaskQueue'
 import {executeMowerTaskArrangementSteps,type MowerRoomReturn,type MowerBackupResult} from './mowerTaskExecutor'
 import {projectMowerArrangements,invalidateMowerDormTime,mowerUpdateDetail,mowerRefreshDormTime,mowerCorrectDorm,mowerRoomReadIndexes,shouldMowerReadMood,mowerHasMeasuredDormDeparture} from './mowerObservations'
-import {mowerIsDormReplacement,planMowerCorrection,prepareMowerCorrectionRecovery,planMowerReturnRecovery,refreshMowerDerivedCorrection} from './mowerCorrection'
+import {mowerIsDormReplacement,mowerNotValid,planMowerCorrection,prepareMowerCorrectionRecovery,planMowerReturnRecovery,refreshMowerDerivedCorrection} from './mowerCorrection'
 import {planMowerOrdinary,planMowerOrdinarySupportAdmission,mowerGetRestingPlan,mowerTryReorder,mowerPlanningHasNearTask} from './mowerOrdinaryPlanning'
 import {planMowerMetadata,mowerRestUnitKey} from './mowerMetadata'
 import {mowerReplacementDependencyNames,mowerReplacementReservations,planMowerPreferredReplacementRestore,mowerCoordinationRequestFulfilled} from './mowerReplacementCoordination'
@@ -321,8 +321,17 @@ function readAgentMood(s:RuntimeState,rates:RuntimeRates):void {
  const rooms=new Set(Object.values(data.operators).filter(o=>o.room&&o.needToRefresh(data.nowMicros)).map(o=>o.room))
  if(data.plan.train)rooms.add('train')
  for(const room of rooms){
-  if(room==='train'){const last=getMowerSourceRuntime(s).lastTrainMoodReadMicros;if(last!==undefined&&data.nowMicros-last<toMowerMicros(2.5))continue}
   const current=Object.values(data.operators).filter(o=>o.currentRoom===room)
+  if(room==='train'){
+   const last=getMowerSourceRuntime(s).lastTrainMoodReadMicros
+   if(last!==undefined&&data.nowMicros-last<toMowerMicros(2.5)){
+    // A room read may leave a still-fresh slot untouched. Refresh that slot
+    // when correction later needs its mood, without moving the resident.
+    const indexes=current.filter(o=>o.room===room&&o.currentIndex===o.index&&!data.busyRestingNames.has(o.name)&&!data.waitingRecoveryNames.has(o.name)&&mowerNotValid(data,o)).map(o=>o.currentIndex)
+    if(indexes.length)observeRoom(s,rates,room,undefined,indexes)
+    continue
+   }
+  }
   if(current.length&&current.every(o=>o.timeStampMicros!==undefined&&o.timeStampMicros>data.nowMicros-toMowerMicros(['歌蕾蒂娅','见行者'].includes(o.nativeName)?.5:2.5)))continue
   if(room==='train')getMowerSourceRuntime(s).lastTrainMoodReadMicros=data.nowMicros
   observeRoom(s,rates,room,undefined,room==='central'?data.plan[room]!.map((_,i)=>i):[])
