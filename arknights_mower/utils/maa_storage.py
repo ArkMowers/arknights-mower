@@ -40,6 +40,12 @@ def load_options(target):
     cache = prepare_cache(target)
     user = root / "user"
     cache.mkdir(parents=True, exist_ok=True)
+    from arknights_mower.utils import config
+
+    if config.conf.maa_growth_enable:
+        from arknights_mower.utils.growth_execution import prepare_guard
+
+        prepare_guard(cache, split=(Path(target) / "resource" / "tasks").is_dir())
     user.mkdir(parents=True, exist_ok=True)
     return {"path": Path(target), "incremental_path": cache, "user_dir": user}
 

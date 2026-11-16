@@ -1057,3 +1057,49 @@ def test_unknown_shared_stock_never_falls_back_to_old_cultivate_materials(
     assert "3303" not in growth.inventory_counts(
         cached, skills, local=True, local_counts={}
     )
+
+
+def test_forced_refresh_retains_maa_growth_receipt_until_cloud_catches_up(
+    syncer, monkeypatch
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import growth_execution
+
+    snapshot = {
+        "code": 0,
+        "data": {
+            "characters": [
+                {"id": "char_test", "evolvePhase": 1, "level": 1, "mainSkillLevel": 6}
+            ],
+            "items": [{"id": "3303", "count": 10}],
+        },
+    }
+    action = {
+        "uid": "",
+        "char_id": "char_test",
+        "name": "测试干员",
+        "role": "Pioneer",
+        "field": "mainSkillLevel",
+        "target": 7,
+        "costs": {"技巧概要·卷3": 2},
+        "affected": ["技巧概要·卷3"],
+        "uncertain": [],
+        "dual": {},
+    }
+    record.save_inventory_counts({"技巧概要·卷3": 10})
+    growth_execution.save_attempt(action)
+    growth_execution.finish_attempt(action, success=True)
+    with patch.object(module, "request_with_retry") as get:
+        get.return_value.json.side_effect = lambda: snapshot
+        assert syncer.start(force_inventory=True)
+        assert record.get_inventory_counts()["技巧概要·卷3"] == 8
+        assert (
+            json.loads(syncer.record_path.read_text())["data"]["characters"][0][
+                "mainSkillLevel"
+            ]
+            == 7
+        )
+        snapshot["data"]["characters"][0]["mainSkillLevel"] = 7
+        snapshot["data"]["items"][0]["count"] = 8
+        assert syncer.start(force_inventory=True)
+    assert record.get_inventory_counts()["技巧概要·卷3"] == 8

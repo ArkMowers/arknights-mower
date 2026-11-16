@@ -218,3 +218,27 @@ def test_edited_backup_is_persisted_across_restart(next_skill, tmp_path, monkeyp
     config.load_conf()
     assert not config.conf.workshop_auto_active
     assert config.conf.workshop_manual_backup == config.conf.workshop_settings
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+def test_maa_growth_setting_uses_current_token_and_wakes_running_scheduler(
+    next_skill, monkeypatch, method
+):
+    import server
+    from arknights_mower import __main__ as mower_main
+
+    monkeypatch.setattr(server.app, "token", "growth-instance", raising=False)
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    config.wake_scheduler.clear()
+    try:
+        response = server.app.test_client().open(
+            "/conf",
+            method=method,
+            json={"maa_growth_enable": True},
+            headers={"token": "growth-instance"},
+        )
+        assert response.status_code == 200
+        assert config.conf.maa_growth_enable is True
+        assert config.wake_scheduler.is_set()
+    finally:
+        config.wake_scheduler.clear()

@@ -282,3 +282,30 @@ def test_oversized_previous_navigation_is_preserved_without_downloading(runtime)
         runtime.solver.initialize_maa()
     assert runtime.navigation.read_bytes() == previous
     runtime.get.assert_not_called()
+
+
+def test_growth_rules_override_downloaded_tasks_and_cached_fallback(runtime):
+    base_schedule.config.conf.maa_growth_enable = True
+    original = runtime.installed.read_bytes()
+    runtime.payload["OperProgress@Dualchip"] = {
+        "algorithm": "JustReturn",
+        "action": "ClickRect",
+    }
+    runtime.response.__enter__.return_value.content = json.dumps(
+        runtime.payload
+    ).encode()
+    runtime.solver.initialize_maa()
+    assert runtime.loaded["OperProgress@Dualchip"]["action"] == "DoNothing"
+    assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
+    assert "YW-8" in runtime.loaded
+    runtime.solver.MAA.stop()
+    runtime.solver.release_maa()
+    runtime.navigation.write_text(json.dumps(runtime.payload))
+    runtime.get.side_effect = RuntimeError("offline")
+    runtime.solver.initialize_maa()
+    assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
+    assert (
+        json.loads(runtime.navigation.read_text())["OperProgress@Dualchip"]["action"]
+        == "DoNothing"
+    )
+    assert runtime.installed.read_bytes() == original

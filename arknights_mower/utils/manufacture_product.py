@@ -33,6 +33,20 @@ TRADE_PRODUCTS = {
 
 DRONE_SECONDS = 3 * 60
 
+DUALCHIP_PRODUCTS = {
+    f"{prefix}3": ManufactureProduct(name + "双芯片", (180, 480), point, 1)
+    for prefix, name, point in (
+        (321, "先锋", (495, 195)),
+        (322, "狙击", (1235, 465)),
+        (323, "医疗", (1235, 735)),
+        (324, "术师", (495, 735)),
+        (325, "近卫", (1235, 195)),
+        (326, "重装", (495, 465)),
+        (327, "辅助", (495, 980)),
+        (328, "特种", (1235, 980)),
+    )
+}
+
 
 def product_switch_seconds(station_count: int) -> int:
     """整批预留一分钟读数及收尾，每个站预留两分钟切换。"""
