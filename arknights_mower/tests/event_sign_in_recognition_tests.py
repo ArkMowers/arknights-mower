@@ -15,6 +15,7 @@ from arknights_mower.solvers.event_sign_in_recognition import (
     Progress,
     day_positions,
     detect_progress,
+    get_scrollbar_position,
     read_cards,
     supplement_day_numbers,
 )
@@ -94,6 +95,88 @@ def test_actual_solver_reads_celebration_pages_captured_on_device(
     assert page.progress.unlocked_days == 1
     assert page.first_day == first_day
     assert [(card.day, card.claimed) for card in page.cards] == expected
+
+
+def test_seek_left_uses_scrollbar_when_claimed_rewards_look_identical(
+    local_ocr, monkeypatch
+):
+    from arknights_mower.solvers.event_sign_in import EventSignInSolver
+    from arknights_mower.utils import config
+
+    solver = object.__new__(EventSignInSolver)
+    solver.deadline = time.monotonic() + 180
+    solver.activity_days = 7
+    solver.recog = SimpleNamespace(
+        img=frame("seven_day_identical_rewards_right_20261116"),
+        check_announcement=lambda: (1870, 152),
+        update=Mock(),
+    )
+    solver.sleep = Mock()
+    solver._card_match_score = Mock(
+        side_effect=AssertionError("Reward matching called")
+    )
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+
+    def swipe(*args, **kwargs):
+        solver.recog.img = frame("seven_day_identical_rewards_left_20261116")
+
+    solver.swipe_noinertia = Mock(side_effect=swipe)
+    right = solver._wait_panel()
+    assert right is not None
+    assert right.first_day == 4
+    assert right.scroll_position == 1
+    assert right.progress.unlocked_days == 5
+    assert [(card.day, card.claimed) for card in right.cards] == [
+        (4, True),
+        (5, False),
+        (6, False),
+        (7, False),
+    ]
+
+    left = solver._seek_left(right)
+
+    assert left is not None
+    assert left.first_day == 1
+    assert left.scroll_position == 0
+    assert [(card.day, card.claimed) for card in left.cards] == [(None, True)] * 4
+    solver.swipe_noinertia.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("ten_receipt_before", 0),
+        ("ten_receipt_video_border", 0),
+        ("ten_receipt_scrolled", 0.12),
+        ("ten_receipt_anonymous", 0.30),
+        ("celebration_before", None),
+    ],
+)
+def test_scrollbar_position_distinguishes_left_edge_middle_and_missing_track(
+    name, expected
+):
+    image = frame(name)
+    progress = detect_progress(image)
+    assert progress is not None
+
+    position = get_scrollbar_position(image, progress)
+
+    if expected in (None, 0):
+        assert position == expected
+    else:
+        assert position == pytest.approx(expected, abs=0.015)
+
+
+def test_partial_track_cannot_turn_a_middle_thumb_into_the_left_edge():
+    image = frame("ten_receipt_scrolled")
+    progress = detect_progress(image)
+    assert progress is not None
+    assert get_scrollbar_position(image, progress) == pytest.approx(0.12, abs=0.015)
+
+    image[526:539, 490:530] = image[514:527, 490:530].copy()
+
+    assert get_scrollbar_position(image, progress) is None
 
 
 @pytest.mark.parametrize(

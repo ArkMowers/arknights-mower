@@ -47,6 +47,14 @@ and rejects a page whose overlapping reward has been replaced by a different
 card or whose candidate crops cannot contain the comparison region. This verifies
 paging confirmation offline, without device input or reward collection.
 
+The `seven_day_identical_rewards_*_20261116.png` images retain the rectangle
+from `(650, 205)` to `(1850, 963)` from the 04:59 China-time 补给签到 attempt.
+The right page shows days four through seven, with day five available. After
+scrolling left, days one through four are visible and already claimed. The
+four claimed cards share the same reward artwork and receipt marks. The test
+replays these crops with local OCR and checks that the solver recognizes the
+left edge from the scrollbar, including when the receipt marks cover the day numerals.
+
 ## Costume presentation
 
 `costume_without_wear_20261106.jpg` is a 1920 × 1080 frame from the 2026-11-06
