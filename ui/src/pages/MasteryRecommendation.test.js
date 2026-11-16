@@ -822,6 +822,50 @@ describe('养成工作区派生数据', () => {
     expect(page.recommendedCards.value[0].planned).toBe(false)
   })
 
+  it('推荐列表先排除已计划和已完成干员，再按比例选取前十二位', () => {
+    const page = setup()
+    const store = useMasteryStore()
+    const candidate = (id, current = 0) => ({
+      char_id: `char_pick_${id}`,
+      name: `推荐干员${id}`,
+      rarity: 6,
+      elite: 2,
+      level: 60,
+      skill_levels: [current],
+      recommendations: [{ skill_index: 0, current_level: current }],
+      modules: []
+    })
+    store.recommendations = [
+      ...Array.from({ length: 15 }, (_, index) => candidate(index + 1)),
+      candidate(16, 3)
+    ]
+    store.goals = [{ char_id: 'char_pick_15', module_id: 'elite2' }]
+    page.survey.value = {
+      operators: Array.from({ length: 16 }, (_, index) => ({
+        charId: `char_pick_${index + 1}`,
+        own: 100,
+        skill1: { 0: 99 - index, 3: index + 1 }
+      }))
+    }
+
+    expect(page.recommendedCards.value.map((card) => card.operator.char_id)).toEqual([
+      'char_pick_14',
+      'char_pick_13',
+      'char_pick_12',
+      'char_pick_11',
+      'char_pick_10',
+      'char_pick_9',
+      'char_pick_8',
+      'char_pick_7',
+      'char_pick_6',
+      'char_pick_5',
+      'char_pick_4',
+      'char_pick_3'
+    ])
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.delete).not.toHaveBeenCalled()
+  })
+
   it('推荐卡只保留仍有未完成技能或模组的干员', () => {
     const page = setup()
     const store = useMasteryStore()
