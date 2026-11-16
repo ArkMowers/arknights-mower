@@ -57,17 +57,22 @@ def assistant_conflicts(plan, names):
                     (table_index, slot_names(slot))
                 )
 
-    @lru_cache(maxsize=256)
-    def reserved(flags):
-        result = {}
-        active = (True, *flags)
-        for (room, _), versions in slots.items():
-            for index, occupants in reversed(versions):
-                if active[index]:
-                    for name in occupants:
-                        result.setdefault(name, set()).add(room)
+    # Each name only needs the slots it can occupy in at least one table.
+    slots_by_name = {}
+    for (room, _), versions in slots.items():
+        latest_first = tuple(reversed(versions))
+        for name in set().union(*(occupants for _, occupants in versions)):
+            if name in names:
+                slots_by_name.setdefault(name, []).append((room, latest_first))
+
+    def can_reserve(name, versions, states):
+        for state in states:
+            for table_index, occupants in versions:
+                if table_index == 0 or state[table_index - 1]:
+                    if name in occupants:
+                        return True
                     break
-        return result
+        return False
 
     referenced = set()
     sources = [str(backup.trigger) for backup in backups] + [
@@ -112,7 +117,10 @@ def assistant_conflicts(plan, names):
         if not states:
             result[name] = original_rooms
             continue
-        rooms = set().union(*(reserved(state).get(name, set()) for state in states))
+        rooms = set()
+        for room, versions in slots_by_name.get(name, ()):
+            if room not in rooms and can_reserve(name, versions, states):
+                rooms.add(room)
         if rooms:
             result[name] = rooms
     return result
