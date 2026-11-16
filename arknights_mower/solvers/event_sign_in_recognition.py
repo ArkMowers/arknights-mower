@@ -183,6 +183,64 @@ def detect_progress(image):
     )
 
 
+def get_scrollbar_position(image, progress) -> float | None:
+    """Return the thumb's fraction of its travel when the rail is visible."""
+    (left, _), (right, bottom) = progress.card_scope
+    scale = progress.scale
+    margin = max(1, round(14 * scale))
+    top = bottom + max(1, round(4 * scale))
+    end = bottom + round(26 * scale)
+    if top >= end or end + margin > image.shape[0]:
+        return None
+
+    band = image[top - margin : end + margin, left:right]
+    gray = cv2.cvtColor(band, cv2.COLOR_RGB2GRAY).astype(np.int16)
+    rows = gray[margin:-margin]
+    background = np.maximum(gray[: -2 * margin], gray[2 * margin :])
+    rail_pixels = (rows >= 55) & (rows - background >= 15)
+
+    def runs(mask):
+        return np.flatnonzero(np.diff(np.r_[False, mask, False])).reshape(-1, 2)
+
+    matches = []
+    for index, (row, mask) in enumerate(zip(rows, rail_pixels)):
+        for start, stop in runs(mask):
+            width = stop - start
+            if width < 0.9 * row.size or start == 0 or stop == row.size:
+                continue
+            rail = row[start:stop]
+            thumb_start, thumb_end = max(
+                runs(rail >= 160),
+                key=lambda bounds: bounds[1] - bounds[0],
+                default=(0, 0),
+            )
+            if not 0.3 <= (thumb_end - thumb_start) / width <= 0.75:
+                continue
+            track = np.r_[rail[:thumb_start], rail[thumb_end:]]
+            if np.median(track) > 145 or np.median(rail[thumb_start:thumb_end]) < 175:
+                continue
+            matches.append((index, start, stop, start + thumb_start, start + thumb_end))
+
+    if len(matches) < max(2, round(3 * scale)):
+        return None
+    matches = np.asarray(matches)
+    bounds = matches[:, 1:]
+    tolerance = max(2, 3 * scale)
+    if (
+        np.any(np.diff(matches[:, 0]) != 1)
+        or np.max(np.ptp(bounds, axis=0)) > 2 * tolerance
+    ):
+        return None
+    start, stop, thumb_start, thumb_end = np.median(bounds, axis=0)
+    left_gap = thumb_start - start
+    right_gap = stop - thumb_end
+    if left_gap <= tolerance:
+        return 0.0
+    if right_gap <= tolerance:
+        return 1.0
+    return float(left_gap / (left_gap + right_gap))
+
+
 def day_positions(result, progress):
     """Read large day numerals in the detected panel's local OCR coordinates."""
     positions = {}

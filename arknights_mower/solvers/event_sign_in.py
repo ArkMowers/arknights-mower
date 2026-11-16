@@ -8,6 +8,7 @@ from arknights_mower.solvers.event_sign_in_recognition import (
     Card,
     Progress,
     detect_progress,
+    get_scrollbar_position,
     read_cards,
     supplement_day_numbers,
 )
@@ -27,6 +28,7 @@ COSTUME_BRAND_SCOPE = ((140, 372), (270, 414))
 COSTUME_FLOT_SCOPE = ((1195, 526), (1385, 589))
 PRESENTATION_SKIP_SCOPE = ((1680, 0), (1920, 180))
 MAX_DAYS = 15
+SCROLL_POSITION_TOLERANCE = 0.005
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,7 @@ class Page:
     cards: tuple[Card, ...]
     image: np.ndarray
     first_day: int | None = None
+    scroll_position: float | None = None
 
 
 def sign_in_entries(result):
@@ -346,7 +349,13 @@ class EventSignInSolver(SceneGraphSolver):
             first_day < 1 or first_day + len(cards) - 1 > progress.total_days
         ):
             return None
-        return Page(progress, tuple(cards), image, first_day)
+        return Page(
+            progress,
+            tuple(cards),
+            image,
+            first_day,
+            get_scrollbar_position(image, progress),
+        )
 
     @staticmethod
     def _same_page(before, after):
@@ -362,6 +371,14 @@ class EventSignInSolver(SceneGraphSolver):
                 for left, right in zip(before.cards, after.cards)
             )
         )
+
+    @staticmethod
+    def _same_scroll_position(left, right):
+        if left == right:
+            return True
+        if left in (None, 0) or right in (None, 0):
+            return False
+        return abs(left - right) <= SCROLL_POSITION_TOLERANCE
 
     @staticmethod
     def _unreadable_unlocked_cards(page):
@@ -391,10 +408,14 @@ class EventSignInSolver(SceneGraphSolver):
                 self.sleep(0.3)
                 continue
             if page is not None and self._same_page(previous, page):
-                if self._unreadable_unlocked_cards(page):
-                    partial = page
-                else:
+                if not self._same_scroll_position(
+                    previous.scroll_position, page.scroll_position
+                ):
+                    partial = replace(page, scroll_position=None)
+                elif not self._unreadable_unlocked_cards(page):
                     return page
+                else:
+                    partial = page
             else:
                 partial = None
             previous = page
@@ -409,33 +430,37 @@ class EventSignInSolver(SceneGraphSolver):
         return cv2.resize(band, (320, 80)).astype(np.float32)
 
     @staticmethod
-    def _card_signature(page, card, *, whole=False):
+    def _card_signature(page, card, *, region):
         (left, top), (right, bottom) = card.scope
-        # 避开卡片中部共用的领取印章，保留底部奖励图案。
-        start_y = top if whole else top + (bottom - top) * 2 // 3
-        band = cropimg(page.image, ((left, start_y), (right, bottom)))
+        if region == "reward":
+            # 避开卡片中部共用的领取印章，保留底部奖励图案。
+            top += (bottom - top) * 2 // 3
+        elif region == "header":
+            # 聚焦领取印章下仍可见的日数，减少相同奖励图案的影响。
+            bottom = top + (bottom - top) // 4
+        band = cropimg(page.image, ((left, top), (right, bottom)))
         gray = cv2.cvtColor(band, cv2.COLOR_RGB2GRAY)
         # 按面板比例保留细节，允许匹配时对齐有少量偏差的卡片裁剪区域。
         signature = cv2.resize(
             gray, None, fx=1 / page.progress.scale, fy=1 / page.progress.scale
         )
-        if whole:
-            # 整卡比较使用图像梯度，减少大块相同底色对匹配结果的影响。
-            return cv2.merge(
-                (
-                    cv2.Sobel(signature, cv2.CV_32F, 1, 0),
-                    cv2.Sobel(signature, cv2.CV_32F, 0, 1),
-                )
+        if region == "reward":
+            return signature
+        # 图像梯度减少大块相同底色对匹配结果的影响。
+        return cv2.merge(
+            (
+                cv2.Sobel(signature, cv2.CV_32F, 1, 0),
+                cv2.Sobel(signature, cv2.CV_32F, 0, 1),
             )
-        return signature
+        )
 
-    def _card_match_score(self, before, anchor, after, card, *, whole=False):
-        signature = self._card_signature(before, anchor, whole=whole)
-        candidate = self._card_signature(after, card, whole=whole)
+    def _card_match_score(self, before, anchor, after, card, *, region="reward"):
+        signature = self._card_signature(before, anchor, region=region)
+        candidate = self._card_signature(after, card, region=region)
         # 印章中心和日数网格会产生少量裁剪偏差，在保留细节的图上平移对齐。
         margin = 8
         template = signature[margin:-margin, margin:-margin]
-        if any(
+        if (region == "header" and not np.any(template)) or any(
             size > available
             for size, available in zip(template.shape[:2], candidate.shape[:2])
         ):
@@ -455,6 +480,8 @@ class EventSignInSolver(SceneGraphSolver):
             if direction < 0
             else (page.cards[0], page.cards[-1])
         )
+        if direction > 0 and retry:
+            opposite = page.cards[1]
         movement = opposite.position[0] - anchor.position[0]
         logger.info("向%s翻阅签到奖励列表", "后" if direction < 0 else "前")
         self.swipe_noinertia(
@@ -466,6 +493,22 @@ class EventSignInSolver(SceneGraphSolver):
         after = self._wait_panel()
         if after is None:
             return None
+        if direction > 0:
+            if after.first_day == 1 or after.scroll_position == 0:
+                return (after, True) if after.first_day in (None, 1) else None
+            before_position = page.scroll_position
+            after_position = after.scroll_position
+            if before_position is not None and after_position is not None:
+                if after_position < before_position - SCROLL_POSITION_TOLERANCE:
+                    if (
+                        page.first_day is not None
+                        and after.first_day is not None
+                        and after.first_day > page.first_day
+                    ):
+                        return None
+                    return after, True
+                if after_position > before_position + SCROLL_POSITION_TOLERANCE:
+                    return None
         unchanged = (
             np.mean(
                 np.abs(self._list_fingerprint(page) - self._list_fingerprint(after))
@@ -509,21 +552,27 @@ class EventSignInSolver(SceneGraphSolver):
             if len(matches) == 1:
                 return self._retain_page_offset(page, after, anchor, matches[0]), True
             if len(matches) > 1:
-                scored = sorted(
-                    (
+                for region in ("whole", "header"):
+                    scored = sorted(
                         (
-                            self._card_match_score(
-                                page, anchor, after, card, whole=True
-                            ),
-                            index,
-                        )
-                        for index, card in enumerate(matches)
-                    ),
-                    reverse=True,
-                )
-                if scored[0][0] >= 0.85 and scored[0][0] - scored[1][0] >= 0.01:
-                    matched = matches[scored[0][1]]
-                    return self._retain_page_offset(page, after, anchor, matched), True
+                            (
+                                self._card_match_score(
+                                    page, anchor, after, card, region=region
+                                ),
+                                index,
+                            )
+                            for index, card in enumerate(matches)
+                        ),
+                        reverse=True,
+                    )
+                    best_score, best_index = scored[0]
+                    if best_score < 0.85:
+                        return None
+                    if best_score - scored[1][0] >= 0.01:
+                        matched = matches[best_index]
+                        return self._retain_page_offset(
+                            page, after, anchor, matched
+                        ), True
         return None
 
     @staticmethod
@@ -543,20 +592,25 @@ class EventSignInSolver(SceneGraphSolver):
 
     def _seek_left(self, page):
         unchanged = 0
-        for _ in range(MAX_DAYS):
+        observed_scrollbar = page.scroll_position is not None
+        for gestures in range(MAX_DAYS + 1):
             self._check_budget()
             if page.first_day == 1:
                 return page
+            if page.scroll_position == 0:
+                return replace(page, first_day=1) if page.first_day is None else None
+            if unchanged >= 3:
+                if not observed_scrollbar and page.first_day is None:
+                    return replace(page, first_day=1)
+                return None
+            if gestures == MAX_DAYS:
+                return None
             moved = self._move_page(page, 1, retry=unchanged > 0)
             if moved is None:
                 return None
             page, changed = moved
+            observed_scrollbar |= page.scroll_position is not None
             unchanged = 0 if changed else unchanged + 1
-            if unchanged >= 3:
-                return (
-                    replace(page, first_day=1) if page.first_day in (None, 1) else None
-                )
-        return page if page.first_day == 1 else None
 
     def _reward_presentation(self):
         if self.find("recruit/agent_token") or self.find("recruit/agent_token_first"):

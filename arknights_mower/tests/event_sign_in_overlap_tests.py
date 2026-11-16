@@ -134,3 +134,76 @@ def test_backward_page_distinguishes_similar_claimed_cards(ambiguous):
         assert changed is True
         assert moved.first_day == 4
     solver.swipe_noinertia.assert_called_once()
+
+
+@pytest.fixture
+def scrollbar_search():
+    progress = Progress(
+        10, 8, (), ((661, 343), (1806, 718)), ((661, 343), (1806, 918)), 510, 1.0
+    )
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    cards = tuple(
+        Card(None, (x, 430), True, ((x - 129, 348), (x + 129, 898)))
+        for x in (818, 1098, 1378, 1658)
+    )
+    solver = object.__new__(EventSignInSolver)
+    solver._check_budget = Mock()
+    solver.swipe_noinertia = Mock()
+    solver._card_match_score = Mock(
+        side_effect=AssertionError("Reward matching called")
+    )
+    return solver, Page(progress, cards, image, scroll_position=1)
+
+
+def test_seek_left_follows_scrollbar_through_an_anonymous_middle_page(scrollbar_search):
+    solver, right = scrollbar_search
+    middle = replace(right, scroll_position=0.5)
+    left = replace(right, scroll_position=0)
+    solver._wait_panel = Mock(side_effect=[middle, left])
+
+    result = solver._seek_left(right)
+
+    assert result is not None
+    assert result.first_day == 1
+    assert solver.swipe_noinertia.call_count == 2
+
+
+def test_wait_panel_ignores_a_transient_left_thumb(scrollbar_search):
+    solver, right = scrollbar_search
+    left = replace(right, scroll_position=0)
+    solver.recog = Mock()
+    solver.sleep = Mock()
+    solver._panel_states = Mock(side_effect=[right, left, right, right])
+
+    page = solver._wait_panel()
+
+    assert page is right
+    assert solver.recog.update.call_count == 4
+
+
+@pytest.mark.parametrize("position", [0.5, None])
+def test_seek_left_rejects_stationary_pages_after_observing_an_interior_thumb(
+    scrollbar_search, position
+):
+    solver, right = scrollbar_search
+    middle = replace(right, scroll_position=0.5)
+    stationary = replace(middle, scroll_position=position)
+    solver._wait_panel = Mock(side_effect=[middle, stationary, stationary, stationary])
+
+    assert solver._seek_left(right) is None
+
+    assert solver.swipe_noinertia.call_count == 4
+    assert solver.swipe_noinertia.call_args_list[2].args[1] == (280, 0)
+    assert solver.swipe_noinertia.call_args_list[2].kwargs["retry"] is True
+
+
+def test_seek_left_rejects_left_thumb_when_readable_cards_start_later(scrollbar_search):
+    solver, right = scrollbar_search
+    later_cards = (replace(right.cards[0], day=4), *right.cards[1:])
+    solver._wait_panel = Mock(
+        return_value=replace(right, first_day=4, cards=later_cards, scroll_position=0)
+    )
+
+    assert solver._seek_left(right) is None
+
+    solver.swipe_noinertia.assert_called_once()
