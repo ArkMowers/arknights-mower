@@ -69,14 +69,21 @@ def check_schedule_name(name, blocked):
         )
 
 
-def trainee_schedule_conflict(name, plan=None):
-    """Return why a trainee cannot leave its non-training schedule, if any."""
+def trainee_schedule_conflict(name, plan=None, *, allow_replacements=True):
+    """Return conflicts, permitting validated cover removal for automatic mastery."""
     if not name:
         return None
     blocked, _ = schedule_context(plan, training=False)
     rooms = blocked.get(name)
     if not rooms:
         return None
+    if allow_replacements:
+        from .mastery_schedule import trainee_replacement_conflict
+
+        reason = trainee_replacement_conflict(name, plan)
+        if reason is None:
+            return None
+        return f"{name} 暂不能进行专精训练（{'、'.join(sorted(rooms))}）：{reason}"
     return f"{name} 出现在非训练室排班（{'、'.join(sorted(rooms))}），不能进行专精训练"
 
 

@@ -14,6 +14,81 @@ from arknights_mower.utils.logic_expression import get_logic_exp
 from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY, all_replacements
 
 
+def trainee_replacement_conflict(name, plan=None):
+    """Validate an isolated schedule with the trainee removed from every cover list."""
+    from arknights_mower.utils import config
+    from arknights_mower.utils.config.plan import PlanModel
+    from arknights_mower.utils.operators import Operators, build_global_plan
+
+    if plan is None:
+        plan = config.plan
+    document = (
+        plan.model_dump(exclude_none=True)
+        if hasattr(plan, "model_dump")
+        else deepcopy(plan)
+    )
+    tables = [document.get(document.get("default", "plan1"), {})] + [
+        backup.get("plan", {}) for backup in document.get("backup_plans", [])
+    ]
+    for table in tables:
+        for room, facility in table.items():
+            if not facility:
+                continue
+            for slot in facility.get("plans", []):
+                if room != "train" and slot.get("agent") == name:
+                    return f"{name} 是 {room} 的固定主班"
+                for binding in (slot, *slot.get("group_bindings", ())):
+                    binding["replacement"] = [
+                        cover
+                        for cover in binding.get("replacement", ())
+                        if cover != name
+                    ]
+    for backup in document.get("backup_plans", []):
+        for room, targets in (backup.get("task") or {}).items():
+            if room != "train" and name in targets:
+                return f"{name} 已配置在副表的 {room} 换人任务中"
+    try:
+        model = PlanModel(**document)
+        data = Operators(
+            build_global_plan(plan_model=model), facility_levels=model.facility_levels
+        )
+        result = data.validate_backup_plans(max_seconds=2, check_owned=False)
+    except (ValueError, TypeError, KeyError) as error:
+        return f"移除替班后的排班校验失败：{error}"
+    if result["success"]:
+        return None
+    detail = result.get("reason", result["message"])
+    return f"移除替班后的排班校验未通过：{detail}"
+
+
+def trainee_runtime_conflict(solver, name):
+    """Keep occupied or reserved trainees available to their unfinished staffing."""
+    operators = getattr(getattr(solver, "op_data", None), "operators", None)
+    if isinstance(operators, dict) and (operator := operators.get(name)):
+        room = operator.current_room
+        if room and room != "train":
+            slots = solver.op_data.plan.get(room, ())
+            resting = room.startswith("dorm") and (
+                operator.current_index >= len(slots)
+                or operator.current_index < 0
+                or slots[operator.current_index].agent == "Free"
+            )
+            if not resting:
+                return f"{name} 仍在 {room} 顶班，专精计划保持待执行"
+    for task in (
+        *getattr(solver, "tasks", ()),
+        *getattr(solver, "waiting_group_shifts", ()),
+    ):
+        if any(
+            name in names for room, names in task.plan.items() if room != "train"
+        ) or any(
+            occupant == name and position[0] != "train"
+            for position, occupant in getattr(task, "group_shift_expected", {}).items()
+        ):
+            return f"{name} 已有排班换人预约，专精计划保持待执行"
+    return None
+
+
 def slot_names(slot):
     return {
         slot.get("agent", ""),

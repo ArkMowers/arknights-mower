@@ -472,19 +472,23 @@ def test_correction_notification_explains_manual_release_and_shares_throttle(
 
 
 @pytest.mark.parametrize("protected", [False, True])
-def test_mood_wait_preserves_task_and_allows_only_independent_training(
-    serial, protected, monkeypatch
+@pytest.mark.parametrize("wait_kind", ["mood", "trainee"])
+def test_start_wait_preserves_task_and_allows_only_independent_training(
+    serial, protected, monkeypatch, wait_kind
 ):
     monkeypatch.setattr(mastery_reader, "_notify_protected", MagicMock())
     dispatch(serial)
     waiting = serial.solver.tasks[0]
     at = waiting.time
     waiting.execution_failure = {"dependency": True}
-    waiting.mastery_mood_wait = {
-        "plan_id": serial.ids[0],
-        "required": {"协助者": 5},
-        "context": {},
-    }
+    if wait_kind == "mood":
+        waiting.mastery_mood_wait = {
+            "plan_id": serial.ids[0],
+            "required": {"协助者": 5},
+            "context": {},
+        }
+    else:
+        waiting.mastery_trainee_wait = "当前干员"
     if protected:
         serial.solver.train_room_state = mastery_reader.RoomState(
             train_slot="当前干员", state="empty", slots_reliable=True

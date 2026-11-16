@@ -138,7 +138,14 @@ def test_additional_replacement_reservation_follows_backup_activation(
     candidates, _ = mastery_support_data.candidates(ids["能天使"], inputs=inputs)
     assert ("艾丽妮" not in candidates) is (not backup or active)
     assert "逻各斯" in candidates
-    assert "meeting" in mastery_support_data.trainee_schedule_conflict("艾丽妮", plan)
+    reason = mastery_support_data.trainee_schedule_conflict("艾丽妮", plan)
+    if backup and not active:
+        assert reason is None
+    else:
+        assert "meeting" in reason
+    assert "meeting" in mastery_support_data.trainee_schedule_conflict(
+        "艾丽妮", plan, allow_replacements=False
+    )
 
 
 @pytest.mark.parametrize("backup", [False, True])

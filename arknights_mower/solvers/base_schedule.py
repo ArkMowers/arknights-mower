@@ -393,7 +393,7 @@ def _stop_if_scheduled_trainee(
         return
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
-    reason = trainee_schedule_conflict(trainee)
+    reason = trainee_schedule_conflict(trainee, allow_replacements=False)
     if reason is None:
         return
     message = (
@@ -1348,6 +1348,17 @@ class BaseSchedulerSolver(
                     ]
                     logger.debug("普通下班目标已实际入住，完成原请求：%s", task)
                     continue
+            if failure and (trainee := getattr(task, "mastery_trainee_wait", None)):
+                from arknights_mower.utils.mastery_schedule import (
+                    trainee_runtime_conflict,
+                )
+
+                if trainee_runtime_conflict(self, trainee):
+                    continue
+                del task.execution_failure
+                del task.mastery_trainee_wait
+                task.execution_retained = True
+                continue
             if failure and (waiting := getattr(task, "mastery_mood_wait", None)):
                 from arknights_mower.utils.mastery_mood import (
                     support_mood_context,
@@ -22845,20 +22856,30 @@ class BaseSchedulerSolver(
         ) and not getattr(room, "collected", False):
             return
         current = getattr(self, "task", None)
-        mood_waiting = {
+        waiting_starts = {
             str(task.mastery_mood_wait["plan_id"])
             for task in getattr(self, "tasks", [])
             if task.type == TaskTypes.SKILL_UPGRADE
             and getattr(task, "execution_failure", None)
             and getattr(task, "mastery_mood_wait", None)
         }
+        waiting_starts.update(
+            str(task.plan_key)
+            for task in getattr(self, "tasks", [])
+            if task.type == TaskTypes.SKILL_UPGRADE
+            and getattr(task, "execution_failure", None)
+            and getattr(task, "mastery_trainee_wait", None)
+        )
         if any(
             task is not current
             and task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
             and not (
                 task.type == TaskTypes.SKILL_UPGRADE
                 and getattr(task, "execution_failure", None)
-                and getattr(task, "mastery_mood_wait", None)
+                and (
+                    getattr(task, "mastery_mood_wait", None)
+                    or getattr(task, "mastery_trainee_wait", None)
+                )
             )
             for task in getattr(self, "tasks", [])
         ):
@@ -22873,7 +22894,7 @@ class BaseSchedulerSolver(
             plans = [waiting]
         protection_notified = False
         for plan in plans:
-            if plan["status"] != "idle" or str(plan["id"]) in mood_waiting:
+            if plan["status"] != "idle" or str(plan["id"]) in waiting_starts:
                 continue
             key = (plan["char_id"], plan["skill_index"])
             entry = confirmed.get(key)

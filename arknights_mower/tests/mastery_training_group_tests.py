@@ -68,7 +68,7 @@ def test_start_group_only_warns_when_not_following_schedule(
         "target_level": 3,
         "support_plan": {"stages": []} if automatic else None,
     }
-    solver = MagicMock()
+    solver = MagicMock(tasks=[], waiting_group_shifts=[])
     with (
         patch(
             "arknights_mower.utils.config.plan", PlanModel(**grouped_schedule(backup))

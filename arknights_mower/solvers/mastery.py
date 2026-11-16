@@ -833,6 +833,17 @@ def _start_new_training(solver, plan, arrange_support=True, room=None, step_leve
             logger.warning(f"[mastery] 排班冲突通知发送失败: {notify_exc}")
         return
 
+    from arknights_mower.utils.mastery_schedule import trainee_runtime_conflict
+
+    if reason := trainee_runtime_conflict(solver, trainee):
+        task = getattr(solver, "task", None)
+        if task is not None:
+            task.mastery_trainee_wait = trainee
+            solver._retain_failed_task(task, reason, (), dependency=True)
+        else:
+            logger.info(reason)
+        return
+
     requirement_error = get_mastery_requirement_error(plan["char_id"])
     if requirement_error:
         logger.warning(f"[mastery] 暂不开始训练：{requirement_error}")

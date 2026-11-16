@@ -987,7 +987,7 @@ class MasteryRestartTests(unittest.TestCase):
         ):
             with self.assertRaises(MowerExit):
                 self.read_mood(solver)
-        conflict.assert_called_once_with("测试干员")
+        conflict.assert_called_once_with("测试干员", allow_replacements=False)
         self.assertEqual(solver.back.call_count, 2)
         self.assertTrue(stop.is_set())
 
