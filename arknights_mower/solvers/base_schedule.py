@@ -13546,7 +13546,7 @@ class BaseSchedulerSolver(
         self._tap_product_point(product.recipe)
         self._wait_product_resource("manufacture_product_change_confirm")
         if count is not None:
-            if not 1 <= count <= 4:
+            if not 1 <= count <= 99:
                 raise ValueError("双芯片制造份数无效")
             for _ in range(count - 1):
                 self._tap_product_point((1300, 305), interval=0.2)

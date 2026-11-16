@@ -465,6 +465,9 @@ def chip_solver(case):
         room: [SimpleNamespace(facility="制造站")] for room in ("room_1_1", "room_1_2")
     }
     solver.op_data.facility_states = {}
+    solver.op_data.operators = {}
+    solver.op_data.config = SimpleNamespace(is_exhaust_require=lambda name: False)
+    solver.find_next_task.return_value = None
     solver.read_manufacture_product.return_value = "gold"
     solver._read_manufacture_queue_count.return_value = 0
     solver._product_ocr_text.return_value = "先锋双芯片"
@@ -534,6 +537,185 @@ def test_chip_failure_restores_and_does_not_invent_output(case, chip_solver):
         )
     assert "先锋双芯片" not in record.get_inventory_counts()
     assert runner._chip_state() is None
+
+
+@pytest.mark.parametrize(
+    "exhausted, expected",
+    [({"fast"}, "room_1_1"), ({"slow", "fast"}, "room_1_2"), (set(), "room_1_2")],
+)
+def test_chip_station_prefers_actual_occupants_without_exhaust_setting(
+    case, chip_solver, exhausted, expected
+):
+    chip_solver.op_data.operators = {
+        name: SimpleNamespace(name=name, current_room=room, exhaust_require=False)
+        for name, room in (("slow", "room_1_1"), ("fast", "room_1_2"))
+    }
+    chip_solver.op_data.config.is_exhaust_require = lambda name: name in exhausted
+    chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
+    assert runner.manufacture_chips(
+        chip_solver, {"dual": {"3213": 4}}, datetime.now() + timedelta(minutes=5)
+    )
+    assert chip_solver._survey_manufacture_switch.call_count == 2
+    assert (
+        chip_solver._execute_manufacture_acceleration.call_args.args[0]["room"]
+        == expected
+    )
+
+
+def test_absent_exhaust_primary_does_not_exclude_ordinary_replacement_station(
+    case, chip_solver
+):
+    chip_solver.op_data.operators = {
+        "primary": SimpleNamespace(name="primary", current_room="dormitory_1"),
+        "replacement": SimpleNamespace(name="replacement", current_room="room_1_2"),
+    }
+    chip_solver.op_data.config.is_exhaust_require = lambda name: name == "primary"
+    chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
+    assert runner.manufacture_chips(
+        chip_solver, {"dual": {"3213": 4}}, datetime.now() + timedelta(minutes=5)
+    )
+    assert (
+        chip_solver._execute_manufacture_acceleration.call_args.args[0]["room"]
+        == "room_1_2"
+    )
+
+
+def test_unusable_ordinary_station_does_not_borrow_exhaust_station(case, chip_solver):
+    chip_solver.op_data.operators = {
+        "fast": SimpleNamespace(name="fast", current_room="room_1_2")
+    }
+    chip_solver.op_data.config.is_exhaust_require = lambda name: name == "fast"
+    survey = chip_solver._survey_manufacture_switch.side_effect
+
+    def observe(room, target, **kwargs):
+        value = survey(room, target, **kwargs)
+        if room == "room_1_1":
+            value["available_drones"] = 0
+        return value
+
+    chip_solver._survey_manufacture_switch.side_effect = observe
+    assert not runner.manufacture_chips(
+        chip_solver, {"dual": {"3213": 4}}, datetime.now() + timedelta(minutes=5)
+    )
+    chip_solver._execute_manufacture_acceleration.assert_not_called()
+
+
+def prepare_sniper_chips(case):
+    case.skills["items"].update(
+        {"3242": {"name": "狙击芯片组"}, "3243": {"name": "狙击双芯片"}}
+    )
+    record.save_inventory_counts(
+        {"先锋芯片组": 16, "狙击芯片组": 6, "狙击双芯片": 0, "芯片助剂": 11}
+    )
+
+
+def test_chip_batch_combines_professions_and_restores_only_after_entire_batch(
+    case, chip_solver
+):
+    prepare_sniper_chips(case)
+    chip_solver._product_ocr_text.side_effect = ["先锋双芯片", "狙击双芯片"]
+    chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
+    assert runner.manufacture_chips(
+        chip_solver,
+        {"dual": {"3213": 8, "3243": 3}},
+        datetime.now() + timedelta(minutes=5),
+    )
+    assert [
+        (call.args[0].name, call.kwargs["count"])
+        for call in chip_solver._select_manufacture_recipe.call_args_list
+    ] == [("先锋双芯片", 8), ("狙击双芯片", 3)]
+    chip_solver._execute_manufacture_acceleration.assert_called_once()
+    chip_solver._select_manufacture_product.assert_called_once_with("gold")
+    chip_solver.choose_agent.assert_not_called()
+    chip_solver.sleep.assert_not_called()
+    stock = record.get_inventory_counts()
+    assert {name: stock[name] for name in ("先锋双芯片", "狙击双芯片", "芯片助剂")} == {
+        "先锋双芯片": 8,
+        "狙击双芯片": 3,
+        "芯片助剂": 0,
+    }
+    assert stock["先锋芯片组"] == stock["狙击芯片组"] == 0
+    assert runner.restore_chip_product(chip_solver)
+    assert record.get_inventory_counts() == stock
+
+
+def test_batch_interruption_retains_confirmed_output_and_restores_original(
+    case, chip_solver
+):
+    prepare_sniper_chips(case)
+    chip_solver._select_manufacture_recipe.side_effect = [None, RecognizeError("chip")]
+    chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
+    with pytest.raises(RecognizeError):
+        runner.manufacture_chips(
+            chip_solver,
+            {"dual": {"3213": 8, "3243": 3}},
+            datetime.now() + timedelta(minutes=5),
+        )
+    stock = record.get_inventory_counts()
+    assert stock["先锋双芯片"] == 8
+    assert stock["先锋芯片组"] == 0
+    assert {"狙击双芯片", "狙击芯片组", "芯片助剂"}.isdisjoint(stock)
+    chip_solver._select_manufacture_product.assert_called_once_with("gold")
+    assert runner._chip_state() is None
+
+
+def test_large_profession_batch_uses_bounded_queues_with_one_restore(case, chip_solver):
+    record.save_inventory_counts({"先锋芯片组": 200, "芯片助剂": 100})
+    chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
+    assert runner.manufacture_chips(
+        chip_solver, {"dual": {"3213": 100}}, datetime.now() + timedelta(minutes=5)
+    )
+    assert [
+        call.kwargs["count"]
+        for call in chip_solver._select_manufacture_recipe.call_args_list
+    ] == [99, 1]
+    chip_solver._select_manufacture_product.assert_called_once_with("gold")
+    assert record.get_inventory_counts()["先锋双芯片"] == 100
+    assert record.get_inventory_counts()["芯片助剂"] == 0
+
+
+def test_confirmed_batch_survives_restore_failure_and_commits_once(case, chip_solver):
+    record.save_inventory_counts({"先锋芯片组": 16, "芯片助剂": 8})
+    chip_solver.read_manufacture_product.side_effect = RecognizeError("chip")
+    chip_solver._select_manufacture_product.side_effect = RecognizeError("restore")
+    with pytest.raises(RecognizeError, match="restore"):
+        runner.manufacture_chips(
+            chip_solver, {"dual": {"3213": 8}}, datetime.now() + timedelta(minutes=5)
+        )
+    assert runner._chip_state()["confirmed_delta"]["先锋双芯片"] == 8
+    assert record.get_inventory_counts()["先锋双芯片"] == 0
+    config.conf.maa_growth_enable = False
+    chip_solver._select_manufacture_product.side_effect = None
+    chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
+    assert runner.restore_chip_product(chip_solver)
+    assert runner.restore_chip_product(chip_solver)
+    stock = record.get_inventory_counts()
+    assert stock["先锋双芯片"] == 8
+    assert stock["先锋芯片组"] == stock["芯片助剂"] == 0
+
+
+def test_batch_yields_between_professions_without_losing_confirmed_chips(
+    case, chip_solver
+):
+    prepare_sniper_chips(case)
+    chip_solver.find_next_task.side_effect = lambda *_: (
+        SimpleNamespace(time=datetime.now())
+        if chip_solver._select_manufacture_recipe.called
+        else None
+    )
+    chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
+    assert not runner.manufacture_chips(
+        chip_solver,
+        {"dual": {"3213": 8, "3243": 3}},
+        datetime.now() + timedelta(minutes=5),
+    )
+    chip_solver._select_manufacture_recipe.assert_called_once()
+    stock = record.get_inventory_counts()
+    assert stock["先锋双芯片"] == 8
+    assert stock["芯片助剂"] == 3
+    assert stock["狙击芯片组"] == 6
+    assert stock["狙击双芯片"] == 0
+    chip_solver._select_manufacture_product.assert_called_once_with("gold")
 
 
 def test_growth_yields_to_due_tasks_and_off_switch(case, chip_solver):
@@ -663,7 +845,8 @@ def test_completed_receipt_is_never_admitted_again_with_an_old_file(case):
     assert execution.blocked(action)
 
 
-def test_native_recipe_uses_verified_exact_quantity_and_never_max(case):
+@pytest.mark.parametrize("count", [4, 8, 99])
+def test_native_recipe_uses_verified_exact_quantity_and_never_max(case, count):
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
     solver = object.__new__(BaseSchedulerSolver)
@@ -671,20 +854,20 @@ def test_native_recipe_uses_verified_exact_quantity_and_never_max(case):
     solver._wait_product_resource = MagicMock()
     solver._fill_manufacture_queue = MagicMock()
     solver.recog = MagicMock()
-    solver._product_ocr_text = MagicMock(return_value="4")
-    solver._select_manufacture_recipe(DUALCHIP_PRODUCTS["3213"], count=4)
+    solver._product_ocr_text = MagicMock(return_value=str(count))
+    solver._select_manufacture_recipe(DUALCHIP_PRODUCTS["3213"], count=count)
     assert (
         sum(
             call.args == ((1300, 305),)
             for call in solver._tap_product_point.call_args_list
         )
-        == 3
+        == count - 1
     )
     solver._fill_manufacture_queue.assert_not_called()
     solver._product_ocr_text.return_value = "1"
     solver._tap_product_point.reset_mock()
     with pytest.raises(RecognizeError, match="份数未确认"):
-        solver._select_manufacture_recipe(DUALCHIP_PRODUCTS["3213"], count=4)
+        solver._select_manufacture_recipe(DUALCHIP_PRODUCTS["3213"], count=count)
     assert ((1425, 895),) not in [
         call.args for call in solver._tap_product_point.call_args_list
     ]
@@ -772,6 +955,8 @@ def test_idle_growth_buys_missing_catalyst_then_uses_native_chips(case, monkeypa
     assert steps == ["purchase", "native_chips", "promotion"]
     assert record.get_inventory_counts()["采购凭证"] == 0
     assert record.get_inventory_counts()["芯片助剂"] == 0
+    assert record.get_inventory_counts()["先锋芯片组"] == 0
+    assert record.get_inventory_counts()["先锋双芯片"] == 0
     assert record.get_inventory_counts()["先锋双芯片"] == 0
 
 
@@ -851,9 +1036,10 @@ def test_all_supplied_operators_share_one_purchase_then_promote_in_order(
         )
 
     def manufacture(solver, action, deadline):
-        steps.append(("chips", action["char_id"]))
+        assert action["dual"] == {"3213": 8}
+        steps.append(("chips", 8))
         record.apply_workshop_inventory(
-            {"先锋双芯片": 4, "先锋芯片组": -8, "芯片助剂": -4}
+            {"先锋双芯片": 8, "先锋芯片组": -16, "芯片助剂": -8}
         )
         return True
 
@@ -875,14 +1061,46 @@ def test_all_supplied_operators_share_one_purchase_then_promote_in_order(
     runner.run_growth(solver)
     assert steps == [
         ("purchase", 5),
-        ("chips", "char_test"),
+        ("chips", 8),
         ("promote", "char_test"),
-        ("chips", "char_second"),
         ("promote", "char_second"),
     ]
     assert record.get_inventory_counts()["采购凭证"] == 0
     assert record.get_inventory_counts()["芯片助剂"] == 0
-    assert record.get_inventory_counts()["先锋芯片组"] == 0
+
+
+def test_chip_pack_shortage_never_buys_catalysts_until_new_stock_arrives(
+    case, monkeypatch
+):
+    from arknights_mower.utils import mastery_db
+
+    (case.tmp / "growth_plan.json").write_text(
+        json.dumps([{**case.goal, "module_id": "elite2"}])
+    )
+    monkeypatch.setattr(
+        rec, "get_path", lambda name: case.tmp / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(mastery_db, "get_all_plans", lambda: [])
+    record.save_inventory_counts({"先锋芯片组": 7, "芯片助剂": 0, "采购凭证": 900})
+    purchase = MagicMock(return_value=False)
+    manufacture = MagicMock()
+    monkeypatch.setattr(runner, "purchase_catalyst", purchase)
+    monkeypatch.setattr(runner, "manufacture_chips", manufacture)
+    solver = SimpleNamespace(
+        MAA=None,
+        find_next_task=MagicMock(return_value=None),
+        _auto_schedule_mastery_after_scan=MagicMock(),
+    )
+    runner.run_growth(solver)
+    runner.run_growth(solver)
+    purchase.assert_not_called()
+    manufacture.assert_not_called()
+    record.save_inventory_counts({"先锋芯片组": 8})
+    runner.run_growth(solver)
+    purchase.assert_called_once()
+    assert purchase.call_args.args[1]["catalyst_purchase"] == 4
+    assert record.get_inventory_counts()["先锋芯片组"] == 8
+    assert record.get_inventory_counts()["采购凭证"] == 900
     assert record.get_inventory_counts()["先锋双芯片"] == 0
 
 

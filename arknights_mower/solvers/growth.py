@@ -2,6 +2,7 @@
 
 import json
 import time
+from collections import Counter
 from datetime import datetime, timedelta
 
 from arknights_mower.solvers import record
@@ -54,11 +55,7 @@ def restore_chip_product(solver):
         current = None
     if current != state["original"]:
         if state.get("started") and not state.get("produced"):
-            title = solver._product_ocr_text(((1500, 325), (1870, 460)))
-            state["produced"] = (
-                state["product_name"] in title
-                and solver._read_manufacture_queue_count() == 0
-            )
+            state["produced"] = _chip_output_complete(solver, state)
             _chip_state(state)
         solver._select_manufacture_product(state["original"])
         solver.recog.update()
@@ -67,9 +64,11 @@ def restore_chip_product(solver):
     solver._cache_facility_state(state["room"], "manufacture", state["original"])
     with record._conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
+        delta = Counter(state.get("confirmed_delta", {}))
         if state.get("produced"):
-            record._apply_inventory_delta(conn, state["delta"])
-        else:
+            delta.update(state["delta"])
+        record._apply_inventory_delta(conn, delta)
+        if state["delta"] and not state.get("produced"):
             names = state["delta"]
             conn.executemany(
                 "DELETE FROM inventory WHERE item_name=?", [(name,) for name in names]
@@ -78,7 +77,14 @@ def restore_chip_product(solver):
         conn.execute("DELETE FROM growth_chip_restore")
         conn.commit()
     record.workshop_inventory_changed.set()
-    return state.get("produced", False)
+    return not state["delta"] or state.get("produced", False)
+
+
+def _chip_output_complete(solver, state):
+    title = solver._product_ocr_text(((1500, 325), (1870, 460)))
+    return (
+        state["product_name"] in title and solver._read_manufacture_queue_count() == 0
+    )
 
 
 def manufacture_chips(solver, action, deadline):
@@ -95,6 +101,12 @@ def manufacture_chips(solver, action, deadline):
         for room, state in getattr(solver.op_data, "facility_states", {}).items()
         if state.get("facility") == "manufacture"
     )
+    exhausted_rooms = {
+        operator.current_room
+        for operator in solver.op_data.operators.values()
+        if solver.op_data.config.is_exhaust_require(operator.name)
+    }
+    eligible_rooms = rooms - exhausted_rooms or rooms
     observations = []
     for room in sorted(rooms):
         if datetime.now() >= deadline or config.stop_mower.is_set():
@@ -128,7 +140,8 @@ def manufacture_chips(solver, action, deadline):
         ready = observation.get("observed_at", datetime.now()) + timedelta(
             seconds=observation["current_remaining"] / rate
         )
-        observations.append((ready, room, observation))
+        if room in eligible_rooms:
+            observations.append((ready, room, observation))
     if not observations:
         return False
     _, room, observation = min(observations, key=lambda item: (item[0], item[1]))
@@ -140,35 +153,56 @@ def manufacture_chips(solver, action, deadline):
     )
     if confirm_after > deadline:
         return False
-    for iid, count in action["dual"].items():
-        product = DUALCHIP_PRODUCTS[iid]
-        group = skills["items"][iid[:-1] + "2"]["name"]
-        catalyst = skills["items"]["32001"]["name"]
-        delta = {product.name: count, group: -2 * count, catalyst: -count}
-        _chip_state(
-            {
-                "room": room,
-                "original": observation["current_product"],
-                "delta": delta,
-                "product_name": product.name,
-            }
-        )
-        try:
-            solver._select_manufacture_recipe(
-                product, count=count, confirm_after=confirm_after
-            )
-            state = _chip_state()
-            _chip_state({**state, "started": True})
-        finally:
-            produced = restore_chip_product(solver)
-        if not produced:
-            raise RecognizeError("双芯片制造结果未确认，请读取仓库")
-        logger.info(
-            "已制造 %d 个%s并恢复原产物",
-            count,
-            product.name,
-            extra={"log_group": "growth-planning"},
-        )
+    state = {
+        "room": room,
+        "original": observation["current_product"],
+        "confirmed_delta": {},
+        "delta": {},
+    }
+    _chip_state(state)
+    try:
+        for iid, total in action["dual"].items():
+            product = DUALCHIP_PRODUCTS[iid]
+            group = skills["items"][iid[:-1] + "2"]["name"]
+            catalyst = skills["items"]["32001"]["name"]
+            while total:
+                if (
+                    config.stop_mower.is_set()
+                    or not config.conf.maa_growth_enable
+                    or datetime.now() >= deadline
+                    or solver.find_next_task(datetime.now() + timedelta(seconds=30))
+                    is not None
+                ):
+                    return False
+                count = min(total, 99)
+                state.update(
+                    delta={product.name: count, group: -2 * count, catalyst: -count},
+                    product_name=product.name,
+                    started=False,
+                    produced=False,
+                )
+                _chip_state(state)
+                solver._select_manufacture_recipe(
+                    product, count=count, confirm_after=confirm_after
+                )
+                state["started"] = True
+                _chip_state(state)
+                solver._open_manufacture_product_detail(room)
+                if not _chip_output_complete(solver, state):
+                    raise RecognizeError("双芯片制造结果未确认，请读取仓库")
+                confirmed = Counter(state["confirmed_delta"])
+                confirmed.update(state["delta"])
+                state.update(confirmed_delta=dict(confirmed), delta={}, started=False)
+                _chip_state(state)
+                total -= count
+                logger.info(
+                    "已确认制造 %d 个%s",
+                    count,
+                    product.name,
+                    extra={"log_group": "growth-planning"},
+                )
+    finally:
+        restore_chip_product(solver)
     return True
 
 
@@ -451,8 +485,13 @@ def run_growth(solver):
                 if not purchase_catalyst(solver, purchase, deadline):
                     return
                 continue
-            if action["dual"] and not manufacture_chips(solver, action, deadline):
-                return
+            dual = Counter()
+            for item in ready:
+                dual.update(item["dual"])
+            if dual:
+                if not manufacture_chips(solver, {"dual": dict(dual)}, deadline):
+                    return
+                continue
             progressed = _run_maa(solver, action, deadline) or progressed
         if progressed:
             solver._auto_schedule_mastery_after_scan()
