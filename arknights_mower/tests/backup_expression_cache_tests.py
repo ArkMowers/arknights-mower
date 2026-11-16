@@ -61,6 +61,22 @@ def test_evaluates_saved_function_conditions(data, function, args, expected):
     assert data.evaluate_expression(source) == expected
 
 
+def test_backup_expression_reads_current_operator_slot(data):
+    operator = data.operators["芬"]
+    operator.current_room = "central"
+    operator.current_index = 1
+    expression = (
+        "op_data.operators['芬'].current_room == 'central' and "
+        "op_data.operators['芬'].current_index == 1"
+    )
+    assert data.evaluate_expression(expression) is True
+    operator.current_index = 2
+    assert data.evaluate_expression(expression) is False
+    operator.current_room = ""
+    operator.current_index = -1
+    assert data.evaluate_expression(expression) is False
+
+
 def test_nested_functions_read_current_operator_state(data):
     source = str(
         get_logic_exp(
