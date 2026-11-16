@@ -181,6 +181,7 @@ def instance_idle(server):
         or server._job_running(server.maa_resource_update_job)
         or server.resource_update.running()
         or server.configuration_test_active_requests > 0
+        or server.device_operation_active_requests > 0
         or server.chat_active_requests > 0
         or server._recycling_reports_running()
         or server._configuration_recovery_pending()

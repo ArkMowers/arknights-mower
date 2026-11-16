@@ -1,13 +1,17 @@
 """Start-and-verify for an instance the bound preset's own manager can launch."""
 
 import unittest
+from concurrent.futures import ThreadPoolExecutor
 from threading import Event
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from arknights_mower.tests import device_settings_route_tests as settings_routes
 from arknights_mower.tests.device_preflight_tests import PreflightIO
 from arknights_mower.tests.device_session_tests import ADB, Adapter, Clock, Simulator
 from arknights_mower.utils import config
+from arknights_mower.utils import software_update as update
+from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.application import DeviceControl
 from arknights_mower.utils.device.discovery import DiscoveryResult
@@ -62,6 +66,159 @@ class StartBoundTests(unittest.TestCase):
         self.adb.rows = [(SERIAL, "device")]
         self.adb.boot = "1"
         self.io.targets = [(SERIAL, "device")]
+
+    def test_device_requests_block_automatic_update_until_they_finish(self):
+        state = self.path.parent / "updates"
+        self.enterContext(patch.object(runtime, "state_dir", return_value=state))
+        self.enterContext(
+            patch.object(update, "settings_path", return_value=state / "settings.json")
+        )
+        self.enterContext(patch.object(config, "updates_enabled", True))
+        self.enterContext(patch.object(self.main, "base_scheduler", None))
+        self.enterContext(
+            patch.object(
+                self.server, "device_operation_active_requests", 0, create=True
+            )
+        )
+        self.enterContext(
+            patch.object(self.server, "configuration_test_active_requests", 0)
+        )
+        self.enterContext(patch.object(self.server, "chat_active_requests", 0))
+        self.enterContext(
+            patch.object(
+                self.server, "_performance_test_status", return_value={"status": "idle"}
+            )
+        )
+        self.enterContext(
+            patch.object(
+                self.server, "_configuration_recovery_pending", return_value=False
+            )
+        )
+        self.enterContext(
+            patch.object(self.server, "_recycling_reports_running", return_value=False)
+        )
+        self.enterContext(patch.object(self.server, "_job_running", return_value=False))
+        self.enterContext(
+            patch.object(self.server.resource_update, "running", return_value=False)
+        )
+        self.enterContext(patch.dict(self.server.maa_check_job, {"status": "idle"}))
+        self.enterContext(
+            patch("arknights_mower.utils.maa_backup.maa_in_use", return_value=False)
+        )
+        registration = runtime.RuntimeRegistration(
+            "instance", directory=state, maintenance=False
+        )
+        self.addCleanup(registration.close)
+        registration.record["ready"] = True
+        registration.idle = lambda: update.instance_idle(self.server)
+        update.save_settings({"auto_update": True})
+
+        for route, method, payload in (
+            ("/device/preflight", "preflight", {}),
+            ("/device/discover", "discover", {}),
+            ("/device/start", "start_bound", {}),
+            ("/device/avd/start", "start_avd", {"confirmed_instance": "selected"}),
+            (
+                "/device/redroid/start",
+                "start_redroid",
+                {"confirmed_instance": "selected"},
+            ),
+            (
+                "/device/genymotion/start",
+                "start_genymotion",
+                {"confirmed_instance": "selected"},
+            ),
+        ):
+            with self.subTest(route=route):
+                (state / "auto-check.json").unlink(missing_ok=True)
+                entered, release = Event(), Event()
+
+                def blocked(*args, **kwargs):
+                    entered.set()
+                    if not release.wait(5):
+                        raise TimeoutError("test did not release device request")
+                    return SimpleNamespace(to_dict=lambda: {"ok": True})
+
+                def request_device():
+                    with self.server.app.test_client() as client:
+                        return client.post(route, headers=self.headers, json=payload)
+
+                with (
+                    patch.object(self.control, method, side_effect=blocked),
+                    patch.object(
+                        update,
+                        "check",
+                        return_value={"available": True, "check_id": "checked"},
+                    ) as check,
+                    patch.object(update, "submit", return_value={"ok": True}) as submit,
+                    ThreadPoolExecutor(max_workers=1) as pool,
+                ):
+                    future = pool.submit(request_device)
+                    try:
+                        self.assertTrue(entered.wait(3))
+                        registration.publish()
+                        runtime.write_json(
+                            registration.request,
+                            {"job": "automatic", "idle_only": True},
+                        )
+                        self.assertFalse(registration.shutdown_requested())
+                        update.check_on_launch()
+                        check.assert_not_called()
+                        submit.assert_not_called()
+                    finally:
+                        release.set()
+                        response = future.result(timeout=5)
+                    self.assertEqual(response.status_code, 200, response.json)
+                    self.assertEqual(self.server.device_operation_active_requests, 0)
+                    registration.publish()
+                    self.assertTrue(registration.shutdown_requested())
+                    update.check_on_launch()
+                    submit.assert_called_once_with("checked", False, automatic=True)
+
+    def test_device_request_authentication_precedes_parsing_and_activity(self):
+        with (
+            patch(
+                "flask.Request.get_json",
+                side_effect=AssertionError("unauthorized input parsed"),
+            ),
+            patch.object(self.control, "start_bound") as start,
+            patch.object(self.control, "preflight") as preflight,
+        ):
+            for route in (
+                "/device/preflight",
+                "/device/discover",
+                "/device/start",
+                "/device/avd/start",
+                "/device/redroid/start",
+                "/device/genymotion/start",
+            ):
+                for headers in ({}, {"token": "invalid"}):
+                    self.assertEqual(
+                        self.client.post(route, headers=headers).status_code, 403
+                    )
+                    self.assertEqual(
+                        getattr(self.server, "device_operation_active_requests", 0), 0
+                    )
+        start.assert_not_called()
+        preflight.assert_not_called()
+
+    def test_device_activity_is_released_after_cancellation_or_exception(self):
+        with patch.object(self.control, "preflight", side_effect=MowerExit):
+            response = self.client.post(
+                "/device/preflight", headers=self.headers, json={}
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["error"]["code"], "device_operation_cancelled")
+        self.assertEqual(self.server.device_operation_active_requests, 0)
+        with (
+            patch.dict(self.server.app.config, {"PROPAGATE_EXCEPTIONS": True}),
+            patch.object(
+                self.control, "preflight", side_effect=RuntimeError("device failed")
+            ),
+            self.assertRaisesRegex(RuntimeError, "device failed"),
+        ):
+            self.client.post("/device/preflight", headers=self.headers, json={})
+        self.assertEqual(self.server.device_operation_active_requests, 0)
 
     def start(self, device=None, **payload):
         response = self.client.post(

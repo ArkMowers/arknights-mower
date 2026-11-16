@@ -1431,17 +1431,26 @@ class Worker:
                 "未找到可恢复的应用，请从桌面启动器或多开管理器打开 Mower 后重试"
             )
         write_json(self.work / "instances-before.json", self.original)
-        for record in self.original:
-            request = {"job": self.job["id"]}
-            if self.job.get("automatic"):
-                request["idle_only"] = True
-            write_json(
-                self.state / "shutdown" / f"{record['id']}.json",
-                request,
-            )
+
+        def request_shutdown(records):
+            for record in records:
+                request = {"job": self.job["id"]}
+                if self.job.get("automatic"):
+                    request["idle_only"] = True
+                write_json(self.state / "shutdown" / f"{record['id']}.json", request)
+
+        if self.job.get("automatic"):
+            applications = [r for r in self.original if r["kind"] == "instance"]
+            remaining = [r for r in self.original if r["kind"] != "instance"]
+        else:
+            applications, remaining = self.original, []
+        request_shutdown(applications)
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
             self.stopped = [r for r in self.original if not process_alive(r["pid"])]
+            if remaining and all(r in self.stopped for r in applications):
+                request_shutdown(remaining)
+                remaining = []
             if len(self.stopped) == len(self.original):
                 for record in self.original:
                     wait_for_supervisor_release(record, deadline)

@@ -116,6 +116,7 @@ if token := config.conf.webview.token:
 mower_thread = None
 chat_active_requests = 0
 configuration_test_active_requests = 0
+device_operation_active_requests = 0
 log_stream = LogStream()
 scheduled_start_lock = RLock()
 scheduled_start_timer = None
@@ -1168,6 +1169,19 @@ def device_status():
     return status
 
 
+@contextmanager
+def device_operation_request():
+    global device_operation_active_requests
+
+    with backup_lock:
+        device_operation_active_requests += 1
+    try:
+        yield
+    finally:
+        with backup_lock:
+            device_operation_active_requests -= 1
+
+
 @app.route("/device/preflight", methods=["POST"])
 @app.route("/device/discover", methods=["POST"])
 @app.route("/device/start", methods=["POST"])
@@ -1175,6 +1189,7 @@ def device_status():
 @app.route("/device/redroid/start", methods=["POST"])
 @app.route("/device/genymotion/start", methods=["POST"])
 @require_token
+@device_operation_request()
 def device_preflight():
     from arknights_mower.__main__ import device_control
     from arknights_mower.utils.csleep import MowerExit

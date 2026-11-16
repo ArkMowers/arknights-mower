@@ -191,6 +191,7 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
             _job_running=lambda job: job["status"] == "running",
             resource_update=SimpleNamespace(running=lambda: False),
             configuration_test_active_requests=0,
+            device_operation_active_requests=0,
             chat_active_requests=0,
             _recycling_reports_running=lambda: False,
             _configuration_recovery_pending=lambda: False,
@@ -210,7 +211,11 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
             self.assertFalse(update.instance_idle(server))
             scheduler.sleeping = True
             self.assertTrue(update.instance_idle(server))
-            for field in ("chat_active_requests", "configuration_test_active_requests"):
+            for field in (
+                "chat_active_requests",
+                "configuration_test_active_requests",
+                "device_operation_active_requests",
+            ):
                 setattr(server, field, 1)
                 self.assertFalse(update.instance_idle(server))
                 setattr(server, field, 0)
@@ -244,6 +249,76 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
                 runtime.read_json(self.state / "shutdown" / f"{record['id']}.json"),
                 {"job": "automatic", "idle_only": True},
             )
+
+    def test_automatic_shutdown_keeps_ocr_until_all_instances_exit(self):
+        updater = object.__new__(worker.Worker)
+        updater.job = {"id": "automatic", "automatic": True}
+        updater.state = self.state
+        updater.work = self.state / "job"
+        updater.report = Mock()
+        records = [
+            {**self.records[0], "id": "mower", "pid": 123},
+            {**self.records[0], "id": "second", "pid": 124},
+            {"kind": "ocr-service", "id": "ocr", "pid": 456},
+            {"kind": "ocr-worker", "id": "model", "pid": 457},
+        ]
+        stopped = set()
+        observations = []
+
+        def advance(_seconds):
+            self.assertTrue((self.state / "shutdown/mower.json").exists())
+            if len(stopped) < 2:
+                self.assertFalse((self.state / "shutdown/ocr.json").exists())
+                self.assertFalse((self.state / "shutdown/model.json").exists())
+                observations.append("task continues with OCR")
+                stopped.add(123 if not stopped else 124)
+            else:
+                self.assertTrue((self.state / "shutdown/ocr.json").exists())
+                self.assertTrue((self.state / "shutdown/model.json").exists())
+                observations.append("OCR exits after instances")
+                stopped.update((456, 457))
+
+        with (
+            patch.object(worker, "instances", return_value=records),
+            patch.object(
+                worker, "process_alive", side_effect=lambda pid: pid not in stopped
+            ),
+            patch.object(worker, "wait_for_supervisor_release"),
+            patch.object(
+                worker, "time", SimpleNamespace(monotonic=time.monotonic, sleep=advance)
+            ),
+        ):
+            updater.stop_instances()
+        self.assertEqual(
+            observations,
+            ["task continues with OCR"] * 2 + ["OCR exits after instances"],
+        )
+        self.assertEqual(updater.stopped, records)
+
+    def test_automatic_shutdown_timeout_does_not_stop_ocr_for_busy_instance(self):
+        updater = object.__new__(worker.Worker)
+        updater.job = {"id": "automatic", "automatic": True}
+        updater.state = self.state
+        updater.work = self.state / "job"
+        updater.report = Mock()
+        records = [
+            {**self.records[0], "id": "mower", "pid": 123},
+            {"kind": "ocr-service", "id": "ocr", "pid": 456},
+        ]
+        clock = iter((0, 0, 91))
+        with (
+            patch.object(worker, "instances", return_value=records),
+            patch.object(worker, "process_alive", return_value=True),
+            patch.object(
+                worker,
+                "time",
+                SimpleNamespace(monotonic=lambda: next(clock), sleep=lambda _: None),
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "90 秒"):
+                updater.stop_instances()
+        self.assertTrue((self.state / "shutdown/mower.json").exists())
+        self.assertFalse((self.state / "shutdown/ocr.json").exists())
 
     def test_restart_checks_without_immediately_reinstalling(self):
         update.save_settings({"auto_update": True})

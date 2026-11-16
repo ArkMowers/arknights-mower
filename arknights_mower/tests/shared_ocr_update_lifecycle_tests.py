@@ -183,6 +183,75 @@ def test_orphan_native_worker_remains_in_update_shutdown_snapshot(
             pass
 
 
+def test_automatic_shutdown_keeps_shared_ocr_serving_until_instance_exit(
+    tmp_path, monkeypatch
+):
+    state = tmp_path / "updates"
+    context = mp.get_context("spawn")
+    coordinator = context.Process(
+        target=ocr_service.serve,
+        args=(tmp_path,),
+        kwargs={"factory": empty_engine, "state_directory": state},
+    )
+    coordinator.start()
+    try:
+        wait_for(lambda: runtime.read_json(tmp_path / "endpoint.json"), timeout=20)
+        engine = ocr_shared.SharedOCREngine(directory=tmp_path)
+        pixels = np.zeros((1, 1), np.uint8)
+        assert engine(pixels) == (None, None)
+        services = runtime.instances(state)
+        assert {r["kind"] for r in services} == {"ocr-service", "ocr-worker"}
+        application = {
+            "id": "instance",
+            "pid": -1,
+            "kind": "instance",
+            "ready": True,
+            "idle": True,
+            "running": True,
+            "heartbeat": time.time(),
+        }
+        worker = object.__new__(updater.Worker)
+        worker.state, worker.work = state, tmp_path / "job"
+        worker.job = {"id": "fixture-update", "automatic": True}
+        worker.report = Mock()
+        runtime.write_json(
+            state / "active/owner.json", {"id": "fixture-update", "pid": os.getpid()}
+        )
+        task_finished = False
+        results = []
+
+        def alive(pid):
+            if pid == -1:
+                return not task_finished
+            if pid == coordinator.pid:
+                return coordinator.is_alive()
+            return runtime.process_alive(pid)
+
+        def advance(_seconds):
+            nonlocal task_finished
+            if not task_finished:
+                assert (state / "shutdown/instance.json").exists()
+                assert all(
+                    not (state / "shutdown" / f"{r['id']}.json").exists()
+                    for r in services
+                )
+                results.append(engine(pixels))
+                task_finished = True
+            time.sleep(0.02)
+
+        monkeypatch.setattr(updater, "instances", lambda _: [application, *services])
+        monkeypatch.setattr(updater, "process_alive", alive)
+        monkeypatch.setattr(
+            updater, "time", SimpleNamespace(monotonic=time.monotonic, sleep=advance)
+        )
+        worker.stop_instances()
+        assert results == [(None, None)]
+        assert worker.stopped == [application, *services]
+        assert not coordinator.is_alive()
+    finally:
+        close_process(coordinator, os.getpid(), timeout=2)
+
+
 def test_update_restart_excludes_coordinator_and_model_worker(tmp_path):
     worker = object.__new__(updater.Worker)
     worker.report = Mock()
