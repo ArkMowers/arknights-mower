@@ -150,7 +150,7 @@ def test_legacy_low_level_plan_is_not_scheduled(roster, monkeypatch):
 
 
 def test_already_queued_low_level_plan_does_not_arrange_staff(roster, monkeypatch):
-    solver = MagicMock()
+    solver = MagicMock(tasks=[], waiting_group_shifts=[])
     update = MagicMock()
     monkeypatch.setattr(db, "update_plan_status", update)
     mastery._start_new_training(solver, {"id": 1, "char_id": CHAR_ID})
