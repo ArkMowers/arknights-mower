@@ -168,6 +168,26 @@ def automatic_check_key(settings):
     }
 
 
+def instance_idle(server):
+    from arknights_mower.__main__ import base_scheduler
+    from arknights_mower.utils.maa_backup import maa_in_use
+
+    running = bool(server.mower_thread and server.mower_thread.is_alive())
+    return not (
+        (running and (base_scheduler is None or base_scheduler.sleeping is not True))
+        or server._performance_test_status()["status"] == "running"
+        or server.maa_check_job["status"] == "running"
+        or server._job_running(server.maa_update_job)
+        or server._job_running(server.maa_resource_update_job)
+        or server.resource_update.running()
+        or server.configuration_test_active_requests > 0
+        or server.chat_active_requests > 0
+        or server._recycling_reports_running()
+        or server._configuration_recovery_pending()
+        or maa_in_use()
+    )
+
+
 def check_on_launch():
     """One installation checks once when several instances start together."""
     from arknights_mower.utils import config
@@ -182,6 +202,10 @@ def check_on_launch():
         with runtime.submission_lock(state):
             if runtime.active_job(state):
                 return False
+            if settings["auto_update"] and not runtime.automatic_update_idle(
+                runtime.instances(state)
+            ):
+                return True
             previous = runtime.read_json(state / "auto-check.json", {})
             key = automatic_check_key(settings)
             if (
@@ -209,7 +233,12 @@ def check_on_launch():
             and automatic_check_key(current) == automatic_check_key(settings)
             and not recent_restart
         ):
-            submit(result["check_id"], current["background"])
+            submitted = submit(
+                result["check_id"], current["background"], automatic=True
+            )
+            if submitted.get("deferred") is True:
+                with runtime.submission_lock(state):
+                    (state / "auto-check.json").unlink(missing_ok=True)
     except Exception as error:
         runtime.write_json(
             state / "last-check.json",
@@ -1239,7 +1268,9 @@ def require_downgrade_confirmation(plan, confirmed):
         raise ValueError("回退到旧版本需要二次确认，请确认回退后再安装")
 
 
-def submit(check_id, background=False, *, force=False, confirm_downgrade=False):
+def submit(
+    check_id, background=False, *, force=False, confirm_downgrade=False, automatic=False
+):
     plan = _checks.get(check_id)
     if not plan or time.time() - plan["created_at"] > 1800:
         raise ValueError("版本检查已过期，请重新检查更新")
@@ -1251,7 +1282,11 @@ def submit(check_id, background=False, *, force=False, confirm_downgrade=False):
     uploaded = Path(plan["_upload"]) if plan.get("_upload") else None
     if uploaded is None:
         return start_job(
-            plan, background, force=force, confirm_downgrade=confirm_downgrade
+            plan,
+            background,
+            force=force,
+            confirm_downgrade=confirm_downgrade,
+            automatic=automatic,
         )
     try:
         if not uploaded.is_file():
@@ -1262,6 +1297,7 @@ def submit(check_id, background=False, *, force=False, confirm_downgrade=False):
             uploaded=uploaded,
             force=force,
             confirm_downgrade=confirm_downgrade,
+            automatic=automatic,
         )
     finally:
         if not uploaded.exists():
@@ -1269,15 +1305,23 @@ def submit(check_id, background=False, *, force=False, confirm_downgrade=False):
 
 
 def start_job(
-    plan, background=False, uploaded=None, *, force=False, confirm_downgrade=False
+    plan,
+    background=False,
+    uploaded=None,
+    *,
+    force=False,
+    confirm_downgrade=False,
+    automatic=False,
 ):
     require_downgrade_confirmation(plan, confirm_downgrade)
     state = runtime.state_dir()
     with runtime.submission_lock(state), runtime.manager_maintenance_lock(state):
-        return _start_job(plan, background, uploaded, force=force)
+        if automatic and not runtime.automatic_update_idle(runtime.instances(state)):
+            return {"ok": True, "deferred": True}
+        return _start_job(plan, background, uploaded, force=force, automatic=automatic)
 
 
-def _start_job(plan, background=False, uploaded=None, *, force=False):
+def _start_job(plan, background=False, uploaded=None, *, force=False, automatic=False):
     if not isinstance(force, bool):
         raise ValueError("强制更新选项必须是布尔值")
     if force and (plan["deployment"] != "source" or uploaded is not None):
@@ -1307,6 +1351,8 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
             tools["git"], root, force=force, environment=tools.get("source_environment")
         )
     previous_settings = get_settings()
+    if automatic and not runtime.automatic_update_idle(runtime.instances()):
+        return {"ok": True, "deferred": True}
     state = runtime.state_dir()
     state.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = state / "active"
@@ -1333,6 +1379,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False):
             "state_dir": str(state),
             "background": bool(background),
             "force": force,
+            "automatic": automatic,
             "github_proxy": github_download.get_proxy(),
             "network_settings_path": str(network_settings.settings_path()),
             "proxy": network_settings.get_effective_settings()["http_proxy"],

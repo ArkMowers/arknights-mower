@@ -1116,12 +1116,49 @@ def _run_desktop():
                         return
                     thread.join(timeout=0.5)
 
+    startup_thread = None
     if resume and not crash_notice["active"] or auto_resource:
-        Thread(target=resume_after_update, daemon=True).start()
+        startup_thread = Thread(target=resume_after_update, daemon=True)
+        startup_thread.start()
+    from arknights_mower.utils.software_update import instance_idle
+
+    registration.idle = lambda: bool(
+        not shutdown.closing
+        and not (startup_thread and startup_thread.is_alive())
+        and instance_idle(server)
+    )
+    previous_shutdown_check = config.software_update_shutdown_requested
+    config.software_update_shutdown_requested = (
+        registration.automatic_shutdown_requested
+    )
+    shutdown.own(
+        "automatic update shutdown request",
+        lambda: setattr(
+            config, "software_update_shutdown_requested", previous_shutdown_check
+        ),
+        Phase.SIGNAL,
+    )
+    was_idle = False
     manager_missing_since = None
     try:
         while not shutdown.closing:
+            idle = registration.idle()
+            if idle != was_idle:
+                registration.publish()
+                if idle and config.updates_enabled:
+                    try:
+                        request_auto_check()
+                    except PermissionError as error:
+                        logger.warning("空闲时无法检查软件更新：%s", error)
+                was_idle = idle
             if registration.shutdown_requested():
+                if (
+                    registration.automatic_shutdown_requested() is True
+                    and server.mower_thread
+                    and server.mower_thread.is_alive()
+                ):
+                    sleep(0.5)
+                    continue
                 if (
                     server._job_running(server.maa_update_job)
                     or server._job_running(server.maa_resource_update_job)

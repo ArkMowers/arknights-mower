@@ -1,14 +1,17 @@
 import os
+import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 from threading import Event
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from flask import Flask
 
 from arknights_mower.utils import software_update as update
+from arknights_mower.utils import software_update_worker as worker
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.views.software_update import software_update_bp
 
@@ -24,6 +27,17 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
         env = patch.dict(os.environ, {"MOWER_RESTART_JOB": ""})
         env.start()
         self.addCleanup(env.stop)
+        settings = patch.object(
+            update, "settings_path", return_value=self.state / "settings.json"
+        )
+        settings.start()
+        self.addCleanup(settings.stop)
+        self.records = [
+            {"kind": "instance", "ready": True, "idle": True, "heartbeat": time.time()}
+        ]
+        registrations = patch.object(runtime, "instances", return_value=self.records)
+        registrations.start()
+        self.addCleanup(registrations.stop)
 
     def test_default_does_not_check_or_install(self):
         with patch.object(update, "check") as check:
@@ -61,7 +75,175 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
         ):
             update.check_on_launch()
         check.assert_called_once_with("dev")
-        submit.assert_called_once_with("checked", False)
+        submit.assert_called_once_with("checked", False, automatic=True)
+
+    def test_busy_instances_do_not_check_until_all_are_idle(self):
+        update.save_settings({"auto_update": True})
+        self.records.append({**self.records[0], "idle": False})
+        with (
+            patch.object(
+                update, "check", return_value={"available": True, "check_id": "idle"}
+            ) as check,
+            patch.object(update, "submit", return_value={"ok": True}) as submit,
+        ):
+            for _ in range(3):
+                update.check_on_launch()
+            check.assert_not_called()
+            submit.assert_not_called()
+            self.assertFalse((self.state / "auto-check.json").exists())
+            self.records[1]["idle"] = True
+            update.check_on_launch()
+        submit.assert_called_once_with("idle", False, automatic=True)
+
+    def test_unknown_or_stale_instances_cannot_authorize_automatic_updates(self):
+        update.save_settings({"auto_update": True})
+        for changes in (
+            {"ready": False},
+            {"idle": None},
+            {"heartbeat": time.time() - 6},
+        ):
+            with self.subTest(changes=changes), patch.object(update, "check") as check:
+                self.records[:] = [
+                    {
+                        "kind": "instance",
+                        "ready": True,
+                        "idle": True,
+                        "heartbeat": time.time(),
+                        **changes,
+                    }
+                ]
+                update.check_on_launch()
+                check.assert_not_called()
+
+    def test_busy_after_check_defers_submission_and_next_idle_rechecks(self):
+        update.save_settings({"auto_update": True})
+
+        def check(_channel):
+            self.records[0]["idle"] = False
+            check_id = update.remember_check(
+                {"available": True, "created_at": time.time()}
+            )
+            return {"available": True, "check_id": check_id}
+
+        with (
+            patch.object(update, "check", side_effect=check),
+            patch.object(update, "_start_job") as start,
+        ):
+            update.check_on_launch()
+        start.assert_not_called()
+        self.assertFalse((self.state / "auto-check.json").exists())
+        self.records[0]["idle"] = True
+        with (
+            patch.object(
+                update, "check", return_value={"available": True, "check_id": "fresh"}
+            ) as checker,
+            patch.object(update, "submit", return_value={"ok": True}) as submit,
+        ):
+            update.check_on_launch()
+        checker.assert_called_once()
+        submit.assert_called_once()
+
+    def test_busy_during_preflight_does_not_launch_installer(self):
+        def details():
+            self.records[0]["idle"] = False
+            return {"blockers": []}
+
+        with (
+            patch.object(update, "info", side_effect=details),
+            patch.object(update.network_settings, "apply_http_proxy"),
+            patch.object(update.subprocess, "Popen") as launch,
+        ):
+            result = update.start_job({"deployment": "release"}, automatic=True)
+        self.assertTrue(result["deferred"])
+        launch.assert_not_called()
+        self.assertFalse((self.state / "active").exists())
+
+    def test_manual_submission_retains_existing_admission(self):
+        self.records[0]["idle"] = False
+        with patch.object(update, "_start_job", return_value={"ok": True}) as start:
+            self.assertTrue(update.start_job({"deployment": "release"})["ok"])
+        start.assert_called_once()
+        self.assertFalse(start.call_args.kwargs["automatic"])
+
+    def test_busy_during_preparation_cancels_before_any_shutdown(self):
+        updater = object.__new__(worker.Worker)
+        updater.job = {"id": "automatic", "automatic": True}
+        updater.state = self.state
+        updater.work = self.state / "job"
+        updater.report = Mock()
+        self.records.append({**self.records[0], "idle": False})
+        runtime.write_json(self.state / "auto-check.json", {"started_at": time.time()})
+        with patch.object(worker, "instances", return_value=self.records):
+            with self.assertRaises(worker.UpdateCancelled):
+                updater.stop_instances()
+        self.assertEqual(updater.original, [])
+        self.assertFalse((self.state / "shutdown").exists())
+        self.assertFalse((self.state / "auto-check.json").exists())
+
+    def test_instance_idle_requires_a_sleeping_scheduler_or_stopped_worker(self):
+        scheduler = SimpleNamespace(sleeping=False)
+        server = SimpleNamespace(
+            mower_thread=Mock(is_alive=lambda: True),
+            _performance_test_status=lambda: {"status": "idle"},
+            maa_check_job={"status": "idle"},
+            maa_update_job={"status": "idle"},
+            maa_resource_update_job={"status": "idle"},
+            _job_running=lambda job: job["status"] == "running",
+            resource_update=SimpleNamespace(running=lambda: False),
+            configuration_test_active_requests=0,
+            chat_active_requests=0,
+            _recycling_reports_running=lambda: False,
+            _configuration_recovery_pending=lambda: False,
+        )
+        main = SimpleNamespace(base_scheduler=None)
+        with patch.dict(
+            sys.modules,
+            {
+                "arknights_mower.__main__": main,
+                "arknights_mower.utils.maa_backup": SimpleNamespace(
+                    maa_in_use=lambda: False
+                ),
+            },
+        ):
+            self.assertFalse(update.instance_idle(server))
+            main.base_scheduler = scheduler
+            self.assertFalse(update.instance_idle(server))
+            scheduler.sleeping = True
+            self.assertTrue(update.instance_idle(server))
+            for field in ("chat_active_requests", "configuration_test_active_requests"):
+                setattr(server, field, 1)
+                self.assertFalse(update.instance_idle(server))
+                setattr(server, field, 0)
+            server.maa_update_job["status"] = "running"
+            self.assertFalse(update.instance_idle(server))
+            server.maa_update_job["status"] = "idle"
+            server.mower_thread = None
+            main.base_scheduler = None
+            self.assertTrue(update.instance_idle(server))
+
+    def test_automatic_shutdown_requests_preserve_running_state_and_include_ocr(self):
+        updater = object.__new__(worker.Worker)
+        updater.job = {"id": "automatic", "automatic": True}
+        updater.state = self.state
+        updater.work = self.state / "job"
+        updater.report = Mock()
+        records = [
+            {**self.records[0], "id": "mower", "pid": 123, "running": True},
+            {"kind": "ocr-service", "id": "ocr", "pid": 456},
+        ]
+        with (
+            patch.object(worker, "instances", return_value=records),
+            patch.object(worker, "process_alive", return_value=False),
+            patch.object(worker, "wait_for_supervisor_release"),
+        ):
+            updater.stop_instances()
+        self.assertEqual(updater.original, records)
+        self.assertTrue(updater.original[0]["running"])
+        for record in records:
+            self.assertEqual(
+                runtime.read_json(self.state / "shutdown" / f"{record['id']}.json"),
+                {"job": "automatic", "idle_only": True},
+            )
 
     def test_restart_checks_without_immediately_reinstalling(self):
         update.save_settings({"auto_update": True})

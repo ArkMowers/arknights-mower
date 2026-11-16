@@ -156,6 +156,44 @@ def production_idle_scheduler(idle_scheduler, monkeypatch):
     return idle_scheduler
 
 
+@pytest.mark.parametrize("request_at", [0, 1, 3])
+def test_automatic_update_stops_at_idle_without_waking_or_losing_tasks(
+    production_idle_scheduler, monkeypatch, tmp_path, request_at
+):
+    from arknights_mower.utils import update_runtime as runtime
+
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    registration = object.__new__(runtime.RuntimeRegistration)
+    registration.request = tmp_path / "shutdown.json"
+    monkeypatch.setattr(
+        config,
+        "software_update_shutdown_requested",
+        registration.automatic_shutdown_requested,
+    )
+    started = clock.now()
+    tasks = list(solver.tasks)
+    times = [task.time for task in tasks]
+    wake = MagicMock()
+    monkeypatch.setattr(base, "restart_simulator", wake)
+    config.conf.close_simulator_when_idle = True
+    solver._simulator_closed_for_idle = True
+
+    def advance(seconds):
+        clock.current += timedelta(seconds=seconds)
+        if (clock.now() - started).total_seconds() >= request_at:
+            runtime.write_json(registration.request, {"idle_only": True})
+
+    monkeypatch.setattr(base, "csleep", advance)
+    advance(0)
+    with pytest.raises(MowerExit):
+        solver._idle_sleep(3)
+    assert config.stop_mower.is_set()
+    assert solver.sleeping is False
+    assert solver.tasks == tasks
+    assert [task.time for task in solver.tasks] == times
+    wake.assert_not_called()
+
+
 @pytest.mark.parametrize("stop_succeeds", [True, False])
 def test_idle_lifecycle_uses_replacement_device_for_next_focus_check(
     production_idle_scheduler, monkeypatch, stop_succeeds

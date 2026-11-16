@@ -573,6 +573,21 @@ class RuntimeRegistrationTests(unittest.TestCase):
         runtime.atexit.unregister(self.registration.close)
         self.addCleanup(self.registration.close)
 
+    def test_automatic_shutdown_waits_for_current_idle_state(self):
+        registration = self.registration
+        idle = False
+        registration.idle = lambda: idle
+        runtime.write_json(registration.request, {"job": "auto", "idle_only": True})
+        self.assertFalse(registration.shutdown_requested())
+        idle = True
+        self.assertTrue(registration.shutdown_requested())
+        registration.publish()
+        self.assertTrue(runtime.read_json(registration.path)["idle"])
+        idle = False
+        self.assertFalse(registration.shutdown_requested())
+        runtime.write_json(registration.request, {"job": "manual"})
+        self.assertTrue(registration.shutdown_requested())
+
     def test_heartbeat_failure_reaches_application_log_without_console(self):
         log_path = self.directory / "runtime.log"
         handler = logging.FileHandler(log_path, encoding="utf-8")

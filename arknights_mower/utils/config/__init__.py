@@ -334,6 +334,13 @@ load_plan()
 
 stop_mower = Event()
 stop_maa = Event()
+
+
+def software_update_shutdown_requested():
+    """The desktop launcher supplies its transient automatic shutdown request."""
+    return False
+
+
 # 一键专精建计划后唤醒调度休眠（web 线程 set，_idle_sleep 轮询检查清掉）
 wake_scheduler = Event()
 # 维护开始或大版本预备阈值生效时，退出调度器交由主循环重新检查公告。

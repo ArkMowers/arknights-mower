@@ -64,6 +64,17 @@ The native manager also offers online software-update checks, version/restart co
 - <a id="complete-registration-scan"></a>**Complete Registration Scan**: Strict registration scans retry unreadable files within one shared monotonic budget, preserve unverified registrations and raise `InstanceScanError` when that budget expires instead of returning an incomplete snapshot. That error's `details` holds one entry per unreadable path shaped `{path, kind, errno, winerror, size, error}`, while `str(exc)` quotes only the first entry plus a likely-cause hint. `kind="directory"` means the `instances` directory itself could not be listed, and `size` is then always `None`.
 - <a id="facility-update-drop-isolation"></a>**Facility Update Drop Isolation**: The Scheduling Plan facility layout, including every card, background and gap, suppresses and clears global update drag hints without intercepting facility sorting; other page regions retain update-package drops.
 
+<a id="idle-only-automatic-updates"></a>
+### Idle-Only Automatic Updates
+
+Automatic software checks with installation enabled submit work only while every registered instance of the installation is ready and explicitly idle in a heartbeat no older than five seconds. An instance is idle when its task worker is stopped or its scheduler is sleeping, with startup actions, automatic recovery, MAA use, connection tests, performance tests, update maintenance, chat turns and recycling reports inactive. Unknown or stale instance state defers automatic installation. Explicit manual updates retain their existing admission and restart behavior.
+
+Entering idle publishes the new observation and requests the existing coalesced automatic check. Work deferred during a busy period resumes on that observation without a new timer. Submission rechecks idle after preflight; the detached installer rechecks before sending any shutdown requests. If an instance becomes busy during preparation, that attempt is cancelled without stopping applications, and its next idle transition permits a fresh check.
+
+Automatic shutdown requests also require the receiving instance's current idle verdict. A running task worker handles the request inside its scheduler sleep and exits before waking the device or dispatching another task; the launcher waits for that exit instead of stopping active work. A task that starts after the final snapshot may finish within the existing 90-second shutdown budget. An exhausted budget retains the existing failed-installation recovery behavior. Pending task state is saved through the existing shutdown path.
+
+Focused offline coverage is in [`software_auto_update_tests.py`](../../arknights_mower/tests/software_auto_update_tests.py), [`update_runtime_tests.py`](../../arknights_mower/tests/update_runtime_tests.py), [`idle_scene_watchdog_tests.py`](../../arknights_mower/tests/idle_scene_watchdog_tests.py) and [`desktop_lifecycle_tests.py`](../../arknights_mower/tests/desktop_lifecycle_tests.py).
+
 ## 4. Registration Scan Boundary
 
 `update_runtime.instances` returns a complete live-registration snapshot in strict mode. Its default five-second retry budget covers the entire scan. A zero timeout performs one attempt and reports unreadable registrations immediately. `strict=False` explicitly permits best-effort results. Read failures never establish process termination or authorize deletion of an unverified registration.
