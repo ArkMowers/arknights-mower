@@ -3,9 +3,12 @@
 import copy
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import cv2
+import numpy as np
 import pytest
 
 from arknights_mower.solvers import growth as runner
@@ -101,6 +104,124 @@ def actions(case, goals=None, plans=()):
             record.get_inventory_counts(),
         )
     )
+
+
+def test_dualchip_recipes_match_bundled_item_names():
+    items = json.loads(
+        (Path(__file__).parents[1] / "data/skill_data.json").read_text(encoding="utf-8")
+    )["items"]
+    assert set(DUALCHIP_PRODUCTS) == {str(i) + "3" for i in range(321, 329)}
+    for iid, product in DUALCHIP_PRODUCTS.items():
+        assert product.name == items[iid]["name"]
+        assert items[iid[:-1] + "2"]["name"].removesuffix("芯片组") == (
+            product.name.removesuffix("双芯片")
+        )
+
+
+@pytest.fixture(scope="module")
+def growth_ocr_engine():
+    from arknights_mower.utils.rapidocr import create_engine
+
+    return create_engine()
+
+
+# MuMu 1920x1080 captures, 2026-11-16: menu and unconfirmed guard previews.
+@pytest.mark.parametrize("count", [1, 2, 3, 4])
+def test_dualchip_recipe_reads_preview_quantity_pixels(
+    monkeypatch, growth_ocr_engine, count
+):
+    from arknights_mower.solvers import base_schedule as base
+
+    crop = cv2.imread(
+        str(
+            Path(__file__).parent
+            / "fixtures/manufacture"
+            / f"dualchip_queue_{count}.png"
+        )
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[450:530, 1280:1415] = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame, update=MagicMock())
+    solver._tap_product_point = MagicMock()
+    solver._wait_product_resource = MagicMock()
+    solver._fill_manufacture_queue = MagicMock()
+    monkeypatch.setattr(base.rapidocr, "engine", growth_ocr_engine)
+
+    solver._select_manufacture_recipe(DUALCHIP_PRODUCTS["3223"], count=count)
+
+    assert (
+        sum(
+            call.args == ((1300, 305),)
+            for call in solver._tap_product_point.call_args_list
+        )
+        == count - 1
+    )
+    assert ((1425, 895),) in [
+        call.args for call in solver._tap_product_point.call_args_list
+    ]
+    solver._fill_manufacture_queue.assert_not_called()
+
+
+@pytest.mark.parametrize("iid", [str(i) + "3" for i in range(321, 329)])
+def test_dualchip_recipe_coordinates_match_menu_pixels(
+    monkeypatch, growth_ocr_engine, iid
+):
+    from arknights_mower.solvers import base_schedule as base
+
+    frame = cv2.imread(
+        str(Path(__file__).parent / "fixtures/manufacture/dualchip_menu.jpg")
+    )
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(
+        w=1920, h=1080, img=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    )
+    monkeypatch.setattr(base.rapidocr, "engine", growth_ocr_engine)
+    product = DUALCHIP_PRODUCTS[iid]
+    x, y = product.recipe
+    col = 0 if x < 1110 else 1
+    row = (y - 130) // 270
+    assert 0 <= row < 4
+    scope = ((635 + 740 * col, 130 + 270 * row), (945 + 740 * col, 191 + 270 * row))
+    assert solver._product_ocr_text(scope) == product.name
+
+
+@pytest.mark.parametrize("remaining, produced", [(0, True), (1, False)])
+def test_chip_restore_reads_guard_title_pixels(
+    case, monkeypatch, growth_ocr_engine, remaining, produced
+):
+    from arknights_mower.solvers import base_schedule as base
+
+    crop = cv2.imread(
+        str(Path(__file__).parent / "fixtures/manufacture/dualchip_guard_title.png")
+    )
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[325:460, 1500:1870] = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame, update=MagicMock())
+    solver._open_manufacture_product_detail = MagicMock()
+    solver.read_manufacture_product = MagicMock(
+        side_effect=[RecognizeError("chip"), "exp3"]
+    )
+    solver._read_manufacture_queue_count = MagicMock(return_value=remaining)
+    solver._select_manufacture_product = MagicMock()
+    solver._cache_facility_state = MagicMock()
+    monkeypatch.setattr(base.rapidocr, "engine", growth_ocr_engine)
+    record.save_inventory_counts({"近卫双芯片": 0, "近卫芯片组": 9})
+    runner._chip_state(
+        {
+            "room": "room_1_2",
+            "original": "exp3",
+            "started": True,
+            "product_name": "近卫双芯片",
+            "delta": {"近卫双芯片": 1, "近卫芯片组": -2, "芯片助剂": -1},
+        }
+    )
+
+    assert runner.restore_chip_product(solver) is produced
+    assert (record.get_inventory_counts().get("近卫双芯片") == 1) is produced
+    solver._select_manufacture_product.assert_called_once_with("exp3")
+    assert runner._chip_state() is None
 
 
 def test_switch_defaults_off_and_round_trips_independently():

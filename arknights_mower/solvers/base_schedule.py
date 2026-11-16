@@ -13551,8 +13551,8 @@ class BaseSchedulerSolver(
             for _ in range(count - 1):
                 self._tap_product_point((1300, 305), interval=0.2)
             self.recog.update()
-            selected = self._product_ocr_text(((1110, 260), (1235, 345)))
-            if selected != str(count):
+            selected = self._read_manufacture_queue_count()
+            if selected != count:
                 raise RecognizeError(
                     f"双芯片制造份数未确认：期望{count}，读到{selected or '未知'}"
                 )

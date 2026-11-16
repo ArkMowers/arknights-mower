@@ -54,7 +54,7 @@ def restore_chip_product(solver):
         current = None
     if current != state["original"]:
         if state.get("started") and not state.get("produced"):
-            title = solver._product_ocr_text(((1540, 330), (1835, 430)))
+            title = solver._product_ocr_text(((1500, 325), (1870, 460)))
             state["produced"] = (
                 state["product_name"] in title
                 and solver._read_manufacture_queue_count() == 0
