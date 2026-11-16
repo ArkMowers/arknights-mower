@@ -1010,6 +1010,8 @@ class BaseSolver:
         self._observation_remaining()
         scene = self.scene()
         self._observation_remaining()
+        if scene not in self.waiting_scene:
+            return True
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
         )
