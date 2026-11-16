@@ -26,13 +26,13 @@ const dorm = () => number('dorm', '宿舍人数', 20, 20)
 const recruits = () => number('recruits', '额外招募位', 2, 2)
 const trade = () => number('trade', '贸易站数', 2, 5)
 const power = () => number('power', '发电站数', 2, 3, 1)
-// Compare time-dependent skills over the same right-side-max, 30-hour work cycle.
-const workCycle = 30
-const averageRamp = (initial, step, cap) =>
-  Array.from({ length: workCycle }, (_, hour) => Math.min(cap, initial + hour * step)).reduce(
-    (sum, value) => sum + value,
-    0
-  ) / workCycle
+const averageRamp = (initial, step, cap, hours) => {
+  let total = 0
+  for (let hour = 0; hour < hours; hour++) {
+    total += Math.min(1, hours - hour) * Math.min(cap, initial + hour * step)
+  }
+  return total / hours
+}
 
 export function estimateFields(group) {
   switch (group.id) {
@@ -64,9 +64,6 @@ export function estimateFields(group) {
       ]
     case 'builtin-abyss':
       return [number('targetHunters', '每个制造站猎人数', 2, 3, 1)]
-    case 'builtin-tianmao':
-    case 'builtin-cloud':
-      return [{ key: 'average', label: '按照平均效率计算', type: 'checkbox', value: true }]
     case 'builtin-pozy':
       return [number('goldLines', '实际赤金生产线', 4, 5)]
     case 'builtin-siracusa':
@@ -214,6 +211,30 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
     for (const [product, extra] of Object.entries(products)) factoryMetric(common + extra, product)
     if (common && Object.keys(products).length)
       detail('各配方效率已包含通用制造加成，选择对应配方的结果，不重复叠加')
+  }
+  const factoryWorkCycle = (names) => {
+    const workers = names.filter(on)
+    // Five control-center occupants; each additional factory worker saves 0.05 mood/h.
+    const baseCost = 1 - 5 * 0.05 - (workers.length - 1) * 0.05
+    const rates = workers.map((name) => {
+      const reduction =
+        ['红云', '帕拉斯', '刻俄柏', '泡泡', '贝娜'].includes(name) && has(name)
+          ? 0.25
+          : name === '火神' && has(name)
+            ? tier(name) === 1
+              ? 0.25
+              : 0.15
+            : 0
+      return { name, rate: baseCost - reduction }
+    })
+    const fastest = Math.max(...rates.map(({ rate }) => rate))
+    const hours = 24 / fastest
+    const first = rates.filter(({ rate }) => Math.abs(rate - fastest) < 1e-9)
+    detail(
+      `从满心情24开始，按${first.map(({ name }) => name).join('、')}最先用尽计算平均效率，工作${Number(hours.toFixed(2))}小时；${rates.map(({ name, rate }) => `${name}每小时消耗${Number(rate.toFixed(2))}心情`).join('，')}`
+    )
+    detail('心情消耗按中枢5人及制造站所选人数计算，不计其他未选择干员的减耗技能')
+    return hours
   }
   switch (group.id) {
     case 'builtin-smoke': {
@@ -373,41 +394,43 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
       const rooms = count(['机械师', '烛煌', '真言', '迷迭香', '煌', '逻各斯', '电弧'], present)
       metric('精英干员设施', rooms, '间')
       if (has('凯尔希·思衡托', 1)) metric('公招联络速度', 30 + Math.min(5, rooms) * 4)
-      if (on('机械师'))
+      if (on('机械师')) {
+        const hours = factoryWorkCycle(['机械师'])
         factoryMetric(
           (has('机械师') ? 30 : 0) +
-            (has('机械师', 1) ? (options.average ? (10 * (workCycle - 12)) / workCycle : 10) : 0),
+            (has('机械师', 1) ? (10 * Math.max(0, hours - 12)) / hours : 0),
           '经验'
         )
+      }
       if (has('烛煌', 1)) metric('无人机充能速度', 20)
       if (has('真言')) tradeMetric(tier('真言') === 1 ? 25 + Math.min(10, rooms) * 2 : 20)
       detail('凯尔希在办公室、机械师在制造站、烛煌在发电站、真言在贸易站')
       detail('精干设施数按已选精英干员人数计算，分别进驻不同设施；凯尔希最多计5间，真言最多计10间')
-      if (on('机械师'))
-        detail(
-          options.average
-            ? '机械师按右满30小时工作周期取平均，挂件不叠加自身技能'
-            : '机械师按工作满12小时后的最高效率计算，挂件不叠加自身技能'
-        )
+      if (on('机械师')) detail('机械师单独进驻制造站，挂件不叠加自身技能')
       break
     }
     case 'builtin-nasti': {
+      capacity(['娜斯提', '多萝西', '淬羽赫默'], '同一制造站')
       const rhine = count(
-        members.filter((name) => name !== '缪尔赛思'),
+        members.filter((name) => !['缪尔赛思', '淬羽赫默'].includes(name)),
         present
       )
       const capped = Math.min(5, rhine)
+      const nastiCount = Math.min(5, rhine + (present('缪尔赛思') ? 1 : 0))
       metric('其他莱茵生命干员', capped, '人')
-      const tech = familyCount(['娜斯提', '多萝西'], '莱茵科技·')
-      const nasti = (has('娜斯提') ? 25 : 0) + (has('娜斯提', 1) ? capped * 3 : 0)
+      const tech = familyCount(['娜斯提', '多萝西', '淬羽赫默'], '莱茵科技·')
+      const nasti = (has('娜斯提') ? 25 : 0) + (has('娜斯提', 1) ? nastiCount * 3 : 0)
       const dorothy = (has('多萝西', 1) ? 25 : 0) + (has('多萝西') ? tech * 5 : 0)
-      if (on('娜斯提') || on('多萝西'))
+      const silence = has('淬羽赫默', 1) ? 30 : 0
+      if (on('娜斯提') || on('多萝西') || on('淬羽赫默'))
         factoryProducts(
-          (has('娜斯提') ? 25 : 0) + dorothy,
-          has('娜斯提', 1) ? { 赤金: capped * 3 } : {}
+          (has('娜斯提') ? 25 : 0) + dorothy + silence,
+          has('娜斯提', 1) ? { 赤金: nastiCount * 3 } : {}
         )
       if (has('缪尔赛思', 1)) metric('无人机充能速度', 10 + capped * 3)
-      detail(`娜斯提 ${nasti}% + 多萝西 ${dorothy}%；缪尔赛思在发电站`)
+      detail(`娜斯提 ${nasti}% + 多萝西 ${dorothy}% + 淬羽赫默 ${silence}%；缪尔赛思在发电站`)
+      detail('莱茵生命挂件不可0心情；淬羽赫默提供莱茵科技技能，不计入莱茵生命人数')
+      detail('娜斯提的莱茵生命人数包含缪尔赛思，缪尔赛思的充能技能不计自身')
       break
     }
     case 'builtin-makoto': {
@@ -536,17 +559,20 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
     }
     case 'builtin-bubble': {
       capacity(members, '同一制造站')
+      const hours = on('刻俄柏') ? factoryWorkCycle(members) : 0
       const vulcanCap = has('火神') ? (tier('火神') === 1 ? 19 : 16) : 0
       const caps = [
         has('泡泡') ? 10 : 0,
         vulcanCap,
         has('圣约送葬人', 1) ? 4 : 0,
-        has('贝娜') ? 17 : 0
+        has('贝娜') ? 17 : 0,
+        has('刻俄柏') ? 8 : 0
       ]
       const base =
         (has('火神') ? -5 : 0) +
         (has('圣约送葬人') ? (tier('圣约送葬人') === 1 ? 30 : 20) : 0) +
-        (has('贝娜') ? -20 : 0)
+        (has('贝娜') ? -20 : 0) +
+        (has('刻俄柏', 1) ? averageRamp(20, 1, 25, hours) : 0)
       const bonus = has('泡泡', 1)
         ? caps.reduce((sum, cap) => sum + cap * (cap > 16 ? 3 : 1), 0)
         : 0
@@ -564,35 +590,37 @@ export function estimateGroup(group, selection, input = {}, items = [], maxLevel
     }
     case 'builtin-cloud': {
       capacity(members, '同一制造站')
+      const hours = factoryWorkCycle(members)
       const cap =
         (has('红云') ? 8 : 0) +
         (has('稀音', 1) ? 12 : 0) +
         (has('帕拉斯') ? 8 : 0) +
         (has('刻俄柏') ? 8 : 0)
       const base =
-        (has('稀音') ? (options.average ? averageRamp(15, 2, 25) : 25) : 0) +
+        (has('稀音') ? averageRamp(15, 2, 25, hours) : 0) +
         (has('帕拉斯', 1) ? 25 : 0) +
-        (has('刻俄柏', 1) ? (options.average ? averageRamp(20, 1, 25) : 25) : 0)
+        (has('刻俄柏', 1) ? averageRamp(20, 1, 25, hours) : 0)
       const bonus = has('红云', 1) ? cap * 2 : 0
       metric('仓库容量加成', cap, '格')
       const exp = (has('帕拉斯', 1) ? 25 : 0) + (has('红云', 1) && has('稀音', 1) ? 24 : 0)
       factoryProducts(base + bonus - exp, exp ? { 经验: exp } : {})
-      detail(
-        `${options.average ? '按右满30小时工作周期取平均' : '按时间技能的最高效率计算'}：基础 ${base}% + 红云仓库折算 ${bonus}%`
-      )
+      detail(`用尽平均：基础 ${base}% + 红云仓库折算 ${bonus}%`)
       break
     }
     case 'builtin-standardization': {
-      const workers = ['水月', '杰西卡', '香草']
+      const workers = ['水月', '杰西卡', '香草', '杏仁']
       capacity(workers, '同一制造站')
       const standards = familyCount(workers, '标准化·')
       const base = standards * 25
       const bonus =
         (has('水月') ? standards * 5 : 0) +
-        (has('涤火杰西卡', 1) ? count(['杰西卡', '香草']) * 5 : 0)
-      factoryMetric(base + bonus)
+        (has('涤火杰西卡', 1) ? count(['杰西卡', '香草', '杏仁']) * 5 : 0)
+      const blacksteel = Math.min(3, count(['杰西卡', '香草', '杏仁'], present))
+      const almond = (has('杏仁') ? 25 : 0) + (has('杏仁', 1) ? blacksteel * 2 : 0)
+      factoryProducts(base + bonus, on('杏仁') ? { 赤金: almond } : {})
       detail(`标准化 ${base}% + 水月/涤火杰西卡加成 ${bonus}%`)
-      detail('水月、杰西卡、香草在同一制造站，涤火杰西卡进驻中枢')
+      if (on('杏仁')) detail(`杏仁 ${almond}%赤金生产力，计入${blacksteel}名黑钢干员（最多3名）`)
+      detail('水月、杰西卡、香草、杏仁从中选择至多3人进驻同一制造站，涤火杰西卡进驻中枢')
       break
     }
     default:

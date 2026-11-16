@@ -105,7 +105,7 @@ function ownershipSummary(group) {
   <div class="groups-page">
     <div class="groups-heading">
       <h2>
-        基建组合 <span>{{ visibleGroups.length }}</span>
+        基建干员推荐 <span>{{ visibleGroups.length }}</span>
       </h2>
       <label class="estimate-mode"><input v-model="maxLevel" type="checkbox" />按满练度计算</label>
     </div>
@@ -131,7 +131,7 @@ function ownershipSummary(group) {
         aria-label="组合持有状态"
       />
     </div>
-    <div class="group-list" aria-label="基建组合列表">
+    <div class="group-list" aria-label="基建干员推荐列表">
       <n-empty
         v-if="!visibleGroups.length"
         description="没有符合条件的组合，请调整筛选条件"

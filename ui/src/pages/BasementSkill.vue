@@ -101,7 +101,7 @@
             </template>
           </n-virtual-list>
         </n-tab-pane>
-        <n-tab-pane name="groups" tab="基建组合" display-directive="show:lazy">
+        <n-tab-pane name="groups" tab="基建干员推荐" display-directive="show:lazy">
           <BaseGroups :items="skill_items" :base-conditions="snapshot?.base_conditions" />
         </n-tab-pane>
       </n-tabs>

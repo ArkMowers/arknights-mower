@@ -31,7 +31,7 @@ describe('只读基建组合', () => {
       '深海猎人',
       '红松林',
       '精英干员',
-      '莱茵科技',
+      '莱茵生命',
       '结城理·S.E.E.S.',
       '鸿雪杜林组',
       '叙拉古',
@@ -101,7 +101,7 @@ describe('只读基建组合', () => {
   it('搜索覆盖挂件、拼音和条件，同时保持原始预置顺序与内容', () => {
     const previous = JSON.stringify(builtinGroups)
     expect(filterGroups(builtinGroups, [], { search: 'Lancet-2' })).toEqual([automation])
-    expect(filterGroups(builtinGroups, [], { search: '0心情', facility: '金属' })).toEqual([
+    expect(filterGroups(builtinGroups, [], { search: '非153', facility: '金属' })).toEqual([
       automation
     ])
     expect(filterGroups(builtinGroups, [], { search: 'dongshi' })).toEqual([automation])
@@ -121,7 +121,22 @@ describe('只读基建组合', () => {
     expect(
       groupMembers(byTitle['精英干员'], []).find((member) => member.name === '真言')
     ).toMatchObject({ role: 'support', note: '目前5精干35%贸易' })
-    expect(byTitle['莱茵科技'].note).toBe('需要5名莱茵生命干员（不含缪尔赛思）')
+    expect(byTitle['莱茵生命'].note).toBe('需要5名莱茵生命干员（不含缪尔赛思）')
+    expect(byTitle['莱茵生命'].core).toEqual(['多萝西', '娜斯提'])
+    expect(byTitle['莱茵生命'].support).toEqual(['淬羽赫默', '缪尔赛思'])
+    expect(byTitle['莱茵生命'].accessory).toEqual([
+      '赫默',
+      '伊芙利特',
+      '塞雷娅',
+      '白面鸮',
+      '梅尔',
+      '麦哲伦',
+      '星源'
+    ])
+    for (const name of byTitle['莱茵生命'].accessory) {
+      expect(byTitle['莱茵生命'].memberNotes[name]).toBe('不可0心情')
+    }
+    expect(byTitle['黑钢标准化'].support).toEqual(['杏仁'])
     expect(byTitle['感知信息'].note).toBe('如在意公招效率，不推荐使用')
     expect(byTitle['深海猎人'].support).toEqual(['深巡'])
     expect(byTitle['红松林'].facility).toBe('经验')
@@ -131,7 +146,7 @@ describe('只读基建组合', () => {
     for (const name of byTitle['鸿雪杜林组'].accessory) {
       expect(byTitle['鸿雪杜林组'].memberNotes[name]).toBe('不可0心情')
     }
-    expect(byTitle['泡泡仓库'].support).toEqual(['圣约送葬人', '贝娜'])
+    expect(byTitle['泡泡仓库'].support).toEqual(['圣约送葬人', '贝娜', '刻俄柏'])
     expect(byTitle['泡泡仓库'].memberNotes['圣约送葬人']).toBe('经验')
   })
   it('缺失快照保持未知，挂件缺员不影响核心持有筛选', () => {

@@ -138,25 +138,26 @@ describe('基建组合只读浏览', () => {
     expect(page.selections.value[smoke.id]).toEqual(['余', '年'])
     scope.stop()
   })
-  it('每组的平均效率开关独立更新计算', async () => {
+  it('勾选干员后显示用尽平均，不提供最高效率开关', async () => {
     const { page, scope } = setup()
     const elite = page.groups.find((group) => group.id === 'builtin-tianmao')
+    const cloud = page.groups.find((group) => group.id === 'builtin-cloud')
     page.maxLevel.value = true
     page.toggleMember(elite, '机械师')
+    for (const name of ['红云', '稀音', '帕拉斯']) page.toggleMember(cloud, name)
     await nextTick()
     expect(page.estimates.value[elite.id].metrics).toContainEqual({
       label: '经验制造生产力',
-      value: 36,
+      value: 36.25,
       unit: '%'
     })
-    page.conditions.value[elite.id].average = false
-    await nextTick()
-    expect(page.estimates.value[elite.id].metrics).toContainEqual({
+    expect(page.estimates.value[cloud.id].metrics).toContainEqual({
       label: '经验制造生产力',
-      value: 40,
+      value: 105.1875,
       unit: '%'
     })
-    expect(page.conditions.value['builtin-cloud'].average).toBe(true)
+    expect(page.conditions.value[elite.id]).not.toHaveProperty('average')
+    expect(page.conditions.value[cloud.id]).not.toHaveProperty('average')
     scope.stop()
   })
   it('孑默认跟随同步练度，手选阶段保持优先并可切回自动', async () => {

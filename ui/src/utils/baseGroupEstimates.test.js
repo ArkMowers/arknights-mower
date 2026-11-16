@@ -204,7 +204,7 @@ describe('基建组合效率估算', () => {
     ])
     expect(value(elite, '公招联络速度')).toBe(50)
     expect(value(elite, '贸易订单效率')).toBe(39)
-    expect(value(elite, '经验制造生产力')).toBe(36)
+    expect(value(elite, '经验制造生产力')).toBe(36.25)
     expect(elite.metrics.some((metric) => metric.label === '感知信息')).toBe(false)
   })
   it('阵营增益不把维娜当格拉斯哥成员', () => {
@@ -336,29 +336,68 @@ describe('基建组合效率估算', () => {
     expect(value(estimateGroup(group('tianmao'), names, {}, items), '精英干员设施')).toBe(7)
     expect(estimateFields(group('tianmao')).some((field) => field.key === 'eliteRooms')).toBe(false)
   })
-  it('时长控件已移除，时间技能按统一三十小时周期取平均', () => {
-    for (const item of builtinGroups)
-      expect(estimateFields(item).some((field) => field.key === 'hours')).toBe(false)
-    expect(value(estimate('tianmao', ['机械师'], { hours: 1 }), '经验制造生产力')).toBe(36)
-    expect(value(estimate('tianmao', ['机械师'], {}, { 机械师: 0 }), '经验制造生产力')).toBe(30)
-    expect(value(estimate('cloud', ['稀音']), '通用制造生产力')).toBe(24)
-    expect(value(estimate('cloud', ['刻俄柏']), '通用制造生产力')).toBe(24.5)
-  })
-  it('平均效率默认开启，关闭仅改变时间技能，不影响解锁条件或设施快照', () => {
-    expect(defaultEstimateOptions(group('tianmao')).average).toBe(true)
-    expect(defaultEstimateOptions(group('cloud')).average).toBe(true)
-    expect(value(estimate('tianmao', ['机械师'], { average: false }), '经验制造生产力')).toBe(40)
+  it('时间技能始终计算用尽平均，不接受旧时长和最高效率选项', () => {
+    for (const item of builtinGroups) {
+      expect(estimateFields(item).some((field) => ['hours', 'average'].includes(field.key))).toBe(
+        false
+      )
+    }
     expect(
-      value(estimate('tianmao', ['机械师'], { average: false }, { 机械师: 0 }), '经验制造生产力')
-    ).toBe(30)
-    expect(value(estimate('cloud', ['稀音', '刻俄柏'], { average: false }), '通用制造生产力')).toBe(
-      50
+      value(estimate('tianmao', ['机械师'], { hours: 1, average: false }), '经验制造生产力')
+    ).toBe(36.25)
+    expect(value(estimate('tianmao', ['机械师'], {}, { 机械师: 0 }), '经验制造生产力')).toBe(30)
+    // Solo Scene lasts 32 hours; her first five hours lose 30 percentage-hours.
+    expect(value(estimate('cloud', ['稀音']), '通用制造生产力')).toBeCloseTo(24.0625)
+    // Ceobe's own reduction extends solo work to 48 hours; warmup loses 15 percentage-hours.
+    expect(value(estimate('cloud', ['刻俄柏']), '通用制造生产力')).toBeCloseTo(24.6875)
+  })
+  it('红云组按最早耗尽者统一结束，独立设施不缩短机械师的周期', () => {
+    const cloud = estimate('cloud', ['红云', '稀音', '帕拉斯'])
+    // Scene consumes 0.65/h; the other two consume 0.40/h. Stop at 24 / 0.65.
+    expect(value(cloud, '经验制造生产力')).toBeCloseTo(105.1875)
+    expect(cloud.details).toContain(
+      '从满心情24开始，按稀音最先用尽计算平均效率，工作36.92小时；红云每小时消耗0.4心情，稀音每小时消耗0.65心情，帕拉斯每小时消耗0.4心情'
     )
-    expect(value(estimate('cloud', ['稀音', '刻俄柏']), '通用制造生产力')).toBe(48.5)
-    expect(value(estimate('tianmao', ['机械师'], { average: 'false' }), '经验制造生产力')).toBe(36)
-    expect(applyEstimateConditions(group('tianmao'), { average: false }, { average: 1 })).toEqual({
-      average: false
-    })
+    const pair = estimate('cloud', ['稀音', '刻俄柏'])
+    expect(value(pair, '通用制造生产力')).toBeCloseTo(48.6875)
+    const elite = estimate('tianmao', ['机械师', '烛煌', '真言'])
+    expect(value(elite, '经验制造生产力')).toBe(36.25)
+  })
+  it('泡泡仓库加入刻俄柏，容量转换和暖机均按练度与整组用尽计算', () => {
+    const full = estimate('bubble', ['泡泡', '火神', '刻俄柏'])
+    // All three consume 0.40/h: 60 hours, 75% capacity bonus, -5% Vulcan, 24.75% Ceobe.
+    expect(value(full, '仓库容量加成')).toBe(37)
+    expect(value(full, '通用制造生产力')).toBeCloseTo(94.75)
+    const lowVulcan = estimate('bubble', ['泡泡', '火神', '刻俄柏'], {}, { 火神: 0 })
+    // Unpromoted Vulcan consumes 0.50/h, ending the group at 48 hours.
+    expect(value(lowVulcan, '通用制造生产力')).toBeCloseTo(53.6875)
+    const lowCeobe = estimate('bubble', ['泡泡', '火神', '刻俄柏'], {}, { 刻俄柏: 0 })
+    expect(value(lowCeobe, '通用制造生产力')).toBe(70)
+  })
+  it('淬羽赫默参与同站技能转换，不增加莱茵生命人数，发电站独立', () => {
+    const names = ['多萝西', '娜斯提', '淬羽赫默']
+    const result = estimate('nasti', names)
+    expect(value(result, '其他莱茵生命干员')).toBe(2)
+    expect(value(result, '通用制造生产力')).toBe(95)
+    expect(value(result, '赤金制造生产力')).toBe(101)
+    const power = estimate('nasti', [...names, '缪尔赛思'])
+    expect(value(power, '通用制造生产力')).toBe(95)
+    expect(value(power, '赤金制造生产力')).toBe(104)
+    expect(value(power, '无人机充能速度')).toBe(16)
+    expect(value(estimate('nasti', names, {}, { 淬羽赫默: 0 }), '通用制造生产力')).toBe(60)
+    expect(value(estimate('nasti', ['淬羽赫默']), '通用制造生产力')).toBe(30)
+  })
+  it('杏仁赤金加成计自身及同站黑钢人数，中枢加成独立且不占制造位', () => {
+    const names = ['杏仁', '杰西卡', '香草']
+    expect(value(estimate('standardization', names), '通用制造生产力')).toBe(50)
+    expect(value(estimate('standardization', names), '赤金制造生产力')).toBe(81)
+    const control = estimate('standardization', [...names, '涤火杰西卡'])
+    expect(value(control, '赤金制造生产力')).toBe(96)
+    expect(value(estimate('standardization', ['杏仁']), '赤金制造生产力')).toBe(27)
+    expect(value(estimate('standardization', names, {}, { 杏仁: 0 }), '赤金制造生产力')).toBe(75)
+    const overflow = estimate('standardization', [...names, '水月', '涤火杰西卡'])
+    expect(overflow.valid).toBe(false)
+    expect(overflow.metrics).toEqual([])
   })
   it('绮良仅用实际赤金生产线触发加成，杜林虚拟线不参与', () => {
     const names = ['鸿雪', '图耶', '绮良', ...group('pozy').accessory]
@@ -446,7 +485,7 @@ describe('基建组合效率估算', () => {
     ['glasgow', ['摩根', '推进之王', '戴菲恩'], '贸易订单效率', 95],
     ['gold', ['苍苔', '引星棘刺', '砾'], '赤金制造生产力', 116],
     ['bubble', ['泡泡', '火神', '圣约送葬人'], '经验制造生产力', 96],
-    ['cloud', ['红云', '稀音', '帕拉斯'], '经验制造生产力', 105],
+    ['cloud', ['红云', '稀音', '帕拉斯'], '经验制造生产力', 105.1875],
     ['standardization', ['水月', '杰西卡', '香草', '涤火杰西卡'], '通用制造生产力', 100]
   ])('%s按所选干员和设施独立估算', (id, names, label, expected) => {
     expect(value(estimate(id, names), label)).toBe(expected)
