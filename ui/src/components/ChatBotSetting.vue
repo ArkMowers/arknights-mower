@@ -10,9 +10,19 @@ const {
   ai_base_url,
   ai_model,
   ai_deepseek_model,
+  ai_context_tokens,
+  ai_deepseek_context_tokens,
   ai_api_protocol
 } = storeToRefs(store)
 const customModel = computed(() => ['custom-local', 'custom-online'].includes(ai_type.value))
+const contextTokens = computed({
+  get: () => (customModel.value ? ai_context_tokens.value : ai_deepseek_context_tokens.value),
+  set: (value) => {
+    if (!Number.isInteger(value) || value < 8192 || value > 4000000) return
+    if (customModel.value) ai_context_tokens.value = value
+    else ai_deepseek_context_tokens.value = value
+  }
+})
 const modelKey = computed({
   get: () => (customModel.value ? ai_custom_key.value : ai_key.value),
   set: (value) => {
@@ -49,7 +59,7 @@ const selectMenuProps = { class: 'settings-select-menu' }
   <n-card
     title="AI 助手与模型服务"
     class="ai-settings-card"
-    data-settings-keywords="DeepSeek Flash Pro OpenAI 本地模型 在线模型 中转商 接口地址 模型名称 模型 ID API 密钥 协议 Responses Chat Completions"
+    data-settings-keywords="DeepSeek Flash Pro OpenAI 本地模型 在线模型 中转商 接口地址 模型名称 模型 ID API 密钥 协议 Responses Chat Completions 上下文 长度 token 自动压缩"
   >
     <div class="ai-settings-summary">
       <p>配置 AI 助手和报错分析使用的模型服务。</p>
@@ -125,6 +135,21 @@ const selectMenuProps = { class: 'settings-select-menu' }
           />
         </n-form-item>
       </template>
+      <n-form-item v-if="ai_type" label="上下文长度（token）">
+        <n-input-number
+          v-model:value="contextTokens"
+          :min="8192"
+          :max="4000000"
+          :precision="0"
+          :step="1000"
+          :input-props="{ 'aria-label': '上下文长度（token）' }"
+          style="width: 100%"
+        />
+        <p class="ai-field-description">
+          {{ customModel ? '自定义服务默认 256K（256,000）' : 'DeepSeek 默认 1M（1,000,000）' }}
+          token，可按模型实际容量调整。助手估算用量并预留回复空间，接近上限时自动压缩较早的工具记录；压缩会增加模型调用。
+        </p>
+      </n-form-item>
       <n-form-item label="API 密钥">
         <n-input
           type="password"

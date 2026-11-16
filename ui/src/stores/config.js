@@ -174,6 +174,8 @@ export const useConfigStore = defineStore('config', () => {
   const ai_base_url = ref('')
   const ai_model = ref('')
   const ai_deepseek_model = ref('deepseek-flash')
+  const ai_context_tokens = ref(256000)
+  const ai_deepseek_context_tokens = ref(1000000)
   const skland_enable = ref(false)
   const skland_info = ref([])
   const recruit_enable = ref(true)
@@ -652,6 +654,8 @@ export const useConfigStore = defineStore('config', () => {
       ai_base_url.value = response.data.ai_base_url || ''
       ai_model.value = response.data.ai_model || ''
       ai_deepseek_model.value = response.data.ai_deepseek_model ?? 'deepseek-flash'
+      ai_context_tokens.value = response.data.ai_context_tokens ?? 256000
+      ai_deepseek_context_tokens.value = response.data.ai_deepseek_context_tokens ?? 1000000
       skland_info.value = response.data.skland_info
       recruit_enable.value = response.data.recruit_enable
       recruitment_permit.value = response.data.recruitment_permit
@@ -866,6 +870,8 @@ export const useConfigStore = defineStore('config', () => {
       ai_base_url: ai_base_url.value,
       ai_model: ai_model.value,
       ai_deepseek_model: ai_deepseek_model.value,
+      ai_context_tokens: ai_context_tokens.value,
+      ai_deepseek_context_tokens: ai_deepseek_context_tokens.value,
       skland_info: skland_info.value,
       recruit_enable: recruit_enable.value,
       recruitment_permit: recruitment_permit.value,
@@ -1281,6 +1287,8 @@ export const useConfigStore = defineStore('config', () => {
     ai_base_url,
     ai_model,
     ai_deepseek_model,
+    ai_context_tokens,
+    ai_deepseek_context_tokens,
     skland_info,
     run_order_grandet_mode,
     product_switching,

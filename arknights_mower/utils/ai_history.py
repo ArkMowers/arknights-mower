@@ -16,8 +16,7 @@ MAX_INSTANCE_CONVERSATIONS = 100
 MAX_TURNS = 100
 MAX_HISTORY_CHARS = 262144
 MAX_REPLY_CHARS = 32768
-MAX_CONTEXT_CHARS = 24000
-MAX_CONTEXT_TURNS = 10
+MAX_CONTEXT_TURNS = MAX_TURNS
 MAX_TRACE_CHARS = 65536
 MAX_SUMMARY_CHARS = 8000
 MAX_CONTINUATION_CHARS = 16000
@@ -452,11 +451,12 @@ class HistoryStore:
         attachment_ids=None,
         mode="chat",
     ):
+        from arknights_mower.utils import config
         from arknights_mower.utils.ai_attachments import (
             MAX_ATTACHMENTS,
             attachment_blocks,
-            content_text_size,
         )
+        from arknights_mower.utils.ai_context import content_tokens, estimate_tokens
 
         if attachment_ids is None:
             attachment_ids = []
@@ -583,6 +583,10 @@ class HistoryStore:
                         selected.append({"role": "user", "content": text})
                     context = list(reversed(selected))
                 else:
+                    context_budget = config.conf.resolved_ai_context_tokens // 2
+                    size = content_tokens(
+                        attachment_blocks(user, attachments)
+                    ) + estimate_tokens(conversation["summary"])
                     for row in rows[1:] if continuing else rows:
                         if row["mode"] == "summary":
                             continue
@@ -596,10 +600,14 @@ class HistoryStore:
                         if len(context_attachment_ids) + len(files) > MAX_ATTACHMENTS:
                             break
                         content = attachment_blocks(saved_user_message(row), files)
-                        size += content_text_size(content) + len(row["assistant"])
+                        size += (
+                            content_tokens(content)
+                            + estimate_tokens(row["assistant"])
+                            + 32
+                        )
                         if (
                             row["status"] != "complete"
-                            or size > MAX_CONTEXT_CHARS
+                            or size > context_budget
                             or len(selected) >= MAX_CONTEXT_TURNS
                         ):
                             break

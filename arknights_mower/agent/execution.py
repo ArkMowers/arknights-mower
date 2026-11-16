@@ -162,6 +162,8 @@ class Execution:
                 self.snapshot["draft"] = ""
             if kind in {"tool", "approval"}:
                 self.snapshot["events"] = copy.deepcopy(self.turn.events)
+            if kind == "context_usage":
+                self.snapshot["context_usage"] = copy.deepcopy(event)
             if "reply" in frame:
                 self.snapshot["assistant"] = self.turn.reply
             self.revision += 1

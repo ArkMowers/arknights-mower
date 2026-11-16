@@ -275,14 +275,14 @@ def test_retention_and_context_have_independent_bounds(history, monkeypatch):
         complete(store, str(index), "reply", identifier)
     assert len(store.read(identifier)["turns"]) == 100
     with store.turn(identifier, "next") as turn:
-        assert len(turn.context) == 20
-        assert turn.context[0]["content"] == "95"
+        assert len(turn.context) == 200
+        assert turn.context[0]["content"] == "5"
     for _ in range(10):
         complete(store, "large", "x" * 32768, identifier)
     saved = store.read(identifier)["turns"]
     assert sum(len(row["user"]) + len(row["assistant"]) for row in saved) <= 262144
     with store.turn(identifier, "next") as turn:
-        assert turn.context == []
+        assert len(turn.context) == 14
     for index in range(25):
         complete(store, f"conversation {index}")
     assert len(store.list()) == 20
@@ -292,6 +292,24 @@ def test_retention_and_context_have_independent_bounds(history, monkeypatch):
     complete(other)
     complete(other)
     assert len(store.list()) + len(other.list()) == 21
+
+
+def test_history_capacity_follows_selected_provider(history, monkeypatch):
+    _, agent, _, store = history
+    identifier = complete(store, "old", "旧" * 15000)
+    complete(store, "recent", "近" * 15000, identifier)
+    monkeypatch.setattr(agent.config.conf, "ai_context_tokens", 32768)
+    monkeypatch.setattr(agent.config.conf, "ai_deepseek_context_tokens", 1000000)
+    monkeypatch.setattr(agent.config.conf, "ai_type", "custom-online")
+    with store.turn(identifier, "next") as turn:
+        assert [item["content"] for item in turn.context] == ["recent", "近" * 15000]
+        assert turn.context_info["limited"]
+        turn.append("done")
+        turn.complete = True
+    monkeypatch.setattr(agent.config.conf, "ai_type", "deepseek")
+    with store.turn(identifier, "next") as turn:
+        assert turn.context[0]["content"] == "old"
+        assert turn.context_info["included_turns"] == 3
 
 
 def test_instance_storage_and_configuration_export_are_separate(

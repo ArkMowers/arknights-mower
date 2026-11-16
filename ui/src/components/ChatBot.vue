@@ -23,6 +23,7 @@ import ContractOutline from '@vicons/ionicons5/es/ContractOutline'
 import markdownit from 'markdown-it'
 import JumpToLatestButton from './JumpToLatestButton.vue'
 import MowerAIIcon from './MowerAIIcon.vue'
+import ChatContextUsage from './ChatContextUsage.vue'
 
 const props = defineProps({ show: Boolean })
 const emit = defineEmits(['update:show'])
@@ -187,6 +188,7 @@ const connectionLost = ref(false)
 let reconnectTimer = null
 let reconnectAttempts = 0
 const contextInfo = ref(null)
+const contextUsage = ref(null)
 const summarySource = ref(0)
 const controlBusy = ref(false)
 const stopping = ref(false)
@@ -306,6 +308,7 @@ function restoreConversation(data) {
   remoteBusy.value = data.busy
   summarySource.value = data.summary_source || 0
   contextInfo.value = null
+  contextUsage.value = null
   chatHistory.value = data.turns.flatMap((turn, index) => [
     {
       role: 'user',
@@ -570,7 +573,7 @@ const contextHint = computed(() =>
     ? `已带入原目标和保存的进度。${contextInfo.value.continuation_limited ? '部分记录已截断。' : ''}`
     : contextInfo.value?.limited
       ? `本轮使用 ${contextInfo.value.included_turns} 轮近期记录，部分历史未传给模型。`
-      : '近期上下文最多 10 轮、24,000 字符。'
+      : '近期上下文按模型设置的 token 容量选取，超长工具记录会自动压缩。'
 )
 const canSend = computed(
   () =>
@@ -685,6 +688,7 @@ function applySnapshot(snapshot) {
   activeReply.draft = snapshot.draft || ''
   activeReply.error = false
   contextInfo.value = snapshot.context || contextInfo.value
+  if (snapshot.context_usage) contextUsage.value = snapshot.context_usage
   connectionLost.value = false
   reconnectAttempts = 0
   remoteBusy.value = false
@@ -767,7 +771,8 @@ function connectWS(text, resume = false) {
     if (data.event) {
       const event = data.event
       if (event.turn_id !== activeReply.turn_id) return
-      if (event.type === 'answer_delta') activeReply.draft += event.text || ''
+      if (event.type === 'context_usage') contextUsage.value = event
+      else if (event.type === 'answer_delta') activeReply.draft += event.text || ''
       else if (event.type === 'answer_reset' || event.type === 'model') activeReply.draft = ''
       else if (event.type === 'tool' || event.type === 'approval') {
         activeReply.events = [
@@ -831,6 +836,7 @@ function sendTurn(text, options = {}) {
   )
     return
   const files = options.mode === 'summary' ? [] : [...draftAttachments.value]
+  contextUsage.value = null
   const asNewQuestion = composeNewQuestion.value
   composeNewQuestion.value = false
   requestOptions = {
@@ -891,6 +897,7 @@ function newConversation() {
   closeConnection()
   conversationId.value = null
   contextInfo.value = null
+  contextUsage.value = null
   summarySource.value = 0
   remoteBusy.value = false
   historyOpen.value = false
@@ -1363,6 +1370,7 @@ onBeforeUnmount(() => {
                 </n-button>
               </n-dropdown>
               <span class="composer-spacer" />
+              <ChatContextUsage :usage="contextUsage" :busy="loading" />
               <n-icon
                 v-if="contextInfo?.limited"
                 :component="InformationCircleOutline"

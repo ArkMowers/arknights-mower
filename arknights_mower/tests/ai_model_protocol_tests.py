@@ -362,6 +362,163 @@ def test_protocol_configuration_round_trip_and_validation():
         Conf(ai_api_protocol="unknown")
 
 
+def test_context_configuration_defaults_and_independent_round_trip():
+    from pydantic import ValidationError
+
+    from arknights_mower.utils.config.conf import Conf
+
+    for service, expected in [
+        ("deepseek", 1000000),
+        ("custom-online", 256000),
+        ("custom-local", 256000),
+    ]:
+        old = Conf(ai_type=service)
+        assert old.resolved_ai_context_tokens == expected
+        assert old.model_dump(exclude_unset=True) == {"ai_type": service}
+        settings = {
+            "ai_type": service,
+            "ai_context_tokens": 64000,
+            "ai_deepseek_context_tokens": 512000,
+        }
+        restored = Conf.model_validate(settings)
+        assert restored.model_dump(exclude_unset=True) == settings
+        assert restored.resolved_ai_context_tokens == (
+            512000 if service == "deepseek" else 64000
+        )
+    for value in (None, 0, 8191, 4000001, True, 32000.5, "32000"):
+        for field in ("ai_context_tokens", "ai_deepseek_context_tokens"):
+            with pytest.raises(ValidationError):
+                Conf(**{field: value})
+
+
+@pytest.mark.parametrize(
+    "service,protocol",
+    [
+        ("deepseek", "auto"),
+        ("custom-online", "chat-completions"),
+        ("custom-online", "responses"),
+    ],
+)
+@pytest.mark.parametrize("overflow", [False, True])
+def test_automatic_compaction_uses_existing_provider_without_tools(
+    serve, monkeypatch, tmp_path, service, protocol, overflow
+):
+    from arknights_mower.agent.execution import Execution
+    from arknights_mower.utils.ai_history import HistoryStore
+
+    monkeypatch.setattr(agent.config.conf, "ai_type", service)
+    monkeypatch.setattr(agent.config.conf, "ai_api_protocol", protocol)
+    capacity = 1000000 if overflow else 32768
+    monkeypatch.setattr(agent.config.conf, "ai_context_tokens", capacity)
+    monkeypatch.setattr(agent.config.conf, "ai_deepseek_context_tokens", capacity)
+    monkeypatch.setattr(agent.config.conf, "ai_deepseek_model", "deepseek-flash")
+    tool = Mock(side_effect=["早期证据" + "a" * 31000, "近期证据" + "b" * 31000])
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    requests = []
+
+    def respond(path, body):
+        requests.append(body)
+        index = len(requests)
+        if overflow and index == 3:
+            return rejection(
+                400, "maximum context length exceeded", "context_length_exceeded"
+            )
+        if overflow and index > 3:
+            index -= 1
+        responses = protocol == "responses"
+        assert path == (
+            "/v1/responses"
+            if responses
+            else "/chat/completions"
+            if service == "deepseek"
+            else "/v1/chat/completions"
+        )
+        assert body["model"] == (
+            "deepseek-flash" if service == "deepseek" else "fixture-model"
+        )
+        assert "context_management" not in body
+        assert index <= 4
+        if index == 3:
+            assert not body.get("tools")
+            text = "较早查询未写入，保留 [证据 T1-1]。"
+        elif index == 4:
+            assert body["tools"]
+            serialized = json.dumps(body, ensure_ascii=False)
+            assert "原始要求：只查询记录" in serialized
+            assert "较早查询未写入" in serialized
+            assert "近期证据" in serialized
+            assert "a" * 10000 not in serialized
+            text = "剩余分析完成"
+        else:
+            text = None
+        if responses:
+            if text is not None:
+                return event_stream(
+                    {
+                        "type": "response.output_text.delta",
+                        "item_id": f"msg_{index}",
+                        "output_index": 0,
+                        "content_index": 0,
+                        "delta": text,
+                    }
+                )
+            return event_stream(
+                {
+                    "type": "response.output_item.added",
+                    "output_index": 0,
+                    "item": {
+                        "type": "function_call",
+                        "id": f"fc_{index}",
+                        "call_id": f"call_{index}",
+                        "name": "list_plans",
+                        "arguments": "{}",
+                    },
+                }
+            )
+        delta = (
+            {"content": text}
+            if text is not None
+            else {
+                "tool_calls": [
+                    {
+                        "index": 0,
+                        "type": "function",
+                        "id": f"call_{index}",
+                        "function": {"name": "list_plans", "arguments": "{}"},
+                    }
+                ]
+            }
+        )
+        return event_stream(
+            {
+                "id": f"chatcmpl-{index}",
+                "object": "chat.completion.chunk",
+                "created": 1,
+                "model": body["model"],
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": delta,
+                        "finish_reason": "stop" if text else "tool_calls",
+                    }
+                ],
+            }
+        )
+
+    serve(respond)
+    store = HistoryStore("compaction")
+    store.path = tmp_path / "history.sqlite3"
+    with store.turn(None, "原始要求：只查询记录") as turn:
+        control = Execution(store, turn, lambda _: None)
+        result = list(agent.ask_llm(turn.user_input, turn.context, "test-key", control))
+        assert result == ["剩余分析完成"]
+        turn.append(result[0])
+        turn.complete = True
+    assert tool.call_count == 2
+    assert len(requests) == (5 if overflow else 4)
+    assert store.read(turn.conversation_id)["summary"] == ""
+
+
 @pytest.mark.parametrize(
     "consumer", ["schedule", "captcha", "missed_order", "navigation"]
 )

@@ -1743,6 +1743,8 @@ def test_api_protocol_follows_model_service_profile_group(storage, inherit):
             "ai_base_url": "https://relay.example/v1",
             "ai_model": "custom-model",
             "ai_api_protocol": "responses",
+            "ai_context_tokens": 64000,
+            "ai_deepseek_context_tokens": 512000,
         }
     )
     config.save_conf()
@@ -1750,6 +1752,10 @@ def test_api_protocol_follows_model_service_profile_group(storage, inherit):
     _create("模型协议配置", inherit)
     assert config.conf.ai_api_protocol == ("responses" if inherit else "auto")
     assert config.conf.ai_model == ("custom-model" if inherit else "")
+    assert config.conf.ai_context_tokens == (64000 if inherit else 256000)
+    assert config.conf.ai_deepseek_context_tokens == (512000 if inherit else 1000000)
     _activate(original)
     assert config.conf.ai_api_protocol == "responses"
     assert config.conf.ai_base_url == "https://relay.example/v1"
+    assert config.conf.ai_context_tokens == 64000
+    assert config.conf.ai_deepseek_context_tokens == 512000
