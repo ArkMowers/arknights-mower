@@ -29,6 +29,7 @@ if __package__:
     from .update_runtime import (
         InstanceScanError,
         LockBusyError,
+        automatic_update_idle,
         detached_options,
         hidden_console_options,
         instances,
@@ -47,6 +48,7 @@ else:
     from update_runtime import (
         InstanceScanError,
         LockBusyError,
+        automatic_update_idle,
         detached_options,
         hidden_console_options,
         instances,
@@ -1418,19 +1420,37 @@ class Worker:
             "stopping", "保存任务状态并关闭同一安装目录下的 Mower 实例与共享 OCR 进程"
         )
         self.original = instances(self.state)
+        if self.job.get("automatic") and not automatic_update_idle(self.original):
+            self.original = []
+            (self.state / "auto-check.json").unlink(missing_ok=True)
+            raise UpdateCancelled(
+                "实例已开始执行任务，取消本次自动更新，空闲后重新检查"
+            )
         if not any(r["kind"] in {"instance", "manager"} for r in self.original):
             raise ValueError(
                 "未找到可恢复的应用，请从桌面启动器或多开管理器打开 Mower 后重试"
             )
         write_json(self.work / "instances-before.json", self.original)
-        for record in self.original:
-            write_json(
-                self.state / "shutdown" / f"{record['id']}.json",
-                {"job": self.job["id"]},
-            )
+
+        def request_shutdown(records):
+            for record in records:
+                request = {"job": self.job["id"]}
+                if self.job.get("automatic"):
+                    request["idle_only"] = True
+                write_json(self.state / "shutdown" / f"{record['id']}.json", request)
+
+        if self.job.get("automatic"):
+            applications = [r for r in self.original if r["kind"] == "instance"]
+            remaining = [r for r in self.original if r["kind"] != "instance"]
+        else:
+            applications, remaining = self.original, []
+        request_shutdown(applications)
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
             self.stopped = [r for r in self.original if not process_alive(r["pid"])]
+            if remaining and all(r in self.stopped for r in applications):
+                request_shutdown(remaining)
+                remaining = []
             if len(self.stopped) == len(self.original):
                 for record in self.original:
                     wait_for_supervisor_release(record, deadline)

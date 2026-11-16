@@ -22943,6 +22943,9 @@ class BaseSchedulerSolver(
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
             while datetime.now() < end_time:
+                if config.software_update_shutdown_requested():
+                    config.stop_mower.set()
+                    raise MowerExit
                 if cancelled is not None and cancelled():
                     break
                 if round_end:
@@ -22956,6 +22959,8 @@ class BaseSchedulerSolver(
                     rapidocr.release_idle_local_model()
                     release_idle_memory = False
                 csleep(min(1, (end_time - datetime.now()).total_seconds()))
+            if config.software_update_shutdown_requested():
+                config.stop_mower.set()
             if config.stop_mower.is_set():
                 raise MowerExit
             if round_end:

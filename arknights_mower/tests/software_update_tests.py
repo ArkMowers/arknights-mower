@@ -325,6 +325,18 @@ class ReleaseDiscoveryTests(unittest.TestCase):
             with (
                 self.subTest(channel=channel),
                 patch.dict(os.environ, {"MOWER_RESTART_JOB": ""}),
+                patch.object(
+                    runtime,
+                    "instances",
+                    return_value=[
+                        {
+                            "kind": "instance",
+                            "ready": True,
+                            "idle": True,
+                            "heartbeat": time.time(),
+                        }
+                    ],
+                ),
                 patch.object(runtime, "frozen", return_value=True),
                 patch.object(update, "platform_asset", return_value=(system, arch)),
                 patch.object(
@@ -766,7 +778,12 @@ class ManualPackageTests(unittest.TestCase):
             start.assert_not_called()
             update.submit(result["check_id"], True, confirm_downgrade=True)
             start.assert_called_once_with(
-                plan, True, uploaded=staged, force=False, confirm_downgrade=True
+                plan,
+                True,
+                uploaded=staged,
+                force=False,
+                confirm_downgrade=True,
+                automatic=False,
             )
         update.discard_upload(result["check_id"])
         self.assertFalse(staged.exists())
@@ -943,7 +960,7 @@ class AdmissionAndRoutesTests(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 200)
             start.assert_called_once_with(
-                plan, False, force=False, confirm_downgrade=True
+                plan, False, force=False, confirm_downgrade=True, automatic=False
             )
 
     def test_job_admission_requires_boolean_rollback_confirmation(self):
@@ -1937,6 +1954,9 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                     patch.object(runtime, "active_job", return_value=False)
                 )
                 stack.enter_context(patch.object(runtime, "frozen", return_value=True))
+                stack.enter_context(
+                    patch.object(update, "instance_idle", return_value=False)
+                )
                 stack.enter_context(
                     patch.object(
                         runtime, "RuntimeRegistration", return_value=registration

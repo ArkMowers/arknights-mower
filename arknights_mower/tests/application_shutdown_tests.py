@@ -219,6 +219,7 @@ class DesktopExitTests(unittest.TestCase):
                     stop_mower=stopped,
                     webview_process=None,
                     parent_conn=None,
+                    software_update_shutdown_requested=lambda: False,
                 )
                 registration = Mock(record={})
                 registration.shutdown_requested.return_value = False
@@ -288,6 +289,7 @@ class DesktopExitTests(unittest.TestCase):
                     ),
                     patch.object(webview_ui, "start_desktop_child", side_effect=launch),
                     patch.object(software_update, "request_auto_check"),
+                    patch.object(software_update, "instance_idle", return_value=False),
                     patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
                     patch.multiple(
                         log,

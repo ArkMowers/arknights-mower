@@ -572,7 +572,9 @@ onUnmounted(() => {
         <template #label>
           <span class="settings-row-copy">
             <span>自动更新</span>
-            <span class="settings-row-description">自动安装所选渠道的不同版本，并重启全部实例</span>
+            <span class="settings-row-description"
+              >全部实例空闲时自动安装所选渠道的不同版本，并重启全部实例</span
+            >
           </span>
         </template>
         <n-switch

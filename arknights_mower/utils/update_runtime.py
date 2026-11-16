@@ -515,6 +515,19 @@ def send_instance_command(record, action, directory=None):
         raise ValueError(f"Unknown instance command: {action}")
 
 
+def automatic_update_idle(records):
+    """Require fresh, explicit idle observations from every desktop instance."""
+    now = time.time()
+    return any(r.get("kind") in {"instance", "manager"} for r in records) and all(
+        r.get("ready") is True
+        and r.get("idle") is True
+        and isinstance(r.get("heartbeat"), (int, float))
+        and 0 <= now - r.get("heartbeat", 0) <= 5
+        for r in records
+        if r.get("kind") == "instance"
+    )
+
+
 class RuntimeRegistration:
     def __init__(
         self,
@@ -541,6 +554,7 @@ class RuntimeRegistration:
         self.path = self.directory / "instances" / f"{self.id}.json"
         self.request = self.directory / "shutdown" / f"{self.id}.json"
         self.running = running or (lambda: False)
+        self.idle = lambda: False
         self.closed = threading.Event()
         self._publication_lock = threading.Lock()
         self.record = {
@@ -592,7 +606,11 @@ class RuntimeRegistration:
         with self._publication_lock:
             if self.closed.is_set():
                 return
-            self.record.update(running=bool(self.running()), heartbeat=time.time())
+            self.record.update(
+                running=bool(self.running()),
+                idle=bool(self.idle()),
+                heartbeat=time.time(),
+            )
             write_json(self.path, self.record.copy(), sync=True)
 
     def _heartbeat(self):
@@ -616,7 +634,17 @@ class RuntimeRegistration:
                     traceback.print_exc()
 
     def shutdown_requested(self):
-        return self.request.exists()
+        if not self.request.exists():
+            return False
+        request = read_json(self.request, {})
+        return (
+            not request.get("idle_only")
+            or self.record["kind"] != "instance"
+            or bool(self.idle())
+        )
+
+    def automatic_shutdown_requested(self):
+        return read_json(self.request, {}).get("idle_only") is True
 
     def take_commands(self):
         actions = []

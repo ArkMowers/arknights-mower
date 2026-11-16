@@ -147,7 +147,7 @@ class TrayRecoveryTests(unittest.TestCase):
                     return True
 
                 server._stop_mower.side_effect = stop_worker
-                registration = Mock(record={})
+                registration = Mock(record={"idle": True})
                 registration.shutdown_requested.return_value = False
                 registration.take_commands.side_effect = lambda: []
                 parent, child = desktop_process.Pipe()
@@ -158,6 +158,7 @@ class TrayRecoveryTests(unittest.TestCase):
                 launches = []
                 recovered = Mock()
                 recovered.get.return_value = "exit"
+                auto_checks = Mock()
 
                 def launch(*args, **kwargs):
                     self.assertFalse(conf.stop_mower.is_set())
@@ -200,7 +201,12 @@ class TrayRecoveryTests(unittest.TestCase):
                     ),
                     patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
                     patch.object(webview_ui, "start_desktop_child", side_effect=launch),
-                    patch.object(software_update, "request_auto_check"),
+                    patch.object(software_update, "request_auto_check", auto_checks),
+                    patch.object(
+                        software_update,
+                        "instance_idle",
+                        side_effect=lambda _: clock[0] >= 1,
+                    ),
                     patch.object(desktop_process, "log_channel", return_value=Mock()),
                     patch.multiple(
                         log,
@@ -239,6 +245,7 @@ class TrayRecoveryTests(unittest.TestCase):
                     ["worker restored", "screenshots closed", "logging stopped"],
                 )
                 registration.close.assert_called_once()
+                self.assertEqual(auto_checks.call_count, 2)
 
 
 class DesktopStartupTests(unittest.TestCase):
