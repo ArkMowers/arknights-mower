@@ -92,10 +92,10 @@ def test_unknown_or_invalid_list_mood_does_not_allow_training(value):
 
 
 @pytest.mark.parametrize(
-    "follow,replacement_mood", [(False, None), (True, 24), (True, 1), (False, 24)]
+    "follow,replacement_mood", [(False, None), (True, None), (False, 24)]
 )
 @pytest.mark.parametrize("legacy_wait", [False, True])
-def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
+def test_start_wait_releases_with_enough_mood_or_schedule_following(
     database, monkeypatch, follow, replacement_mood, legacy_wait
 ):
     monkeypatch.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
@@ -173,8 +173,8 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
         ),
         patch(
             "arknights_mower.utils.config.conf",
-            SimpleNamespace(assistant_follows_schedule=follow),
-        ),
+            SimpleNamespace(assistant_follows_schedule=False),
+        ) as conf,
         patch.object(
             mastery, "_confirm_training_started", return_value="started"
         ) as confirm,
@@ -210,6 +210,22 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
         solver.op_data.dorm_mood_estimates["其他干员"] = (24, datetime.now())
         resume()
         assert task.execution_failure
+        if follow:
+            conf.assistant_follows_schedule = True
+            if legacy_wait:
+                from arknights_mower.utils.mastery_mood import support_mood_context
+
+                task.mastery_mood_wait["context"] = support_mood_context(
+                    pid, solver.op_data
+                )
+            resume()
+            assert not hasattr(task, "execution_failure")
+            assert not hasattr(task, "mastery_mood_wait")
+            assert task.time == at and solver.tasks == [task, other]
+            mastery._start_new_training(solver, db.get_plan_by_id(pid), room=room)
+            confirm.assert_called_once()
+            assert events[-2:] == ["select", "confirm"]
+            return
         if replacement_mood is not None:
             solver.op_data.operators["艾丽妮"].current_room = ""
             solver.op_data.operators["艾丽妮"].current_index = -1
@@ -221,25 +237,12 @@ def test_start_wait_retains_plan_task_and_releases_only_with_enough_mood(
             )
             occupant[0] = "新协助"
             resume()
-            if follow or replacement_mood == 24:
+            if replacement_mood == 24:
                 assert not hasattr(task, "execution_failure")
                 assert task.time == at and solver.tasks == [task, other]
                 mastery._start_new_training(solver, db.get_plan_by_id(pid), room=room)
-                if replacement_mood == 24:
-                    confirm.assert_called_once()
-                    return
-                assert set(task.mastery_mood_wait["required"]) == {"新协助"}
-                assert task.mastery_mood_wait["required"]["新协助"] == pytest.approx(
-                    8 / 2.05
-                )
-                for _ in range(3):
-                    resume()
-                    assert task.execution_failure and task.time == at
-                    assert task_view(solver.tasks, TaskScope.DISPATCH) == [other]
-                solver.op_data.dorm_mood_estimates["新协助"] = (
-                    8 / 2.05,
-                    datetime.now(),
-                )
+                confirm.assert_called_once()
+                return
             else:
                 assert task.execution_failure
                 solver.op_data.dorm_mood_estimates["艾丽妮"] = (
@@ -299,10 +302,9 @@ def test_real_preparation_only_requires_current_assistants_or_schedule_occupant(
     save = Mock()
     monkeypatch.setattr(mastery_support_runtime, "save_runtime", save)
     if follow:
-        with pytest.raises(SupportMoodWait) as wait:
-            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
-        assert set(wait.value.required) == {"排班教官"}
-        save.assert_not_called()
+        mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
+        assert save.call_args.args[1]["operator"] == "排班教官"
+        assert save.call_args.args[1]["swap_target"] is None
     else:
         mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
         assert save.call_args.args[1]["central_bonus"] == 5
@@ -415,7 +417,7 @@ def test_each_remaining_stage_uses_its_own_candidate_policy(
 @pytest.mark.parametrize("blocked_level", [1, 2])
 @pytest.mark.parametrize("occupant", ["假日威龙陈", "左乐"])
 @pytest.mark.parametrize("mood", [1, 24])
-def test_follow_schedule_ignores_saved_assistants_but_checks_occupant_mood(
+def test_follow_schedule_uses_occupant_without_saved_assistant_or_mood_gate(
     database, context_game, monkeypatch, follow, blocked_level, occupant, mood
 ):
     _, ids = context_game
@@ -457,12 +459,6 @@ def test_follow_schedule_ignores_saved_assistants_but_checks_occupant_mood(
             mastery_support_runtime.SupportPlanError, match="计划协助者已不可用"
         ):
             mastery_support_runtime.prepare_plan_supports(solver, plan, blocked_level)
-        save.assert_not_called()
-    elif mood == 1:
-        with pytest.raises(SupportMoodWait) as wait:
-            mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
-        assert set(wait.value.required) == {occupant}
-        assert wait.value.required[occupant] > 1
         save.assert_not_called()
     else:
         mastery_support_runtime.prepare_plan_supports(solver, plan, 1)
