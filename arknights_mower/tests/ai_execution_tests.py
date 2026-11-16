@@ -651,7 +651,7 @@ def test_old_history_schema_migrates_without_losing_text(runtime):
         assert turn.context[-1]["content"] == "answer"
 
 
-def test_context_notice_reports_actual_truncation(runtime):
+def test_context_notice_includes_history_within_configured_capacity(runtime):
     _, _, _, store, _ = runtime
     identifier = None
     for index in range(12):
@@ -659,11 +659,11 @@ def test_context_notice_reports_actual_truncation(runtime):
     with store.turn(identifier, "next") as turn:
         assert turn.context_info == {
             "retained_turns": 12,
-            "included_turns": 10,
-            "limited": True,
+            "included_turns": 12,
+            "limited": False,
             "summary_source": 0,
         }
-        assert turn.context[0]["content"] == "2"
+        assert turn.context[0]["content"] == "0"
 
 
 def test_oversized_stream_preserves_only_bounded_interrupted_draft(runtime):
@@ -673,6 +673,202 @@ def test_oversized_stream_preserves_only_bounded_interrupted_draft(runtime):
     turn = store.read(socket.sent[0]["conversation_id"])["turns"][0]
     assert turn["status"] == "interrupted"
     assert len(turn["assistant"]) == ai_history.MAX_REPLY_CHARS
+
+
+def test_small_tool_argument_fragments_do_not_exhaust_output_budget(
+    runtime, monkeypatch
+):
+    _, agent, _, store, install = runtime
+    question = "a" * 2000
+    arguments = json.dumps({"question": question})
+    tool = Mock(return_value="查询结果")
+    monkeypatch.setitem(agent.tool_func_map, "get_faq", tool)
+    chunks = [
+        AIMessageChunk(
+            content="",
+            tool_call_chunks=[
+                {
+                    "name": "get_faq" if index == 0 else None,
+                    "id": "call-fragment" if index == 0 else None,
+                    "args": char,
+                    "index": 0,
+                }
+            ],
+        )
+        for index, char in enumerate(arguments)
+    ]
+    install(chunks, [AIMessageChunk(content="已查询")])
+    socket = run_chat(runtime)
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][0]
+    assert saved["status"] == "complete"
+    assert saved["assistant"] == "已查询"
+    tool.assert_called_once_with(question=question)
+
+
+def test_tool_context_is_compacted_without_repeating_operations(runtime, monkeypatch):
+    _, agent, _, store, install = runtime
+    monkeypatch.setattr(agent.config.conf, "ai_context_tokens", 32768)
+    tool = Mock(side_effect=["较早记录" + "a" * 31000, "近期记录" + "b" * 31000])
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    model = install(
+        [tool_call("list_plans")],
+        [tool_call("list_plans", identifier="call-2")],
+        [AIMessageChunk(content="[证据 T1-1] 较早查询未写入；记录可能过时。")],
+        [AIMessageChunk(content="已完成剩余分析")],
+    )
+    socket = run_chat(runtime, message="核对记录，只查询，不发送邮件")
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][0]
+    assert saved["status"] == "complete"
+    assert saved["assistant"] == "已完成剩余分析"
+    assert tool.call_count == 2
+    assert len(model.inputs) == 4
+    assert "较早记录" in str(model.inputs[2])
+    assert "只整理" in model.inputs[2][0].content
+    final = model.inputs[3]
+    assert any("核对记录，只查询，不发送邮件" == m.content for m in final)
+    assert any("[证据 T1-1]" in m.content for m in final if isinstance(m.content, str))
+    assert "近期记录" in str(final)
+    assert "a" * 10000 not in str(final)
+    assert [event["name"] for event in saved["events"]] == ["list_plans", "list_plans"]
+    assert store.read(socket.sent[0]["conversation_id"])["summary"] == ""
+    usage_frames = [item for item in events(socket) if item["type"] == "context_usage"]
+    assert any(item["compacting"] for item in usage_frames)
+    assert usage_frames[-1]["compactions"] == 1
+    assert usage_frames[-1]["used_tokens"] < next(
+        item["used_tokens"] for item in usage_frames if item["compacting"]
+    )
+
+
+def test_truncated_tool_response_never_executes_even_valid_arguments(
+    runtime, monkeypatch
+):
+    _, agent, _, store, install = runtime
+    tool = Mock(return_value="不应执行")
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    chunk = tool_call("list_plans")
+    chunk.response_metadata = {"finish_reason": "length"}
+    install([chunk])
+    socket = run_chat(runtime)
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][0]
+    assert saved["status"] == "interrupted"
+    assert "截断" in saved["failure"]["message"]
+    tool.assert_not_called()
+
+
+def test_context_usage_reports_input_tokens_and_restores_runtime_snapshot(runtime):
+    from arknights_mower.agent.agent import ask_llm
+
+    _, _, _, store, install = runtime
+    install(
+        [
+            AIMessageChunk(
+                content="回答",
+                usage_metadata={
+                    "input_tokens": 12345,
+                    "output_tokens": 20,
+                    "total_tokens": 12365,
+                },
+            )
+        ]
+    )
+    with store.turn(None, "检查") as turn:
+        frames = []
+        run = execution.Execution(store, turn, frames.append)
+        assert list(ask_llm(turn.user_input, turn.context, "test-key", run)) == ["回答"]
+        usage = run.snapshot["context_usage"]
+        assert usage["used_tokens"] == 12345
+        assert not usage["estimated"]
+        assert usage["max_tokens"] == 256000
+        assert usage["compactions"] == 0
+        first = next(
+            frame["event"]
+            for frame in frames
+            if frame.get("event", {}).get("type") == "context_usage"
+        )
+        assert first["estimated"] and first["used_tokens"] > 0
+        assert not turn.events
+
+
+@pytest.mark.parametrize("failure", ["timeout", "tool", "oversized", "stop"])
+def test_failed_compaction_keeps_evidence_and_dispatches_no_further_tools(
+    runtime, monkeypatch, failure
+):
+    server, agent, _, store, install = runtime
+    monkeypatch.setattr(agent.config.conf, "ai_context_tokens", 32768)
+    tool = Mock(side_effect=["a" * 31000, "b" * 31000])
+    write = Mock()
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    monkeypatch.setitem(agent.tool_func_map, "set_route", write)
+    result = {
+        "timeout": APITimeoutError(
+            request=httpx.Request("POST", "https://model.invalid")
+        ),
+        "tool": [tool_call("set_route", {"profession": "先锋", "supports_json": "[]"})],
+        "oversized": [AIMessageChunk(content="x" * 9000)],
+        "stop": [AIMessageChunk(content="不应请求")],
+    }[failure]
+    model = install(
+        [tool_call("list_plans")],
+        [tool_call("list_plans", identifier="call-2")],
+        result,
+    )
+
+    def stop_compaction(socket, event):
+        if failure == "stop" and event.get("phase") == "compaction":
+            response = post_control(
+                server,
+                socket.sent[0]["conversation_id"],
+                event["turn_id"],
+                action="stop",
+            )
+            assert response.status_code == 200
+
+    socket = run_chat(runtime, on_event=stop_compaction)
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][0]
+    assert saved["status"] == ("cancelled" if failure == "stop" else "interrupted")
+    assert len(saved["events"]) == 2
+    assert saved["events"][0]["result"].startswith("a" * 1000)
+    assert saved["events"][1]["result"].startswith("b" * 1000)
+    assert saved["assistant"] == ""
+    assert tool.call_count == 2
+    assert len(model.inputs) == (2 if failure == "stop" else 3)
+    write.assert_not_called()
+
+
+def test_compaction_does_not_replace_write_deduplication_journal(runtime, monkeypatch):
+    _, agent, _, store, install = runtime
+    monkeypatch.setattr(agent.config.conf, "ai_context_tokens", 32768)
+    mastery_db.save_route("先锋", "[]")
+    args = {"profession": "先锋", "supports_json": "[]"}
+    tool = Mock(side_effect=["a" * 31000, "b" * 31000])
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    install(
+        [tool_call("set_route", args)],
+        [tool_call("list_plans", identifier="read-1")],
+        [tool_call("list_plans", identifier="read-2")],
+        [AIMessageChunk(content="已保存路线；两次查询已完成。")],
+        [tool_call("set_route", args, identifier="write-again")],
+        [AIMessageChunk(content="没有重复保存")],
+    )
+    confirmations = []
+    socket = run_chat(
+        runtime,
+        on_event=lambda _, event: (
+            confirmations.append(event) if event.get("type") == "approval" else None
+        ),
+    )
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][0]
+    assert saved["status"] == "complete"
+    assert len(confirmations) == 1
+    with closing(sqlite3.connect(store.path)) as db:
+        operations = json.loads(
+            db.execute(
+                "SELECT operations FROM turns WHERE id=?", (saved["id"],)
+            ).fetchone()[0]
+        )
+    assert len(operations) == 1
+    assert operations[0]["status"] == "verified"
+    assert saved["events"][-1]["status"] == "not_repeated"
 
 
 def test_summary_excerpts_large_turn_and_reports_omission(runtime):

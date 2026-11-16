@@ -778,6 +778,34 @@ describe('retained execution controls', () => {
     socket.receive({ event })
     return event
   }
+  it('shows current-turn context usage and replaces it after compression and reconnect', () => {
+    const socket = begin()
+    const usage = {
+      type: 'context_usage',
+      turn_id: 7,
+      used_tokens: 214000,
+      max_tokens: 475000,
+      estimated: true,
+      compactions: 0
+    }
+    socket.receive({ event: { ...usage, turn_id: 8 } })
+    expect(component.contextUsage.value).toBeNull()
+    socket.receive({ event: usage })
+    expect(component.contextUsage.value).toEqual(usage)
+    socket.receive({
+      snapshot: {
+        conversation_id: 'conversation',
+        turn_id: 7,
+        status: 'running',
+        context_usage: { ...usage, used_tokens: 10000, compactions: 1 }
+      }
+    })
+    expect(component.contextUsage.value.used_tokens).toBe(10000)
+    expect(component.contextUsage.value.compactions).toBe(1)
+    socket.receive({ reply: '完成', done: true })
+    component.newConversation()
+    expect(component.contextUsage.value).toBeNull()
+  })
   it('keeps tool evidence separate from speculative drafts and final answers', () => {
     const socket = begin()
     socket.receive({ event: { type: 'answer_delta', turn_id: 7, text: '正在检查' } })

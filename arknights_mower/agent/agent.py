@@ -62,7 +62,17 @@ from arknights_mower.agent.tools.submit_issue import (
     submit_issue_tool_def,
 )
 from arknights_mower.utils import config
-from arknights_mower.utils.ai_attachments import attachment_blocks, content_text_size
+from arknights_mower.utils.ai_attachments import attachment_blocks
+from arknights_mower.utils.ai_context import (
+    COMPACT_REPLY_LIMIT,
+    compacted_messages,
+    compaction_parts,
+    compaction_prompt,
+    estimate_tokens,
+    input_budget,
+    messages_tokens,
+    string_size,
+)
 from arknights_mower.utils.log import logger
 
 MISS_STATE_MARKER = "MOWER_MISS_STATE"
@@ -678,14 +688,34 @@ def ask_llm(user_input, context=None, api_key=None, execution=None):
 
 def _controlled_model_stream(model, messages):
     stream = None
+    emitted = False
     try:
         stream = model.stream(messages)
-        yield from stream
+        for chunk in stream:
+            emitted = True
+            yield chunk
     except (APITimeoutError, httpx.TimeoutException, TimeoutError) as exc:
         raise ModelCallError("model_timeout", "请检查模型服务状态后继续。") from exc
     except (APIConnectionError, httpx.TransportError) as exc:
         raise ModelCallError(
             "model_connection", "请检查模型服务地址与网络后继续。"
+        ) from exc
+    except BadRequestError as exc:
+        context_error = exc.code in {
+            "context_length_exceeded",
+            "context_window_exceeded",
+        }
+        if not context_error and isinstance(exc.body, dict):
+            context_error = bool(
+                re.search(
+                    r"maximum context length|context (?:window|length) (?:is )?exceeded",
+                    str(exc.body.get("message", "")),
+                    re.IGNORECASE,
+                )
+            )
+        raise ModelCallError(
+            "model_context_length" if context_error and not emitted else "model_error",
+            str(exc)[:2000],
         ) from exc
     except Exception as exc:
         raise ModelCallError("model_error", str(exc)[:2000]) from exc
@@ -749,46 +779,80 @@ def _run_controlled_chat(user_input, context, api_key, execution):
                     )
                 )
             )
+    prefix_count = len(messages)
+    budget = input_budget(config.conf.resolved_ai_context_tokens)
+    tool_tokens = (
+        0 if summary else estimate_tokens(json.dumps(get_tools(), ensure_ascii=False))
+    )
+    budget -= tool_tokens
+    compact_reply_limit = min(COMPACT_REPLY_LIMIT, max(512, budget // 8))
     model = build_llm(api_key, with_tools=not summary, max_retries=0)
+    overflow_error = None
+    overflow_retried = False
+    compactions = 0
     for step in range(8):
         execution.check()
-        if sum(content_text_size(message.content) for message in messages) > 64000:
-            raise ValueError("本轮上下文达到上限，请查看已有依据并缩小问题范围")
+        if not summary and (overflow_error or messages_tokens(messages) > budget):
+            parts = compaction_parts(
+                messages,
+                prefix_count,
+                budget,
+                compact_reply_limit,
+                force=bool(overflow_error),
+            )
+            if parts:
+                prefix, earlier, tail = parts
+                _emit_context_usage(
+                    execution, messages, tool_tokens, compactions, compacting=True
+                )
+                execution.emit(
+                    {"type": "model", "status": "running", "phase": "compaction"},
+                    persist=False,
+                )
+                compressor = build_llm(api_key, with_tools=False, max_retries=0)
+                reduced = _collect_controlled_response(
+                    compressor,
+                    compaction_prompt(earlier, budget),
+                    execution,
+                    limit=compact_reply_limit,
+                    visible=False,
+                )
+                if getattr(reduced, "tool_calls", None) or not reduced.text().strip():
+                    raise ValueError("上下文压缩未返回有效摘要，请核对执行记录后继续")
+                replacement = compacted_messages(prefix, reduced.text(), tail)
+                if messages_tokens(replacement) >= messages_tokens(messages):
+                    raise ValueError("上下文压缩未减少内容，请核对执行记录后继续")
+                messages = replacement
+                compactions += 1
+                overflow_error = None
+            elif overflow_error:
+                raise overflow_error
+        if messages_tokens(messages) > budget:
+            raise ValueError("本轮输入仍超过上下文上限，请减少附件或缩小问题范围")
         execution.draft = ""
+        _emit_context_usage(execution, messages, tool_tokens, compactions)
         execution.emit(
             {"type": "model", "status": "running", "step": step + 1}, persist=False
         )
-        response = None
-        streamed_size = 0
-        stream = _controlled_model_stream(model, messages)
         try:
-            for chunk in stream:
-                execution.check()
-                streamed_size += len(str(chunk.content)) + len(
-                    str(getattr(chunk, "tool_call_chunks", []))
-                )
-                if streamed_size > 128000:
-                    raise ValueError("模型输出超过本轮上限，未执行后续操作")
-                response = chunk if response is None else response + chunk
-                text = chunk.text()
-                if text:
-                    limit = 8000 if summary else 32768
-                    if len(execution.draft) + len(text) > limit:
-                        execution.draft = (execution.draft + text)[:limit]
-                        raise ValueError("本轮回复超过长度上限，请缩小问题范围")
-                    execution.draft += text
-                    execution.emit(
-                        {"type": "answer_delta", "text": text}, persist=False
-                    )
-        finally:
-            close = getattr(stream, "close", None)
-            if close:
-                close()
-        execution.check()
-        if response is None:
-            raise ValueError("没有收到模型回复")
-        if getattr(response, "invalid_tool_calls", None):
-            raise ValueError("模型工具参数无效，未执行相关操作")
+            response = _collect_controlled_response(
+                model, messages, execution, limit=8000 if summary else 32768
+            )
+        except ModelCallError as exc:
+            if exc.code != "model_context_length" or summary or overflow_retried:
+                raise
+            overflow_retried = True
+            overflow_error = exc
+            continue
+        usage = getattr(response, "usage_metadata", None) or {}
+        if type(usage.get("input_tokens")) is int and usage["input_tokens"] >= 0:
+            _emit_context_usage(
+                execution,
+                messages,
+                tool_tokens,
+                compactions,
+                measured=usage["input_tokens"],
+            )
         calls = getattr(response, "tool_calls", None) or []
         if not calls:
             yield response.text()
@@ -804,3 +868,73 @@ def _run_controlled_chat(user_input, context, api_key, execution):
             )
             messages.append(ToolMessage(content=result, tool_call_id=call["id"]))
     raise ValueError("本轮模型调用达到上限，请查看执行记录后缩小问题范围")
+
+
+def _emit_context_usage(
+    execution, messages, tool_tokens, compactions, *, compacting=False, measured=None
+):
+    execution.emit(
+        {
+            "type": "context_usage",
+            "used_tokens": messages_tokens(messages) + tool_tokens
+            if measured is None
+            else measured,
+            "max_tokens": config.conf.resolved_ai_context_tokens,
+            "estimated": measured is None,
+            "compactions": compactions,
+            "compacting": compacting,
+        },
+        persist=False,
+    )
+
+
+def _collect_controlled_response(model, messages, execution, *, limit, visible=True):
+    execution.check()
+    response = None
+    streamed_size = text_size = 0
+    stream = _controlled_model_stream(model, messages)
+    try:
+        for chunk in stream:
+            execution.check()
+            streamed_size += (
+                len(chunk.text())
+                + sum(
+                    len(call.get("args") or "") + len(call.get("name") or "")
+                    for call in getattr(chunk, "tool_call_chunks", [])
+                )
+                + string_size(
+                    {
+                        key: value
+                        for key, value in chunk.additional_kwargs.items()
+                        if key not in {"tool_calls", "function_call"}
+                    }
+                )
+            )
+            if streamed_size > 128000:
+                raise ValueError("模型输出内容超过本轮上限，未执行后续操作")
+            response = chunk if response is None else response + chunk
+            text = chunk.text()
+            text_size += len(text)
+            if text_size > limit:
+                if visible:
+                    execution.draft = (execution.draft + text)[:limit]
+                raise ValueError("本轮回复超过长度上限，请缩小问题范围")
+            if text and visible:
+                execution.draft += text
+                execution.emit({"type": "answer_delta", "text": text}, persist=False)
+    finally:
+        stream.close()
+    execution.check()
+    if response is None:
+        raise ValueError("没有收到模型回复")
+    metadata = response.response_metadata
+    if (
+        metadata.get("finish_reason") == "length"
+        or metadata.get("status") == "incomplete"
+    ):
+        raise ValueError(
+            "模型输出被服务商截断，未执行本次返回的工具调用；请核对执行记录后继续"
+        )
+    if getattr(response, "invalid_tool_calls", None):
+        raise ValueError("模型工具参数无效，未执行相关操作")
+    return response

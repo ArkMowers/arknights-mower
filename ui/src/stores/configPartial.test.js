@@ -370,6 +370,33 @@ describe('partial configuration saves', () => {
     expect(await renderSettings(ChatBotSetting, context)).not.toContain('aria-label="API 协议"')
   })
 
+  it.each(['deepseek', 'custom-local', 'custom-online'])(
+    'keeps independent context capacities when editing %s',
+    async (service) => {
+      const context = await setup({ ai_type: service, ai_custom_key: 'saved-key' })
+      expect(store.ai_context_tokens).toBe(256000)
+      expect(store.ai_deepseek_context_tokens).toBe(1000000)
+      expect(axios.patch).not.toHaveBeenCalled()
+      const html = await renderSettings(ChatBotSetting, context)
+      expect(html).toContain('上下文长度（token）')
+      expect(html).toContain(service === 'deepseek' ? '1M（1,000,000）' : '256K（256,000）')
+      const key = service === 'deepseek' ? 'ai_deepseek_context_tokens' : 'ai_context_tokens'
+      store[key] = 64000
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        [key]: 64000
+      })
+      Object.assign(context.data, { [key]: 64000 })
+      await store.load_config()
+      expect(store[key]).toBe(64000)
+      expect(store.ai_custom_key).toBe('saved-key')
+      expect(
+        store[service === 'deepseek' ? 'ai_context_tokens' : 'ai_deepseek_context_tokens']
+      ).toBe(service === 'deepseek' ? 256000 : 1000000)
+    }
+  )
+
   it.each(['deepseek-flash', 'deepseek-v4-pro', 'deepseek-future-model'])(
     'loads and saves DeepSeek model %s independently of custom interfaces',
     async (model) => {

@@ -1010,6 +1010,20 @@ class AIAgentPart(ConfModel):
     "自定义模型名称"
     ai_deepseek_model: str = "deepseek-flash"
     "DeepSeek 模型 ID"
+    ai_context_tokens: int = Field(default=256000, ge=8192, le=4000000, strict=True)
+    "自定义模型上下文长度，单位 token"
+    ai_deepseek_context_tokens: int = Field(
+        default=1000000, ge=8192, le=4000000, strict=True
+    )
+    "DeepSeek 上下文长度，单位 token"
+
+    @property
+    def resolved_ai_context_tokens(self) -> int:
+        return (
+            self.ai_deepseek_context_tokens
+            if self.ai_type == "deepseek"
+            else self.ai_context_tokens
+        )
 
     @model_validator(mode="before")
     @classmethod
