@@ -80,7 +80,7 @@ def runtime(tmp_path, monkeypatch):
                 files = [resource / "tasks.json"]
             layer = {}
             for file in files:
-                tasks = json.loads(file.read_text())
+                tasks = json.loads(file.read_text(encoding="utf-8"))
                 if layer.keys() & tasks.keys():
                     return False
                 layer.update(tasks)
@@ -133,7 +133,7 @@ def test_navigation_loads_with_existing_hotfix_directory_and_dispatches(runtime)
     }
     runtime.solver.initialize_maa()
     runtime.solver.append_maa_task("Fight")
-    assert json.loads(runtime.navigation.read_text()) == runtime.payload
+    assert json.loads(runtime.navigation.read_text(encoding="utf-8")) == runtime.payload
     assert "YW-8" in runtime.loaded
     assert "Previous-8" not in runtime.loaded
     assert "BattleStageNameHotfix" in runtime.loaded
@@ -178,7 +178,7 @@ def test_older_resource_layout_downloads_navigation_to_root_cache(runtime):
     runtime.navigation.parent.rmdir()
     (runtime.installed.parents[1] / "tasks.json").write_text('{"FightBegin": {}}')
     runtime.solver.initialize_maa()
-    assert json.loads(runtime.legacy.read_text()) == runtime.payload
+    assert json.loads(runtime.legacy.read_text(encoding="utf-8")) == runtime.payload
     assert not runtime.navigation.exists()
     assert "YW-8" in runtime.loaded
 
@@ -307,7 +307,9 @@ def test_growth_rules_override_downloaded_tasks_and_cached_fallback(runtime):
     assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
     assert runtime.loaded["MowerGrowthCatalyst@Begin"]["text"] == ["凭证交易所"]
     assert (
-        json.loads(runtime.navigation.read_text())["OperProgress@Dualchip"]["action"]
+        json.loads(runtime.navigation.read_text(encoding="utf-8"))[
+            "OperProgress@Dualchip"
+        ]["action"]
         == "DoNothing"
     )
     assert runtime.installed.read_bytes() == original
