@@ -5236,6 +5236,13 @@ class BaseSchedulerSolver(
         scan_complete = False
         incomplete_reason = "未观测到满心情卡牌"
         unreadable_names = set()
+        station_filter = None
+        idle_only = not workshop and not mastery
+        scan_names = set(agent_list)
+        if idle_only:
+            scan_names.difference_update(
+                name for name, op in self.op_data.operators.items() if op.current_room
+            )
         finish_mood_calculation()
         try:
             self.enter_room(room, max_attempts=1)
@@ -5253,6 +5260,8 @@ class BaseSchedulerSolver(
             # 返回基建时取消此页，实际驻员不变。
             self.tap((self.recog.w * 0.38, self.recog.h * 0.95), interval=0.5)
             self.swipe_left(1, "ALL")
+            station_filter = self.agent_station_filter()
+            self.agent_station_filter("未进驻" if idle_only else "全部")
             self.switch_arrange_order("心情", room, True)
             previous = None
             observation = None
@@ -5301,11 +5310,11 @@ class BaseSchedulerSolver(
                         # 绿色之前已观测但不可读的卡牌不被默认值覆盖。
                         estimates.update(
                             (candidate, (24, observed_at, False))
-                            for candidate in agent_list
+                            for candidate in scan_names
                             if candidate not in observed_names
                         )
                         if getattr(self.op_data, "mood_calculation_enabled", False):
-                            for candidate in agent_list:
+                            for candidate in scan_names:
                                 if (
                                     candidate not in observed_names
                                     and candidate not in protected
@@ -5316,7 +5325,7 @@ class BaseSchedulerSolver(
                         full_card = True
                         scan_complete = True
                         logger.info(
-                            "心情升序遇到绿色笑脸，停止翻页，其余干员按 24 预估"
+                            "心情升序遇到绿色笑脸，停止翻页，其余筛选范围内干员按 24 预估"
                         )
                         break
                 if full_card or page_index == 19 or monotonic() >= deadline:
@@ -5349,7 +5358,11 @@ class BaseSchedulerSolver(
                     incomplete_reason,
                 )
             self._recovery_plan_dirty = True
-            self.back_to_infrastructure()
+            try:
+                if station_filter is not None:
+                    self.agent_station_filter(station_filter)
+            finally:
+                self.back_to_infrastructure()
 
     def _observed_group_return_plan(self):
         """完整在岗观测生成回班意图，实际组状态仍由任务确认提交。"""

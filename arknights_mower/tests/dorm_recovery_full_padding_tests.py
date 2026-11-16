@@ -205,6 +205,8 @@ def test_real_card_scan_keeps_full_fixed_occupants_in_temporary_roster(
     data.operators[fixed].mood = 24
     if measured is None:
         data.operators[fixed].time_stamp = None
+        data.dorm_mood_estimates[fixed] = (24, datetime.now())
+    estimates = dict(data.dorm_mood_estimates)
     sample = data.operators[fixed].time_stamp
     monkeypatch.setattr(base_schedule, "agent_card_selected", lambda img, scope: False)
     monkeypatch.setattr(
@@ -216,11 +218,12 @@ def test_real_card_scan_keeps_full_fixed_occupants_in_temporary_roster(
     solver.no_pending_task = MagicMock(return_value=True)
     solver.swipe_left = MagicMock()
     solver.switch_arrange_order = MagicMock()
+    solver.agent_station_filter = MagicMock(return_value="全部")
     solver.wait_for_agent_page = MagicMock(return_value=[("银灰", 0), ("黑角", 1)])
     solver.back_to_infrastructure = MagicMock()
 
     solver._scan_card_moods()
-    assert data.dorm_mood_estimates[fixed][2] is False
+    assert data.dorm_mood_estimates.get(fixed) == estimates.get(fixed)
     assert data.operators[fixed].time_stamp == sample
     arrange(solver)
 
