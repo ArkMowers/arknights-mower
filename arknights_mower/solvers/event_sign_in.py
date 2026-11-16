@@ -494,7 +494,7 @@ class EventSignInSolver(SceneGraphSolver):
         if after is None:
             return None
         if direction > 0:
-            if after.first_day == 1 or after.scroll_position == 0:
+            if after.scroll_position == 0:
                 return (after, True) if after.first_day in (None, 1) else None
             before_position = page.scroll_position
             after_position = after.scroll_position

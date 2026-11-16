@@ -185,7 +185,11 @@ def detect_progress(image):
 
 def get_scrollbar_position(image, progress) -> float | None:
     """Return the thumb's fraction of its travel when the rail is visible."""
+    if not progress.points:
+        return None
     (left, _), (right, bottom) = progress.card_scope
+    first_point = progress.points[0][0] - left
+    last_point = progress.points[-1][0] - left
     scale = progress.scale
     margin = max(1, round(14 * scale))
     top = bottom + max(1, round(4 * scale))
@@ -206,7 +210,13 @@ def get_scrollbar_position(image, progress) -> float | None:
     for index, (row, mask) in enumerate(zip(rows, rail_pixels)):
         for start, stop in runs(mask):
             width = stop - start
-            if width < 0.9 * row.size or start == 0 or stop == row.size:
+            if (
+                width < 0.9 * row.size
+                or start == 0
+                or stop == row.size
+                or start > first_point
+                or stop <= last_point
+            ):
                 continue
             rail = row[start:stop]
             thumb_start, thumb_end = max(

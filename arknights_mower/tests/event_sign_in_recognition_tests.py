@@ -168,6 +168,17 @@ def test_scrollbar_position_distinguishes_left_edge_middle_and_missing_track(
         assert position == pytest.approx(expected, abs=0.015)
 
 
+def test_partial_track_cannot_turn_a_middle_thumb_into_the_left_edge():
+    image = frame("ten_receipt_scrolled")
+    progress = detect_progress(image)
+    assert progress is not None
+    assert get_scrollbar_position(image, progress) == pytest.approx(0.12, abs=0.015)
+
+    image[526:539, 490:530] = image[514:527, 490:530].copy()
+
+    assert get_scrollbar_position(image, progress) is None
+
+
 @pytest.mark.parametrize(
     "name,total,unlocked",
     [

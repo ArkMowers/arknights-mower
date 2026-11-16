@@ -207,3 +207,21 @@ def test_seek_left_rejects_left_thumb_when_readable_cards_start_later(scrollbar_
     assert solver._seek_left(right) is None
 
     solver.swipe_noinertia.assert_called_once()
+
+
+def test_seek_left_rejects_a_new_day_number_on_an_unchanged_page(scrollbar_search):
+    solver, right = scrollbar_search
+    before = replace(
+        right,
+        first_day=4,
+        cards=(replace(right.cards[0], day=4), *right.cards[1:]),
+        scroll_position=None,
+    )
+    after = replace(
+        before, first_day=1, cards=(replace(before.cards[0], day=1), *before.cards[1:])
+    )
+    solver._wait_panel = Mock(return_value=after)
+
+    assert solver._seek_left(before) is None
+
+    solver.swipe_noinertia.assert_called_once()
