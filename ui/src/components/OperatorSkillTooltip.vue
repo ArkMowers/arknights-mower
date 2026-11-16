@@ -5,12 +5,18 @@ import { getOperatorSkillDetails } from '@/utils/operatorSkillTooltip'
 import { useBasementSkill } from '@/stores/basementSkill'
 import { ownershipLabels, skillStatusLabels } from '@/utils/basementSkills'
 
-const props = defineProps({ name: String })
-const details = computed(() => getOperatorSkillDetails(props.name))
+const props = defineProps({
+  name: String,
+  maximum: { type: Boolean, default: false },
+  unpromoted: { type: Boolean, default: false }
+})
+const details = computed(() =>
+  getOperatorSkillDetails(props.name, { maximum: props.maximum, unpromoted: props.unpromoted })
+)
 const { loadOwnedOperators } = useBasementSkill()
 
 async function loadOwnership(show) {
-  if (!show) return
+  if (!show || props.maximum) return
   try {
     await loadOwnedOperators()
   } catch {
@@ -32,6 +38,7 @@ async function loadOwnership(show) {
     <div class="operator-skill-tooltip">
       <div class="skill-heading">
         <strong>{{ name }} · 基建技能</strong>
+        <span v-if="maximum" class="skill-unlock">{{ unpromoted ? '精0技能' : '满练技能' }}</span>
         <NTag
           v-if="ownershipLabels[details.ownership]"
           :type="details.ownership === 'owned' ? 'success' : 'default'"
