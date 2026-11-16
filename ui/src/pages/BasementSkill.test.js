@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { effectScope, reactive } from 'vue'
 import axios from 'axios'
 import BasementSkill from './BasementSkill.vue'
 import { useBasementSkill } from '@/stores/basementSkill'
 
 const state = useBasementSkill()
+const planState = reactive({ plan: {}, facility_levels: {} })
+vi.mock('@/stores/plan', () => ({ usePlanStore: () => planState }))
 vi.mock('axios', () => ({ default: { get: vi.fn() } }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
@@ -41,6 +43,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   state.skill.value = catalog
   state.snapshot.value = null
+  planState.plan = {}
+  planState.facility_levels = {}
 })
 describe('基建技能森空岛数据读取', () => {
   it('默认不显示持有标签，进入读取只请求本地快照', async () => {
@@ -85,5 +89,26 @@ describe('基建技能森空岛数据读取', () => {
     expect(page.filteredItems.value).toHaveLength(1)
     expect(page.skillStatusLabels[page.skill_items.value[0].childSkill[0].status]).toBeUndefined()
     expect(page.loading.value).toBe(false)
+  })
+  it('优先取当前主排班，最高宿舍等级覆盖快照，缺失字段保留快照', () => {
+    planState.plan = {
+      room_1_1: { name: '制造站', product: 'gold', plans: [] },
+      room_1_2: { name: '发电站', plans: [] },
+      dormitory_1: { name: '', plans: [{ agent: 'Free' }] },
+      dormitory_2: { name: '', plans: [{ agent: 'Free' }] }
+    }
+    planState.facility_levels = { room_1_1: 3, room_1_2: 3, dormitory_1: 1, dormitory_2: 4 }
+    state.snapshot.value = { base_conditions: { dormLevel: 2, power: 3, droneCap: 200 } }
+    const before = JSON.stringify(planState)
+    const page = setup()
+    expect(page.baseConditions.value).toMatchObject({
+      power: 1,
+      factories: 1,
+      dormLevel: 4,
+      dormLevels: 5,
+      droneCap: 200
+    })
+    expect(page.conditionSource.value).toContain('当前主排班')
+    expect(JSON.stringify(planState)).toBe(before)
   })
 })

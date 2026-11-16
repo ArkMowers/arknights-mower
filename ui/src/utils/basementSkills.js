@@ -8,6 +8,14 @@ export const skillStatusLabels = {
   unowned: '未拥有'
 }
 
+export function hasValidProgression(item) {
+  return (
+    item?.ownership === 'owned' &&
+    item.childSkill?.length > 0 &&
+    item.childSkill.every((entry) => ['active', 'locked', 'replaced'].includes(entry.status))
+  )
+}
+
 export function annotateBasementSkills(catalog, snapshot) {
   const roster = new Map(
     snapshot?.has_data && Array.isArray(snapshot.operators)

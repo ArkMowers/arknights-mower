@@ -722,6 +722,12 @@ export function createPreviewAdapter(data, requests = []) {
     }
     const reads = {
       '/conf': () => clone(data.config),
+      '/basement-skill/operators': () => ({
+        has_data: false,
+        operators: [],
+        base_conditions: { trade: 2, power: 2, reception: 3, dormLevel: 1 },
+        message: '离线预览：无练度数据，推荐自动按满练度假设计算'
+      }),
       '/network/settings': () => ({ ok: true, ...networkSettings }),
       '/config-profiles': profileList,
       '/shop': () => ['龙门币', '招聘许可', '赤金'],
