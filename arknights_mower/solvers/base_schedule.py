@@ -13560,11 +13560,26 @@ class BaseSchedulerSolver(
         self, target_product: str, confirm_after: datetime | None = None
     ):
         product = MANUFACTURE_PRODUCTS[target_product]
+        self._select_manufacture_recipe(product, confirm_after=confirm_after)
+
+    def _select_manufacture_recipe(self, product, *, confirm_after=None, count=None):
+        """复用制造配方与双确认流程；双芯片只下达已核算的份数。"""
         self._tap_product_point((1680, 500))
         self._wait_product_resource("manufacture_product_select")
         self._tap_product_point(product.category)
         self._tap_product_point(product.recipe)
         self._wait_product_resource("manufacture_product_change_confirm")
+        if count is not None:
+            if not 1 <= count <= 99:
+                raise ValueError("双芯片制造份数无效")
+            for _ in range(count - 1):
+                self._tap_product_point((1300, 305), interval=0.2)
+            self.recog.update()
+            selected = self._read_manufacture_queue_count()
+            if selected != count:
+                raise RecognizeError(
+                    f"双芯片制造份数未确认：期望{count}，读到{selected or '未知'}"
+                )
         self._tap_product_point((1425, 895))
         self._wait_product_resource("manufacture_product_change_confirm", present=False)
 
@@ -13574,15 +13589,25 @@ class BaseSchedulerSolver(
             remaining = (confirm_after - datetime.now()).total_seconds()
             if remaining > 0:
                 logger.info("在制造计划取消确认页等待%.1f秒后确认", remaining)
-                self.sleep(remaining)
+                if count is None:
+                    self.sleep(remaining)
+                else:
+                    while remaining > 0:
+                        if self.find_next_task(datetime.now()) is not None:
+                            raise ProductSwitchDeferred(
+                                "双芯片切产物让出到期任务", ready_at=confirm_after
+                            )
+                        self.sleep(min(remaining, 1))
+                        remaining = (confirm_after - datetime.now()).total_seconds()
                 self.recog.update()
                 self._wait_product_resource("manufacture_product_cancel_confirm")
         self._tap_product_point((1440, 742))
         self._wait_product_resource("manufacture_product_cancel_confirm", present=False)
 
-        self._fill_manufacture_queue(
-            material_limited=target_product in {"orirock", "orirock_device"}
-        )
+        if count is None:
+            self._fill_manufacture_queue(
+                material_limited=product.name.startswith("源石碎片")
+            )
 
     def _fill_manufacture_queue(self, *, material_limited=False):
         # 新配方默认只排一份；MAX 和数量确认都需要画面读数验证。
@@ -13685,18 +13710,22 @@ class BaseSchedulerSolver(
             wait = max(0, remaining - count * DRONE_SECONDS)
         return count, wait
 
-    def _survey_manufacture_switch(self, room: str, target_product: str) -> dict:
+    def _survey_manufacture_switch(
+        self, room: str, target_product: str, *, growth_chip=False
+    ) -> dict:
         """只读取一个制造站，为批量计划收集快照，不消耗无人机。"""
         self._open_manufacture_product_detail(room)
         current_product = self.read_manufacture_product()
         self._cache_facility_state(room, "manufacture", current_product)
-        self._start_product_switch_log(room, target_product, current_product)
+        if not growth_chip:
+            self._start_product_switch_log(room, target_product, current_product)
         observation = {
             "room": room,
             "facility": "manufacture",
             "target_product": target_product,
             "current_product": current_product,
             "needs_switch": current_product != target_product,
+            **({"growth_chip": True} if growth_chip else {}),
         }
         if not observation["needs_switch"]:
             return observation
@@ -13748,11 +13777,14 @@ class BaseSchedulerSolver(
             if getattr(setting, "grandet_mode", True)
             else DRONE_SECONDS
         )
+        if growth_chip:
+            max_loss_seconds = 30
         drone_count, wait_seconds = self._product_switch_drone_plan(
             total_seconds, unit_seconds, max_loss_seconds
         )
         natural_only = (
-            (getattr(setting, "grandet_mode", True))
+            not growth_chip
+            and (getattr(setting, "grandet_mode", True))
             and not getattr(setting, "use_drones_when_leaving_orirock", True)
             and current_product in {"orirock", "orirock_device"}
             and target_product not in {"orirock", "orirock_device"}
@@ -13952,6 +13984,8 @@ class BaseSchedulerSolver(
             if getattr(setting, "grandet_mode", True)
             else DRONE_SECONDS
         )
+        if observation.get("growth_chip"):
+            max_loss_seconds = 30
         unit_seconds = MANUFACTURE_PRODUCTS[current_product].unit_seconds
         drone_count, wait_seconds = self._product_switch_drone_plan(
             remaining, unit_seconds, max_loss_seconds
@@ -20297,6 +20331,12 @@ class BaseSchedulerSolver(
     def on_maa_callback(self, msg, details, arg, *, observation_run=None):
         """MAA 回调入口：累积掉落统计、代发上报请求、输出可读日志行。"""
         d = parse_details(details)
+        from arknights_mower.solvers.growth import record_growth_callback
+
+        record_growth_callback(self, msg, d, observation_run)
+        from arknights_mower.utils.maa_catalyst import record_callback
+
+        record_callback(self, msg, d, observation_run)
         observe_maa_callback(self, msg, d, generation=observation_run)
         logger.debug("MAA 回调 %s %s", msg, d, extra={"log_group": "maa-integration"})
         try:
@@ -20448,6 +20488,10 @@ class BaseSchedulerSolver(
                 or not all(isinstance(task, dict) for task in tasks.values())
             ):
                 raise ValueError("MAA 活动导航必须是非空任务定义对象")
+            if getattr(config.conf, "maa_growth_enable", False):
+                from arknights_mower.utils.growth_execution import merge_growth_tasks
+
+                tasks = merge_growth_tasks(tasks)
             write_json(ota_tasks_path, tasks)
             logger.info(
                 "MAA 活动关卡导航下载完成，等待资源加载确认",
@@ -20462,6 +20506,17 @@ class BaseSchedulerSolver(
             save_exception(e)
 
         cached = read_json(ota_tasks_path, None)
+        if (
+            isinstance(cached, dict)
+            and cached
+            and getattr(config.conf, "maa_growth_enable", False)
+        ):
+            from arknights_mower.utils.growth_execution import merge_growth_tasks
+
+            guarded = merge_growth_tasks(cached)
+            if guarded != cached:
+                write_json(ota_tasks_path, guarded)
+            return guarded
         return cached if isinstance(cached, dict) and cached else None
 
     def initialize_maa(self):
@@ -20499,6 +20554,20 @@ class BaseSchedulerSolver(
             navigation = self.update_maa_navigation(
                 pathlib.Path(resolve_config_path(config.conf.maa_path))
             )
+            if getattr(config.conf, "maa_growth_enable", False):
+                from arknights_mower.utils.growth_execution import merge_growth_tasks
+
+                navigation = merge_growth_tasks(navigation or {})
+                from arknights_mower.utils.maa_runtime import navigation_cache_path
+                from arknights_mower.utils.update_runtime import write_json
+
+                write_json(
+                    navigation_cache_path(
+                        pathlib.Path(resolve_config_path(config.conf.maa_path)),
+                        android=True,
+                    ),
+                    navigation,
+                )
             if navigation is not None:
                 from arknights_mower.utils.maa_resource_update import (
                     load_android_maa_navigation,
@@ -23084,6 +23153,9 @@ class BaseSchedulerSolver(
         )
 
         discard_completed_mastery_tasks(self)
+        from arknights_mower.solvers.growth import run_growth
+
+        run_growth(self)
         self._refresh_workshop_inventory()
         self._refresh_observed_recovery_tasks()
         if any(getattr(task, "execution_failure", None) for task in self.tasks):

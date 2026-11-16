@@ -43,7 +43,8 @@
       </div>
 
       <div v-if="summary.manual_chips" class="mm__hint">
-        双芯片与芯片助剂需手动准备，不会生成芯片合成任务。
+        芯片不会生成加工站合成任务。开启 MAA 干员培养后，Mower
+        在同职业芯片组和其他材料齐全时，可调用 MAA 兑换缺少的芯片助剂，并按职业统一制造双芯片。
       </div>
       <div
         v-if="summary.crafting_gold"

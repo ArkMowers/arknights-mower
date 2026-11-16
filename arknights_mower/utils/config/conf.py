@@ -870,6 +870,8 @@ class RIICPart(ConfModel):
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
     enable_mastery: bool = True
     "全自动专精全局开关：OFF 时禁用全部训练室动作/通知/守卫，仅保留仓库材料扫描"
+    maa_growth_enable: bool = False
+    "MAA 干员培养：成品材料齐全时执行精英化及基础技能升级"
     mastery_consecutive_skills: bool = False
     "同干员技能接续训练"
     save_mastery_screenshots: bool = False
@@ -1429,6 +1431,7 @@ class Conf(
     def has_maa_tasks(self) -> bool:
         return (
             self.has_maa_daily_tasks
+            or self.maa_growth_enable
             or self.RG
             or self.SSS
             or self.RCL

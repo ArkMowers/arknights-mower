@@ -218,6 +218,7 @@ export const useConfigStore = defineStore('config', () => {
   const assistant_follows_schedule = ref(false)
   const mastery_consecutive_skills = ref(false)
   const enable_mastery = ref(true)
+  const maa_growth_enable = ref(false)
   const save_mastery_screenshots = ref(false)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})
@@ -709,6 +710,7 @@ export const useConfigStore = defineStore('config', () => {
       assistant_follows_schedule.value = response.data.assistant_follows_schedule
       mastery_consecutive_skills.value = response.data.mastery_consecutive_skills ?? false
       enable_mastery.value = response.data.enable_mastery ?? true
+      maa_growth_enable.value = response.data.maa_growth_enable ?? false
       save_mastery_screenshots.value = response.data.save_mastery_screenshots ?? false
       right_side_room_order.value =
         response.data.right_side_room_order ??
@@ -913,6 +915,7 @@ export const useConfigStore = defineStore('config', () => {
       assistant_follows_schedule: assistant_follows_schedule.value,
       mastery_consecutive_skills: mastery_consecutive_skills.value,
       enable_mastery: enable_mastery.value,
+      maa_growth_enable: maa_growth_enable.value,
       save_mastery_screenshots: save_mastery_screenshots.value,
       sign_in: sign_in.value,
       droidcast: droidcast.value,
@@ -1325,6 +1328,7 @@ export const useConfigStore = defineStore('config', () => {
     assistant_follows_schedule,
     mastery_consecutive_skills,
     enable_mastery,
+    maa_growth_enable,
     save_mastery_screenshots,
     sign_in,
     droidcast,

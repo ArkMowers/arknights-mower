@@ -48,6 +48,10 @@ def protected_server(monkeypatch):
 @pytest.mark.parametrize(
     "method,path,representation",
     [
+        ("GET", "/conf", "json"),
+        ("HEAD", "/conf", "json"),
+        ("POST", "/conf", "json"),
+        ("PATCH", "/conf", "json"),
         ("GET", "/config-profiles", "json"),
         ("HEAD", "/config-profiles", "json"),
         ("GET", "/config-profiles/export", "json"),

@@ -173,6 +173,7 @@ def save_user_config(req):
             getattr(previous, key) != getattr(conf, key)
             for key in (
                 "enable_mastery",
+                "maa_growth_enable",
                 "fodder_operators",
                 "t5_operators",
                 "book_operators",

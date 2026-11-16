@@ -16,6 +16,7 @@ const props = defineProps({
   nextUp: { type: Object, default: null },
   operators: { type: Array, default: () => [] },
   autoMastery: { type: Boolean, default: false },
+  maaGrowth: { type: Boolean, default: false },
   loading: Boolean,
   syncing: Boolean,
   syncHint: { type: String, default: '' },
@@ -23,7 +24,14 @@ const props = defineProps({
   readyGoals: { type: Number, default: 0 },
   compact: Boolean
 })
-const emit = defineEmits(['update:autoMastery', 'add-target', 'open-plan', 'refresh', 'sync'])
+const emit = defineEmits([
+  'update:autoMastery',
+  'update:maaGrowth',
+  'add-target',
+  'open-plan',
+  'refresh',
+  'sync'
+])
 
 const roster = computed(() => props.operators.filter((op) => op?.name).slice(0, 24))
 
@@ -128,7 +136,28 @@ const syncLabel = computed(() => {
             />
             <span>全自动专精/合成</span>
             <HelpText label="全自动专精/合成范围">
-              推荐先清空排班表中的训练室，或编写专精副表，再开启此功能。开启后，会在扫描仓库任务结束后自动执行已排队的专精并合成养成材料；精英化、基础技能升级与模组开启仍需在游戏内手动完成后同步。
+              推荐先清空排班表中的训练室，或编写专精副表，再开启此功能。开启后，会自动执行已排队的专精并合成养成材料。精英化和基础技能升级由旁边的
+              MAA 干员培养开关控制，模组仍需手动完成。
+            </HelpText>
+          </div>
+          <div class="growth-hero__toggle">
+            <n-switch
+              class="gp-switch"
+              size="small"
+              :value="maaGrowth"
+              :loading="loading"
+              aria-label="MAA 干员培养"
+              @update:value="emit('update:maaGrowth', $event)"
+            />
+            <span>MAA 干员培养</span>
+            <HelpText label="MAA 干员培养范围">
+              默认关闭。开启后，Mower 在成品材料、龙门币和所需作战记录齐全时调用 MAA
+              完成计划中的精英化和基础技能升级；基础技能 7 级须先精一。缺少双芯片时由 Mower
+              优先借用没有“用尽”驻员的制造站，再选最快完成当前产物的设施；全部都有“用尽”驻员时沿用最快完成的选择。
+              按职业统一制造，整批结束后恢复原产物，不换干员。合成和专精仍由 Mower
+              执行。芯片组和其他材料齐全、助剂不足且采购凭证足够时，通过 MAA
+              统一兑换所需缺口，每个消耗 90
+              采购凭证；制造后逐个干员培养。晋升后继续提升等级及模组仍需手动完成。
             </HelpText>
           </div>
           <span class="growth-hero__meta-sep" aria-hidden="true" />

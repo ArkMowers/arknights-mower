@@ -14,6 +14,44 @@ afterEach(() => {
 })
 
 describe('workshop config autosave', () => {
+  it('saves MAA growth separately from native mastery and crafting', async () => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const loaded = ref(false)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', loaded)
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.maa_growth_enable).toBe(false)
+    axios.patch.mockResolvedValue({ data: {} })
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.maa_growth_enable = true
+    await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+    expect(axios.patch.mock.calls[0][1]).toEqual({ maa_growth_enable: true })
+    expect(store.enable_mastery).toBe(true)
+    expect(store.build_config().maa_growth_enable).toBe(true)
+    loaded.value = false
+  })
+
+  it.each([undefined, false, true])('loads MAA growth preference %s', async (value) => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    const data = { ...store.build_config(), maa_weekly_plan_active: '默认' }
+    if (value === undefined) delete data.maa_growth_enable
+    else data.maa_growth_enable = value
+    axios.get.mockResolvedValue({ data })
+    await store.load_config()
+    expect(store.maa_growth_enable).toBe(value ?? false)
+  })
+
   it('saves same-operator skill continuity independently and defaults it off', async () => {
     pinia = createPinia()
     setActivePinia(pinia)

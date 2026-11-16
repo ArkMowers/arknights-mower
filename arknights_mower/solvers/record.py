@@ -24,6 +24,9 @@ workshop_inventory_changed = Event()
 
 # 全部 DB 表定义（建表/迁移检查进程内只跑一次，避免每调用重跑 CREATE TABLE + PRAGMA + commit）
 _DB_TABLE_STMTS = (
+    "CREATE TABLE IF NOT EXISTS growth_execution (id TEXT PRIMARY KEY, payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS growth_chip_restore (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS growth_catalyst_execution (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS agent_action ("
     "name TEXT,"
     "agent_current_room TEXT,"
@@ -1195,6 +1198,7 @@ def save_inventory_counts(
     invalidate_missing=False,
     invalidation_scope=None,
     discard_unobserved=False,
+    preserve_cloud=(),
 ):
     with _conn() as conn:
         conn.execute("BEGIN IMMEDIATE")
@@ -1229,6 +1233,7 @@ def save_inventory_counts(
             invalidated |= {
                 name for name in missing if protected.get(name, 0) < cloud_at
             }
+        invalidated.difference_update(preserve_cloud)
         if invalidated:
             conn.executemany(
                 "DELETE FROM inventory WHERE item_name = ?",
@@ -1266,7 +1271,9 @@ def save_inventory_counts(
                     scanned = cloud_counts[name]
                     source_at = cloud_at
                     from_cloud = True
-                if from_cloud and battle_inventory_active.is_set():
+                if from_cloud and (
+                    battle_inventory_active.is_set() or name in preserve_cloud
+                ):
                     # Cloud can already include drops whose settlement receipt is pending.
                     # Keep the run's local baseline until all drop receipts are consumed.
                     if name in current:

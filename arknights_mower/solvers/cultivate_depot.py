@@ -138,6 +138,10 @@ class cultivate:
                         )
                     raise ValueError("森空岛未返回库存，无法完成库存同步")
 
+                from arknights_mower.utils.growth_execution import reconcile_snapshot
+
+                resp, preserve_cloud = reconcile_snapshot(resp)
+
                 def dump(file):
                     json.dump(resp, file, ensure_ascii=False, indent=4)
 
@@ -165,6 +169,7 @@ class cultivate:
                         force_cloud=force_inventory or calibrate,
                         invalidate_missing=calibrate,
                         invalidation_scope=invalidation_scope,
+                        preserve_cloud=preserve_cloud,
                     )
                 if completed:
                     remove_completed_goals(resp["data"], skills)

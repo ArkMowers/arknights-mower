@@ -80,7 +80,7 @@ def runtime(tmp_path, monkeypatch):
                 files = [resource / "tasks.json"]
             layer = {}
             for file in files:
-                tasks = json.loads(file.read_text())
+                tasks = json.loads(file.read_text(encoding="utf-8"))
                 if layer.keys() & tasks.keys():
                     return False
                 layer.update(tasks)
@@ -133,7 +133,7 @@ def test_navigation_loads_with_existing_hotfix_directory_and_dispatches(runtime)
     }
     runtime.solver.initialize_maa()
     runtime.solver.append_maa_task("Fight")
-    assert json.loads(runtime.navigation.read_text()) == runtime.payload
+    assert json.loads(runtime.navigation.read_text(encoding="utf-8")) == runtime.payload
     assert "YW-8" in runtime.loaded
     assert "Previous-8" not in runtime.loaded
     assert "BattleStageNameHotfix" in runtime.loaded
@@ -178,7 +178,7 @@ def test_older_resource_layout_downloads_navigation_to_root_cache(runtime):
     runtime.navigation.parent.rmdir()
     (runtime.installed.parents[1] / "tasks.json").write_text('{"FightBegin": {}}')
     runtime.solver.initialize_maa()
-    assert json.loads(runtime.legacy.read_text()) == runtime.payload
+    assert json.loads(runtime.legacy.read_text(encoding="utf-8")) == runtime.payload
     assert not runtime.navigation.exists()
     assert "YW-8" in runtime.loaded
 
@@ -282,3 +282,53 @@ def test_oversized_previous_navigation_is_preserved_without_downloading(runtime)
         runtime.solver.initialize_maa()
     assert runtime.navigation.read_bytes() == previous
     runtime.get.assert_not_called()
+
+
+def test_growth_rules_override_downloaded_tasks_and_cached_fallback(runtime):
+    base_schedule.config.conf.maa_growth_enable = True
+    original = runtime.installed.read_bytes()
+    runtime.payload["OperProgress@Dualchip"] = {
+        "algorithm": "JustReturn",
+        "action": "ClickRect",
+    }
+    runtime.response.__enter__.return_value.content = json.dumps(
+        runtime.payload
+    ).encode()
+    runtime.solver.initialize_maa()
+    assert runtime.loaded["OperProgress@Dualchip"]["action"] == "DoNothing"
+    assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
+    assert runtime.loaded["MowerGrowthCatalyst@Obtained"]["next"] == []
+    assert "YW-8" in runtime.loaded
+    runtime.solver.MAA.stop()
+    runtime.solver.release_maa()
+    runtime.navigation.write_text(json.dumps(runtime.payload))
+    runtime.get.side_effect = RuntimeError("offline")
+    runtime.solver.initialize_maa()
+    assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
+    assert runtime.loaded["MowerGrowthCatalyst@Begin"]["text"] == ["凭证交易所"]
+    assert (
+        json.loads(runtime.navigation.read_text(encoding="utf-8"))[
+            "OperProgress@Dualchip"
+        ]["action"]
+        == "DoNothing"
+    )
+    assert runtime.installed.read_bytes() == original
+
+
+@pytest.mark.parametrize("offline", [False, True])
+def test_batch_purchase_quantity_reaches_sdk_resource_loader(runtime, offline):
+    from arknights_mower.utils.maa_catalyst import task_quantity
+
+    base_schedule.config.conf.maa_growth_enable = True
+    if offline:
+        runtime.navigation.write_text(json.dumps(runtime.payload))
+        runtime.get.side_effect = RuntimeError("offline")
+    with task_quantity(5):
+        runtime.solver.initialize_maa()
+    assert "MowerGrowthCatalyst5@Begin" in runtime.loaded
+    assert "MowerGrowthCatalyst@Begin" not in runtime.loaded
+    assert runtime.loaded["MowerGrowthCatalyst5@Quantity"]["text"] == ["5"]
+    assert runtime.loaded["MowerGrowthCatalyst5@Increase4"]["next"] == [
+        "MowerGrowthCatalyst5@Quantity"
+    ]
+    assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
