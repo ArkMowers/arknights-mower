@@ -2,6 +2,7 @@
 
 import copy
 import json
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -261,11 +262,26 @@ def test_skill_upgrade_uses_one_paid_stage_and_no_mastery(case):
     assert actions(case) == []
 
 
-def test_dualchip_admission_needs_existing_catalysts_not_red_tickets(case):
+def test_dualchip_admission_can_buy_only_missing_catalysts(case):
     goal = {**case.goal, "module_id": "elite2"}
     action = actions(case, [goal])[0]
     assert action["dual"] == {"3213": 4}
-    record.save_inventory_counts({"芯片助剂": 3, "采购凭证": 100000})
+    record.save_inventory_counts({"芯片助剂": 3, "采购凭证": 90})
+    assert actions(case, [goal])[0]["catalyst_purchase"] == 1
+    record.save_inventory_counts({"采购凭证": 89})
+    assert actions(case, [goal]) == []
+
+
+def test_catalyst_purchase_does_not_admit_unknown_catalysts_or_other_shortages(case):
+    goal = {**case.goal, "module_id": "elite2"}
+    record.save_inventory_counts({"芯片助剂": 0, "采购凭证": 360})
+    assert actions(case, [goal])[0]["catalyst_purchase"] == 4
+    record.save_inventory_counts({"先锋芯片组": 7})
+    assert actions(case, [goal]) == []
+    record.save_inventory_counts({"先锋芯片组": 8})
+    with record._conn() as conn:
+        conn.execute("DELETE FROM inventory WHERE item_name='芯片助剂'")
+        conn.commit()
     assert actions(case, [goal]) == []
 
 
@@ -348,6 +364,68 @@ def test_already_satisfied_does_not_guess_payment(case):
     assert merged["data"]["characters"][0]["mainSkillLevel"] == 7
 
 
+def test_cloud_sync_cannot_restore_running_state_over_success_receipt(
+    case, monkeypatch
+):
+    action = actions(case)[0]
+    execution.save_attempt(action)
+    fresh = copy.deepcopy(case.snapshot)
+    fresh["data"]["characters"][0]["mainSkillLevel"] = 7
+    read, resume, completed = (threading.Event() for _ in range(3))
+    errors = []
+    loads = json.loads
+
+    def paused_loads(value, *args, **kwargs):
+        row = loads(value, *args, **kwargs)
+        if (
+            threading.current_thread().name == "growth-cloud"
+            and isinstance(row, dict)
+            and row.get("status") == "running"
+        ):
+            read.set()
+            assert resume.wait(3)
+        return row
+
+    def sync():
+        try:
+            execution.reconcile_snapshot(fresh)
+        except BaseException as exc:
+            errors.append(exc)
+
+    def receipt():
+        try:
+            execution.finish_attempt(action, success=True)
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            completed.set()
+
+    monkeypatch.setattr(execution.json, "loads", paused_loads)
+    reader = threading.Thread(target=sync, name="growth-cloud")
+    writer = threading.Thread(target=receipt)
+    reader.start()
+    try:
+        assert read.wait(3)
+        writer.start()
+        # Let an unlocked writer commit while the reader holds its old row.
+        # A transactional reader instead retains the lock until it resumes.
+        completed.wait(0.2)
+    finally:
+        resume.set()
+        reader.join(4)
+        if writer.ident is not None:
+            writer.join(4)
+    assert not reader.is_alive() and not writer.is_alive()
+    assert not errors
+    assert execution._rows()[0]["status"] == "completed"
+    execution.recover_attempts()
+    assert not execution.finish_attempt(action, success=True)
+    assert record.get_inventory_counts()["技巧概要·卷1"] == 9998
+    merged, protected = execution.reconcile_snapshot(case.snapshot)
+    assert merged["data"]["characters"][0]["mainSkillLevel"] == 7
+    assert "技巧概要·卷1" in protected
+
+
 def test_interrupted_run_never_replays_unchanged_inventory_after_restart(case):
     action = actions(case)[0]
     execution.save_attempt(action)
@@ -366,10 +444,12 @@ def test_chip_guard_overrides_every_missing_material_entry(tmp_path):
     root = tmp_path / "cache"
     execution.prepare_guard(root, split=True)
     tasks = json.loads((root / "resource/tasks/tasks.json").read_text())
-    assert len(tasks) == 6
+    guards = execution.guard_tasks()
+    assert len(guards) == 6
     assert tasks["OperProgress@Dualchip"]["action"] == "DoNothing"
-    assert all(task["templThreshold"] > 1 for task in tasks.values())
-    assert all(task["next"] == [] for task in tasks.values())
+    assert all(tasks[name]["templThreshold"] > 1 for name in guards)
+    assert all(tasks[name]["next"] == [] for name in guards)
+    assert "MowerGrowthCatalyst@Begin" in tasks
     legacy = root / "resource/tasks.json"
     legacy.write_text('{"stage": {"algorithm": "JustReturn"}}')
     execution.prepare_guard(root, split=False)
@@ -643,6 +723,167 @@ def test_idle_growth_dispatches_from_saved_goal_then_wakes_native_mastery(
     assert len(submitted) == 1
     assert record.get_inventory_counts()["技巧概要·卷1"] == 9998
     solver._auto_schedule_mastery_after_scan.assert_called_once()
+
+
+def test_idle_growth_buys_missing_catalyst_then_uses_native_chips(case, monkeypatch):
+    from arknights_mower.utils import mastery_db
+    from arknights_mower.utils.maa_catalyst import begin_purchase, finish_purchase
+
+    monkeypatch.setattr(
+        rec, "get_path", lambda name: case.tmp / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(mastery_db, "get_all_plans", lambda: [])
+    (case.tmp / "growth_plan.json").write_text(
+        json.dumps([{**case.goal, "module_id": "elite2"}])
+    )
+    record.save_inventory_counts({"芯片助剂": 3, "采购凭证": 90})
+    steps = []
+
+    def purchase(solver, action, deadline):
+        assert action["catalyst_purchase"] == 1
+        steps.append("purchase")
+        return finish_purchase(begin_purchase(action["uid"]), success=True)
+
+    def manufacture(solver, action, deadline):
+        assert not action.get("catalyst_purchase")
+        assert record.get_inventory_counts()["芯片助剂"] == 4
+        steps.append("native_chips")
+        record.apply_workshop_inventory(
+            {"先锋双芯片": 4, "先锋芯片组": -8, "芯片助剂": -4}
+        )
+        return True
+
+    def promote(solver, action, deadline):
+        steps.append("promotion")
+        execution.save_attempt(action)
+        execution.finish_attempt(action, success=True)
+        execution.publish_progress()
+        return True
+
+    monkeypatch.setattr(runner, "purchase_catalyst", purchase)
+    monkeypatch.setattr(runner, "manufacture_chips", manufacture)
+    monkeypatch.setattr(runner, "_run_maa", promote)
+    solver = SimpleNamespace(
+        MAA=None,
+        find_next_task=MagicMock(return_value=None),
+        _auto_schedule_mastery_after_scan=MagicMock(),
+    )
+    runner.run_growth(solver)
+    assert steps == ["purchase", "native_chips", "promotion"]
+    assert record.get_inventory_counts()["采购凭证"] == 0
+    assert record.get_inventory_counts()["芯片助剂"] == 0
+    assert record.get_inventory_counts()["先锋双芯片"] == 0
+
+
+def add_second_promotion(case):
+    definition = copy.deepcopy(case.skills["characters"]["char_test"])
+    definition["name"] = "另一个干员"
+    case.skills["characters"]["char_second"] = definition
+    case.skills["growth"]["characters"]["char_second"] = definition
+    case.snapshot["data"]["characters"].append(
+        {"id": "char_second", "evolvePhase": 1, "level": 2, "mainSkillLevel": 6}
+    )
+    (case.tmp / "cultivate.json").write_text(json.dumps(case.snapshot))
+    return [
+        {"char_id": cid, "module_id": "elite2"} for cid in ("char_test", "char_second")
+    ]
+
+
+def test_cumulative_readiness_never_reuses_shared_chip_materials(case):
+    goals = add_second_promotion(case)
+    record.save_inventory_counts({"先锋芯片组": 8, "芯片助剂": 3, "采购凭证": 450})
+    ready = list(
+        execution.candidates(
+            case.snapshot,
+            case.skills,
+            [],
+            goals,
+            [],
+            record.get_inventory_counts(),
+            cumulative=True,
+        )
+    )
+    assert [item["char_id"] for item in ready] == ["char_test"]
+    assert sum(item.get("catalyst_purchase", 0) for item in ready) == 1
+
+
+def test_cumulative_readiness_reserves_owned_dual_chips_once(case):
+    goals = add_second_promotion(case)
+    record.save_inventory_counts(
+        {"先锋双芯片": 4, "先锋芯片组": 8, "芯片助剂": 3, "采购凭证": 90}
+    )
+    ready = list(
+        execution.candidates(
+            case.snapshot,
+            case.skills,
+            [],
+            goals,
+            [],
+            record.get_inventory_counts(),
+            cumulative=True,
+        )
+    )
+    assert len(ready) == 2
+    assert ready[0]["dual"] == {}
+    assert ready[1]["dual"] == {"3213": 4}
+    assert sum(item.get("catalyst_purchase", 0) for item in ready) == 1
+
+
+def test_all_supplied_operators_share_one_purchase_then_promote_in_order(
+    case, monkeypatch
+):
+    from arknights_mower.utils import mastery_db
+    from arknights_mower.utils.maa_catalyst import begin_purchase, finish_purchase
+
+    goals = add_second_promotion(case)
+    (case.tmp / "growth_plan.json").write_text(json.dumps(goals))
+    monkeypatch.setattr(
+        rec, "get_path", lambda name: case.tmp / name.rsplit("/", 1)[-1]
+    )
+    monkeypatch.setattr(mastery_db, "get_all_plans", lambda: [])
+    record.save_inventory_counts({"先锋芯片组": 16, "芯片助剂": 3, "采购凭证": 450})
+    steps = []
+
+    def purchase(solver, action, deadline):
+        steps.append(("purchase", action["catalyst_purchase"]))
+        return finish_purchase(
+            begin_purchase(action["uid"], action["catalyst_purchase"]), success=True
+        )
+
+    def manufacture(solver, action, deadline):
+        steps.append(("chips", action["char_id"]))
+        record.apply_workshop_inventory(
+            {"先锋双芯片": 4, "先锋芯片组": -8, "芯片助剂": -4}
+        )
+        return True
+
+    def promote(solver, action, deadline):
+        steps.append(("promote", action["char_id"]))
+        execution.save_attempt(action)
+        execution.finish_attempt(action, success=True)
+        execution.publish_progress()
+        return True
+
+    monkeypatch.setattr(runner, "purchase_catalyst", purchase)
+    monkeypatch.setattr(runner, "manufacture_chips", manufacture)
+    monkeypatch.setattr(runner, "_run_maa", promote)
+    solver = SimpleNamespace(
+        MAA=None,
+        find_next_task=MagicMock(return_value=None),
+        _auto_schedule_mastery_after_scan=MagicMock(),
+    )
+    runner.run_growth(solver)
+    assert steps == [
+        ("purchase", 5),
+        ("chips", "char_test"),
+        ("promote", "char_test"),
+        ("chips", "char_second"),
+        ("promote", "char_second"),
+    ]
+    assert record.get_inventory_counts()["采购凭证"] == 0
+    assert record.get_inventory_counts()["芯片助剂"] == 0
+    assert record.get_inventory_counts()["先锋芯片组"] == 0
+    assert record.get_inventory_counts()["先锋双芯片"] == 0
 
 
 def test_unavailable_core_does_not_spend_or_retry_unchanged_materials(case):

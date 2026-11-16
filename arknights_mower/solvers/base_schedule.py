@@ -20310,6 +20310,9 @@ class BaseSchedulerSolver(
         from arknights_mower.solvers.growth import record_growth_callback
 
         record_growth_callback(self, msg, d, observation_run)
+        from arknights_mower.utils.maa_catalyst import record_callback
+
+        record_callback(self, msg, d, observation_run)
         observe_maa_callback(self, msg, d, generation=observation_run)
         logger.debug("MAA 回调 %s %s", msg, d, extra={"log_group": "maa-integration"})
         try:
@@ -20461,10 +20464,10 @@ class BaseSchedulerSolver(
                 or not all(isinstance(task, dict) for task in tasks.values())
             ):
                 raise ValueError("MAA 活动导航必须是非空任务定义对象")
-            if config.conf.maa_growth_enable:
-                from arknights_mower.utils.growth_execution import guard_tasks
+            if getattr(config.conf, "maa_growth_enable", False):
+                from arknights_mower.utils.growth_execution import merge_growth_tasks
 
-                tasks.update(guard_tasks())
+                tasks = merge_growth_tasks(tasks)
             write_json(ota_tasks_path, tasks)
             logger.info(
                 "MAA 活动关卡导航下载完成，等待资源加载确认",
@@ -20479,10 +20482,14 @@ class BaseSchedulerSolver(
             save_exception(e)
 
         cached = read_json(ota_tasks_path, None)
-        if isinstance(cached, dict) and cached and config.conf.maa_growth_enable:
-            from arknights_mower.utils.growth_execution import guard_tasks
+        if (
+            isinstance(cached, dict)
+            and cached
+            and getattr(config.conf, "maa_growth_enable", False)
+        ):
+            from arknights_mower.utils.growth_execution import merge_growth_tasks
 
-            guarded = {**cached, **guard_tasks()}
+            guarded = merge_growth_tasks(cached)
             if guarded != cached:
                 write_json(ota_tasks_path, guarded)
             return guarded
@@ -20523,10 +20530,10 @@ class BaseSchedulerSolver(
             navigation = self.update_maa_navigation(
                 pathlib.Path(resolve_config_path(config.conf.maa_path))
             )
-            if config.conf.maa_growth_enable:
-                from arknights_mower.utils.growth_execution import guard_tasks
+            if getattr(config.conf, "maa_growth_enable", False):
+                from arknights_mower.utils.growth_execution import merge_growth_tasks
 
-                navigation = {**(navigation or {}), **guard_tasks()}
+                navigation = merge_growth_tasks(navigation or {})
                 from arknights_mower.utils.maa_runtime import navigation_cache_path
                 from arknights_mower.utils.update_runtime import write_json
 

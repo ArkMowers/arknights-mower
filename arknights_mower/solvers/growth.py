@@ -292,6 +292,95 @@ def _run_maa(solver, action, deadline):
                 solver.recog.reset_after_external_control()
 
 
+def purchase_catalyst(solver, action, deadline):
+    """Run an exact-shortage Custom purchase before native chip manufacturing."""
+    from arknights_mower.utils.maa_catalyst import (
+        begin_purchase,
+        cancel_purchase,
+        entry_for_count,
+        finish_purchase,
+        task_quantity,
+    )
+    from arknights_mower.utils.scene import Scene
+
+    if (
+        config.stop_mower.is_set()
+        or config.stop_maa.is_set()
+        or not config.conf.maa_growth_enable
+        or datetime.now() >= deadline
+        or solver.find_next_task(datetime.now() + timedelta(seconds=30)) is not None
+    ):
+        return False
+    count = action.get("catalyst_purchase", 1)
+    token = begin_purchase(action["uid"], count)
+    if token is None:
+        return False
+    accepted = False
+    attempted = False
+    run = {"token": token, "count": count, "confirmed": False}
+    try:
+        solver.scene_graph_navigation(Scene.SHOP_OTHERS)
+        if (
+            config.stop_mower.is_set()
+            or config.stop_maa.is_set()
+            or not config.conf.maa_growth_enable
+            or datetime.now() >= deadline
+            or solver.find_next_task(datetime.now() + timedelta(seconds=30)) is not None
+        ):
+            return False
+        attempted = True
+        with task_quantity(count):
+            solver.initialize_maa()
+        task_id = solver.MAA.append_task(
+            "Custom", {"task_names": [entry_for_count(count)]}
+        )
+        run.update(task_id=task_id, generation=solver._maa_activity_generation)
+        solver.maa_catalyst_run = run
+        accepted = True
+        solver.MAA.start()
+        budget = time.monotonic() + max(0, (deadline - datetime.now()).total_seconds())
+        while solver.MAA.running():
+            if (
+                config.stop_mower.is_set()
+                or config.stop_maa.is_set()
+                or not config.conf.maa_growth_enable
+                or solver.find_next_task(datetime.now() + timedelta(seconds=30))
+                is not None
+                or time.monotonic() >= budget
+            ):
+                solver.MAA.stop()
+                break
+            solver.sleep(0.5)
+        if run["confirmed"]:
+            logger.info(
+                "已兑换%d个芯片助剂，扣除%d采购凭证",
+                count,
+                90 * count,
+                extra={"log_group": "growth-planning"},
+            )
+        else:
+            logger.warning(
+                "芯片助剂兑换未确认，保留养成目标并等待新库存观测",
+                extra={"log_group": "growth-planning"},
+            )
+        return run["confirmed"]
+    finally:
+        try:
+            if not attempted:
+                cancel_purchase(token)
+            elif not run["confirmed"]:
+                finish_purchase(token, accepted=accepted)
+        finally:
+            solver.maa_catalyst_run = None
+            try:
+                if getattr(solver, "MAA", None) is not None:
+                    solver.MAA.stop()
+            finally:
+                solver.release_maa()
+                record.battle_inventory_active.clear()
+                solver.recog.reset_after_external_control()
+
+
 def run_growth(solver):
     """Consume existing idle windows without adding retries, waits or task timestamps."""
     if getattr(solver, "MAA", None) is not None or config.stop_mower.is_set():
@@ -305,8 +394,10 @@ def run_growth(solver):
         if not config.conf.maa_growth_enable:
             return
         from arknights_mower.utils.growth_execution import recover_attempts
+        from arknights_mower.utils.maa_catalyst import recover_purchase
 
         recover_attempts()
+        recover_purchase()
         publish_progress()
         from arknights_mower.utils.growth import load_goals
         from arknights_mower.utils.mastery_db import get_all_plans
@@ -326,7 +417,7 @@ def run_growth(solver):
             snapshot = get_cultivate_snapshot()
             if snapshot is None:
                 return
-            action = next(
+            ready = list(
                 candidates(
                     snapshot,
                     get_skill_data(),
@@ -334,11 +425,13 @@ def run_growth(solver):
                     load_goals(),
                     config.conf.growth_crafting_order,
                     record.get_inventory_counts(),
-                ),
-                None,
+                    cumulative=True,
+                )
             )
-            if action is None:
+            if not ready:
                 break
+            action = ready[0]
+            catalyst_purchase = sum(item.get("catalyst_purchase", 0) for item in ready)
             next_task = solver.find_next_task()
             deadline = (
                 min(
@@ -348,6 +441,16 @@ def run_growth(solver):
                 if next_task
                 else datetime.now() + timedelta(minutes=5)
             )
+            if catalyst_purchase:
+                from arknights_mower.utils.maa_catalyst import MAX_PURCHASE
+
+                purchase = {
+                    **action,
+                    "catalyst_purchase": min(catalyst_purchase, MAX_PURCHASE),
+                }
+                if not purchase_catalyst(solver, purchase, deadline):
+                    return
+                continue
             if action["dual"] and not manufacture_chips(solver, action, deadline):
                 return
             progressed = _run_maa(solver, action, deadline) or progressed

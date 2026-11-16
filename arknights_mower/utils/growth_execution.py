@@ -175,7 +175,12 @@ def reconcile_snapshot(snapshot):
     chars = {char["id"]: char for char in result["data"]["characters"]}
     protected = set()
     with record._conn() as conn:
-        for row in _rows():
+        conn.execute("BEGIN IMMEDIATE")
+        rows = [
+            json.loads(row[0])
+            for row in conn.execute("SELECT payload FROM growth_execution")
+        ]
+        for row in rows:
             if row["uid"] != _uid(snapshot) or row["char_id"] not in chars:
                 continue
             char = chars[row["char_id"]]
@@ -192,7 +197,9 @@ def reconcile_snapshot(snapshot):
                 elif field == "mainSkillLevel":
                     char[field] = max(char.get(field, 1), target)
         conn.commit()
-    return result, protected
+    from arknights_mower.utils.maa_catalyst import preserve_cloud
+
+    return result, protected | preserve_cloud(snapshot)
 
 
 def publish_progress():
@@ -228,7 +235,7 @@ def publish_progress():
         remove_completed_goals(result["data"], get_skill_data())
 
 
-def candidates(snapshot, skills, plans, goals, order, stock):
+def candidates(snapshot, skills, plans, goals, order, stock, *, cumulative=False):
     """Only finished materials admit execution; mastery and modules stay in Mower."""
     from arknights_mower.utils.growth_order import crafting_projects
 
@@ -239,9 +246,12 @@ def candidates(snapshot, skills, plans, goals, order, stock):
     )
     chars = {char["id"]: char for char in snapshot["data"]["characters"]}
     seen = set()
+    admitted_chars = set()
     reserved = Counter()
     for project in crafting_projects(plans, goals, order):
         cid = project["char_id"]
+        if cumulative and cid in admitted_chars:
+            continue
         char, definition = chars.get(cid), data.get("characters", {}).get(cid)
         if not char or not definition or definition.get("integrated_strategy"):
             continue
@@ -315,9 +325,11 @@ def candidates(snapshot, skills, plans, goals, order, stock):
         for material in materials:
             required[material["id"]] += material["count"]
         dual = {
-            iid: n - counts.get(iid, 0)
+            iid: n - max(0, counts.get(iid, 0) - reserved[iid])
             for iid, n in required.items()
-            if iid.startswith("32") and iid.endswith("3") and n > counts.get(iid, 0)
+            if iid.startswith("32")
+            and iid.endswith("3")
+            and n > max(0, counts.get(iid, 0) - reserved[iid])
         }
         if any(iid not in counts for iid in dual):
             continue
@@ -326,6 +338,13 @@ def candidates(snapshot, skills, plans, goals, order, stock):
             admission[iid] -= missing
             admission[iid[:-1] + "2"] += missing * 2
             admission["32001"] += missing
+        catalyst_purchase = 0
+        if dual and "32001" in counts:
+            catalyst_purchase = max(
+                0, admission["32001"] - (counts["32001"] - reserved["32001"])
+            )
+            admission["32001"] -= catalyst_purchase
+            admission["4006"] += 90 * catalyst_purchase
         if any(
             counts.get(iid, -1) - reserved[iid] < count
             for iid, count in admission.items()
@@ -358,7 +377,13 @@ def candidates(snapshot, skills, plans, goals, order, stock):
             "affected": affected,
             "dual": dual,
         }
+        if catalyst_purchase:
+            action["catalyst_purchase"] = catalyst_purchase
+            action["affected"].append("采购凭证")
         if not blocked(action):
+            if cumulative:
+                reserved.update(admission)
+                admitted_chars.add(cid)
             yield action
 
 
@@ -395,6 +420,23 @@ def prepare_guard(cache, *, split):
     path = Path(cache) / "resource" / ("tasks/tasks.json" if split else "tasks.json")
     path.parent.mkdir(parents=True, exist_ok=True)
     previous = json.loads(path.read_text("utf-8")) if path.exists() else {}
-    tasks = {**previous, **guard_tasks()}
+    tasks = merge_growth_tasks(previous)
     if tasks != previous:
         atomic_write(path, lambda file: json.dump(tasks, file))
+
+
+def growth_tasks():
+    from arknights_mower.utils.maa_catalyst import custom_tasks
+
+    return {**guard_tasks(), **custom_tasks()}
+
+
+def merge_growth_tasks(previous):
+    return {
+        **{
+            name: task
+            for name, task in previous.items()
+            if not name.startswith("MowerGrowthCatalyst")
+        },
+        **growth_tasks(),
+    }

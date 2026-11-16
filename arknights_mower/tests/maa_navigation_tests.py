@@ -297,6 +297,7 @@ def test_growth_rules_override_downloaded_tasks_and_cached_fallback(runtime):
     runtime.solver.initialize_maa()
     assert runtime.loaded["OperProgress@Dualchip"]["action"] == "DoNothing"
     assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
+    assert runtime.loaded["MowerGrowthCatalyst@Obtained"]["next"] == []
     assert "YW-8" in runtime.loaded
     runtime.solver.MAA.stop()
     runtime.solver.release_maa()
@@ -304,8 +305,28 @@ def test_growth_rules_override_downloaded_tasks_and_cached_fallback(runtime):
     runtime.get.side_effect = RuntimeError("offline")
     runtime.solver.initialize_maa()
     assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0
+    assert runtime.loaded["MowerGrowthCatalyst@Begin"]["text"] == ["凭证交易所"]
     assert (
         json.loads(runtime.navigation.read_text())["OperProgress@Dualchip"]["action"]
         == "DoNothing"
     )
     assert runtime.installed.read_bytes() == original
+
+
+@pytest.mark.parametrize("offline", [False, True])
+def test_batch_purchase_quantity_reaches_sdk_resource_loader(runtime, offline):
+    from arknights_mower.utils.maa_catalyst import task_quantity
+
+    base_schedule.config.conf.maa_growth_enable = True
+    if offline:
+        runtime.navigation.write_text(json.dumps(runtime.payload))
+        runtime.get.side_effect = RuntimeError("offline")
+    with task_quantity(5):
+        runtime.solver.initialize_maa()
+    assert "MowerGrowthCatalyst5@Begin" in runtime.loaded
+    assert "MowerGrowthCatalyst@Begin" not in runtime.loaded
+    assert runtime.loaded["MowerGrowthCatalyst5@Quantity"]["text"] == ["5"]
+    assert runtime.loaded["MowerGrowthCatalyst5@Increase4"]["next"] == [
+        "MowerGrowthCatalyst5@Quantity"
+    ]
+    assert runtime.loaded["OperProgress@Dualchip"]["templThreshold"] == 2.0

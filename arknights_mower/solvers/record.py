@@ -26,6 +26,7 @@ workshop_inventory_changed = Event()
 _DB_TABLE_STMTS = (
     "CREATE TABLE IF NOT EXISTS growth_execution (id TEXT PRIMARY KEY, payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS growth_chip_restore (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS growth_catalyst_execution (id INTEGER PRIMARY KEY CHECK(id=1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS agent_action ("
     "name TEXT,"
     "agent_current_room TEXT,"
