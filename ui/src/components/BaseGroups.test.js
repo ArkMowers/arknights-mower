@@ -327,6 +327,92 @@ describe('基建组合只读浏览', () => {
     expect(quartz().metric.value).toBe(34)
     scope.stop()
   })
+  it('散件满练效率、会客折算和恢复不受后续同步影响，同效率共用干员卡片', async () => {
+    const { page, props, scope } = setup()
+    page.view.value = 'singles'
+    const before = JSON.parse(JSON.stringify(page.estimates.value))
+    const sections = JSON.stringify(page.recommendationSections.value)
+    props.items = [
+      {
+        avatar: '能天使',
+        ownership: 'owned',
+        progression: '精0 1级',
+        childSkill: [{ skill_key: 0, skill_level: 0, status: 'active' }]
+      },
+      {
+        avatar: '响石',
+        ownership: 'owned',
+        progression: '精0 1级',
+        childSkill: [
+          { skill_key: 0, skill_level: 0, status: 'active' },
+          { skill_key: 0, skill_level: 1, status: 'locked' }
+        ]
+      },
+      {
+        avatar: '缪尔赛思',
+        ownership: 'owned',
+        progression: '精0 1级',
+        childSkill: [
+          { skill_key: 0, skill_level: 0, status: 'locked' },
+          { skill_key: 1, skill_level: 0, status: 'active' }
+        ]
+      }
+    ]
+    const snapshot = JSON.stringify(props.items)
+    await nextTick()
+    for (const group of page.allOptions.filter((group) => group.kind === 'single')) {
+      expect(page.estimates.value[group.id]).toEqual(before[group.id])
+    }
+    expect(JSON.stringify(page.recommendationSections.value)).toBe(sections)
+    expect(page.estimates.value['single-能天使'].metrics).toContainEqual({
+      label: '贸易订单效率',
+      value: 35,
+      unit: '%'
+    })
+    expect(page.dormRecovery.value['single-响石-会客'].description).toContain('每级宿舍额外+0.02')
+    expect(page.dormRecovery.value['single-缪尔赛思'].available).toBe(true)
+    const group = page.allOptions.find((group) => group.id === 'single-能天使')
+    expect(page.memberSections(group)[0].members[0].name).toBe('能天使')
+    expect(JSON.stringify(props.items)).toBe(snapshot)
+    scope.stop()
+  })
+  it('孑散件固定精零且不受同步练度影响，备选与挂件仍可调整', async () => {
+    const { page, props, scope } = setup()
+    const jaye = page.allOptions.find((group) => group.id === 'single-孑')
+    expect(page.conditions.value[jaye.id].jayeStage).toBe('未精英化')
+    expect(page.visibleEstimateFields(jaye).some((field) => field.key === 'jayeStage')).toBe(false)
+    const full = JSON.stringify(page.estimates.value[jaye.id])
+    props.items = [
+      {
+        avatar: '孑',
+        ownership: 'owned',
+        childSkill: [
+          { skill_key: 0, skill_level: 0, status: 'active' },
+          { skill_key: 1, skill_level: 0, status: 'locked' }
+        ]
+      }
+    ]
+    await nextTick()
+    expect(JSON.stringify(page.estimates.value[jaye.id])).toBe(full)
+    page.conditions.value[jaye.id].jayeStage = '精一及以上'
+    await nextTick()
+    expect(page.estimates.value[jaye.id].metrics).toContainEqual({
+      label: '贸易订单效率',
+      value: 40,
+      unit: '%'
+    })
+    const marcille = page.allOptions.find((group) => group.id === 'single-玛露西尔')
+    const sections = page.memberSections(marcille)
+    expect(page.displayOnlyMember(marcille, sections[0].members[0])).toBe(true)
+    expect(page.displayOnlyMember(marcille, sections[1].members[0])).toBe(false)
+    page.toggleMember(marcille, '森西')
+    expect(page.estimates.value[marcille.id].metrics).toContainEqual({
+      label: '通用制造生产力',
+      value: 30,
+      unit: '%'
+    })
+    scope.stop()
+  })
   it('中枢按具体作用归类，逐人保留全部效果，联动成员移到组合', () => {
     const { page, scope } = setup()
     page.view.value = 'singles'
@@ -384,7 +470,7 @@ describe('基建组合只读浏览', () => {
     }
     scope.stop()
   })
-  it('宿舍恢复备注覆盖当前全部相关散件，支持搜索并在同档优先，锁定技能不冒充已生效', async () => {
+  it('宿舍恢复按满练展示全部相关散件，支持搜索并在同档优先', async () => {
     const { page, props, scope } = setup()
     page.view.value = 'singles'
     page.search.value = '宿舍恢复'
@@ -418,12 +504,12 @@ describe('基建组合只读浏览', () => {
       }
     ]
     await nextTick()
-    expect(page.dormRecovery.value['single-缪尔赛思'].available).toBe(false)
+    expect(page.dormRecovery.value['single-缪尔赛思'].available).toBe(true)
     expect(
       page.recommendationSections.value
         .find((section) => section.metric.value === 25)
         .groups.map((group) => group.title)
-    ).toEqual(['承曦格雷伊', '缪尔赛思'])
+    ).toEqual(['缪尔赛思', '承曦格雷伊'])
     scope.stop()
   })
 })

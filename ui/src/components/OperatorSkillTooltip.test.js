@@ -3,6 +3,7 @@ import { createSSRApp, h } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
 import { useBasementSkill } from '@/stores/basementSkill'
+import OperatorSkillTooltip from './OperatorSkillTooltip.vue'
 import { render_op_option } from '@/utils/op_select'
 
 const tooltip = vi.hoisted(() => ({ show: null }))
@@ -149,6 +150,62 @@ describe('排班选人技能提示', () => {
     axios.get.mockRejectedValueOnce(new Error('连接失败'))
     await tooltip.show(true)
     expect(await renderOption()).toContain('已拥有')
+  })
+
+  it('散件提示仅展示满练技能，不读取同步练度，原选人提示仍保留实际状态', async () => {
+    snapshot.value = owned
+    const before = JSON.stringify(snapshot.value)
+    const html = await renderToString(
+      createSSRApp({
+        render: () => h(OperatorSkillTooltip, { name: '能天使', maximum: true }, () => '技能')
+      })
+    )
+    expect(html).toContain('满练技能')
+    expect(html).toContain('物流专家')
+    expect(html).toContain('订单效率+35%')
+    expect(html).toContain('加工技能')
+    expect(html).not.toMatch(/企鹅物流·α|订单效率\+20%|精2 20级|已解锁|未解锁|已替换|已拥有/)
+    await tooltip.show(true)
+    expect(axios.get).not.toHaveBeenCalled()
+    expect(JSON.stringify(snapshot.value)).toBe(before)
+    expect(await renderOption()).toContain('精2 20级')
+  })
+
+  it('孑散件仅展示精零技能，与精英化技能及同步练度分开', async () => {
+    skill.value = [
+      {
+        name: '孑',
+        child_skill: [
+          {
+            skill_key: 0,
+            skill_level: 0,
+            skillname: '摊贩经济',
+            roomType: '贸易站',
+            phase_level: '精0 1级',
+            des: '订单差值效率+4%'
+          },
+          {
+            skill_key: 1,
+            skill_level: 0,
+            skillname: '市井之道',
+            roomType: '贸易站',
+            phase_level: '精1 1级',
+            des: '其他干员效率改变订单上限'
+          }
+        ]
+      }
+    ]
+    const html = await renderToString(
+      createSSRApp({
+        render: () =>
+          h(OperatorSkillTooltip, { name: '孑', maximum: true, unpromoted: true }, () => '技能')
+      })
+    )
+    expect(html).toContain('精0技能')
+    expect(html).toContain('摊贩经济')
+    expect(html).not.toMatch(/市井之道|满练技能/)
+    await tooltip.show(true)
+    expect(axios.get).not.toHaveBeenCalled()
   })
 
   it('没有技能的占位选项保留原节点', async () => {

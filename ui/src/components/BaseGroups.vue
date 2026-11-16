@@ -99,7 +99,15 @@ const selections = ref(
   )
 )
 const conditions = ref(
-  Object.fromEntries(allOptions.map((group) => [group.id, defaultEstimateOptions(group)]))
+  Object.fromEntries(
+    allOptions.map((group) => [
+      group.id,
+      {
+        ...defaultEstimateOptions(group),
+        ...(group.kind === 'single' && group.core.includes('孑') ? { jayeStage: '未精英化' } : {})
+      }
+    ])
+  )
 )
 watch(
   () => props.baseConditions,
@@ -118,6 +126,7 @@ watch(
 )
 function optionsForGroup(group) {
   const own = conditions.value[group.id]
+  if (group.kind === 'single' && group.core.includes('孑')) return { ...own, jayeStage: '未精英化' }
   if (group.parentId !== 'builtin-karlan') return own
   const parent = conditions.value[group.parentId]
   return { ...own, jayeStage: parent.jayeStage, orderCap: parent.orderCap }
@@ -133,10 +142,15 @@ const estimates = computed(() =>
   Object.fromEntries(
     allOptions.map((group) => [
       group.id,
-      estimateGroup(group, selections.value[group.id], optionsForGroup(group), props.items)
+      estimateGroup(group, selections.value[group.id], optionsForGroup(group), props.items, {
+        maximum: group.kind === 'single'
+      })
     ])
   )
 )
+function displayOnlyMember(group, member) {
+  return group.id === 'builtin-run-order' || (group.kind === 'single' && member.role === 'core')
+}
 function toggleMember(group, name) {
   if (group.id === 'builtin-run-order') return
   const selected = selections.value[group.id]
@@ -149,11 +163,10 @@ function formatMetric(metric) {
   return `${value > 0 ? '+' : ''}${value}${metric.unit}`
 }
 const dormRecovery = computed(() => {
-  const roster = new Map(props.items.map((item) => [item.avatar, item]))
   return Object.fromEntries(
     singleRecommendations
       .filter((group) => group.kind === 'single')
-      .map((group) => [group.id, dormRecoveryFor(group.core[0], roster.get(group.core[0]))])
+      .map((group) => [group.id, dormRecoveryFor(group.core[0])])
   )
 })
 const visibleGroups = computed(() =>
@@ -189,8 +202,9 @@ function visibleMetrics(group, section) {
 function visibleEstimateFields(group) {
   return estimateFields(group).filter(
     (field) =>
-      group.facility !== '中枢' ||
-      !['factories', 'trade', 'power', 'eligibleGoldLines'].includes(field.key)
+      !(group.kind === 'single' && field.key === 'jayeStage') &&
+      (group.facility !== '中枢' ||
+        !['factories', 'trade', 'power', 'eligibleGoldLines'].includes(field.key))
   )
 }
 function memberSections(group) {
@@ -204,9 +218,7 @@ function memberSections(group) {
       ...section,
       members: members.filter((member) => member.role === section.key)
     }))
-    .filter(
-      (section) => section.members.length && !(group.kind === 'single' && section.key === 'core')
-    )
+    .filter((section) => section.members.length)
 }
 const facilityOptions = computed(() =>
   groupFacilities.map((value) => ({ value, label: facilityLabel(value) }))
@@ -245,7 +257,7 @@ function ownershipSummary(group) {
       <span class="recommendation-help">{{
         view === 'groups'
           ? '核心与备选按推荐优先级排列，支援位置单独注明'
-          : '同设施、同产物按效率归组；每名干员可独立使用，条件可展开调整'
+          : '按满练效率推荐（孑固定精0），同效率干员放在同一组，可分别使用；悬停技能查看说明'
       }}</span>
     </div>
     <p v-if="conditionSource" class="condition-source">{{ conditionSource }}</p>
@@ -297,7 +309,13 @@ function ownershipSummary(group) {
           </h3>
           <span
             >{{ section.roster ? section.groups[0].core.length : section.groups.length }} 名干员 ·
-            可分别使用</span
+            可分别使用{{
+              section.roster
+                ? ''
+                : section.groups.some((group) => group.core.includes('孑'))
+                  ? ' · 孑按精0，其余满练'
+                  : ' · 满练效率'
+            }}</span
           >
           <p v-if="section.control">逐人列出作用设施与全部效果，联动搭配见组合推荐</p>
           <p v-else-if="section.metric">
@@ -325,51 +343,22 @@ function ownershipSummary(group) {
             }"
             :aria-label="group.title"
           >
-            <header v-if="group.kind !== 'roster'" class="detail-heading">
-              <n-avatar
-                v-if="group.kind === 'single'"
-                :src="`${resourceBase}avatar/${encodeURIComponent(group.title)}.webp`"
-                :size="32"
-                round
-                :img-props="{ alt: group.title }"
-                ><template #fallback>{{ group.title.slice(0, 1) }}</template></n-avatar
-              >
+            <header v-if="!['single', 'roster'].includes(group.kind)" class="detail-heading">
               <h3>
                 {{ groupDisplayTitle(group) }}
-                <span v-if="group.kind !== 'single'" class="facility-badge">{{
-                  facilityLabel(group.facility)
-                }}</span>
+                <span class="facility-badge">{{ facilityLabel(group.facility) }}</span>
               </h3>
               <span v-if="estimates[group.id].assumptions.length" class="assumption-badge"
                 >满练度假设</span
               >
-              <span
-                v-if="
-                  group.kind === 'single' &&
-                  items.find((item) => item.avatar === group.core[0])?.progression
-                "
-                class="member-status"
-              >
-                {{ items.find((item) => item.avatar === group.core[0]).progression }}
-              </span>
-              <span
-                v-if="group.kind !== 'single' || ownershipSummary(group) !== '持有状态未知'"
-                class="ownership-summary"
-                >{{ ownershipSummary(group) }}</span
-              >
+              <span class="ownership-summary">{{ ownershipSummary(group) }}</span>
               <button
-                v-if="group.recommended && (group.kind !== 'single' || group.core.includes('孑'))"
+                v-if="group.recommended"
                 class="apply-recommendation"
                 type="button"
                 @click="applyRecommended(group)"
               >
-                {{
-                  group.core.includes('孑')
-                    ? group.kind === 'single'
-                      ? '按精0查看'
-                      : '套用精零搭配'
-                    : '套用推荐'
-                }}
+                {{ group.core.includes('孑') ? '套用精零搭配' : '套用推荐' }}
               </button>
             </header>
             <p v-if="group.core.includes('孑')" class="jaye-recommendation">
@@ -394,20 +383,6 @@ function ownershipSummary(group) {
                 >
               </button>
             </div>
-            <p v-if="group.note" class="group-note">{{ group.note }}</p>
-            <p
-              v-if="dormRecovery[group.id]"
-              class="dorm-recovery"
-              :class="{ locked: !dormRecovery[group.id].available }"
-            >
-              <span class="recovery-label">宿舍额外恢复 · 点/小时</span>
-              <span>{{ dormRecovery[group.id].description }}</span>
-              <span v-if="!dormRecovery[group.id].available"
-                >{{ dormRecovery[group.id].unlock }}技能，{{
-                  dormRecovery[group.id].inactive
-                }}</span
-              >
-            </p>
             <section
               v-for="section in memberSections(group)"
               :key="section.key"
@@ -422,28 +397,29 @@ function ownershipSummary(group) {
                   class="member-card"
                   :class="{
                     selected:
-                      group.id !== 'builtin-run-order' && selections[group.id].includes(member.name)
+                      !displayOnlyMember(group, member) &&
+                      selections[group.id].includes(member.name)
                   }"
                 >
                   <component
-                    :is="group.id === 'builtin-run-order' ? 'div' : 'button'"
-                    :type="group.id === 'builtin-run-order' ? undefined : 'button'"
+                    :is="displayOnlyMember(group, member) ? 'div' : 'button'"
+                    :type="displayOnlyMember(group, member) ? undefined : 'button'"
                     class="member-toggle"
-                    :class="{ 'display-only': group.id === 'builtin-run-order' }"
+                    :class="{ 'display-only': displayOnlyMember(group, member) }"
                     :aria-pressed="
-                      group.id === 'builtin-run-order'
+                      displayOnlyMember(group, member)
                         ? undefined
                         : selections[group.id].includes(member.name)
                     "
                     :aria-label="
-                      group.id === 'builtin-run-order'
+                      displayOnlyMember(group, member)
                         ? member.name
                         : `${group.title} · ${member.name} · ${selections[group.id].includes(member.name) ? '已选中' : '未选中'}`
                     "
-                    @click="group.id !== 'builtin-run-order' && toggleMember(group, member.name)"
+                    @click="!displayOnlyMember(group, member) && toggleMember(group, member.name)"
                   >
                     <span
-                      v-if="group.id !== 'builtin-run-order'"
+                      v-if="!displayOnlyMember(group, member)"
                       class="selection-mark"
                       aria-hidden="true"
                       >{{ selections[group.id].includes(member.name) ? '✓' : '' }}</span
@@ -468,17 +444,39 @@ function ownershipSummary(group) {
                         class="member-status"
                         :class="{ owned: member.ownership === 'owned' }"
                         >{{
-                          member.ownership === 'owned' ? member.progression || '已拥有' : '未拥有'
+                          member.ownership === 'owned'
+                            ? view === 'singles'
+                              ? '已拥有'
+                              : member.progression || '已拥有'
+                            : '未拥有'
                         }}</span
                       >
                     </span>
                   </component>
-                  <OperatorSkillTooltip :name="member.name">
+                  <OperatorSkillTooltip
+                    :name="member.name"
+                    :maximum="group.kind === 'single' || group.kind === 'roster'"
+                    :unpromoted="group.kind === 'single' && member.name === '孑'"
+                  >
                     <span class="skill-label" :aria-label="`${member.name}的基建技能`">技能</span>
                   </OperatorSkillTooltip>
                 </div>
               </div>
             </section>
+            <p v-if="group.note" class="group-note">{{ group.note }}</p>
+            <p
+              v-if="dormRecovery[group.id]"
+              class="dorm-recovery"
+              :class="{ locked: !dormRecovery[group.id].available }"
+            >
+              <span class="recovery-label">宿舍额外恢复 · 点/小时</span>
+              <span>{{ dormRecovery[group.id].description }}</span>
+              <span v-if="!dormRecovery[group.id].available"
+                >{{ dormRecovery[group.id].unlock }}技能，{{
+                  dormRecovery[group.id].inactive
+                }}</span
+              >
+            </p>
             <div
               v-if="
                 group.id !== 'builtin-run-order' &&
@@ -726,12 +724,32 @@ function ownershipSummary(group) {
 }
 .single-section-members {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr));
+  align-items: start;
+  gap: 16px;
+  padding: 16px;
 }
-.single-detail {
-  border: 0 !important;
-  border-top: 1px solid var(--mower-border) !important;
-  border-radius: 0 !important;
+.group-detail.single-detail {
+  border: 0;
+  padding: 0;
+  min-width: 0;
+}
+.single-detail .member-section {
+  display: block;
+}
+.single-detail .member-section:first-of-type h4 {
+  display: none;
+}
+.single-detail .member-section + .member-section {
+  margin-top: 8px;
+}
+.single-detail .group-note {
+  margin: 6px 0;
+}
+.single-detail .estimate-result {
+  border: 0;
+  padding: 0;
+  margin-top: 6px;
 }
 .roster-detail {
   border: 0;

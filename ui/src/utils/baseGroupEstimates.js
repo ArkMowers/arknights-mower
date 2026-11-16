@@ -199,7 +199,7 @@ export function defaultEstimateSelection(group) {
   return [...(group.defaultAccessories || group.accessory)]
 }
 
-export function estimateGroup(group, selection, input = {}, items = []) {
+export function estimateGroup(group, selection, input = {}, items = [], { maximum = false } = {}) {
   const fields = estimateFields(group)
   const options = Object.fromEntries(
     fields.map((field) => {
@@ -225,7 +225,7 @@ export function estimateGroup(group, selection, input = {}, items = []) {
   const active = new Set([...selected].filter((name) => !group.accessory.includes(name)))
   const roster = new Map(items.map((item) => [item.avatar, item]))
   const assumeUnowned = (name) => roster.get(name)?.ownership === 'unowned'
-  const hasProgression = (name) => hasValidProgression(roster.get(name))
+  const hasProgression = (name) => !maximum && hasValidProgression(roster.get(name))
   const assumeMaximum = (name) => !hasProgression(name)
   const followJayeProgression = options.jayeStage === '跟随森空岛'
   const skillsFor = (name) =>
@@ -268,14 +268,21 @@ export function estimateGroup(group, selection, input = {}, items = []) {
   const assumedNames = [...selected].filter(
     (name) => assumeUnowned(name) && (name !== '孑' || followJayeProgression)
   )
-  if (assumedNames.length) result.details.push(`未拥有干员按满练度计算：${assumedNames.join('、')}`)
+  if (!maximum && assumedNames.length)
+    result.details.push(`未拥有干员按满练度计算：${assumedNames.join('、')}`)
   const missingNames = [...selected].filter(
     (name) =>
       !assumeUnowned(name) && assumeMaximum(name) && (name !== '孑' || followJayeProgression)
   )
-  if (missingNames.length)
+  if (!maximum && missingNames.length)
     result.details.push(`无有效练度数据，按满练度假设：${missingNames.join('、')}`)
-  result.assumptions = [...assumedNames, ...missingNames]
+  result.assumptions = maximum ? [] : [...assumedNames, ...missingNames]
+  if (maximum)
+    result.details.push(
+      group.core.includes('孑') && options.jayeStage === '未精英化'
+        ? '孑散件固定按精0技能计算'
+        : '散件推荐按满练技能计算'
+    )
   // Accessories supply roster conditions only, including explicit hypothetical ownership.
   const present = (name) => selected.has(name)
   const externalSkill = (name, key = 0) => {
