@@ -357,6 +357,8 @@ class Recognizer:
             self.scene = Scene.SHOP_CREDIT_CONFIRM
         elif self.find("skip"):
             self.scene = Scene.SKIP
+        elif self.find("depot"):
+            self.scene = Scene.DEPOT
         elif self.find("arrange_order_options"):
             self.scene = Scene.RIIC_OPERATOR_SELECT
         elif (
@@ -408,8 +410,6 @@ class Recognizer:
             self.scene = Scene.CLUE_PLACE
         elif self.find("upgrade"):
             self.scene = Scene.UPGRADE
-        elif self.find("depot"):
-            self.scene = Scene.DEPOT
         elif self.find("pull_once"):
             self.scene = Scene.HEADHUNTING
         elif self.find("read_and_agree") or self.find("next_step"):
@@ -881,7 +881,6 @@ class Recognizer:
             "12cadpa": (1810, 21),
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
-            ## "arrange_order_options_scene": (369, 199),
             "clue": (1656, 940),
             "clue/daily": (526, 623),
             "clue/filter_all": (1297, 99),
@@ -891,7 +890,7 @@ class Recognizer:
             "confirm": (0, 683),
             "control_central_assistants": (39, 560),
             "credit_shop_countdown": (1511, 1017),
-            "depot": (0, 1000),
+            "depot": (1575, 980),
             "double_confirm/exit": (940, 464),
             "double_confirm/friend": (978, 465),
             "double_confirm/give_up": (574, 716),
@@ -980,14 +979,11 @@ class Recognizer:
         }
 
         if not force_feature_match and res in color:
-            templates = [(res, loadres(res))]
+            templates = [(res, loadres("depot_vault" if res == "depot" else res))]
             if res == "clue":
                 # 灰色按钮替换旧图标，橙色按钮复用已有模板；均避开数量角标。
                 templates.append(("clue/fast_place", loadres("clue/fast_place")))
             for name, res_img in templates:
-                if res == "depot":
-                    # 限时物品标签会遮住旧模板上沿，只匹配下方固定背景，兼容现有资源包。
-                    res_img = res_img[45:]
                 h, w, _ = res_img.shape
 
                 pos_list = color[res]
@@ -1035,6 +1031,8 @@ class Recognizer:
             return None
 
         template_matching = {
+            # 只比较顶部完整“进驻状态”筛选栏，不使用通用首页按钮。
+            "arrange_order_options_scene": ((1580, 30), (1780, 95)),
             # 空槽有固定图标；头像特征误匹配不能确认空槽或清除实际驻员。
             "infra_no_operator": scope or ((0, 0), (1920, 1080)),
             "sss/main": ((1450, 180), (1920, 370)),

@@ -133,6 +133,42 @@ def test_ambiguous_uniform_content_cannot_establish_movement():
         module.depotREC._depot_scroll_distance(frame, frame)
 
 
+def test_recorded_right_boundary_ignores_small_rendering_changes(monkeypatch):
+    def frame(name):
+        image = cv2.imread(str(FIXTURES / "depot" / name))
+        return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+    left = frame("consume_left_20261117.webp")
+    right = frame("consume_right_before_20261117.webp")
+    boundary = frame("consume_right_after_20261117.webp")
+    solver = module.depotREC.__new__(module.depotREC)
+    solver.recog = SimpleNamespace(img=left)
+    solver._category_x = 1063
+    solver._wait_for_depot_ready = Mock(return_value=True)
+    solver._category_selected = Mock(return_value=True)
+    moves = iter([left, right, boundary])
+
+    def swipe(*_args, **_kwargs):
+        solver.recog.img = next(moves)
+
+    solver.swipe_noinertia = Mock(side_effect=swipe)
+    monkeypatch.setattr(module, "monotonic", lambda: 0)
+
+    pages = list(solver._category_frames())
+
+    assert [offset for offset, _ in pages] == [0, 574]
+    assert solver.swipe_noinertia.call_count == 3
+
+
+@pytest.mark.parametrize("distance", [1, 24, 234])
+def test_recorded_content_movement_is_not_a_boundary(distance):
+    frame = cv2.imread(str(FIXTURES / "depot/consume_right_before_20261117.webp"))
+    shifted = frame.copy()
+    shifted[140:950] = np.roll(frame[140:950], distance, axis=1)
+
+    assert not module.depotREC._same_depot_view(frame, shifted)
+
+
 def test_zero_scope_follows_installed_category_models_and_excludes_cloud_items(
     monkeypatch, tmp_path
 ):

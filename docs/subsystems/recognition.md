@@ -29,6 +29,10 @@ The login retry loop counts a failed slide only while full scene recognition sti
 
 The [Access Records recognition tests](../../arknights_mower/tests/clue_access_record_recognition_tests.py) verify scene classification, changed backgrounds, incomplete foreground rejection and navigation. The [credit workflow tests](../../arknights_mower/tests/clue_credit_tests.py) verify settlement dismissal and preservation of the current-week collection policy. These offline checks do not establish successful game collection.
 
+## Facility Operator Selection
+
+`arrange_order_options_scene` matches the complete Staffing Status filter within the top sorting bar. It does not use the home button or search the full frame. Existing selected-operator skill-tab checks remain available. The [depot scene tests](../../arknights_mower/tests/depot_recognition_tests.py) reject the reported warehouse frame and retain real dormitory, trading-station and manufacturing-station selection frames.
+
 <a id="network-adaptive-waits"></a>
 ## Network Adaptive Scene Waiting
 
