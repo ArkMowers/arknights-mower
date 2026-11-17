@@ -799,3 +799,104 @@ it('refreshes Skland potential estimates before freezing a run and rejects a fai
   expect(workers).toHaveLength(1)
   expect(page.state.error).toContain('缓存读取失败')
 })
+
+it('switches the completed result algorithm, persists and exports it without another worker', async () => {
+  await page.readCache()
+  await page.readWeights()
+  page.settings.weightMode = 'mower'
+  await page.start()
+  const originalSettings = structuredClone(workers[0].postMessage.mock.calls[0][0].settings)
+  const result = {
+    ...success(),
+    summary: {
+      exp: 1000,
+      goldCount: 2,
+      goldValue: 1000,
+      virtualGoldCount: 1,
+      orderLmd: 3000,
+      totalScore82: 2800
+    },
+    simulationReport: { marker: 'actual work and rest' },
+    timelineData: { marker: 'actual timeline' },
+    eventLog: { entries: [] }
+  }
+  workers[0].onmessage({ data: { type: 'complete', result } })
+  page.settings.sampleDays = 7
+  page.exported.value = true
+  io.client.put.mockResolvedValueOnce({
+    data: { base_algorithm: 3, ratios: { experience: 1, gold: 0.8, order: 0.4, efficiency: 1.7 } }
+  })
+  await page.selectResultAlgorithm(3)
+  expect(workers).toHaveLength(1)
+  expect(io.client.post).toHaveBeenCalledTimes(1)
+  expect(page.state.result.summary.totalScore82).toBe(3400)
+  expect(page.state.input.settings).toMatchObject({
+    sampleDays: originalSettings.sampleDays,
+    warmupDays: originalSettings.warmupDays,
+    weightMode: 'mower',
+    mowerAlgorithm: 3
+  })
+  expect(page.state.result.simulationReport).toEqual(result.simulationReport)
+  expect(page.state.result.timelineData).toEqual(result.timelineData)
+  expect(page.exported.value).toBe(false)
+  const saved = saveIncomeArchive.mock.calls.at(-1)[0]
+  expect(saved.result.summary.totalScore82).toBe(3400)
+  loadIncomeArchive.mockResolvedValue(saved)
+  reopenDialog()
+  await page.restoreResult()
+  expect(page.resultAlgorithm.value).toBe(3)
+  await page.exportImage()
+  expect(renderIncomeImage.mock.calls.at(-1)[1].summary.totalScore82).toBe(3400)
+  expect(renderIncomeImage.mock.calls.at(-1)[2].mowerAlgorithm).toBe(3)
+  expect(renderIncomeImage.mock.calls.at(-1)[0]).toBe(saved.snapshot.image)
+  expect(workers).toHaveLength(1)
+})
+it('retains a completed result when shared algorithm saving or sanity conversion fails', async () => {
+  await page.readCache()
+  await page.readWeights()
+  await page.start()
+  const result = success()
+  workers[0].onmessage({ data: { type: 'complete', result } })
+  const before = page.state.result
+  const input = page.state.input
+  io.client.put.mockRejectedValueOnce(new Error('offline'))
+  await page.selectResultAlgorithm(0)
+  expect(page.weightsError.value).toContain('保存失败')
+  expect(page.state.result).toBe(before)
+  expect(page.state.input).toBe(input)
+  await page.selectResultAlgorithm('sanity')
+  expect(page.resultValuationError.value).toContain('历史记录')
+  expect(page.state.result).toBe(before)
+  expect(page.state.input).toBe(input)
+  expect(workers).toHaveLength(1)
+})
+
+it('keeps export and another run unavailable throughout a result algorithm cache read', async () => {
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  let finishCache
+  io.client.get.mockImplementation(async (url) => {
+    if (url.includes('income-cache'))
+      return new Promise((resolve) => {
+        finishCache = resolve
+      })
+    return { data: { ...valuation(), income_options: { potential_preset: 'skland' } } }
+  })
+  const selecting = page.selectResultAlgorithm('sanity')
+  await nextTick()
+  await nextTick()
+  expect(page.cacheLoading.value).toBe(true)
+  expect(page.resultValuationBusy.value).toBe(true)
+  await page.exportImage()
+  await page.start()
+  expect(renderIncomeImage).not.toHaveBeenCalled()
+  expect(workers).toHaveLength(1)
+  const reads = io.client.get.mock.calls.length
+  await page.selectResultAlgorithm(0)
+  expect(io.client.get).toHaveBeenCalledTimes(reads)
+  finishCache({ data: cache() })
+  await selecting
+  expect(page.resultValuationBusy.value).toBe(false)
+  expect(page.state.result.success).toBe(true)
+})
