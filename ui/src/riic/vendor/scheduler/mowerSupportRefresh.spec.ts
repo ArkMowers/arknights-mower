@@ -62,14 +62,13 @@ describe('runtime refreshes unstarted coordination support',()=>{
   expect(state.occupants.room_1_2_0).toBe('Z')
   expect(retry.timeMicros).toBe(0)
  })
- it('clears an obsolete recall after new observations without committing its old group transition',()=>{
+ it('clears an obsolete recall when a direct replacement becomes available without committing its old group transition',()=>{
   const {state,source,support,retry}=generatedSupport(true),time=support.timeMicros
   support.backupShiftIntent=structuredClone(support.plan)
   support.groupShiftTransitions={resting:false}
   source.data.groupShiftState.resting=true
   retainMowerFailedTask(state,source.data,support,'previous preview')
   source.data.operators.A!.replacement=['X','Z']
-  source.data.busyRestingNames.add('Z')
   Object.assign(source.data.operators.X!,{mood:0,timeStampMicros:1})
   state.morale.X=0
   settleMowerSource(state,rates)
@@ -82,6 +81,42 @@ describe('runtime refreshes unstarted coordination support',()=>{
   expect(source.queue.tasks).toContain(retry)
   expect(source.data.groupShiftState.resting).toBe(true)
   expect(state.occupants.room_1_2_0).toBe('X')
+ })
+ it('retains an inadmissible recall until a fresh usable-cover observation releases it',()=>{
+  const {state,source,support,retry}=generatedSupport(true),time=support.timeMicros,plan=structuredClone(support.plan)
+  support.backupShiftIntent=structuredClone(plan)
+  support.groupShiftTransitions={resting:false}
+  source.data.groupShiftState.resting=true
+  retainMowerFailedTask(state,source.data,support,'previous preview')
+  source.data.operators.A!.replacement=['X','Z']
+  source.data.busyRestingNames.add('Z')
+  Object.assign(source.data.operators.X!,{mood:0,timeStampMicros:1})
+  state.morale.X=0
+  settleMowerSource(state,rates)
+  dispatchUntilSettled(state,support)
+  expect(support.executionFailure).toBeDefined()
+  expect(support.plan).toEqual(plan)
+  expect(support.backupShiftIntent).toEqual(plan)
+  expect(support.timeMicros).toBe(time)
+  expect(source.queue.tasks).toContain(support)
+  expect(source.queue.tasks).toContain(retry)
+  expect(source.data.groupShiftState.resting).toBe(true)
+  expect(state.occupants.room_1_2_0).toBe('X')
+  const failure=support.executionFailure
+  for(let n=0;n<3;n++)settleMowerSource(state,rates)
+  expect(support.executionFailure).toBe(failure)
+  expect(source.queue.tasks.filter(task=>task.exhaustSupport)).toEqual([support])
+  state.morale.X=24
+  Object.assign(source.data.operators.X!,{mood:24,timeStampMicros:source.data.nowMicros+1})
+  for(let n=0;n<40&&!Object.values(state.bedOccupants).includes('A');n++){
+   settleMowerSource(state,rates)
+   if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+  }
+  expect(Object.values(state.bedOccupants)).toContain('A')
+  expect(state.occupants.room_1_1_0).toBe('X')
+  expect(state.occupants.room_1_2_0).toBe('B')
+  expect(source.queue.tasks).not.toContain(support)
+  expect(retry.timeMicros).toBe(0)
  })
  it('does not retry an unchanged failed support or change its deadline',()=>{
   const {state,source,support}=generatedSupport(),time=support.timeMicros

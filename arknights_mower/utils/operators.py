@@ -1572,7 +1572,16 @@ class Operators:
             if (
                 owner is not None
                 and owner.name not in names
-                and self.is_same_group_primary_replacement(owner, name)
+                and (
+                    any(
+                        self.is_same_group_primary_replacement(
+                            owner, name, binding["group"]
+                        )
+                        for binding in owner.group_bindings
+                    )
+                    if owner.multi_group
+                    else self.is_same_group_primary_replacement(owner, name)
+                )
             ):
                 assignments[owner.name] = name
         return assignments

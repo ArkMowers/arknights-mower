@@ -73,7 +73,7 @@ export function mowerWorkingReplacementAssignments(data:MowerSchedulingData,name
   const [room,index]=position.split('\0'),op=data.operators[name]!
   if(room===op.room&&Number(index)===op.index)continue
   const owner=data.operators[data.plan[room!]?.[Number(index)]??'']
-  if(owner&&!departing.has(owner.name)&&mowerSameGroupPrimaryReplacement(data,owner,name))assignments[owner.name]=name
+  if(owner&&!departing.has(owner.name)&&(owner.multiGroup?owner.groupBindings.some(binding=>mowerSameGroupPrimaryReplacement(data,owner,name,binding.group)):mowerSameGroupPrimaryReplacement(data,owner,name)))assignments[owner.name]=name
  }
  return assignments
 }

@@ -5,6 +5,7 @@ import {generateMowerDormTasks} from './mowerDormTasks'
 import {mowerRefreshDormTime,projectMowerArrangements} from './mowerObservations'
 import {mowerUnfinishedReturnMembers} from './mowerGroupRecovery'
 import {admitMowerDerivedTasks} from './mowerTaskDerivation'
+import {mowerCompletedOrdinaryRestRequest} from './mowerRetainedRecovery'
 import {MOWER_TASK_TYPES as T,MowerTask} from './mowerTaskQueue'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import type {MowerRestingOptions} from './mowerOrdinaryPlanning'
@@ -39,7 +40,9 @@ export function mowerCoordinationReturn(data:MowerSchedulingData,units:readonly 
  // forecast's rate boundaries; a new rate must not restart its extra-wait cap.
  data.groupRecoveryFullMembers=structuredClone(trial.groupRecoveryFullMembers)
  data.groupRecoveryReturnMicros={...trial.groupRecoveryReturnMicros}
- const pending=(options.tasks??options.retainedTasks??[]).map(task=>Object.assign(new MowerTask(),structuredClone(task),{type:task.type}))
+ // The projected arrival completes its own unstarted ordinary request. Keep
+ // other unfinished work reserved without changing the actual pending tasks.
+ const pending=(options.tasks??options.retainedTasks??[]).filter(task=>!mowerCompletedOrdinaryRestRequest(trial,task)).map(task=>Object.assign(new MowerTask(),structuredClone(task),{type:task.type}))
  const tasks=admitMowerDerivedTasks(trial,pending,generateMowerDormTasks(batches,trial),options.dependencyReturn)
  const forced=mowerForcedGroupCoverReservations(trial)
  for(const task of tasks.filter(task=>task.type===T.SHIFT_ON).sort((a,b)=>a.timeMicros-b.timeMicros)){

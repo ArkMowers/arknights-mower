@@ -17,6 +17,7 @@ import {
 } from '@/riic/incomePreferences'
 import { incomeAlgorithms, incomeAlgorithmLabel, incomeSettingsUrl } from '@/utils/incomeSettings'
 import { createIncomeSession } from '@/riic/incomeSession'
+import { revalueIncome } from '@/riic/incomeValuation'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
 import IncomeTimeline from './IncomeTimeline.vue'
@@ -137,6 +138,7 @@ async function selectAlgorithm(value) {
       valuation.value = data
       applyMowerIncomeSettings(settings, data)
       sharedRatios = data.ratios
+      return true
     }
   } catch {
     if (alive) weightsError.value = '算法保存失败，请重新读取 Mower 设置确认'
@@ -354,7 +356,8 @@ async function start() {
     submitting.value ||
     state.running ||
     exporting.value ||
-    valuesBusy.value
+    valuesBusy.value ||
+    resultValuationBusy.value
   )
     return
   submitting.value = true
@@ -415,8 +418,78 @@ async function start() {
     if (alive) submitting.value = false
   }
 }
+const resultValuationError = ref('')
+const resultValuationBusy = ref(false)
+const resultAlgorithm = computed(() => {
+  const selected = state.input?.settings
+  return selected?.weightMode === 'mower' ? selected.mowerAlgorithm : selected?.weightMode
+})
+const resultAlgorithms = computed(() => [
+  ...incomeAlgorithms.filter((row) => row.value !== -1 || resultAlgorithm.value === -1),
+  { label: '理智算法', value: 'sanity' },
+  { label: '自定义权重', value: 'custom' }
+])
+function applyResultValuation(selected) {
+  if (!lastCompleted || state.running || exporting.value || submitting.value) return
+  resultValuationError.value = ''
+  try {
+    const { result, valuation } = revalueIncome(state.result, selected)
+    const input = { ...state.input, settings: { ...state.input.settings, ...valuation } }
+    state.result = result
+    state.input = input
+    lastCompleted = { ...lastCompleted, result, input }
+    exportGeneration++
+    exported.value = false
+    exportError.value = ''
+    persistResult()
+    return true
+  } catch (error) {
+    resultValuationError.value = error.message
+  }
+}
+async function selectResultAlgorithm(value) {
+  if (
+    state.running ||
+    exporting.value ||
+    submitting.value ||
+    weightsBusy.value ||
+    valuesBusy.value ||
+    resultValuationBusy.value
+  )
+    return
+  resultValuationBusy.value = true
+  resultValuationError.value = ''
+  try {
+    if (typeof value === 'number') {
+      if (!(await selectAlgorithm(value))) return
+      applyResultValuation({ ...settings, weightMode: 'mower' })
+    } else {
+      if (value === 'sanity') {
+        await readWeights()
+        if (valuation.value?.income_options?.potential_preset === 'skland') {
+          await readCache({ preserveOverrides: true })
+          if (cacheError.value) throw new Error(cacheError.value)
+        }
+      }
+      if (alive) applyResultValuation({ ...settings, weightMode: value })
+    }
+  } catch (error) {
+    if (alive) resultValuationError.value = error.message
+  } finally {
+    resultValuationBusy.value = false
+  }
+}
+function updateResultWeight(key, value) {
+  const productionWeights = { ...state.input.settings.productionWeights, [key]: value }
+  if (applyResultValuation({ ...state.input.settings, productionWeights }))
+    settings.productionWeights = productionWeights
+}
+function applyResultValues(data) {
+  applySavedValues(data)
+  applyResultValuation({ ...state.input.settings, sanityValuation: settings.sanityValuation })
+}
 async function exportImage() {
-  if (exporting.value || !state.result?.success) return
+  if (exporting.value || resultValuationBusy.value || !state.result?.success) return
   const generation = ++exportGeneration
   exporting.value = true
   exportError.value = ''
@@ -508,7 +581,14 @@ onBeforeUnmount(() => {
             <span>参数修改会保留在本浏览器，下次打开继续使用。</span>
             <n-button
               size="small"
-              :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
+              :disabled="
+                state.running ||
+                exporting ||
+                submitting ||
+                weightsBusy ||
+                valuesBusy ||
+                resultValuationBusy
+              "
               @click="resetSettings"
               >恢复默认</n-button
             >
@@ -526,7 +606,14 @@ onBeforeUnmount(() => {
             使用打开窗口时的排班，无人机加速跟随排班表中的高级设置，校验通过后开始演算。预热不计收益，结果为离线估算。
           </n-alert>
           <n-form
-            :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
+            :disabled="
+              state.running ||
+              exporting ||
+              submitting ||
+              weightsBusy ||
+              valuesBusy ||
+              resultValuationBusy
+            "
             label-placement="left"
             label-width="150"
             :show-feedback="false"
@@ -594,7 +681,14 @@ onBeforeUnmount(() => {
             <n-button
               size="small"
               :loading="cacheLoading"
-              :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
+              :disabled="
+                state.running ||
+                exporting ||
+                submitting ||
+                weightsBusy ||
+                valuesBusy ||
+                resultValuationBusy
+              "
               @click="readCache"
               >重新读取缓存</n-button
             >
@@ -612,7 +706,13 @@ onBeforeUnmount(() => {
               ><n-switch
                 :value="required || settings.finiteInventory"
                 :disabled="
-                  required || state.running || exporting || submitting || weightsBusy || valuesBusy
+                  required ||
+                  state.running ||
+                  exporting ||
+                  submitting ||
+                  weightsBusy ||
+                  valuesBusy ||
+                  resultValuationBusy
                 "
                 @update:value="settings.finiteInventory = $event"
             /></n-form-item>
@@ -659,7 +759,13 @@ onBeforeUnmount(() => {
                 ><n-input-number
                   :value="stock?.[item.resource] ?? 0"
                   :disabled="
-                    !stock || state.running || exporting || submitting || weightsBusy || valuesBusy
+                    !stock ||
+                    state.running ||
+                    exporting ||
+                    submitting ||
+                    weightsBusy ||
+                    valuesBusy ||
+                    resultValuationBusy
                   "
                   placeholder="0"
                   :min="0"
@@ -731,7 +837,9 @@ onBeforeUnmount(() => {
                   v-if="settings.weightMode === 'sanity'"
                   :valuation="valuation"
                   :recruitment="settings.cachedRecruitment"
-                  :disabled="weightsBusy || state.running || exporting || submitting"
+                  :disabled="
+                    weightsBusy || state.running || exporting || submitting || resultValuationBusy
+                  "
                   @saved="applySavedValues"
                   @busy="valuesBusy = $event" />
                 <n-alert v-if="weightsError" type="warning"
@@ -812,13 +920,65 @@ onBeforeUnmount(() => {
                       ? '数学期望模式（连续产出）'
                       : '数学期望模式（平均订单模型）'
                   : '随机抽单模式'
-              }}。 修改参数后需重新演算；再次导出使用本次结果。
+              }}。 修改排班、练度、库存或统计天数后需重新演算；切换收益算法无需重新演算。
             </p>
             <p v-if="state.result.inventoryMode === 'finite'">
               赤金余额：初始 {{ format(state.result.goldInventory.initial) }}，统计开始
               {{ format(state.result.goldInventory.sampleOpening) }}，期末
               {{ format(state.result.goldInventory.closing) }}。负数表示赤金缺口。
             </p>
+            <n-form-item label="本次结果算法" :show-feedback="false">
+              <n-select
+                :value="resultAlgorithm"
+                :options="resultAlgorithms"
+                :loading="weightsBusy || resultValuationBusy"
+                :disabled="
+                  state.running ||
+                  exporting ||
+                  submitting ||
+                  weightsBusy ||
+                  valuesBusy ||
+                  resultValuationBusy
+                "
+                @update:value="selectResultAlgorithm"
+              />
+            </n-form-item>
+            <p>
+              切换后直接用本次产出折算收益，并保存至收益记录；导出图使用切换后的算法。基报算法同步保存至
+              Mower 设置。
+            </p>
+            <div v-if="state.input.settings.weightMode === 'custom'" class="two-columns">
+              <n-form-item v-for="[key, label] in weights" :key="key" :label="label">
+                <n-input-number
+                  :value="
+                    state.input.settings.productionWeights?.[key] ?? settings.productionWeights[key]
+                  "
+                  :min="0"
+                  :disabled="
+                    state.running ||
+                    exporting ||
+                    submitting ||
+                    weightsBusy ||
+                    valuesBusy ||
+                    resultValuationBusy
+                  "
+                  @update:value="updateResultWeight(key, $event)"
+                />
+              </n-form-item>
+            </div>
+            <IncomeValueEditor
+              v-if="state.input.settings.weightMode === 'sanity'"
+              :valuation="valuation"
+              :recruitment="settings.cachedRecruitment"
+              :disabled="
+                state.running || exporting || submitting || weightsBusy || resultValuationBusy
+              "
+              @saved="applyResultValues"
+              @busy="valuesBusy = $event"
+            />
+            <n-alert v-if="resultValuationError || weightsError" type="warning" class="notice">
+              {{ resultValuationError || weightsError }}
+            </n-alert>
             <p>
               算法：{{
                 state.input.settings.weightMode === 'mower'
@@ -1232,7 +1392,14 @@ onBeforeUnmount(() => {
         <n-button
           v-if="state.result?.success"
           :loading="exporting"
-          :disabled="state.running || exporting || submitting || weightsBusy || valuesBusy"
+          :disabled="
+            state.running ||
+            exporting ||
+            submitting ||
+            weightsBusy ||
+            valuesBusy ||
+            resultValuationBusy
+          "
           @click="exportImage"
           >{{ exported ? '再次导出收益图' : '导出收益图' }}</n-button
         >

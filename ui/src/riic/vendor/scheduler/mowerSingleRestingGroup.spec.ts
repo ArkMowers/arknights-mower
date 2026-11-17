@@ -127,11 +127,11 @@ it('retains an independently requested normal group despite its primary also cov
  expect(plan).toEqual({});expect(data.groupShiftState).toEqual({})
 })
 
-it('preserves the requested binding through consecutive shared working swaps',()=>{
+it.each([false,true])('preserves the requested binding through consecutive shared working swaps (same cover=%s)',sameCover=>{
  const data=fixture()
  data.operators.A!.replacement=['F']
  data.operators.A!.mood=0
- data.operators.F!.groupBindings=[{group:'a',replacement:['X']},{group:'b',replacement:['Y']}]
+ data.operators.F!.groupBindings=[{group:'a',replacement:[sameCover?'Y':'X']},{group:'b',replacement:['Y']}]
  const middle=new MowerOperatorState({name:'M',room:'meeting',index:1,group:'c',replacement:['Z'],groupBindings:[{group:'a',replacement:['F']},{group:'c',replacement:['Z']}],operatorType:'high',currentRoom:'meeting',currentIndex:1,mood:24,timeStampMicros:0})
  data.operators.A!.replacement=['M'];data.operators.M=middle;data.plan.meeting!.push('M')
  // Rebuild effective normal bindings from configuration, as startup and projections do.
@@ -139,7 +139,7 @@ it('preserves the requested binding through consecutive shared working swaps',()
  expect(rebuilt.operators.M!.group).toBe('c');expect(rebuilt.operators.F!.group).toBe('b')
  expect(rebuilt.shiftRequestGroups(['A'])).toEqual(['a'])
  const plan=mowerResting(rebuilt,new MowerTaskQueue())
- expect(plan.meeting).toEqual(['M','F']);expect(plan.contact).toEqual(['X'])
+ expect(plan.meeting).toEqual(['M','F']);expect(plan.contact).toEqual([sameCover?'Y':'X'])
  const projected=projectMowerArrangements(rebuilt,[plan])
  expect(projected.groupIsResting('a')).toBe(true)
  expect(projected.groupIsResting('b')).toBe(false);expect(projected.groupIsResting('c')).toBe(false)
