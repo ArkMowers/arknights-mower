@@ -48,7 +48,7 @@ def refresh_workshop_after_inventory_change():
         if battle_inventory_active.is_set() or config.stop_mower.is_set():
             return False
         workshop_inventory_changed.clear()
-        if not (config.conf.enable_mastery or config.conf.workshop_auto_active):
+        if not (config.conf.enable_crafting or config.conf.workshop_auto_active):
             _refresh_error = None
             return True
         try:
@@ -189,7 +189,7 @@ def update_workshop_config(*, explicit=False, **operators):
                 "restored": False,
                 "t3_summary": [],
             }
-        enabled = conf.enable_mastery or explicit or conf.workshop_auto_active
+        enabled = conf.enable_crafting or explicit or conf.workshop_auto_active
         result = calculate_workshop_plan(conf, **operators) if enabled else None
         settings = result.settings if result else []
         focus = result.focus if result else None

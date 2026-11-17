@@ -30,7 +30,7 @@ def case(database, monkeypatch):
     monkeypatch.setattr(
         config,
         "conf",
-        SimpleNamespace(assistant_follows_schedule=False, enable_mastery=True),
+        config.Conf(assistant_follows_schedule=False, enable_mastery=True),
     )
     monkeypatch.setattr(runtime, "schedule_context", lambda: ({}, 5))
     monkeypatch.setattr(runtime, "_observed_support", lambda _: ("", "学员"))

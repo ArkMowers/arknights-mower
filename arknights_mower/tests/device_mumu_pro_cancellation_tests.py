@@ -2,8 +2,9 @@
 
 import json
 import subprocess
+import time
 import unittest
-from threading import Event
+from threading import Event, Thread
 from unittest.mock import patch
 
 from arknights_mower.tests import device_settings_route_tests as settings_routes
@@ -153,12 +154,14 @@ class MuMuProCancellationTests(unittest.TestCase):
         for self.signal in ("shutdown", "close"):
             with self.subTest(signal=self.signal):
                 self.reset_control()
-                with patch(
-                    "arknights_mower.utils.csleep.time.sleep",
-                    side_effect=lambda interval: self.cancel(),
-                ) as sleep:
+                with patch("arknights_mower.utils.csleep.time") as sleep_time:
+                    sleep_time.sleep.side_effect = lambda interval: self.cancel()
                     self.assert_cancelled("/device/discover")
-                sleep.assert_called_once()
+                    unrelated = Thread(target=lambda: time.sleep(0))
+                    unrelated.start()
+                    unrelated.join(timeout=1)
+                    self.assertFalse(unrelated.is_alive())
+                sleep_time.sleep.assert_called_once()
                 self.assertEqual(self.commands, ["port", "open", "info"])
 
     def test_completion_boundary_rechecks_cancellation(self):

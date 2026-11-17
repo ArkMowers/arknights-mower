@@ -217,6 +217,7 @@ export const useConfigStore = defineStore('config', () => {
   const fia_fool = ref(true)
   const assistant_follows_schedule = ref(false)
   const mastery_consecutive_skills = ref(false)
+  const enable_crafting = ref(true)
   const enable_mastery = ref(true)
   const maa_growth_enable = ref(false)
   const save_mastery_screenshots = ref(false)
@@ -709,6 +710,7 @@ export const useConfigStore = defineStore('config', () => {
       fia_fool.value = response.data.fia_fool
       assistant_follows_schedule.value = response.data.assistant_follows_schedule
       mastery_consecutive_skills.value = response.data.mastery_consecutive_skills ?? false
+      enable_crafting.value = response.data.enable_crafting ?? response.data.enable_mastery ?? true
       enable_mastery.value = response.data.enable_mastery ?? true
       maa_growth_enable.value = response.data.maa_growth_enable ?? false
       save_mastery_screenshots.value = response.data.save_mastery_screenshots ?? false
@@ -914,6 +916,7 @@ export const useConfigStore = defineStore('config', () => {
       fia_fool: fia_fool.value,
       assistant_follows_schedule: assistant_follows_schedule.value,
       mastery_consecutive_skills: mastery_consecutive_skills.value,
+      enable_crafting: enable_crafting.value,
       enable_mastery: enable_mastery.value,
       maa_growth_enable: maa_growth_enable.value,
       save_mastery_screenshots: save_mastery_screenshots.value,
@@ -1327,6 +1330,7 @@ export const useConfigStore = defineStore('config', () => {
     fia_fool,
     assistant_follows_schedule,
     mastery_consecutive_skills,
+    enable_crafting,
     enable_mastery,
     maa_growth_enable,
     save_mastery_screenshots,

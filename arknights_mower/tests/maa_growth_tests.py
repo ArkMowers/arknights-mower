@@ -228,7 +228,9 @@ def test_chip_restore_reads_guard_title_pixels(
 def test_switch_defaults_off_and_round_trips_independently():
     conf = config.Conf()
     assert conf.maa_growth_enable is False
-    enabled = config.Conf(maa_growth_enable=True, enable_mastery=False)
+    enabled = config.Conf(
+        maa_growth_enable=True, enable_mastery=False, enable_crafting=True
+    )
     assert config.Conf.model_validate_json(enabled.model_dump_json()).maa_growth_enable
     assert enabled.has_maa_tasks
     assert enabled.enable_mastery is False
@@ -727,14 +729,17 @@ def test_batch_yields_between_professions_without_losing_confirmed_chips(
     chip_solver._select_manufacture_product.assert_called_once_with("gold")
 
 
-def test_growth_yields_to_due_tasks_and_off_switch(case, chip_solver):
+@pytest.mark.parametrize("switch", ["maa_growth_enable", "enable_crafting"])
+def test_growth_yields_to_due_tasks_and_off_switch(case, chip_solver, switch):
     chip_solver.find_next_task.return_value = SimpleNamespace(time=datetime.now())
     runner.run_growth(chip_solver)
     chip_solver.initialize_maa.assert_not_called()
     chip_solver.find_next_task.return_value = None
-    config.conf.maa_growth_enable = False
+    setattr(config.conf, switch, False)
     runner.run_growth(chip_solver)
     chip_solver.initialize_maa.assert_not_called()
+    if switch == "enable_crafting":
+        assert config.conf.maa_growth_enable
 
 
 def test_real_scheduler_callback_and_run_cleanup_confirm_supplied_skill(case):
@@ -1150,8 +1155,9 @@ def test_earlier_ready_mastery_reserves_materials_before_later_skill_goal(case):
     assert actions(case, [goal], [plan])[0]["char_id"] == "char_next"
 
 
+@pytest.mark.parametrize("switch", ["maa_growth_enable", "enable_crafting"])
 def test_restart_restores_chip_product_once_and_off_switch_keeps_compensation(
-    case, chip_solver
+    case, chip_solver, switch
 ):
     state = {
         "room": "room_1_2",
@@ -1162,7 +1168,7 @@ def test_restart_restores_chip_product_once_and_off_switch_keeps_compensation(
     runner._chip_state(state)
     chip_solver.read_manufacture_product.side_effect = [RecognizeError("chip"), "gold"]
     chip_solver.find_next_task.return_value = None
-    config.conf.maa_growth_enable = False
+    setattr(config.conf, switch, False)
     runner.run_growth(chip_solver)
     assert runner._chip_state() is None
     assert record.get_inventory_counts()["先锋双芯片"] == 4

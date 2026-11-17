@@ -428,7 +428,7 @@ def run_mastery_task(solver):
     """
     from arknights_mower.utils import config
 
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         logger.debug("[mastery] 全自动专精已关闭，跳过训练室动作")
         return
     from arknights_mower.solvers.mastery_reader import reconcile_and_act
@@ -1732,7 +1732,7 @@ def run_swap_support(solver):
     from arknights_mower.utils.mastery_support_data import actual_central_bonus
 
     logger.debug("[mastery] 训练室动作 触发源=定时任务 动作=swap")
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         logger.debug("[mastery] 全自动专精已关闭，跳过换协助位")
         return
     if config.conf.assistant_follows_schedule:

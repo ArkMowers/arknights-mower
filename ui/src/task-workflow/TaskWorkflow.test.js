@@ -327,6 +327,19 @@ afterEach(() => {
 })
 
 describe('production task checklist interactions', () => {
+  it('disables mastery in all settings until automatic crafting is enabled', async () => {
+    state.config.enable_crafting = false
+    await mount()
+    expect(checkbox('training').props.disabled).toBe(true)
+    await check('training', true)
+    expect(state.config.enable_mastery).toBe(false)
+    state.config.enable_crafting = true
+    await nextTick()
+    expect(checkbox('training').props.disabled).toBe(false)
+    await check('training', true)
+    expect(state.config.enable_mastery).toBe(true)
+  })
+
   it.each(['checklist', 'waterfall'])(
     'omits managed connection navigation in %s layout',
     async (layout) => {

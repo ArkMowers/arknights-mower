@@ -215,7 +215,7 @@ def _crafting_rest_names(op_data):
 
     conf = getattr(op_data, "runtime_conf", None) or config.conf
     configured = []
-    if conf.enable_mastery and conf.workshop_auto_active:
+    if conf.enable_crafting and conf.workshop_auto_active:
         configured.extend(
             name
             for row in zip_longest(
@@ -334,7 +334,7 @@ def busy_resting_names():
     """每次候选扫描只读一次专精状态，不为全部干员逐个查询数据库。"""
     from arknights_mower.utils import config
 
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         return set()
     from arknights_mower.utils.mastery_db import _resolve_char_name, get_active_plan
 

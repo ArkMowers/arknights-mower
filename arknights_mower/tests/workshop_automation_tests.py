@@ -49,8 +49,8 @@ def test_real_scan_retains_manual_carbon_without_plans(next_skill, scan, enabled
     assert not config.conf.workshop_auto_active
 
 
-def test_disabled_mastery_does_not_take_over_even_with_plans(next_skill, scan):
-    config.conf.enable_mastery = False
+def test_disabled_crafting_does_not_take_over_even_with_plans(next_skill, scan):
+    config.conf.enable_crafting = False
     scan()
     assert config.conf.workshop_settings == [manual_setting()]
     assert not config.conf.workshop_auto_active
@@ -198,12 +198,12 @@ def test_stale_autosaves_cannot_reset_backup_or_resurrect_generated_config(
     assert config.conf.workshop_settings == [manual_setting()]
 
 
-def test_disabling_mastery_restores_in_the_same_config_save(next_skill, scan):
+def test_disabling_crafting_restores_in_the_same_config_save(next_skill, scan):
     import server
 
     scan()
     req = config.conf.model_dump()
-    req.update(enable_mastery=False, workshop_manual_backup=[])
+    req.update(enable_crafting=False, workshop_manual_backup=[])
     assert server.app.test_client().post("/conf", json=req).status_code == 200
     assert not config.conf.workshop_auto_active
     assert config.conf.workshop_settings == [manual_setting()]
@@ -285,3 +285,107 @@ def test_failed_plan_recalculation_stops_old_quotas_but_keeps_manual_backup(
     assert config.conf.workshop_settings == []
     assert config.conf.workshop_generation > before
     assert config.conf.workshop_manual_backup == [manual_setting()]
+
+
+def test_crafting_runs_without_mastery_and_survives_mastery_toggle(next_skill, scan):
+    config.conf.enable_mastery = False
+    scan()
+    assert config.conf.workshop_auto_active
+    assert config.conf.workshop_settings[0].source == "mastery"
+    original = config.conf.workshop_settings
+    state.save_user_config({"enable_mastery": True})
+    state.save_user_config({"enable_mastery": False})
+    assert config.conf.workshop_settings == original
+    assert config.conf.workshop_auto_active
+
+
+def test_disabling_crafting_retains_preferences_and_restores_manual(next_skill, scan):
+    import server
+
+    scan()
+    config.conf.maa_growth_enable = True
+    previous_generation = config.conf.workshop_generation
+    client = server.app.test_client()
+    response = client.patch("/conf", json={"enable_crafting": False})
+    assert response.status_code == 200
+    assert not config.conf.enable_crafting
+    assert config.conf.enable_mastery
+    assert config.conf.maa_growth_enable
+    assert not config.conf.mastery_enabled
+    assert not config.conf.maa_growth_enabled
+    assert config.conf.workshop_settings == [manual_setting()]
+    assert not config.conf.workshop_auto_active
+    assert config.conf.workshop_generation > previous_generation
+    assert client.patch("/conf", json={"account": "other setting"}).status_code == 200
+    config.conf = config.Conf.model_validate_json(config.conf.model_dump_json())
+    assert config.conf.enable_mastery
+    assert config.conf.maa_growth_enable
+    assert not config.conf.mastery_enabled
+    assert not config.conf.maa_growth_enabled
+    assert client.patch("/conf", json={"enable_crafting": True}).status_code == 200
+    assert config.conf.mastery_enabled
+    assert config.conf.maa_growth_enabled
+
+
+@pytest.mark.parametrize("token", [None, "invalid", "current"])
+def test_config_switch_save_requires_current_token(next_skill, monkeypatch, token):
+    import server
+
+    monkeypatch.setattr(server.app, "token", "current")
+    config.save_conf.reset_mock()
+    headers = {"token": token} if token else {}
+    response = server.app.test_client().patch(
+        "/conf", json={"enable_crafting": False}, headers=headers
+    )
+    assert response.status_code == (200 if token == "current" else 403)
+    assert config.conf.enable_crafting == (token != "current")
+    assert config.save_conf.called == (token == "current")
+
+
+def test_paused_mastery_keeps_tasks_and_does_not_read_training_room(
+    next_skill, monkeypatch
+):
+    from arknights_mower.solvers import mastery, mastery_reader
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    state.save_user_config({"enable_crafting": False})
+    task = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE, meta_data="char_a_0")
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.tasks = [task]
+    solver.task = task
+    reconcile = MagicMock(return_value=(None, False, None))
+    monkeypatch.setattr(mastery_reader, "reconcile_and_act", reconcile)
+    for _ in range(2):
+        solver._dispatch_scan_start_tasks([{"char_id": "char_a", "skill_index": 0}])
+        mastery.run_mastery_task(solver)
+    assert solver.tasks == [task]
+    assert config.conf.enable_mastery
+    assert not mastery_reader._compute_protected(solver, None)
+    reconcile.assert_not_called()
+    state.save_user_config({"enable_crafting": True})
+    mastery.run_mastery_task(solver)
+    reconcile.assert_called_once()
+
+
+@pytest.mark.parametrize("token", [None, "invalid", "current"])
+def test_explicit_mastery_start_respects_paused_preference_and_token(
+    next_skill, monkeypatch, token
+):
+    import server
+
+    state.save_user_config({"enable_crafting": False})
+    monkeypatch.setattr(server.app, "token", "current")
+    config.save_conf.reset_mock()
+    response = server.app.test_client().post(
+        "/mastery-plan/start",
+        json={"char_id": "char_a", "skill_index": 0, "target_level": 3},
+        headers={"token": token} if token else {},
+    )
+    assert response.status_code == (200 if token == "current" else 403)
+    if token == "current":
+        assert response.json["status"] == "blocked"
+        assert "请先开启" in response.json["reason"]
+    config.save_conf.assert_not_called()
+    assert config.conf.enable_mastery
+    assert not config.conf.mastery_enabled

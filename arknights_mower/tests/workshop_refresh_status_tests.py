@@ -99,7 +99,7 @@ def test_duplicate_zero_or_unknown_delta_does_not_publish_stock_change(case):
 
 
 def test_disabled_automation_does_not_take_over_on_drops(case):
-    config.conf.enable_mastery = False
+    config.conf.enable_crafting = False
     record.apply_workshop_inventory({"技巧概要·卷2": 7})
     assert auto.refresh_workshop_after_inventory_change()
     assert not config.conf.workshop_auto_active

@@ -132,7 +132,7 @@ def _dispatch_new_plans_immediately(targets=None):
                 for char_id, skill_index in targets or []
             ],
         }
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         return nothing
     try:
         from arknights_mower.__main__ import base_scheduler
@@ -571,8 +571,8 @@ def _start_mastery_task(cid, index, target):
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
     from arknights_mower.utils.scheduler_task import TaskTypes
 
-    if not config.conf.enable_mastery:
-        return {"status": "blocked", "reason": "请先开启专精自动化，再插入任务"}
+    if not config.conf.mastery_enabled:
+        return {"status": "blocked", "reason": "请先开启自动合成和自动专精，再插入任务"}
     if (
         base_scheduler is None
         or not isinstance(getattr(base_scheduler, "tasks", None), list)

@@ -39,7 +39,7 @@ def workshop_status(scheduler=None, *, running=False):
         blocks = []
         try:
             inventory = get_inventory_counts()
-            if conf.enable_mastery or conf.workshop_auto_active:
+            if conf.enable_crafting or conf.workshop_auto_active:
                 plan = workshop_automation.calculate_workshop_plan(
                     conf, local_stock=inventory
                 )

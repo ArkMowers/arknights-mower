@@ -42,7 +42,7 @@ def load_options(target):
     cache.mkdir(parents=True, exist_ok=True)
     from arknights_mower.utils import config
 
-    if getattr(config.conf, "maa_growth_enable", False):
+    if getattr(config.conf, "maa_growth_enabled", False):
         from arknights_mower.utils.growth_execution import prepare_guard
 
         prepare_guard(cache, split=(Path(target) / "resource" / "tasks").is_dir())

@@ -19,7 +19,7 @@ op_data = dorm_release_tests.op_data
 
 @pytest.fixture
 def crafting(op_data, monkeypatch):
-    monkeypatch.setattr(config.conf, "enable_mastery", True)
+    monkeypatch.setattr(config.conf, "enable_crafting", True)
     monkeypatch.setattr(config.conf, "workshop_auto_active", True)
     monkeypatch.setattr(config.conf, "fodder_operators", ["九色鹿", "号角", "蜜莓"])
     monkeypatch.setattr(config.conf, "t5_operators", ["年", "蜜莓"])
@@ -33,7 +33,11 @@ def crafting(op_data, monkeypatch):
     return op_data
 
 
-def test_no_pending_recipe_prioritizes_crafters_with_fallback_order(crafting):
+@pytest.mark.parametrize("mastery", [False, True])
+def test_no_pending_recipe_prioritizes_crafters_with_fallback_order(
+    crafting, monkeypatch, mastery
+):
+    monkeypatch.setattr(config.conf, "enable_mastery", mastery)
     names = ["九色鹿", "年", "赫拉格", "号角", "蜜莓", "司霆惊蛰"]
     baseline = ["年", "芬", "赫拉格", "司霆惊蛰", "香草", "九色鹿", "蜜莓", "号角"]
     for mood, name in enumerate(baseline, 1):
@@ -46,7 +50,7 @@ def test_no_pending_recipe_prioritizes_crafters_with_fallback_order(crafting):
     assert baseline[4] == "香草"
 
 
-@pytest.mark.parametrize("switch", ["enable_mastery", "workshop_auto_active"])
+@pytest.mark.parametrize("switch", ["enable_crafting", "workshop_auto_active"])
 def test_disabled_crafting_retains_mood_order(crafting, monkeypatch, switch):
     monkeypatch.setattr(config.conf, switch, False)
     crafting.operators["芬"].mood = 1

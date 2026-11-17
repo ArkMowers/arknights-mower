@@ -820,7 +820,7 @@ class RIICPart(ConfModel):
     workshop_manual_backup: list[WorkShopSetting] | None = None
     "独立保存、可编辑的手动加工表单；None 表示尚未初始化"
     workshop_auto_active: bool = False
-    "自动专精是否正在接管运行配置"
+    "自动合成是否正在接管运行配置"
     growth_crafting_order: list[str] = Field(default_factory=list)
     "养成项目的合成顺序；空列表按专精计划优先，训练中的计划固定在前"
     workshop_manual_revision: int = 0
@@ -868,10 +868,32 @@ class RIICPart(ConfModel):
     "不养闲人合并间隔"
     assistant_follows_schedule: bool = False
     "协助位跟随排班（专精时协助位不固定，由排班系统管理）"
+    enable_crafting: bool = True
+    "自动合成养成材料；关闭时同时禁用自动专精和 MAA 干员培养"
     enable_mastery: bool = True
-    "全自动专精全局开关：OFF 时禁用全部训练室动作/通知/守卫，仅保留仓库材料扫描"
+    "自动专精开关：关闭时禁用全部训练室动作、通知和守卫，不影响自动合成"
     maa_growth_enable: bool = False
     "MAA 干员培养：成品材料齐全时执行精英化及基础技能升级"
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_growth_automation(cls, data):
+        if (
+            isinstance(data, dict)
+            and "enable_crafting" not in data
+            and "enable_mastery" in data
+        ):
+            data = {**data, "enable_crafting": data["enable_mastery"]}
+        return data
+
+    @property
+    def mastery_enabled(self) -> bool:
+        return self.enable_crafting and self.enable_mastery
+
+    @property
+    def maa_growth_enabled(self) -> bool:
+        return self.enable_crafting and self.maa_growth_enable
+
     mastery_consecutive_skills: bool = False
     "同干员技能接续训练"
     save_mastery_screenshots: bool = False
@@ -1431,7 +1453,7 @@ class Conf(
     def has_maa_tasks(self) -> bool:
         return (
             self.has_maa_daily_tasks
-            or self.maa_growth_enable
+            or self.maa_growth_enabled
             or self.RG
             or self.SSS
             or self.RCL

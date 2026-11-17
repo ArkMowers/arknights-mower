@@ -166,12 +166,13 @@ def save_user_config(req):
         # Web forms only submit fields they expose. Keep all other settings,
         # including values restored from a full configuration backup.
         conf = state.updated(editable)
-        if not conf.enable_mastery:
+        if not conf.enable_crafting:
             restore_manual_settings(conf)
         save_conf(conf)
         if any(
             getattr(previous, key) != getattr(conf, key)
             for key in (
+                "enable_crafting",
                 "enable_mastery",
                 "maa_growth_enable",
                 "fodder_operators",

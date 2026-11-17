@@ -837,3 +837,54 @@ it('loads the explicit three-room order before the legacy switch', async () => {
   expect(store.right_side_room_order).toEqual(['recycle', 'train', 'contact'])
   expect(store.build_config()).not.toHaveProperty('swap_contact_train')
 })
+
+describe('growth automation dependency', () => {
+  it.each([false, true])(
+    'migrates the legacy combined switch %s without saving on load',
+    async (enabled) => {
+      await setup({ enable_mastery: enabled })
+      expect(store.enable_crafting).toBe(enabled)
+      expect(store.enable_mastery).toBe(enabled)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it('saves only the crafting switch and preserves dependent choices across reloads', async () => {
+    await setup({ enable_crafting: true, enable_mastery: true, maa_growth_enable: true })
+    store.enable_mastery = false
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ enable_mastery: false })
+    expect(store.enable_crafting).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+    store.enable_mastery = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.enable_crafting = false
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ enable_crafting: false })
+    expect(store.enable_mastery).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+    store.enable_crafting = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ enable_crafting: true })
+    expect(store.enable_mastery).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+  })
+
+  it('loads explicit crafting-only preferences and retains paused imported selections', async () => {
+    const { data } = await setup({
+      enable_crafting: true,
+      enable_mastery: false,
+      maa_growth_enable: false
+    })
+    expect(store.enable_crafting).toBe(true)
+    expect(store.enable_mastery).toBe(false)
+    Object.assign(data, { enable_crafting: false, enable_mastery: true, maa_growth_enable: true })
+    await store.load_config()
+    expect(store.enable_mastery).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+  })
+})

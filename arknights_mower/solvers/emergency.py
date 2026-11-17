@@ -726,7 +726,7 @@ class EmergencyRecoveryMixin:
             or getattr(room_state, "amiya_form_waiting", False) is True
             or getattr(room_state, "slots_read", False) is True
             and getattr(room_state, "slots_reliable", False) is not True
-            or config.conf.enable_mastery
+            or config.conf.mastery_enabled
             and getattr(room_state, "protected", False) is True
         ):
             return False
