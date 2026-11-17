@@ -373,6 +373,7 @@ jobs:
           python -m pytest -q -o faulthandler_timeout=60 \
             arknights_mower/tests/maa_process_tests.py \
             arknights_mower/tests/maa_storage_tests.py \
+            arknights_mower/tests/maa_update_long_path_tests.py \
             arknights_mower/tests/maa_update_parity_tests.py \
             arknights_mower/tests/maa_navigation_tests.py \
             arknights_mower/tests/maa_admission_tests.py \

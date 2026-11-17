@@ -15,6 +15,7 @@ import hashlib
 import importlib
 import io
 import json
+import ntpath
 import os
 import platform
 import shutil
@@ -84,11 +85,24 @@ class MaaRollbackError(MaaUpdateError):
     """Keep the update workspace when prior files cannot be restored."""
 
 
+def _windows_extended_path(path):
+    """Normalize a Windows filesystem path before adding its long-path prefix."""
+    value = ntpath.abspath(os.fspath(path))
+    if value.startswith("\\\\?\\"):
+        return value
+    if value.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + value[2:]
+    return "\\\\?\\" + value
+
+
 @contextmanager
 def update_workspace(target, prefix):
     from arknights_mower.utils.maa_storage import storage_root
 
     root = storage_root(target) / "updates"
+    # Keep installation identities unchanged; only filesystem I/O uses this form.
+    if sys.platform == "win32":
+        root = Path(_windows_extended_path(root))
     root.mkdir(parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix=prefix, dir=root))
     try:
