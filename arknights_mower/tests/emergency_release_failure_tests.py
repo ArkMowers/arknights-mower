@@ -423,7 +423,7 @@ def test_measured_release_readback_keeps_primary_reserved_without_readmission(
         "mismatch",
     ],
 )
-def test_unconfirmed_release_readback_still_invalidates_old_measurement(
+def test_release_readback_preserves_sample_without_marking_recovery_ready(
     group_return, unconfirmed
 ):
     solver, state = group_return.solver, group_return.state
@@ -452,5 +452,9 @@ def test_unconfirmed_release_readback_still_invalidates_old_measurement(
     solver._reconcile_room_observation(room, observed)
 
     assert not operator.current_room
-    assert operator.time_stamp is None
+    if unconfirmed in ("ordinary_read", "unlisted", "below_target"):
+        assert operator.time_stamp == NOW
+        assert operator.depletion_rate == 0
+    else:
+        assert operator.time_stamp is None
     assert name not in state.get("ready_members", ())

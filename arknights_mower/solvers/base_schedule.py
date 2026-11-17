@@ -17509,24 +17509,21 @@ class BaseSchedulerSolver(
                 or slots.get(operator.current_index) == name
             ):
                 continue
-            measured_release = False
-            if confirmed_release:
-                target = operator.upper_limit
-                if getattr(task, "emergency_recovery_release", False):
-                    target = (
-                        (getattr(self, "emergency_state", None) or {})
-                        .get("targets", {})
-                        .get(name)
-                        if name in getattr(task, "emergency_staffing_members", ())
-                        else None
-                    )
-                measured_release = (
-                    name not in slots.values()
-                    and target is not None
-                    and has_resting_mood(operator)
-                    and not operator.mood_is_prediction
-                    and operator.mood >= target
-                )
+            confirmed_departure = confirmed_release or (
+                room.startswith("dorm")
+                and complete
+                and getattr(task, "strict_mood_limit", False)
+                and task.meta_data == name
+                and self.op_data.has_rest_mood_limit(name)
+                and getattr(task, "mood_limit", None) in (None, operator.upper_limit)
+            )
+            retain_dorm_sample = (
+                confirmed_departure
+                and name not in slots.values()
+                and operator.time_stamp is not None
+                and has_resting_mood(operator)
+                and not operator.mood_is_prediction
+            )
             if room.startswith("dorm"):
                 _, bed = self.op_data.get_dorm_by_name(
                     name, group_transitions=group_transitions
@@ -17538,13 +17535,6 @@ class BaseSchedulerSolver(
                     and self.task.meta_data == name
                 ):
                     operator.rest_mood_release_limit = operator.upper_limit
-                    measured_release = measured_release or (
-                        self.op_data.has_rest_mood_limit(name)
-                        and getattr(self.task, "mood_limit", None)
-                        in (None, operator.upper_limit)
-                        and has_resting_mood(operator)
-                        and not operator.mood_is_prediction
-                    )
             operator.current_room, operator.current_index = "", -1
             if (
                 confirmed_release
@@ -17555,8 +17545,8 @@ class BaseSchedulerSolver(
                 and getattr(task, "mood_limit", None) in (None, operator.upper_limit)
             ):
                 self._cancel_released_group_shift_targets(name)
-            if measured_release:
-                # 已确认离宿保留实测心情，待命后不再按宿舍速度恢复。
+            if retain_dorm_sample:
+                # 离宿保留原实读及采样时间，待命后停止沿用宿舍恢复速度。
                 operator.depletion_rate = 0
             else:
                 operator.time_stamp = None

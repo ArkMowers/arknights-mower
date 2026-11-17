@@ -257,6 +257,8 @@ def _admit_or_replace(solver, plan, route, spec, carry, inputs):
         _require_stage_mood(solver, route, inherited=bool(carry))
         return route
     except SupportMoodWait as error:
+        if error.observation_pending:
+            raise
         waiting = error
     options, central = candidates(plan["char_id"], inputs=inputs, include_dynamic=False)
     spec = replace(spec, central=central, manual=False)
@@ -312,12 +314,13 @@ def _admit_or_replace(solver, plan, route, spec, carry, inputs):
     selected = available()
     task = getattr(solver, "task", None)
     observed = getattr(task, "mastery_mood_observation", None)
-    if selected is None and (not observed or observed[0] != spec.level):
+    if not observed or observed[0] != spec.level:
         unknown = next(
             (
                 prepared
                 for prepared, required in alternatives
-                if any(
+                if (selected is None or prepared["hours"] < selected["hours"])
+                and any(
                     value is None
                     for value in support_mood_shortages(
                         solver.op_data, required
@@ -329,8 +332,16 @@ def _admit_or_replace(solver, plan, route, spec, carry, inputs):
         if unknown is not None:
             try:
                 _require_stage_mood(solver, unknown, inherited=bool(carry))
-            except SupportMoodWait:
-                pass
+            except SupportMoodWait as error:
+                if error.observation_pending:
+                    error.alternatives = [
+                        support_mood_requirements(route, inherited=bool(carry))
+                    ]
+                    raise
+            if not support_mood_shortages(
+                solver.op_data, support_mood_requirements(route, inherited=bool(carry))
+            ):
+                return route
             selected = available()
     if selected is None:
         waiting.alternatives = [required for _, required in alternatives]
@@ -346,13 +357,15 @@ def _admit_or_replace(solver, plan, route, spec, carry, inputs):
 def _require_stage_mood(solver, route, *, inherited):
     from arknights_mower.utils.mastery_mood import SupportMoodWait
 
+    task = getattr(solver, "task", None)
+    if task is not None:
+        task.mastery_mood_observation_pending = False
     try:
         require_support_mood(solver, route, inherited=inherited)
         return
     except SupportMoodWait as error:
         if not any(value is None for value in error.shortages.values()):
             raise
-        task = getattr(solver, "task", None)
         observation = (route["level"], tuple(sorted(error.required.items())))
         scan = getattr(solver, "_scan_card_moods", None)
         if not callable(scan) or observation == getattr(
@@ -364,8 +377,11 @@ def _require_stage_mood(solver, route, *, inherited):
             task.mastery_mood_observation_pending = scanned is False
             if scanned is not False:
                 task.mastery_mood_observation = observation
-        if scanned is not False:
-            solver.enter_room("train", max_attempts=1)
+        if scanned is False:
+            raise SupportMoodWait(
+                error.required, error.shortages, observation_pending=True
+            ) from error
+        solver.enter_room("train", max_attempts=1)
     require_support_mood(solver, route, inherited=inherited)
 
 

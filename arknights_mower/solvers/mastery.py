@@ -1158,6 +1158,9 @@ def _defer_support_mood(solver, plan, error):
 
 
 def _notify_support_mood_wait(plan, error):
+    if error.observation_pending:
+        return
+
     from arknights_mower.utils.csleep import MowerExit
     from arknights_mower.utils.device.recovery import DeviceRecoveryError
     from arknights_mower.utils.email import send_message
