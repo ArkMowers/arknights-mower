@@ -1,13 +1,14 @@
 """Installation-wide update coordination, independent of config and GUI imports.
 
-Only registered Mower launchers receive shutdown requests. No process-name scan
-or global Python/ADB termination is used. State lives in the shared data tmp tree.
+Only registered Mower launchers receive shutdown requests. Process information
+verifies registered PIDs. State lives in the shared data tmp tree.
 """
 
 import atexit
 import errno
 import hashlib
 import json
+import ntpath
 import os
 import sys
 import tempfile
@@ -187,6 +188,23 @@ def replace_with_retry(source, destination):
             time.sleep(0.05)
 
 
+@contextmanager
+def _windows_process_handle(pid, access):
+    import ctypes
+    from ctypes import wintypes
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel.OpenProcess.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel.OpenProcess(access, False, pid)
+    try:
+        yield kernel, handle
+    finally:
+        if handle:
+            kernel.CloseHandle(handle)
+
+
 def process_alive(pid):
     if not isinstance(pid, int) or pid <= 0:
         return False
@@ -194,26 +212,19 @@ def process_alive(pid):
         import ctypes
         from ctypes import wintypes
 
-        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        kernel.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
-        kernel.OpenProcess.restype = wintypes.HANDLE
-        kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
-        kernel.WaitForSingleObject.restype = wintypes.DWORD
-        kernel.CloseHandle.argtypes = [wintypes.HANDLE]
         # PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE.  An exit code can
         # already be published while Windows is still running process teardown
         # (DLL detach / handle cleanup).  Only a signaled process handle means
         # the process has fully terminated and its resources are releasable.
-        handle = kernel.OpenProcess(0x1000 | 0x00100000, False, pid)
-        if not handle:
-            return ctypes.get_last_error() == 5  # Access denied: conservatively alive.
-        try:
+        with _windows_process_handle(pid, 0x1000 | 0x00100000) as (kernel, handle):
+            if not handle:
+                return ctypes.get_last_error() == 5  # Access denied: possibly alive.
+            kernel.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel.WaitForSingleObject.restype = wintypes.DWORD
             result = kernel.WaitForSingleObject(handle, 0)
             if result == 0:  # WAIT_OBJECT_0: fully terminated.
                 return False
             return True  # WAIT_TIMEOUT / WAIT_FAILED: conservatively alive.
-        finally:
-            kernel.CloseHandle(handle)
     try:
         os.kill(pid, 0)
         return True
@@ -221,6 +232,93 @@ def process_alive(pid):
         return False
     except PermissionError:
         return True
+
+
+def process_creation_time(pid):
+    """Return the Windows process creation FILETIME, when available."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    from ctypes import wintypes
+
+    with _windows_process_handle(pid, 0x1000) as (kernel, handle):
+        if not handle:
+            return None
+        kernel.GetProcessTimes.argtypes = [wintypes.HANDLE] + [
+            ctypes.POINTER(wintypes.FILETIME)
+        ] * 4
+        kernel.GetProcessTimes.restype = wintypes.BOOL
+        times = [wintypes.FILETIME() for _ in range(4)]
+        if not kernel.GetProcessTimes(
+            handle, *(ctypes.byref(value) for value in times)
+        ):
+            return None
+        created = times[0]
+        return (created.dwHighDateTime << 32) | created.dwLowDateTime
+
+
+def _windows_process_name(pid):
+    """Read the registered PID's image name even without access to its handle."""
+    import ctypes
+    from ctypes import wintypes
+
+    class ProcessEntry(ctypes.Structure):
+        _fields_ = [
+            ("dwSize", wintypes.DWORD),
+            ("cntUsage", wintypes.DWORD),
+            ("th32ProcessID", wintypes.DWORD),
+            ("th32DefaultHeapID", ctypes.c_size_t),
+            ("th32ModuleID", wintypes.DWORD),
+            ("cntThreads", wintypes.DWORD),
+            ("th32ParentProcessID", wintypes.DWORD),
+            ("pcPriClassBase", wintypes.LONG),
+            ("dwFlags", wintypes.DWORD),
+            ("szExeFile", wintypes.WCHAR * 260),
+        ]
+
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    for read_entry in (kernel.Process32FirstW, kernel.Process32NextW):
+        read_entry.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
+        read_entry.restype = wintypes.BOOL
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    snapshot = kernel.CreateToolhelp32Snapshot(2, 0)  # TH32CS_SNAPPROCESS
+    if snapshot == ctypes.c_void_p(-1).value:
+        return None
+    try:
+        entry = ProcessEntry(dwSize=ctypes.sizeof(ProcessEntry))
+        present = kernel.Process32FirstW(snapshot, ctypes.byref(entry))
+        while present:
+            if entry.th32ProcessID == pid:
+                return entry.szExeFile or None
+            present = kernel.Process32NextW(snapshot, ctypes.byref(entry))
+    finally:
+        kernel.CloseHandle(snapshot)
+    return None
+
+
+def _registration_pid_reused(record):
+    if sys.platform != "win32":
+        return False
+    pid = record["pid"]
+    expected_creation = record.get("process_created_at")
+    if type(expected_creation) is int and expected_creation > 0:
+        current_creation = process_creation_time(pid)
+        if current_creation is not None:
+            return current_creation != expected_creation
+    # Older registrations only know the executable. An inaccessible process can
+    # also be proven unrelated if the system snapshot reports a different name.
+    executable = record.get("executable")
+    if isinstance(executable, str) and (expected_name := ntpath.basename(executable)):
+        name = _windows_process_name(pid)
+        return bool(name and name.casefold() != expected_name.casefold())
+    return False
+
+
+def registered_process_alive(record):
+    """Wait for the registered process even when its HTTP service has closed."""
+    return process_alive(record["pid"]) and not _registration_pid_reused(record)
 
 
 def active_job(directory=None):
@@ -451,14 +549,16 @@ def instances(directory=None, *, timeout=5, strict=True):
                     or record["pid"] <= 0
                 ):
                     raise ValueError("实例登记缺少有效的进程编号")
-                if process_alive(record["pid"]):
-                    result.append(record)
-                else:
+                if not process_alive(record["pid"]):
                     path.unlink(missing_ok=True)
                     if record.get("kind") == "ocr-worker":
                         (directory.parent / "shutdown" / path.name).unlink(
                             missing_ok=True
                         )
+                elif not _registration_pid_reused(record):
+                    result.append(record)
+                # A replacement can publish to the same launch ID. Exclude the
+                # stale snapshot without removing its file or shutdown request.
             except FileNotFoundError:
                 pass  # The instance may have removed its registration on exit.
             except (OSError, ValueError) as exc:
@@ -577,6 +677,8 @@ class RuntimeRegistration:
             if kind == "instance"
             else "",
         }
+        if created_at := process_creation_time(self.record["pid"]):
+            self.record["process_created_at"] = created_at
         self.publish()
         atexit.register(self.close)
         self.thread = threading.Thread(target=self._heartbeat, daemon=True)

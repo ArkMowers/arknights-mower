@@ -1294,7 +1294,7 @@ class WorkerTests(unittest.TestCase):
             patch.object(worker, "install_package") as install,
             patch.object(worker, "start_progress_servers") as progress,
             patch.object(updater, "instances", side_effect=scan),
-            patch.object(updater, "process_alive", return_value=False),
+            patch.object(updater, "registered_process_alive", return_value=False),
             patch.object(updater, "wait_for_supervisor_release", check_guardian),
             patch.object(
                 updater,
@@ -1338,7 +1338,7 @@ class WorkerTests(unittest.TestCase):
                         side_effect=[records, [ready]],
                     ),
                     patch(
-                        "arknights_mower.utils.software_update_worker.process_alive",
+                        "arknights_mower.utils.software_update_worker.registered_process_alive",
                         return_value=False,
                     ),
                     patch(

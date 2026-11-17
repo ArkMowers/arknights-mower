@@ -53,7 +53,7 @@ record = {
     'supervision_directory': str(folder / 'supervision'),
 }
 worker.instances = lambda state: [record]
-worker.process_alive = lambda pid: False
+worker.registered_process_alive = lambda record: False
 instance = object.__new__(worker.Worker)
 instance.state = folder / 'state'
 instance.work = folder / 'work'
