@@ -21,11 +21,26 @@ from arknights_mower.utils.config.plan import (
     parse_plan_document,
     retire_rescue_backups,
 )
+from arknights_mower.utils.configuration_secrets import (
+    conf_secrets_path,
+    launch_secrets,
+    legacy_conf_secrets_path,
+    migrate_fallback_ai_key,
+    read_conf_credentials,
+    split_conf,
+    with_conf_secrets,
+)
+from arknights_mower.utils.credential_store import (
+    read_credentials,
+    restore_credentials,
+    write_credentials,
+)
 from arknights_mower.utils.device_compatibility import omit_empty_mumu_binding_fields
 from arknights_mower.utils.log import frontend_log_queue, logger
 from arknights_mower.utils.manager_common import launch_snapshot
 from arknights_mower.utils.network_settings import apply_http_proxy
 from arknights_mower.utils.path import get_path
+from arknights_mower.utils.yituliu_sync import migrate_legacy_token
 
 # Compatibility alias; log delivery does not depend on configuration loading.
 log_queue = frontend_log_queue
@@ -62,6 +77,7 @@ _CONFIG_PATH_PAIRS = (
 
 _ATOMIC_WRITE_LOCKS = {}
 _ATOMIC_WRITE_LOCKS_GUARD = threading.Lock()
+_CONF_WRITE_LOCK = threading.RLock()
 
 
 def _path_write_lock(path):
@@ -115,6 +131,14 @@ def migrate_app_config_paths():
             continue
         try:
             new.parent.mkdir(parents=True, exist_ok=True)
+            if old == _LEGACY_CONF_PATH:
+                path = conf_secrets_path(new)
+                read_credentials(path)
+                if not path.exists():
+                    legacy_path = legacy_conf_secrets_path(new)
+                    previous = read_credentials(legacy_path)
+                    if legacy_path.exists():
+                        write_credentials(path, previous)
             os.replace(old, new)
         except (FileNotFoundError, PermissionError) as exc:
             if not new.is_file():
@@ -122,6 +146,28 @@ def migrate_app_config_paths():
                     f"迁移配置 {old} → {new} 失败；已停止启动以保留原配置，请检查目录权限或文件占用"
                 ) from exc
             logger.info("配置已由另一进程迁移：%s", new)
+
+
+def _migrate_unused_legacy_credentials():
+    if not conf_path.is_file() or not _LEGACY_CONF_PATH.is_file():
+        return
+    try:
+        raw = yaml.load(
+            _LEGACY_CONF_PATH.read_text(encoding="utf-8"), Loader=CoreLoader
+        )
+        if isinstance(raw, dict):
+            clean, legacy = split_conf(raw)
+            if legacy:
+                path = legacy_conf_secrets_path(conf_path)
+                write_credentials(path, {**read_credentials(path), **legacy})
+                atomic_write(
+                    _LEGACY_CONF_PATH,
+                    lambda stream: yaml.dump(
+                        clean, stream, Dumper=CoreDumper, allow_unicode=True
+                    ),
+                )
+    except (ValueError, OSError, yaml.YAMLError):
+        logger.warning("旧配置文件的凭据未能迁移，请检查 %s", _LEGACY_CONF_PATH)
 
 
 migrate_app_config_paths()
@@ -148,20 +194,29 @@ def persistent_conf(data):
     return omit_empty_mumu_binding_fields(result)
 
 
-def save_conf():
-    conf.sync_legacy_device_fields()
-
-    def dump(f):
-        yaml.dump(
-            persistent_conf(conf.model_dump(exclude_unset=True)),
-            f,
-            Dumper=CoreDumper,
-            encoding="utf-8",
-            default_flow_style=False,
-            allow_unicode=True,
+def _write_conf(data, values):
+    path = conf_secrets_path(conf_path)
+    previous = read_credentials(path)
+    original = path.read_bytes() if path.is_file() else None
+    try:
+        if previous != values:
+            write_credentials(path, values)
+        atomic_write(
+            conf_path,
+            lambda stream: yaml.dump(
+                data, stream, Dumper=CoreDumper, allow_unicode=True
+            ),
         )
+    except BaseException:
+        if previous != values:
+            restore_credentials(path, original)
+        raise
 
-    atomic_write(conf_path, dump)
+
+def save_conf():
+    with _CONF_WRITE_LOCK:
+        conf.sync_legacy_device_fields()
+        _write_conf(*split_conf(persistent_conf(conf.model_dump(exclude_unset=True))))
 
 
 def save_rescue_plan():
@@ -185,21 +240,6 @@ def _load_rescue_plan(raw):
         rescue_plan = PlanModel(**raw.get("automatic_rescue_plan", {}))
         # 先提交独立排班，成功后才能清除旧全局字段。
         save_rescue_plan()
-    if "automatic_rescue_plan" in raw:
-        # 其他旧字段仍由各自的迁移入口处理，不能在此提前清除。
-        atomic_write(
-            conf_path,
-            lambda stream: yaml.dump(
-                {
-                    key: value
-                    for key, value in raw.items()
-                    if key != "automatic_rescue_plan"
-                },
-                stream,
-                Dumper=CoreDumper,
-                allow_unicode=True,
-            ),
-        )
 
 
 _legacy_dorm_order = ""
@@ -226,6 +266,7 @@ def load_conf():
     operation_feedback_cap = None
     operation_failure_streak = 0
     operation_recovery_successes = 0
+    stored = read_conf_credentials(conf_path)
     try:
         with conf_path.open("r", encoding="utf-8") as f:
             # 读文件与配置提交均由 Conf 校验层迁移旧字段。
@@ -234,12 +275,13 @@ def load_conf():
         conf_path.parent.mkdir(parents=True, exist_ok=True)
         # A fresh Mac/Linux host has no chosen endpoint. Keep legacy migration
         # unchanged, but do not give new users the old MuMu default port.
-        conf = (
-            Conf(device={})
+        defaults = (
+            {"device": {}}
             if __system__ in {"darwin", "linux"}
             and os.environ.get("MOWER_ANDROID") != "1"
-            else Conf()
+            else {}
         )
+        conf = Conf(**with_conf_secrets(defaults, {**launch_secrets(stored), **stored}))
         _load_rescue_plan({})
         save_conf()
         return
@@ -253,7 +295,15 @@ def load_conf():
         }
         & raw.keys()
     )
-    conf = Conf(**raw)
+    clean, legacy = split_conf(raw)
+    explicit = stored if conf_secrets_path(conf_path).exists() else legacy
+    values = {**launch_secrets(explicit), **explicit}
+    conf = Conf(**with_conf_secrets(clean, values))
+    _load_rescue_plan(raw)
+    if legacy or values != stored or "automatic_rescue_plan" in clean:
+        clean.pop("automatic_rescue_plan", None)
+        with _CONF_WRITE_LOCK:
+            _write_conf(clean, values)
     from arknights_mower.utils.maa_sss import migrate_legacy
 
     try:
@@ -261,11 +311,13 @@ def load_conf():
             save_conf()
     except (ValueError, OSError):
         logger.exception("旧保全作业导入失败，请在保全派驻中重新导入")
-    _load_rescue_plan(raw)
 
 
 conf: Conf
+migrate_fallback_ai_key()
 load_conf()
+_migrate_unused_legacy_credentials()
+migrate_legacy_token()
 # Public manager values are a launch snapshot, never a live configuration watch.
 conf, manager_inherited_settings = launch_snapshot(
     conf, managed=os.environ.get("MOWER_MANAGED") == "1"

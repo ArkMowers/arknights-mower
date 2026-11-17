@@ -8,7 +8,8 @@ files, together with the persistent data files listed in `TMP_DATA_FILES`
 in [config_backup.py](../../arknights_mower/utils/config_backup.py).
 SQLite snapshots contain committed database tables, including data in WAL files.
 Resource overlays, downloaded updates, logs and unrelated tmp files stay outside
-the archive. No configuration model or domain term changes.
+the archive. [Configuration credential storage](#configuration-credential-storage)
+also applies to profile exports and recovery ZIPs.
 
 Rescue plans follow [instance rescue-plan storage](base-scheduler.md#rescue-plan-persistence).
 Import validates `rescue_plan.json` before writing and restores it with the other
@@ -57,6 +58,207 @@ the GUI file's window settings, mood curve preferences and log layout. Shared
 installation settings outside the current instance directory remain outside the archive.
 Import preserves both local lock files, even when an older archive includes
 them, so an active OS lock continues to protect the same file.
+
+## Configuration Credential Storage
+
+The current instance saves the Web UI token, mail account and recipients,
+Skland accounts, AI keys and custom endpoint, and MAA download and reporting
+credentials in encrypted `mower.secrets.json` at the instance data root. The
+shared GitHub token and legacy DeepSeek fallback key use `network.secrets.json`
+and `ai.secrets.json` at the installation data root. Yituliu OAuth authorization
+uses `yituliu.secrets.json` at the instance data root. Saved profiles use a
+matching `<id>.secrets.json` beside their ZIP. These JSON files contain a
+versioned encryption envelope, not readable credential values. A launch
+environment variable can supply a default where no value has been saved. An
+explicitly empty value takes precedence over that default. An explicit
+`MOWER_DATA_DIR` limits migration of `token.txt` to that directory.
+
+This feature first introduces encrypted credential storage for existing
+plaintext configurations. It supports one envelope format, version 1. The native
+HPKE implementation in `cryptography==50.0.2` encrypts the credential JSON with
+X-Wing (`MLKEM768_X25519`), `HKDF_SHA256` and `AES_256_GCM`. A fixed recipient
+private key contains a 64-byte ML-KEM-768 seed and a 32-byte X25519 private key.
+Normal saves reuse that private key; HPKE produces a fresh encapsulation and
+ciphertext for each encryption.
+
+The credential envelope contains only `version`, `suite`, `provider`, `key_id`
+and `ciphertext`. Its suite is `HPKE-X-Wing-HKDF-SHA256-AES-256-GCM`, `key_id`
+is the lowercase hexadecimal SHA-256 digest of the concatenated 1184-byte
+ML-KEM-768 and 32-byte X25519 public keys, and `ciphertext` is the
+base64-encoded HPKE output including its encapsulation. The canonical header
+enters HPKE `info`, binding the version, suite, provider and key identifier to
+the ciphertext. The private key is stored separately and does not appear in
+the credential envelope.
+
+Windows defaults to protecting the fixed private key with the current user's
+DPAPI and saving the protected bytes in
+`%LOCALAPPDATA%/arknights-mower/credentials/private.dpapi`, using
+`~/AppData/Local` when `LOCALAPPDATA` is unset. An explicitly set
+`XDG_DATA_HOME` takes precedence for the data root. macOS stores the base64-encoded
+private key directly in Keychain, and Linux uses Secret Service through
+`secret-tool` when available in a D-Bus session. Without that tool or session,
+headless Linux and Android save the base64-encoded private key in
+`$XDG_DATA_HOME/arknights-mower/credentials/private.key`, or
+`~/.local/share/arknights-mower/credentials/private.key` when `XDG_DATA_HOME` is
+unset. The private directory has mode `0700` and its key file has mode `0600`
+on POSIX systems. This file provider relies on filesystem permissions.
+On any platform, `MOWER_CREDENTIAL_KEY_FILE` can select an existing file
+containing the base64-encoded 96-byte private key; reading also accepts URL-safe
+base64. A missing explicitly selected file is not created automatically.
+
+The default private key is shared by Mower instances running as the same system
+user with the same key-storage settings: they use the same Keychain entry,
+Secret Service attributes or private-key directory. It is not an independent
+key per instance or manager. Selecting distinct private keys through
+`MOWER_CREDENTIAL_KEY_FILE` can isolate deployments.
+
+System-service initialization and explicit recovery serialize through the fixed
+user directory `~/.local/share/arknights-mower/credential-service-lock`, independent
+of `XDG_DATA_HOME`, because the Keychain and Secret Service entries are shared by
+that user. Ordinary reads do not create this coordination directory.
+
+Without an explicit key-file setting, reads use the recorded provider and
+require a matching key identifier. With `MOWER_CREDENTIAL_KEY_FILE` explicitly
+set, reads use that private key for any recorded provider, require the same
+key identifier and authenticate the original header without rewriting the
+ciphertext. This permits manual recovery across platforms with the original
+raw private key. Copying `private.dpapi` alone does not remove its Windows
+account protection. Normal migration does not require users to export a private
+key: they re-enter credentials or use the optional password-protected backup below.
+
+Reading never silently switches providers or creates a replacement for a
+missing key. Provider-specific initialization records prevent creating a new private key after
+the original is lost, including when saving another credential file. An
+unavailable provider, missing private key or damaged ciphertext fails the
+operation without treating credentials as empty or changing access control.
+Credential files, private keys and initialization records are persistent user
+data, outside cache cleanup.
+
+Writes are atomic and verified by reading back the saved values. A failed write
+or readback restores the prior file bytes. Saving unrelated settings can leave
+the credential file unchanged. Unsupported formats or missing hybrid runtime
+support produce an error; there is no fallback encryption format. X-Wing
+combines X25519 and ML-KEM-768 and is distinct from the similarly named TLS
+key-exchange group. Local credential encryption does not configure HTTPS or
+prevent access by a process that can obtain the private key or use its system
+credential service.
+The [hybrid encryption decision](../../.agents/notes/implemented/architecture/2026-11-16-hybrid-credential-encryption.md)
+records the rationale and accepted storage costs. Implementation and
+focused verification live in
+[`credential_store.py`](../../arknights_mower/utils/credential_store.py) and
+[`credential_store_hybrid_tests.py`](../../arknights_mower/tests/credential_store_hybrid_tests.py).
+Dependency installation and backend capability checks follow the
+[credential encryption runtime guide](../cookbook/packaging.md#credential-encryption-runtime).
+
+The configuration loader migrates credentials directly from existing
+`conf.yml`, `network.json`, `yituliu_sync.json`, saved-profile ZIPs and `token.txt`.
+It removes a plaintext source only after writing and reading back the encrypted
+destination. New saves do not create plaintext credential files. If both `config/conf.yml`
+and the former root-level `conf.yml` exist, the former root-level file's
+credentials move to `legacy-mower.secrets.json` without entering the active
+configuration. Authenticated settings requests continue to read, edit and clear
+the same values. Settings responses that carry credentials use
+`Cache-Control: no-store`. AI clients receive their configured key for
+authentication; storing that key does not add it to model messages.
+
+Exported ZIPs and recovery ZIPs omit credential values, encryption keys and
+credential files, including sensitive environment files. Imports protect the actual
+configured deployment-key path even when it lies inside configuration or
+persistent tmp data; file or directory collisions with that key path reject the
+import. A restore from a redacted backup retains local credentials and the
+synchronization record for the local
+Yituliu token. Import from an older backup can still read credentials included
+in that backup and move them into the destination encrypted files, subject to
+the existing protection for local access and network settings. Earlier ZIP
+exports can still contain credentials. A normal backup cannot recover a lost
+encryption key or transfer credentials to another machine.
+
+<a id="credential-recovery"></a>
+## Recovery After Credential Key Loss
+
+The desktop launcher catches credential-storage failures before normal server
+startup and opens a separate recovery service without importing configuration.
+The same service is available through `--credential-recovery` in the desktop
+launcher and `python -m arknights_mower.utils.credential_recovery` in Python
+deployments. Its [authorization boundary](web-access.md#credential-recovery-access)
+does not depend on the unreadable saved Web UI token.
+The desktop launcher opens a recovery window when a desktop backend is available;
+the Python module defaults to printing the temporary URL. `--headless` explicitly
+selects terminal output. This one-time URL contains the session credential;
+HTTP access and protocol logs omit it.
+
+Recovery lists unreadable credential files in the selected instance and shared
+credential files, together with a confirmation snapshot. A reset requires an
+explicit confirmation and an unchanged snapshot. It preserves readable
+credentials, configuration files, scheduling plans, profile ZIPs and databases.
+Unreadable ciphertext is retained in a separate `credential-recovery` directory;
+ordinary configuration ZIPs exclude that directory, password-protected credential
+backup files and quarantined private keys. Retained ciphertext still requires its
+original private key to decrypt.
+
+Only this explicit operation may create a replacement for a previously
+initialized default key. A usable key is always retained. Missing system-service
+entries may be recreated; locked services, invalid entries, unsafe filesystem
+objects and permissions errors remain errors. An externally selected
+`MOWER_CREDENTIAL_KEY_FILE` is never replaced. Damaged default file keys are
+quarantined before replacement, with readback verification and compensation on
+failure. Other instances that used a lost shared key still need their own
+credential reset or restoration; recovery does not discard their configuration.
+
+After successful recovery the user closes the recovery service and restarts
+Mower, then re-enters credentials or imports a previously exported password
+backup. Desktop startup with no saved access token remains loopback-only. Docker
+retains its nonempty-token startup requirement. Recovery never silently resumes
+automation or retries normal configuration import in a partially initialized
+process.
+
+<a id="password-credential-backup"></a>
+## Password-Protected Credential Backup
+
+The optional 凭据备份与迁移 controls in 完整备份与恢复 export a separate
+`.mower-credentials` file. The file contains saved business credential fields
+from the current instance and its current profile, plus shared GitHub and AI
+fallback credentials. It excludes the Web UI access token, other saved profiles,
+environment-only defaults, private keys, scheduling plans and ordinary settings.
+For several profiles, users export each profile's credentials separately.
+
+Version 1 uses scrypt with fixed `N=131072`, `r=8`, `p=1`, a random 16-byte salt,
+and a 32-byte output for AES-256-GCM with a random 12-byte nonce. The authenticated
+context binds the fixed format and algorithms. Files cannot supply arbitrary KDF
+cost parameters. Passwords require at least 12 Unicode characters and at most
+1024 UTF-8 bytes. Input files are limited to 4 MiB and plaintext to 2 MiB;
+duplicate JSON keys, unknown fields, invalid types and unsupported versions are
+rejected. The KDF is serialized with a bounded admission wait. No password is
+persisted or intentionally logged. Password strength limits backup protection;
+there is no password recovery service.
+
+Authenticated POST routes export, preview and import through the existing Web UI
+token guard and settings-confirmation header. Preview returns only fixed category
+labels and field counts, including empty values. Import requires confirmation,
+the current configuration generation and an idle instance under the existing
+configuration-maintenance locks. Uploaded paths are never used as destination
+paths. Only known credential fields are merged; absent fields and the destination
+access token are retained, while explicitly empty fields clear their values.
+Shared credential changes apply to other instances using those shared files.
+
+Import encrypts values with the destination's automatically managed hybrid key;
+it does not copy or replace a source private key. It validates writes and restores
+the previous ciphertext bytes on failure. The in-memory configuration is replaced
+only after successful model validation, preserving unset defaults and unrelated
+nested configuration objects. Successful imports advance the configuration
+generation in the same transaction, so other open pages cannot save stale
+credential drafts. A changed Yituliu token invalidates its
+old synchronization metadata in the same transaction; unrelated settings remain
+unchanged. Incomplete rollback is reported as an uncertain failure, so the page
+keeps automatic saving paused. Successful import reloads the page without
+automatically starting tasks. An unreadable destination credential store must be
+recovered through the separate recovery entry before importing.
+
+Implementation and focused verification live in
+[`credential_backup.py`](../../arknights_mower/utils/credential_backup.py),
+[`credential_recovery.py`](../../arknights_mower/utils/credential_recovery.py),
+[`credential_backup_route_tests.py`](../../arknights_mower/tests/credential_backup_route_tests.py)
+and [`CredentialBackup.test.js`](../../ui/src/components/CredentialBackup.test.js).
 
 <a id="database-maintenance"></a>
 ## Database Maintenance and Backup Limits

@@ -38,6 +38,7 @@ RUN python3 -m venv venv && \
     . venv/bin/activate && \
     pip install -r requirements.in "$(grep '^onnxruntime==' requirements.txt)" && \
     python -m pip check && \
+    python scripts/check_credential_crypto.py && \
     python scripts/prune_opencv.py && \
     pip install pyinstaller && \
     pyinstaller webui_zip_for_linux.spec && \

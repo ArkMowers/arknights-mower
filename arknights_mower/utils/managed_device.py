@@ -125,7 +125,12 @@ def operation_blocked(path, method, configuration):
             )
         )
         or path
-        in {"/resource/install", "/resource-update/manual", "/config-backup/import"}
+        in {
+            "/resource/install",
+            "/resource-update/manual",
+            "/config-backup/import",
+            "/credential-backup/import",
+        }
     )
 
 

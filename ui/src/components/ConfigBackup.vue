@@ -6,6 +6,7 @@ import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { createSaveCoordinator } from '@/utils/configPersistence'
 import { consumeImportResult, reloadImportedConfiguration } from '@/utils/configBackup'
 import { downloadConfiguration } from '@/composables/configProfiles'
+import CredentialBackup from './CredentialBackup.vue'
 
 const axios = inject('axios')
 const configStore = useConfigStore()
@@ -115,7 +116,11 @@ function reload() {
 <template>
   <n-card title="完整备份与恢复" class="config-backup">
     <n-space vertical :size="16">
-      <p class="config-backup-notice">备份包含账号、密码和密钥，请妥善保管。</p>
+      <p class="config-backup-notice">
+        完整备份不包含账号密码、Token、API Key
+        等凭据及加密密钥，换设备后可重新填写凭据，或使用单独的口令凭据备份。
+        旧版备份可能包含敏感信息，请妥善保管。
+      </p>
       <div class="config-backup-actions">
         <div class="config-backup-row" data-settings-label="导出完整备份">
           <div class="config-backup-copy">
@@ -152,8 +157,9 @@ function reload() {
             <div>
               <dt>备份内容</dt>
               <dd>
-                包含当前实例的 config 配置文件与 tmp 数据表、库存和记录，不包含 state.json。
-                主排班和所有备用排班均包含在 plan.json 中，数据库包含专精计划和历史数据。
+                包含当前实例去除凭据后的 config 配置文件与 tmp 数据表、库存和记录，不包含
+                state.json、凭据密文和加密密钥。 主排班和所有备用排班均包含在 plan.json
+                中，数据库包含专精计划和历史数据。
                 资源包、更新文件、其他实例及浏览器偏好不在备份中。
               </dd>
             </div>
@@ -174,6 +180,7 @@ function reload() {
           </dl>
         </n-collapse-item>
       </n-collapse>
+      <CredentialBackup />
       <n-alert v-if="error" type="error" aria-live="polite">{{ error }}</n-alert>
       <n-alert v-if="reloadRequired && !pendingReload" type="info" aria-live="polite">
         恢复结果尚未确认，配置自动保存保持暂停。请重新加载页面后继续编辑。

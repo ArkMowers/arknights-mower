@@ -13,6 +13,7 @@ from yamlcore import CoreLoader
 from arknights_mower.utils import manager_common
 from arknights_mower.utils import manager_instances as controls
 from arknights_mower.utils import update_runtime as runtime
+from arknights_mower.utils.credential_store import read_credentials, write_credentials
 from manager import Api
 from webview_ui import desktop_port
 
@@ -133,6 +134,23 @@ def test_manager_failed_config_write_restores_relay(manager, monkeypatch):
     assert not (Path(manager.instances[0]["path"]) / "relay/settings.json").exists()
 
 
+def test_unreadable_credentials_do_not_hide_other_instances(manager, tmp_path):
+    manager.add("second", str(tmp_path / "second"))
+    root = Path(manager.instances[0]["path"])
+    root.mkdir(parents=True, exist_ok=True)
+    credentials = root / "mower.secrets.json"
+    damaged = b'{"version": "invalid"}'
+    credentials.write_bytes(damaged)
+
+    items = manager.get_instances()
+
+    assert [item["name"] for item in items] == ["first", "second"]
+    assert not items[0]["can_start"]
+    assert "凭据" in items[0]["reason"]
+    assert items[1]["can_start"]
+    assert credentials.read_bytes() == damaged
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 def test_maintenance_permission_is_persisted_without_changing_other_settings(
     manager, enabled
@@ -151,7 +169,8 @@ def test_maintenance_permission_is_persisted_without_changing_other_settings(
     assert saved["extra_settings_visible"] is enabled
     assert "updates_enabled" not in saved
     assert saved["ai_assistant_enabled"] is True
-    assert saved["webview"] == {"token": "keep", "port": 58001}
+    assert saved["webview"] == {"port": 58001}
+    assert reopened.get_instances()[0]["token"] == "keep"
 
 
 @pytest.mark.parametrize("enabled", [False, True, None, 0, 1, "true", "false"])
@@ -265,7 +284,8 @@ def test_single_settings_accept_matching_target_after_an_unrelated_list_change(m
     manager.update_settings(
         0, {"token": "new", "port": None, "ai_assistant_enabled": True}, target
     )
-    assert read_conf(manager)["webview"] == {"token": "new", "port": 0}
+    assert read_conf(manager)["webview"] == {"port": 0}
+    assert manager.get_instances()[0]["token"] == "new"
     assert read_conf(manager)["ai_assistant_enabled"] is True
 
 
@@ -608,7 +628,8 @@ def test_manager_saves_device_and_performance_without_replacing_private_fields(m
     assert saved["device"]["last_serial"] == saved["adb"] == "chosen-device"
     assert saved["performance_mode"] == "low"
     assert saved["screenshot_interval"] == 750
-    assert saved["webview"]["token"] == "private"
+    assert "token" not in saved["webview"]
+    assert manager.get_instances()[0]["token"] == "private"
     assert saved["private_extension"] == {"keep": True}
     assert saved["theme"] == "dark"
 
@@ -959,12 +980,42 @@ def test_settings_preserve_legacy_and_unknown_configuration(manager):
     assert raw == {
         "private_payload": "encrypted-text",
         "custom": {"flag": True},
-        "webview": {"scale": 1.25, "token": "new-secret", "port": 58001},
+        "webview": {"scale": 1.25, "port": 58001},
     }
-    assert legacy.read_text(encoding="utf-8").startswith("private_payload:")
+    assert yaml.safe_load(legacy.read_text(encoding="utf-8")) == {
+        "private_payload": "encrypted-text",
+        "custom": {"flag": True},
+        "webview": {"scale": 1.25},
+    }
+    assert manager.get_instances()[0]["token"] == "new-secret"
     manager.update_settings(0, {"token": "", "port": None})
     assert read_conf(manager)["webview"]["port"] == 0
     assert manager.get_instances()[0]["port"] is None
+    assert (
+        read_credentials(root / "legacy-mower.secrets.json")["MOWER_WEBVIEW_TOKEN"]
+        == "old"
+    )
+
+
+def test_settings_split_credentials_from_coexisting_configurations(manager):
+    manager.update_settings(0, {"token": "current", "port": None})
+    root = Path(manager.instances[0]["path"])
+    legacy = root / "conf.yml"
+    legacy.write_text(
+        "webview: {token: old}\npass_code: old-mail-password\n",
+        encoding="utf-8",
+    )
+
+    manager.update_settings(0, {"token": "replacement", "port": 58001})
+
+    assert yaml.safe_load(legacy.read_text(encoding="utf-8")) == {"webview": {}}
+    assert read_credentials(root / "legacy-mower.secrets.json") == {
+        "MOWER_WEBVIEW_TOKEN": "old",
+        "MOWER_MAIL_PASSWORD": "old-mail-password",
+    }
+    assert read_credentials(root / "mower.secrets.json") == {
+        "MOWER_WEBVIEW_TOKEN": "replacement"
+    }
 
 
 def test_assistant_defaults_off_and_saved_choices_survive_manager_recreation(manager):
@@ -1070,7 +1121,8 @@ def test_batch_table_saves_different_cells_and_leaves_unedited_rows_untouched(ma
         manager.instances.copy(),
     )
     assert [row["idx"] for row in result["results"]] == [0, 1]
-    assert read_conf(manager)["webview"] == {"token": "first", "port": 58000}
+    assert read_conf(manager)["webview"] == {"port": 58000}
+    assert manager.get_instances()[0]["token"] == "first"
     assert read_conf(manager)["ai_assistant_enabled"] is True
     _, second = controls.read_instance_config(manager.instances[1]["path"])
     assert second["webview"] == {"token": "new-second", "port": 59002}
@@ -1108,10 +1160,82 @@ def test_batch_random_ports_clear_token_only_when_selected(manager):
     )
     targets = manager.instances.copy()
     manager.update_all_settings(batch_changes(manager, {"port": None}), targets)
-    assert read_conf(manager)["webview"] == {"token": "keep", "port": 0}
+    assert read_conf(manager)["webview"] == {"port": 0}
+    assert manager.get_instances()[0]["token"] == "keep"
     assert read_conf(manager)["ai_assistant_enabled"] is True
     manager.update_all_settings(batch_changes(manager, {"token": ""}), targets)
-    assert read_conf(manager)["webview"] == {"token": "", "port": 0}
+    assert read_conf(manager)["webview"] == {"port": 0}
+    assert Api(manager._storage_path).get_instances()[0]["token"] == ""
+
+
+@pytest.mark.parametrize("legacy_locked", [False, True])
+def test_failed_manager_settings_save_restores_environment_token(
+    manager, monkeypatch, legacy_locked
+):
+    manager.update_settings(0, {"token": "previous", "port": None})
+    root = Path(manager.instances[0]["path"])
+    target = root / "config/conf.yml"
+    env_path = root / "mower.secrets.json"
+    legacy = root / "conf.yml"
+    legacy.write_text("webview: {token: older}\n", encoding="utf-8")
+    before = {path: path.read_bytes() for path in (target, env_path, legacy)}
+    write_config = manager._write_config_bytes
+
+    def fail_config(path, content):
+        if path == (legacy if legacy_locked else target):
+            raise PermissionError("locked")
+        write_config(path, content)
+
+    monkeypatch.setattr(manager, "_write_config_bytes", fail_config)
+    with pytest.raises(PermissionError, match="locked"):
+        manager.update_settings(0, {"token": "replacement", "port": 58001})
+
+    assert {path: path.read_bytes() for path in before} == before
+    assert not (root / "legacy-mower.secrets.json").exists()
+    assert Api(manager._storage_path).get_instances()[0]["token"] == "previous"
+
+
+def test_manager_migrates_yaml_before_token_edit_and_preserves_other_credentials(
+    manager,
+):
+    root = Path(manager.instances[0]["path"])
+    target = root / "config/conf.yml"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "theme: dark\nwebview: {port: 58001, token: previous}\n"
+        "account: sender@example.test\npass_code: mail-secret\n"
+        "recipient: [recipient@example.test]\n"
+        "skland_info: [{account: player, password: game-secret}]\n",
+        encoding="utf-8",
+    )
+    assert manager.get_instances()[0]["token"] == "previous"
+    manager.update_settings(0, {"token": "replacement", "port": 58002})
+    assert read_credentials(root / "mower.secrets.json") == {
+        "MOWER_WEBVIEW_TOKEN": "replacement",
+        "MOWER_MAIL_ACCOUNT": "sender@example.test",
+        "MOWER_MAIL_PASSWORD": "mail-secret",
+        "MOWER_MAIL_RECIPIENTS": ["recipient@example.test"],
+        "MOWER_SKLAND_ACCOUNTS": [{"account": "player", "password": "game-secret"}],
+    }
+    assert read_conf(manager) == {"theme": "dark", "webview": {"port": 58002}}
+    assert Api(manager._storage_path).get_instances()[0]["token"] == "replacement"
+
+
+def test_manager_respects_empty_encrypted_store_when_editing_stale_yaml(manager):
+    root = Path(manager.instances[0]["path"])
+    target = root / "config/conf.yml"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        "theme: dark\npass_code: obsolete-password\n"
+        "webview: {token: obsolete-token, port: 58001}\n",
+        encoding="utf-8",
+    )
+    encrypted = root / "mower.secrets.json"
+    write_credentials(encrypted, {})
+    assert manager.get_instances()[0]["token"] == ""
+    manager.update_settings(0, {"token": "replacement", "port": 58002})
+    assert read_credentials(encrypted) == {"MOWER_WEBVIEW_TOKEN": "replacement"}
+    assert read_conf(manager) == {"theme": "dark", "webview": {"port": 58002}}
 
 
 @pytest.mark.parametrize(
@@ -1291,8 +1415,9 @@ def test_settings_can_repair_invalid_connection_values_without_losing_other_fiel
     manager.update_settings(0, {"token": "fixed", "port": None})
     assert read_conf(manager) == {
         "other": "retained",
-        "webview": {"token": "fixed", "port": 0},
+        "webview": {"port": 0},
     }
+    assert manager.get_instances()[0]["token"] == "fixed"
 
 
 def test_launch_registration_receives_stop_requested_before_it_exists(
@@ -1535,7 +1660,8 @@ def test_extra_settings_visibility_persists_without_changing_ai_authorization(
     assert saved["extra_settings_visible"] is enabled
     assert "updates_enabled" not in saved
     assert saved["ai_assistant_enabled"] is assistant
-    assert saved["webview"] == {"token": "keep", "port": 0}
+    assert saved["webview"] == {"port": 0}
+    assert reopened.get_instances()[0]["token"] == "keep"
     reopened.update_settings(
         0, {"token": "keep", "port": None, "extra_settings_visible": not enabled}
     )

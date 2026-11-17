@@ -87,7 +87,7 @@ const editorKeywords = {
   'mower-profiles': '档案 选择保留内容 导入 导出 重启续接 重启 Mower 进程 结束 退出',
   'mower-updates':
     'Mower MAA 本体 资源 网络 更新 Mirror酱 CDK 代理 下载源 更新源 自动更新 访问 端口 Token 远程连接 远程访问 中转 凭据',
-  'mower-data': '仓库历史 截图 保存 报错归档 容量 空间 完整备份 恢复 数据库',
+  'mower-data': '仓库历史 截图 保存 报错归档 容量 空间 完整备份 恢复 数据库 凭据 口令 密钥 迁移',
   device:
     '设备 模拟器 ADB 截图 触控 MuMu 性能适配 恢复 超时 重试 选择实例 旋转截图 截图命令 启动游戏 点击坐标 启动命令 自定义命令启动 空闲动作 关闭MuMu模拟器12时断开该实例的adb连接 启动后自动开始任务',
   intervals: '日常任务间隔 MAA 日常 制造站补货',

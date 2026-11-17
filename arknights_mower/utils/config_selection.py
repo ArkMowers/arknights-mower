@@ -332,10 +332,31 @@ def default_archive():
     return backup._archive_bytes(files, {})
 
 
-def combine_archives(incoming_raw, current_raw, selected):
+def combine_archives(
+    incoming_raw,
+    current_raw,
+    selected,
+    *,
+    incoming_credentials=None,
+    current_credentials=None,
+    retain_local_credentials=False,
+):
     selected = validate_groups(list(selected))
-    incoming, incoming_tmp = backup.read_archive(incoming_raw, include_tmp=True)
-    current, current_tmp = backup.read_archive(current_raw, include_tmp=True)
+    incoming, incoming_tmp, incoming_redacted = backup.read_archive(
+        incoming_raw, include_redaction=True
+    )
+    current, current_tmp, current_redacted = backup.read_archive(
+        current_raw, include_redaction=True
+    )
+    if current_redacted:
+        current = backup.with_archive_credentials(current, current_credentials or {})
+    if incoming_redacted:
+        credentials = (
+            current_credentials if retain_local_credentials else incoming_credentials
+        )
+        incoming = backup.with_archive_credentials(incoming, credentials or {})
+        if retain_local_credentials:
+            backup.keep_yituliu_settings(incoming, current)
     for files, tmp in ((incoming, incoming_tmp), (current, current_tmp)):
         for name in backup.LEGACY_TMP_CONFIG_FILES:
             if name not in files and name in tmp:

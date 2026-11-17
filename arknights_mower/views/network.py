@@ -31,7 +31,7 @@ def authorize():
 
 @network_bp.route("/settings", methods=["GET", "POST"])
 def settings():
-    if request.method == "GET":
+    if request.method in {"GET", "HEAD"}:
         return {"ok": True, **network_settings.get_settings()}
     data = request.get_json(silent=True)
     if not isinstance(data, dict) or not {"http_proxy", "github_proxy"} <= data.keys():

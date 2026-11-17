@@ -20,6 +20,14 @@ from yamlcore import CoreDumper, CoreLoader
 
 from . import manager_common
 from . import update_runtime as runtime
+from .configuration_secrets import (
+    conf_secrets_path,
+    legacy_conf_secrets_path,
+    read_conf_credentials,
+    split_conf,
+    with_conf_secrets,
+)
+from .credential_store import CredentialStoreError, write_credentials
 from .device_compatibility import omit_empty_mumu_binding_fields
 from .manager_tools import ManagerTools
 from .mower_relay import settings as relay_settings
@@ -35,11 +43,26 @@ def instance_key(space):
     return os.path.normcase(str(instance_directory(space)))
 
 
-def read_instance_config(space):
-    destination = instance_directory(space) / "config/conf.yml"
-    source = (
-        destination if destination.exists() else destination.parent.parent / "conf.yml"
+def _legacy_config_path(destination):
+    return destination.parent.parent / "conf.yml"
+
+
+def _instance_config_paths(destination):
+    return (
+        conf_secrets_path(destination),
+        legacy_conf_secrets_path(destination),
+        destination,
+        _legacy_config_path(destination),
     )
+
+
+def _saved_bytes(paths):
+    return {path: path.read_bytes() if path.exists() else None for path in paths}
+
+
+def read_instance_config(space, *, include_secrets=True):
+    destination = instance_directory(space) / "config/conf.yml"
+    source = destination if destination.exists() else _legacy_config_path(destination)
     raw = (
         yaml.load(source.read_text(encoding="utf-8"), Loader=CoreLoader)
         if source.exists()
@@ -49,6 +72,17 @@ def read_instance_config(space):
         raw = {}
     if not isinstance(raw, dict) or not isinstance(raw.get("webview", {}), dict):
         raise ValueError("实例配置格式不正确，请检查 conf.yml")
+    if source != destination and source.is_file():
+        clean, legacy = split_conf(raw)
+        raw = with_conf_secrets(
+            clean, {**read_conf_credentials(destination, legacy=True), **legacy}
+        )
+    if include_secrets:
+        clean, legacy_values = split_conf(raw)
+        saved = read_conf_credentials(destination)
+        raw = with_conf_secrets(
+            clean, saved if conf_secrets_path(destination).exists() else legacy_values
+        )
     return destination, raw
 
 
@@ -332,7 +366,12 @@ class InstanceController(ManagerTools):
                                 item["relay_message"] = peer.get("relay_message", "")
                     self._start_settings(instance, records)
                     item["can_start"] = True
-                except (OSError, ValueError, yaml.YAMLError) as error:
+                except (
+                    OSError,
+                    ValueError,
+                    yaml.YAMLError,
+                    CredentialStoreError,
+                ) as error:
                     item["reason"] = str(error)
                 result.append(item)
             return result
@@ -383,7 +422,9 @@ class InstanceController(ManagerTools):
                 if not missing_shared or document["independent_instances"][key]:
                     continue
             try:
-                destination, raw = read_instance_config(instance["path"])
+                destination, raw = read_instance_config(
+                    instance["path"], include_secrets=False
+                )
                 configuration = Conf(**raw)
                 upgrading_shared = (
                     document["version"] >= 1
@@ -521,32 +562,28 @@ class InstanceController(ManagerTools):
         if changed:
             manager_common.validate_settings(document["values"])
             if persist:
-                originals = {
-                    path: path.read_bytes() if path.exists() else None
-                    for path in (*bindings, self._common_path)
-                }
+                originals = _saved_bytes(
+                    (
+                        self._common_path,
+                        *(
+                            path
+                            for destination in bindings
+                            for path in _instance_config_paths(destination)
+                        ),
+                    )
+                )
                 attempted = []
                 try:
                     for path, raw in bindings.items():
-                        attempted.append(path)
+                        attempted.extend(_instance_config_paths(path))
                         self._write_config(path, raw)
                     attempted.append(self._common_path)
                     runtime.write_json(self._common_path, document, sync=True)
                 except BaseException:
-                    failures = []
-                    for path in reversed(attempted):
-                        try:
-                            original = originals[path]
-                            if original is None:
-                                path.unlink(missing_ok=True)
-                            elif not path.exists() or path.read_bytes() != original:
-                                self._write_config_bytes(path, original)
-                        except OSError as error:
-                            failures.append(error)
-                    if failures:
-                        raise OSError(
-                            "配置迁移失败且无法完整恢复，请检查文件权限"
-                        ) from failures[0]
+                    self._restore_config_files(
+                        {path: originals[path] for path in attempted},
+                        "配置迁移失败且无法完整恢复，请检查文件权限",
+                    )
                     raise
         return document
 
@@ -680,20 +717,23 @@ class InstanceController(ManagerTools):
     def _write_instance_config(self, instance, settings):
         if not instance["path"]:
             raise ValueError("请先选择实例保存目录")
-        destination, raw = read_instance_config(instance["path"])
+        destination, raw = read_instance_config(instance["path"], include_secrets=False)
+        hydrated = with_conf_secrets(raw, read_conf_credentials(destination))
+        _, legacy_secrets = split_conf(raw)
         current = {
-            key: raw.get(key)
+            key: hydrated.get(key)
             if key
             in {
                 "ai_assistant_enabled",
                 "start_automatically",
                 "extra_settings_visible",
             }
-            else raw.get("webview", {}).get(key)
+            else hydrated.get("webview", {}).get(key)
             for key in settings
         }
         if (
             destination.is_file()
+            and not legacy_secrets
             and "updates_enabled" not in raw
             and current == settings
             and all(
@@ -715,18 +755,62 @@ class InstanceController(ManagerTools):
         elif "updates_enabled" in raw:
             raw["extra_settings_visible"] = _maintenance_permission(raw)
         raw.pop("updates_enabled", None)
-        self._write_config(destination, raw)
+        _, secret_overrides = split_conf({"webview": connection})
+        self._write_config(destination, raw, secret_overrides=secret_overrides)
         return True
 
-    def _write_config(self, destination, raw):
-        self._write_config_bytes(
-            destination,
-            yaml.dump(
-                omit_empty_mumu_binding_fields(raw),
-                Dumper=CoreDumper,
-                allow_unicode=True,
-            ).encode("utf-8"),
-        )
+    def _write_config(self, destination, raw, *, secret_overrides=None):
+        env_path, legacy_env_path, _, legacy = _instance_config_paths(destination)
+        clean, extracted = split_conf(raw)
+        stored = read_conf_credentials(destination)
+        baseline = stored if env_path.exists() else extracted
+        values = {**baseline, **(secret_overrides or {})}
+        environments = {env_path: values} if values != stored else {}
+        documents = {destination: omit_empty_mumu_binding_fields(clean)}
+        if legacy.is_file():
+            try:
+                legacy_data = yaml.load(
+                    legacy.read_text(encoding="utf-8"), Loader=CoreLoader
+                )
+            except (UnicodeError, yaml.YAMLError):
+                legacy_data = None
+            if isinstance(legacy_data, dict):
+                legacy_clean, legacy_values = split_conf(legacy_data)
+                if legacy_values:
+                    legacy_stored = read_conf_credentials(destination, legacy=True)
+                    preserved = {**legacy_stored, **legacy_values}
+                    if preserved != legacy_stored:
+                        environments[legacy_env_path] = preserved
+                    documents[legacy] = legacy_clean
+        originals = _saved_bytes((*environments, *documents))
+        try:
+            for path, values in environments.items():
+                write_credentials(path, values)
+            for path, data in documents.items():
+                self._write_config_bytes(
+                    path,
+                    yaml.dump(data, Dumper=CoreDumper, allow_unicode=True).encode(
+                        "utf-8"
+                    ),
+                )
+        except BaseException:
+            self._restore_config_files(
+                originals, "配置保存失败且无法完整恢复，请检查文件权限"
+            )
+            raise
+
+    def _restore_config_files(self, originals, message):
+        failures = []
+        for path, original in reversed(tuple(originals.items())):
+            try:
+                if original is None:
+                    path.unlink(missing_ok=True)
+                elif not path.exists() or path.read_bytes() != original:
+                    self._write_config_bytes(path, original)
+            except OSError as error:
+                failures.append(error)
+        if failures:
+            raise OSError(message) from failures[0]
 
     def _write_config_bytes(self, destination, content):
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -897,7 +981,9 @@ class InstanceController(ManagerTools):
             if not instance["path"]:
                 raise ValueError("请先选择实例保存目录")
             document = self._connection_document()
-            destination, raw = read_instance_config(instance["path"])
+            destination, raw = read_instance_config(
+                instance["path"], include_secrets=False
+            )
             current, independent, current_policy = self._connection_state(
                 instance, raw, document
             )
@@ -1008,9 +1094,8 @@ class InstanceController(ManagerTools):
                     if isinstance(raw.get(key), dict) and isinstance(value, dict)
                     else value
                 )
-            original_bytes = destination.read_bytes() if destination.exists() else None
-            common_bytes = (
-                self._common_path.read_bytes() if self._common_path.exists() else None
+            originals = _saved_bytes(
+                (*_instance_config_paths(destination), self._common_path)
             )
             try:
                 self._write_config(destination, raw)
@@ -1027,22 +1112,9 @@ class InstanceController(ManagerTools):
                         document.setdefault("instance_overrides", {})[key] = override
                     runtime.write_json(self._common_path, document, sync=True)
             except BaseException:
-                failures = []
-                for path, content in (
-                    (destination, original_bytes),
-                    (self._common_path, common_bytes),
-                ):
-                    try:
-                        if content is None:
-                            path.unlink(missing_ok=True)
-                        elif not path.exists() or path.read_bytes() != content:
-                            self._write_config_bytes(path, content)
-                    except OSError as error:
-                        failures.append(error)
-                if failures:
-                    raise OSError(
-                        "配置保存失败且无法完整恢复，请检查文件权限"
-                    ) from failures[0]
+                self._restore_config_files(
+                    originals, "配置保存失败且无法完整恢复，请检查文件权限"
+                )
                 raise
             return {"ok": True}
 

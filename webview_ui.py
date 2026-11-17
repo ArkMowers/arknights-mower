@@ -12,6 +12,18 @@ if __name__ == "__main__" and sys.argv[1:2] == ["--repair-permissions"]:
 
     sys.exit(repair_permissions(sys.argv[2:]))
 
+if __name__ == "__main__" and sys.argv[1:2] == ["--credential-recovery"]:
+    from arknights_mower.utils.credential_recovery import main as recovery_main
+
+    recovery_main(
+        sys.argv[2:],
+        desktop=(
+            sys.platform in ("win32", "darwin")
+            or bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        ),
+    )
+    sys.exit()
+
 if __name__ == "__main__" and sys.argv[1:2] == ["--shared-ocr-service"]:
     from arknights_mower.utils.ocr_service import main as shared_ocr_main
 
@@ -833,6 +845,44 @@ def start_http_server(app, host, port):
     shutdown.own("HTTP server", close, Phase.SERVER)
 
 
+def recover_desktop_credentials(registration, splash_process=None, splash_queue=None):
+    from hashlib import sha256
+
+    from arknights_mower.utils.credential_recovery import serve
+    from arknights_mower.utils.instance_supervisor import child_report
+    from arknights_mower.utils.lifecycle import shutdown
+    from arknights_mower.utils.path import get_path
+
+    close_child(splash_process)
+    close_channel(splash_queue)
+
+    def ready(port, token):
+        registration.record.update(
+            port=port,
+            listen_host="127.0.0.1",
+            token_hash=sha256(token.encode()).hexdigest(),
+            ready=True,
+            credential_recovery=True,
+        )
+        registration.publish()
+        child_report(
+            ready=True,
+            desired_running=False,
+            port=port,
+            shutdown_request=str(registration.request),
+        )
+
+    serve(
+        get_path("@app"),
+        get_path("@app", space=""),
+        desktop=True,
+        on_ready=ready,
+        shutdown_requested=lambda: (
+            shutdown.closing or registration.shutdown_requested()
+        ),
+    )
+
+
 def _run_desktop():
     from queue import Empty
     from threading import Event, Thread
@@ -883,13 +933,19 @@ def _run_desktop():
     if not background:
         splash_process, splash_queue = start_desktop_child("splash")
         splash_queue.put({"type": "text", "data": "加载配置文件"})
-    from arknights_mower.utils import config
-    from arknights_mower.utils.config_backup import LocalConfigError, backup_lock
-    from arknights_mower.utils.config_profiles import (
-        ProfileConflict,
-        check_generation,
-        current_generation,
-    )
+    from arknights_mower.utils.credential_store import CredentialStoreError
+
+    try:
+        from arknights_mower.utils import config
+        from arknights_mower.utils.config_backup import LocalConfigError, backup_lock
+        from arknights_mower.utils.config_profiles import (
+            ProfileConflict,
+            check_generation,
+            current_generation,
+        )
+    except CredentialStoreError:
+        recover_desktop_credentials(registration, splash_process, splash_queue)
+        return
     from arknights_mower.utils.network import is_port_in_use
 
     with backup_lock:
@@ -967,7 +1023,11 @@ def _run_desktop():
     registration.publish()
     if splash_queue is not None:
         splash_queue.put({"type": "text", "data": "加载 Flask 依赖"})
-    import server
+    try:
+        import server
+    except CredentialStoreError:
+        recover_desktop_credentials(registration, splash_process, splash_queue)
+        return
 
     # Keep a session credential for protected APIs even when remote access is off.
     # Local log reads can use the loopback and same-origin boundary instead.

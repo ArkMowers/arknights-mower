@@ -26,13 +26,27 @@ from arknights_mower.utils.config.plan import (
     migrate_legacy_dorm_order,
     parse_plan_document,
 )
+from arknights_mower.utils.configuration_secrets import (
+    conf_secrets_path,
+    split_conf,
+    with_conf_secrets,
+)
+from arknights_mower.utils.credential_store import (
+    decode_credentials,
+    encode_credentials,
+    protected_key_paths,
+)
 from arknights_mower.utils.path import get_path, temporary_root
 from arknights_mower.utils.workshop_config import workshop_lock
+from arknights_mower.utils.yituliu_sync import TOKEN_ENV_KEY as YITULIU_TOKEN
+from arknights_mower.utils.yituliu_sync import _lock as yituliu_lock
 
 MAX_BACKUP_BYTES = 16 * 1024 * 1024
 MAX_BACKUP_LIMIT_MIB = 1024
 MAX_ARCHIVE_ENTRIES = 1024
 backup_lock = RLock()
+REDACTED_ARCHIVE_COMMENT = b"mower-credentials-redacted-v1"
+YITULIU_SETTINGS = "yituliu_sync.json"
 IMPORT_PRESERVED_FILES = {
     "manager-common.json",
     "network.json",
@@ -67,6 +81,7 @@ class BackupSizeError(ValueError):
 
 EXPORT_EXCLUDED_FILES = {
     "manager-common.json",
+    "network.json",
     "state.json",
     "gui.yml.lock",
     "gui-watermark.key",
@@ -91,6 +106,23 @@ def backup_limit_label():
     return f"{get_backup_limit_bytes() / (1024 * 1024):g} MiB"
 
 
+def _protected_key(path):
+    path = Path(os.path.abspath(path))
+    protected = protected_key_paths()
+    return path in protected or path.resolve(strict=False) in protected
+
+
+def _key_path_collision(path, *, directory=False):
+    path = Path(os.path.abspath(path))
+    return any(
+        (directory and target == key)
+        or (target != key and target.is_relative_to(key))
+        or (not directory and key != target and key.is_relative_to(target))
+        for target in {path, path.resolve(strict=False)}
+        for key in protected_key_paths()
+    )
+
+
 def _local_snapshot():
     """Read originals and index file/directory names with one directory walk."""
     limit = get_backup_limit_bytes()
@@ -104,7 +136,12 @@ def _local_snapshot():
             raise LocalConfigError("本机 config 目录包含符号链接，请移除链接后重试")
         name = path.relative_to(root).as_posix()
         names[name.casefold()] = name
-        if not path.is_file() or name.casefold() in EXPORT_EXCLUDED_FILES:
+        if (
+            not path.is_file()
+            or name.casefold() in EXPORT_EXCLUDED_FILES
+            or _credential_member(name)
+            or _protected_key(path)
+        ):
             continue
         if len(files) >= MAX_ARCHIVE_ENTRIES:
             raise LocalConfigError("本机配置文件数量超过 1024 个，请整理后重试")
@@ -174,6 +211,8 @@ def _tmp_snapshot(total):
         ):
             continue
         path = root / name
+        if _protected_key(path):
+            continue
         if not path.is_file():
             continue
         if name == "data.db":
@@ -209,6 +248,8 @@ def _obsolete_config_snapshot(files, previous, previous_tmp):
     total = sum(map(len, previous.values())) + sum(map(len, previous_tmp.values()))
     originals = {}
     for legacy, canonical in config._CONFIG_PATH_PAIRS:
+        if _protected_key(legacy) or _protected_key(canonical):
+            continue
         if not canonical.is_relative_to(root):
             continue
         name = canonical.relative_to(root).as_posix()
@@ -237,12 +278,14 @@ def _obsolete_config_snapshot(files, previous, previous_tmp):
     return originals
 
 
-def _archive_bytes(files, tmp_files):
+def _archive_bytes(files, tmp_files, *, redacted=False):
     limit = get_backup_limit_bytes()
     if len(files) + len(tmp_files) > MAX_ARCHIVE_ENTRIES:
         raise LocalConfigError("本机配置和数据文件数量超过 1024 个，请整理后重试")
     output = BytesIO()
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
+        if redacted:
+            archive.comment = REDACTED_ARCHIVE_COMMENT
         archive.writestr("config/", b"")
         for name, content in files.items():
             archive.writestr(f"config/{name}", content)
@@ -258,18 +301,24 @@ def _archive_bytes(files, tmp_files):
 
 
 def _write_bytes(path, content):
-    config.atomic_write(path, lambda stream: stream.buffer.write(content))
+    def write(stream):
+        stream.buffer.write(content)
+        if _credential_member(path.name):
+            stream.flush()
+            os.fsync(stream.fileno())
+
+    config.atomic_write(path, write)
 
 
 def export_archive(*, include_tmp=True):
     """Export configuration originals and optionally persistent tmp snapshots."""
-    with backup_lock, workshop_lock:
+    with backup_lock, workshop_lock, yituliu_lock:
         files, _ = _local_snapshot()
         tmp_files = _tmp_snapshot(sum(map(len, files.values()))) if include_tmp else {}
-        return _archive_bytes(files, tmp_files)
+        return _redacted_archive(files, tmp_files)
 
 
-def read_archive(raw, *, include_tmp=False):
+def read_archive(raw, *, include_tmp=False, include_redaction=False):
     """Read bounded regular files without extracting ZIP paths to the filesystem."""
     limit = get_backup_limit_bytes()
     if len(raw) > limit:
@@ -334,6 +383,14 @@ def read_archive(raw, *, include_tmp=False):
                     or "\x00" in info.orig_filename
                 ):
                     raise ValueError("压缩包包含无效路径、重复文件或链接")
+                root = (
+                    config.conf_path.parent
+                    if parts[0] == "config"
+                    else get_path("@app/tmp")
+                )
+                target_path = root.joinpath(*parts[1:])
+                if _key_path_collision(target_path, directory=info.is_dir()):
+                    raise ValueError("备份中的路径与本机凭据密钥冲突")
                 seen.add(name.rstrip("/").casefold())
                 for index in range(1, len(parts) + 1):
                     path = "/".join(parts[:index])
@@ -346,6 +403,8 @@ def read_archive(raw, *, include_tmp=False):
                     continue
                 if len(parts) < 2:
                     raise ValueError("配置文件必须位于 config 目录内")
+                if _protected_key(target_path):
+                    continue
                 relative = PurePosixPath(*parts[1:]).as_posix()
                 target = tmp_files if parts[0] == "tmp" else files
                 target[relative] = archive.read(info)
@@ -355,6 +414,8 @@ def read_archive(raw, *, include_tmp=False):
                     parent.as_posix() in files for parent in PurePosixPath(name).parents
                 ):
                     raise ValueError("压缩包中的文件与目录冲突")
+            if include_redaction:
+                return files, tmp_files, archive.comment == REDACTED_ARCHIVE_COMMENT
             return (files, tmp_files) if include_tmp else files
     except (BadZipFile, RuntimeError, NotImplementedError, ZlibError) as exc:
         raise ValueError("请选择包含 config 文件夹的 ZIP 备份") from exc
@@ -376,12 +437,138 @@ def _object_file(files, name, *, optional=False):
     return value
 
 
+def _credential_member(name):
+    return any(
+        part.casefold().endswith(
+            (".env", ".secrets.json", ".mower-credentials", ".quarantined")
+        )
+        or part.casefold() == "credential-recovery"
+        for part in PurePosixPath(name).parts
+    )
+
+
+def _yaml_bytes(data):
+    return yaml.safe_dump(data, allow_unicode=True, sort_keys=False).encode("utf-8")
+
+
+def _yituliu_secrets_path():
+    return get_path("@app/yituliu.secrets.json")
+
+
+def _credential_bytes(path):
+    if path.is_symlink() or (path.exists() and not path.is_file()):
+        raise LocalConfigError("凭据文件必须是普通文件")
+    limit = get_backup_limit_bytes()
+    try:
+        with path.open("rb") as stream:
+            raw = stream.read(limit + 1)
+    except FileNotFoundError:
+        return None
+    if len(raw) > limit:
+        raise LocalConfigError("凭据文件超过配置备份大小上限")
+    return raw
+
+
+def split_archive_credentials(files, *, exclude_protected=True):
+    clean = {
+        name: content
+        for name, content in files.items()
+        if not _credential_member(name)
+        and (not exclude_protected or name.casefold() not in EXPORT_EXCLUDED_FILES)
+    }
+    secrets = {}
+    if "conf.yml" in files:
+        data = _object_file(files, "conf.yml")
+        public, secrets = split_conf(data)
+        if public != data:
+            clean["conf.yml"] = _yaml_bytes(public)
+    yituliu_name = next(
+        (name for name in files if name.casefold() == YITULIU_SETTINGS), None
+    )
+    if yituliu_name is not None:
+        settings = _object_file(files, yituliu_name)
+        if "token" in settings:
+            token = settings.pop("token")
+            if not isinstance(token, str):
+                raise ValueError("一图流本地设置的 Token 必须是文本")
+            secrets[YITULIU_TOKEN] = token
+            clean[yituliu_name] = json.dumps(settings).encode("utf-8")
+    return clean, secrets
+
+
+def _redacted_archive(files, tmp_files):
+    try:
+        clean, _ = split_archive_credentials(files)
+    except (ValueError, TypeError, RecursionError, yaml.YAMLError) as exc:
+        raise LocalConfigError("无法读取本机配置并移除凭据，请检查配置文件") from exc
+    return _archive_bytes(clean, tmp_files, redacted=True)
+
+
+def active_archive_credentials():
+    with backup_lock, workshop_lock, yituliu_lock:
+        files = {}
+        for path in (config.conf_path, config.conf_path.parent / YITULIU_SETTINGS):
+            if path.is_symlink():
+                raise LocalConfigError("凭据配置文件必须是普通文件")
+            if path.is_file():
+                files[path.name] = path.read_bytes()
+        try:
+            _, embedded = split_archive_credentials(files)
+            secrets = {}
+            for path, values in (
+                (
+                    conf_secrets_path(config.conf_path),
+                    {
+                        key: value
+                        for key, value in embedded.items()
+                        if key != YITULIU_TOKEN
+                    },
+                ),
+                (
+                    _yituliu_secrets_path(),
+                    {YITULIU_TOKEN: embedded[YITULIU_TOKEN]}
+                    if YITULIU_TOKEN in embedded
+                    else {},
+                ),
+            ):
+                raw = _credential_bytes(path)
+                if raw is not None:
+                    values = decode_credentials(raw)
+                secrets.update(values)
+        except (ValueError, TypeError, RecursionError, yaml.YAMLError) as exc:
+            raise LocalConfigError("无法读取本机凭据，请检查配置文件") from exc
+        return secrets
+
+
+def with_archive_credentials(files, secrets):
+    files, _ = split_archive_credentials(files)
+    if secrets:
+        files["conf.yml"] = _yaml_bytes(
+            with_conf_secrets(_object_file(files, "conf.yml"), secrets)
+        )
+    if YITULIU_TOKEN in secrets:
+        settings = _object_file(files, YITULIU_SETTINGS, optional=True) or {}
+        settings["token"] = secrets[YITULIU_TOKEN]
+        files[YITULIU_SETTINGS] = json.dumps(settings).encode("utf-8")
+    return files
+
+
+def keep_yituliu_settings(files, current):
+    for name in tuple(files):
+        if name.casefold() == YITULIU_SETTINGS:
+            del files[name]
+    if YITULIU_SETTINGS in current:
+        files[YITULIU_SETTINGS] = current[YITULIU_SETTINGS]
+
+
 def plan_from_archive(files):
     return parse_plan_document(_object_file(files, "plan.json"))
 
 
-def _validate_configuration(files):
+def _validate_configuration(files, *, credentials=None):
     data = _object_file(files, "conf.yml")
+    if credentials:
+        data = with_conf_secrets(data, credentials)
     from .managed_device import preserve
 
     preserve(data, config.conf)
@@ -483,9 +670,13 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
     with (
         backup_lock,
         workshop_lock,
+        yituliu_lock,
         TemporaryDirectory(dir=temporary_root()) as directory,
     ):
-        files, tmp_files = read_archive(raw, include_tmp=True)
+        files, tmp_files, redacted = read_archive(raw, include_redaction=True)
+        files, credentials = split_archive_credentials(files, exclude_protected=False)
+        if redacted:
+            credentials = active_archive_credentials()
         for name in LEGACY_TMP_CONFIG_FILES:
             if name not in files and name in tmp_files:
                 if any(path.casefold() == name for path in files):
@@ -497,9 +688,9 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
             if not isinstance(goals, list):
                 raise ValueError("养成计划文件格式错误")
         data, conf, plan, dorm_order_migrated, rescue_plan = _validate_configuration(
-            files
+            files, credentials=credentials
         )
-        data = config.persistent_conf(data)
+        data, conf_credentials = split_conf(config.persistent_conf(data))
         if "rescue_plan.json" not in files:
             if any(name.casefold() == "rescue_plan.json" for name in files):
                 raise ValueError("救急排班文件名必须为 rescue_plan.json")
@@ -511,6 +702,15 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
             _prepare_database(tmp_files["data.db"], prepared)
         root = config.conf_path.parent
         previous, local_names = _local_snapshot()
+        if redacted:
+            yituliu, _ = split_archive_credentials(
+                {
+                    name: previous[name]
+                    for name in (YITULIU_SETTINGS,)
+                    if name in previous
+                }
+            )
+            keep_yituliu_settings(files, yituliu)
         # 旧配置 ZIP 缺少这些原 tmp 数据时，仍保留本机的长期配置。
         for name in LEGACY_TMP_CONFIG_FILES:
             if not replace_tmp and name not in files and name in previous:
@@ -547,7 +747,6 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
             get_path("@app/config-backups")
             / f"before-import-{datetime.now():%Y%m%d-%H%M%S}-{uuid4().hex[:8]}.zip"
         )
-        _write_bytes(recovery, _archive_bytes(previous, previous_tmp))
         contents = dict(files)
         contents["conf.yml"] = yaml.safe_dump(
             {
@@ -587,6 +786,28 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
                 if name != "data.db"
             }
         )
+        credential_targets = []
+        for path, values in (
+            (
+                conf_secrets_path(config.conf_path),
+                conf_credentials,
+            ),
+            (
+                _yituliu_secrets_path(),
+                {YITULIU_TOKEN: credentials[YITULIU_TOKEN]}
+                if YITULIU_TOKEN in credentials
+                else {},
+            ),
+        ):
+            previous_credentials = _credential_bytes(path)
+            if previous_credentials is not None:
+                decode_credentials(previous_credentials)
+            if previous_credentials is not None:
+                originals[path] = previous_credentials
+            if values or previous_credentials is not None:
+                targets[path] = encode_credentials(values)
+                credential_targets.append((path, values))
+        _write_bytes(recovery, _redacted_archive(previous, previous_tmp))
         removed = {root / name for name in previous.keys() - contents.keys()}
         if replace_tmp:
             removed.update(previous_legacy)
@@ -598,7 +819,13 @@ def import_configuration(raw, *, replace_tmp=False, commit=None):
         written = []
         database_restored = False
         try:
-            for target in sorted(set(targets) | removed):
+            for path, values in credential_targets:
+                _write_bytes(path, targets[path])
+                written.append(path)
+                if decode_credentials(_credential_bytes(path)) != values:
+                    raise LocalConfigError("凭据保存后校验失败，已取消配置恢复")
+            credential_paths = {path for path, _ in credential_targets}
+            for target in sorted((set(targets) | removed) - credential_paths):
                 if (
                     target.is_relative_to(root)
                     and target.relative_to(root).as_posix().casefold()

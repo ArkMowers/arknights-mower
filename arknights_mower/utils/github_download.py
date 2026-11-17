@@ -1,14 +1,17 @@
 """Shared GitHub credentials and file-download routing; no global session changes.
 
 The detached updater passes an explicit proxy and settings path. URL rewriting
-and credential lookup stay stdlib-only, without importing the app runtime or GUI.
+and credential lookup do not import the app runtime or GUI.
 """
 
 import base64
 import json
+import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+TOKEN_ENV_KEY = "MOWER_GITHUB_TOKEN"
+UPDATE_TOKEN_ENV_KEY = "MOWER_UPDATE_GITHUB_TOKEN"
 DOWNLOAD_HOSTS = {
     "github.com",
     "raw.githubusercontent.com",
@@ -70,13 +73,34 @@ def get_token():
     return get_effective_settings().get("github_token", "")
 
 
+def token_secrets_path(settings_path):
+    directory = Path(settings_path).parent
+    if directory.name == "config":
+        directory = directory.parent
+    return directory / "network.secrets.json"
+
+
 def read_token_file(path):
     """Read the current setting without importing the detached app runtime."""
     if not path:
         return ""
+    if __package__:
+        from .credential_store import read_credentials
+    else:
+        from credential_store import read_credentials
+
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        return normalize_token(data.get("github_token", ""))
+        secrets_path = token_secrets_path(path)
+        saved = read_credentials(secrets_path)
+        if secrets_path.is_file():
+            return normalize_token(
+                saved.get(TOKEN_ENV_KEY, os.getenv(TOKEN_ENV_KEY, ""))
+            )
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            data = {}
+        return normalize_token(data.get("github_token", os.getenv(TOKEN_ENV_KEY, "")))
     except (OSError, ValueError, AttributeError):
         return ""
 

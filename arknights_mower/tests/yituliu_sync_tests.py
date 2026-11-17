@@ -2,6 +2,7 @@
 
 import copy
 import json
+import os
 import stat
 import sys
 from types import SimpleNamespace
@@ -11,6 +12,11 @@ import pytest
 import requests
 
 from arknights_mower.utils import yituliu_sync as sync
+from arknights_mower.utils.credential_store import (
+    CredentialStoreError,
+    read_credentials,
+    write_credentials,
+)
 
 TOKEN = "0123456789abcdef0123456789abcdef"
 
@@ -19,8 +25,10 @@ TOKEN = "0123456789abcdef0123456789abcdef"
 def sync_case(tmp_path, monkeypatch):
     paths = {
         "@app/config/yituliu_sync.json": tmp_path / "sync.json",
+        "@app/yituliu.secrets.json": tmp_path / "yituliu.secrets.json",
         "@app/tmp/cultivate.json": tmp_path / "cultivate.json",
     }
+    monkeypatch.delenv(sync.TOKEN_ENV_KEY, raising=False)
     monkeypatch.setattr(sync, "get_path", lambda name: paths[name])
     session = MagicMock()
     session.__enter__.return_value = session
@@ -79,11 +87,15 @@ def test_save_status_and_clear_are_local_and_never_echo_token(sync_case):
     assert sync.token_status()["configured"] is False
     result = sync.save_token(TOKEN)
     assert result["configured"] is True and TOKEN not in json.dumps(result)
-    assert stat.S_IMODE(paths["@app/config/yituliu_sync.json"].stat().st_mode) == 0o600
+    assert "token" not in json.loads(paths["@app/config/yituliu_sync.json"].read_text())
+    assert TOKEN not in paths["@app/yituliu.secrets.json"].read_text()
+    if os.name != "nt":
+        assert stat.S_IMODE(paths["@app/yituliu.secrets.json"].stat().st_mode) == 0o600
     assert sync.token_status() == result
     session.post.assert_not_called()
     assert sync.clear_token()["configured"] is False
     assert not paths["@app/config/yituliu_sync.json"].exists()
+    assert read_credentials(paths["@app/yituliu.secrets.json"]) == {}
     session.post.assert_not_called()
 
 
@@ -95,6 +107,114 @@ def test_invalid_tokens_cannot_be_stored_or_sent(sync_case, token):
     with pytest.raises(ValueError):
         sync.save_token(token)
     assert not paths["@app/config/yituliu_sync.json"].exists()
+    assert not paths["@app/yituliu.secrets.json"].exists()
+    session.post.assert_not_called()
+
+
+def test_migration_preserves_upload_metadata_and_external_token_can_be_cleared(
+    sync_case, monkeypatch
+):
+    paths, session, _, _, _ = sync_case
+    metadata = paths["@app/config/yituliu_sync.json"]
+    metadata.write_text(json.dumps({"token": TOKEN, "last_synced_count": 3}))
+    sync.migrate_legacy_token()
+    assert json.loads(metadata.read_text()) == {"last_synced_count": 3}
+    original_mtime = metadata.stat().st_mtime_ns
+    sync.migrate_legacy_token()
+    assert metadata.stat().st_mtime_ns == original_mtime
+    assert sync.token_status()["last_synced_count"] == 3
+    assert sync.token_status()["configured"]
+
+    monkeypatch.setenv(sync.TOKEN_ENV_KEY, "external_yituliu_token")
+    assert not sync.clear_token()["configured"]
+    assert not sync.token_status()["configured"]
+    session.post.assert_not_called()
+
+
+def test_migration_failure_leaves_legacy_token_available_for_retry(
+    sync_case, monkeypatch
+):
+    paths, _, _, _, _ = sync_case
+    metadata = paths["@app/config/yituliu_sync.json"]
+    metadata.write_text(json.dumps({"token": TOKEN, "last_synced_count": 3}))
+
+    def fail(*args):
+        raise PermissionError()
+
+    with monkeypatch.context() as patch:
+        patch.setattr(sync, "write_credentials", fail)
+        sync.migrate_legacy_token()
+        assert json.loads(metadata.read_text())["token"] == TOKEN
+        assert not paths["@app/yituliu.secrets.json"].exists()
+
+    assert sync.token_status()["configured"]
+    assert "token" not in json.loads(metadata.read_text())
+
+
+def test_token_save_failure_preserves_settings_and_sync_baseline(
+    sync_case, monkeypatch
+):
+    paths, _, _, _, _ = sync_case
+    sync.save_token(TOKEN)
+    path = paths["@app/config/yituliu_sync.json"]
+    path.write_text(json.dumps({"last_synced_count": 4}))
+
+    def fail(*args):
+        raise PermissionError()
+
+    monkeypatch.setattr(sync, "write_credentials", fail)
+    with pytest.raises(PermissionError):
+        sync.save_token("replacement_yituliu_token")
+    assert sync.token_status()["last_synced_count"] == 4
+    assert TOKEN not in paths["@app/yituliu.secrets.json"].read_text()
+
+
+def test_encryption_failure_restores_sync_metadata(sync_case, monkeypatch):
+    paths, _, _, _, _ = sync_case
+    sync.save_token(TOKEN)
+    path = paths["@app/config/yituliu_sync.json"]
+    path.write_text(json.dumps({"last_synced_count": 4}))
+    original = paths["@app/yituliu.secrets.json"].read_bytes()
+
+    def fail(*args):
+        raise CredentialStoreError("synthetic encryption failure")
+
+    monkeypatch.setattr(sync, "write_credentials", fail)
+    with pytest.raises(CredentialStoreError):
+        sync.save_token("replacement_yituliu_token")
+    assert sync.token_status()["last_synced_count"] == 4
+    assert paths["@app/yituliu.secrets.json"].read_bytes() == original
+
+
+def test_unreadable_ciphertext_stops_status_and_saving(sync_case):
+    paths, session, _, _, _ = sync_case
+    sync.save_token(TOKEN)
+    secret_path = paths["@app/yituliu.secrets.json"]
+    secret_path.write_text('{"version": "invalid"}')
+    for operation in (
+        sync.token_status,
+        sync.migrate_legacy_token,
+        lambda: sync.save_token("replacement_yituliu_token"),
+    ):
+        with pytest.raises(CredentialStoreError):
+            operation()
+        assert secret_path.read_text() == '{"version": "invalid"}'
+    session.post.assert_not_called()
+
+
+def test_empty_ciphertext_does_not_restore_stale_json_token(sync_case):
+    paths, session, _, _, _ = sync_case
+    metadata = paths["@app/config/yituliu_sync.json"]
+    secret_path = paths["@app/yituliu.secrets.json"]
+    metadata.write_text(json.dumps({"token": TOKEN, "last_synced_count": 4}))
+    assert sync.token_status()["configured"]
+    assert "token" not in json.loads(metadata.read_text())
+    assert TOKEN not in secret_path.read_text()
+    write_credentials(secret_path, {})
+    metadata.write_text(json.dumps({"token": TOKEN, "last_synced_count": 4}))
+    assert not sync.token_status()["configured"]
+    assert sync.token_status()["last_synced_count"] == 4
+    assert "token" not in json.loads(metadata.read_text())
     session.post.assert_not_called()
 
 
@@ -154,7 +274,10 @@ def test_explicit_sync_sends_only_fixed_target_header_and_whitelisted_snapshot(
     assert TOKEN not in json.dumps(result)
     assert sync.token_status()["last_sync_error"] is None
     assert sync.token_status()["last_synced_count"] == 1
-    assert stat.S_IMODE(paths["@app/config/yituliu_sync.json"].stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert (
+            stat.S_IMODE(paths["@app/config/yituliu_sync.json"].stat().st_mode) == 0o600
+        )
     assert paths["@app/tmp/cultivate.json"].read_text() == original
 
 

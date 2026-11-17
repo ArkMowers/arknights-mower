@@ -18,6 +18,8 @@ APK 与 Mower 分别更新。当前 Mower 更新包要求 [Android APK v0.2.23](
 
 `scripts/build_android_runtime.py` 在 Debian bookworm ARM64 镜像内构建 Python 3.12 与当前 `requirements.in` 的依赖（排除桌面 GUI，OpenCV 使用 headless 版本），真实导入关键原生依赖后导出 rootfs。`scripts/package_android.py` 使用已注入版本、构建后的共享 WebUI 和该运行环境生成 ZIP。缺少运行环境时构建失败，不再静默生成只有源码的薄包。
 
+混合凭据加密使用此 rootfs 内的加密运行库；依赖来源与后端能力检查见[凭据加密运行库](../docs/cookbook/packaging.md#credential-encryption-runtime)。
+
 根目录包含 `mower-android.json`、`mower/` 应用内容和 `python-runtime.zip.xz`。内层为 XZ 压缩的 ZIP，包含 Python 解释器、标准库、第三方依赖、Linux 共享库、证书及许可证，不含 `mower_android` 宿主、MAA 核心/接口、Mower 本体或用户配置。符号链接保存在 `.symlinks.json`，宿主在解压普通文件后恢复；绝对链接目标按 rootfs 内路径解释。`runtime.unpacked_size` 是内层 ZIP 全部文件解压后的总字节数（含 symlink 清单，不含最终恢复的链接）。
 
 清单字段为 `kind="mower-android"`、`format=2`、`min_apk=43`、`version`、`revision`、`runtime_api=1`、`python="3.12"`、`platform="android"`、`arch="arm64"`，以及 `runtime={"file":"python-runtime.zip.xz","sha256":"…","unpacked_size":…}`。Python 小版本由实际归档的解释器名称取得。`runtime_api` 仅表示原生桥接协议，Python 依赖升级不再要求改变宿主 API。`requirements.txt` 供审查，手机不执行 pip 安装。

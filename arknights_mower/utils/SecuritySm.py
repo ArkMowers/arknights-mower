@@ -196,7 +196,9 @@ def _DES(o: dict):
             rule = DES_RULE[i]
             res = o[i]
             if rule["is_encrypt"] == 1:
-                c = Cipher(TripleDES(rule["key"].encode("utf-8")), ECB())
+                # Preserve the protocol's single-DES operation with K1 = K2 = K3.
+                key = rule["key"].encode("utf-8") * 3
+                c = Cipher(TripleDES(key), ECB())
                 data = str(res).encode("utf-8")
                 # 补足字节
                 data += b"\x00" * 8

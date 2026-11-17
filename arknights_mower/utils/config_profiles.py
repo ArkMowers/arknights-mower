@@ -5,6 +5,9 @@ import json
 import re
 import sys
 from uuid import uuid4
+from zipfile import BadZipFile, ZipFile
+
+import yaml
 
 from arknights_mower.utils import config
 from arknights_mower.utils import config_backup as backup
@@ -14,6 +17,10 @@ from arknights_mower.utils.config_selection import (
     combine_archives,
     default_archive,
     validate_groups,
+)
+from arknights_mower.utils.credential_store import (
+    decode_credentials,
+    encode_credentials,
 )
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.path import get_path
@@ -160,7 +167,7 @@ def export_current_archive():
             raise backup.LocalConfigError(
                 f"本机配置和数据内容超过 {backup.backup_limit_label()}，无法生成备份"
             )
-        return backup._archive_bytes(files, tmp)
+        return backup._archive_bytes(files, tmp, redacted=True)
 
 
 def _initial_registry():
@@ -243,6 +250,95 @@ def _restore(path, raw):
         backup._write_bytes(path, raw)
 
 
+def _snapshot_originals(path):
+    limit = backup.get_backup_limit_bytes()
+    return {
+        target: _regular_bytes(target, limit, optional=True)
+        for target in (
+            path,
+            path.with_suffix(".secrets.json"),
+        )
+    }
+
+
+def _snapshot_credentials(path):
+    raw = _regular_bytes(
+        path.with_suffix(".secrets.json"),
+        backup.get_backup_limit_bytes(),
+        optional=True,
+    )
+    return decode_credentials(raw) if raw is not None else {}
+
+
+def _save_snapshot(path, raw, credentials):
+    secret_path = path.with_suffix(".secrets.json")
+    originals = _snapshot_originals(path)
+    if originals[secret_path] is not None:
+        decode_credentials(originals[secret_path])
+    written = []
+    try:
+        if credentials or originals[secret_path] is not None:
+            backup._write_bytes(secret_path, encode_credentials(credentials))
+            written.append(secret_path)
+            stored = _regular_bytes(secret_path, backup.get_backup_limit_bytes())
+            if decode_credentials(stored) != credentials:
+                raise backup.LocalConfigError("档案凭据保存后校验失败")
+        backup._write_bytes(path, raw)
+        written.append(path)
+    except Exception:
+        for target in reversed(written):
+            _restore(target, originals[target])
+        raise
+
+
+def migrate_legacy_profiles():
+    with backup.backup_lock, workshop_lock:
+        try:
+            data = _read_registry()
+        except (OSError, ValueError):
+            logger.warning("无法读取档案目录，已跳过档案凭据迁移")
+            return
+        if data is None:
+            return
+        limit = backup.get_backup_limit_bytes()
+        for entry in data["profiles"]:
+            try:
+                path = _profile_path(entry["id"])
+                if not path.exists():
+                    continue
+                if path.stat().st_size > limit:
+                    raise backup.LocalConfigError("档案超过大小限制")
+                with ZipFile(path) as archive:
+                    redacted = archive.comment == backup.REDACTED_ARCHIVE_COMMENT
+                    if redacted:
+                        continue
+                raw = _regular_bytes(path, limit)
+                files, tmp = backup.read_archive(raw, include_tmp=True)
+                backup._object_file(files, "conf.yml")
+                backup._object_file(files, "plan.json")
+                clean, credentials = backup.split_archive_credentials(files)
+                if path.with_suffix(".secrets.json").exists():
+                    credentials = _snapshot_credentials(path)
+                _save_snapshot(
+                    path, backup._archive_bytes(clean, tmp, redacted=True), credentials
+                )
+            except (
+                BadZipFile,
+                OSError,
+                ValueError,
+                TypeError,
+                RecursionError,
+                yaml.YAMLError,
+            ):
+                logger.warning("档案凭据迁移未完成，请检查档案文件 %s", entry["id"])
+
+
+def _active_archive():
+    raw = export_current_archive()
+    credentials = backup.active_archive_credentials()
+    return raw, credentials
+
+
 def import_backup(raw, *, expected_generation=None):
     """Restore a backup and invalidate drafts from the previous configuration."""
     with backup.backup_lock, workshop_lock:
@@ -251,21 +347,18 @@ def import_backup(raw, *, expected_generation=None):
         data["generation"] = uuid4().hex
         index_path = _root() / "index.json"
         snapshot_path = _profile_path(data["active_id"])
-        previous_index = _regular_bytes(index_path, MAX_INDEX_BYTES, optional=True)
-        previous_snapshot = _regular_bytes(
-            snapshot_path, backup.get_backup_limit_bytes(), optional=True
+        originals = _snapshot_originals(snapshot_path)
+        originals[index_path] = _regular_bytes(
+            index_path, MAX_INDEX_BYTES, optional=True
         )
 
         def commit():
             try:
-                backup._write_bytes(snapshot_path, export_current_archive())
+                _save_snapshot(snapshot_path, *_active_archive())
                 _write_registry(data)
             except Exception:
                 logger.exception("备份导入元数据提交失败")
-                for path, previous in (
-                    (snapshot_path, previous_snapshot),
-                    (index_path, previous_index),
-                ):
+                for path, previous in originals.items():
                     try:
                         _restore(path, previous)
                     except Exception:
@@ -275,18 +368,17 @@ def import_backup(raw, *, expected_generation=None):
         return backup.import_configuration(raw, commit=commit)
 
 
-def _activate(data, identifier, raw, outgoing):
+def _activate(data, identifier, raw, outgoing, outgoing_credentials):
     # The outgoing snapshot may advance even when activation later fails.
-    backup._write_bytes(_profile_path(data["active_id"]), outgoing)
+    _save_snapshot(_profile_path(data["active_id"]), outgoing, outgoing_credentials)
     next_data = copy.deepcopy(data)
     next_data["active_id"] = identifier
     next_data["generation"] = uuid4().hex
     index_path, target_path = _root() / "index.json", _profile_path(identifier)
-    previous_index = _regular_bytes(index_path, MAX_INDEX_BYTES)
-    previous_snapshot = _regular_bytes(
-        target_path, backup.get_backup_limit_bytes(), optional=True
-    )
+    originals = _snapshot_originals(target_path)
+    originals[index_path] = _regular_bytes(index_path, MAX_INDEX_BYTES)
     previous_state, state = _state()
+    originals[config.app_state_path] = previous_state
     selected = _weekly_selection(raw)
     if selected:
         state["active_weekly_plan"] = selected
@@ -299,15 +391,11 @@ def _activate(data, identifier, raw, outgoing):
                 config.app_state_path,
                 json.dumps(state, ensure_ascii=False, indent=2).encode("utf-8"),
             )
-            backup._write_bytes(target_path, export_current_archive())
+            _save_snapshot(target_path, *_active_archive())
             _write_registry(next_data)
         except Exception:
             logger.exception("档案元数据提交失败")
-            for path, previous in (
-                (config.app_state_path, previous_state),
-                (target_path, previous_snapshot),
-                (index_path, previous_index),
-            ):
+            for path, previous in originals.items():
                 try:
                     _restore(path, previous)
                 except Exception:
@@ -331,49 +419,62 @@ def _activate(data, identifier, raw, outgoing):
 
 
 def create_profile(name, inherit, *, expected_generation):
-    with backup.backup_lock, workshop_lock:
+    with backup.backup_lock, workshop_lock, backup.yituliu_lock:
         check_generation(expected_generation, allow_legacy=False)
         data = _registry()
         if len(data["profiles"]) >= MAX_PROFILES:
             raise ValueError("最多保存 20 份档案")
         name = _unique_name(data, name)
         selected = validate_groups(inherit)
-        outgoing = export_current_archive()
-        combined = combine_archives(default_archive(), outgoing, selected)
+        outgoing, credentials = _active_archive()
+        combined = combine_archives(
+            default_archive(), outgoing, selected, current_credentials=credentials
+        )
         identifier = uuid4().hex
         data["profiles"].append({"id": identifier, "name": name})
-        return _activate(data, identifier, combined, outgoing)
+        return _activate(data, identifier, combined, outgoing, credentials)
 
 
 def import_profile(raw, name, keep, *, expected_generation):
-    with backup.backup_lock, workshop_lock:
+    with backup.backup_lock, workshop_lock, backup.yituliu_lock:
         check_generation(expected_generation, allow_legacy=False)
         data = _registry()
         if len(data["profiles"]) >= MAX_PROFILES:
             raise ValueError("最多保存 20 份档案")
         name = _unique_name(data, name)
         selected = validate_groups(keep)
-        outgoing = export_current_archive()
-        combined = combine_archives(raw, outgoing, selected)
+        outgoing, credentials = _active_archive()
+        combined = combine_archives(
+            raw,
+            outgoing,
+            selected,
+            current_credentials=credentials,
+            retain_local_credentials=True,
+        )
         identifier = uuid4().hex
         data["profiles"].append({"id": identifier, "name": name})
-        return _activate(data, identifier, combined, outgoing)
+        return _activate(data, identifier, combined, outgoing, credentials)
 
 
 def activate_profile(identifier, keep, *, expected_generation):
-    with backup.backup_lock, workshop_lock:
+    with backup.backup_lock, workshop_lock, backup.yituliu_lock:
         check_generation(expected_generation, allow_legacy=False)
         data = _registry()
         _find(data, identifier)
         selected = validate_groups(keep)
         if identifier == data["active_id"]:
             return _public(data)
-        incoming = _regular_bytes(
-            _profile_path(identifier), backup.get_backup_limit_bytes()
+        path = _profile_path(identifier)
+        incoming = _regular_bytes(path, backup.get_backup_limit_bytes())
+        outgoing, credentials = _active_archive()
+        combined = combine_archives(
+            incoming,
+            outgoing,
+            selected,
+            incoming_credentials=_snapshot_credentials(path),
+            current_credentials=credentials,
         )
-        outgoing = export_current_archive()
-        combined = combine_archives(incoming, outgoing, selected)
-        return _activate(data, identifier, combined, outgoing)
+        return _activate(data, identifier, combined, outgoing, credentials)
 
 
 def rename_profile(identifier, name, *, expected_generation):

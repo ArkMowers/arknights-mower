@@ -7,6 +7,11 @@ working paths remain `config/` and `tmp/`; saved snapshots live in
 `config-profiles/`, outside exported configuration. Existing installations begin
 with their current files as the default configuration.
 
+Local snapshots keep credentials in a matching encrypted `<id>.secrets.json` file. Activating,
+copying or combining a profile applies the credentials for the selected groups
+with the rest of their settings. The [backup credential rules](config-backup.md#configuration-credential-storage)
+govern ZIP exports and imports.
+
 Creating a configuration starts with defaults and inherits only the selected
 groups from the current configuration. Copying uses the same operation with all
 groups initially selected. ZIP import starts with the archive and retains only

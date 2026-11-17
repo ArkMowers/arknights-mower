@@ -1,5 +1,6 @@
 """Run inside the build container to test the exact exported and pruned rootfs."""
 
+import inspect
 import json
 import lzma
 import os
@@ -10,6 +11,11 @@ import sys
 import tempfile
 import zipfile
 from pathlib import Path
+
+if __package__:
+    from .check_credential_crypto import check_credential_crypto
+else:
+    from check_credential_crypto import check_credential_crypto
 
 RUNTIME_SMOKE_CODE = """
 import platform
@@ -47,6 +53,8 @@ cv2.ORB_create().detectAndCompute(gray, None)
 assert quickjs.Context().eval("1+1") == 2
 print("ARM64 Python runtime imports and OpenCV checks passed")
 """
+RUNTIME_SMOKE_CODE += "\n" + inspect.getsource(check_credential_crypto)
+RUNTIME_SMOKE_CODE += "\ncheck_credential_crypto()\n"
 
 
 def smoke(archive_path: Path):

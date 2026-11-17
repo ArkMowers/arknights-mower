@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import tempfile
@@ -8,11 +9,18 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+import yaml
+
 from arknights_mower.utils import config as config_module
-from arknights_mower.utils import workshop_config
+from arknights_mower.utils import configuration_secrets, credential_store, workshop_config
 from arknights_mower.utils.config import atomic_write, migrate_app_config_paths
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.device_profile import DeviceProfile
+from arknights_mower.utils.configuration_secrets import (
+    conf_secrets_path,
+    legacy_conf_secrets_path,
+)
+from arknights_mower.utils.credential_store import read_credentials
 
 
 @contextmanager
@@ -552,9 +560,269 @@ class TestConfigPersistence(unittest.TestCase):
         self.assertNotIn("maa_mall_only_buy_discount", written)
         self.assertNotIn("maa_mall_reserve_max_credit", written)
         self.assertIn("maa_report_to_yituliu", written)
-        self.assertIn("maa_yituliu_id", written)
+        self.assertNotIn("yituliu-abc", written)
+        self.assertEqual(
+            read_credentials(conf_secrets_path(self.conf_path))["MOWER_MAA_YITULIU_ID"],
+            "yituliu-abc",
+        )
         # 未配置的默认字段仍不落盘
         self.assertNotIn("maa_eat_stone", written)
+
+    def test_legacy_credentials_and_rescue_plan_migrate_on_first_load(self):
+        legacy = {
+            "theme": "dark",
+            "account": "sender@example.test",
+            "pass_code": 'quoted " secret \\ $(example) # value\n第二行',
+            "recipient": ["recipient@example.test"],
+            "webview": {"token": "remote-test-secret", "port": 58009},
+            "maa_mirrorchyan_token": "mirror-test-secret",
+            "maa_penguin_id": "penguin-test-identifier",
+            "ai_key": "deepseek-test-secret",
+            "ai_custom_key": "custom-test-secret",
+            "ai_base_url": "https://relay.example.test/?key=embedded-test-secret",
+            "skland_info": [
+                {"account": "skland-test-user", "password": "skland-test-secret"}
+            ],
+            "automatic_rescue_plan": {},
+        }
+        self.conf_path.write_text(yaml.safe_dump(legacy), encoding="utf-8")
+        with _patched_conf(self.conf_path):
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.pass_code, legacy["pass_code"])
+            self.assertEqual(config_module.conf.webview.token, "remote-test-secret")
+            self.assertEqual(
+                config_module.conf.skland_info[0].password, "skland-test-secret"
+            )
+            self.assertTrue(config_module.rescue_plan_path.is_file())
+            clean = yaml.safe_load(self.conf_path.read_text(encoding="utf-8"))
+            self.assertEqual(clean, {"theme": "dark", "webview": {"port": 58009}})
+            env = read_credentials(conf_secrets_path(self.conf_path))
+            self.assertEqual(env["MOWER_MAIL_RECIPIENTS"], ["recipient@example.test"])
+            self.assertEqual(env["MOWER_AI_KEY"], "deepseek-test-secret")
+            config_module.conf = config_module.conf.updated({"ai_custom_key": ""})
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.ai_custom_key, "")
+            self.assertEqual(config_module.conf.webview.token, "remote-test-secret")
+            self.assertEqual(config_module.conf.pass_code, legacy["pass_code"])
+            self.assertEqual(config_module.conf.ai_base_url, legacy["ai_base_url"])
+
+    def test_launch_environment_bootstraps_new_values_and_ui_can_clear_them(self):
+        with (
+            _patched_conf(self.conf_path),
+            patch.dict(os.environ, {"MOWER_AI_KEY": "launch-secret"}),
+        ):
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.ai_key, "launch-secret")
+            config_module.conf = config_module.conf.updated({"ai_key": ""})
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.ai_key, "")
+            self.assertNotIn(
+                "launch-secret", self.conf_path.read_text(encoding="utf-8")
+            )
+
+    def test_old_root_conf_credentials_are_available_when_legacy_conf_is_recovered(
+        self,
+    ):
+        canonical = self.dir / "config" / "conf.yml"
+        canonical.parent.mkdir()
+        canonical.write_text("webview: {token: current-value}\n", encoding="utf-8")
+        self._write_conf("webview: {token: legacy-value, port: 58001}\n")
+        with (
+            _patched_conf(canonical),
+            patch.object(config_module, "_LEGACY_CONF_PATH", self.conf_path),
+            patch.object(
+                config_module, "_CONFIG_PATH_PAIRS", ((self.conf_path, canonical),)
+            ),
+        ):
+            config_module.load_conf()
+            config_module._migrate_unused_legacy_credentials()
+            self.assertEqual(config_module.conf.webview.token, "current-value")
+            self.assertEqual(
+                yaml.safe_load(self.conf_path.read_text(encoding="utf-8")),
+                {"webview": {"port": 58001}},
+            )
+            self.assertEqual(
+                read_credentials(legacy_conf_secrets_path(canonical))[
+                    "MOWER_WEBVIEW_TOKEN"
+                ],
+                "legacy-value",
+            )
+            canonical.unlink()
+            conf_secrets_path(canonical).unlink()
+            migrate_app_config_paths()
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.webview.token, "legacy-value")
+
+    def test_yaml_write_failure_reverts_an_explicit_token_change(self):
+        with _patched_conf(self.conf_path, Conf(webview={"token": "first"})):
+            config_module.save_conf()
+            config_module.conf = config_module.conf.updated(
+                {"webview": {"token": "second"}}
+            )
+            with patch.object(
+                config_module, "atomic_write", side_effect=OSError("write failed")
+            ):
+                with self.assertRaises(OSError):
+                    config_module.save_conf()
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.webview.token, "first")
+
+    def test_legacy_yaml_recovery_preserves_existing_active_credential_map(self):
+        canonical = self.dir / "config" / "conf.yml"
+        canonical.parent.mkdir()
+        self._write_conf("webview: {port: 58001}\n")
+        encrypted = conf_secrets_path(canonical)
+        credential_store.write_credentials(encrypted, {})
+        credential_store.write_credentials(
+            legacy_conf_secrets_path(canonical),
+            {
+                "MOWER_WEBVIEW_TOKEN": "retired-token",
+                "MOWER_MAIL_PASSWORD": "retired-password",
+            },
+        )
+        original = encrypted.read_bytes()
+        with (
+            _patched_conf(canonical),
+            patch.object(config_module, "_LEGACY_CONF_PATH", self.conf_path),
+            patch.object(
+                config_module, "_CONFIG_PATH_PAIRS", ((self.conf_path, canonical),)
+            ),
+            patch.dict(os.environ, {"MOWER_MANAGED": "1"}),
+        ):
+            migrate_app_config_paths()
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.webview.token, "")
+            self.assertEqual(config_module.conf.pass_code, "")
+            self.assertEqual(config_module.conf.webview.port, 58001)
+        self.assertEqual(encrypted.read_bytes(), original)
+        self.assertEqual(read_credentials(encrypted), {})
+
+    def test_failed_credential_readback_restores_exact_files(self):
+        with _patched_conf(
+            self.conf_path,
+            Conf(theme="dark", pass_code="mail-original", webview={"token": "first"}),
+        ):
+            config_module.save_conf()
+            encrypted = conf_secrets_path(self.conf_path)
+            originals = {
+                path: path.read_bytes() for path in (encrypted, self.conf_path)
+            }
+            config_module.conf = config_module.conf.updated(
+                {
+                    "theme": "light",
+                    "pass_code": "changed",
+                    "webview": {"token": "second"},
+                }
+            )
+            atomic_bytes = credential_store._atomic_bytes
+            corrupted = False
+
+            def corrupt_once(path, raw):
+                nonlocal corrupted
+                if path == encrypted and not corrupted:
+                    corrupted = True
+                    raw = b"damaged after persistence"
+                atomic_bytes(path, raw)
+
+            with patch.object(credential_store, "_atomic_bytes", corrupt_once):
+                with self.assertRaises(credential_store.CredentialStoreError):
+                    config_module.save_conf()
+            self.assertTrue(corrupted)
+            self.assertEqual({path: path.read_bytes() for path in originals}, originals)
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.webview.token, "first")
+            self.assertEqual(config_module.conf.pass_code, "mail-original")
+            self.assertEqual(config_module.conf.theme, "dark")
+
+    def test_missing_key_load_and_save_preserve_access_token_and_files(self):
+        key = self.dir / "private.key"
+        key.write_bytes(base64.urlsafe_b64encode(os.urandom(96)))
+        key.chmod(0o600)
+        with (
+            patch.dict(os.environ, {"MOWER_CREDENTIAL_KEY_FILE": str(key)}),
+            _patched_conf(self.conf_path, Conf(webview={"token": "protected-token"})),
+        ):
+            config_module.save_conf()
+            loaded = config_module.conf
+            originals = {
+                path: path.read_bytes()
+                for path in (self.conf_path, conf_secrets_path(self.conf_path))
+            }
+            key.unlink()
+            for operation in (config_module.load_conf, config_module.save_conf):
+                with self.subTest(operation=operation.__name__):
+                    with self.assertRaises(credential_store.CredentialStoreError):
+                        operation()
+                    self.assertIs(config_module.conf, loaded)
+                    self.assertEqual(
+                        config_module.conf.webview.token, "protected-token"
+                    )
+                    self.assertEqual(
+                        {path: path.read_bytes() for path in originals}, originals
+                    )
+                    self.assertFalse(key.exists())
+
+    def test_empty_encrypted_store_does_not_restore_stale_yaml_credentials(self):
+        self._write_conf(
+            "theme: dark\npass_code: obsolete-password\n"
+            "webview: {token: obsolete-token, port: 58001}\n"
+        )
+        encrypted = conf_secrets_path(self.conf_path)
+        credential_store.write_credentials(encrypted, {})
+        with (
+            _patched_conf(self.conf_path),
+            patch.dict(os.environ, {"MOWER_MANAGED": "1"}),
+        ):
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.webview.token, "")
+            self.assertEqual(config_module.conf.webview.port, 58001)
+            self.assertEqual(config_module.conf.pass_code, "")
+            self.assertEqual(config_module.conf.theme, "dark")
+        self.assertEqual(read_credentials(encrypted), {})
+        self.assertEqual(
+            yaml.safe_load(self.conf_path.read_text(encoding="utf-8")),
+            {"theme": "dark", "webview": {"port": 58001}},
+        )
+
+    def test_manager_uses_per_instance_secrets_instead_of_launch_defaults(self):
+        with (
+            _patched_conf(self.conf_path),
+            patch.dict(
+                os.environ,
+                {"MOWER_MANAGED": "1", "MOWER_WEBVIEW_TOKEN": "ambient-secret"},
+            ),
+        ):
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.webview.token, "")
+            config_module.conf = config_module.conf.updated(
+                {"webview": {"token": "instance-secret"}}
+            )
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.webview.token, "instance-secret")
+
+    def test_fallback_ai_key_migration_respects_explicit_data_directory(self):
+        data = self.dir / "custom-data"
+        data.mkdir()
+        external = self.dir / "token.txt"
+        external.write_text("installed-key", encoding="utf-8")
+        local = data / "token.txt"
+        local.write_text("local-key", encoding="utf-8")
+        env = data / "ai.secrets.json"
+        with (
+            patch.dict(os.environ, {"MOWER_DATA_DIR": str(data)}),
+            patch.object(
+                configuration_secrets, "__rootdir__", self.dir / "arknights_mower"
+            ),
+            patch.object(configuration_secrets, "get_path", return_value=env),
+        ):
+            configuration_secrets.migrate_fallback_ai_key()
+            self.assertEqual(configuration_secrets.fallback_ai_key(), "local-key")
+        self.assertEqual(external.read_text(encoding="utf-8"), "installed-key")
+        self.assertEqual(read_credentials(env), {"MOWER_AI_FALLBACK_KEY": "local-key"})
+        self.assertFalse(local.exists())
 
     def test_rogue_new_fields_default_without_injection(self):
         # #264：Roguelike 通用字段未配置时用协议默认值，且不被标记为已设置（不落盘）

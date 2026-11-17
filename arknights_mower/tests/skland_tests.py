@@ -3,6 +3,7 @@ import json
 import sys
 import tempfile
 import unittest
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -42,6 +43,28 @@ SERVER_EPOCH = int(
 )
 # 测试里 mock 的本机 epoch（比服务器快 10 秒，对应真实偏差）
 LOCAL_EPOCH = SERVER_EPOCH + 10
+
+
+class TestDeviceRequestCryptoCompatibility(unittest.TestCase):
+    def test_legacy_field_ciphertext_is_preserved_without_deprecation_warning(self):
+        from cryptography.utils import CryptographyDeprecationWarning
+
+        from arknights_mower.utils import SecuritySm
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", CryptographyDeprecationWarning)
+            encrypted = SecuritySm._DES(
+                {"appId": "default", "platform": "Win32", "time": 0, "protocol": 102}
+            )
+        self.assertEqual(
+            encrypted,
+            {
+                "xx": "Xoz/PL65pzA=",
+                "gm": "HvYa39S0OS4=",
+                "nb": "xkZOSOvhiVg=",
+                "protocol": 102,
+            },
+        )
 
 
 class TestSyncServerTime(unittest.TestCase):

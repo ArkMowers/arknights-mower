@@ -10,6 +10,32 @@ macOS 和 Linux 虽提供独立包，仍建议优先使用 [源码部署](../../
 
 Linux 和 macOS 的打包命令从 `requirements.txt` 读取官方构建使用的 ONNX Runtime 版本。如果当前平台没有该版本的 wheel（例如 Intel Mac），且源码环境已能正常运行 OCR，本地打包可以沿用已安装的兼容版本。在安装打包工具时只执行 `./.venv/bin/python -m pip install pyinstaller==6.22.2`，再继续后续构建步骤。
 
+<a id="credential-encryption-runtime"></a>
+### 凭据加密运行库
+
+本地凭据的新格式需要 `cryptography==50.0.2` 的 X-Wing、HPKE 和 ML-KEM 原生实现。
+安装或升级当前锁文件中的依赖后，在实际用于运行或打包的 Python 环境执行：
+
+```bash
+python scripts/check_credential_crypto.py
+```
+
+检查会生成临时测试密钥，验证私钥恢复、混合加密读写与篡改拒绝；它不加载 Mower 配置，也不读写用户凭据。
+成功时输出 `Credential crypto check passed: X-Wing / HKDF-SHA256 / AES-256-GCM`。
+仅能导入 `cryptography` 不足以确认后端支持 ML-KEM，检查失败时先修复运行环境，不应降低保存格式。
+
+该版本的[官方 wheel 列表](https://pypi.org/project/cryptography/50.0.2/#files)包含 Windows x64、
+macOS 11 及以上 ARM64、Linux glibc 2.17 及以上的 x64/ARM64，以及 musllinux x64/ARM64。
+这些 wheel 自带所需 OpenSSL；这是加密库的适用范围，Mower 独立包仍有前文所链接的宿主运行要求。
+Android 程序运行于 ARM64 Debian rootfs，使用兼容的 manylinux wheel，不在原生 Termux 中编译。
+
+`cryptography==50.0.2` 没有 macOS Intel wheel，Mower 当前也不发布 macOS x64 独立包。
+Intel Mac 源码部署需要编译加密库，准备 Rust 1.83 及以上、C 编译器、Python 与 libffi 开发头文件，
+并使用提供 ML-KEM 的 OpenSSL 3.5 及以上版本；不能使用 Apple 自带的 LibreSSL。
+依赖准备和 OpenSSL 链接方式见该版本的[官方安装说明](https://cryptography.io/en/50.0.2/installation/)，
+ML-KEM 的后端要求见[版本说明](https://cryptography.io/en/50.0.2/changelog/)。
+其他没有兼容 wheel 的自定义源码部署也需要这些编译条件。
+
 ## 2. Windows
 
 Windows x64 独立包使用 CPython 提供的 OpenSSL 3.5.9。打包时会下载两个 DLL 和许可证并校验各自的 SHA-256。离线打包时，预先解压[固定版本的 Windows 二进制文件](https://github.com/python/cpython-bin-deps/archive/ddb46a415b4995440723183e644f8d2c346567a2.zip)，在 PowerShell 中将 `$env:MOWER_OPENSSL_SOURCE` 设为解压目录下 `amd64` 子目录的绝对路径。

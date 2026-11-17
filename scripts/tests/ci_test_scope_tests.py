@@ -82,8 +82,16 @@ def test_native_deduplication_only_applies_when_compatibility_job_runs():
     regular = set(scope.select_tests(ROOT))
     delegated = set(scope.select_tests(ROOT, native_update=True))
     assert regular - delegated == {
+        "arknights_mower/tests/credential_store_tests.py",
+        "arknights_mower/tests/credential_store_provider_tests.py",
+        "arknights_mower/tests/credential_store_hybrid_tests.py",
+        "arknights_mower/tests/credential_store_recovery_tests.py",
+        "arknights_mower/tests/credential_backup_tests.py",
+        "arknights_mower/tests/credential_backup_route_tests.py",
+        "arknights_mower/tests/credential_recovery_tests.py",
         "arknights_mower/tests/shared_ocr_tests.py",
         "arknights_mower/tests/software_update_transaction_tests.py",
+        "scripts/tests/credential_crypto_tests.py",
     }
     assert delegated <= regular
 

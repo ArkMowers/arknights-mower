@@ -1,5 +1,6 @@
 """Concurrent network saves use only synthetic credentials and temporary files."""
 
+import json
 import os
 import queue
 import subprocess
@@ -12,6 +13,11 @@ from unittest.mock import patch
 import pytest
 
 from arknights_mower.utils import network_settings as network
+from arknights_mower.utils.credential_store import (
+    CredentialStoreError,
+    write_credentials,
+)
+from arknights_mower.utils.github_download import read_token_file
 
 
 @pytest.fixture
@@ -115,6 +121,69 @@ def test_proxy_only_save_preserves_token_and_explicit_replacement_wins(settings)
     assert network.save_settings(values)["github_token"] == "synthetic_token"
     values["github_token"] = "replacement_token"
     assert network.save_settings(values)["github_token"] == "replacement_token"
+
+
+def test_legacy_token_migrates_before_network_json_is_sanitized(settings, monkeypatch):
+    secrets_path = network.token_secrets_path(settings)
+    secrets_path.unlink()
+    settings.write_text(
+        json.dumps({"github_token": "legacy_token", "github_proxy": ""})
+    )
+    with patch.object(network, "write_credentials", side_effect=PermissionError):
+        with pytest.raises(PermissionError):
+            network.get_settings(strict=True)
+        assert network.get_settings()["github_token"] == "legacy_token"
+        with pytest.raises(PermissionError):
+            network.save_settings({"http_proxy": "", "github_proxy": ""})
+    assert json.loads(settings.read_text())["github_token"] == "legacy_token"
+    assert network.get_settings(strict=True)["github_token"] == "legacy_token"
+    assert "github_token" not in json.loads(settings.read_text())
+    assert read_token_file(settings) == "legacy_token"
+
+    monkeypatch.setenv(network.TOKEN_ENV_KEY, "injected_token")
+    network.save_settings({"http_proxy": "", "github_proxy": "", "github_token": ""})
+    assert read_token_file(settings) == ""
+    assert network.get_settings(strict=True)["github_token"] == ""
+
+
+def test_proxy_write_failure_preserves_the_saved_token(settings):
+    secrets_path = network.token_secrets_path(settings)
+    original_credentials = secrets_path.read_bytes()
+    original_settings = settings.read_bytes()
+    with patch.object(network, "write_json", side_effect=PermissionError):
+        with pytest.raises(PermissionError):
+            network.save_settings(
+                {"http_proxy": "", "github_proxy": "", "github_token": "replacement"}
+            )
+    assert secrets_path.read_bytes() == original_credentials
+    assert settings.read_bytes() == original_settings
+    assert network.get_settings(strict=True)["github_token"] == "synthetic_token"
+    assert read_token_file(settings) == "synthetic_token"
+
+
+def test_unreadable_ciphertext_never_becomes_an_empty_token(settings):
+    secrets_path = network.token_secrets_path(settings)
+    secrets_path.write_text('{"version": "invalid"}')
+    original = settings.read_bytes()
+    for operation in (
+        network.get_settings,
+        lambda: network.get_settings(strict=True),
+        lambda: read_token_file(settings),
+        lambda: network.save_settings({"http_proxy": "", "github_proxy": ""}),
+    ):
+        with pytest.raises(CredentialStoreError):
+            operation()
+        assert settings.read_bytes() == original
+        assert secrets_path.read_text() == '{"version": "invalid"}'
+
+
+def test_empty_ciphertext_does_not_restore_stale_plaintext(settings, monkeypatch):
+    monkeypatch.delenv(network.TOKEN_ENV_KEY, raising=False)
+    write_credentials(network.token_secrets_path(settings), {})
+    settings.write_text(json.dumps({"github_token": "obsolete_json_token"}))
+    assert read_token_file(settings) == ""
+    assert network.get_settings(strict=True)["github_token"] == ""
+    assert "github_token" not in json.loads(settings.read_text())
 
 
 def test_busy_save_requires_current_web_token_before_entering_settings_save():

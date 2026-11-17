@@ -150,6 +150,8 @@ celerybeat.pid
 
 # Environments
 .env
+*.env
+token.txt
 .venv
 env/
 venv/
@@ -244,6 +246,14 @@ openspec/
 
 # Local Codex workspace files
 /.codex/
+
+# Local encrypted credentials and deployment keys
+*.secrets.json
+*.mower-credentials
+*.quarantined
+credential-recovery/
+private.key
+private.dpapi
 
 # Generated compatibility entry for the resource publisher; shared source lives in data/.
 /ui/src/pages/basement_skill/skill.json

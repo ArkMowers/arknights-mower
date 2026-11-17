@@ -1,4 +1,5 @@
 import json
+import os
 import sqlite3
 from contextlib import closing
 from io import BytesIO
@@ -12,6 +13,8 @@ from flask import Flask, Request
 from arknights_mower.utils import config
 from arknights_mower.utils import config_backup as backup
 from arknights_mower.utils import config_profiles as profiles
+from arknights_mower.utils.configuration_secrets import conf_secrets_path
+from arknights_mower.utils.credential_store import read_credentials
 from arknights_mower.views.config_backup import config_backup_bp
 
 
@@ -60,6 +63,24 @@ def archive(files, tmp_files=None):
             for name, value in tmp_files.items():
                 zipped.writestr(f"tmp/{name}", value)
     return stream.getvalue()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "credential-recovery/old/metadata.json",
+        "saved.mower-credentials",
+        "private.key.synthetic.quarantined",
+    ],
+)
+def test_full_backup_omits_credential_recovery_and_transfer_files(storage, name):
+    path = storage(f"@app/config/{name}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"synthetic-sensitive-material")
+    with ZipFile(BytesIO(backup.export_archive())) as zipped:
+        assert f"config/{name}" not in zipped.namelist()
+        assert "config/conf.yml" in zipped.namelist()
+        assert "config/plan.json" in zipped.namelist()
 
 
 @pytest.mark.parametrize("managed", [False, True])
@@ -379,9 +400,7 @@ def populated_plan():
 
 
 def test_export_preserves_original_bytes_and_includes_persistent_tmp_data(storage):
-    config.conf_path.write_text(
-        "# original comment\naccount: 原始账号\n", encoding="utf-8"
-    )
+    config.conf_path.write_text("# original comment\ntheme: dark\n", encoding="utf-8")
     root = config.conf_path.parent
     (root / "nested").mkdir()
     (root / "nested/custom.yml").write_bytes(b"# custom\nx: 1\n")
@@ -395,6 +414,272 @@ def test_export_preserves_original_bytes_and_includes_persistent_tmp_data(storag
     }
     _, tables = backup.read_archive(backup.export_archive(), include_tmp=True)
     assert set(tables) == {"data.db"}
+
+
+def test_export_and_recovery_zip_exclude_credentials_and_env_files(storage):
+    config.conf_path.write_text(
+        "theme: dark\npass_code: legacy-mail-password\n"
+        "webview: {token: legacy-web-token, port: 19090}\n",
+        encoding="utf-8",
+    )
+    yituliu = storage("@app/config/yituliu_sync.json")
+    yituliu.write_text('{"token":"legacy-yituliu-token","last_synced_count":9}')
+    network = storage("@app/config/network.json")
+    network.write_text('{"github_token":"legacy-github-token"}')
+    misplaced = storage("@app/config/custom/extra.env")
+    misplaced.parent.mkdir()
+    misplaced.write_text('MOWER_TEST="legacy-extra-token"')
+    misplaced_ciphertext = misplaced.with_name("extra.secrets.json")
+    misplaced_ciphertext.write_bytes(b"encrypted-private-configuration")
+
+    def assert_redacted(raw):
+        files, _, redacted = backup.read_archive(raw, include_redaction=True)
+        assert redacted
+        assert files["conf.yml"] == b"theme: dark\nwebview:\n  port: 19090\n"
+        assert json.loads(files["yituliu_sync.json"]) == {"last_synced_count": 9}
+        assert "network.json" not in files
+        assert "custom/extra.env" not in files
+        assert "custom/extra.secrets.json" not in files
+
+    assert_redacted(backup.export_archive())
+    recovery = backup.import_configuration(
+        incoming(
+            **{
+                "conf.yml": "theme: light\npass_code: imported-mail-password\n",
+                "yituliu_sync.json": '{"token":"imported-yituliu-token"}',
+                "custom/ignored.env": 'MOWER_TEST="imported-extra-token"',
+                "custom/ignored.secrets.json": "foreign-encrypted-configuration",
+            }
+        )
+    )
+    assert_redacted(Path(recovery).read_bytes())
+    assert config.conf.pass_code == "imported-mail-password"
+    assert "imported-mail-password" not in config.conf_path.read_text("utf-8")
+    assert json.loads(yituliu.read_bytes()) == {}
+    assert read_credentials(storage("@app/yituliu.secrets.json")) == {
+        "MOWER_YITULIU_TOKEN": "imported-yituliu-token"
+    }
+    assert not storage("@app/config/custom/ignored.env").exists()
+    assert not storage("@app/config/custom/ignored.secrets.json").exists()
+    assert (
+        b"imported-yituliu-token"
+        not in storage("@app/yituliu.secrets.json").read_bytes()
+    )
+
+
+@pytest.mark.parametrize("failure", ["corrupt", "missing_key"])
+def test_import_rejects_unreadable_local_credentials_before_writes(
+    storage, monkeypatch, failure
+):
+    from arknights_mower.utils.credential_store import CredentialStoreError
+
+    path = conf_secrets_path(config.conf_path)
+    if failure == "corrupt":
+        path.write_bytes(b"damaged encrypted credentials")
+    else:
+        monkeypatch.setenv(
+            "MOWER_CREDENTIAL_KEY_FILE", str(storage("@app/missing-credential-key"))
+        )
+    previous_credentials = path.read_bytes()
+    previous_conf = config.conf_path.read_bytes()
+    previous_model = config.conf
+
+    with pytest.raises(CredentialStoreError):
+        backup.import_configuration(incoming())
+
+    assert path.read_bytes() == previous_credentials
+    assert config.conf_path.read_bytes() == previous_conf
+    assert config.conf is previous_model
+    assert not storage("@app/config-backups").exists()
+
+
+def test_redacted_restore_retains_local_credentials_and_rolls_back_legacy_import(
+    storage,
+):
+    config.conf.pass_code = "current-mail-password"
+    config.save_conf()
+    local_env = conf_secrets_path(config.conf_path)
+    local_values = read_credentials(local_env)
+    files = backup.read_archive(backup.export_archive())
+    files["conf.yml"] = b"theme: dark\n"
+    backup.import_configuration(backup._archive_bytes(files, {}, redacted=True))
+    assert config.conf.theme == "dark"
+    assert config.conf.pass_code == "current-mail-password"
+    assert read_credentials(local_env) == local_values | {"MOWER_WEBVIEW_TOKEN": ""}
+
+    def fail():
+        raise OSError("configuration generation failed")
+
+    original = config.conf
+    previous = local_env.read_bytes()
+    with pytest.raises(OSError, match="configuration generation failed"):
+        backup.import_configuration(
+            incoming(**{"conf.yml": "theme: light\npass_code: bad-commit-password"}),
+            commit=fail,
+        )
+    assert config.conf is original
+    assert local_env.read_bytes() == previous
+
+
+def test_redacted_restore_does_not_revive_cleared_legacy_yituliu_token(storage):
+    from arknights_mower.utils.credential_store import write_credentials
+
+    path = storage("@app/yituliu.secrets.json")
+    write_credentials(path, {})
+    storage("@app/config/yituliu_sync.json").write_text(
+        '{"token":"retired-token","last_synced_count":3}', encoding="utf-8"
+    )
+
+    backup.import_configuration(backup.export_archive())
+
+    assert read_credentials(path) == {}
+    assert "token" not in json.loads(
+        storage("@app/config/yituliu_sync.json").read_bytes()
+    )
+
+
+@pytest.mark.parametrize("location", ["config/custom-secret.dat", "tmp/report.csv"])
+@pytest.mark.parametrize("relative", [False, True])
+def test_backup_excludes_and_preserves_configured_key_at_arbitrary_path(
+    storage, monkeypatch, location, relative
+):
+    key = storage(f"@app/{location}")
+    original = Path(os.environ["MOWER_CREDENTIAL_KEY_FILE"]).read_bytes()
+    key.write_bytes(original)
+    key.chmod(0o600)
+    if relative:
+        monkeypatch.chdir(storage("@app/"))
+    monkeypatch.setenv("MOWER_CREDENTIAL_KEY_FILE", location if relative else str(key))
+    ordinary = storage("@app/config/ordinary.dat")
+    ordinary.write_bytes(b"ordinary configuration")
+
+    exported = backup.export_archive()
+    with ZipFile(BytesIO(exported)) as zipped:
+        assert location not in zipped.namelist()
+        assert zipped.read("config/ordinary.dat") == b"ordinary configuration"
+    files = {"conf.yml": "theme: dark\n", "plan.json": '{"plan1": {}}'}
+    tmp_files = {}
+    if location.startswith("config/"):
+        files[location.removeprefix("config/")] = "replacement key"
+    else:
+        tmp_files[location.removeprefix("tmp/")] = "replacement key"
+
+    backup.import_configuration(archive(files, tmp_files), replace_tmp=True)
+    assert key.read_bytes() == original
+    backup.import_configuration(
+        archive({"conf.yml": "theme: light\n", "plan.json": '{"plan1": {}}'}),
+        replace_tmp=True,
+    )
+    assert key.read_bytes() == original
+    assert config.conf.theme == "light"
+
+
+@pytest.mark.parametrize("filename", ["private.key", "private.dpapi"])
+def test_backup_protects_default_private_key_path(storage, monkeypatch, filename):
+    from arknights_mower.utils import credential_store
+
+    directory = storage("@app/config/local-credentials")
+    directory.mkdir()
+    monkeypatch.setattr(credential_store, "_private_directory", lambda: directory)
+    key = directory / filename
+    original = Path(os.environ["MOWER_CREDENTIAL_KEY_FILE"]).read_bytes()
+    key.write_bytes(original)
+    with ZipFile(BytesIO(backup.export_archive())) as zipped:
+        assert f"config/local-credentials/{filename}" not in zipped.namelist()
+    backup.import_configuration(
+        archive(
+            {
+                "conf.yml": "theme: dark\n",
+                "plan.json": '{"plan1": {}}',
+                f"local-credentials/{filename}": "replacement",
+            }
+        )
+    )
+    assert key.read_bytes() == original
+
+
+def test_backup_protects_configured_key_reached_through_directory_alias(
+    storage, monkeypatch
+):
+    from arknights_mower.utils.credential_store import write_credentials
+
+    key = storage("@app/config/custom-secret.dat")
+    original = Path(os.environ["MOWER_CREDENTIAL_KEY_FILE"]).read_bytes()
+    key.write_bytes(original)
+    key.chmod(0o600)
+    alias = storage("@app/key-alias")
+    try:
+        alias.symlink_to(key.parent, target_is_directory=True)
+    except OSError:
+        pytest.skip("Directory symlinks are unavailable")
+    monkeypatch.setenv("MOWER_CREDENTIAL_KEY_FILE", str(alias / key.name))
+    write_credentials(storage("@app/probe.secrets.json"), {"probe": "synthetic"})
+
+    with ZipFile(BytesIO(backup.export_archive())) as zipped:
+        assert "config/custom-secret.dat" not in zipped.namelist()
+    backup.import_configuration(
+        archive(
+            {
+                "conf.yml": "theme: dark\n",
+                "plan.json": '{"plan1": {}}',
+                "custom-secret.dat": "replacement key",
+            }
+        ),
+        replace_tmp=True,
+    )
+    assert key.read_bytes() == original
+    backup.import_configuration(
+        archive({"conf.yml": "theme: light\n", "plan.json": '{"plan1": {}}'}),
+        replace_tmp=True,
+    )
+    assert key.read_bytes() == original
+
+
+def test_import_never_creates_missing_configured_key(storage, monkeypatch):
+    from arknights_mower.utils.credential_store import CredentialStoreError
+
+    key = storage("@app/config/custom-secret.dat")
+    monkeypatch.setenv("MOWER_CREDENTIAL_KEY_FILE", str(key))
+    previous = config.conf_path.read_bytes()
+    with pytest.raises(CredentialStoreError):
+        backup.import_configuration(
+            archive(
+                {
+                    "conf.yml": "theme: dark\n",
+                    "plan.json": '{"plan1": {}}',
+                    "custom-secret.dat": "archive cannot supply the missing key",
+                }
+            )
+        )
+    assert not key.exists()
+    assert config.conf_path.read_bytes() == previous
+    assert not storage("@app/config-backups").exists()
+
+
+@pytest.mark.parametrize(
+    "name", ["private", "private/custom-secret.dat/child", "private/custom-secret.dat/"]
+)
+@pytest.mark.parametrize("exists", [False, True])
+def test_import_rejects_credential_key_ancestor_and_descendant_collisions(
+    storage, monkeypatch, name, exists
+):
+    key = storage("@app/config/private/custom-secret.dat")
+    original = Path(os.environ["MOWER_CREDENTIAL_KEY_FILE"]).read_bytes()
+    if exists:
+        key.parent.mkdir()
+        key.write_bytes(original)
+        key.chmod(0o600)
+    monkeypatch.setenv("MOWER_CREDENTIAL_KEY_FILE", str(key))
+    previous = config.conf_path.read_bytes()
+    with pytest.raises(ValueError, match="凭据密钥冲突"):
+        backup.import_configuration(
+            archive({"conf.yml": "{}", "plan.json": '{"plan1": {}}', name: "collision"})
+        )
+    assert key.exists() is exists
+    if exists:
+        assert key.read_bytes() == original
+    assert config.conf_path.read_bytes() == previous
+    assert not storage("@app/config-backups").exists()
 
 
 def test_config_only_export_does_not_read_or_include_tmp_data(storage, monkeypatch):
@@ -451,9 +736,10 @@ def test_commit_failure_restores_files_runtime_and_original_saved_state(
         tmp_files.pop("data.db")
 
     def fail_commit():
-        assert config.conf_path.read_text(encoding="utf-8").startswith(
-            "account: imported"
-        )
+        assert "account:" not in config.conf_path.read_text(encoding="utf-8")
+        assert read_credentials(conf_secrets_path(config.conf_path))[
+            "MOWER_MAIL_ACCOUNT"
+        ] == ("imported")
         assert not report.exists()
         with closing(sqlite3.connect(storage("@app/tmp/data.db"))) as conn:
             if include_database:

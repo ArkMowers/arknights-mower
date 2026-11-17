@@ -16,7 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-from arknights_mower import __rootdir__
 from arknights_mower.utils.config.device_profile import (
     LEGACY_NAMES,
     DeviceProfile,
@@ -25,6 +24,7 @@ from arknights_mower.utils.config.device_profile import (
     profile_from_legacy,
     updated_legacy_profile_fields,
 )
+from arknights_mower.utils.configuration_secrets import fallback_ai_key
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.long_task_windows import validate_long_task_windows
 from arknights_mower.utils.performance import (
@@ -55,7 +55,7 @@ class ConfModel(BaseModel):
     # validate_default=True 让带默认值的字段（如 maa_weekly_plan 的 dict 默认值）也经历一次
     # 校验、转成模型实例；配合 save_conf 的 model_dump(exclude_unset=True)，落盘的只有
     # 用户显式配置过的键，未配置的字段不写入磁盘（新字段默认值由运行时补齐）。
-    model_config = ConfigDict(validate_default=True)
+    model_config = ConfigDict(validate_default=True, hide_input_in_errors=True)
 
 
 def _merge_model_fields(model, updates):
@@ -1170,10 +1170,7 @@ class AIAgentPart(ConfModel):
             return self.ai_custom_key.strip()
         if self.ai_key:
             return self.ai_key
-        token_path = Path(__rootdir__).parent / "token.txt"
-        if token_path.exists():
-            return token_path.read_text(encoding="utf-8").strip()
-        return ""
+        return fallback_ai_key()
 
 
 class MaaRewardPart(ConfModel):

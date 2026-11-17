@@ -1,6 +1,7 @@
 """Upload operator progression after authorized refreshes or manual requests."""
 
 import json
+import os
 import re
 from hashlib import sha256
 from threading import RLock
@@ -8,24 +9,97 @@ from time import time
 
 import requests
 
-from arknights_mower.utils.config import atomic_write
+from arknights_mower.utils.credential_store import (
+    CredentialStoreError,
+    read_credentials,
+    write_credentials,
+)
 from arknights_mower.utils.path import get_path
 
 UPLOAD_URL = "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
+TOKEN_ENV_KEY = "MOWER_YITULIU_TOKEN"
+_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9._~-]{16,512}")
 _lock = RLock()
 
 
+def token_secrets_path():
+    return get_path("@app/yituliu.secrets.json")
+
+
+def _settings_path():
+    return get_path("@app/config/yituliu_sync.json")
+
+
+def _write_metadata(path, data):
+    from arknights_mower.utils.config import atomic_write
+
+    atomic_write(path, lambda stream: json.dump(data, stream))
+    path.chmod(0o600)
+
+
 def _settings():
-    path = get_path("@app/config/yituliu_sync.json")
-    if not path.exists():
-        return {}
+    path = _settings_path()
     try:
-        saved = json.loads(path.read_text("utf-8"))
-        if not isinstance(saved, dict) or not isinstance(saved.get("token", ""), str):
+        try:
+            saved = json.loads(path.read_text("utf-8"))
+        except FileNotFoundError:
+            saved = {}
+        if not isinstance(saved, dict):
             raise ValueError()
-        return saved
+        secrets_path = token_secrets_path()
+        credentials = read_credentials(secrets_path)
+        encrypted = secrets_path.is_file()
+        token = credentials.get(
+            TOKEN_ENV_KEY,
+            os.getenv(TOKEN_ENV_KEY, "")
+            if encrypted
+            else saved.get("token", os.getenv(TOKEN_ENV_KEY, "")),
+        )
+        if not isinstance(token, str) or (
+            token and not _TOKEN_PATTERN.fullmatch(token)
+        ):
+            raise ValueError()
+        if "token" in saved:
+            if not encrypted:
+                write_credentials(secrets_path, {TOKEN_ENV_KEY: token})
+            saved.pop("token")
+            _write_metadata(path, saved)
+        return saved, token
     except (ValueError, OSError):
         raise ValueError("一图流本地设置无法读取，请重新保存 Token") from None
+
+
+def migrate_legacy_token():
+    with _lock:
+        try:
+            _settings()
+        except ValueError:
+            return
+
+
+def _replace_token(token, *, clear=False):
+    from arknights_mower.utils.config import atomic_write
+
+    path = _settings_path()
+    try:
+        previous = path.read_bytes()
+    except FileNotFoundError:
+        previous = None
+    if clear:
+        path.unlink(missing_ok=True)
+    else:
+        _write_metadata(path, {})
+    try:
+        write_credentials(
+            token_secrets_path(),
+            {TOKEN_ENV_KEY: token} if token or TOKEN_ENV_KEY in os.environ else {},
+        )
+    except (OSError, CredentialStoreError):
+        if previous is None:
+            path.unlink(missing_ok=True)
+        else:
+            atomic_write(path, lambda stream: stream.buffer.write(previous))
+        raise
 
 
 def _snapshot():
@@ -37,9 +111,9 @@ def _snapshot():
 
 def token_status():
     with _lock:
-        saved = _settings()
+        saved, token = _settings()
         return {
-            "configured": bool(saved.get("token")),
+            "configured": bool(token),
             "last_synced_at": saved.get("last_synced_at"),
             "last_synced_count": saved.get("last_synced_count", 0),
             "last_attempt_at": saved.get("last_attempt_at"),
@@ -48,26 +122,22 @@ def token_status():
 
 
 def save_token(token):
-    if not isinstance(token, str) or not re.fullmatch(
-        r"[A-Za-z0-9._~-]{16,512}", token.strip()
-    ):
+    if not isinstance(token, str) or not _TOKEN_PATTERN.fullmatch(token.strip()):
         raise ValueError("请输入有效的一图流 OAuth access_token，不要填写森空岛凭据")
     with _lock:
         try:
-            saved = _settings()
+            _, current = _settings()
         except ValueError:
-            saved = {}
-        if saved.get("token") == token.strip():
+            current = ""
+        if current == token.strip():
             return token_status()
-        path = get_path("@app/config/yituliu_sync.json")
-        atomic_write(path, lambda stream: json.dump({"token": token.strip()}, stream))
-        path.chmod(0o600)
+        _replace_token(token.strip())
         return token_status()
 
 
 def clear_token():
     with _lock:
-        get_path("@app/config/yituliu_sync.json").unlink(missing_ok=True)
+        _replace_token("", clear=True)
         return token_status()
 
 
@@ -209,8 +279,8 @@ def _upload(payload, token):
 
 def sync_cached_operators(snapshot=None):
     with _lock:
-        saved = _settings()
-        if not saved.get("token"):
+        saved, token = _settings()
+        if not token:
             raise ValueError(
                 "请先保存具有 gama-data.write 权限的一图流 OAuth access_token"
             )
@@ -238,7 +308,7 @@ def sync_cached_operators(snapshot=None):
                     "message": "与上次成功同步的数据相同，已跳过上传，未传输数据",
                 }
             else:
-                result = _upload(payload, saved["token"])
+                result = _upload(payload, token)
         except ValueError as exc:
             result = {"success": False, "message": str(exc)}
         except Exception:
@@ -258,9 +328,7 @@ def sync_cached_operators(snapshot=None):
                 last_synced_fingerprint=fingerprint,
             )
         try:
-            path = get_path("@app/config/yituliu_sync.json")
-            atomic_write(path, lambda stream: json.dump(saved, stream))
-            path.chmod(0o600)
+            _write_metadata(_settings_path(), saved)
         except OSError:
             if result["success"]:
                 result["message"] += "；本地同步记录未能保存"
@@ -300,7 +368,8 @@ def sync_after_cultivate(snapshot):
     """A failed automatic upload never changes the completed Skland refresh."""
     with _lock:
         try:
-            if not _settings().get("token"):
+            _, token = _settings()
+            if not token:
                 return None
             return sync_cached_operators(snapshot)
         except ValueError as exc:

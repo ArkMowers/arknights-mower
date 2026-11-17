@@ -1417,7 +1417,13 @@ def _start_job(plan, background=False, uploaded=None, *, force=False, automatic=
                 "log_path": str(work / "update.log"),
             },
         )
+        worker_environment = runtime.launch_environment({})
         if plan["deployment"] == "source":
+            # The detached base interpreter has no app crypto dependencies.
+            # Transfer only this job's credential in memory; never retain it.
+            worker_environment[github_download.UPDATE_TOKEN_ENV_KEY] = (
+                github_download.get_token()
+            )
             # Stage PySocks before moving the old venv. Only pip's subprocess
             # receives this bootstrap module through PYTHONPATH.
             if any(
@@ -1437,6 +1443,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False, automatic=
                 "software_update_progress.py",
                 "update_runtime.py",
                 "github_download.py",
+                "credential_store.py",
             ):
                 shutil.copy2(Path(__file__).with_name(name), work / name)
             command = [
@@ -1459,7 +1466,7 @@ def _start_job(plan, background=False, uploaded=None, *, force=False, automatic=
             process = subprocess.Popen(
                 command,
                 cwd=work,
-                env=runtime.launch_environment({}),
+                env=worker_environment,
                 stdin=subprocess.DEVNULL,
                 stdout=log,
                 stderr=log,

@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import json
 import os
 import subprocess
 import sys
@@ -60,6 +61,7 @@ class ProxySettingsBase(unittest.TestCase):
         for key in (
             *network._ENV_KEYS,
             network._BASE_ENV_KEY,
+            github.TOKEN_ENV_KEY,
             "ALL_PROXY",
             "all_proxy",
         ):
@@ -837,7 +839,9 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
                 return_value={"git": "git", "base_python": sys.executable},
             ),
             patch.object(subprocess, "check_output", return_value=b""),
-            patch.object(subprocess, "Popen", return_value=Mock(pid=os.getpid())),
+            patch.object(
+                subprocess, "Popen", return_value=Mock(pid=os.getpid())
+            ) as launch,
         ):
             result = software_update.start_job(plan)
         work = state / "jobs" / result["id"]
@@ -848,15 +852,28 @@ class LocalProxyIntegrationTests(ProxySettingsBase):
         self.assertEqual(job["network_settings_path"], str(network.settings_path()))
         self.assertNotIn("github_pat_test", (work / "job.json").read_text())
         self.assertTrue((work / "github_download.py").is_file())
-        # Copied worker must import without access to the application package.
-        env = os.environ.copy()
-        env.pop("PYTHONPATH", None)
+        # The copied worker consumes credentials without site packages or app code.
+        env = launch.call_args.kwargs["env"].copy()
+        self.assertEqual(env[github.UPDATE_TOKEN_ENV_KEY], "github_pat_test")
+        self.assertNotIn(github.UPDATE_TOKEN_ENV_KEY, os.environ)
+        script = (
+            "import os, sys; "
+            f"sys.path.insert(0, {str(work)!r}); "
+            "import software_update_worker as worker; "
+            "instance = worker.Worker(sys.argv[1]); "
+            "assert instance.github_token() == 'github_pat_test'; "
+            "assert 'MOWER_UPDATE_GITHUB_TOKEN' not in os.environ; "
+            "assert 'MOWER_UPDATE_GITHUB_TOKEN' not in instance.env; "
+            "assert 'credential_store' not in sys.modules"
+        )
         result = subprocess.run(
             [
-                sys.executable,
+                getattr(sys, "_base_executable", sys.executable),
                 "-I",
+                "-S",
                 "-c",
-                f"import sys; sys.path.insert(0, {str(work)!r}); import software_update_worker",
+                script,
+                str(work / "job.json"),
             ],
             cwd=work,
             env=env,
@@ -979,8 +996,14 @@ class GithubTokenTests(ProxySettingsBase):
         )
         self.save(http="http://127.0.0.1:7890")
         self.assertEqual(github.get_token(), "github_pat_test")
+        self.assertNotIn(
+            "github_token", json.loads(network.settings_path().read_text())
+        )
+        secrets_path = github.token_secrets_path(network.settings_path())
+        self.assertNotIn("github_pat_test", secrets_path.read_text())
         if os.name != "nt":
             self.assertEqual(network.settings_path().stat().st_mode & 0o777, 0o600)
+            self.assertEqual(secrets_path.stat().st_mode & 0o777, 0o600)
         for token in (
             None,
             123,

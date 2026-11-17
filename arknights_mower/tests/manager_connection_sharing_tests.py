@@ -9,7 +9,10 @@ from arknights_mower.utils import managed_device
 from arknights_mower.utils import manager_common as common
 from arknights_mower.utils import update_runtime as runtime
 from arknights_mower.utils.config.conf import Conf
-from arknights_mower.utils.manager_instances import InstanceController
+from arknights_mower.utils.manager_instances import (
+    InstanceController,
+    read_instance_config,
+)
 
 
 @pytest.fixture
@@ -174,7 +177,9 @@ def test_migration_uses_one_coherent_baseline_and_retains_explicit_conflicting_i
         },
     )
     before = [path.read_bytes() for path in (first_path, second_path)]
-    expected_second = editor_values(Conf(**yaml.safe_load(second_path.read_text())))
+    expected_second = editor_values(
+        Conf(**yaml.safe_load(second_path.read_text(encoding="utf-8")))
+    )
     baseline = manager.get_common_settings()["values"]
     assert (
         baseline["device.screenshot_backend"]
@@ -231,7 +236,7 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
             }
         )
     )
-    original = Conf(**yaml.safe_load(path.read_text()))
+    original = Conf(**yaml.safe_load(path.read_text(encoding="utf-8")))
     expected = original.updated(
         {
             "device": {
@@ -245,8 +250,9 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
     assert state["independent_configuration"] is True
     assert state["values"]["device"] == expected.device.model_dump()
     assert state["values"]["performance_mode"] == "high"
+    _, hydrated = read_instance_config(target["path"])
     changed = common.apply_settings(
-        Conf(**yaml.safe_load(path.read_text())),
+        Conf(**hydrated),
         manager.get_common_settings()["values"],
         independent=True,
     )
@@ -254,12 +260,12 @@ def test_legacy_flat_common_values_materialize_the_effective_binding(manager, tm
     assert changed.account == original.account
     assert changed.pass_code == original.pass_code
     assert changed.custom_smtp_server == original.custom_smtp_server
-    persisted = yaml.safe_load(path.read_text())
-    assert persisted["account"] == "personal sender"
-    assert persisted["pass_code"] == "personal secret"
+    persisted = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "account" not in persisted
+    assert "pass_code" not in persisted
     assert persisted["custom_smtp_server"]["server"] == "smtp.personal.example.com"
-    assert "startup_mode" not in yaml.safe_load(path.read_text())
-    assert "instance_page_mode" not in yaml.safe_load(path.read_text())
+    assert "startup_mode" not in yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert "instance_page_mode" not in yaml.safe_load(path.read_text(encoding="utf-8"))
     assert (
         manager.get_common_settings()["values"]["device.installation_path"]
         == "C:/foreign"
@@ -294,7 +300,7 @@ def test_versioned_sender_removal_preserves_instance_mail_and_connection_policy(
         },
     )
     manager.get_common_settings()
-    document = json.loads(manager._common_path.read_text())
+    document = json.loads(manager._common_path.read_text(encoding="utf-8"))
     policy_key = common.policy_key(path.parent.parent)
     document["independent_instances"][policy_key] = independent
     document["values"].update(
@@ -326,7 +332,7 @@ def test_versioned_sender_removal_preserves_instance_mail_and_connection_policy(
     assert not any(key.startswith("custom_smtp_server.") for key in schema["values"])
     assert editor(manager)[1]["independent_configuration"] is independent
     edit_common(manager, screenshot=7)
-    persisted = json.loads(manager._common_path.read_text())
+    persisted = json.loads(manager._common_path.read_text(encoding="utf-8"))
     assert persisted["independent_instances"] == {policy_key: independent}
     assert persisted["values"] == {**schema["values"], "screenshot": 7}
     assert path.read_bytes() == before
@@ -355,14 +361,14 @@ def test_legacy_flat_paths_remain_shared_without_instance_or_preview_writes(
     }
     manager._common_path.write_text(json.dumps(legacy))
     before = path.read_bytes(), manager._common_path.read_bytes()
-    original = Conf(**yaml.safe_load(path.read_text()))
+    original = Conf(**yaml.safe_load(path.read_text(encoding="utf-8")))
     expected = original.updated(
         {"device": {key.split(".")[1]: value for key, value in legacy.items()}}
     )
     manager.preview_common_settings(legacy, manager.instances.copy())
     assert (path.read_bytes(), manager._common_path.read_bytes()) == before
     manager.get_common_settings()
-    stored = yaml.safe_load(path.read_text())
+    stored = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert path.read_bytes() == before[0]
     assert editor(manager)[1]["values"]["device"] == expected.device.model_dump()
     assert editor(manager)[1]["independent_configuration"] is False
@@ -392,7 +398,7 @@ def test_legacy_path_migration_rolls_back_all_original_bytes(
                 "performance_mode": "high",
             },
         )
-        path.write_text("# preserve this comment\n" + path.read_text())
+        path.write_text("# preserve this comment\n" + path.read_text(encoding="utf-8"))
         paths.append(path)
     manager._common_path.parent.mkdir(parents=True)
     manager._common_path.write_text(
@@ -455,7 +461,7 @@ def test_unrepresentable_legacy_values_remain_independent_without_blocking_migra
     if compatible_baseline:
         add_instance(manager, tmp_path, "baseline", {"performance_mode": "low"})
     before = path.read_bytes()
-    original = Conf(**yaml.safe_load(path.read_text()))
+    original = Conf(**yaml.safe_load(path.read_text(encoding="utf-8")))
     values = manager.get_common_settings()["values"]
     assert common.validate_settings(values) == values
     expected = Conf(performance_mode="low") if compatible_baseline else Conf()
@@ -507,7 +513,7 @@ def test_shared_changes_are_launch_snapshots_and_never_write_instance_files(
     monkeypatch.setattr(common, "settings_path", lambda: manager._common_path)
     monkeypatch.setattr(common, "get_path", lambda *args, **kwargs: path.parent.parent)
     before = path.read_bytes()
-    original = Conf(**yaml.safe_load(path.read_text()))
+    original = Conf(**yaml.safe_load(path.read_text(encoding="utf-8")))
     running = common.for_launch(original, managed=True)
     edit_common(
         manager,
@@ -547,7 +553,9 @@ def test_independent_toggle_captures_inherited_values_and_return_to_shared_follo
     independent = editor(manager)[1]
     assert independent["independent_configuration"] is True
     assert independent["values"]["performance_mode"] == "low"
-    assert yaml.safe_load(path.read_text())["private_extension"] == {"keep": True}
+    assert yaml.safe_load(path.read_text(encoding="utf-8"))["private_extension"] == {
+        "keep": True
+    }
     set_independent(manager, False)
     shared = editor(manager)[1]
     assert shared["independent_configuration"] is False
@@ -644,13 +652,14 @@ def test_shared_binding_save_validates_inherited_backend_and_retains_local_value
     assert state["values"]["device"]["instance_id"] == "8"
     assert state["values"]["device"]["last_serial"] == ""
     assert state["values"]["device"]["screenshot_backend"] == "droidcast"
-    stored = yaml.safe_load(path.read_text())
+    stored = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert stored["performance_mode"] == "high"
     assert stored["device"]["screenshot_backend"] == "mumu_ipc"
     assert stored["mumu12IPC"] is True
     set_independent(manager, True)
     assert (
-        yaml.safe_load(path.read_text())["device"]["screenshot_backend"] == "droidcast"
+        yaml.safe_load(path.read_text(encoding="utf-8"))["device"]["screenshot_backend"]
+        == "droidcast"
     )
 
 
@@ -732,7 +741,7 @@ def test_corrupt_policy_file_is_not_replaced_with_defaults(manager):
     manager._common_path.write_text(bad)
     with pytest.raises(ValueError, match="缺少共享参数"):
         manager.get_common_settings()
-    assert manager._common_path.read_text() == bad
+    assert manager._common_path.read_text(encoding="utf-8") == bad
 
 
 def test_shared_values_and_policy_survive_instance_configuration_import_projection(
@@ -755,7 +764,7 @@ def test_shared_values_and_policy_survive_instance_configuration_import_projecti
     )
     monkeypatch.setenv("MOWER_MANAGED", "1")
     monkeypatch.setattr(common, "settings_path", lambda: manager._common_path)
-    document = json.loads(manager._common_path.read_text())
+    document = json.loads(manager._common_path.read_text(encoding="utf-8"))
     document["values"]["account"] = "retired shared sender"
     manager._common_path.write_text(json.dumps(document), encoding="utf-8")
     before = manager._common_path.read_bytes()
@@ -833,7 +842,7 @@ def test_shared_template_launch_snapshot_and_binding_endpoint_isolation(
     monkeypatch.setattr(common, "settings_path", lambda: manager._common_path)
     monkeypatch.setattr(common, "get_path", lambda *args, **kwargs: path.parent.parent)
     manager.get_common_settings()
-    original = Conf(**yaml.safe_load(path.read_text()))
+    original = Conf(**yaml.safe_load(path.read_text(encoding="utf-8")))
     running = common.for_launch(original, managed=True)
     before = path.read_bytes(), second.read_bytes()
     edit_common(
@@ -866,7 +875,10 @@ def test_shared_template_launch_snapshot_and_binding_endpoint_isolation(
     current = editor(manager)[1]["values"]["device"]
     assert current["instance_id"] == "4" and current["instance_name"] == "four"
     assert current["installation_path"] == "C:/shared" and current["last_serial"] == ""
-    assert yaml.safe_load(second.read_text())["device"]["last_serial"] == "old:17003"
+    assert (
+        yaml.safe_load(second.read_text(encoding="utf-8"))["device"]["last_serial"]
+        == "old:17003"
+    )
 
 
 @pytest.mark.parametrize("change", ["id", "name"])
@@ -895,7 +907,7 @@ def test_shared_binding_change_clears_cached_endpoint_and_derived_identity(
         target,
         state["values"],
     )
-    stored = yaml.safe_load(path.read_text())["device"]
+    stored = yaml.safe_load(path.read_text(encoding="utf-8"))["device"]
     assert (
         stored["last_serial"]
         == stored["instance_uuid"]
@@ -960,7 +972,7 @@ def test_old_version_one_template_upgrade_preserves_effective_shared_values_and_
     )
     before = first_path.read_bytes(), third_path.read_bytes()
     expected_second = common.apply_settings(
-        Conf(**yaml.safe_load(second_path.read_text())), old_values
+        Conf(**yaml.safe_load(second_path.read_text(encoding="utf-8"))), old_values
     )
     values = manager.get_common_settings()["values"]
     assert common.TEMPLATE_KEYS <= values.keys()
@@ -972,9 +984,9 @@ def test_old_version_one_template_upgrade_preserves_effective_shared_values_and_
     assert editor(manager, third)[1]["independent_configuration"] is True
     assert editor(manager, third)[1]["values"]["performance_mode"] == "medium"
     assert (first_path.read_bytes(), third_path.read_bytes()) == before
-    assert yaml.safe_load(second_path.read_text())["private_extension"] == {
-        "keep": True
-    }
+    assert yaml.safe_load(second_path.read_text(encoding="utf-8"))[
+        "private_extension"
+    ] == {"keep": True}
     after = second_path.read_bytes(), manager._common_path.read_bytes()
     manager.get_common_settings()
     assert (second_path.read_bytes(), manager._common_path.read_bytes()) == after
@@ -1085,7 +1097,7 @@ def test_shared_discovery_projects_automatic_paths_but_rejects_foreign_template(
             == ""
         )
         manager.update_device_settings(0, changes, target, state["values"])
-        stored = yaml.safe_load(path.read_text())["device"]
+        stored = yaml.safe_load(path.read_text(encoding="utf-8"))["device"]
         assert stored["installation_path"] == "C:/Nox"
         assert stored["manager_path"] == stored["config_path"] == ""
         assert stored["instance_uuid"] == "uuid-three" and stored["last_serial"] == ""
@@ -1111,7 +1123,9 @@ def test_old_version_one_template_upgrade_restores_exact_files_on_failure(
                 "private_extension": index,
             },
         )
-        path.write_text("# retain original comment\n" + path.read_text())
+        path.write_text(
+            "# retain original comment\n" + path.read_text(encoding="utf-8")
+        )
         paths.append(path)
     values = {
         key: value
@@ -1205,7 +1219,7 @@ def test_template_upgrade_preserves_implicit_auto_paths_in_existing_bindings(
             "performance_mode": "high",
         },
     )
-    original = Conf(**yaml.safe_load(second_path.read_text()))
+    original = Conf(**yaml.safe_load(second_path.read_text(encoding="utf-8")))
     if legacy_version == 1:
         values = {
             key: value
@@ -1290,7 +1304,7 @@ def test_shared_candidates_reuse_real_vendor_manager_location_semantics(
         target,
         state["values"],
     )
-    stored = yaml.safe_load(path.read_text())["device"]
+    stored = yaml.safe_load(path.read_text(encoding="utf-8"))["device"]
     assert stored["installation_path"] == str(root)
     assert stored["manager_path"] == "" and stored["instance_uuid"] == "uuid-one"
 
@@ -1433,7 +1447,7 @@ def test_old_shared_document_adds_waiting_scene_without_losing_effective_values(
     )
     before = first_path.read_bytes(), third_path.read_bytes()
     expected_second = common.apply_settings(
-        Conf(**yaml.safe_load(second_path.read_text())), values
+        Conf(**yaml.safe_load(second_path.read_text(encoding="utf-8"))), values
     )
     upgraded = manager.get_common_settings()["values"]
     assert upgraded["waiting_scene"] == waiting_values(UNKNOWN=[5, 11])
@@ -1477,7 +1491,7 @@ def test_waiting_scene_upgrade_failure_restores_original_instance_and_common_byt
         _, path = add_instance(
             manager, tmp_path, name, {"performance_mode": "high", **raw}
         )
-        path.write_text("# preserve this comment\n" + path.read_text())
+        path.write_text("# preserve this comment\n" + path.read_text(encoding="utf-8"))
         paths.append(path)
     values = manager.get_common_settings()["values"]
     values.pop("waiting_scene")
@@ -1527,7 +1541,7 @@ def test_waiting_scene_shared_launch_snapshot_and_independent_json_bridge_edits(
     assert path.read_bytes() == original_bytes
     monkeypatch.setattr(common, "settings_path", lambda: manager._common_path)
     monkeypatch.setattr(common, "get_path", lambda *args, **kwargs: path.parent.parent)
-    local = Conf(**yaml.safe_load(path.read_text()))
+    local = Conf(**yaml.safe_load(path.read_text(encoding="utf-8")))
     running = common.for_launch(local, managed=True)
     assert running.waiting_scene.UNKNOWN == (7, 13)
     target, state = editor(manager)
@@ -1547,12 +1561,12 @@ def test_waiting_scene_shared_launch_snapshot_and_independent_json_bridge_edits(
     edit_common(manager, waiting_scene=waiting_values(UNKNOWN=[11, 19]))
     assert running.waiting_scene.UNKNOWN == (7, 13)
     assert common.for_launch(
-        Conf(**yaml.safe_load(path.read_text())), managed=True
+        Conf(**yaml.safe_load(path.read_text(encoding="utf-8"))), managed=True
     ).waiting_scene.UNKNOWN == (9, 17)
     set_independent(manager, False)
     assert editor(manager)[1]["values"]["waiting_scene"] == waiting_values(
         UNKNOWN=[11, 19]
     )
-    local = Conf(**yaml.safe_load(path.read_text()))
+    local = Conf(**yaml.safe_load(path.read_text(encoding="utf-8")))
     assert common.for_launch(local, managed=False) is local
     assert local.waiting_scene.UNKNOWN == (9, 17)

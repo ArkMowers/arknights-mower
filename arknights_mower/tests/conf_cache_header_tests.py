@@ -10,6 +10,7 @@ import unittest
 
 from flask import Flask, jsonify
 
+from arknights_mower.views import network
 from server import forbid_caching_sensitive_responses
 
 
@@ -50,3 +51,46 @@ class ConfigCacheHeaderTests(unittest.TestCase):
         self.assertNotEqual(
             self.client.get("/logs.zip").headers.get("Cache-Control"), "no-store"
         )
+
+
+def test_network_settings_needs_token_for_read_and_write(monkeypatch):
+    app = Flask(__name__)
+    app.token = "web-test-token"
+    app.register_blueprint(network.network_bp)
+    app.after_request(forbid_caching_sensitive_responses)
+    values = {
+        "github_token": "github_test_secret",
+        "github_proxy": "",
+        "http_proxy": "",
+    }
+    reads, writes = [], []
+
+    def read():
+        reads.append(True)
+        return values
+
+    def write(data):
+        writes.append(data)
+        return data
+
+    monkeypatch.setattr(network.network_settings, "get_settings", read)
+    monkeypatch.setattr(network.network_settings, "save_settings", write)
+    client = app.test_client()
+    for headers in ({}, {"token": "wrong"}):
+        assert client.get("/network/settings", headers=headers).status_code == 403
+        assert client.head("/network/settings", headers=headers).status_code == 403
+        assert (
+            client.post("/network/settings", headers=headers, json=values).status_code
+            == 403
+        )
+    assert reads == writes == []
+
+    headers = {"token": app.token, "X-Mower-Settings": "1"}
+    response = client.get("/network/settings", headers=headers)
+    assert response.json == {"ok": True, **values}
+    assert response.headers["Cache-Control"] == "no-store"
+    assert client.head("/network/settings", headers=headers).status_code == 200
+    response = client.post("/network/settings", headers=headers, json=values)
+    assert response.json == {"ok": True, **values}
+    assert response.headers["Cache-Control"] == "no-store"
+    assert writes == [values]

@@ -11,6 +11,8 @@ import yaml
 from arknights_mower.utils import manager_tools as tools
 from arknights_mower.utils import network_settings as network
 from arknights_mower.utils import update_runtime as runtime
+from arknights_mower.utils.credential_store import read_credentials
+from arknights_mower.utils.github_download import TOKEN_ENV_KEY, token_secrets_path
 from arknights_mower.utils.manager_instances import InstanceController
 
 
@@ -64,9 +66,10 @@ def test_batch_automatic_start_only_changes_selected_rows_and_preserves_permissi
         "extra_settings_visible": False,
         "ai_assistant_enabled": False,
         "start_automatically": True,
-        "webview": {"token": "secret", "port": 58001},
+        "webview": {"port": 58001},
     }
     assert manager.get_instances()[0]["start_automatically"] is True
+    assert manager.get_instances()[0]["token"] == "secret"
     assert not (Path(manager.instances[1]["path"]) / "config/conf.yml").exists()
     with pytest.raises(ValueError):
         manager.update_all_settings(
@@ -215,7 +218,14 @@ def test_proxy_entry_reuses_shared_file_and_rejects_stale_and_corrupt_data(
         "github_token": "github_pat_test",
     }
     assert manager.save_network_settings(changed, original) == changed
-    assert json.loads(path.read_text()) == changed
+    assert json.loads(path.read_text()) == {
+        "http_proxy": "http://127.0.0.1:7890",
+        "github_proxy": "https://proxy.example/",
+    }
+    assert (
+        read_credentials(token_secrets_path(path))[TOKEN_ENV_KEY]
+        == changed["github_token"]
+    )
     with pytest.raises(ValueError, match="已变化"):
         manager.save_network_settings(original, original)
     path.write_text("not json")
@@ -246,7 +256,8 @@ def test_network_snapshot_is_checked_atomically_with_save(
         manager.save_network_settings(
             {**initial, "http_proxy": "http://127.0.0.1:7897"}, original
         )
-    assert json.loads(path.read_text())["github_token"] == ""
+    assert "github_token" not in json.loads(path.read_text())
+    assert manager.get_network_settings()["github_token"] == ""
 
 
 def test_storage_reports_aliases_without_double_counting_and_does_not_follow_links(

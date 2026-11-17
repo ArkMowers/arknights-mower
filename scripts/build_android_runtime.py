@@ -176,6 +176,8 @@ def main():
             f"{args.output.resolve()}:/runtime.zip.xz:ro",
             "-v",
             f"{ROOT / 'scripts/smoke_android_runtime.py'}:/smoke.py:ro",
+            "-v",
+            f"{ROOT / 'scripts/check_credential_crypto.py'}:/check_credential_crypto.py:ro",
             image,
             "python",
             "/smoke.py",

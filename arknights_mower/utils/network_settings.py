@@ -8,7 +8,17 @@ import time
 from contextlib import contextmanager
 from urllib.parse import urlsplit
 
-from arknights_mower.utils.github_download import normalize_proxy, normalize_token
+from arknights_mower.utils.credential_store import (
+    read_credentials,
+    restore_credentials,
+    write_credentials,
+)
+from arknights_mower.utils.github_download import (
+    TOKEN_ENV_KEY,
+    normalize_proxy,
+    normalize_token,
+    token_secrets_path,
+)
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.update_runtime import write_json
 
@@ -106,23 +116,48 @@ def _settings_file_lock(timeout=3.0):
                 fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
-def get_settings(*, strict=False):
+def get_settings(*, strict=False, _file_locked=False):
     try:
+        path = settings_path()
         try:
-            data = json.loads(settings_path().read_text(encoding="utf-8"))
+            data = json.loads(path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             data = {}
         if not isinstance(data, dict):
             raise ValueError("网络配置格式不正确")
-        return {
+        secrets_path = token_secrets_path(path)
+        saved = read_credentials(secrets_path)
+        encrypted = secrets_path.is_file()
+        token = normalize_token(
+            saved.get(
+                TOKEN_ENV_KEY,
+                data.get("github_token", os.getenv(TOKEN_ENV_KEY, ""))
+                if not encrypted
+                else os.getenv(TOKEN_ENV_KEY, ""),
+            )
+        )
+        settings = {
             "http_proxy": normalize_http_proxy(data.get("http_proxy", "")),
             "github_proxy": normalize_proxy(data.get("github_proxy", "")),
-            "github_token": normalize_token(data.get("github_token", "")),
+            "github_token": token,
         }
     except (OSError, ValueError, AttributeError):
         if strict:
             raise
         return {"http_proxy": "", "github_proxy": "", "github_token": ""}
+    if "github_token" in data:
+        try:
+            if not _file_locked:
+                with _environment_lock, _settings_file_lock():
+                    return get_settings(strict=True, _file_locked=True)
+            if not encrypted:
+                write_credentials(secrets_path, {**saved, TOKEN_ENV_KEY: token})
+            data.pop("github_token")
+            write_json(path, data)
+        except (OSError, ValueError):
+            if strict or _file_locked:
+                raise
+    return settings
 
 
 def save_settings(data, *, original=None):
@@ -133,17 +168,37 @@ def save_settings(data, *, original=None):
     if "github_token" in data:
         settings["github_token"] = normalize_token(data["github_token"])
     with _environment_lock, _settings_file_lock():
-        current = get_settings(strict=True) if original is not None else get_settings()
+        current = get_settings(strict=original is not None, _file_locked=True)
         if original is not None and current != original:
             raise ValueError("网络配置已变化，请重新加载")
-        settings.setdefault("github_token", current["github_token"])
-        apply_http_proxy()
-        write_json(settings_path(), settings)
-        apply_http_proxy()
+        token = settings.pop("github_token", current["github_token"])
+        apply_http_proxy(_file_locked=True)
+        path = settings_path()
+        secrets_path = token_secrets_path(path)
+        saved = read_credentials(secrets_path)
+        new = dict(saved)
+        if token != current["github_token"]:
+            if token or TOKEN_ENV_KEY in os.environ:
+                new[TOKEN_ENV_KEY] = token
+            else:
+                new.pop(TOKEN_ENV_KEY, None)
+        if saved != new:
+            previous_credentials = (
+                secrets_path.read_bytes() if secrets_path.is_file() else None
+            )
+            write_credentials(secrets_path, new)
+        try:
+            write_json(path, settings)
+        except OSError:
+            if saved != new:
+                restore_credentials(secrets_path, previous_credentials)
+            raise
+        apply_http_proxy(_file_locked=True)
+        settings["github_token"] = token
     return settings
 
 
-def apply_http_proxy():
+def apply_http_proxy(*, _file_locked=False):
     """Refresh environment defaults without interrupting in-flight requests.
 
     Keep the launch environment through restarts so clearing a saved override
@@ -166,7 +221,7 @@ def apply_http_proxy():
                 for key in _ENV_KEYS
             }
             os.environ[_BASE_ENV_KEY] = json.dumps(_base_environment)
-        settings = get_settings()
+        settings = get_settings(_file_locked=_file_locked)
         if settings == _effective_settings:
             return
         proxy = settings["http_proxy"]

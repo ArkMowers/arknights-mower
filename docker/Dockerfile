@@ -36,11 +36,13 @@ WORKDIR /app
 COPY requirements.txt requirements.in ./
 COPY docker/gen_server_requirements.py ./gen_server_requirements.py
 COPY scripts/prune_opencv.py ./scripts/prune_opencv.py
+COPY scripts/check_credential_crypto.py ./scripts/check_credential_crypto.py
 RUN python gen_server_requirements.py requirements.in requirements-server.txt \
     && uv venv /opt/venv --python /usr/local/bin/python3.12 \
     && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile setuptools wheel \
     && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile -r requirements-server.txt -c requirements.txt \
     && uv pip check --python /opt/venv/bin/python \
+    && /opt/venv/bin/python scripts/check_credential_crypto.py \
     && /opt/venv/bin/python scripts/prune_opencv.py \
     && find /opt/venv -type d -name '__pycache__' -prune -exec rm -rf {} + \
     && find /opt/venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete \

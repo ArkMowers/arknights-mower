@@ -38,6 +38,8 @@ from arknights_mower.utils.config.plan_advanced import (
     export_advanced_settings,
 )
 from arknights_mower.utils.config_backup import MAX_BACKUP_BYTES, backup_lock
+from arknights_mower.utils.config_profiles import migrate_legacy_profiles
+from arknights_mower.utils.credential_store import CredentialStoreError
 from arknights_mower.utils.csv_utils import EmptyDataError, parse_cell_num, read_dicts
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.diagnostic_version import MissingMowerVersionError
@@ -70,6 +72,7 @@ from arknights_mower.utils.web_auth import (
 )
 from arknights_mower.views.config_backup import config_backup_bp
 from arknights_mower.views.config_profiles import config_profiles_bp
+from arknights_mower.views.credential_backup import credential_backup_bp
 from arknights_mower.views.db_admin import db_admin_bp
 from arknights_mower.views.gui import gui_bp
 from arknights_mower.views.instances import instances_bp, reject_instance_management
@@ -96,10 +99,20 @@ app.config["AI_ASSISTANT_ENABLED"] = config.conf.assistant_enabled_for_launch(
 )
 sock = Sock(app)
 CORS(app)
+migrate_legacy_profiles()
 network_settings.start_proxy_sync()
 
 MAX_PLAN_IMPORT_BYTES = MAX_BACKUP_BYTES
 MAX_MULTIPART_OVERHEAD = 65536
+
+
+@app.errorhandler(CredentialStoreError)
+def handle_credential_store_error(error):
+    return {
+        "ok": False,
+        "error": "credential_storage_unavailable",
+        "message": str(error),
+    }, 503
 
 
 @app.errorhandler(500)
@@ -1282,9 +1295,11 @@ def serve_basement_skill(filename):
 
 @app.after_request
 def forbid_caching_sensitive_responses(response):
-    # /conf carries the sign-in password value, so no HTTP cache may retain it. The
-    # static assets below stay cacheable; only this endpoint is marked no-store.
-    if request.path == "/conf":
+    if request.path in {
+        "/conf",
+        "/network/settings",
+        "/network/test",
+    }:
         response.headers["Cache-Control"] = "no-store"
     return response
 
@@ -1681,7 +1696,7 @@ def device_boss_key():
 @app.route("/conf", methods=["GET", "POST", "PATCH"])
 @require_token
 def load_config():
-    if request.method == "GET":
+    if request.method in {"GET", "HEAD"}:
         try:
             from arknights_mower.utils.config.weekly_plan_loader import (
                 get_weekly_plan_manager,
@@ -1736,6 +1751,15 @@ def load_config():
                 "message": "配置必须是 JSON 对象",
             }, 400
         req = dict(payload)
+        if (
+            os.environ.get("MOWER_REQUIRE_WEB_TOKEN") == "1"
+            and isinstance(req.get("webview"), dict)
+            and req["webview"].get("token") == ""
+        ):
+            return {
+                "error": "invalid_configuration",
+                "message": "此部署允许远程访问，访问令牌不能为空。",
+            }, 400
         req.pop("manager_inherited_settings", None)
         from arknights_mower.utils import managed_device
 
@@ -5592,6 +5616,7 @@ def _configuration_recovery_pending():
 
 
 app.register_blueprint(config_backup_bp)
+app.register_blueprint(credential_backup_bp)
 app.config["CONFIG_BACKUP_MAINTENANCE_LOCK"] = maa_maintenance_lock
 app.config["CONFIGURATION_ACTIVATED"] = lambda: _stop_mower()
 app.config["CONFIG_BACKUP_BUSY"] = lambda: bool(

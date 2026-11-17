@@ -101,6 +101,7 @@ def test_email_screenshot_setting_requires_token_and_round_trips(storage, monkey
     import server
     from arknights_mower.utils import config
     from arknights_mower.utils.config import weekly_plan_loader
+    from arknights_mower.utils.configuration_secrets import conf_secrets_path
 
     monkeypatch.setattr(
         main,
@@ -114,29 +115,91 @@ def test_email_screenshot_setting_requires_token_and_round_trips(storage, monkey
     monkeypatch.setattr(weekly_plan_loader, "_weekly_plan_manager", None)
     client = server.app.test_client()
     before = config.conf_path.read_bytes()
+    env_path = conf_secrets_path(config.conf_path)
+    before_env = env_path.read_bytes()
+    payload = {"mail_attach_error_screenshot": True, "pass_code": "mail-test-secret"}
 
     for headers in ({}, {"token": "wrong"}):
         assert client.get("/conf", headers=headers).status_code == 403
-        assert (
-            client.patch(
-                "/conf", headers=headers, json={"mail_attach_error_screenshot": True}
-            ).status_code
-            == 403
-        )
+        assert client.head("/conf", headers=headers).status_code == 403
+        for method in (client.post, client.patch):
+            assert method("/conf", headers=headers, json=payload).status_code == 403
     assert config.conf.mail_attach_error_screenshot is False
     assert config.conf_path.read_bytes() == before
+    assert env_path.read_bytes() == before_env
 
     headers = {"token": "profile-test-token", "X-Mower-Config-Generation": "0"}
-    response = client.patch(
-        "/conf", headers=headers, json={"mail_attach_error_screenshot": True}
-    )
+    response = client.patch("/conf", headers=headers, json=payload)
     assert response.status_code == 200
     assert response.json["mail_attach_error_screenshot"] is True
+    assert response.json["pass_code"] == "mail-test-secret"
     assert config.conf.mail_attach_error_screenshot is True
+    assert b"mail-test-secret" not in config.conf_path.read_bytes()
+    assert b"mail-test-secret" not in env_path.read_bytes()
+    from arknights_mower.utils.credential_store import read_credentials
+
+    assert read_credentials(env_path)["MOWER_MAIL_PASSWORD"] == "mail-test-secret"
+    assert client.head("/conf", headers=headers).status_code == 200
+    response = client.get("/conf", headers=headers)
+    assert response.json["mail_attach_error_screenshot"] is True
+    assert response.json["pass_code"] == "mail-test-secret"
+    assert response.headers["Cache-Control"] == "no-store"
     assert (
-        client.get("/conf", headers=headers).json["mail_attach_error_screenshot"]
-        is True
+        client.post("/conf", headers=headers, json={"pass_code": ""}).status_code == 200
     )
+    assert client.get("/conf", headers=headers).json["pass_code"] == ""
+
+
+def test_missing_credential_key_refuses_save_and_retains_access_token(
+    storage, monkeypatch
+):
+    import arknights_mower.__main__ as main
+    import server
+    from arknights_mower.utils import config
+    from arknights_mower.utils.config import weekly_plan_loader
+    from arknights_mower.utils.configuration_secrets import conf_secrets_path
+
+    monkeypatch.setattr(
+        main,
+        "device_control",
+        SimpleNamespace(active=False, configuration_lock=RLock()),
+    )
+    monkeypatch.setattr(server.app, "token", "profile-test-token", raising=False)
+    monkeypatch.setitem(server.app.config, "UPDATES_ENABLED", True)
+    monkeypatch.setattr(server, "_performance_test_status", lambda: {"status": "idle"})
+    monkeypatch.setattr(server, "mower_thread", None)
+    monkeypatch.setattr(weekly_plan_loader, "_weekly_plan_manager", None)
+    secret_path = conf_secrets_path(config.conf_path)
+    before = (
+        config.conf_path.read_bytes(),
+        secret_path.read_bytes(),
+        (config.conf.pass_code, config.conf.webview.model_dump()),
+    )
+    monkeypatch.setenv(
+        "MOWER_CREDENTIAL_KEY_FILE", str(secret_path.parent / "missing.key")
+    )
+    client = server.app.test_client()
+    for token in (None, "wrong"):
+        response = client.patch(
+            "/conf",
+            json={"pass_code": "new"},
+            headers={"token": token} if token else {},
+        )
+        assert response.status_code == 403
+    response = client.patch(
+        "/conf",
+        json={"pass_code": "new"},
+        headers={"token": "profile-test-token", "X-Mower-Config-Generation": "0"},
+    )
+    assert response.status_code == 503
+    assert response.json["error"] == "credential_storage_unavailable"
+    assert "traceback" not in response.json
+    assert server.app.token == "profile-test-token"
+    assert (
+        config.conf_path.read_bytes(),
+        secret_path.read_bytes(),
+        (config.conf.pass_code, config.conf.webview.model_dump()),
+    ) == before
 
 
 @pytest.mark.parametrize("path", ["/task", "/mastery-plan"])

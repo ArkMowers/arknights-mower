@@ -317,6 +317,7 @@ jobs:
           python -m pip install -r requirements.txt
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
           python -m pip check
+          python scripts/check_credential_crypto.py
 
       - name: Prune unused OpenCV assets
         shell: bash
@@ -554,6 +555,7 @@ jobs:
           python -m pip install -r requirements.in "$(grep '^onnxruntime==' requirements.txt)"
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
           python -m pip check
+          python scripts/check_credential_crypto.py
 
       - name: Prune unused OpenCV assets
         run: python scripts/prune_opencv.py
@@ -725,6 +727,7 @@ jobs:
           python -m pip install -r requirements.in "$(grep '^onnxruntime==' requirements.txt)"
           python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
           python -m pip check
+          python scripts/check_credential_crypto.py
 
       - name: Prune unused OpenCV assets
         run: python scripts/prune_opencv.py

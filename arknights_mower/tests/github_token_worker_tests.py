@@ -14,6 +14,8 @@ import pytest
 
 from arknights_mower.utils import network_settings as network
 from arknights_mower.utils import update_runtime as runtime
+from arknights_mower.utils.credential_store import CredentialStoreError
+from arknights_mower.utils.github_download import UPDATE_TOKEN_ENV_KEY
 from arknights_mower.utils.software_update_worker import UpdateCancelled, Worker
 
 TOKEN = "github_pat_synthetic_worker_test"
@@ -29,7 +31,16 @@ def settings(tmp_path, monkeypatch):
     environment = {
         key: value
         for key, value in os.environ.items()
-        if key.upper() in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP", "TMPDIR"}
+        if key.upper()
+        in {
+            "PATH",
+            "SYSTEMROOT",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+            "TMPDIR",
+            "MOWER_CREDENTIAL_KEY_FILE",
+        }
     }
     with patch.dict(os.environ, environment, clear=True):
         runtime.write_json(
@@ -86,8 +97,9 @@ def test_actual_worker_never_records_token_in_any_terminal_state(
 
 
 def test_actual_non_git_child_and_pip_environment_never_receive_token(
-    tmp_path, settings
+    tmp_path, settings, monkeypatch
 ):
+    monkeypatch.setenv(network.TOKEN_ENV_KEY, TOKEN)
     worker = make_worker(tmp_path, settings)
     captured = tmp_path / "child-environment.json"
     script = "import json, os, sys; open(sys.argv[1], 'w').write(json.dumps(dict(os.environ)))"
@@ -139,8 +151,39 @@ def test_git_fetch_reads_current_settings_and_build_commands_remain_clean(
 def test_http_download_reads_current_token_without_recording_it(tmp_path, settings):
     worker = make_worker(tmp_path, settings)
     assert worker.github_token() == TOKEN
+    network.save_settings(
+        {"http_proxy": "", "github_proxy": "", "github_token": "replacement_token"}
+    )
+    assert worker.github_token() == "replacement_token"
+    assert "github_token" not in runtime.read_json(settings)
     network.save_settings({"http_proxy": "", "github_proxy": "", "github_token": ""})
     assert worker.github_token() == ""
+    assert TOKEN not in worker.job_path.read_text()
+
+
+def test_corrupt_encrypted_token_stops_the_worker(tmp_path, settings):
+    network.get_settings(strict=True)
+    secret_path = network.token_secrets_path(settings)
+    secret_path.write_text('{"version": "invalid"}')
+    worker = make_worker(tmp_path, settings)
+    with pytest.raises(CredentialStoreError):
+        worker.github_token()
+    assert TOKEN not in worker.job_path.read_text()
+
+
+def test_source_launch_token_is_private_and_absent_from_all_child_environments(
+    tmp_path, settings, monkeypatch
+):
+    monkeypatch.setenv(UPDATE_TOKEN_ENV_KEY, TOKEN)
+    worker = make_worker(tmp_path, settings, deployment="source")
+    assert worker.github_token() == TOKEN
+    assert UPDATE_TOKEN_ENV_KEY not in os.environ
+    assert UPDATE_TOKEN_ENV_KEY not in worker.env
+    assert TOKEN not in json.dumps(runtime.launch_environment({}))
+    captured = tmp_path / "source-child-environment.json"
+    script = "import json, os, sys; open(sys.argv[1], 'w').write(json.dumps(dict(os.environ)))"
+    worker.run_command([sys.executable, "-c", script, str(captured)])
+    assert TOKEN not in captured.read_text()
     assert TOKEN not in worker.job_path.read_text()
 
 

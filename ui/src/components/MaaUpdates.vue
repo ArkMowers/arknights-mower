@@ -932,7 +932,7 @@ onUnmounted(() => {
             {{ mirrorchyan_cdk_message }}
           </div>
           <div class="update-hint">
-            CDK 保存在 Mower 配置文件中。
+            CDK 加密保存在本机凭据文件中。
             <n-a href="https://mirrorchyan.com/" target="_blank" rel="noopener noreferrer">
               获取 CDK
             </n-a>

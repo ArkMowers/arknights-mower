@@ -13,6 +13,8 @@ from arknights_mower.utils import config_backup as backup
 from arknights_mower.utils import config_profiles as profiles
 from arknights_mower.utils import config_selection as selection
 from arknights_mower.utils.config_profile_groups import CONF_GROUPS, GROUPS
+from arknights_mower.utils.configuration_secrets import conf_secrets_path
+from arknights_mower.utils.credential_store import read_credentials, write_credentials
 from arknights_mower.views.config_profiles import config_profiles_bp
 
 
@@ -134,7 +136,10 @@ def test_managed_profiles_retain_device_and_performance_settings(
     assert config.conf.ai_assistant_enabled is True
     assert config.conf.extra_settings_visible is True
     assert config.conf.start_automatically is True
-    assert config.conf.account != "manager-sender"
+    if operation == "import":
+        assert config.conf.account == "manager-sender"
+    else:
+        assert config.conf.account != "manager-sender"
     assert config.conf.screenshot == 7
     saved = backup._object_file(
         backup.read_archive(backup.export_archive()), "conf.yml"
@@ -1330,6 +1335,10 @@ def test_activation_metadata_failure_restores_existing_target_snapshot(
     baseline = profiles.list_profiles()
     target = storage(f"@app/config-profiles/{original}.zip")
     target_before = target.read_bytes()
+    target_env = target.with_suffix(".secrets.json")
+    target_env_before = target_env.read_bytes()
+    live_env = conf_secrets_path(config.conf_path)
+    live_env_before = live_env.read_bytes()
 
     def fail(data):
         raise OSError("index failed")
@@ -1339,6 +1348,8 @@ def test_activation_metadata_failure_restores_existing_target_snapshot(
         _activate(original, ["notifications"])
     assert profiles.list_profiles() == baseline
     assert target.read_bytes() == target_before
+    assert target_env.read_bytes() == target_env_before
+    assert live_env.read_bytes() == live_env_before
     assert backup.read_archive(
         backup.export_archive(), include_tmp=True
     ) == backup.read_archive(before, include_tmp=True)
@@ -1438,6 +1449,225 @@ def test_initial_list_and_bootstrap_do_not_require_a_database_snapshot(
     assert config.conf is previous_conf
     assert backup.read_archive(backup.export_archive(), include_tmp=True) == before
     assert not list(storage("@app/config-profiles").glob("*.zip"))
+
+
+def test_profile_credentials_follow_selected_groups_without_entering_zips(storage):
+    original = profiles.list_profiles()["active_id"]
+    env_path = storage("@app/yituliu.secrets.json")
+    config.conf.pass_code = "original-mail-password"
+    config.conf.skland_info = [
+        config.Conf.SKLandAccount(
+            account="original-skland", password="original-skland-password"
+        )
+    ]
+    config.save_conf()
+    write_credentials(env_path, {"MOWER_YITULIU_TOKEN": "original-yituliu-token"})
+
+    new = _create("copy notifications", ["notifications"])["active_id"]
+    assert config.conf.pass_code == "original-mail-password"
+    assert not config.conf.skland_info
+    assert not read_credentials(env_path)
+    config.conf.pass_code = "new-mail-password"
+    config.save_conf()
+    _activate(original)
+    assert config.conf.pass_code == "original-mail-password"
+    assert config.conf.skland_info[0].password == "original-skland-password"
+    assert read_credentials(env_path) == {
+        "MOWER_YITULIU_TOKEN": "original-yituliu-token"
+    }
+    _activate(new, ["accounts"])
+    config.load_conf()
+    assert config.conf.pass_code == "new-mail-password"
+    assert config.conf.skland_info[0].account == "original-skland"
+    assert read_credentials(env_path) == {
+        "MOWER_YITULIU_TOKEN": "original-yituliu-token"
+    }
+
+    for identifier in (original, new):
+        path = storage(f"@app/config-profiles/{identifier}.zip")
+        files, _, redacted = backup.read_archive(
+            path.read_bytes(), include_redaction=True
+        )
+        assert redacted
+        conf = yaml.safe_load(files["conf.yml"])
+        assert {"account", "pass_code", "skland_info"}.isdisjoint(conf)
+        assert "token" not in json.loads(files.get("yituliu_sync.json", b"{}"))
+        assert read_credentials(path.with_suffix(".secrets.json"))[
+            "MOWER_YITULIU_TOKEN"
+        ] == ("original-yituliu-token")
+        assert (
+            b"original-yituliu-token"
+            not in path.with_suffix(".secrets.json").read_bytes()
+        )
+        assert not path.with_suffix(".env").exists()
+
+
+@pytest.mark.parametrize("filename", ["private.key", "private.dpapi"])
+def test_profile_transitions_preserve_and_exclude_default_private_key(
+    storage, monkeypatch, filename
+):
+    from arknights_mower.utils import credential_store
+
+    directory = storage("@app/config/local-credentials")
+    directory.mkdir()
+    monkeypatch.setattr(credential_store, "_private_directory", lambda: directory)
+    private_key = directory / filename
+    original_key = b"synthetic-key-file-not-for-decryption"
+    private_key.write_bytes(original_key)
+    original = profiles.list_profiles()["active_id"]
+    second = _create("second")["active_id"]
+    _activate(original)
+
+    assert private_key.read_bytes() == original_key
+    for identifier in (original, second):
+        snapshot = storage(f"@app/config-profiles/{identifier}.zip").read_bytes()
+        assert f"local-credentials/{filename}" not in backup.read_archive(snapshot)
+    assert f"local-credentials/{filename}" not in backup.read_archive(
+        profiles.export_current_archive()
+    )
+
+
+def test_legacy_profile_credentials_move_to_encrypted_file_on_activation(storage):
+    original = profiles.list_profiles()["active_id"]
+    _create("temporary")
+    path = storage(f"@app/config-profiles/{original}.zip")
+    files, tmp_files = backup.read_archive(path.read_bytes(), include_tmp=True)
+    files["conf.yml"] = b"theme: dark\npass_code: legacy-profile-password\n"
+    path.write_bytes(backup._archive_bytes(files, tmp_files))
+    path.with_suffix(".secrets.json").unlink(missing_ok=True)
+
+    _activate(original)
+    assert config.conf.pass_code == "legacy-profile-password"
+    files, _, redacted = backup.read_archive(path.read_bytes(), include_redaction=True)
+    assert redacted
+    assert b"legacy-profile-password" not in files["conf.yml"]
+    assert read_credentials(path.with_suffix(".secrets.json"))[
+        "MOWER_MAIL_PASSWORD"
+    ] == ("legacy-profile-password")
+
+
+def test_startup_migrates_inactive_profiles_and_preserves_corrupt_snapshot(storage):
+    original = profiles.list_profiles()["active_id"]
+    second = _create("second")["active_id"]
+    _create("third")
+    valid = storage(f"@app/config-profiles/{original}.zip")
+    corrupt = storage(f"@app/config-profiles/{second}.zip")
+    files, tmp_files = backup.read_archive(valid.read_bytes(), include_tmp=True)
+    files["conf.yml"] = b"theme: dark\npass_code: inactive-mail-password\n"
+    files["Network.JSON"] = b'{"github_token":"inactive-github-token"}'
+    files["Manager-Common.JSON"] = b'{"values":{"pass_code":"retired-mail-password"}}'
+    files["GUI-Watermark.Key"] = b"watermark-signing-key"
+    valid.write_bytes(backup._archive_bytes(files, tmp_files))
+    valid.with_suffix(".secrets.json").unlink(missing_ok=True)
+    corrupt.write_bytes(b"damaged zip")
+    corrupt_before = corrupt.read_bytes()
+    registry_before = storage("@app/config-profiles/index.json").read_bytes()
+    live_before = config.conf
+
+    profiles.migrate_legacy_profiles()
+    migrated, _, redacted = backup.read_archive(
+        valid.read_bytes(), include_redaction=True
+    )
+    assert redacted
+    assert migrated["conf.yml"] == b"theme: dark\n"
+    assert "Network.JSON" not in migrated
+    assert "Manager-Common.JSON" not in migrated
+    assert "GUI-Watermark.Key" not in migrated
+    assert read_credentials(valid.with_suffix(".secrets.json")) == {
+        "MOWER_MAIL_PASSWORD": "inactive-mail-password"
+    }
+    assert corrupt.read_bytes() == corrupt_before
+    assert storage("@app/config-profiles/index.json").read_bytes() == registry_before
+    assert config.conf is live_before
+
+
+def test_profile_credential_migration_preserves_plaintext_when_snapshot_write_fails(
+    storage, monkeypatch
+):
+    original = profiles.list_profiles()["active_id"]
+    _create("second")
+    path = storage(f"@app/config-profiles/{original}.zip")
+    secret_path = path.with_suffix(".secrets.json")
+    secret_path.unlink()
+    files, tmp_files = backup.read_archive(path.read_bytes(), include_tmp=True)
+    files["conf.yml"] = b"theme: dark\npass_code: uncommitted-password\n"
+    path.write_bytes(backup._archive_bytes(files, tmp_files))
+    original_snapshot = path.read_bytes()
+    write = backup._write_bytes
+
+    def fail_snapshot(target, content):
+        if target == path:
+            raise OSError("snapshot storage unavailable")
+        write(target, content)
+
+    monkeypatch.setattr(backup, "_write_bytes", fail_snapshot)
+    profiles.migrate_legacy_profiles()
+
+    assert path.read_bytes() == original_snapshot
+    assert not secret_path.exists()
+
+
+def test_profile_migration_does_not_revive_cleared_legacy_credentials(storage):
+    original = profiles.list_profiles()["active_id"]
+    _create("second")
+    path = storage(f"@app/config-profiles/{original}.zip")
+    secret_path = path.with_suffix(".secrets.json")
+    write_credentials(secret_path, {})
+    files, tmp_files = backup.read_archive(path.read_bytes(), include_tmp=True)
+    files["conf.yml"] = b"theme: dark\npass_code: retired-password\n"
+    path.write_bytes(backup._archive_bytes(files, tmp_files))
+
+    profiles.migrate_legacy_profiles()
+
+    assert read_credentials(secret_path) == {}
+    assert b"retired-password" not in backup.read_archive(path.read_bytes())["conf.yml"]
+    _activate(original)
+    assert config.conf.pass_code == ""
+
+
+def test_corrupt_profile_credentials_block_activation_without_changing_state(storage):
+    from arknights_mower.utils.credential_store import CredentialStoreError
+
+    original = profiles.list_profiles()["active_id"]
+    _create("second")
+    path = storage(f"@app/config-profiles/{original}.secrets.json")
+    path.write_bytes(b"damaged encrypted profile credentials")
+    before = profiles.list_profiles()
+    conf_before = config.conf_path.read_bytes()
+    model_before = config.conf
+
+    with pytest.raises(CredentialStoreError):
+        _activate(original)
+
+    assert profiles.list_profiles() == before
+    assert config.conf_path.read_bytes() == conf_before
+    assert config.conf is model_before
+    assert path.read_bytes() == b"damaged encrypted profile credentials"
+
+
+@pytest.mark.parametrize("profile", [False, True])
+def test_import_keeps_local_yituliu_metadata_with_local_token(storage, profile):
+    path = storage("@app/config/yituliu_sync.json")
+    env_path = storage("@app/yituliu.secrets.json")
+    metadata = {"last_synced_fingerprint": "local-operators", "last_synced_count": 10}
+    path.write_text(json.dumps(metadata))
+    write_credentials(env_path, {"MOWER_YITULIU_TOKEN": "local-yituliu-token"})
+    files = backup.read_archive(profiles.export_current_archive())
+    files["yituliu_sync.json"] = b'{"last_synced_fingerprint":"foreign-operators"}'
+    raw = backup._archive_bytes(files, {}, redacted=True)
+
+    if profile:
+        profiles.import_profile(
+            raw,
+            "configuration without credentials",
+            [],
+            expected_generation=profiles.current_generation(),
+        )
+    else:
+        profiles.import_backup(raw)
+
+    assert json.loads(path.read_text()) == metadata
+    assert read_credentials(env_path) == {"MOWER_YITULIU_TOKEN": "local-yituliu-token"}
 
 
 def test_only_the_initial_active_profile_may_have_no_snapshot(storage):

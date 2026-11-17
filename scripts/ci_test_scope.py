@@ -17,10 +17,18 @@ FRONTEND_CONTRACT_TESTS = (
     "arknights_mower/tests/web_routing_tests.py",
 )
 
-# Both complete modules also run on Linux in the native compatibility matrix.
+# These complete modules also run on Linux in the native compatibility matrix.
 NATIVE_UPDATE_TESTS = {
+    "arknights_mower/tests/credential_store_tests.py",
+    "arknights_mower/tests/credential_store_provider_tests.py",
+    "arknights_mower/tests/credential_store_hybrid_tests.py",
+    "arknights_mower/tests/credential_store_recovery_tests.py",
+    "arknights_mower/tests/credential_backup_tests.py",
+    "arknights_mower/tests/credential_backup_route_tests.py",
+    "arknights_mower/tests/credential_recovery_tests.py",
     "arknights_mower/tests/shared_ocr_tests.py",
     "arknights_mower/tests/software_update_transaction_tests.py",
+    "scripts/tests/credential_crypto_tests.py",
 }
 
 

@@ -46,6 +46,9 @@ jobs:
               - 'arknights_mower/utils/{maa_storage,maa_host_lock,windows_permissions}.py'
               - 'arknights_mower/tests/maa_storage_tests.py'
               - 'arknights_mower/tests/{config,path,log,csv_utils,zip_safe,git_rev}_tests.py'
+              - 'arknights_mower/utils/{credential_store,configuration_secrets,credential_backup,credential_recovery}.py'
+              - 'arknights_mower/views/credential_backup.py'
+              - 'arknights_mower/tests/credential_*_tests.py'
               # Furniture safety and native OCR run on all three desktop platforms.
               - 'arknights_mower/{solvers,utils,tests}/furniture*.py'
               - 'arknights_mower/solvers/base_schedule.py'
@@ -306,6 +309,21 @@ jobs:
           python scripts/prune_opencv.py
       - name: Verify shared mood runtime on each OS
         run: python -m pytest -q arknights_mower/tests/calculated_mood_tests.py
+      - name: Verify credential encryption on each OS
+        shell: bash
+        env:
+          PYTHONIOENCODING: utf-8
+        run: |
+          python scripts/check_credential_crypto.py
+          python -m pytest -q \
+            arknights_mower/tests/credential_store_tests.py \
+            arknights_mower/tests/credential_store_provider_tests.py \
+            arknights_mower/tests/credential_store_hybrid_tests.py \
+            arknights_mower/tests/credential_store_recovery_tests.py \
+            arknights_mower/tests/credential_backup_tests.py \
+            arknights_mower/tests/credential_backup_route_tests.py \
+            arknights_mower/tests/credential_recovery_tests.py \
+            scripts/tests/credential_crypto_tests.py
       - name: Require transaction tools
         shell: bash
         run: |
@@ -411,6 +429,7 @@ jobs:
           sudo apt-get install -y libzbar0 libgl1 libglib2.0-0
           python -m pip install -r requirements.txt
           python -m pip check
+          python scripts/check_credential_crypto.py
           python scripts/prune_opencv.py
           python -c "import os, platform; from pathlib import Path; assert platform.machine() == 'aarch64'; Path(os.environ['MOWER_DATA_DIR']).mkdir(parents=True, exist_ok=True)"
       - name: Test Android update routes, official MAA assets and packaging

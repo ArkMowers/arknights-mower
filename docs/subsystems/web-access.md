@@ -10,6 +10,31 @@ Independent desktop users can enable 远程访问（中转） in 全部设置 �
 
 The client reports the frontend build identifier shipped in `ui/dist/relay-ui.json`. The browser stays on the authenticated instance origin and loads the matching build manifest and static assets directly from the official R2 domain. The gateway serves a bootstrap document and the approved HTTP and WebSocket operations. MowerRelease publishes immutable assets before making each manifest visible. MowerRelease checks the official source branches for new revisions and publishes their frontends. Installable releases use the frontend taken from the package. A missing manifest leaves the instance connected and the browser offers a retry. Software updates still use the instance’s selected update channel. The relay dispatches [listed operations](../../arknights_mower/utils/mower_relay/protocol.py) to the running application and closes its outbound connection on desktop shutdown.
 
+The server Docker entry sets `MOWER_REQUIRE_WEB_TOKEN=1`; configuration writes in that deployment reject an empty Web UI token because its listener permits remote access. Existing settings requests retain the current process token until restart. Credentials use the [encrypted configuration storage](config-backup.md#configuration-credential-storage), and storage failures do not clear the running token.
+
+<a id="credential-recovery-access"></a>
+The separate startup credential-recovery service defaults to a loopback listener
+and always creates a nonempty random session token. Its static recovery shell is
+public and contains no instance data or embedded token. The launcher supplies the
+token in the URL fragment; the page sends it through the existing `token` header.
+Status, reset and recovery-service shutdown operations, including the supervision status route, use the
+shared `require_token` guard before inspecting files or parsing operation input.
+Reset also requires explicit confirmation and an unchanged inspection snapshot.
+The Python CLI can explicitly select a different listening host, without removing
+token authorization. Access logs omit URLs and the session credential. This
+service exposes no automation or normal configuration APIs. Its reset scope is
+owned by [credential recovery](config-backup.md#credential-recovery).
+
+The normal `/credential-backup/export`, `/credential-backup/preview` and
+`/credential-backup/import` POST routes require the current Web UI token and
+`X-Mower-Settings: 1` before parsing JSON or uploaded content. All responses use
+`Cache-Control: no-store`. Import additionally checks the current configuration
+generation and the existing maintenance locks and busy conditions. Passwords are
+sent in request bodies, never query strings. These routes preserve the current
+listener and Web UI access token.
+Managed instances without permission for extra settings cannot import these
+credentials, preserving the existing restriction on shared network settings.
+
 Browser and embedded desktop launch URLs carry the session token without an instance name. After the page loads, it reads the current process registration through the protected process-control information endpoint and uses its registered name in the document title and app menu. An invalid token or unavailable registration leaves the ordinary title and default app-menu name unchanged. The process-control information endpoint returns the current registration's name only after the instance token check succeeds.
 
 The desktop HTTP server writes 4xx and 5xx status codes at DEBUG through the shared logger. It omits the expected 403 response to the supervisor's marked, tokenless loopback GET probe of `/status`. Access and protocol-error records omit request URLs, query parameters and client addresses, including for malformed requests. Credentials still reach the application unchanged. [Desktop HTTP logging tests](../../arknights_mower/tests/desktop_http_log_tests.py) exercise the real server and supervisor probe with synthetic credentials and bounded local connections.
@@ -515,7 +540,7 @@ Closing the manager leaves managed instances running. A newly opened standalone 
 
 Manager list and configuration mutations run under a shared admission lock and recheck live processes. Folder selection releases that lock while the dialog is open, then verifies the original row and both directories before saving. The UI disables configuration controls while a process is live and closes stale edit dialogs; the backend remains authoritative. Bulk open and close each require a confirmation dialog. Bulk open checks each row's eligibility immediately before dispatch, silently skips ineligible rows and retains the individual startup checks. Actual startup failures remain warnings and do not prevent other eligible rows from being processed. Repeated registration scans and port probes add overhead with many instances. Deletion requires a separate confirmation naming the instance; it removes only the manager entry, not the saved files. Status refresh cancels a pending deletion if the selected row changes or becomes non-editable. Ordinary frontend bridge calls have a fifteen-second response budget; that deadline only ends the frontend wait and does not cancel Python work. Native directory selection waits for the user's confirmation or cancellation without that deadline and retains the UI's busy state until the call returns or fails, followed by a bounded state refresh. State refresh failures disable actions until a complete snapshot is available again.
 
-Connection settings use each instance's `config/conf.yml`, under `webview.token` and `webview.port`, rather than a second copy in `instances.json`. A blank port saves as `0` and requests a random port. Managed launches honor an explicit port from 1 through 65535 regardless of whether a token is configured. Existing token binding rules in [Session Boundary](#1-session-boundary) remain unchanged. Standalone desktop launches retain their token-dependent fixed-port selection, with `0` also resolving to a random usable port. Active fixed ports and pending launches reserve their port during admission, and the final HTTP bind remains authoritative if an external process takes that port after the check. The same stopped-instance dialog edits [assistant authorization](ai-assistant.md#managed-assistant-authorization); model-provider configuration stays in 全部设置.
+The manager saves each instance's Web UI token as `MOWER_WEBVIEW_TOKEN` in encrypted `mower.secrets.json` and the port under `webview.port` in `config/conf.yml`. Failure to decrypt the token prevents the operation without changing the listener or authorization settings. See [configuration credential storage](config-backup.md#configuration-credential-storage). A blank port saves as `0` and requests a random port. Managed launches honor an explicit port from 1 through 65535 regardless of whether a token is configured. Existing token binding rules in [Session Boundary](#1-session-boundary) remain unchanged. Standalone desktop launches retain their token-dependent fixed-port selection, with `0` also resolving to a random usable port. Active fixed ports and pending launches reserve their port during admission, and the final HTTP bind remains authoritative if an external process takes that port after the check. The same stopped-instance dialog edits [assistant authorization](ai-assistant.md#managed-assistant-authorization); model-provider configuration stays in 全部设置.
 
 Connection settings are drafts until Save. Writes preserve other YAML fields, including unknown private settings, and use atomic replacement. If only legacy `conf.yml` exists, the manager copies its complete mapping into the current path with the selected connection fields; normal startup retains responsibility for other configuration migrations. Invalid or unreadable configuration is not replaced with defaults. Failed configuration or instance-list writes retain the previous saved data. These changes preserve existing domain-concept definitions and require no glossary changes.
 

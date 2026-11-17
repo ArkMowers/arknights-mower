@@ -25,7 +25,13 @@ from contextlib import ExitStack
 from pathlib import Path, PurePosixPath
 
 if __package__:
-    from .github_download import git_environment, read_token_file, request_download
+    from .github_download import (
+        TOKEN_ENV_KEY,
+        UPDATE_TOKEN_ENV_KEY,
+        git_environment,
+        read_token_file,
+        request_download,
+    )
     from .update_runtime import (
         InstanceScanError,
         LockBusyError,
@@ -44,7 +50,13 @@ if __package__:
         write_json,
     )
 else:
-    from github_download import git_environment, read_token_file, request_download
+    from github_download import (
+        TOKEN_ENV_KEY,
+        UPDATE_TOKEN_ENV_KEY,
+        git_environment,
+        read_token_file,
+        request_download,
+    )
     from update_runtime import (
         InstanceScanError,
         LockBusyError,
@@ -652,12 +664,14 @@ def apply_ota_archive(
 
 class Worker:
     def __init__(self, job_path):
+        self._launch_github_token = os.environ.pop(UPDATE_TOKEN_ENV_KEY, None)
         self.job_path = Path(job_path)
         self.job = read_json(self.job_path)
         self.work = self.job_path.parent
         self.state = Path(self.job["state_dir"])
         self.root = Path(self.job["root"])
         self.env = launch_environment({})
+        self.env.pop(TOKEN_ENV_KEY, None)
         if self.job.get("tool_path"):
             self.env["PATH"] = self.job["tool_path"]
         if self.job.get("proxy"):
@@ -735,6 +749,8 @@ class Worker:
                 time.sleep(0.05)
 
     def github_token(self):
+        if self._launch_github_token is not None:
+            return self._launch_github_token
         return read_token_file(self.job.get("network_settings_path"))
 
     def run_command(
