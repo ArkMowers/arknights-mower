@@ -226,7 +226,12 @@
                   <MobileTabBar :more-open="mobileMenuOpen" @more="mobileMenuOpen = true" />
                 </n-layout-footer>
               </n-layout>
-              <ChatBot v-if="chatBotMounted" v-model:show="showChatBot" />
+              <ChatBot
+                v-if="chatBotMounted"
+                v-model:show="showChatBot"
+                :review-draft="incomeReviewDraft"
+                @review-consumed="incomeReviewDraft = null"
+              />
             </div>
             <n-drawer
               v-if="isMobileNav"
@@ -488,6 +493,12 @@ function leaveSettings() {
 const showChatBot = ref(false)
 provide('chat_panel_visible', showChatBot)
 const chatBotMounted = ref(false)
+const incomeReviewDraft = shallowRef(null)
+provide('open_income_review', (draft) => {
+  incomeReviewDraft.value = draft
+  openChatBot()
+  return true
+})
 function openChatBot() {
   mobileMenuOpen.value = false
   chatBotMounted.value = true

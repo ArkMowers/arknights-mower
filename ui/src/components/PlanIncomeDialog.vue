@@ -20,6 +20,8 @@ import { createIncomeSession } from '@/riic/incomeSession'
 import { revalueIncome } from '@/riic/incomeValuation'
 import { loadIncomeArchive, saveIncomeArchive } from '@/riic/incomeArchive'
 import { incomeLogTime } from '@/riic/incomeLogs'
+import { createIncomeReview } from '@/riic/incomeReview'
+import { CONFIG_GENERATION_HEADER } from '@/composables/configProfiles'
 import IncomeTimeline from './IncomeTimeline.vue'
 import IncomeActivity from './IncomeActivity.vue'
 import IncomeDiagnostics from './IncomeDiagnostics.vue'
@@ -43,6 +45,9 @@ let cachedInventoryBaseline = null
 let cachedInventoryValues = null
 let applyingPreferences = false
 const axios = inject('axios')
+const openIncomeReview = inject('open_income_review', null)
+const reviewError = ref('')
+const lastAttemptSucceeded = ref(true)
 const cacheLoading = ref(false)
 const cacheError = ref('')
 const weightsBusy = ref(false)
@@ -174,6 +179,7 @@ const attemptDiagnostics = ref([])
 const savedAt = ref(null)
 let lastCompleted = null
 let runSnapshot = null
+let runConfigGeneration = null
 const imageName = computed(
   () => exportName.value.trim() || completedSnapshot.value?.label || '排班'
 )
@@ -287,12 +293,14 @@ const session = createIncomeSession({
         progressLog.value = [...progressLog.value.slice(-199), entry]
     }
     if (patch.result?.success) {
+      lastAttemptSucceeded.value = true
       completedSnapshot.value = runSnapshot
       savedAt.value = Date.now()
       lastCompleted = {
         result: patch.result,
         input: patch.input,
         snapshot: runSnapshot,
+        configGeneration: runConfigGeneration,
         bottleneck: patch.bottleneck,
         progressLog: [...progressLog.value],
         exportName: exportName.value,
@@ -360,7 +368,10 @@ async function start() {
     resultValuationBusy.value
   )
     return
+  const generation = axios.defaults?.headers?.common?.[CONFIG_GENERATION_HEADER]
   submitting.value = true
+  lastAttemptSucceeded.value = false
+  reviewError.value = ''
   state.error = null
   state.bottleneck = null
   attemptDiagnostics.value = []
@@ -405,7 +416,10 @@ async function start() {
     logPage.value = 1
     logSearch.value = ''
     activeTab.value = 'logs'
+    if (generation !== axios.defaults?.headers?.common?.[CONFIG_GENERATION_HEADER])
+      throw new Error('配置档案已切换，请重新打开演算窗口')
     runSnapshot = captured
+    runConfigGeneration = generation ?? null
     session.start(runSnapshot.plan, runSettings)
   } catch (error) {
     if (alive) {
@@ -416,6 +430,17 @@ async function start() {
   } finally {
     validating.value = false
     if (alive) submitting.value = false
+  }
+}
+function reviewIncome() {
+  if (!lastCompleted || state.running || submitting.value || resultValuationBusy.value) return
+  reviewError.value = ''
+  try {
+    if (!openIncomeReview) throw new Error('Mower AI 入口暂不可用')
+    const generation = axios.defaults?.headers?.common?.[CONFIG_GENERATION_HEADER]
+    if (openIncomeReview({ ...createIncomeReview(lastCompleted), generation })) close()
+  } catch (error) {
+    reviewError.value = error.message
   }
 }
 const resultValuationError = ref('')
@@ -1383,12 +1408,20 @@ onBeforeUnmount(() => {
         </n-tab-pane>
       </n-tabs>
     </template>
-    <template #footer
-      ><n-space justify="end">
+    <template #footer>
+      <p v-if="reviewError" role="alert">{{ reviewError }}</p>
+      <n-space justify="end">
         <n-button @click="close">{{
           validating ? '取消等待并关闭' : state.running ? '停止并关闭' : '关闭'
         }}</n-button>
         <n-button v-if="state.running" type="warning" @click="session.cancel">停止演算</n-button>
+        <n-button
+          v-if="state.result?.success && openIncomeReview"
+          :disabled="state.running || submitting || resultValuationBusy || archiveLoading"
+          title="使用这份成功演算保存的原排班、参数和结果创建 AI 草稿，核对后自行发送"
+          @click="reviewIncome"
+          >{{ lastAttemptSucceeded ? '分析本次排班' : '分析上次成功排班' }}</n-button
+        >
         <n-button
           v-if="state.result?.success"
           :loading="exporting"

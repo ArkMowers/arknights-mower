@@ -8,6 +8,8 @@
 - 输入与参数：`ui/src/riic/income.js`；默认预热 3 天、统计 28 天。
 - 演算：`ui/src/riic/incomeWorker.js`；生命周期：`incomeSession.js`；上次结果存储：`incomeArchive.js`；图片：`incomeImage.js`；甘特图主题适配：`ui/src/components/IncomeTimeline.vue`；图表使用固定源码中的 `components/workbench/ScheduleTimelineGantt.vue`，时间轴使用 `workbench/timeline/`。
 - 固定源码：`ui/src/riic/vendor/`，`source.json` 记录来源提交、Mower 参考版本和逐文件 SHA-256。保留目录内已有许可证；来源记录不授予其他许可证。
+- AI 检查材料：`ui/src/riic/incomeReview.js` 从同一成功记录提取原表、参数、工休、零心情驻岗、延期和有限事件；`PlanIncomeDialog.vue` 提供分析按钮，现有聊天附件流程暂存材料。行为边界由[AI 助手子系统说明](../../../../docs/subsystems/ai-assistant.md#income-review-draft)规定。
+- 当前教程：`arknights_mower/agent/tools/riic_tutorial.py` 为 `mower_tutorial` 读取自带 HTML 的固定排班章节；知识文件只保留导读，不复制教程正文。
 - 原图片接口：`server.py` 的 `/dialog/save/img`，可使用显式排班快照；导入继续走 `/import` 和 `arknights_mower/utils/qrcode.py`。
 
 ## 同步固定源码
@@ -38,7 +40,7 @@ npm test -- src/riic/incomeContinuous.test.js src/riic/incomeExpectation.test.js
 pytest arknights_mower/tests/config_backup_tests.py -k 'income or recycling_plan_json_and_image_round_trip'
 ```
 
-AI 知识与试排修改执行 `arknights_mower/tests/riic_assistant_tests.py`，涉及真实工具注册或调用再加入 `ai_feature_tests.py`。按需要运行前端生产构建一次，确认独立 Worker 产物；不要在快速迭代中反复构建。
+AI 知识与现有表检查修改执行 `arknights_mower/tests/riic_assistant_tests.py` 和 `arknights_mower/tests/ai_prompt_contract_tests.py`，涉及真实工具注册或调用再加入 `ai_feature_tests.py`。教程测试覆盖源码与打包路径、缺失及过大文件、固定章节和摘录上限。按需要运行前端生产构建一次，确认独立 Worker 产物；不要在快速迭代中反复构建。
 
 同轮入住预约执行 `npm test -- src/riic/incomeDormReservations.test.js src/riic/vendor/scheduler/mowerSharedGroups.spec.ts`，确认后续组规划不清除较早组的临时床位，完整普通下班规划仍将两组主班送入宿舍并保留工作替班。 普通换人前沿用本体 `departing_plan` 读取离开者心情，确认离宿后保留达标实测并停止旧恢复速度；明确回满或整组回满要求未满足时，已恢复组员让床不召回仍在休息的必需成员；个人上限离宿可单独安排本组正常回班，失败时原离宿期限继续有效。追加 `src/riic/vendor/scheduler/mowerCompletedDeparture.spec.ts`，核验期限等号、单人及合并清退、未来恢复期限和个人心情上限。
 
@@ -52,3 +54,7 @@ AI 知识与试排修改执行 `arknights_mower/tests/riic_assistant_tests.py`�
 性能改动使用 `ui/src/riic/incomePerformance.test.js` 核对预演复制隔离、收益、库存和完整调度轨迹与基线一致。需要计时对照时，从 `ui/` 执行 `MOWER_INCOME_BENCHMARK=1 MOWER_INCOME_BENCHMARK_LOG=/tmp/mower-income-speed.jsonl npm test -- src/riic/incomePerformance.test.js --maxWorkers=1`；同一给定排班按基线、优化、优化、基线顺序计算 24 小时，以完整结果摘要核验等价，计时不含摘要生成。计时受主机负载影响，不作为收益正确性的替代。显式完整周期回归允许 20 分钟测试时限，生产演算的区间上限保持原设置。
 
 理论期望时钟与原生时钟的性能对照使用 `MOWER_INCOME_TIMING_BENCHMARK=1 MOWER_INCOME_BENCHMARK_LOG=/tmp/mower-income-timing.jsonl npm test -- src/riic/incomePerformance.test.js --maxWorkers=1`，按原生、理论、理论、原生顺序计算同一完整排班的 24 小时。该对照保留连续收益口径，但理论时钟忽略页面操作并按生成能力分配无人机，抽样时钟按库存和阈值用机，因此允许收益和详细轨迹有差异；固定条件收益率由连续产出的手算场景验证。
+
+AI 分析材料修改执行 `npm test -- src/riic/incomeReview.test.js src/components/PlanIncomeDialog.test.js src/components/ChatBot.test.js`，按实际改动选择用例。核对材料始终来自同次成功记录，当前编辑表和参数不替换原输入；失败或停止后分析旧记录要标明上次成功，旧来源字段缺失保持未知。四个附件各不超过 6000 字符，保留完整记录并报告省略数；延期和事件的时间基准包含预热，不能把缺少 `resolvedAt` 当期末死锁。验证草稿与附件保护、忙碌状态、上传失败及配置档案切换；只能填入草稿，发送仍由用户操作。工休和原因链口径沿用[AI 助手的收益诊断规则](../../../../docs/subsystems/ai-assistant.md#riic-topic-routing-and-income-estimates)，收益比较固定相同输入条件，不把目标练度当实际事实。
+
+疑似代码异常按[AI 助手子系统说明的代码诊断与反馈规则](../../../../docs/subsystems/ai-assistant.md#riic-code-diagnosis-and-feedback)核对配置、演算模型和调度实现。检查 `code_diagnosis` 索引的路径、实际扫描行号、摘要及缺失状态，再读取源码上下文；当前源码与报告版本分开，不通过改表掩盖代码问题。模拟复现材料先形成反馈草稿，相对小时不能生成实机日期或日志引用。有实际发生时间的实机事件再使用 `inspect_feedback` 和 `evidence_windows`；发送仍需用户明确同意及接口所需实际时间和有效引用。相关提示要求使用 `ai_prompt_contract_tests.py` 的代码诊断用例验证，不声称自动修代码或已发送反馈。

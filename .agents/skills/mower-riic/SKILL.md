@@ -1,18 +1,25 @@
 ---
 name: mower-riic
-description: 维护 Mower AI 基建知识、只读主班试排、排班收益演算或收益图片导入导出时使用；不用于与这些功能无关的普通调度修复。
+description: 维护 Mower AI 基建知识、现有排班只读检查、排班收益演算或收益图片导入导出时使用；不用于与这些功能无关的普通调度修复。
 ---
 
 # Mower RIIC
 
-先区分机制资料、Mower AI 排班草案和前端收益演算。Mower AI 已使用共享知识中的基建机制 skill；维护时扩展现有 `plan_generation` 主题及工具，不复制目录、引入另一套 skill 执行器或恢复固定方案生成按钮。读取[AI 助手子系统说明](../../../docs/subsystems/ai-assistant.md#riic-tools)或[排班编辑器说明](../../../docs/subsystems/plan-editor.md#income-export)中本次操作对应的输入与边界。
+先区分机制资料、Mower AI 现有排班检查和前端收益演算。Mower AI 围绕现有表纠错、局部优化，以及提出仅针对已拥有干员的基建养成建议；不从零生成排班，不为了提高收益擅自更换布局或设施等级。维护时扩展共享知识中的 `plan_review` 主题及现有工具，不复制目录、引入另一套 skill 执行器或恢复排班生成器。读取[AI 助手子系统说明](../../../docs/subsystems/ai-assistant.md#riic-tools)或[排班编辑器说明](../../../docs/subsystems/plan-editor.md#income-export)中本次操作对应的输入与边界。
 
 ## 机制与 AI
 
 - `arknights_mower/data/riic/knowledge.json` 保存精简机制指南及来源。用 `get_riic_knowledge` 的 topic 获取相关主题；维护时同步工具枚举。完整技能和嵌套术语从 `utils/building_skills.py` 的共享资源读取，不复制另一份 AI 目录。
 - `get_riic_context` 读取已同步 BOX、练度和现有设施，并通过 `normal_plan_issues` 标出旧主表与同次名单的静态冲突；这不是原生排班或收益验证。用户明确提供的覆盖在每个相关调用中一致传递；未知练度保持未知。每个独立技能槽只用当前已解锁的最高版本。
 - 组合名单不是同站名单。先核对提供者、受益者、设施、产品、心情和同一时段条件；档案国籍不能替代技能术语的明确成员。
-- `get_riic_knowledge(topic="plan_generation")` 持有按实际 BOX、库存和目标生成单布局主表的指导，也说明多绑组、候补、充能、救急空位继承和养成比较。完整草案通过 `try_riic_plan(plan=..., mode="normal"或"rescue")` 校验；旧 `assignments` 只验证局部主班。成功含义按 `scope`、`status` 和 `unchecked` 解释，不声称已保存、已执行、长期轮换可行或收益最优。收益计算仍由前端窗口启动，AI 现有工具不执行演算。
+- 检查现有表先读 `get_riic_knowledge(topic="plan_review")`，并用 `mower_tutorial` 读取当前软件自带一条龙的固定排班章节；来源、缺少章节和省略内容须保留。不要复制整篇教程进知识文件。用户提供的当前表或成功演算原表优先作为审阅对象，保存主表仅作比对，材料省略处不猜补。
+- 局部修改也使用 `try_riic_plan(plan=..., mode="normal"或"rescue")`，保留主班、替班及全部绑定。旧 `assignments` 会清空被修改房间的绑定，只用于孤立主班占位检查。校验副本的空 `backup_plans` 不删除原表副表，也不表示副表已验证。成功含义按 `scope`、`status` 和 `unchecked` 解释，不声称已保存、已执行、长期轮换可行或收益最优。
+- 本人技能与身份挂件分开核对，实际练度与养成目标分开记录。目标练度只是假设，不能作为实际 `roster_overrides`、写回 BOX 或用于当前排班可行性结论；不推荐获取未拥有干员。原表仅升级技能与局部换人的收益分别比较，缺少同条件演算及成本时不计算增益或回本。
+- 工休比、工作占比和零心情驻岗按[AI 助手子系统说明的收益诊断规则](../../../docs/subsystems/ai-assistant.md#riic-topic-routing-and-income-estimates)解释，先定位时间与配置、事件原因链，不仅凭零心情时长认定故障。收益计算由前端窗口启动，AI 工具不执行演算；原表和候选固定相同条件，不能虚构收益数值或排名。
+- “分析本次排班”只把同次成功演算的输入与结果整理成 AI 草稿，用户核对后发送；保留原草稿、附件及忙碌会话。来源缺失、历史结果及材料省略须明确，维护入口见[收益演算维护](references/maintenance.md)。
+
+- 诊断区分配置问题、演算模型限制与调度实现缺陷，不强迫改表掩盖代码异常。疑似代码问题先读 `code_diagnosis` 返回的固定本地源码索引，再按实际扫描路径与行号调用 `get_source_snippet`；保留 SHA-256、缺失状态与报告来源版本，不编造行号，不把当前源码当历史版本，也不声称自动修代码。
+- 模拟缺陷先整理原表、参数、来源版本、事件、预期与实际结果及疑似源码的反馈草稿，不把相对演算小时伪装成实机日期、日志或证据 ID。有实际发生时间的实机事件才用 `inspect_feedback` 与所需 `evidence_windows`，日志和源码证据分别引用。`submit_issue` 仅在用户明确同意发送且接口所需实际时间及有效引用齐备时调用；缺项先给可核对草稿，完整边界见[代码诊断与反馈规则](../../../docs/subsystems/ai-assistant.md#riic-code-diagnosis-and-feedback)。
 
 ## 收益演算维护
 
