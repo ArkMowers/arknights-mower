@@ -4488,7 +4488,10 @@ class BaseSchedulerSolver(
             self.planned = True
         elif not self.todo_task:
             if (
-                self.enable_party
+                (
+                    self.enable_party
+                    or getattr(config.conf, "should_run_mower_mall", False)
+                )
                 and (
                     self.last_clue is None
                     or datetime.now() - self.last_clue > timedelta(hours=1)
@@ -4499,7 +4502,9 @@ class BaseSchedulerSolver(
             ):
                 clue_started_at = datetime.now()
                 try:
-                    clue_result = self.clue_new()
+                    clue_result = (
+                        self.clue_new() if self.enable_party else self._run_clue_shop()
+                    )
                 except CreditShopIncomplete as e:
                     task = SchedulerTask(time=clue_started_at, task_type=TaskTypes.CLUE)
                     self.tasks.append(task)
@@ -12990,7 +12995,10 @@ class BaseSchedulerSolver(
 
                 elif scene == Scene.INFRA_CONFIDENTIAL:
                     logger.debug("INFRA_CONFIDENTIAL", extra={"log_group": "clue"})
-                    if ctm.task == "daily":
+                    if ctm.task == "message_board":
+                        # 进房后可能已在线索板，先返回房间处理信息板，再继续领取和摆放。
+                        self.back()
+                    elif ctm.task == "daily":
                         # 检查是否领过线索
                         daily_scope = ((1815, 200), (1895, 250))
                         if self.find("clue/badge_new", scope=daily_scope):

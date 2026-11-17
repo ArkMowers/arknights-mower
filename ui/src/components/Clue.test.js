@@ -136,156 +136,89 @@ async function renderClue(overrides = {}, props = {}) {
   return renderToString(app)
 }
 
-describe('信息板功能适用范围', () => {
-  it('assigns combined credit fields to their individual searchable task editors', async () => {
+describe('固定的访友与购物策略', () => {
+  it('keeps individual searchable task editors in the combined settings', async () => {
     const html = await renderClue()
     for (const editor of ['visit', 'credit-fight', 'shop']) {
       expect(html).toContain(`data-task-editor="${editor}"`)
     }
+    expect(html).not.toContain('线索收集')
+    for (const removed of [
+      '访友执行方式',
+      '购物执行方式',
+      '购物设置',
+      '信用溢出',
+      '只购买折扣物品',
+      '无视黑名单'
+    ]) {
+      expect(html).not.toContain(removed)
+      expect(state.updates[removed]).toBeUndefined()
+    }
+    expect(html).not.toContain('<fieldset')
+    expect(html.match(/type="checkbox"/g)).toHaveLength(3)
   })
 
   it('opens the clue editor from the combined credit settings', async () => {
     const configureClue = vi.fn()
     const html = await renderClue({}, { onConfigureClue: configureClue })
     expect(html).toContain('线索搜集与交流')
-    expect(html).not.toContain('#task-base')
     state.updates['配置线索搜集与交流']()
     expect(configureClue).toHaveBeenCalledExactlyOnceWith()
   })
 
-  it('edits an inactive visit task without enabling it', async () => {
+  it('describes the fixed Mower visit without enabling the task', async () => {
     const html = await renderClue(
       { visit_friend_enable: false },
       { task: 'visit', showEnable: false }
     )
-    expect(html).toContain('data-value="mower"')
-    state.updates['访友执行方式']('maa')
-    expect(state.config.visit_friend_mode.value).toBe('maa')
+    expect(html).toContain('由 Mower 访问好友并收取信用')
+    expect(html).not.toContain('<select')
+    expect(html).not.toContain('<fieldset')
     expect(state.config.visit_friend_enable.value).toBe(false)
   })
 
-  it('edits an inactive shop task without enabling it', async () => {
-    const html = await renderClue(
-      { maa_mall_enable: false, maa_mall_mode: 'maa' },
-      { task: 'shop', showEnable: false }
-    )
-    expect(html).toContain('只购买折扣物品')
-    expect(html).toContain('<select multiple')
-    state.updates['购物执行方式']('mower')
-    state.updates['优先购买'](['招聘许可', '龙门币'])
-    expect(state.config.maa_mall_mode.value).toBe('mower')
-    expect(state.config.maa_mall_buy.value).toEqual(['招聘许可', '龙门币'])
-    expect(state.config.maa_mall_enable.value).toBe(false)
-  })
-
-  it('keeps inactive task parameters hidden in the existing combined editor', async () => {
-    const html = await renderClue({ visit_friend_enable: false, maa_mall_enable: false })
-    expect(html).not.toContain('由 MAA 进入好友列表')
-    expect(html).not.toContain('只购买折扣物品')
-    expect(state.updates['访友执行方式']).toBeUndefined()
-    expect(state.updates['购物执行方式']).toBeUndefined()
-  })
-
-  it('separates credit task editors without changing shared shopping dependencies', async () => {
-    const visit = await renderClue({}, { task: 'visit', showEnable: false })
-    expect(visit).toContain('data-value="mower"')
-    expect(visit).not.toContain('按性价比购物')
-    expect(visit).not.toContain('<select')
-    expect(state.config.visit_friend_enable.value).toBe(true)
-
-    const fight = await renderClue({}, { task: 'credit-fight', showEnable: false })
-    expect(fight).toContain('<select')
-    expect(fight).toContain('借助战打OF-1')
-    expect(fight).toContain('使用指定编队')
-    expect(fight).not.toContain('<fieldset')
-    expect(fight).not.toContain('按性价比购物')
-    expect(state.config.maa_credit_fight.value).toBe(false)
-
-    const shop = await renderClue(
-      { visit_friend_mode: 'maa', credit_shop_by_value: true },
-      { task: 'shop', showEnable: false }
-    )
-    expect(shop).toContain('按性价比购物')
-    expect(shop).toContain('需要开启 Mower 访问好友')
-    expect(shop).not.toContain('由 MAA 进入好友列表')
-    expect(state.config.credit_shop_by_value.value).toBe(true)
-    expect(state.config.visit_friend_mode.value).toBe('maa')
-  })
-
-  it.each([
-    [true, 'mower', true, 'mower', true, true],
-    [false, 'mower', true, 'mower', true, false],
-    [true, 'maa', true, 'mower', true, false],
-    [true, 'mower', false, 'mower', false, false],
-    [true, 'mower', true, 'maa', false, false]
-  ])(
-    '访问好友 %s/%s、购物 %s/%s 时显示为 %s、可勾选为 %s',
-    async (visitEnabled, visitMode, mallEnabled, mallMode, visible, enabled) => {
-      const html = await renderClue({
-        visit_friend_enable: visitEnabled,
-        visit_friend_mode: visitMode,
-        maa_mall_enable: mallEnabled,
-        maa_mall_mode: mallMode,
-        credit_shop_by_value: true
-      })
-      for (const label of ['按需领取信用', '按性价比购物']) {
-        expect(html.includes(label)).toBe(visible)
-        if (visible) {
-          const checkbox = html.match(
-            new RegExp(`<label\\b[^>]*>(<input\\b[^>]*>)\\s*${label}\\s*</label>`)
-          )
-          expect(checkbox).not.toBeNull()
-          expect(checkbox[1].includes(' disabled')).toBe(!enabled)
-        }
-      }
-      const threshold = html.match(/<input\b[^>]*type="number"[^>]*>/)
-      expect(Boolean(threshold)).toBe(visible)
-      if (visible) {
-        expect(threshold[0].includes(' disabled')).toBe(!enabled)
-      }
-      if (mallEnabled) {
-        const overflow = html.match(/<fieldset\b[^>]*data-value="true"[^>]*>/)
-        expect(overflow).not.toBeNull()
-        expect(overflow[0].includes(' disabled')).toBe(enabled)
-        const lists = html.match(/<select\b[^>]* multiple[^>]*>/g)
-        expect(lists).toHaveLength(2)
-        expect(lists.every((select) => !select.includes(' disabled'))).toBe(true)
-      }
-      expect(html.includes('需要开启 Mower 访问好友')).toBe(visible && !enabled)
-      expect(state.config.clue_credit_on_demand.value).toBe(true)
-      expect(state.config.credit_shop_by_value.value).toBe(true)
-      expect(state.config.maa_mall_ignore_blacklist_when_full.value).toBe(true)
+  it.each([false, true])(
+    'keeps threshold and purchase lists editable with visits %s',
+    async (visits) => {
+      const html = await renderClue(
+        { visit_friend_enable: visits, maa_mall_enable: false },
+        { task: 'shop', showEnable: false }
+      )
+      expect(html).toContain('按性价比购物')
+      expect(html).toContain('按需领取信用')
+      const threshold = html.match(/<input\b[^>]*type="number"[^>]*>/)[0]
+      expect(threshold).not.toContain(' disabled')
+      const lists = html.match(/<select\b[^>]* multiple[^>]*>/g)
+      expect(lists).toHaveLength(2)
+      expect(lists.every((select) => !select.includes(' disabled'))).toBe(true)
+      state.updates['优先购买'](['招聘许可', '龙门币'])
+      expect(state.config.maa_mall_buy.value).toEqual(['招聘许可', '龙门币'])
+      expect(state.config.maa_mall_enable.value).toBe(false)
+      expect(state.config.visit_friend_enable.value).toBe(visits)
     }
   )
-})
 
-describe('按性价比购物设置', () => {
-  it.each([true, false])('按需领取信用为 %s 时仍独立控制溢出选项', async (onDemand) => {
-    for (const enabled of [true, false]) {
-      const html = await renderClue({
-        credit_shop_by_value: enabled,
-        clue_credit_on_demand: onDemand
-      })
-      const overflow = html.match(/<fieldset\b[^>]*data-value="true"[^>]*>/)
-      expect(overflow[0].includes(' disabled')).toBe(enabled)
-      const threshold = html.match(/<input\b[^>]*type="number"[^>]*>/)
-      expect(threshold[0].includes(' disabled')).toBe(!enabled)
-      expect(state.config.clue_credit_on_demand.value).toBe(onDemand)
-      expect(state.config.maa_mall_ignore_blacklist_when_full.value).toBe(true)
-      expect(state.config.maa_mall_buy.value).toEqual(['招聘许可'])
-      expect(state.config.maa_mall_blacklist.value).toEqual(['家具零件'])
-    }
+  it('keeps disabled shopping parameters hidden in combined settings', async () => {
+    const html = await renderClue({ maa_mall_enable: false })
+    expect(html).not.toContain('type="number"')
+    expect(html).not.toContain('<select multiple')
   })
 
-  it('阈值使用三位小数，空值和非法值不会覆盖保存值', async () => {
-    const html = await renderClue({ credit_shop_by_value: true })
+  it('retains the independent credit-fight squad editor', async () => {
+    const html = await renderClue({}, { task: 'credit-fight', showEnable: false })
+    expect(html).toContain('<select')
+    expect(html).toContain('借助战打OF-1')
+    expect(html).not.toContain('按性价比购物')
+    expect(state.config.maa_credit_fight.value).toBe(false)
+  })
+
+  it('accepts three-decimal thresholds and preserves the value on invalid input', async () => {
+    const html = await renderClue()
     const input = html.match(/<input\b[^>]*type="number"[^>]*>/)[0]
-    expect(input).toContain('value="0.045"')
-    expect(input).toContain('step="0.001"')
-    expect(input).toContain('min="0"')
-    expect(input).toContain('data-precision="3"')
+    for (const attribute of ['value="0.045"', 'step="0.001"', 'min="0"', 'data-precision="3"']) {
+      expect(input).toContain(attribute)
+    }
     state.updateThreshold(0.036)
-    expect(state.config.credit_shop_value_threshold.value).toBe(0.036)
     for (const value of [null, NaN, Infinity, -0.001]) {
       state.updateThreshold(value)
       expect(state.config.credit_shop_value_threshold.value).toBe(0.036)

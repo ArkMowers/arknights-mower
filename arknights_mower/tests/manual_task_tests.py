@@ -127,16 +127,6 @@ def test_infra_dispatch_runs_single_task_even_with_automatic_setting_disabled(
 @pytest.mark.parametrize(
     "kind, args, kwargs",
     [
-        (
-            TaskTypes.CREDIT_SHOP,
-            (["Mall"],),
-            {"manual": True, "mall_action": "shopping"},
-        ),
-        (
-            TaskTypes.VISIT_FRIEND,
-            (["Mall"],),
-            {"manual": True, "mall_action": "visit_friends"},
-        ),
         (TaskTypes.STAGE_PLAN, (["Fight", "Award"],), {"manual": True}),
         (TaskTypes.ROGUELIKE, ([],), {"manual": True, "long_task": "rogue"}),
         (TaskTypes.SSS, ([],), {"manual": True, "long_task": "sss"}),
@@ -248,32 +238,49 @@ def actual_maa(manual):
 
 
 @pytest.mark.parametrize(
-    "kind, action",
-    [(TaskTypes.CREDIT_SHOP, "shopping"), (TaskTypes.VISIT_FRIEND, "visit_friends")],
+    "kind,name",
+    [
+        (TaskTypes.CREDIT_SHOP, "CreditShop"),
+        (TaskTypes.VISIT_FRIEND, "CreditSolver"),
+    ],
 )
-def test_actual_maa_mall_runs_only_selected_action_and_does_not_sleep(
-    manual, monkeypatch, kind, action
+def test_legacy_manual_credit_choices_use_only_mower_without_enabling_automatic_tasks(
+    manual, monkeypatch, kind, name
 ):
-    monkeypatch.setattr(manual.module, "send_message", Mock())
+    import importlib
+
     monkeypatch.setattr(
         manual.module.config,
         "conf",
-        Conf(maa_mall_enable=False, visit_friend_enable=False),
+        Conf(
+            maa_mall_enable=False,
+            visit_friend_enable=False,
+            maa_mall_mode="maa",
+            visit_friend_mode="maa",
+        ),
     )
+    actions = {"CreditShop": Mock(), "CreditSolver": Mock()}
+    for target_module, target_name in (
+        ("shop", "CreditShop"),
+        ("credit", "CreditSolver"),
+    ):
+        monkeypatch.setattr(
+            importlib.import_module(f"arknights_mower.solvers.{target_module}"),
+            target_name,
+            actions[target_name],
+        )
     task, later = queue(manual, kind)
-    solver, engine = actual_maa(manual)
-    assert manual.manual.run_manual_task(solver, task)
-    name, params = engine.append_task.call_args.args
-    assert name == "Mall"
-    assert params["shopping"] is (action == "shopping")
-    assert params["visit_friends"] is (action == "visit_friends")
-    assert params["credit_fight"] is False
-    engine.start.assert_called_once()
-    engine.close.assert_called_once()
-    assert solver.MAA is None
-    assert solver.last_execution["maa"] is None
-    solver.rest_until_next_task.assert_not_called()
-    assert solver.tasks == [task, later]
+    assert manual.manual.run_manual_task(manual.solver, task)
+    actions[name].return_value.run.assert_called_once_with()
+    actions[
+        "CreditSolver" if name == "CreditShop" else "CreditShop"
+    ].assert_not_called()
+    manual.solver.maa_plan_solver.assert_not_called()
+    assert not manual.module.config.conf.maa_mall_enable
+    assert not manual.module.config.conf.visit_friend_enable
+    assert manual.solver.last_execution["maa"] is None
+    assert task.manual_steps == []
+    assert manual.solver.tasks == [task, later]
 
 
 @pytest.mark.parametrize(
@@ -299,8 +306,14 @@ def test_actual_maa_yields_when_new_task_arrives_without_three_minute_sleep(
     manual, monkeypatch
 ):
     monkeypatch.setattr(manual.module, "send_message", Mock())
-    task, later = queue(manual, TaskTypes.CREDIT_SHOP)
+    task, later = queue(manual, TaskTypes.STAGE_PLAN)
     solver, engine = actual_maa(manual)
+    from arknights_mower.utils import maa_stage_inventory
+
+    solver.maybe_switch_expired_activity_plan = Mock()
+    monkeypatch.setattr(
+        maa_stage_inventory, "load_inventory_snapshot", lambda: ({}, None)
+    )
     engine.running.side_effect = [True, False]
     solver.recog.update.side_effect = lambda: setattr(
         later, "time", manual.clock.now() + timedelta(minutes=3)
@@ -310,7 +323,7 @@ def test_actual_maa_yields_when_new_task_arrives_without_three_minute_sleep(
     engine.stop.assert_called_once()
     solver.sleep.assert_not_called()
     assert task.execution_failure
-    assert task.manual_steps == ["信用购物"]
+    assert task.manual_steps == ["作战计划"]
     assert solver.tasks == [task, later]
 
 

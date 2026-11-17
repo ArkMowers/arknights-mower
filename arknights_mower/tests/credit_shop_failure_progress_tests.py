@@ -162,10 +162,13 @@ def test_initial_clue_flow_rethrows_shop_failure(dispatch):
         scheduler.clue_new()
 
 
-def test_periodic_clue_keeps_one_original_shopping_continuation(dispatch):
+@pytest.mark.parametrize("clues_enabled", [False, True])
+def test_periodic_clue_keeps_one_original_shopping_continuation(
+    dispatch, monkeypatch, clues_enabled
+):
     scheduler, _, state, clock = dispatch
     scheduler.op_data = SimpleNamespace(run_order_rooms={})
-    scheduler.enable_party = True
+    scheduler.enable_party = clues_enabled
     scheduler.todo_task = False
     scheduler.drone_room = None
     scheduler.drone_time = None
@@ -173,6 +176,8 @@ def test_periodic_clue_keeps_one_original_shopping_continuation(dispatch):
     scheduler.no_pending_task = MagicMock(return_value=True)
     scheduler._clue_flow_resume_time = MagicMock(return_value=None)
     scheduler.clue_new = MagicMock(side_effect=incomplete())
+    run_shop = MagicMock(side_effect=incomplete())
+    monkeypatch.setattr(CreditShop, "run", run_shop)
     previous_check = scheduler.last_clue
     started_at = clock.now()
 
@@ -191,10 +196,33 @@ def test_periodic_clue_keeps_one_original_shopping_continuation(dispatch):
         scheduler.todo_task = False
         scheduler.reload_time = clock.now()
         scheduler.infra_main()
-    scheduler.clue_new.assert_called_once_with()
+    assert scheduler.clue_new.call_count == int(clues_enabled)
+    assert run_shop.call_count == int(not clues_enabled)
     assert scheduler.tasks == [task]
     assert task.time == started_at
     assert scheduler.last_clue == previous_check
+
+    independent = SchedulerTask(time=clock.now(), task_type=TaskTypes.NOT_SPECIFIC)
+    scheduler.tasks.append(independent)
+    scheduler.task = independent
+    scheduler.infra_main()
+    assert scheduler.tasks == [task]
+    assert task.execution_failure
+
+    scheduler.recog = shop_frame("shop_ready_20261031_071521.jpg")
+    scheduler._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    reward = task.credit_shop_continuation["reward"]
+    scheduler.task = task
+    run_shop.side_effect = None
+    scheduler.infra_main()
+
+    run_shop.assert_called_with(resume=reward)
+    assert run_shop.call_count == 1 + int(not clues_enabled)
+    assert scheduler.clue_new.call_count == int(clues_enabled)
+    assert task.time == started_at
+    assert scheduler.tasks == []
+    assert scheduler.last_clue == clock.now()
 
 
 def test_started_shop_continuation_keeps_time_during_new_flow_exclusion(

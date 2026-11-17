@@ -47,6 +47,7 @@ def replenishment(resting, monkeypatch):
     monkeypatch.setattr(base_schedule.detector, "infra_notification", lambda img: None)
     scheduler.recog.img = None
     scheduler.enable_party = False
+    monkeypatch.setattr(config.conf, "maa_mall_enable", False)
     scheduler.drone_room = scheduler.drone_time = None
     scheduler.refresh_connecting = False
     scheduler.planned = True

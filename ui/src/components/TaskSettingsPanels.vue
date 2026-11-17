@@ -556,7 +556,7 @@ const idleOptions = computed(() => [
             <n-form-item>
               <n-flex>
                 <n-checkbox v-model:checked="enable_party">
-                  <div class="item">线索收集</div>
+                  <div class="item">线索搜集</div>
                 </n-checkbox>
                 <n-checkbox v-model:checked="leifeng_mode">
                   雷锋模式

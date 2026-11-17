@@ -239,8 +239,6 @@ def test_purchase_rejection_does_not_fall_back_or_request_credit(shopping, on_de
     "inactive",
     [
         {"credit_shop_by_value": False},
-        {"visit_friend_enable": False},
-        {"visit_friend_mode": "maa"},
         {"maa_mall_enable": False},
         {"maa_mall_mode": "maa"},
     ],
@@ -250,7 +248,7 @@ def test_inactive_value_feature_keeps_old_affordable_fallback(
     shopping, monkeypatch, inactive, on_demand
 ):
     shop, state = shopping
-    monkeypatch.setattr(config, "conf", config.conf.updated(inactive))
+    monkeypatch.setattr(config, "conf", config.conf.model_copy(update=inactive))
     state.balance = 120
     state.products = [product(0, "招聘许可", 160), product(1, "糖", 80)]
 
@@ -340,3 +338,18 @@ def test_ordinary_deficit_blacklist_matches_whole_names(shopping, name, listed_n
 
     assert state.purchased == []
     assert shop.credit_deficit == 250
+
+
+@pytest.mark.parametrize("visits", [False, True])
+def test_value_shopping_does_not_require_friend_visits(shopping, monkeypatch, visits):
+    shop, state = shopping
+    monkeypatch.setattr(
+        config, "conf", config.conf.updated({"visit_friend_enable": visits})
+    )
+    state.balance = 120
+    state.products = [product(0, "招聘许可", 160), product(1, "糖", 80)]
+
+    shop.run()
+
+    assert state.purchased == []
+    assert state.balance == 120

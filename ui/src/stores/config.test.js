@@ -469,7 +469,7 @@ describe('low frame rate adaptation', () => {
     expect(store.stage_plan_enable).toBe(true)
     expect(store.stage_plan_runner).toBe('maa')
     expect(store.maa_mall_enable).toBe(true)
-    expect(store.maa_mall_mode).toBe('maa')
+    expect(store.maa_mall_mode).toBe('mower')
 
     // 2. Modify values and check build_config output
     store.stage_plan_enable = false
@@ -485,13 +485,14 @@ describe('low frame rate adaptation', () => {
     expect(payload.maa_mall_mode).toBe('mower')
     expect(payload.maa_enable).toBe(0)
 
-    // 2b. stage_plan disabled but maa_mall executed by maa -> maa_enable must be 1
+    // 2b. Legacy shopping mode cannot enable MAA without a MAA stage plan.
     store.stage_plan_enable = false
     store.stage_plan_runner = 'mower'
     store.maa_mall_enable = true
     store.maa_mall_mode = 'maa'
     payload = store.build_config()
-    expect(payload.maa_enable).toBe(1)
+    expect(payload.maa_enable).toBe(0)
+    expect(payload.maa_mall_mode).toBe('mower')
 
     // 2c. stage_plan enabled with maa but maa_mall executed by mower -> maa_enable must be 1
     store.stage_plan_enable = true

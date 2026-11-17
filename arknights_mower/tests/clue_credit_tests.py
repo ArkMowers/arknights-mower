@@ -29,15 +29,18 @@ CONFIGURATIONS = list(itertools.product([False, True], repeat=5))
 
 def credit_conf(options):
     enabled, visits, native_visits, shopping, native_shop = options
-    return Conf(
-        clue_credit_on_demand=enabled,
+    conf = Conf(
         visit_friend_enable=visits,
-        visit_friend_mode="mower" if native_visits else "maa",
         maa_mall_enable=shopping,
-        maa_mall_mode="mower" if native_shop else "maa",
         maa_mall_buy="招聘许可",
         maa_mall_blacklist="碳",
     )
+    # 旧策略仅用于共享流程的回归输入；持久配置始终迁移为固定策略。
+    conf.clue_credit_on_demand = enabled
+    conf.credit_shop_by_value = False
+    conf.visit_friend_mode = "mower" if native_visits else "maa"
+    conf.maa_mall_mode = "mower" if native_shop else "maa"
+    return conf
 
 
 @pytest.mark.parametrize("options", CONFIGURATIONS)
@@ -45,8 +48,9 @@ def test_feature_requires_every_selection(options):
     conf = credit_conf(options)
     assert conf.should_defer_clue_credit is (options == (True,) * 5)
     restored = Conf(**conf.model_dump(exclude_unset=True))
-    assert restored.clue_credit_on_demand == options[0]
-    assert Conf().clue_credit_on_demand is False
+    assert restored.clue_credit_on_demand is True
+    assert restored.visit_friend_mode == restored.maa_mall_mode == "mower"
+    assert Conf().clue_credit_on_demand is True
 
 
 @pytest.mark.parametrize("options", CONFIGURATIONS)
@@ -840,6 +844,8 @@ def shopping(monkeypatch):
             maa_mall_blacklist="碳",
         ),
     )
+    # 保留旧购买策略的流程回归，固定性价比策略由专门测试覆盖。
+    config.conf.credit_shop_by_value = False
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(base_schedule, "save_current_state", MagicMock())
     state = SimpleNamespace(
