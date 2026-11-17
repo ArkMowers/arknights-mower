@@ -241,8 +241,10 @@ def test_fiammetta_removed_from_dorm_invalidates_only_idle_reservation(room_read
 
 
 @pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("sample", ["measured", "prediction", "unknown"])
+@pytest.mark.parametrize("limit", [None, 12, 10])
 def test_early_limit_release_is_recorded_only_after_actual_departure(
-    room_reader, strict
+    room_reader, strict, sample, limit
 ):
     solver, target, deadline = room_reader(room="dormitory_1", name="令", mood=11)
     target.upper_limit = 12
@@ -255,16 +257,23 @@ def test_early_limit_release_is_recorded_only_after_actual_departure(
         time=deadline,
         strict_mood_limit=strict,
     )
+    solver.task.mood_limit = limit
     # 任务存在但实际仍在宿舍时，不结束本轮休息。
     solver.get_agent_from_room("dormitory_1")
     assert getattr(target, "rest_mood_release_limit", None) is None
     assert target.current_room == "dormitory_1"
+    if sample == "prediction":
+        target.mood_is_prediction = True
+    elif sample == "unknown":
+        target.time_stamp = None
     solver.find.side_effect = None
     solver.find.return_value = True  # 实读确认床位已空。
     solver.get_agent_from_room("dormitory_1")
     assert target.current_room == ""
     assert target.mood == 11
-    assert (target.time_stamp is not None) is strict
+    assert (target.time_stamp is not None) is (
+        strict and sample == "measured" and limit in (None, 12)
+    )
     assert target.depletion_rate == 0
     assert getattr(target, "rest_mood_release_limit", None) == (
         12 if (strict) else None

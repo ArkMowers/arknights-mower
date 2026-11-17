@@ -17509,8 +17509,16 @@ class BaseSchedulerSolver(
                 or slots.get(operator.current_index) == name
             ):
                 continue
+            confirmed_departure = confirmed_release or (
+                room.startswith("dorm")
+                and complete
+                and getattr(task, "strict_mood_limit", False)
+                and task.meta_data == name
+                and self.op_data.has_rest_mood_limit(name)
+                and getattr(task, "mood_limit", None) in (None, operator.upper_limit)
+            )
             retain_dorm_sample = (
-                confirmed_release
+                confirmed_departure
                 and name not in slots.values()
                 and operator.time_stamp is not None
                 and has_resting_mood(operator)
