@@ -886,12 +886,13 @@ class RIICPart(ConfModel):
             data = {**data, "enable_crafting": data["enable_mastery"]}
         return data
 
-    @model_validator(mode="after")
-    def enforce_growth_automation(self):
-        if not self.enable_crafting:
-            self.enable_mastery = False
-            self.maa_growth_enable = False
-        return self
+    @property
+    def mastery_enabled(self) -> bool:
+        return self.enable_crafting and self.enable_mastery
+
+    @property
+    def maa_growth_enabled(self) -> bool:
+        return self.enable_crafting and self.maa_growth_enable
 
     mastery_consecutive_skills: bool = False
     "同干员技能接续训练"
@@ -1452,7 +1453,7 @@ class Conf(
     def has_maa_tasks(self) -> bool:
         return (
             self.has_maa_daily_tasks
-            or self.maa_growth_enable
+            or self.maa_growth_enabled
             or self.RG
             or self.SSS
             or self.RCL

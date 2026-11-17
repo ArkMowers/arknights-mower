@@ -220,16 +220,6 @@ export const useConfigStore = defineStore('config', () => {
   const enable_crafting = ref(true)
   const enable_mastery = ref(true)
   const maa_growth_enable = ref(false)
-  watch(
-    [enable_crafting, enable_mastery, maa_growth_enable],
-    () => {
-      if (!enable_crafting.value) {
-        enable_mastery.value = false
-        maa_growth_enable.value = false
-      }
-    },
-    { flush: 'sync' }
-  )
   const save_mastery_screenshots = ref(false)
   const sign_in = ref({ enable: true })
   const droidcast = ref({})

@@ -39,7 +39,7 @@ describe('当前训练真实状态', () => {
 
 describe('养成自动化开关', () => {
   it.each([false, true])('自动合成为 %s 时控制两项依赖开关', async (autoCrafting) => {
-    const app = createSSRApp(GrowthHero, { autoCrafting })
+    const app = createSSRApp(GrowthHero, { autoCrafting, autoMastery: true, maaGrowth: true })
     setupCssRenderSsr(app)
     const html = await renderToString(app)
     const switches = [
@@ -51,6 +51,7 @@ describe('养成自动化开关', () => {
     for (const [index, label] of ['自动专精', 'MAA 干员培养'].entries()) {
       expect(switches[index + 1]).toContain(`aria-label="${label}"`)
       expect(switches[index + 1].includes('n-switch--disabled')).toBe(!autoCrafting)
+      expect(switches[index + 1]).toContain('aria-checked="true"')
     }
   })
 })

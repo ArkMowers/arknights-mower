@@ -690,7 +690,7 @@ def simulate(saved):
                 saved.get("initial_mood_refresh_rooms", ()) if saved else ()
             ) | set(saved.get("initial_mood_probe_layout", {}) if saved else {})
             startup_mastery_read = False
-            if config.conf.enable_mastery:
+            if config.conf.mastery_enabled:
                 from arknights_mower.utils.mastery_db import get_reconcile_plans
 
                 startup_mastery_read = bool(get_reconcile_plans())

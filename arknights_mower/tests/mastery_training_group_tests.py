@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from arknights_mower.solvers import mastery
+from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.mastery_support_data import training_room_group_warning
 from arknights_mower.utils.scene import Scene
@@ -176,7 +177,7 @@ def test_pending_swap_warns_but_continues_dispatch():
         patch("arknights_mower.utils.config.plan", PlanModel(**grouped_schedule())),
         patch(
             "arknights_mower.utils.config.conf",
-            SimpleNamespace(enable_mastery=True, assistant_follows_schedule=False),
+            Conf(enable_mastery=True, assistant_follows_schedule=False),
         ),
         patch("arknights_mower.utils.mastery_db.get_active_plan", return_value=plan),
         patch("arknights_mower.utils.mastery_db.should_notify", return_value=True),

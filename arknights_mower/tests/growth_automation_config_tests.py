@@ -22,8 +22,10 @@ def test_split_switch_dependency_survives_reload(crafting, mastery, maa):
     conf = Conf(enable_crafting=crafting, enable_mastery=mastery, maa_growth_enable=maa)
     restored = Conf.model_validate_json(conf.model_dump_json())
     assert restored.enable_crafting is crafting
-    assert restored.enable_mastery == (crafting and mastery)
-    assert restored.maa_growth_enable == (crafting and maa)
+    assert restored.enable_mastery is mastery
+    assert restored.maa_growth_enable is maa
+    assert restored.mastery_enabled == (crafting and mastery)
+    assert restored.maa_growth_enabled == (crafting and maa)
 
 
 def test_unset_defaults_do_not_become_saved_choices():
@@ -32,11 +34,14 @@ def test_unset_defaults_do_not_become_saved_choices():
     assert "enable_crafting" not in conf.model_dump(exclude_unset=True)
 
 
-def test_partial_save_clears_dependents_without_resurrecting_them():
+def test_partial_save_retains_preferences_and_resumes_effective_state():
     conf = Conf(maa_growth_enable=True).updated({"enable_crafting": False})
-    assert not conf.enable_mastery
-    assert not conf.maa_growth_enable
+    assert conf.enable_mastery
+    assert conf.maa_growth_enable
+    assert not conf.mastery_enabled
+    assert not conf.maa_growth_enabled
+    conf = Conf.model_validate_json(conf.model_dump_json())
     conf = conf.updated({"enable_crafting": True})
-    assert not conf.enable_mastery
-    assert not conf.maa_growth_enable
+    assert conf.mastery_enabled
+    assert conf.maa_growth_enabled
     assert "enable_crafting" in CONF_GROUPS["base"]

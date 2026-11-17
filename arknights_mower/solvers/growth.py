@@ -167,7 +167,7 @@ def manufacture_chips(solver, action, deadline):
             while total:
                 if (
                     config.stop_mower.is_set()
-                    or not config.conf.maa_growth_enable
+                    or not config.conf.maa_growth_enabled
                     or datetime.now() >= deadline
                     or solver.find_next_task(datetime.now() + timedelta(seconds=30))
                     is not None
@@ -295,7 +295,7 @@ def _run_maa(solver, action, deadline):
             if (
                 config.stop_mower.is_set()
                 or config.stop_maa.is_set()
-                or not config.conf.maa_growth_enable
+                or not config.conf.maa_growth_enabled
                 or solver.find_next_task(datetime.now() + timedelta(seconds=30))
                 is not None
                 or time.monotonic() >= budget
@@ -339,7 +339,7 @@ def purchase_catalyst(solver, action, deadline):
     if (
         config.stop_mower.is_set()
         or config.stop_maa.is_set()
-        or not config.conf.maa_growth_enable
+        or not config.conf.maa_growth_enabled
         or datetime.now() >= deadline
         or solver.find_next_task(datetime.now() + timedelta(seconds=30)) is not None
     ):
@@ -356,7 +356,7 @@ def purchase_catalyst(solver, action, deadline):
         if (
             config.stop_mower.is_set()
             or config.stop_maa.is_set()
-            or not config.conf.maa_growth_enable
+            or not config.conf.maa_growth_enabled
             or datetime.now() >= deadline
             or solver.find_next_task(datetime.now() + timedelta(seconds=30)) is not None
         ):
@@ -376,7 +376,7 @@ def purchase_catalyst(solver, action, deadline):
             if (
                 config.stop_mower.is_set()
                 or config.stop_maa.is_set()
-                or not config.conf.maa_growth_enable
+                or not config.conf.maa_growth_enabled
                 or solver.find_next_task(datetime.now() + timedelta(seconds=30))
                 is not None
                 or time.monotonic() >= budget
@@ -418,13 +418,13 @@ def run_growth(solver):
     """Consume existing idle windows without adding retries, waits or task timestamps."""
     if getattr(solver, "MAA", None) is not None or config.stop_mower.is_set():
         return
-    if not config.conf.maa_growth_enable and _chip_state() is None:
+    if not config.conf.maa_growth_enabled and _chip_state() is None:
         return
     if solver.find_next_task(datetime.now() + timedelta(minutes=5)) is not None:
         return
     try:
         restore_chip_product(solver)
-        if not config.conf.maa_growth_enable:
+        if not config.conf.maa_growth_enabled:
             return
         from arknights_mower.utils.growth_execution import recover_attempts
         from arknights_mower.utils.maa_catalyst import recover_purchase
@@ -444,7 +444,7 @@ def run_growth(solver):
             if (
                 solver.find_next_task(datetime.now() + timedelta(minutes=5)) is not None
                 or config.stop_mower.is_set()
-                or not config.conf.maa_growth_enable
+                or not config.conf.maa_growth_enabled
             ):
                 break
             snapshot = get_cultivate_snapshot()

@@ -389,7 +389,7 @@ def _stop_if_scheduled_trainee(
         or getattr(room_state.panel, "countdown_state", None) != "active"
     ):
         return
-    if config.conf.enable_mastery:
+    if config.conf.mastery_enabled:
         return
     from arknights_mower.utils.mastery_support_data import trainee_schedule_conflict
 
@@ -939,7 +939,7 @@ class BaseSchedulerSolver(
                 profession = None
             snapshot["mastery"] = {
                 "observation": getattr(self, "last_mastery_observation", None),
-                "enabled": config.conf.enable_mastery,
+                "enabled": config.conf.mastery_enabled,
                 "assistant_follows_schedule": config.conf.assistant_follows_schedule,
                 "plan": plan,
                 "route": get_route(profession) if profession else None,
@@ -1533,7 +1533,7 @@ class BaseSchedulerSolver(
         """待开始的专精保留原任务，等待副表实际换人完成。"""
         task = self.task
         if (
-            not config.conf.enable_mastery
+            not config.conf.mastery_enabled
             or task is None
             or task.type != TaskTypes.SKILL_UPGRADE
             or getattr(task, "plan_key", None) is None
@@ -3925,7 +3925,7 @@ class BaseSchedulerSolver(
                         or (
                             self.tasks[0].type == TaskTypes.RUN_ORDER
                             and id(self.tasks[0]) not in blocked_orders
-                            or config.conf.enable_mastery
+                            or config.conf.mastery_enabled
                             and self.tasks[0].type == TaskTypes.SWAP_SUPPORT
                         )
                     )
@@ -4742,7 +4742,7 @@ class BaseSchedulerSolver(
                         self.enter_room(room)
                     room_entered = True
                     if room == "train":
-                        if config.conf.enable_mastery:
+                        if config.conf.mastery_enabled:
                             # #94 统一读取：一次 read_room_state(want_mood=True) 开一次
                             # 浮窗读全（协助位+训练位+心情）+ 左下角面板，消除原来
                             # get_agent_from_room（读心情）后再开一次浮窗读槽位的重复
@@ -4876,7 +4876,7 @@ class BaseSchedulerSolver(
 
     def _is_startup_priority_task(self, task):
         return task.type == TaskTypes.RUN_ORDER or (
-            config.conf.enable_mastery
+            config.conf.mastery_enabled
             and task.type in (TaskTypes.SKILL_UPGRADE, TaskTypes.SWAP_SUPPORT)
         )
 
@@ -5503,7 +5503,7 @@ class BaseSchedulerSolver(
         # 最后如果有任何高效组心情没有记录 或者高效组在宿舍
         # 宿舍绑组成员由组状态纠错处理；下班期间离开固定位置是正常状态。
         if (
-            not config.conf.enable_mastery
+            not config.conf.mastery_enabled
             and getattr(self, "train_room_state", None) is not None
         ):
             self.train_room_state = None
@@ -5793,11 +5793,11 @@ class BaseSchedulerSolver(
                 return "self_correction"
 
     def _train_mastery_active(self) -> bool:
-        """训练室是否受专精管理：enable_mastery 开 + DB 有 active 计划 或 队列有专精任务。
+        """训练室是否受专精管理：自动专精生效，且 DB 有 active 计划或队列有专精任务。
 
         #59：队列重启后可能没补回来，DB 为准；队列补队覆盖「idle 计划即将排」的竞态窗口。
         """
-        if not config.conf.enable_mastery:
+        if not config.conf.mastery_enabled:
             return False
         try:
             from arknights_mower.utils.mastery_db import get_active_plan
@@ -5813,7 +5813,7 @@ class BaseSchedulerSolver(
 
     def _train_protected(self) -> bool:
         """复用可靠的空闲保护深读；缺少当前观察时按协助位保守保护。"""
-        if not config.conf.enable_mastery:
+        if not config.conf.mastery_enabled:
             return False
         state = getattr(self, "train_room_state", None)
         # 空闲房间的保护结论来自本次可靠的两槽读取和技能深读。此时不能再用
@@ -5852,7 +5852,7 @@ class BaseSchedulerSolver(
             return False
         state = getattr(self, "train_room_state", None)
         if not (
-            config.conf.enable_mastery
+            config.conf.mastery_enabled
             and getattr(state, "state", None)
             in ("empty", "training", "waiting_collect")
             and getattr(state, "slots_read", False) is True
@@ -5866,7 +5866,7 @@ class BaseSchedulerSolver(
 
     def _suppress_train_correction(self, fix_plan: dict) -> None:
         """纠错使用统一训练室保护范围。"""
-        if "train" in fix_plan and not config.conf.enable_mastery:
+        if "train" in fix_plan and not config.conf.mastery_enabled:
             self.train_room_state = None
         if self._suppress_facility_arrangement(fix_plan):
             self._notify_train_correction_skipped()
@@ -5880,7 +5880,7 @@ class BaseSchedulerSolver(
 
     def _protected_training_slots(self):
         """专精接管的岗位不参与普通排班；开启跟随时保留协助位。"""
-        if not config.conf.enable_mastery:
+        if not config.conf.mastery_enabled:
             return set()
         state = getattr(self, "train_room_state", None)
         protected = (
@@ -6395,7 +6395,7 @@ class BaseSchedulerSolver(
                         # Finish Deer's current fodder/T4 cycle before replacing
                         # its bounded quota or dispatching prepared training.
                         finish_deer_cycle = is_9colored and not is_crit
-                        if config.conf.enable_mastery and not finish_deer_cycle:
+                        if config.conf.mastery_enabled and not finish_deer_cycle:
                             from arknights_mower.utils.mastery_recommendation import (
                                 auto_schedule_mastery_tasks,
                             )
@@ -6908,7 +6908,7 @@ class BaseSchedulerSolver(
                 and pending.meta_data
                 and not getattr(pending, "run_order_restore_pending", False)
                 or pending.type == TaskTypes.SWAP_SUPPORT
-                and config.conf.enable_mastery
+                and config.conf.mastery_enabled
                 or getattr(pending, "strict_mood_limit", False)
                 and pending.plan
             )
@@ -18371,7 +18371,7 @@ class BaseSchedulerSolver(
                             logger.warning(f"训练室状态读取失败: {e}")
                             room_state = None
                         self.train_room_state = (
-                            room_state if config.conf.enable_mastery else None
+                            room_state if config.conf.mastery_enabled else None
                         )
                         if getattr(self.task, "emergency_staffing", False) and (
                             self._emergency_protect_training(plan, room_state)
@@ -18387,7 +18387,7 @@ class BaseSchedulerSolver(
                             self._prepare_group_shift_execution_targets(self.task)
                             self.back()
                             return new_plan
-                        if config.conf.enable_mastery:
+                        if config.conf.mastery_enabled:
                             if room_state is None:
                                 from arknights_mower.solvers.mastery_reader import (
                                     RoomState,
@@ -18410,7 +18410,7 @@ class BaseSchedulerSolver(
                             self._prepare_group_shift_execution_targets(self.task)
                             self.back()
                             return new_plan
-                        if room_state is not None and config.conf.enable_mastery:
+                        if room_state is not None and config.conf.mastery_enabled:
                             # #61 短动作排班路径内联：顺路核实/帮收/重置/更新状态，并据截图
                             # 修正 DB（空闲×DB active 冲突 → 重置 idle，以截图为准）。不
                             # 开始训练；退出训练室由本 gate 的跳过/冻结分支统一负责。
@@ -18443,9 +18443,9 @@ class BaseSchedulerSolver(
                                     except Exception:
                                         room_state = None
                                 self.train_room_state = (
-                                    room_state if config.conf.enable_mastery else None
+                                    room_state if config.conf.mastery_enabled else None
                                 )
-                        if config.conf.enable_mastery:
+                        if config.conf.mastery_enabled:
                             self.task.training_skipped_slots.update(
                                 self._protected_training_slots()
                             )
@@ -19508,7 +19508,7 @@ class BaseSchedulerSolver(
             for name in row
         ) and (
             getattr(self.task, "emergency_staffing", False)
-            or config.conf.enable_mastery
+            or config.conf.mastery_enabled
         ):
             # 先核实源岗位，不能通过其他房间的换人间接打断训练。
             from arknights_mower.solvers.mastery_reader import (
@@ -19523,7 +19523,7 @@ class BaseSchedulerSolver(
             except Exception as e:
                 logger.warning(f"换人前训练室状态读取失败: {e}")
                 room_state = None
-            if config.conf.enable_mastery:
+            if config.conf.mastery_enabled:
                 self.train_room_state = room_state or RoomState(read_failed=True)
                 self._suppress_facility_arrangement(plan)
             if getattr(self.task, "emergency_staffing", False):
@@ -20489,7 +20489,7 @@ class BaseSchedulerSolver(
                 or not all(isinstance(task, dict) for task in tasks.values())
             ):
                 raise ValueError("MAA 活动导航必须是非空任务定义对象")
-            if getattr(config.conf, "maa_growth_enable", False):
+            if config.conf.maa_growth_enabled:
                 from arknights_mower.utils.growth_execution import merge_growth_tasks
 
                 tasks = merge_growth_tasks(tasks)
@@ -20507,11 +20507,7 @@ class BaseSchedulerSolver(
             save_exception(e)
 
         cached = read_json(ota_tasks_path, None)
-        if (
-            isinstance(cached, dict)
-            and cached
-            and getattr(config.conf, "maa_growth_enable", False)
-        ):
+        if isinstance(cached, dict) and cached and config.conf.maa_growth_enabled:
             from arknights_mower.utils.growth_execution import merge_growth_tasks
 
             guarded = merge_growth_tasks(cached)
@@ -20555,7 +20551,7 @@ class BaseSchedulerSolver(
             navigation = self.update_maa_navigation(
                 pathlib.Path(resolve_config_path(config.conf.maa_path))
             )
-            if getattr(config.conf, "maa_growth_enable", False):
+            if config.conf.maa_growth_enabled:
                 from arknights_mower.utils.growth_execution import merge_growth_tasks
 
                 navigation = merge_growth_tasks(navigation or {})
@@ -22894,7 +22890,7 @@ class BaseSchedulerSolver(
             )
 
             # 扫描确认材料后，复用单个开始任务的派发入口。
-            if config.conf.enable_mastery:
+            if config.conf.mastery_enabled:
                 self._dispatch_scan_start_tasks(res.get("scheduled", []))
 
             from arknights_mower.utils.workshop_automation import update_workshop_config
@@ -22914,7 +22910,7 @@ class BaseSchedulerSolver(
         跳过已观测保护不允许的干员，重复触发保留已排任务及时间。
         材料等待计划仍优先于其他待执行计划。
         """
-        if not scheduled or not config.conf.enable_mastery:
+        if not scheduled or not config.conf.mastery_enabled:
             return
         from arknights_mower.solvers.mastery_reader import (
             _notify_protected,

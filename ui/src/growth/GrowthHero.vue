@@ -138,8 +138,8 @@ const syncLabel = computed(() => {
             />
             <span>自动合成</span>
             <HelpText label="自动合成范围">
-              按养成计划自动合成所需材料。关闭后，同时关闭自动专精和 MAA
-              干员培养，并恢复手动加工配置；重新开启后，需分别开启所需功能。
+              按养成计划自动合成所需材料。关闭后，自动专精和 MAA
+              干员培养暂停执行，保留原有勾选，并恢复手动加工配置；重新开启后按原有勾选继续。
             </HelpText>
           </div>
           <div class="growth-hero__toggle">

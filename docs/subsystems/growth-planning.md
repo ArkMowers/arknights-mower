@@ -71,7 +71,7 @@ inventory remain runtime data in `tmp/`. Configuration ZIP imports use the
 
 `enable_crafting` controls automatic growth-material preparation independently of `enable_mastery`, which controls training-room automation. Both default to enabled. Legacy configuration without `enable_crafting` inherits the former combined `enable_mastery` value. Explicitly saved split choices survive reloads.
 
-Automatic mastery and MAA growth require automatic crafting. Disabling crafting clears both dependent switches during configuration validation, disables their UI controls and restores the saved manual workshop settings in the same configuration save. Re-enabling crafting leaves those switches off until explicitly selected. Disabling mastery alone retains automatic crafting and its generated workshop configuration. Existing explicit one-click workshop configuration remains available independently of automatic growth preparation.
+Automatic mastery and MAA growth require automatic crafting. Disabling crafting preserves both dependent preferences, disables their UI controls and restores the saved manual workshop settings in the same configuration save. Runtime mastery and MAA growth require both crafting and their own preference to be enabled; queued dispatch, training protection and execution use this effective state. Re-enabling crafting resumes the saved preferences. Disabling mastery alone retains automatic crafting and its generated workshop configuration. Existing explicit one-click workshop configuration remains available independently of automatic growth preparation.
 
 <a id="maa-supplied-growth"></a>
 ### Supplied MAA Growth

@@ -476,7 +476,10 @@ def refresh_after_central_change(solver, previous):
     from arknights_mower.utils.log import logger
     from arknights_mower.utils.mastery_db import get_active_plan
 
-    if previous == central_training_occupants(solver) or not config.conf.enable_mastery:
+    if (
+        previous == central_training_occupants(solver)
+        or not config.conf.mastery_enabled
+    ):
         return
     plan = get_active_plan()
     if not plan or plan.get("status") != "training":

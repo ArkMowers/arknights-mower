@@ -834,9 +834,9 @@ def _compute_protected(solver, room, scan_plan=None) -> bool:
     - 空闲 + 训练位有人 → 深读技能页，有专一/专二 → 保护；全专三/专0 → 可动；
     - 空闲 + 训练位没人 → 可排班。
     - 计划干员匹配不解除保护；同一训练位干员可以开始其他技能。
-    每次排班进训练室重读重判，条件一变自动解除；enable_mastery OFF 时保护全停（§7.3）。
+    每次排班进训练室重读重判，条件一变自动解除；自动合成或自动专精关闭时保护全停（§7.3）。
     """
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         return False
     if room.support_slot not in PROTECT_OPERATORS:
         return False
@@ -877,7 +877,7 @@ def _classify_panel(solver, panel) -> str:
 def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
     # enable_mastery OFF：槽位/保护无人消费（reconcile 被 gate、_compute_protected 恒 False），
     # 不白开进驻浮窗（§7.3 防卡检查只看 locked，面板态即可）。
-    if config.conf.enable_mastery:
+    if config.conf.mastery_enabled:
         # #100：直接消费 _read_slots_checked 的 reliable——「真空位」与「读失败」在
         # RoomState 里分得开，开训换人与排班 gate 都据此判空。
         room.support_slot, room.train_slot, scan, room.slots_reliable = (
@@ -894,7 +894,7 @@ def _fill_slots_and_protection(solver, room, want_mood=False, scan_plan=None):
         )
     else:
         mood = None
-    if config.conf.enable_mastery:
+    if config.conf.mastery_enabled:
         _check_pending_amiya_form(solver, room)
     if not room.amiya_form_waiting:
         room.protected = _compute_protected(solver, room, scan_plan=scan_plan)
@@ -956,7 +956,7 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
         # 不可靠）。保护判定等收取完成回 TRAIN_MAIN 后再读（§4.3 读全以主页面为主）。
         room = RoomState("waiting_collect", _safe_read_panel(solver) or RoomPanel())
         solver.last_mastery_observation = datetime.now()
-        if config.conf.enable_mastery:
+        if config.conf.mastery_enabled:
             _check_pending_amiya_form(solver, room)
         return (room, []) if want_mood else room
     if scene == Scene.TRAIN_MAIN:
@@ -965,13 +965,13 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
             # 读的过程中画面离开了训练室主界面 → 这块画面上的读数不算数。保守按训练中
             # 处理，不读左下角面板、不开进驻浮窗（非主页面上的面板区域与槽位都是垃圾）。
             room = RoomState("training", RoomPanel())
-            if config.conf.enable_mastery:
+            if config.conf.mastery_enabled:
                 _check_pending_amiya_form(solver, room)
             return (room, []) if want_mood else room
         state = _classify_panel(solver, panel)
         if state == "ocr_fail":
             room = _retry_ocr(solver, scan_plan=scan_plan)
-            if config.conf.enable_mastery and not room.slots_read:
+            if config.conf.mastery_enabled and not room.slots_read:
                 _check_pending_amiya_form(solver, room)
             # OCR 失败路径（含重试成功后的槽位填，未带心情）→ 心情取不到
             return (room, []) if want_mood else room
@@ -989,7 +989,7 @@ def read_room_state(solver, enter=True, want_mood=False, scan_plan=None):
     # 身份/假倒计时——219 尤其会反复 OCR 出类时间文本；空面板 = 不可读 = 匹配保守，
     # 不消费假干员/假倒计时，等下次自然进房到主页面再读）。
     room = RoomState("training", RoomPanel())
-    if config.conf.enable_mastery:
+    if config.conf.mastery_enabled:
         _check_pending_amiya_form(solver, room)
     return (room, []) if want_mood else room
 
@@ -1150,7 +1150,7 @@ def discard_completed_mastery_tasks(solver):
                 continue
         plan = checked[str(key)]
         if (
-            not config.conf.enable_mastery
+            not config.conf.mastery_enabled
             or task.type != TaskTypes.SKILL_UPGRADE
             or plan is None
             or plan["status"] != "idle"
@@ -1548,7 +1548,7 @@ def _restore_unconfirmed_swap(solver, plan):
         plan is None
         or plan.get("status") != "training"
         or plan.get("swap_frozen")
-        or not config.conf.enable_mastery
+        or not config.conf.mastery_enabled
         or config.conf.assistant_follows_schedule
     ):
         return
@@ -1613,7 +1613,7 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     的 #79 `run_swap_support` 完成——补排直接复用 `_schedule_swap_if_needed`，
     换人公式/路线判定口径与正常排程完全一致，不重复实现。
     门控（照搬 run_swap_support / _schedule_swap_if_needed）：
-    - enable_mastery 开、非跟随排班（协助位归排班系统管）；
+    - 自动专精生效、非跟随排班（协助位归排班系统管）；
     - swap_frozen=1（换人已完成）→ 跳过；
     - 队列已有同计划 SWAP 任务 → 半程换人不重复排（去重，重启恢复的队列可能还留着旧任务）；
     - 倒计时可读且 `calc_swap_threshold` 判剩余够（<5h 不补排）→ 补排 SWAP 任务。
@@ -1632,7 +1632,7 @@ def _maybe_recover_swap(solver, plan, room) -> bool:
     from arknights_mower.utils import config
     from arknights_mower.utils.mastery_order import basic_mastery_successor
 
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         return False
     if config.conf.assistant_follows_schedule:
         return False
@@ -2134,7 +2134,7 @@ def _collect_silent(solver, room: RoomState, suppress_help=False):
 
 def _dispatch_after_collect(solver):
     """收取确认后，用当前库存为下一个就绪技能派发一条开始任务。"""
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         return
     from arknights_mower.utils.mastery_recommendation import auto_schedule_mastery_tasks
 
@@ -2180,7 +2180,7 @@ def reconcile_and_act(solver, scan_plan=None):
     """
     from arknights_mower.utils.mastery_db import get_active_plan, get_reconcile_plans
 
-    if not config.conf.enable_mastery:
+    if not config.conf.mastery_enabled:
         return None, True, None
     room = read_room_state(solver, scan_plan=scan_plan)
     solver.train_room_state = room

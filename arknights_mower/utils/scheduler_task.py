@@ -388,7 +388,7 @@ def scheduling(
 ):
     time_now = time_now or datetime.now()
     merge_release_dorm(tasks, config.conf.merge_interval)
-    enabled = config.conf.enable_mastery
+    enabled = config.conf.mastery_enabled
     conflict = _find_run_order_conflict(tasks, run_order_delay, time_now, op_data)
     protect_priority_tasks(tasks, run_order_delay, execution_time, time_now, op_data)
     if enabled:
@@ -455,7 +455,7 @@ def protect_priority_tasks(
         (
             t
             for t in tasks
-            if config.conf.enable_mastery and t.type == TaskTypes.SWAP_SUPPORT
+            if config.conf.mastery_enabled and t.type == TaskTypes.SWAP_SUPPORT
         ),
         key=lambda t: t.time,
     )
@@ -563,7 +563,7 @@ def _sort_dispatch_tasks(tasks, now, op_data=None):
                 )
             ),
             not (
-                config.conf.enable_mastery
+                config.conf.mastery_enabled
                 and task.type == TaskTypes.SWAP_SUPPORT
                 and getattr(task, "advance_support_swap", False)
                 and task.time <= now
@@ -596,7 +596,7 @@ def _advance_mood_limit_releases(
             and id(task) not in blocked_orders
             and not getattr(task, "emergency_recovery_release", False)
             and (task.plan or task.type != TaskTypes.NOT_SPECIFIC)
-            and (task.type != TaskTypes.SWAP_SUPPORT or config.conf.enable_mastery)
+            and (task.type != TaskTypes.SWAP_SUPPORT or config.conf.mastery_enabled)
         ),
         key=lambda task: task.time,
         reverse=True,
@@ -818,7 +818,7 @@ def _priority_tasks(tasks, op_data=None):
             task
             for task in task_view(tasks, TaskScope.DISPATCH, op_data)
             if task.type == TaskTypes.RUN_ORDER
-            or config.conf.enable_mastery
+            or config.conf.mastery_enabled
             and task.type == TaskTypes.SWAP_SUPPORT
         ),
         key=lambda task: task.time,
