@@ -64,7 +64,16 @@ function updateTrigger(trigger, source, target) {
   }
 }
 
-function swapPlanFacilities(mainPlan, backupPlans, activePlan, source, target, mainSettings) {
+function swapPlanFacilities(
+  mainPlan,
+  backupPlans,
+  activePlan,
+  source,
+  target,
+  mainSettings,
+  facilityLevels
+) {
+  swapTask(facilityLevels, source, target)
   if (activePlan === 'main') {
     swap(source, target, mainPlan)
   } else {
