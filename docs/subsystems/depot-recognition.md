@@ -26,7 +26,11 @@ When retained scan observations are available, warehouse reading removes databas
 
 A scan confirms the depot scene and a stable Capture Frame before selecting a category and again before reading that category. Recognition uses the same frame that passed those checks. Each invocation starts with an empty result. A scene mismatch or stability timeout ends the invocation with failure without repeating the scan. If a nonempty scan has no confirmed quantities, it succeeds only when every visible item is confirmed as a Skland-covered item.
 
+Depot scene recognition compares the complete bottom-right Vault button at its fixed position before facility operator-selection checks. The shared home button and lower-left background do not confirm the depot.
+
 The selected category highlight must agree with the requested category. Each nonempty category first moves to its left boundary, then reads overlapping horizontal pages until a confirmed stable swipe leaves the content unchanged at its right boundary. Matched content determines the actual displacement, including a shorter final movement; each grid column is read once. Each boundary search permits at most 32 swipes, and each category has a 60-second monotonic deadline. An unmatched movement, category mismatch, unstable frame or exhausted bound ends the invocation without persistence.
+
+Boundary comparison accepts small rendering changes when the textured content remains strongly correlated at the same coordinates. This comparison does not search for a translation; content that moves still passes through displacement matching before another page is read.
 
 Only after both category scans succeed does the scan write explicit zeros for absent items in their installed recognition-model classes, excluding Skland-covered items and identities seen anywhere in the scan. A visible item with an unreadable quantity does not become zero; its previous valid inventory remains until a new quantity is confirmed. If one of several visible slots with the same identity has an unreadable quantity, their partial sum is not accepted. Other categories and old partial CSV rows never acquire inferred zeros. An explicitly empty category supplies the same zero evidence for its own model scope.
 

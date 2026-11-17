@@ -356,7 +356,13 @@ class depotREC(SceneGraphSolver):
     def _same_depot_view(before, after):
         before = cv2.cvtColor(before[140:950], cv2.COLOR_RGB2GRAY)
         after = cv2.cvtColor(after[140:950], cv2.COLOR_RGB2GRAY)
-        return np.mean(cv2.absdiff(before, after)) < 0.5
+        if np.mean(cv2.absdiff(before, after)) < 0.5:
+            return True
+        if min(np.std(before), np.std(after)) < 5:
+            return False
+        # 边界处的背景和物品特效仍会变化；比较原位置的整体内容，不搜索平移。
+        score = cv2.matchTemplate(before, after, cv2.TM_CCOEFF_NORMED)[0, 0]
+        return score >= 0.995
 
     @staticmethod
     def _depot_scroll_distance(before, after):

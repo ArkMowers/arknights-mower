@@ -31,6 +31,7 @@ Res = Literal[
     "credit_visiting",
     "depot",
     "depot_empty",
+    "depot_vault",
     "drone",
     "enter",
     "episode",
