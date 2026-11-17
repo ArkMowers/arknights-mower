@@ -225,14 +225,18 @@ class AIPromptContractTests(unittest.TestCase):
             set(agent.tool_func_map),
         )
 
-    def test_generation_comparison_guidance_reaches_the_model_and_registered_tool(self):
+    def _riic_review_guidance(self):
         from arknights_mower.agent.tools import riic
 
-        prompt = agent._build_messages("按实际BOX优化主表")[0].content
+        prompt = agent._build_messages("检查现有表零心情并给已拥有干员养成建议")[
+            0
+        ].content
         topic_schema = riic.get_riic_knowledge_tool_def["function"]["parameters"][
             "properties"
         ]["topic"]
-        self.assertIn("plan_generation", topic_schema["enum"])
+        self.assertIn("plan_review", topic_schema["enum"])
+        self.assertIn("mower_tutorial", topic_schema["enum"])
+        self.assertNotIn("plan_generation", topic_schema["enum"])
         with patch.object(
             riic,
             "load_skill_snapshot",
@@ -243,20 +247,135 @@ class AIPromptContractTests(unittest.TestCase):
             },
         ):
             response = json.loads(
-                agent.tool_func_map["get_riic_knowledge"](topic="plan_generation")
+                agent.tool_func_map["get_riic_knowledge"](topic="plan_review")
             )
-        self.assertEqual(response["topic"], "plan_generation")
-        guide = response["guide"]
-        for text in (prompt, guide):
-            with self.subTest(source="prompt" if text == prompt else "knowledge"):
-                self.assertIn("combinations", text)
-                self.assertIn("纳入或排除", text)
-                self.assertIn("结构通过", text)
-                self.assertIn("需要改建的建议", text)
-                self.assertIn("收益排名", text)
-        self.assertIn("鸿雪组前提不成立", guide)
-        self.assertIn("不强制所有BOX采用鸿雪", guide)
-        self.assertIn("既有充能目标只是待比较方案", guide)
+        self.assertEqual(response["topic"], "plan_review")
+        return prompt, response["guide"]
+
+    def test_existing_plan_review_scope_reaches_model_and_registered_tool(self):
+        for text in self._riic_review_guidance():
+            with self.subTest(
+                source="prompt" if "工作范围是现有" in text else "knowledge"
+            ):
+                self.assertIn("不从零生成排班", text)
+                self.assertIn("不为提高收益擅自更换布局", text)
+                self.assertIn("原表", text)
+                self.assertIn("最小修改", text)
+                self.assertIn("normal_plan_issues", text)
+                self.assertIn("mower_tutorial", text)
+                self.assertIn("get_faq", text)
+                self.assertIn("快照优先", text)
+                self.assertIn("省略", text)
+                self.assertIn("局部修改也", text)
+                self.assertIn("清空被修改房间的旧绑定", text)
+                self.assertIn("Mower 入门指北", text)
+                self.assertIn("group_bindings", text)
+                self.assertIn("不删除原表副表", text)
+                self.assertIn("不声称副表已验证", text)
+                self.assertIn("unchecked", text)
+
+    def test_review_guidance_separates_actual_growth_identity_and_hypotheses(self):
+        for text in self._riic_review_guidance():
+            with self.subTest(
+                source="prompt" if "工作范围是现有" in text else "knowledge"
+            ):
+                self.assertIn("本人技能与身份挂件分开判断", text)
+                self.assertIn("目标练度只是假设", text)
+                self.assertIn("不能作为实际roster_overrides", text.replace(" ", ""))
+                self.assertIn("写回BOX", text)
+                self.assertIn("实际练度", text)
+                self.assertIn("未拥有干员", text)
+                self.assertIn("成本", text)
+                self.assertIn("未知", text)
+        _, guide = self._riic_review_guidance()
+        self.assertIn("至简精一、特克诺精零", guide)
+        self.assertIn("身份挂件若当前已满足联动条件", guide)
+        self.assertIn("仅升级技能", guide)
+        self.assertIn("局部换人", guide)
+
+    def test_income_diagnosis_requires_comparable_reports_and_event_evidence(self):
+        for text in self._riic_review_guidance():
+            with self.subTest(
+                source="prompt" if "工作范围是现有" in text else "knowledge"
+            ):
+                self.assertIn("同条件对照", text)
+                self.assertIn("AI", text)
+                self.assertIn("不执行", text)
+                self.assertIn("收益", text)
+                self.assertIn("工作占比=工作时长/采样时长", text)
+                self.assertIn("工休比=工作时长/休息时长", text)
+                self.assertIn("无休息时显示—", text)
+                self.assertIn("不含预热", text)
+                self.assertIn("心情涣散驻岗", text)
+                self.assertIn("零心情", text)
+                self.assertIn("自动认定", text)
+                self.assertIn("甘特图", text)
+                self.assertIn("工作记录", text)
+                self.assertIn("演算日志", text)
+                self.assertIn("原因链", text)
+                self.assertIn("关联不等于根因", text)
+                self.assertIn("不编造收益数值", text)
+        _, guide = self._riic_review_guidance()
+        self.assertIn("workRestRatio为null", guide)
+        self.assertIn("不是工作占比也不是无穷效率", guide)
+        self.assertIn("原表与候选", guide)
+        self.assertIn("不擅自加外源赤金", guide)
+        self.assertIn("不能声称长期自给", guide)
+        self.assertIn("没有事件或配置原因链", guide)
+
+    def test_code_diagnosis_separates_simulation_source_and_feedback_evidence(self):
+        from arknights_mower.agent.tools import riic
+
+        schema = riic.get_riic_knowledge_tool_def["function"]["parameters"][
+            "properties"
+        ]["topic"]
+        self.assertIn("code_diagnosis", schema["enum"])
+        with patch.object(
+            riic,
+            "load_skill_snapshot",
+            return_value={"has_data": False, "operators": []},
+        ):
+            result = json.loads(
+                agent.tool_func_map["get_riic_knowledge"](topic="code_diagnosis")
+            )
+        self.assertEqual(result["topic"], "code_diagnosis")
+        prompt, review = self._riic_review_guidance()
+        for label, text in (
+            ("prompt", prompt),
+            ("code", result["guide"]),
+        ):
+            with self.subTest(source=label):
+                for required in (
+                    "配置问题",
+                    "演算模型限制",
+                    "调度实现缺陷",
+                    "不强迫改表掩盖代码异常",
+                    "get_source_snippet",
+                    "扫描行号",
+                    "SHA-256",
+                    "缺失状态",
+                    "历史版本",
+                    "报告",
+                    "inspect_feedback",
+                    "evidence_windows",
+                    "演算相对小时",
+                    "不能编造实机日志日期",
+                    "runtime.log",
+                    "证据ID",
+                    "反馈草稿",
+                    "复现原表",
+                    "预期与实际",
+                    "submit_issue",
+                    "用户明确同意发送",
+                    "实际时间",
+                    "引用",
+                    "不声称已发送",
+                ):
+                    self.assertIn(required, text)
+        self.assertIn("code_diagnosis", review)
+        self.assertIn("不强迫改表掩盖代码异常", review)
+        self.assertIn("不会自动修代码", prompt)
+        self.assertIn("不声称自动修代码", result["guide"])
 
 
 if __name__ == "__main__":

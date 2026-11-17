@@ -1265,3 +1265,92 @@ describe('AI workspace', () => {
     expect(FakeSocket.instances).toHaveLength(0)
   })
 })
+
+describe('income result handoff', () => {
+  const draft = () => ({
+    generation: 'page-generation',
+    text: '检查原排班工休比',
+    files: [{ name: 'income.txt', text: '{"workRestRatio":null}' }]
+  })
+  function uploadResult(id = 'income-file') {
+    return { data: { id, name: 'income.txt', kind: 'text', truncated: false } }
+  }
+  it('handles the component draft prop, uploads bounded text and waits for the user to send', async () => {
+    state.axios.post.mockResolvedValue(uploadResult())
+    props.reviewDraft = draft()
+    await flush()
+    await flush()
+    expect(emit).toHaveBeenCalledWith('review-consumed')
+    expect(state.axios.post.mock.calls[0][0]).toContain('/ai/attachments')
+    const uploaded = state.axios.post.mock.calls[0][1].get('file')
+    expect(uploaded.name).toBe('income.txt')
+    expect(await uploaded.text()).toBe('{"workRestRatio":null}')
+    expect(component.userInput.value).toBe('检查原排班工休比')
+    expect(component.draftAttachments.value[0].id).toBe('income-file')
+    expect(FakeSocket.instances).toHaveLength(0)
+    component.sendMessage()
+    const socket = FakeSocket.instances.at(-1)
+    socket.open()
+    expect(JSON.parse(socket.send.mock.calls[1][0]).attachment_ids).toEqual(['income-file'])
+  })
+  it.each(['text', 'attachment', 'busy', 'disabled', 'old-generation'])(
+    'keeps existing state and does not upload for %s',
+    async (condition) => {
+      if (condition === 'text') component.userInput.value = '原问题'
+      if (condition === 'attachment') component.draftAttachments.value = [{ id: 'original' }]
+      if (condition === 'busy') component.remoteBusy.value = true
+      if (condition === 'disabled') state.mower.ai_assistant_enabled = false
+      const review = draft()
+      if (condition === 'old-generation') review.generation = 'old'
+      await component.acceptIncomeReview(review)
+      expect(state.axios.post).not.toHaveBeenCalled()
+      if (condition === 'text') expect(component.userInput.value).toBe('原问题')
+      if (condition === 'attachment')
+        expect(component.draftAttachments.value[0].id).toBe('original')
+      expect(FakeSocket.instances).toHaveLength(0)
+    }
+  )
+  it.each(['generation', 'typed', 'new-conversation', 'disabled'])(
+    'discards uploaded materials after %s changes during upload',
+    async (condition) => {
+      const { promise, resolve } = Promise.withResolvers()
+      state.axios.post.mockReturnValue(promise)
+      const uploading = component.acceptIncomeReview(draft())
+      if (condition === 'generation')
+        state.axios.defaults.headers.common['X-Mower-Config-Generation'] = 'new'
+      if (condition === 'typed') component.userInput.value = '新问题'
+      if (condition === 'new-conversation') component.newConversation()
+      if (condition === 'disabled') state.mower.ai_assistant_enabled = false
+      resolve(uploadResult())
+      await uploading
+      expect(component.draftAttachments.value).toEqual([])
+      expect(component.userInput.value).toBe(condition === 'typed' ? '新问题' : '')
+      expect(component.attachmentsBusy.value).toBe(false)
+      expect(state.axios.delete).toHaveBeenCalledWith(
+        expect.stringContaining('/ai/attachments/income-file'),
+        { headers: { 'X-Mower-Config-Generation': 'page-generation' } }
+      )
+      expect(FakeSocket.instances).toHaveLength(0)
+    }
+  )
+  it('rolls back all review attachments when a later upload fails or is truncated', async () => {
+    state.axios.post
+      .mockResolvedValueOnce(uploadResult('first'))
+      .mockResolvedValueOnce({ data: { ...uploadResult('second').data, truncated: true } })
+    const review = draft()
+    review.files.push({ name: 'second.txt', text: '{}' })
+    await component.acceptIncomeReview(review)
+    expect(component.draftAttachments.value).toEqual([])
+    expect(component.userInput.value).toBe('')
+    expect(state.axios.delete).toHaveBeenCalledTimes(2)
+    expect(state.notice.error).toHaveBeenCalledWith('排班检查材料未完整上传，请重试。')
+  })
+  it('rejects sending review attachments after a generation change', async () => {
+    state.axios.post.mockResolvedValue(uploadResult())
+    await component.acceptIncomeReview(draft())
+    state.axios.defaults.headers.common['X-Mower-Config-Generation'] = 'new'
+    component.sendMessage()
+    expect(FakeSocket.instances).toHaveLength(0)
+    expect(component.userInput.value).toBe('检查原排班工休比')
+  })
+})

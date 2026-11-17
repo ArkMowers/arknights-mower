@@ -25,8 +25,8 @@ import JumpToLatestButton from './JumpToLatestButton.vue'
 import MowerAIIcon from './MowerAIIcon.vue'
 import ChatContextUsage from './ChatContextUsage.vue'
 
-const props = defineProps({ show: Boolean })
-const emit = defineEmits(['update:show'])
+const props = defineProps({ show: Boolean, reviewDraft: Object })
+const emit = defineEmits(['update:show', 'review-consumed'])
 const show = computed({ get: () => props.show, set: (value) => emit('update:show', value) })
 const router = useRouter()
 const notice = useMessage()
@@ -596,8 +596,9 @@ const statusLabel = computed(() =>
 const suggestions = [
   { title: '排查连接', description: '设备连接失败，应该先检查什么？', icon: DocumentTextOutline },
   {
-    title: '尝试排班',
-    description: '结合我的森空岛干员练度和基建干员推荐，尝试安排基建主班。',
+    title: '检查排班',
+    description:
+      '检查我现有的基建排班，先纠正问题，再提出局部优化和仅针对已拥有干员的基建养成建议。不要从零生成排班。',
     icon: GridOutline
   },
   { title: '查看专精', description: '帮我查看当前专精计划的状态。', icon: SchoolOutline },
@@ -836,6 +837,14 @@ function sendTurn(text, options = {}) {
   )
     return
   const files = options.mode === 'summary' ? [] : [...draftAttachments.value]
+  if (
+    files.some(
+      (file) => file.reviewGeneration !== undefined && file.reviewGeneration !== currentGeneration()
+    )
+  ) {
+    notice.warning('配置档案已切换，请移除旧检查附件并重新创建材料。')
+    return
+  }
   contextUsage.value = null
   const asNewQuestion = composeNewQuestion.value
   composeNewQuestion.value = false
@@ -942,6 +951,93 @@ function showAssistantUnavailable() {
   })
   show.value = false
 }
+async function acceptIncomeReview(draft) {
+  if (!draft) return
+  emit('review-consumed')
+  if (!assistantAllowed()) return
+  if (draft.generation !== currentGeneration()) {
+    notice.warning('配置档案已切换，请重新打开演算结果创建检查材料。')
+    return
+  }
+  if (
+    userInput.value.trim() ||
+    draftAttachments.value.length ||
+    pendingAttachments ||
+    loading.value ||
+    remoteBusy.value ||
+    attachmentsBusy.value ||
+    historyBusy.value ||
+    !historyReady.value
+  ) {
+    notice.warning('请先处理当前 AI 草稿、附件或会话任务，再从演算结果打开检查。')
+    return
+  }
+  const generation = currentGeneration()
+  const epoch = attachmentEpoch
+  const uploaded = []
+  const valid = () =>
+    !disposed &&
+    mower.ai_assistant_enabled === true &&
+    generation === currentGeneration() &&
+    epoch === attachmentEpoch
+  attachmentsBusy.value = true
+  try {
+    if (
+      !draft.files?.length ||
+      draft.files.length > 4 ||
+      draft.files.some((file) => !file.text || file.text.length > 6000)
+    )
+      throw new Error('排班检查材料格式不兼容，请重新演算。')
+    for (const file of draft.files) {
+      if (!valid()) return
+      const body = new FormData()
+      body.append('file', new File([file.text], file.name, { type: 'text/plain' }))
+      const { data } = await axios.post(
+        `${import.meta.env.VITE_HTTP_URL || ''}/ai/attachments`,
+        body,
+        { headers: { [CONFIG_GENERATION_HEADER]: generation } }
+      )
+      uploaded.push({ ...data, preview: null, reviewGeneration: generation })
+      if (!valid()) return
+      if (!data.id || data.truncated) throw new Error('排班检查材料未完整上传，请重试。')
+    }
+    if (!valid()) return
+    if (
+      userInput.value.trim() ||
+      draftAttachments.value.length ||
+      loading.value ||
+      remoteBusy.value ||
+      historyBusy.value
+    ) {
+      notice.warning('AI 草稿或会话已变化，检查材料未加入，请处理后重试。')
+      return
+    }
+    draftAttachments.value = uploaded.splice(0)
+    userInput.value = draft.text
+    composeNewQuestion.value = true
+    notice.success('已加入原排班演算材料，请核对问题和附件后发送。')
+  } catch (error) {
+    if (valid())
+      notice.error(error.response?.data?.error || error.message || '检查材料未加入，请重试。')
+  } finally {
+    for (const file of uploaded) {
+      if (file.id)
+        axios
+          .delete(`${import.meta.env.VITE_HTTP_URL || ''}/ai/attachments/${file.id}`, {
+            headers: { [CONFIG_GENERATION_HEADER]: generation }
+          })
+          .catch(() => {})
+    }
+    if (!disposed) attachmentsBusy.value = false
+  }
+}
+watch(
+  [() => props.reviewDraft, historyReady, historyBusy, () => mower.ai_assistant_enabled],
+  ([draft, ready, busy, enabled]) => {
+    if (draft && (enabled !== true || (ready && !busy))) acceptIncomeReview(draft)
+  },
+  { immediate: true }
+)
 watch(
   [chatHistory, loading],
   async () => {

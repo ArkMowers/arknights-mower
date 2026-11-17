@@ -16,12 +16,18 @@ vi.mock('@/riic/incomeImage', async (original) => ({
   renderIncomeImage: vi.fn(async () => new Blob(['image'])),
   downloadIncomeImage: vi.fn()
 }))
-const io = vi.hoisted(() => ({ client: null, cleanup: null, warning: vi.fn() }))
+const io = vi.hoisted(() => ({
+  client: null,
+  cleanup: null,
+  warning: vi.fn(),
+  openReview: vi.fn()
+}))
 vi.mock('naive-ui', () => ({ useMessage: () => ({ warning: io.warning }) }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   useSSRContext: () => ({ modules: new Set() }),
-  inject: () => io.client,
+  inject: (key) =>
+    key === 'axios' ? io.client : key === 'open_income_review' ? io.openReview : null,
   onMounted: vi.fn(),
   onBeforeUnmount: (fn) => {
     io.cleanup = fn
@@ -49,7 +55,9 @@ beforeEach(async () => {
   })
   loadIncomeArchive.mockResolvedValue(null)
   saveIncomeArchive.mockResolvedValue(undefined)
+  io.openReview.mockReturnValue(true)
   io.client = {
+    defaults: { headers: { common: { 'X-Mower-Config-Generation': 'income-generation' } } },
     get: vi.fn(async (url) => ({ data: url.includes('income-cache') ? cache() : valuation() })),
     put: vi.fn(),
     post: vi.fn(async () => ({ data: { success: true, status: 'passed' } }))
@@ -930,4 +938,34 @@ it('keeps edited custom weights when switching a completed result to a preset an
   expect(workers).toHaveLength(1)
   reopenDialog()
   expect(page.settings.productionWeights.exp).toBe(2)
+})
+
+it('opens an AI draft from the successful frozen input, keeping a failed later attempt separate', async () => {
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({ data: { type: 'complete', result: success() } })
+  props.snapshot.plan = { ...props.snapshot.plan, conf: { currentOnly: true } }
+  page.settings.sampleDays = 2
+  await page.start()
+  workers[1].onmessage({ data: { type: 'complete', result: { success: false, error: '未完成' } } })
+  expect(page.lastAttemptSucceeded.value).toBe(false)
+  page.reviewIncome()
+  const draft = io.openReview.mock.calls[0][0]
+  expect(draft.generation).toBe('income-generation')
+  expect(draft.files.map((file) => file.text).join('\n')).toContain('"sampleDays":28')
+  expect(draft.files.map((file) => file.text).join('\n')).not.toContain('currentOnly')
+  expect(draft.files[0].text).toContain('"configGenerationAtRun":"income-generation"')
+  expect(io.client.post.mock.calls.every(([url]) => url.endsWith('/validate-plan'))).toBe(true)
+})
+
+it('does not create AI materials from an unfinished or running result', async () => {
+  page.reviewIncome()
+  expect(io.openReview).not.toHaveBeenCalled()
+  await page.readCache()
+  await page.start()
+  page.reviewIncome()
+  expect(io.openReview).not.toHaveBeenCalled()
+  page.session.cancel()
+  page.reviewIncome()
+  expect(io.openReview).not.toHaveBeenCalled()
 })

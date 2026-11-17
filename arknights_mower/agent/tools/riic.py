@@ -10,6 +10,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from arknights_mower import __rootdir__
+from arknights_mower.agent.tools.riic_sources import riic_code_locations
+from arknights_mower.agent.tools.riic_tutorial import read_riic_tutorial
 from arknights_mower.utils import config
 from arknights_mower.utils.building_skills import (
     _operator_skills,
@@ -405,6 +407,12 @@ def get_riic_knowledge(operators=None, topic="overview", roster_overrides=None):
     return {
         "topic": topic,
         "guide": knowledge["topics"][topic],
+        **({"tutorial": read_riic_tutorial()} if topic == "mower_tutorial" else {}),
+        **(
+            {"code_locations": riic_code_locations()}
+            if topic == "code_diagnosis"
+            else {}
+        ),
         "operators": entries,
         "terms": terms,
         "missing_terms": missing,
@@ -897,7 +905,7 @@ get_riic_knowledge_tool_def = {
     "type": "function",
     "function": {
         "name": "get_riic_knowledge",
-        "description": "查询基建机制和至多12名干员当前已解锁技能、明确成员与嵌套术语；缺失资料不假定最高技能。",
+        "description": "查询现有排班纠错与局部优化规则、一条龙教程，以及至多12名干员当前技能和未解锁技能的养成要求；缺失资料不假定最高技能，目标练度不视为实际练度。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -920,7 +928,9 @@ get_riic_knowledge_tool_def = {
                         "new_operators",
                         "income_export",
                         "freshness",
-                        "plan_generation",
+                        "plan_review",
+                        "mower_tutorial",
+                        "code_diagnosis",
                     ],
                 },
                 "roster_overrides": OVERRIDES_SCHEMA,
@@ -932,7 +942,7 @@ try_riic_plan_tool_def = {
     "type": "function",
     "function": {
         "name": "try_riic_plan",
-        "description": "只读校验草案。assignments仅覆盖当前布局的主班；plan接受单一新布局的完整plan1/conf/facility_levels/advanced_settings，二者恰选一项。完整主表检查全部主班、替班、多绑及充能目标的拥有练度，并运行原生Operators校验。mode=rescue按保存正常排班编译继承，显式姓名不得与正常全引用重叠；正常含副表则incomplete。不保存、执行或演算，不证明电力、建设、长期轮换或收益。",
+        "description": "只读校验现有主表的修改建议，不从零生成排班。局部优化使用plan保留完整plan1/conf/facility_levels/advanced_settings及替班绑组；assignments只检查主班并清空被修改房间绑定，二者恰选一项。完整主表检查全部主班、替班、多绑及充能目标的拥有练度，并运行原生Operators校验；不接收副表，不能将返回主表当作删除原副表的完整替换文件。mode=rescue按保存正常排班编译继承，显式姓名不得与正常全引用重叠；正常含副表则incomplete。不保存、执行或演算，不证明电力、建设、长期轮换或收益。",
         "parameters": {
             "type": "object",
             "properties": {

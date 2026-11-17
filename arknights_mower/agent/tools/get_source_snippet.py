@@ -82,7 +82,7 @@ get_source_snippet_tool_def = {
         "name": "get_source_snippet",
         "description": (
             "根据文件路径和行号提取报错行及其上下文的源代码，用于错误定位。"
-            "使用用户明确提供或 extract_stack_paths 提取的有效文件路径和正整数行号，不猜测行号。"
+            "使用用户明确提供、extract_stack_paths 提取或 get_riic_knowledge 的 code_diagnosis 实际扫描返回的有效路径和正整数行号，不猜测行号。"
             "仅支持当前安装目录允许的项目源文件，上下文行数为0到50，默认10。"
             "返回包含 source_code 的 JSON；读取失败时如实说明，不声称已读取源码。"
             "多个栈帧优先读取与异常最相关的位置。"

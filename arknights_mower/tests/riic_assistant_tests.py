@@ -413,7 +413,9 @@ def test_tools_are_available_to_both_model_workflows():
         "new_operators",
         "income_export",
         "freshness",
-        "plan_generation",
+        "plan_review",
+        "mower_tutorial",
+        "code_diagnosis",
     ],
 )
 def test_extended_knowledge_topics_are_queryable_and_read_only(state, topic):
@@ -429,6 +431,111 @@ def test_extended_knowledge_topics_are_queryable_and_read_only(state, topic):
         "topic"
     ]["enum"]
     assert topic in declared
+
+
+def test_tutorial_topic_reads_current_source_sections(state):
+    response = result(riic.get_riic_knowledge, topic="mower_tutorial")
+    tutorial = response["tutorial"]
+    assert tutorial["available"] and not tutorial["truncated"]
+    assert tutorial["missing_sections"] == []
+    sections = {section["anchor"]: section for section in tutorial["sections"]}
+    assert "下班参考线" in sections["schedule-design-mood"]["text"]
+    assert "整组替班" in sections["schedule-design-mood"]["text"]
+    assert "待命不恢复心情" in sections["schedule-design-standby"]["text"]
+    assert sections["schedule-design-mood"]["url"].endswith("#schedule-design-mood")
+    assert "<script" not in json.dumps(tutorial)
+
+
+def test_tutorial_topic_reads_packaged_html_and_reports_missing_sections(
+    state, monkeypatch, tmp_path
+):
+    from arknights_mower.agent.tools import riic_tutorial
+
+    monkeypatch.setattr(riic_tutorial, "__rootdir__", tmp_path / "arknights_mower")
+    guide = tmp_path / "ui" / "dist" / "docs" / riic_tutorial.GUIDE_NAME
+    guide.parent.mkdir(parents=True)
+    guide.write_text(
+        '<h2 id="schedule-design-mood">工休估算</h2><p>明确资料 &amp; 实测</p>'
+        '<script>不要作为教程返回</script><h2 id="other">无关章节</h2><p>忽略</p>',
+        encoding="utf-8",
+    )
+    response = result(riic.get_riic_knowledge, topic="mower_tutorial")["tutorial"]
+    assert response["available"]
+    assert response["source"].startswith("ui/dist/docs/")
+    assert response["sections"][0]["text"] == "明确资料 & 实测"
+    assert "schedule-design-standby" in response["missing_sections"]
+    guide.unlink()
+    missing = result(riic.get_riic_knowledge, topic="mower_tutorial")["tutorial"]
+    assert not missing["available"]
+    assert missing["sections"] == []
+
+
+def test_tutorial_large_sections_are_explicitly_omitted(state, monkeypatch, tmp_path):
+    from arknights_mower.agent.tools import riic_tutorial
+
+    monkeypatch.setattr(riic_tutorial, "__rootdir__", tmp_path / "arknights_mower")
+    guide = tmp_path / "ui" / riic_tutorial.GUIDE_NAME
+    guide.parent.mkdir()
+    guide.write_text(
+        '<h2 id="schedule-design-mood">工休估算</h2><p>' + "长" * 12001 + "</p>",
+        encoding="utf-8",
+    )
+    response = result(riic.get_riic_knowledge, topic="mower_tutorial")["tutorial"]
+    assert response["truncated"]
+    assert "schedule-design-mood" in response["missing_sections"]
+    assert response["sections"] == []
+
+
+def test_code_diagnosis_locations_read_real_source_context(state):
+    from arknights_mower.agent.tools.get_source_snippet import get_source_snippet
+
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")
+    locations = response["code_locations"]
+    assert "不是故障时版本" in locations["scope"]
+    assert len(locations["sources"]) == 6
+    for source in locations["sources"]:
+        assert source["available"] and not source["missing_symbols"]
+        assert len(source["sha256"]) == 64
+        for entry in source["locations"]:
+            snippet = result(
+                get_source_snippet,
+                file_path=source["file_path"],
+                line_number=entry["line_number"],
+                context=1,
+            )
+            assert entry["symbol"] in snippet["source_code"]
+
+
+def test_code_locations_follow_source_lines_and_keep_missing_code_explicit(
+    state, monkeypatch, tmp_path
+):
+    import importlib
+
+    source_tool = importlib.import_module(
+        "arknights_mower.agent.tools.get_source_snippet"
+    )
+    monkeypatch.setattr(source_tool, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(source_tool, "_PACKAGE_ROOT", tmp_path / "arknights_mower")
+    worker = tmp_path / "ui" / "src" / "riic" / "incomeWorker.js"
+    worker.parent.mkdir(parents=True)
+    worker.write_text("// first\n// second\nexport function calculateIncome(plan) {}\n")
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")["code_locations"]
+    assert response["sources"][0]["locations"][0]["line_number"] == 3
+    assert all(not row["available"] for row in response["sources"][1:])
+    before = response["sources"][0]["sha256"]
+    worker.write_text(
+        "// first\n// second\n// third\nexport function calculateIncome(plan) {}\n"
+    )
+    changed = result(riic.get_riic_knowledge, topic="code_diagnosis")["code_locations"]
+    assert changed["sources"][0]["locations"][0]["line_number"] == 4
+    assert changed["sources"][0]["sha256"] != before
+    worker.write_text("// symbol absent\n")
+    missing = result(riic.get_riic_knowledge, topic="code_diagnosis")["code_locations"]
+    assert missing["sources"][0]["available"]
+    assert missing["sources"][0]["locations"] == []
+    assert missing["sources"][0]["missing_symbols"] == [
+        "export function calculateIncome("
+    ]
 
 
 def test_knowledge_schema_covers_every_supported_topic():
