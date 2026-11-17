@@ -6,11 +6,11 @@ from pydantic import ValidationError
 from arknights_mower.utils.config.conf import Conf
 
 
-def test_value_shopping_defaults_do_not_change_old_configs():
+def test_value_shopping_defaults_use_fixed_policy():
     conf = Conf()
-    assert conf.credit_shop_by_value is False
+    assert conf.credit_shop_by_value is True
     assert conf.credit_shop_value_threshold == 0.045
-    assert not conf.should_use_credit_shop_value
+    assert conf.should_use_credit_shop_value
     saved = conf.model_dump(exclude_unset=True)
     assert "credit_shop_by_value" not in saved
     assert "credit_shop_value_threshold" not in saved
@@ -20,7 +20,7 @@ def test_value_shopping_defaults_do_not_change_old_configs():
     "enabled,visits,mower_visits,shop,mower_shop",
     list(product([False, True], repeat=5)),
 )
-def test_value_shopping_requires_both_mower_runners(
+def test_legacy_value_options_do_not_override_fixed_policy(
     enabled, visits, mower_visits, shop, mower_shop
 ):
     conf = Conf(
@@ -31,10 +31,10 @@ def test_value_shopping_requires_both_mower_runners(
         maa_mall_mode="mower" if mower_shop else "maa",
         clue_credit_on_demand=False,
     )
-    assert conf.should_use_credit_shop_value == all(
-        (enabled, visits, mower_visits, shop, mower_shop)
-    )
-    assert not conf.should_defer_clue_credit
+    assert conf.should_use_credit_shop_value is shop
+    assert conf.should_defer_clue_credit is (visits and shop)
+    assert conf.visit_friend_mode == conf.maa_mall_mode == "mower"
+    assert conf.credit_shop_by_value is True
 
 
 @pytest.mark.parametrize("threshold", [0, 0.032, 0.036, 0.043, 0.045])
@@ -58,13 +58,12 @@ def test_value_settings_survive_updates_and_reload(threshold):
     ):
         updated = conf.updated(updates)
         restored = Conf.model_validate_json(updated.model_dump_json(exclude_unset=True))
-        assert not restored.should_use_credit_shop_value
-        assert restored.credit_shop_by_value == updates.get(
-            "credit_shop_by_value", True
-        )
+        assert restored.should_use_credit_shop_value
+        assert restored.credit_shop_by_value is True
+        assert restored.visit_friend_mode == restored.maa_mall_mode == "mower"
         assert restored.credit_shop_value_threshold == threshold
         assert restored.clue_credit_on_demand is True
-        assert restored.maa_mall_ignore_blacklist_when_full is True
+        assert restored.maa_mall_ignore_blacklist_when_full is False
         assert restored.maa_mall_buy == "招聘许可"
         assert restored.maa_mall_blacklist == "家具零件"
         assert restored.updated(

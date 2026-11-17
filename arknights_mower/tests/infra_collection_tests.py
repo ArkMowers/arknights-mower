@@ -98,13 +98,19 @@ def test_other_collection_types_keep_one_tap_each(solver):
 def test_order_delivery_prompt_collects_once(solver, last):
     solver.recog = recognizer("order_todo.png")
     solver.last_execution["todo"] = last
-    position = solver.recog.find("infra_collect_bill")
-    assert position is not None
+    solver.todo_list()
+    position = solver.tap.call_args_list[0].args[0]
+    assert (
+        sum(
+            490 <= tap.args[0][0][0] <= 500 and 980 <= tap.args[0][0][1] <= 1000
+            for tap in solver.tap.call_args_list
+        )
+        == 1
+    )
     assert 490 <= position[0][0] <= 500
     assert 980 <= position[0][1] <= 1000
-    solver.todo_list()
-    assert solver.tap.call_args_list[0] == call(position)
-    assert solver.tap.call_args_list.count(call(position)) == 1
+    assert 540 <= position[1][0] <= 550
+    assert 1050 <= position[1][1] <= 1070
     assert solver.last_execution["todo"] == NOW
     assert not solver.todo_task
 

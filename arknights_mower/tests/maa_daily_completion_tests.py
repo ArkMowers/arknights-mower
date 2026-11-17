@@ -108,9 +108,7 @@ def test_only_submitted_enabled_options_complete(scheduler):
 
 
 @pytest.mark.parametrize("node", ["VisitLimited", "VisitNextBlack"])
-def test_mall_records_each_confirmed_action_without_hiding_unfinished_work(
-    scheduler, node
-):
+def test_mall_ignores_unsubmitted_visits_and_records_credit_fight(scheduler, node):
     assert append(scheduler, "Mall")["credit_fight"] is True
     callback(
         scheduler,
@@ -123,7 +121,8 @@ def test_mall_records_each_confirmed_action_without_hiding_unfinished_work(
     params = append(scheduler, "Mall")
     assert params["visit_friends"] is False
     assert params["credit_fight"] is True
-    assert params["shopping"] is True
+    assert params["shopping"] is False
+    assert scheduler.daily_visit_friend == date.min
     callback(
         scheduler,
         20002,
@@ -140,7 +139,28 @@ def test_mall_chain_completion_does_not_claim_failed_credit_fight_or_visits(sche
     callback(scheduler, 10002, taskchain="Mall", taskid=1)
     params = append(scheduler, "Mall")
     assert params["credit_fight"] is True
+    assert params["visit_friends"] is False
+    assert scheduler.daily_visit_friend == date.min
+
+
+@pytest.mark.parametrize("node", ["VisitLimited", "VisitNextBlack"])
+def test_explicit_submitted_visit_still_records_confirmed_completion(scheduler, node):
+    params = append(scheduler, "Mall", mall_action="visit_friends")
     assert params["visit_friends"] is True
+    assert params["shopping"] is False
+    assert params["credit_fight"] is False
+    callback(
+        scheduler,
+        20002,
+        taskchain="Mall",
+        taskid=1,
+        subtask="ProcessTask",
+        details={"task": node},
+    )
+    assert scheduler.daily_visit_friend == base_schedule.get_server_time().date()
+    assert (
+        append(scheduler, "Mall", mall_action="visit_friends")["visit_friends"] is False
+    )
 
 
 def test_shopping_only_never_completes_credit_or_visits(scheduler):
