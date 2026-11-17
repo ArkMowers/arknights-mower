@@ -482,7 +482,8 @@ const createPlanStore = (id, endpoint, rescue = false) =>
         sub_plan.value,
         source,
         target,
-        rescue ? null : mainSettings
+        rescue ? null : mainSettings,
+        facility_levels.value
       )
     }
 
