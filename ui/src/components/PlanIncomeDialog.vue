@@ -442,6 +442,7 @@ function applyResultValuation(selected) {
     exported.value = false
     exportError.value = ''
     persistResult()
+    return true
   } catch (error) {
     resultValuationError.value = error.message
   }
@@ -480,7 +481,8 @@ async function selectResultAlgorithm(value) {
 }
 function updateResultWeight(key, value) {
   const productionWeights = { ...state.input.settings.productionWeights, [key]: value }
-  applyResultValuation({ ...state.input.settings, productionWeights })
+  if (applyResultValuation({ ...state.input.settings, productionWeights }))
+    settings.productionWeights = productionWeights
 }
 function applyResultValues(data) {
   applySavedValues(data)

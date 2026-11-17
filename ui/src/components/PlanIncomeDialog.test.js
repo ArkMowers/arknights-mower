@@ -900,3 +900,34 @@ it('keeps export and another run unavailable throughout a result algorithm cache
   expect(page.resultValuationBusy.value).toBe(false)
   expect(page.state.result.success).toBe(true)
 })
+
+it('keeps edited custom weights when switching a completed result to a preset and back', async () => {
+  await page.readCache()
+  await page.start()
+  workers[0].onmessage({
+    data: {
+      type: 'complete',
+      result: {
+        ...success(),
+        summary: { exp: 1000, goldCount: 2, virtualGoldCount: 1, orderLmd: 3000 }
+      }
+    }
+  })
+  await page.selectResultAlgorithm('custom')
+  page.updateResultWeight('exp', 2)
+  expect(page.state.result.summary.totalScore82).toBe(3800)
+  io.client.put.mockResolvedValueOnce({
+    data: {
+      base_algorithm: 0,
+      ratios: { experience: 1, gold: 0.8, order: 0.2, efficiency: 1.7 }
+    }
+  })
+  await page.selectResultAlgorithm(0)
+  expect(page.state.result.summary.totalScore82).toBe(2800)
+  await page.selectResultAlgorithm('custom')
+  expect(page.state.result.summary.totalScore82).toBe(3800)
+  expect(page.state.input.settings.productionWeights.exp).toBe(2)
+  expect(workers).toHaveLength(1)
+  reopenDialog()
+  expect(page.settings.productionWeights.exp).toBe(2)
+})
