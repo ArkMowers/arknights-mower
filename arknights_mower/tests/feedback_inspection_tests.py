@@ -122,7 +122,7 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
         return AIMessage(content="已反馈，并注明待确认事项。")
 
     model = Mock()
-    model.invoke.side_effect = invoke
+    model.stream.side_effect = lambda messages: iter([invoke(messages)])
     monkeypatch.setattr(agent, "build_llm", lambda *args, **kwargs: model)
     from arknights_mower.agent.execution import Execution
     from arknights_mower.utils import ai_history
@@ -141,10 +141,12 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
 
         run = Execution(store, turn, send)
         with run.registered():
-            result = agent._run_manual_tool_loop(
-                agent._build_messages("请反馈训练问题并分析相关代码"),
-                "offline-key",
-                execution=run,
+            result = list(
+                agent._run_manual_tool_loop(
+                    agent._build_messages("请反馈训练问题并分析相关代码"),
+                    "offline-key",
+                    execution=run,
+                )
             )
     assert len(approvals) == 1
     assert (

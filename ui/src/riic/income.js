@@ -45,8 +45,26 @@ export function defaultIncomeSettings() {
     productionWeights: normalizeProductionWeights()
   }
 }
+const FIXED_FACILITY_NAMES = {
+  central: '中枢',
+  meeting: '会客室',
+  factory: '加工站',
+  contact: '人力办公室',
+  train: '训练室',
+  ...Object.fromEntries([1, 2, 3, 4].map((index) => [`dormitory_${index}`, '宿舍']))
+}
 export function incomeWorkspace(plan) {
-  const workspace = importMowerJson(JSON.stringify(plan))
+  const document = JSON.parse(JSON.stringify(plan))
+  const mainKey =
+    typeof document?.default === 'string' && document.default.trim()
+      ? document.default.trim()
+      : 'plan1'
+  const primary = document?.[mainKey]
+  // The pinned importer infers fixed room types only when their names are empty.
+  for (const [room, name] of Object.entries(FIXED_FACILITY_NAMES)) {
+    if (primary?.[room]?.name === name) primary[room].name = ''
+  }
+  const workspace = importMowerJson(JSON.stringify(document))
   workspace.droneCapacity = DEFAULT_DRONE_CAPACITY
   return workspace
 }

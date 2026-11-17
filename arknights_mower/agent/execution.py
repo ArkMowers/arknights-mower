@@ -27,9 +27,10 @@ READ_TOOLS = {
     "try_riic_plan",
 }
 APPROVAL_SECONDS = 180
-MAX_CALLS = 24
 MAX_ARGUMENT_CHARS = 8000
 MAX_RESULT_CHARS = 32000
+MAX_RIIC_PLAN_ARGUMENT_CHARS = 64000
+RIIC_RESULT_CHAR_LIMITS = {"get_riic_context": 96000, "try_riic_plan": 128000}
 MAX_ACTIVE_RUNS = 8
 MAX_OBSERVERS = 4
 _registry_lock = RLock()
@@ -241,8 +242,8 @@ class Execution:
             self.turn.events.append(event)
             while (
                 len(self.turn.events) > 32
-                or len(canonical(self.turn.events))
-                + len(canonical(self.turn.operations))
+                or len(json.dumps(self.turn.events, ensure_ascii=False))
+                + len(json.dumps(self.turn.operations, ensure_ascii=False))
                 > MAX_TRACE_CHARS - 1024
             ):
                 if len(self.turn.events) <= 1:
@@ -292,11 +293,16 @@ class Execution:
     def execute(self, name, args, functions, labels, *, raw=False):
         self.check()
         self.calls += 1
-        if self.calls > MAX_CALLS:
-            raise HistoryError("本轮工具调用达到上限，请根据已有结果缩小问题范围")
         if name not in READ_TOOLS | WRITE_TOOLS or name not in functions:
             return f"未知工具: {name}"
-        if not isinstance(args, dict) or len(canonical(args)) > MAX_ARGUMENT_CHARS:
+        argument_limit = (
+            MAX_RIIC_PLAN_ARGUMENT_CHARS
+            if name == "try_riic_plan"
+            and isinstance(args, dict)
+            and isinstance(args.get("plan"), dict)
+            else MAX_ARGUMENT_CHARS
+        )
+        if not isinstance(args, dict) or len(canonical(args)) > argument_limit:
             return "未执行：工具参数过长或格式无效"
         try:
             signature_owner = functions[name]
@@ -321,6 +327,12 @@ class Execution:
                 return "未执行：路线 JSON 无效"
         if name == "retry_plan_tool":
             normalized = {"char_id": "", "skill_index": 0}
+        recorded_arguments = normalized
+        if name == "try_riic_plan" and len(canonical(normalized)) > MAX_ARGUMENT_CHARS:
+            recorded_arguments = {
+                "excerpt": canonical(normalized)[:MAX_ARGUMENT_CHARS],
+                "truncated": True,
+            }
         identifier = f"T{self.turn.turn_id}-{self.calls}"
         digest = hashlib.sha256(canonical([name, normalized]).encode()).hexdigest()
         operation = None
@@ -398,7 +410,7 @@ class Execution:
                 "name": name,
                 "label": labels.get(name, name),
                 "status": "running",
-                "arguments": normalized,
+                "arguments": recorded_arguments,
                 "observed_at": datetime.now().astimezone().isoformat(),
             }
         )
@@ -413,8 +425,21 @@ class Execution:
             text = f"执行未能确认：{exc}"
             status = "unknown" if operation else "failed"
         original_text = text
-        if len(text) > MAX_RESULT_CHARS:
-            text = text[:MAX_RESULT_CHARS] + "\n[工具结果已截断，不能据此判断完整覆盖]"
+        result_limit = RIIC_RESULT_CHAR_LIMITS.get(name, MAX_RESULT_CHARS)
+        if len(text) > result_limit:
+            if name in RIIC_RESULT_CHAR_LIMITS:
+                text = canonical(
+                    {
+                        "error": {
+                            "code": "tool_result_too_large",
+                            "message": "工具结果超过长度上限，请缩小排班或查询范围后重试。",
+                            "limit_chars": result_limit,
+                        }
+                    }
+                )
+                original_text, status = text, "failed"
+            else:
+                text = text[:result_limit] + "\n[工具结果已截断，不能据此判断完整覆盖]"
         if operation:
             operation.update(status=status, result=text[:2000])
         source = {
@@ -432,7 +457,7 @@ class Execution:
                 "name": name,
                 "label": labels.get(name, name),
                 "status": status,
-                "arguments": normalized,
+                "arguments": recorded_arguments,
                 "result": text[:3000],
                 "truncated": len(text) > 3000,
                 "source": source,

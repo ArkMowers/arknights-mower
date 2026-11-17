@@ -1,5 +1,7 @@
 """独立救急排班的副表求值与设施校验。"""
 
+import copy
+
 from arknights_mower.data import agent_list
 from arknights_mower.utils.plan import all_replacements
 
@@ -13,6 +15,90 @@ RESCUE_ROOMS = {
 } | {f"room_{floor}_{index}": 3 for floor in range(1, 4) for index in range(1, 4)}
 
 RESCUE_DORMS = {f"dormitory_{index}" for index in range(1, 5)}
+INHERITED_WORK_ROOMS = RESCUE_ROOMS.keys() - {"factory", "train"}
+
+
+def _explicit_workers(plan):
+    return any(
+        slot.agent in agent_list
+        for room, facility in plan
+        if room in INHERITED_WORK_ROOMS and facility is not None
+        for slot in facility.plans
+    )
+
+
+def _normal_facility(data, room):
+    rows = data.plan.get(room, ())
+    global_plan = getattr(data, "global_plan", {})
+    original = global_plan.get(global_plan.get("default", "plan1"), {}).get(room, {})
+    facility = (
+        rows[0].facility
+        if rows and hasattr(rows[0], "facility")
+        else original.get("name", "")
+    )
+    product = getattr(data, "products", {}).get(room)
+    if product is None and rows:
+        product = getattr(rows[0], "product", None)
+    result = {
+        "name": facility,
+        "plans": [
+            {
+                "agent": getattr(slot, "agent", ""),
+                "group": getattr(slot, "group", ""),
+                "replacement": copy.deepcopy(getattr(slot, "replacement", [])),
+                "group_bindings": copy.deepcopy(getattr(slot, "group_bindings", [])),
+            }
+            for slot in rows
+        ],
+    }
+    if isinstance(product, str) and product:
+        result["product"] = product
+    return result
+
+
+def compile_rescue_schedule(data, schedule):
+    """普通工作空缺继承正常生效岗位；专项、宿舍和副表 Current 保留原义。"""
+    from arknights_mower.utils.config.plan import PlanModel
+
+    document = schedule.model_dump(exclude_none=True)
+    document["facility_levels"] = {
+        **getattr(data, "facility_levels", {}),
+        **schedule.facility_levels,
+    }
+
+    def inherit(room, facility, *, backup=False):
+        normal = _normal_facility(data, room)
+        supplied = facility.get("plans", [])
+        capacity = len(normal["plans"])
+        if len(supplied) > capacity:
+            raise ValueError(
+                f"救急排班 {room} 等级/岗位数不一致，岗位数量超过正常排班容量："
+                f"正常排班 {capacity} 位，救急排班 {len(supplied)} 位"
+            )
+        rows = [
+            copy.deepcopy(supplied[index])
+            if index < len(supplied) and supplied[index]["agent"]
+            else copy.deepcopy(normal["plans"][index])
+            for index in range(len(supplied) if backup else capacity)
+        ]
+        if backup:
+            return {**facility, "plans": rows}
+        return {
+            **normal,
+            **facility,
+            "name": facility.get("name") or normal["name"],
+            "product": facility.get("product") or normal.get("product"),
+            "plans": rows,
+        }
+
+    primary = document["plan1"]
+    for room in INHERITED_WORK_ROOMS & data.plan.keys():
+        primary[room] = inherit(room, primary.get(room, {}))
+    for backup in document["backup_plans"]:
+        for room, facility in backup["plan"].items():
+            if room in INHERITED_WORK_ROOMS & data.plan.keys() and facility["plans"]:
+                backup["plan"][room] = inherit(room, facility, backup=True)
+    return PlanModel.model_validate(document)
 
 
 def validate_rescue_roster(plan):
@@ -62,6 +148,8 @@ def validate_rescue_schedule(data, schedule):
     from arknights_mower.utils.backup_group_tasks import validate_group_task_names
     from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, build_global_plan
 
+    source = schedule
+    schedule = compile_rescue_schedule(data, schedule)
     validate_group_task_names(build_global_plan(plan_model=schedule))
 
     primary = schedule.plan1.model_dump(exclude_none=True)
@@ -153,6 +241,24 @@ def validate_rescue_schedule(data, schedule):
                             raise ValueError(
                                 f"救急{label} {name}的替换干员 {replacement} 无效"
                             )
+    if not any(
+        _explicit_workers(plan)
+        for plan in [source.plan1, *(backup.plan for backup in source.backup_plans)]
+    ):
+        raise ValueError(
+            "救急排班没有显式配置工作干员，全部沿用正常排班，尚无有效救急配置"
+        )
+    if source.facility_levels and hasattr(data, "global_plan"):
+        from arknights_mower.utils.calculated_mood import _facility_levels
+
+        levels = _facility_levels(data)
+        for room, level in source.facility_levels.items():
+            if level != levels.get(room):
+                raise ValueError(
+                    f"救急排班 {room} 设施等级不一致："
+                    f"正常排班 {levels.get(room)} 级，救急排班 {level} 级"
+                )
+    return schedule
 
 
 def configured_rescue_names(schedule):
@@ -185,7 +291,8 @@ def effective_rescue_plan(data, schedule):
             ),
         )
 
-    validate_rescue_schedule(data, schedule)
+    source = schedule
+    schedule = validate_rescue_schedule(data, schedule)
     worker_config = recovery_config(schedule.conf)
     facilities = schedule.plan1.model_dump(exclude_none=True)
     from types import SimpleNamespace
@@ -207,6 +314,11 @@ def effective_rescue_plan(data, schedule):
     selection = select_backup_plans(
         backups, groups, lambda trigger: bool(data.evaluate_expression(str(trigger)))
     )
+    if not _explicit_workers(source.plan1) and not any(
+        active and _explicit_workers(backup.plan)
+        for backup, active in zip(source.backup_plans, selection.conditions)
+    ):
+        raise ValueError("当前没有生效的救急工作干员，全部沿用正常排班")
     for backup, active in zip(schedule.backup_plans, selection.conditions):
         definition = backup.model_dump(exclude_none=True)
         if not active:
@@ -226,6 +338,8 @@ def effective_rescue_plan(data, schedule):
                         )
                     slot = previous[index]
                 rows.append(slot)
+            if rows:
+                rows.extend(copy.deepcopy(previous[len(rows) :]))
             facilities[room] = {
                 **previous_facility,
                 **facility,

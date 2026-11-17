@@ -1,5 +1,6 @@
 """Offline checks for callable examples and model-visible tool arguments."""
 
+import json
 import re
 import sqlite3
 import tempfile
@@ -207,20 +208,55 @@ class AIPromptContractTests(unittest.TestCase):
             patch.object(agent, "build_llm") as build,
             patch.dict(agent.tool_func_map, {"get_faq": lambda **_: "FAQ记录"}),
         ):
-            build.return_value.invoke.side_effect = responses
-            result = agent._run_manual_tool_loop(messages, "test-key")
+            build.return_value.stream.side_effect = [
+                iter([reply]) for reply in responses
+            ]
+            result = list(agent._run_manual_tool_loop(messages, "test-key"))
         self.assertEqual(result[-1], "建议")
         self.assertIn(agent.tool_message_map["get_faq"], result[0])
         self.assertEqual(
-            messages[0].content, build.return_value.invoke.call_args.args[0][0].content
+            messages[0].content, build.return_value.stream.call_args.args[0][0].content
         )
         self.assertEqual(
-            build.return_value.invoke.call_args.args[0][-1].content, "FAQ记录"
+            build.return_value.stream.call_args.args[0][-1].content, "FAQ记录"
         )
         self.assertEqual(
             {tool["function"]["name"] for tool in agent.get_tools()},
             set(agent.tool_func_map),
         )
+
+    def test_generation_comparison_guidance_reaches_the_model_and_registered_tool(self):
+        from arknights_mower.agent.tools import riic
+
+        prompt = agent._build_messages("按实际BOX优化主表")[0].content
+        topic_schema = riic.get_riic_knowledge_tool_def["function"]["parameters"][
+            "properties"
+        ]["topic"]
+        self.assertIn("plan_generation", topic_schema["enum"])
+        with patch.object(
+            riic,
+            "load_skill_snapshot",
+            return_value={
+                "has_data": False,
+                "message": "离线测试，无账户资料",
+                "operators": [],
+            },
+        ):
+            response = json.loads(
+                agent.tool_func_map["get_riic_knowledge"](topic="plan_generation")
+            )
+        self.assertEqual(response["topic"], "plan_generation")
+        guide = response["guide"]
+        for text in (prompt, guide):
+            with self.subTest(source="prompt" if text == prompt else "knowledge"):
+                self.assertIn("combinations", text)
+                self.assertIn("纳入或排除", text)
+                self.assertIn("结构通过", text)
+                self.assertIn("需要改建的建议", text)
+                self.assertIn("收益排名", text)
+        self.assertIn("鸿雪组前提不成立", guide)
+        self.assertIn("不强制所有BOX采用鸿雪", guide)
+        self.assertIn("既有充能目标只是待比较方案", guide)
 
 
 if __name__ == "__main__":

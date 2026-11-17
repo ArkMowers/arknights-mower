@@ -426,7 +426,7 @@ def test_legacy_model_workflows_cannot_bypass_confirmation(
     write = Mock(side_effect=AssertionError("write bypassed confirmation"))
     monkeypatch.setitem(agent.tool_func_map, "submit_issue", write)
     model = Mock()
-    model.invoke.side_effect = [
+    responses = [
         AIMessage(
             content="",
             tool_calls=[
@@ -437,13 +437,17 @@ def test_legacy_model_workflows_cannot_bypass_confirmation(
     ]
     monkeypatch.setattr(agent, "build_llm", lambda *a, **k: model)
     if workflow == "manual":
-        agent._run_manual_tool_loop(agent._build_messages("send"), "key")
+        model.stream.side_effect = [iter([response]) for response in responses]
+        list(agent._run_manual_tool_loop(agent._build_messages("send"), "key"))
+        request = model.stream.call_args.args[0]
     else:
         if agent.StateGraph is None:
             pytest.skip("optional graph dependency")
+        model.invoke.side_effect = responses
         agent.build_workflow("key").invoke({"messages": agent._build_messages("send")})
+        request = model.invoke.call_args.args[0]
     write.assert_not_called()
-    assert "未执行" in model.invoke.call_args.args[0][-1].content
+    assert "未执行" in request[-1].content
 
 
 def test_database_query_tool_is_read_only_and_does_not_create_files(
@@ -1347,3 +1351,484 @@ def test_stop_while_provider_is_blocked_stays_cancelled_after_timeout(
     assert results[0].sent[-1]["code"] == "execution_stopped"
     saved = store.read(identifier)["turns"][-1]
     assert saved["status"] == "cancelled" and saved["failure"] == {}
+
+
+def riic_execution_plan():
+    return {
+        "plan1": {
+            "room_1_1": {
+                "name": "制造站",
+                "product": "gold",
+                "plans": [{"agent": "赫默", "group": "", "replacement": []}],
+            }
+        },
+        "conf": {
+            "workaholic": "赫默",
+            **{
+                key: ",".join(["赫默"] * 1365)
+                for key in (
+                    "free_blacklist",
+                    "free_room_exclusions",
+                    "resting_priority_replacement",
+                    "resting_priority",
+                    "rest_in_full",
+                    "refresh_trading",
+                    "refresh_drained",
+                    "ope_resting_priority",
+                )
+            },
+        },
+        "facility_levels": {"room_1_1": 1},
+        "backup_plans": [],
+    }
+
+
+def test_complete_riic_plan_reaches_real_tool_through_stored_chat(runtime, monkeypatch):
+    from arknights_mower.agent.tools import riic
+
+    _, agent, _, store, install = runtime
+    snapshot = {
+        "has_data": True,
+        "message": "离线测试名单",
+        "operators": [{"name": "赫默", "owned": True, "phase": 2, "level": 1}],
+    }
+    monkeypatch.setattr(riic, "load_skill_snapshot", lambda: snapshot)
+    monkeypatch.setitem(agent.tool_func_map, "try_riic_plan", riic.try_riic_plan)
+    plan = riic_execution_plan()
+    assert len(execution.canonical({"plan": plan})) > execution.MAX_ARGUMENT_CHARS
+    before = (riic.config.plan.model_dump(), riic.config.conf.model_dump())
+    model = install(
+        [
+            AIMessageChunk(
+                content="",
+                tool_call_chunks=[
+                    {
+                        "name": "try_riic_plan",
+                        "args": json.dumps({"plan": plan}, ensure_ascii=False),
+                        "id": "call-1",
+                        "index": 0,
+                    }
+                ],
+            )
+        ],
+        [AIMessageChunk(content="完整主表已只读校验")],
+    )
+    socket = run_chat(runtime)
+    response = json.loads(model.inputs[1][-1].content.split("\n", 1)[1])
+    assert len(model.inputs[1][-1].content) > execution.MAX_RESULT_CHARS
+    assert response["valid"] and response["native_checked"]
+    assert response["scope"] == "complete_main_plan" and not response["saved"]
+    assert response["plan"]["conf"]["free_blacklist"] == plan["conf"]["free_blacklist"]
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][0]
+    assert saved["status"] == "complete"
+    assert not any(event["type"] == "approval" for event in events(socket))
+    assert saved["events"][-1]["arguments"]["truncated"]
+    assert (
+        len(saved["events"][-1]["arguments"]["excerpt"]) == execution.MAX_ARGUMENT_CHARS
+    )
+    assert (riic.config.plan.model_dump(), riic.config.conf.model_dump()) == before
+
+
+def test_real_riic_context_reaches_model_without_json_truncation(runtime, monkeypatch):
+    from arknights_mower.agent.tools import riic
+    from arknights_mower.utils.config.plan import PlanModel
+
+    _, agent, _, _, install = runtime
+    snapshot = {
+        "has_data": True,
+        "message": "离线目录测试名单",
+        "operators": [
+            {"name": name, "owned": True, "phase": 2, "level": 1}
+            for name in riic.skill_index()
+        ],
+    }
+    monkeypatch.setattr(riic, "load_skill_snapshot", lambda: snapshot)
+    monkeypatch.setattr(riic.config, "plan", PlanModel(**riic_execution_plan()))
+    monkeypatch.setitem(agent.tool_func_map, "get_riic_context", riic.get_riic_context)
+    expected = json.loads(riic.get_riic_context())
+    assert len(riic.get_riic_context()) > execution.MAX_RESULT_CHARS
+    before = riic.config.plan.model_dump()
+    model = install(
+        [tool_call("get_riic_context")],
+        [AIMessageChunk(content="已读取完整基建上下文")],
+    )
+    socket = run_chat(runtime)
+    text = model.inputs[1][-1].content.split("\n", 1)[1]
+    response = json.loads(text)
+    assert response == expected
+    assert len(response["owned_operators"]) == len(snapshot["operators"])
+    assert (
+        response["normal_plan"]["conf"]["free_blacklist"]
+        == before["conf"]["free_blacklist"]
+    )
+    assert not any(event["type"] == "approval" for event in events(socket))
+    assert riic.config.plan.model_dump() == before
+
+
+@pytest.mark.parametrize("size", [64000, 64001])
+def test_complete_riic_argument_limit_also_fits_saved_execution_trace(runtime, size):
+    store = runtime[3]
+    arguments = {"plan": {"padding": ""}}
+    arguments["plan"]["padding"] = "x" * (size - len(execution.canonical(arguments)))
+    tool = Mock(return_value={"valid": True})
+    with store.turn(None, "检查参数边界") as turn:
+        run = execution.Execution(store, turn, lambda frame: None)
+        text = run.execute("try_riic_plan", arguments, {"try_riic_plan": tool}, {})
+        if size == 64000:
+            tool.assert_called_once_with(**arguments)
+            assert json.loads(text.split("\n", 1)[1]) == {"valid": True}
+            assert turn.events[-1]["arguments"]["truncated"]
+            assert len(execution.canonical(turn.events)) < ai_history.MAX_TRACE_CHARS
+        else:
+            tool.assert_not_called()
+            assert text == "未执行：工具参数过长或格式无效"
+            assert not turn.events
+        assert run.calls == 1
+
+
+def test_repeated_complete_plan_trials_prune_using_persisted_json_size(runtime):
+    store = runtime[3]
+    trial_count = 24
+    arguments = {
+        "plan": {
+            "plan1": {
+                f"room_{floor}_{index}": {
+                    "name": "制造站",
+                    "product": "gold",
+                    "plans": [
+                        {
+                            "agent": "赫默",
+                            "group": "生产",
+                            "replacement": ["凛冬"],
+                            "group_bindings": [],
+                        }
+                        for _ in range(3)
+                    ],
+                }
+                for floor in range(1, 4)
+                for index in range(1, 4)
+            }
+        }
+    }
+    assert len(execution.canonical(arguments)) < execution.MAX_ARGUMENT_CHARS
+    tool = Mock(return_value={"valid": False, "errors": ["待修正" * 1000]})
+    with store.turn(None, "连续修正完整草案") as turn:
+        run = execution.Execution(store, turn, lambda frame: None)
+        for _ in range(trial_count):
+            run.execute("try_riic_plan", arguments, {"try_riic_plan": tool}, {})
+        assert tool.call_count == trial_count
+        saved = store.read(turn.conversation_id)["turns"][-1]
+        assert saved["events"][-1]["id"] == f"T{turn.turn_id}-{trial_count}"
+        assert len(saved["events"]) < trial_count
+        with closing(sqlite3.connect(store.path)) as db:
+            size = db.execute(
+                "SELECT length(events)+length(operations) FROM turns WHERE id=?",
+                (turn.turn_id,),
+            ).fetchone()[0]
+        assert size <= ai_history.MAX_TRACE_CHARS
+        tool.assert_called_with(**arguments)
+
+
+@pytest.mark.parametrize(
+    "name,arguments",
+    [
+        ("get_riic_context", {"plan": {"padding": "x" * 8000}}),
+        ("try_riic_plan", {"assignments": ["x" * 8000]}),
+        ("try_riic_plan", {"plan": "x" * 8000}),
+    ],
+)
+def test_riic_budget_exception_requires_complete_plan_object(runtime, name, arguments):
+    store = runtime[3]
+    tool = Mock()
+    with store.turn(None, "检查原有参数上限") as turn:
+        run = execution.Execution(store, turn, lambda frame: None)
+        text = run.execute(name, arguments, {name: tool}, {})
+        assert text == "未执行：工具参数过长或格式无效"
+        tool.assert_not_called()
+
+
+@pytest.mark.parametrize("name", ["get_riic_context", "try_riic_plan"])
+@pytest.mark.parametrize("overflow", [False, True])
+@pytest.mark.parametrize("raw", [False, True])
+def test_riic_result_budget_preserves_json_or_returns_structured_error(
+    runtime, name, overflow, raw
+):
+    store = runtime[3]
+    limit = execution.RIIC_RESULT_CHAR_LIMITS[name]
+    result = {"plan": ""}
+    result["plan"] = "x" * (limit + int(overflow) - len(execution.canonical(result)))
+    with store.turn(None, "检查结果边界") as turn:
+        run = execution.Execution(store, turn, lambda frame: None)
+        text = run.execute(name, {}, {name: lambda: result}, {}, raw=raw)
+        response = json.loads(text if raw else text.split("\n", 1)[1])
+        if overflow:
+            assert response["error"]["code"] == "tool_result_too_large"
+            assert response["error"]["limit_chars"] == limit
+            assert turn.events[-1]["status"] == "failed"
+        else:
+            assert response == result
+            assert turn.events[-1]["status"] == "succeeded"
+        assert len(text) <= limit + 200
+
+
+def test_long_tool_chain_compacts_and_keeps_latest_result(runtime, monkeypatch):
+    _, agent, _, store, install = runtime
+    monkeypatch.setattr(agent.config.conf, "ai_context_tokens", 32768)
+    trial_count = 30
+    results = [
+        f"第{index + 1}次查询的新结果：" + "x" * 10000 for index in range(trial_count)
+    ]
+    tool = Mock(side_effect=results)
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    model = install(
+        *[
+            [tool_call("list_plans", identifier=f"read-{index + 1}")]
+            for index in range(trial_count)
+        ],
+        [AIMessageChunk(content="已完成全部查询，最后一次结果已核对")],
+    )
+    compressor = Mock()
+    compressor.stream.side_effect = lambda messages: iter(
+        [AIMessageChunk(content="较早查询已完成；结果仅作历史背景，保留原始目标。")]
+    )
+    monkeypatch.setattr(
+        agent,
+        "build_llm",
+        lambda *args, with_tools=True, **kwargs: model if with_tools else compressor,
+    )
+    socket = run_chat(runtime, message="按原始目标依次核对记录")
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][-1]
+    assert saved["status"] == "complete"
+    assert saved["assistant"] == "已完成全部查询，最后一次结果已核对"
+    assert tool.call_count == trial_count and len(model.inputs) == trial_count + 1
+    assert compressor.stream.call_count > 0
+    assert any(
+        message.content == "按原始目标依次核对记录" for message in model.inputs[-1]
+    )
+    assert results[-1] in model.inputs[-1][-1].content
+    assert saved["events"][-1]["id"] == f"T{saved['id']}-{trial_count}"
+    assert len(saved["events"]) < trial_count
+    usage = [event for event in events(socket) if event["type"] == "context_usage"]
+    assert usage[-1]["compactions"] > 0
+
+
+def test_long_tool_chain_stop_prevents_further_dispatch(runtime, monkeypatch):
+    server, agent, _, store, install = runtime
+    stop_after = 27
+    tool = Mock(return_value="已读取")
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    model = install(
+        *[
+            [tool_call("list_plans", identifier=f"read-{index + 1}")]
+            for index in range(stop_after + 1)
+        ],
+        [AIMessageChunk(content="停止后不应请求")],
+    )
+
+    def stop(socket, event):
+        if (
+            event.get("type") == "tool"
+            and event.get("status") == "succeeded"
+            and event["id"].endswith(f"-{stop_after}")
+        ):
+            response = post_control(
+                server,
+                socket.sent[0]["conversation_id"],
+                event["turn_id"],
+                action="stop",
+            )
+            assert response.status_code == 200
+
+    socket = run_chat(runtime, on_event=stop)
+    saved = store.read(socket.sent[0]["conversation_id"])["turns"][-1]
+    assert saved["status"] == "cancelled"
+    assert tool.call_count == stop_after and len(model.inputs) == stop_after
+    assert saved["events"][-1]["id"] == f"T{saved['id']}-{stop_after}"
+    assert saved["events"][-1]["status"] == "succeeded"
+
+
+def test_legacy_manual_long_read_chain_completes_without_allowing_writes(
+    runtime, monkeypatch
+):
+    _, agent, _, _, _ = runtime
+    trial_count = 10
+    read = Mock(return_value="已读取")
+    write = Mock(side_effect=AssertionError("unexpected legacy write"))
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", read)
+    monkeypatch.setitem(agent.tool_func_map, "set_route", write)
+    model = Model(
+        *[
+            [tool_call("list_plans", identifier=f"read-{index + 1}")]
+            for index in range(trial_count)
+        ],
+        [tool_call("set_route", {"profession": "先锋", "supports_json": "[]"})],
+        [AIMessageChunk(content="查询完成，写入未执行")],
+    )
+    monkeypatch.setattr(agent, "build_llm", lambda *args, **kwargs: model)
+    reply = list(
+        agent._run_manual_tool_loop(agent._build_messages("只读核对"), "test-key")
+    )
+    assert reply[-1] == "查询完成，写入未执行"
+    assert read.call_count == trial_count
+    assert len(model.inputs) == trial_count + 2
+    write.assert_not_called()
+    assert "此操作需要在支持操作确认的会话中核对具体内容后确认" in str(model.inputs[-1])
+
+
+def test_legacy_chat_entry_completes_long_chain_without_graph_or_writes(
+    runtime, monkeypatch
+):
+    _, agent, _, _, _ = runtime
+    trial_count = 30
+    read = Mock(return_value="已读取")
+    write = Mock(side_effect=AssertionError("unexpected legacy write"))
+    graph = Mock(side_effect=AssertionError("unexpected graph dispatch"))
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", read)
+    monkeypatch.setitem(agent.tool_func_map, "set_route", write)
+    monkeypatch.setattr(agent, "build_workflow", graph)
+    model = Model(
+        *[
+            [tool_call("list_plans", identifier=f"read-{index + 1}")]
+            for index in range(trial_count)
+        ],
+        [tool_call("set_route", {"profession": "先锋", "supports_json": "[]"})],
+        [AIMessageChunk(content="全部只读查询完成，写入未执行")],
+    )
+    monkeypatch.setattr(agent, "build_llm", lambda *args, **kwargs: model)
+    replies = list(agent.ask_llm("只读核对全部记录", api_key="test-key"))
+    assert replies[-1] == "全部只读查询完成，写入未执行"
+    assert read.call_count == trial_count
+    assert len(model.inputs) == trial_count + 2
+    graph.assert_not_called()
+    write.assert_not_called()
+    assert "此操作需要在支持操作确认的会话中核对具体内容后确认" in str(model.inputs[-1])
+
+
+def test_manual_long_chain_checks_stop_after_model_reply(runtime, monkeypatch):
+    _, agent, _, store, _ = runtime
+    read = Mock(return_value="已读取")
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", read)
+    model = Mock()
+    monkeypatch.setattr(agent, "build_llm", lambda *args, **kwargs: model)
+    with store.turn(None, "只读核对") as turn:
+        run = execution.Execution(store, turn, lambda frame: None)
+
+        def reply(messages):
+            if model.stream.call_count == 10:
+                run.control("stop")
+            return iter(
+                [tool_call("list_plans", identifier=f"read-{model.stream.call_count}")]
+            )
+
+        model.stream.side_effect = reply
+        progress = []
+        with pytest.raises(execution.ExecutionStopped):
+            progress.extend(
+                agent._run_manual_tool_loop(
+                    agent._build_messages("只读核对"), "test-key", run
+                )
+            )
+        assert model.stream.call_count == 10 and read.call_count == 9
+        assert (
+            progress
+            == [f"Mower助手正在{agent.tool_message_map['list_plans']}...\n"] * 9
+        )
+
+
+@pytest.mark.parametrize("truncated", [False, True])
+def test_legacy_stream_assembles_tool_arguments_before_dispatch(
+    runtime, monkeypatch, truncated
+):
+    _, agent, _, _, install = runtime
+    question = "核对实际练度与技能" * 100
+    arguments = json.dumps({"question": question}, ensure_ascii=False)
+    chunks = [AIMessageChunk(content="尚未核验的中间草稿")]
+    for offset in range(0, len(arguments), 3):
+        chunks.append(
+            AIMessageChunk(
+                content="",
+                tool_call_chunks=[
+                    {
+                        "name": "get_faq" if offset == 0 else None,
+                        "args": arguments[offset : offset + 3],
+                        "id": "faq-fragmented" if offset == 0 else None,
+                        "index": 0,
+                    }
+                ],
+            )
+        )
+    if truncated:
+        chunks[-1].response_metadata = {"finish_reason": "length"}
+    tool = Mock(return_value="已核验的记录")
+    monkeypatch.setitem(agent.tool_func_map, "get_faq", tool)
+    model = install(
+        chunks, [AIMessageChunk(content="最终"), AIMessageChunk(content="结论")]
+    )
+    if truncated:
+        with pytest.raises(ValueError, match="截断"):
+            list(agent.ask_llm("查询技能", api_key="test-key"))
+        tool.assert_not_called()
+        assert len(model.inputs) == 1
+    else:
+        replies = list(agent.ask_llm("查询技能", api_key="test-key"))
+        assert replies[-1] == "最终结论"
+        assert "尚未核验的中间草稿" not in "".join(replies)
+        tool.assert_called_once_with(question=question)
+        assert len(model.inputs) == 2
+
+
+def test_legacy_stream_failure_keeps_progress_without_returning_final_success(
+    runtime, monkeypatch
+):
+    _, agent, _, _, install = runtime
+    tool = Mock(return_value="已读取")
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+
+    def interrupted():
+        yield AIMessageChunk(content="看似完成但回复尚未结束")
+        raise RuntimeError("offline stream interrupted")
+
+    install([tool_call("list_plans")], interrupted())
+    replies = []
+    with pytest.raises(execution.ModelCallError, match="offline stream interrupted"):
+        replies.extend(agent.ask_llm("核对记录", api_key="test-key"))
+    assert replies == [f"Mower助手正在{agent.tool_message_map['list_plans']}...\n"]
+    tool.assert_called_once_with()
+
+
+def test_legacy_entry_yields_tool_progress_before_requesting_another_round(
+    runtime, monkeypatch
+):
+    _, agent, _, _, install = runtime
+    tool = Mock(return_value="已读取")
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    model = install([tool_call("list_plans")], [AIMessageChunk(content="最终结论")])
+    replies = agent.ask_llm("只读核对记录", api_key="test-key")
+    assert next(replies) == f"Mower助手正在{agent.tool_message_map['list_plans']}...\n"
+    assert len(model.inputs) == 1
+    tool.assert_not_called()
+    assert list(replies) == ["最终结论"]
+    assert len(model.inputs) == 2
+    tool.assert_called_once_with()
+
+
+def test_manual_stop_after_yielding_progress_prevents_tool_dispatch(
+    runtime, monkeypatch
+):
+    _, agent, _, store, install = runtime
+    tool = Mock(return_value="不应读取")
+    monkeypatch.setitem(agent.tool_func_map, "list_plans", tool)
+    model = install([tool_call("list_plans")])
+    with store.turn(None, "只读核对") as turn:
+        run = execution.Execution(store, turn, lambda frame: None)
+        replies = agent._run_manual_tool_loop(
+            agent._build_messages("只读核对"), "test-key", run
+        )
+        assert (
+            next(replies) == f"Mower助手正在{agent.tool_message_map['list_plans']}...\n"
+        )
+        run.control("stop")
+        with pytest.raises(execution.ExecutionStopped):
+            next(replies)
+        tool.assert_not_called()
+        assert len(model.inputs) == 1
