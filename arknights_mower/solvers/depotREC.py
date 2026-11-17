@@ -4,6 +4,8 @@ import os
 import pickle
 import re
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from time import monotonic
 
 import cv2
@@ -19,7 +21,7 @@ from ..utils.image import loadimg
 from ..utils.log import logger
 from ..utils.path import get_path
 from ..utils.recognize import Recognizer, Scene
-from ..utils.resource_pkg import resource_pkg_path
+from ..utils.resource_pkg import resource_pkg_path, resource_ui_path
 
 # 向下x变大 = 0
 # 向右y变大 = 0
@@ -42,6 +44,52 @@ def 导入_数字模板():
 def 提取特征点(模板):
     模板 = 模板[40:173, 40:173]
     return vision_np.hog(模板)
+
+
+@lru_cache(maxsize=2)
+def _color_templates(directory, classes):
+    templates = []
+    for name in classes:
+        path = directory / f"{name}.webp"
+        if not path.is_file():
+            continue
+        try:
+            icon = loadimg(path)
+        except (OSError, cv2.error):
+            continue
+        if icon is not None:
+            icon = cv2.resize(icon, (213, 213))
+            templates.append((name, icon[40:173, 40:173]))
+    return templates
+
+
+def _refine_item_color(item, predicted, classes):
+    if classes is None:
+        return predicted
+    directory = resource_ui_path("depot")
+    if directory is None:
+        root = Path(__rootdir__).parent / "ui"
+        directory = (
+            root / ("public" if (root / "public/depot").is_dir() else "dist") / "depot"
+        )
+    templates = _color_templates(directory, tuple(classes))
+    if not any(name == predicted for name, _ in templates):
+        return predicted
+    # 比较图标内部并留出位移范围，减少数量、有效期标签和圆形背景的影响。
+    region = item[32:181, 32:181]
+    scores = []
+    for name, template in templates:
+        result = cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED)
+        score = cv2.minMaxLoc(result)[1]
+        if np.isfinite(score):
+            scores.append((score, name))
+    scores.sort(reverse=True)
+    if len(scores) < 2 or scores[0][0] < 0.98:
+        return predicted
+    # 同图标的周年与感谢庆典凭证保留原模型结果，不用名称排序打破并列。
+    if scores[0][0] - scores[1][0] < 0.025:
+        return predicted
+    return scores[0][1]
 
 
 def 识别空物品(物品灰):
@@ -174,6 +222,7 @@ class depotREC(SceneGraphSolver):
             knn模型["classes"],
         )
 
+        predicted_label = _refine_item_color(物品, predicted_label, knn模型["classes"])
         if depot.is_skland_only_item(predicted_label):
             return [predicted_label, None]
         数字区域 = 物品灰[160:210, 30:210]

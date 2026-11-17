@@ -2,7 +2,7 @@
 
 ## 1. Scope
 
-`depotREC` reads visible consumable and basic items from standard Capture Frames. Existing item models determine identity before quantity-reader selection. Each warehouse recognition task first calibrates shared materials from a new Skland snapshot under [Inventory synchronization and mastery payments](growth-planning.md#inventory-synchronization-and-mastery-payments); failed synchronization skips scanning and material admission.
+`depotREC` reads visible consumable and basic items from standard Capture Frames. Existing item models determine an initial identity before quantity-reader selection. Colored item icons from the same selected resource version can correct that identity when their RGB template match reaches 0.98 and exceeds every other category candidate by at least 0.025. The search allows eight pixels of displacement and compares the inner icon region to reduce surrounding overlays. Missing icons, an insufficient match or an ambiguous result retain the model identity; identical anniversary-voucher icons cannot resolve their names by color. Built-in icons use the source or packaged frontend directory when no resource version is selected. Each warehouse recognition task first calibrates shared materials from a new Skland snapshot under [Inventory synchronization and mastery payments](growth-planning.md#inventory-synchronization-and-mastery-payments); failed synchronization skips scanning and material admission.
 
 ## 2. Quantity Contract
 
@@ -49,3 +49,5 @@ After successful confirmation, the scan CSV, database and merged history are wri
 `pytest arknights_mower/tests/depot_stock_reconciliation_tests.py` covers orphaned legacy rows, current/export/history consistency, partial scans, original per-item observation times, explicit zero counts and newer local changes.
 
 `pytest arknights_mower/tests/depot_paging_tests.py` verifies bounded boundary searches, measured page movement, overlapping columns and a shorter final page using constructed image content. Recorded frames verify category selection; they do not establish real-device swipe behavior. The successful-scan tests in `depot_scene_tests.py` exercise disappearance-to-zero through CSV persistence, database reconciliation, current quantities, export and history, and reject incomplete coverage before writes.
+
+`pytest arknights_mower/tests/depot_color_tests.py` uses translated bundled icons to distinguish ordinary and kernel headhunting permits and kernel operator vouchers, and recorded frames to verify a senior training invitation and separate medicine stacks. It also verifies ambiguous and missing icons, selected-resource isolation, and source and packaged icon layouts. Rendered icons are controlled inputs rather than a replay of the remote account's current depot. Existing same-name stack summation remains in effect.
