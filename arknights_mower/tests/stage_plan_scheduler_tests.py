@@ -175,7 +175,7 @@ def test_has_maa_tasks_false_when_mall_mode_is_mower_and_others_disabled(
     assert scheduler.has_maa_tasks() is False
 
 
-def test_has_maa_tasks_true_when_only_visit_friend_mode_is_maa(scheduler, monkeypatch):
+def test_legacy_maa_visit_choice_does_not_admit_maa_tasks(scheduler, monkeypatch):
     monkeypatch.setattr(
         base_schedule.config,
         "conf",
@@ -193,7 +193,7 @@ def test_has_maa_tasks_true_when_only_visit_friend_mode_is_maa(scheduler, monkey
             maa_specialaccess=False,
         ),
     )
-    assert scheduler.has_maa_tasks() is True
+    assert scheduler.has_maa_tasks() is False
 
 
 @pytest.mark.parametrize("credit_fight_enabled", [False, True])
@@ -273,7 +273,7 @@ def test_append_maa_task_mall_shopping_flag(scheduler, monkeypatch):
         ),
     )
     scheduler.append_maa_task("Mall")
-    assert scheduler.MAA.append_task.call_args[0][1]["shopping"] is True
+    assert scheduler.MAA.append_task.call_args[0][1]["shopping"] is False
 
 
 @pytest.mark.parametrize("legacy_conf", [False, True])
@@ -360,23 +360,23 @@ def test_run_clue_shop_conditional_execution(scheduler, monkeypatch):
     monkeypatch.setattr(
         base_schedule.config,
         "conf",
-        Conf(maa_mall_enable=True, maa_mall_mode="mower"),
+        Conf(maa_mall_enable=True, maa_mall_mode="mower", visit_friend_enable=False),
     )
     scheduler._run_clue_shop()
     assert mock_shop.call_count == 1
     scheduler.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
 
-    # 2. enabled + maa -> does NOT run CreditShop
+    # 2. Legacy MAA choice migrates to native shopping.
     mock_shop.reset_mock()
     scheduler.scene_graph_navigation.reset_mock()
     monkeypatch.setattr(
         base_schedule.config,
         "conf",
-        Conf(maa_mall_enable=True, maa_mall_mode="maa"),
+        Conf(maa_mall_enable=True, maa_mall_mode="maa", visit_friend_enable=False),
     )
     scheduler._run_clue_shop()
-    mock_shop.assert_not_called()
-    scheduler.scene_graph_navigation.assert_not_called()
+    assert mock_shop.call_count == 1
+    scheduler.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
 
     # 3. disabled + mower -> does NOT run CreditShop
     mock_shop.reset_mock()
@@ -405,8 +405,8 @@ def test_conf_helper_properties():
     assert c3.should_run_mower_stage_plan is False
 
     c4 = Conf(maa_mall_enable=True, maa_mall_mode="maa")
-    assert c4.should_run_maa_mall is True
-    assert c4.should_run_mower_mall is False
+    assert c4.should_run_maa_mall is False
+    assert c4.should_run_mower_mall is True
 
     c5 = Conf(maa_mall_enable=True, maa_mall_mode="mower")
     assert c5.should_run_maa_mall is False
@@ -422,8 +422,8 @@ def test_conf_helper_properties():
         visit_friend_enable=True,
         visit_friend_mode="maa",
     )
-    assert c7.should_run_maa_visit_friend is True
-    assert c7.should_run_maa_mall_task is True
+    assert c7.should_run_maa_visit_friend is False
+    assert c7.should_run_maa_mall_task is False
 
     c8 = Conf(
         maa_credit_fight=False,

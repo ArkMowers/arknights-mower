@@ -14,18 +14,11 @@ const {
   shop_list,
   maa_mall_buy,
   maa_mall_blacklist,
-  maa_mall_ignore_blacklist_when_full,
-  maa_mall_only_buy_discount,
-  maa_mall_reserve_max_credit,
   maa_mall_enable,
-  maa_mall_mode,
-  clue_credit_on_demand,
-  credit_shop_by_value,
   credit_shop_value_threshold,
   maa_credit_fight,
   credit_fight,
-  visit_friend_enable,
-  visit_friend_mode
+  visit_friend_enable
 } = storeToRefs(config_store)
 
 import { computed, h, inject } from 'vue'
@@ -36,17 +29,6 @@ const title = computed(
     ({ visit: '访问好友', 'credit-fight': '信用作战', shop: '信用商店' })[props.task] ||
     '获取信用及购物'
 )
-const mower_visit_enabled = computed(
-  () => visit_friend_enable.value && visit_friend_mode.value === 'mower'
-)
-const value_shopping_enabled = computed(
-  () =>
-    credit_shop_by_value.value &&
-    maa_mall_enable.value &&
-    maa_mall_mode.value === 'mower' &&
-    mower_visit_enabled.value
-)
-
 function update_value_threshold(value) {
   if (Number.isFinite(value) && value >= 0) {
     credit_shop_value_threshold.value = value
@@ -92,7 +74,7 @@ const squads = [
 <template>
   <n-card :title="title">
     <p v-if="task === 'all'">
-      线索收集与赠送在
+      线索搜集与赠送在
       <n-button text type="primary" aria-label="配置线索搜集与交流" @click="emit('configure-clue')"
         >线索搜集与交流</n-button
       >
@@ -110,22 +92,9 @@ const squads = [
             <div class="item">访问好友</div>
           </n-checkbox>
         </n-form-item>
-        <n-form-item
-          v-if="visit_friend_enable || !showEnable"
-          label="处理方式"
-          data-task-editor="visit"
-        >
-          <n-radio-group v-model:value="visit_friend_mode" aria-label="访友执行方式">
-            <n-space>
-              <n-radio value="maa">MAA</n-radio>
-              <n-radio value="mower">Mower</n-radio>
-            </n-space>
-          </n-radio-group>
-          <help-text>
-            <div>MAA：在执行日常任务时由 MAA 进入好友列表拜访并收取信用。</div>
-            <div>Mower：在轮询基建调度之余由 Mower 原生进入好友列表拜访并收取信用。</div>
-          </help-text>
-        </n-form-item>
+        <p v-if="visit_friend_enable || !showEnable" data-task-editor="visit">
+          由 Mower 访问好友并收取信用。
+        </p>
       </template>
       <template v-if="task === 'all' || task === 'credit-fight'">
         <n-form-item v-if="showEnable" :show-label="false">
@@ -168,104 +137,34 @@ const squads = [
         data-task-editor="shop"
         :label-placement="mobile ? 'top' : 'left'"
         :show-feedback="false"
-        label-width="72"
+        label-width="96"
         label-align="left"
       >
-        <n-form-item label="处理方式">
-          <n-radio-group v-model:value="maa_mall_mode" aria-label="购物执行方式">
-            <n-space>
-              <n-radio value="maa">MAA</n-radio>
-              <n-radio value="mower">Mower</n-radio>
-            </n-space>
-          </n-radio-group>
-          <help-text>
-            <div>MAA：在执行日常任务时由 MAA 进入采购中心进行信用收取和购物。</div>
-            <div>Mower：在会客室线索流程处理完成后由 Mower 原生进入信用商店进行收取和购物。</div>
-          </help-text>
-        </n-form-item>
-        <n-form-item label="购物设置" v-if="maa_mall_mode === 'mower'">
-          <n-space align="center" :size="[24, 12]">
-            <n-space align="center" :size="0">
-              <n-tooltip :disabled="mower_visit_enabled">
-                <template #trigger>
-                  <span style="display: inline-block">
-                    <n-checkbox
-                      v-model:checked="clue_credit_on_demand"
-                      :disabled="!mower_visit_enabled"
-                    >
-                      按需领取信用
-                    </n-checkbox>
-                  </span>
-                </template>
-                需要开启 Mower 访问好友
-              </n-tooltip>
-              <help-text>
-                <div>需同时开启 Mower 访友和 Mower 购物。</div>
-                <div>购物缺信用时再领取信息板，先领上周结算，仍不够再领本周信用。</div>
-                <div>交流能在凌晨 03:45 前结束且收入够用时，会先等交流结束。</div>
-                <div>周日会优先领取即将过期的上周结算。</div>
-              </help-text>
-            </n-space>
-            <n-tooltip :disabled="mower_visit_enabled">
-              <template #trigger>
-                <span style="display: inline-block">
-                  <n-checkbox
-                    v-model:checked="credit_shop_by_value"
-                    :disabled="!mower_visit_enabled"
-                  >
-                    按性价比购物
-                  </n-checkbox>
-                </span>
-              </template>
-              需要开启 Mower 访问好友
-            </n-tooltip>
-            <n-space align="center" :size="8">
-              <span>阈值</span>
-              <mower-input-number
-                :value="credit_shop_value_threshold"
-                @update:value="update_value_threshold"
-                :disabled="!value_shopping_enabled"
-                :min="0"
-                :step="0.001"
-                :precision="3"
-                :show-button="false"
-                :input-props="{ 'aria-label': '购物性价比阈值' }"
-                style="width: 120px"
-              />
-              <span>理智/信用</span>
-              <help-text>
-                <div>先买优先商品，再从非黑名单商品中按性价比挑选。</div>
-                <div>阈值越高，购买越挑剔；信用超过 300 时会计算等效性价比，减少溢出。</div>
-                <div>参考阈值：二电 0.045（默认）、三电 0.036；带线索号分别为 0.043、0.032。</div>
-                <div>优先购买建议只设招聘许可，黑名单建议只设理智价值为 0 的物品。</div>
-              </help-text>
-            </n-space>
+        <n-form-item label="性价比阈值">
+          <n-space align="center" :size="8">
+            <mower-input-number
+              :value="credit_shop_value_threshold"
+              @update:value="update_value_threshold"
+              :min="0"
+              :step="0.001"
+              :precision="3"
+              :show-button="false"
+              :input-props="{ 'aria-label': '购物性价比阈值' }"
+              style="width: 120px"
+            />
+            <span>理智/信用</span>
+            <help-text>
+              <div>由 Mower 按性价比购物，先买优先商品，再从非黑名单商品中按性价比挑选。</div>
+              <div>阈值越高，购买越挑剔；信用超过 300 时会计算等效性价比，减少溢出。</div>
+              <div>参考阈值：二电 0.045（默认）、三电 0.036；带线索号分别为 0.043、0.032。</div>
+              <div>优先购买建议只设招聘许可，黑名单建议只设理智价值为 0 的物品。</div>
+              <div>
+                同时开启访问好友时按需领取信用，购物缺信用时先领上周结算，仍不够再领本周信用。
+              </div>
+              <div>交流能在凌晨 03:45 前结束且收入够用时，会先等交流结束。</div>
+              <div>周日会优先领取即将过期的上周结算。</div>
+            </help-text>
           </n-space>
-        </n-form-item>
-        <n-form-item label="购物设置" v-if="maa_mall_mode === 'maa'">
-          <n-space :size="24">
-            <n-checkbox v-model:checked="maa_mall_only_buy_discount">只购买折扣物品</n-checkbox>
-            <n-checkbox v-model:checked="maa_mall_reserve_max_credit">
-              保留最大信用点（低于 300 停止购买）
-            </n-checkbox>
-          </n-space>
-          <help-text>
-            <div>两个设置均仅作用于第二轮购买。</div>
-          </help-text>
-        </n-form-item>
-        <n-form-item label="信用溢出">
-          <n-radio-group
-            v-model:value="maa_mall_ignore_blacklist_when_full"
-            :disabled="value_shopping_enabled"
-          >
-            <n-space>
-              <n-radio :value="false">停止购买</n-radio>
-              <n-radio :value="true">无视黑名单继续购买，直至不再溢出</n-radio>
-            </n-space>
-          </n-radio-group>
-          <help-text v-if="value_shopping_enabled">
-            <div>开启按性价比购物时，此处不可设置；关闭后可继续使用原设置。</div>
-          </help-text>
         </n-form-item>
         <n-form-item label="优先购买">
           <n-select

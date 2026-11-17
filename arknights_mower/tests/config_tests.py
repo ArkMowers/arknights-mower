@@ -476,7 +476,7 @@ class TestConfigPersistence(unittest.TestCase):
                 self.assertNotIn(field, conf.model_fields_set)
 
     def test_mall_and_fight_new_fields_round_trip_when_configured(self):
-        # #265：四个新字段配置后如实读回并落盘
+        # 旧购物选项退役后不再落盘，作战上报设置继续保留。
         with _patched_conf(
             self.conf_path,
             Conf(
@@ -487,14 +487,14 @@ class TestConfigPersistence(unittest.TestCase):
             ),
         ):
             conf = config_module.conf
-            self.assertTrue(conf.maa_mall_only_buy_discount)
-            self.assertTrue(conf.maa_mall_reserve_max_credit)
+            self.assertFalse(conf.maa_mall_only_buy_discount)
+            self.assertFalse(conf.maa_mall_reserve_max_credit)
             self.assertTrue(conf.maa_report_to_yituliu)
             self.assertEqual(conf.maa_yituliu_id, "yituliu-abc")
             config_module.save_conf()
         written = self.conf_path.read_text(encoding="utf-8")
-        self.assertIn("maa_mall_only_buy_discount", written)
-        self.assertIn("maa_mall_reserve_max_credit", written)
+        self.assertNotIn("maa_mall_only_buy_discount", written)
+        self.assertNotIn("maa_mall_reserve_max_credit", written)
         self.assertIn("maa_report_to_yituliu", written)
         self.assertIn("maa_yituliu_id", written)
         # 未配置的默认字段仍不落盘
@@ -606,11 +606,11 @@ class TestConfigPersistence(unittest.TestCase):
                     self.assertNotIn(key, updated.model_dump())
                     self.assertNotIn(key, updated.model_fields_set)
 
-    def test_visit_friend_defaults_enable_true_and_mode_maa_when_unset(self):
+    def test_visit_friend_defaults_enable_true_and_mode_mower_when_unset(self):
         with _patched_conf(self.conf_path, Conf()):
-            # 未配置 → 默认开启且交 MAA（visit_friend_mode=maa），且都不被标记为已设置
+            # 未配置 → 默认开启且交 Mower（visit_friend_mode=mower），且都不被标记为已设置
             self.assertTrue(config_module.conf.visit_friend_enable)
-            self.assertEqual(config_module.conf.visit_friend_mode, "maa")
+            self.assertEqual(config_module.conf.visit_friend_mode, "mower")
             self.assertNotIn("visit_friend_enable", config_module.conf.model_fields_set)
             self.assertNotIn("visit_friend_mode", config_module.conf.model_fields_set)
 
@@ -624,7 +624,7 @@ class TestConfigPersistence(unittest.TestCase):
             config_module.save_conf()
         written = self.conf_path.read_text(encoding="utf-8")
         self.assertIn("visit_friend_enable", written)
-        self.assertIn("visit_friend_mode", written)
+        self.assertNotIn("visit_friend_mode", written)
 
     def test_legacy_visit_friend_true_migrates_to_enable_true_and_mower(self):
         # `visit_friend: true`（原语义：mower 原生访问好友）迁移为 visit_friend_enable=true，
@@ -638,7 +638,7 @@ class TestConfigPersistence(unittest.TestCase):
             config_module.save_conf()
         written = self.conf_path.read_text(encoding="utf-8")
         self.assertIn("visit_friend_enable", written)
-        self.assertIn("visit_friend_mode", written)
+        self.assertNotIn("visit_friend_mode", written)
         self.assertNotIn("visit_friend:", written)
 
     def test_legacy_visit_friend_false_migrates_to_enable_false(self):
@@ -652,9 +652,9 @@ class TestConfigPersistence(unittest.TestCase):
         self._write_conf("maa_eat_stone: false\n")
         with _patched_conf(self.conf_path):
             config_module.load_conf()
-            # 没配过旧键：新键用运行时默认（enable=true、mode=maa），且不被标记为已设置
+            # 没配过旧键：新键用运行时默认（enable=true、mode=mower），且不被标记为已设置
             self.assertTrue(config_module.conf.visit_friend_enable)
-            self.assertEqual(config_module.conf.visit_friend_mode, "maa")
+            self.assertEqual(config_module.conf.visit_friend_mode, "mower")
             self.assertNotIn("visit_friend_enable", config_module.conf.model_fields_set)
 
     def test_new_visit_friend_enable_takes_precedence_when_both_present(self):
@@ -686,7 +686,7 @@ class TestConfigPersistence(unittest.TestCase):
         self.assertTrue(conf.stage_plan_enable)
         self.assertEqual(conf.stage_plan_runner, "maa")
         self.assertTrue(conf.maa_mall_enable)
-        self.assertEqual(conf.maa_mall_mode, "maa")
+        self.assertEqual(conf.maa_mall_mode, "mower")
 
     def test_legacy_maa_enable_true_migrates(self):
         self._write_conf("maa_enable: true\n")
@@ -695,7 +695,7 @@ class TestConfigPersistence(unittest.TestCase):
             self.assertTrue(config_module.conf.stage_plan_enable)
             self.assertEqual(config_module.conf.stage_plan_runner, "maa")
             self.assertTrue(config_module.conf.maa_mall_enable)
-            self.assertEqual(config_module.conf.maa_mall_mode, "maa")
+            self.assertEqual(config_module.conf.maa_mall_mode, "mower")
 
     def test_legacy_maa_enable_false_migrates(self):
         self._write_conf("maa_enable: false\n")
@@ -704,7 +704,7 @@ class TestConfigPersistence(unittest.TestCase):
             self.assertFalse(config_module.conf.stage_plan_enable)
             self.assertEqual(config_module.conf.stage_plan_runner, "mower")
             self.assertFalse(config_module.conf.maa_mall_enable)
-            self.assertEqual(config_module.conf.maa_mall_mode, "maa")
+            self.assertEqual(config_module.conf.maa_mall_mode, "mower")
 
     def test_new_stage_plan_takes_precedence_when_both_present(self):
         self._write_conf(

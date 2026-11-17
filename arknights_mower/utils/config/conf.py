@@ -83,17 +83,17 @@ class CluePart(ConfModel):
     credit_fight: CreditFightConf = Field(default_factory=CreditFightConf)
     "信用作战设置"
     enable_party: int = 1
-    "线索收集"
+    "线索搜集"
     leifeng_mode: int = 1
     "雷锋模式"
     maa_mall_enable: bool = True
     "信用商店购物开关"
-    maa_mall_mode: Literal["maa", "mower"] = "maa"
-    "信用商店购物处理方式：maa / mower"
-    clue_credit_on_demand: bool = False
+    maa_mall_mode: Literal["maa", "mower"] = "mower"
+    "信用商店购物处理方式，旧配置统一使用 Mower"
+    clue_credit_on_demand: bool = True
     "仅在 Mower 访友及购物均启用时按需领取信息板信用"
-    credit_shop_by_value: bool = False
-    "按性价比购物开关，仅在 Mower 访问好友及购物均启用时适用"
+    credit_shop_by_value: bool = True
+    "信用商店购物固定按性价比执行"
     credit_shop_value_threshold: float = Field(default=0.045, ge=0, allow_inf_nan=False)
     "购物性价比阈值，单位为理智/信用"
     maa_mall_blacklist: str = "加急许可,碳,碳素,家具零件"
@@ -605,8 +605,8 @@ class RegularTaskPart(ConfModel):
     "仓库历史保留条数：扫描记录最多留多少条，超出的从最早的删起，0 表示一直留着"
     visit_friend_enable: bool = True
     "访问好友"
-    visit_friend_mode: str = "maa"
-    "访问好友处理方式：mower 原生 / maa 交 MAA"
+    visit_friend_mode: str = "mower"
+    "访问好友处理方式，旧配置统一使用 Mower"
     report_enable: bool = True
     "读取基报"
     trust_rotation_enable: bool = False
@@ -1322,15 +1322,11 @@ class Conf(
             data.pop("device", None)
         if not isinstance(data, dict):
             return data
-        # visit_friend(bool) 已退役：迁移为 visit_friend_enable(bool)。原 true 语义是 mower
-        # 原生访问好友，迁移保留该行为（mode=mower），避免非 MAA 用户在迁移后静默失去访问
-        # 好友；未配置过旧键的新用户才取默认 maa。
+        # 旧访友开关只迁移启用状态，访友和购物统一交给 Mower。
         old_visit_friend = data.pop("visit_friend", None)
         if old_visit_friend is not None:
             if "visit_friend_enable" not in data:
                 data["visit_friend_enable"] = old_visit_friend
-            if "visit_friend_mode" not in data:
-                data["visit_friend_mode"] = "mower" if old_visit_friend else "maa"
         if "maa_enable" in data:
             old_maa_enable = bool(data["maa_enable"])
             if "stage_plan_enable" not in data:
@@ -1339,8 +1335,17 @@ class Conf(
                 data["stage_plan_runner"] = "maa" if old_maa_enable else "mower"
             if "maa_mall_enable" not in data:
                 data["maa_mall_enable"] = old_maa_enable
-            if "maa_mall_mode" not in data:
-                data["maa_mall_mode"] = "maa"
+        # 已移除的策略选项回到固定默认值，兼容旧配置、档案导入及部分更新。
+        for key in (
+            "visit_friend_mode",
+            "maa_mall_mode",
+            "clue_credit_on_demand",
+            "credit_shop_by_value",
+            "maa_mall_ignore_blacklist_when_full",
+            "maa_mall_only_buy_discount",
+            "maa_mall_reserve_max_credit",
+        ):
+            data.pop(key, None)
         for old, new in _LEGACY_KEY_MIGRATIONS.items():
             if old not in data:
                 continue
@@ -1412,12 +1417,7 @@ class Conf(
 
     @property
     def should_use_credit_shop_value(self) -> bool:
-        return bool(
-            self.credit_shop_by_value
-            and self.should_run_mower_mall
-            and self.visit_friend_enable
-            and self.visit_friend_mode == "mower"
-        )
+        return bool(self.credit_shop_by_value and self.should_run_mower_mall)
 
     @property
     def should_run_maa_visit_friend(self) -> bool:

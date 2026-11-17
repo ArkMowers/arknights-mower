@@ -98,23 +98,23 @@ describe('task search before conditional controls render', () => {
     }
   )
 
-  it.each([
-    ['base', 'maa', '按需领取信用'],
-    ['base', 'mower', '按性价比购物'],
-    ['shop', 'maa', '按需领取信用'],
-    ['shop', 'mower', '只购买折扣物品'],
-    ['shop', 'maa', '购物性价比阈值']
-  ])(
-    'finds shopping control %s/%s/%s without opening or changing its mode',
-    async (task, mode, query) => {
-      const app = setup(Clue, { maa_mall_mode: mode }, { task, showEnable: false })
+  it.each(['按需领取信用', '按性价比购物', '购物性价比阈值'])(
+    'finds shopping policy %s while another task is open',
+    async (query) => {
+      const app = setup(Clue, {}, { task: 'visit', showEnable: false })
       const before = JSON.stringify(config.$state)
-      const html = await renderToString(app)
-      expect(html).not.toContain(query)
+      expect(await renderToString(app)).not.toContain(query)
       expect(matchingTasks(query)).toEqual(['shop'])
       expect(JSON.stringify(config.$state)).toBe(before)
-      expect(axios.post).not.toHaveBeenCalled()
       expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each(['只购买折扣物品', '保留最大信用点', '无视黑名单继续购买', '信用溢出'])(
+    'does not advertise the removed shopping control %s',
+    (query) => {
+      setup(Clue)
+      expect(matchingTasks(query)).not.toContain('shop')
     }
   )
 

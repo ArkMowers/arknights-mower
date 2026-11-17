@@ -462,3 +462,32 @@ def test_gift_failure_preserves_dispatched_clue_task(
     assert task.time == original_due
     assert solver.last_clue == previous_check
     solver.skip.assert_not_called()
+
+
+@pytest.mark.parametrize("leifeng", [False, True])
+@pytest.mark.parametrize("on_demand", [False, True])
+def test_clue_workflow_started_on_board_returns_to_room_before_board_credit(
+    clue_workflow, leifeng, on_demand, monkeypatch
+):
+    from arknights_mower.solvers import base_schedule
+
+    solver, state = clue_workflow
+    solver.leifeng_mode = leifeng
+    solver._clue_credit_enabled.return_value = on_demand
+    monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: 2)
+    state.scene = Scene.INFRA_CONFIDENTIAL
+    state.count = state.after_fast = 9
+    failure = MagicMock()
+    monkeypatch.setattr(base_schedule, "save_exception", failure)
+
+    solver.clue_new()
+
+    failure.assert_not_called()
+    if on_demand:
+        solver._prepare_clue_room.assert_called_once()
+        solver._open_clue_message_board.assert_not_called()
+    else:
+        solver._open_clue_message_board.assert_called_once()
+    solver.read_party_time.assert_called_once()
+    solver._run_clue_shop.assert_called_once()
+    assert state.fast_taps == ([(300, 1030)] if leifeng else [])

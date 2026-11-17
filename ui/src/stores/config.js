@@ -37,9 +37,9 @@ export const useConfigStore = defineStore('config', () => {
   const stage_plan_enable = ref(true)
   const stage_plan_runner = ref('maa')
   const maa_mall_enable = ref(true)
-  const maa_mall_mode = ref('maa')
-  const clue_credit_on_demand = ref(false)
-  const credit_shop_by_value = ref(false)
+  const maa_mall_mode = ref('mower')
+  const clue_credit_on_demand = ref(true)
+  const credit_shop_by_value = ref(true)
   const credit_shop_value_threshold = ref(0.045)
   const maa_path = ref('')
   const maa_mirrorchyan_token = ref('')
@@ -225,7 +225,7 @@ export const useConfigStore = defineStore('config', () => {
   const droidcast = ref({})
   const mumu12IPC = ref(false)
   const visit_friend_enable = ref(true)
-  const visit_friend_mode = ref('maa')
+  const visit_friend_mode = ref('mower')
   const credit_fight = ref({})
   const custom_screenshot = ref({})
   const resource_update_enable = ref(false)
@@ -551,9 +551,9 @@ export const useConfigStore = defineStore('config', () => {
         response.data.maa_mall_enable !== undefined
           ? Boolean(response.data.maa_mall_enable)
           : response.data.maa_enable != 0
-      maa_mall_mode.value = response.data.maa_mall_mode === 'mower' ? 'mower' : 'maa'
-      clue_credit_on_demand.value = response.data.clue_credit_on_demand ?? false
-      credit_shop_by_value.value = response.data.credit_shop_by_value ?? false
+      maa_mall_mode.value = 'mower'
+      clue_credit_on_demand.value = true
+      credit_shop_by_value.value = true
       credit_shop_value_threshold.value = response.data.credit_shop_value_threshold ?? 0.045
       maa_path.value = response.data.maa_path
       maa_mirrorchyan_token.value = response.data.maa_mirrorchyan_token || ''
@@ -615,9 +615,9 @@ export const useConfigStore = defineStore('config', () => {
       close_simulator_when_idle.value = response.data.close_simulator_when_idle
       maa_conn_preset.value = response.data.maa_conn_preset
       maa_touch_option.value = response.data.maa_touch_option
-      maa_mall_ignore_blacklist_when_full.value = response.data.maa_mall_ignore_blacklist_when_full
-      maa_mall_only_buy_discount.value = response.data.maa_mall_only_buy_discount ?? false
-      maa_mall_reserve_max_credit.value = response.data.maa_mall_reserve_max_credit ?? false
+      maa_mall_ignore_blacklist_when_full.value = false
+      maa_mall_only_buy_discount.value = false
+      maa_mall_reserve_max_credit.value = false
       maa_rg_sleep_max.value = response.data.maa_rg_sleep_max
       maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
       maa_credit_fight.value = response.data.maa_credit_fight
@@ -723,7 +723,7 @@ export const useConfigStore = defineStore('config', () => {
       droidcast.value = response.data.droidcast
       mumu12IPC.value = response.data.mumu12IPC
       visit_friend_enable.value = response.data.visit_friend_enable ?? true
-      visit_friend_mode.value = response.data.visit_friend_mode ?? 'maa'
+      visit_friend_mode.value = 'mower'
       credit_fight.value = response.data.credit_fight
       custom_screenshot.value = response.data.custom_screenshot
       load_workshop_config(response.data)
@@ -768,17 +768,13 @@ export const useConfigStore = defineStore('config', () => {
       leifeng_mode: leifeng_mode.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
       maa_adb_path: maa_adb_path.value,
-      maa_enable:
-        (stage_plan_enable.value && stage_plan_runner.value === 'maa') ||
-        (maa_mall_enable.value && maa_mall_mode.value === 'maa')
-          ? 1
-          : 0,
+      maa_enable: stage_plan_enable.value && stage_plan_runner.value === 'maa' ? 1 : 0,
       stage_plan_enable: stage_plan_enable.value,
       stage_plan_runner: stage_plan_runner.value,
       maa_mall_enable: maa_mall_enable.value,
-      maa_mall_mode: maa_mall_mode.value,
-      clue_credit_on_demand: clue_credit_on_demand.value,
-      credit_shop_by_value: credit_shop_by_value.value,
+      maa_mall_mode: 'mower',
+      clue_credit_on_demand: true,
+      credit_shop_by_value: true,
       credit_shop_value_threshold: credit_shop_value_threshold.value,
       maa_path: maa_path.value,
       maa_mirrorchyan_token: maa_mirrorchyan_token.value,
@@ -846,9 +842,9 @@ export const useConfigStore = defineStore('config', () => {
           }),
       maa_conn_preset: maa_conn_preset.value,
       maa_touch_option: maa_touch_option.value,
-      maa_mall_ignore_blacklist_when_full: maa_mall_ignore_blacklist_when_full.value,
-      maa_mall_only_buy_discount: maa_mall_only_buy_discount.value,
-      maa_mall_reserve_max_credit: maa_mall_reserve_max_credit.value,
+      maa_mall_ignore_blacklist_when_full: false,
+      maa_mall_only_buy_discount: false,
+      maa_mall_reserve_max_credit: false,
       maa_rg_sleep_max: maa_rg_sleep_max.value,
       maa_rg_sleep_min: maa_rg_sleep_min.value,
       maa_credit_fight: maa_credit_fight.value,
@@ -924,7 +920,7 @@ export const useConfigStore = defineStore('config', () => {
       droidcast: droidcast.value,
       mumu12IPC: mumu12IPC.value,
       visit_friend_enable: visit_friend_enable.value,
-      visit_friend_mode: visit_friend_mode.value,
+      visit_friend_mode: 'mower',
       credit_fight: credit_fight.value,
       custom_screenshot: custom_screenshot.value,
       workshop_manual_settings: workshop_manual_settings.value,

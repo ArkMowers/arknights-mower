@@ -12990,7 +12990,10 @@ class BaseSchedulerSolver(
 
                 elif scene == Scene.INFRA_CONFIDENTIAL:
                     logger.debug("INFRA_CONFIDENTIAL", extra={"log_group": "clue"})
-                    if ctm.task == "daily":
+                    if ctm.task == "message_board":
+                        # 进房后可能已在线索板，先返回房间处理信息板，再继续领取和摆放。
+                        self.back()
+                    elif ctm.task == "daily":
                         # 检查是否领过线索
                         daily_scope = ((1815, 200), (1895, 250))
                         if self.find("clue/badge_new", scope=daily_scope):
