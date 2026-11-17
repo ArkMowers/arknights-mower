@@ -331,43 +331,55 @@ class CalculatedMood:
 
     @measure_mood_calculation(MOOD_ESTIMATE)
     def advance(self, now=None):
+        from arknights_mower.utils.csleep import MowerExit, check_cancelled
+
+        check_cancelled()
         now = now or datetime.now()
         if self.at is None:
             self.at = now
             return
         if now <= self.at:
             return
-        remaining = (now - self.at).total_seconds() / 3600
-        # 技能只在心情跨过这些边界时改变；每段重新调用同一个演算引擎。
-        for _ in range(4096):
-            if remaining <= 1e-12 or not self.moods:
-                break
-            rates = self._rates()
-            step = remaining
-            for name, value in self.moods.items():
-                rate = rates.get(name) or 0
-                if rate == 0:
-                    continue
-                for boundary in self.thresholds:
-                    distance = (value - boundary) / rate
-                    if distance > 1e-9:
-                        step = min(step, distance)
-            for name, value in self.moods.items():
-                rate = rates.get(name) or 0
-                updated = max(0, min(24, value - rate * step))
-                index = bisect_left(self.thresholds, updated)
-                if index and abs(updated - self.thresholds[index - 1]) <= 1e-9:
-                    updated = self.thresholds[index - 1]
-                elif (
-                    index < len(self.thresholds)
-                    and abs(updated - self.thresholds[index]) <= 1e-9
-                ):
-                    updated = self.thresholds[index]
-                self.moods[name] = updated
-            remaining -= step
-        else:
-            raise RuntimeError("心情计算分段超过上限")
-        self.at = now
+        previous = self.__dict__.copy()
+        self.moods = self.moods.copy()
+        try:
+            remaining = (now - self.at).total_seconds() / 3600
+            # 技能只在心情跨过这些边界时改变；每段重新调用同一个演算引擎。
+            for _ in range(4096):
+                check_cancelled()
+                if remaining <= 1e-12 or not self.moods:
+                    break
+                rates = self._rates()
+                step = remaining
+                for name, value in self.moods.items():
+                    rate = rates.get(name) or 0
+                    if rate == 0:
+                        continue
+                    for boundary in self.thresholds:
+                        distance = (value - boundary) / rate
+                        if distance > 1e-9:
+                            step = min(step, distance)
+                for name, value in self.moods.items():
+                    rate = rates.get(name) or 0
+                    updated = max(0, min(24, value - rate * step))
+                    index = bisect_left(self.thresholds, updated)
+                    if index and abs(updated - self.thresholds[index - 1]) <= 1e-9:
+                        updated = self.thresholds[index - 1]
+                    elif (
+                        index < len(self.thresholds)
+                        and abs(updated - self.thresholds[index]) <= 1e-9
+                    ):
+                        updated = self.thresholds[index]
+                    self.moods[name] = updated
+                remaining -= step
+            else:
+                raise RuntimeError("心情计算分段超过上限")
+            self.at = now
+        except MowerExit:
+            # 取消不能留下已推进的心情与旧时间，重启仍从完整模型继续。
+            self.__dict__.clear()
+            self.__dict__.update(previous)
+            raise
 
     def _projection_key(self, now):
         return (
@@ -401,6 +413,9 @@ class CalculatedMood:
 
     @measure_mood_calculation(MOOD_ESTIMATE)
     def value(self, name, now=None):
+        from arknights_mower.utils.csleep import check_cancelled
+
+        check_cancelled()
         if name not in self.moods:
             return None
         if now is not None:
@@ -529,6 +544,9 @@ class CalculatedMood:
 
     @measure_mood_calculation(MOOD_DEADLINE)
     def deadline(self, name, target, now=None, max_hours=240):
+        from arknights_mower.utils.csleep import check_cancelled
+
+        check_cancelled()
         now = now or datetime.now()
         if name not in self.moods:
             return None
@@ -568,6 +586,7 @@ class CalculatedMood:
         node = nodes[0]
         shared = True
         for index in range(4096):
+            check_cancelled()
             projected, rates, boundary_hours = node
             rate = rates.get(name) or 0
             target_hours = (
@@ -628,6 +647,9 @@ class CalculatedMood:
 
 @measure_mood_calculation(_MOOD_INPUTS)
 def sync_model(owner, now=None, *, advance_clock=True):
+    from arknights_mower.utils.csleep import check_cancelled
+
+    check_cancelled()
     from arknights_mower.utils import config
 
     model = owner.mood_model

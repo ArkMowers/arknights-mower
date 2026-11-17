@@ -184,7 +184,8 @@ def test_observation_continues_only_unread_rooms_after_release(observation_solve
     assert not episode.state.get("pending_read_rooms")
     solver._emergency_collect.assert_called_once()
     solver._emergency_update_targets.assert_called_once()
-    solver._emergency_ready.assert_called_once()
+    solver._emergency_ready.assert_called()
+    solver._emergency_restore.assert_not_called()
     solver._emergency_schedule_staffing.assert_called_once()
 
 

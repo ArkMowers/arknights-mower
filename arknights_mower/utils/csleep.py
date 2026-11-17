@@ -26,14 +26,18 @@ def cancellation_scope(cancelled: Callable[[], bool]):
         _cancelled.reset(token)
 
 
+def check_cancelled():
+    cancelled = _cancelled.get() or config.stop_mower.is_set
+    if cancelled():
+        raise MowerExit
+
+
 @timed_step("sleep")
 def csleep(interval: float = 1):
     """check and sleep"""
     stop_time = datetime.now() + timedelta(seconds=interval)
-    cancelled = _cancelled.get() or config.stop_mower.is_set
     while True:
-        if cancelled():
-            raise MowerExit
+        check_cancelled()
         remaining = stop_time - datetime.now()
         if remaining > timedelta(seconds=1):
             time.sleep(1)
