@@ -215,7 +215,7 @@ def _crafting_rest_names(op_data):
 
     conf = getattr(op_data, "runtime_conf", None) or config.conf
     configured = []
-    if conf.enable_mastery and conf.workshop_auto_active:
+    if conf.enable_crafting and conf.workshop_auto_active:
         configured.extend(
             name
             for row in zip_longest(

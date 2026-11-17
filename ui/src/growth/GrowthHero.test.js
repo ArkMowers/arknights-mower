@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
-import { effectScope } from 'vue'
+import { createSSRApp, effectScope } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { setup as setupCssRenderSsr } from '@css-render/vue3-ssr'
 import GrowthHero from './GrowthHero.vue'
 
 vi.mock('vue', async (original) => ({
@@ -32,5 +34,23 @@ describe('当前训练真实状态', () => {
     expect(component.stateLine.value).toContain(text)
     if (status !== 'training') expect(component.stateLine.value).not.toContain('正在训练')
     scope.stop()
+  })
+})
+
+describe('养成自动化开关', () => {
+  it.each([false, true])('自动合成为 %s 时控制两项依赖开关', async (autoCrafting) => {
+    const app = createSSRApp(GrowthHero, { autoCrafting })
+    setupCssRenderSsr(app)
+    const html = await renderToString(app)
+    const switches = [
+      ...html.matchAll(/<[^>]*aria-label="(?:自动合成|自动专精|MAA 干员培养)"[^>]*>/g)
+    ].map(([tag]) => tag)
+    expect(switches).toHaveLength(3)
+    expect(switches[0]).toContain('aria-label="自动合成"')
+    expect(switches[0]).not.toContain('n-switch--disabled')
+    for (const [index, label] of ['自动专精', 'MAA 干员培养'].entries()) {
+      expect(switches[index + 1]).toContain(`aria-label="${label}"`)
+      expect(switches[index + 1].includes('n-switch--disabled')).toBe(!autoCrafting)
+    }
   })
 })

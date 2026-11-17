@@ -228,7 +228,9 @@ def test_chip_restore_reads_guard_title_pixels(
 def test_switch_defaults_off_and_round_trips_independently():
     conf = config.Conf()
     assert conf.maa_growth_enable is False
-    enabled = config.Conf(maa_growth_enable=True, enable_mastery=False)
+    enabled = config.Conf(
+        maa_growth_enable=True, enable_mastery=False, enable_crafting=True
+    )
     assert config.Conf.model_validate_json(enabled.model_dump_json()).maa_growth_enable
     assert enabled.has_maa_tasks
     assert enabled.enable_mastery is False

@@ -91,7 +91,7 @@ def test_restore_during_real_crafting_never_submits_manual_recipe(
             return
         if cancel_by == "disable":
             req = state.read_user_config()
-            req["enable_mastery"] = False
+            req["enable_crafting"] = False
             assert server.app.test_client().post("/conf", json=req).status_code == 200
         else:
             next_skill.plans.clear()

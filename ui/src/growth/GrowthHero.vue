@@ -15,6 +15,7 @@ const props = defineProps({
   training: { type: Object, default: null },
   nextUp: { type: Object, default: null },
   operators: { type: Array, default: () => [] },
+  autoCrafting: { type: Boolean, default: false },
   autoMastery: { type: Boolean, default: false },
   maaGrowth: { type: Boolean, default: false },
   loading: Boolean,
@@ -25,6 +26,7 @@ const props = defineProps({
   compact: Boolean
 })
 const emit = defineEmits([
+  'update:autoCrafting',
   'update:autoMastery',
   'update:maaGrowth',
   'add-target',
@@ -129,14 +131,30 @@ const syncLabel = computed(() => {
             <n-switch
               class="gp-switch"
               size="small"
-              :value="autoMastery"
+              :value="autoCrafting"
               :loading="loading"
-              aria-label="全自动专精/合成"
+              aria-label="自动合成"
+              @update:value="emit('update:autoCrafting', $event)"
+            />
+            <span>自动合成</span>
+            <HelpText label="自动合成范围">
+              按养成计划自动合成所需材料。关闭后，同时关闭自动专精和 MAA
+              干员培养，并恢复手动加工配置；重新开启后，需分别开启所需功能。
+            </HelpText>
+          </div>
+          <div class="growth-hero__toggle">
+            <n-switch
+              class="gp-switch"
+              size="small"
+              :value="autoMastery"
+              :disabled="!autoCrafting"
+              :loading="loading"
+              aria-label="自动专精"
               @update:value="emit('update:autoMastery', $event)"
             />
-            <span>全自动专精/合成</span>
-            <HelpText label="全自动专精/合成范围">
-              推荐先清空排班表中的训练室，或编写专精副表，再开启此功能。开启后，会自动执行已排队的专精并合成养成材料。精英化和基础技能升级由旁边的
+            <span>自动专精</span>
+            <HelpText label="自动专精范围">
+              须先开启自动合成。推荐先清空排班表中的训练室，或编写专精副表，再开启此功能。开启后，会自动执行已排队的专精。精英化和基础技能升级由旁边的
               MAA 干员培养开关控制，模组仍需手动完成。
             </HelpText>
           </div>
@@ -145,14 +163,15 @@ const syncLabel = computed(() => {
               class="gp-switch"
               size="small"
               :value="maaGrowth"
+              :disabled="!autoCrafting"
               :loading="loading"
               aria-label="MAA 干员培养"
               @update:value="emit('update:maaGrowth', $event)"
             />
             <span>MAA 干员培养</span>
             <HelpText label="MAA 干员培养范围">
-              默认关闭。开启后，Mower 在成品材料、龙门币和所需作战记录齐全时调用 MAA
-              完成计划中的精英化和基础技能升级；基础技能 7 级须先精一。缺少双芯片时由 Mower
+              须先开启自动合成，默认关闭。开启后，Mower 在成品材料、龙门币和所需作战记录齐全时调用
+              MAA 完成计划中的精英化和基础技能升级；基础技能 7 级须先精一。缺少双芯片时由 Mower
               优先借用没有“用尽”驻员的制造站，再选最快完成当前产物的设施；全部都有“用尽”驻员时沿用最快完成的选择。
               按职业统一制造，整批结束后恢复原产物，不换干员。合成和专精仍由 Mower
               执行。芯片组和其他材料齐全、助剂不足且采购凭证足够时，通过 MAA
