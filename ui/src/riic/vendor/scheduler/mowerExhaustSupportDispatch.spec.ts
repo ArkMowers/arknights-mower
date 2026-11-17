@@ -56,6 +56,47 @@ function generatedSupport(recall=false,holdMode?:'while_active'|'forced',request
 
 afterEach(()=>vi.restoreAllMocks())
 
+it('retains an invalidated support plan until a relevant recovery observation releases it',()=>{
+ const {state,source,support,retry}=generatedSupport(true)
+ state.config.mowerTheoreticalMode=true
+ source.data.operators.A!.replacement=[]
+ const plan=structuredClone(support.plan),time=support.timeMicros
+ delete source.runReturn
+ settleMowerSource(state,rates)
+ expect(source.queue.tasks).toContain(support)
+ expect(support.executionFailure).toBeDefined()
+ expect(support.plan).toEqual(plan)
+ expect(support.timeMicros).toBe(time)
+ const failure=support.executionFailure
+ for(let run=0;run<3;run++)settleMowerSource(state,rates)
+ expect(support.executionFailure).toBe(failure)
+ expect(source.queue.tasks.filter(task=>task.exhaustSupport)).toEqual([support])
+ expect(source.queue.tasks).toContain(retry)
+ expect(state.occupants.room_1_2_0).toBe('X')
+ const independent=new MowerTask({time:state.time,type:T.NOT_SPECIFIC,metadata:'independent'})
+ source.queue.tasks.push(independent)
+ for(let run=0;run<30&&source.queue.tasks.includes(independent);run++){
+  settleMowerSource(state,rates)
+  if(source.queue.tasks.includes(independent))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+ }
+ expect(source.trace.some(task=>task.type==='NOT_SPECIFIC'&&task.metadata==='independent')).toBe(true)
+ expect(source.queue.tasks).not.toContain(independent)
+ expect(support.executionFailure).toBe(failure)
+ expect(support.timeMicros).toBe(time)
+ // A new relevant observation releases the same saved handoff and departure.
+ source.data.operators.A!.replacement=['X']
+ source.data.operators.A!.timeStampMicros=source.data.nowMicros+1
+ for(let run=0;run<40&&!Object.values(state.bedOccupants).includes('A');run++){
+  settleMowerSource(state,rates)
+  if(!Object.values(state.bedOccupants).includes('A'))advanceRoster(state,Math.max(nextRosterActionHours(state,rates),1/3_600_000_000),rates)
+ }
+ expect(source.queue.tasks).not.toContain(support)
+ expect(Object.values(state.bedOccupants)).toContain('A')
+ expect(state.occupants.room_1_1_0).toBe('X')
+ expect(state.occupants.room_1_2_0).toBe('B')
+ expect(retry.timeMicros).toBe(0)
+})
+
 it.each([false,true])('completes both occupied-cover handoffs for one ordinary group (theoretical=%s)',theoretical=>{
  const rows={
   room_1_1:[{agent:'A',group:'request',replacement:['X']},{agent:'A2',group:'request',replacement:['X2']}],

@@ -420,12 +420,17 @@ def test_working_swap_request_ignores_covered_primary_recovery_role(
     assert s.op_data.group_is_resting("甲") and not s.op_data.group_is_resting("乙")
 
 
-def test_nested_working_swaps_use_requested_binding_instead_of_effective_group(single):
+@pytest.mark.parametrize("same_cover", [False, True])
+def test_nested_working_swaps_use_requested_binding_instead_of_effective_group(
+    single, same_cover
+):
     from arknights_mower.tests.multi_group_shift_tests import B
     from arknights_mower.utils.replacement_coordination import replacements
 
     s = single
     plans = s.global_plan["default_plan"].plan
+    if same_cover:
+        plans["contact"][0].replacement = ["黑角"]
     plans["meeting"][0].replacement = [B]
     plans["meeting"][1].group = "甲"
     plans["meeting"][1].replacement = [SHARED]
@@ -443,10 +448,12 @@ def test_nested_working_swaps_use_requested_binding_instead_of_effective_group(s
     assert data.operators[B].group == "丙"
     assert data.operators[SHARED].group == "乙"
     assert data.shift_request_groups([A]) == ["甲"]
-    assert replacements(data, data.operators[SHARED], request_names=[A]) == ["红"]
+    assert replacements(data, data.operators[SHARED], request_names=[A]) == [
+        "黑角" if same_cover else "红"
+    ]
     plan = s.resting()
     assert plan["meeting"] == [B, SHARED]
-    assert plan["contact"] == ["红"]
+    assert plan["contact"] == ["黑角" if same_cover else "红"]
     apply(s, plan)
     assert s.op_data.group_is_resting("甲")
     assert not s.op_data.group_is_resting("乙")

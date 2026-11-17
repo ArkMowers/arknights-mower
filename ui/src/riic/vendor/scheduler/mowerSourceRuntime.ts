@@ -779,7 +779,10 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
     if(!running&&data.alpha&&task.exhaustSupport&&!task.arrangementStarted&&!task.backupShiftActive&&!task.productShiftLocked){
      // Requests name their triggers; handoffs cover every current group member.
      const names=[...new Set((requestNames(task)??[]).flatMap(name=>{const op=data.operators[name];return !op?[]:op.group?data.shiftGroupMembers(op.group):[name]}))]
-     task.plan=names.length?planMowerExhaustSupport(data,names,options())??{}:{}
+     const support=names.length?planMowerExhaustSupport(data,names,options()):{}
+     // A failed replan cannot complete the existing handoff. Its saved plan
+     // still passes full backup preparation and admission below before execution.
+     if(support!==undefined)task.plan=support
      if(task.backupShiftIntent)task.backupShiftIntent=structuredClone(task.plan)
      task.groupShiftTransitions=mowerArrangementGroupTransitions(data,task.plan)
     }
@@ -829,7 +832,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      if(task.exhaustSupport&&task.coordinationRequestNames.length){
       const effective=task.backupShiftConditions?model.swap(projectMowerArrangements(data,[]),task.backupShiftConditions,task.backupGroup):data
       const members=[...new Set((requestNames(task)??[]).flatMap(name=>{const op=effective.operators[name];return op?.group?effective.shiftGroupMembers(op.group):op?[name]:[]}))]
-      if(!validateMowerCoordinationSupport(effective,task.plan,members,options()))throw new MowerShiftPreviewError('替班交接条件已变化，保留原任务等待依赖释放')
+      if(!validateMowerCoordinationSupport(effective,task.plan,members,options()))throw new MowerResourceWaitError('替班交接条件已变化，保留原任务等待依赖释放',members)
       if(task.ordinaryCoordination)task.coordinationAdmissionPlan=planMowerOrdinarySupportAdmission(projectMowerArrangements(effective,[task.plan]),requestNames(task)??[],options())
      }
      if(task.preferredReplacementRestore&&task.backupShiftConditions){

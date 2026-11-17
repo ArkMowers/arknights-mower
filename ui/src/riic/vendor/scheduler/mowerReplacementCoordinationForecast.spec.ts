@@ -23,6 +23,38 @@ function allowed(original:MowerSchedulingData,admitted:MowerSchedulingData,coord
  return mowerRecallCanSustain(original,admitted,new Set(['A']),['B'],{coordinationRates})
 }
 
+it.each([false,true])('finishes its own failed departure only in the recall forecast (grouped=%s)',grouped=>{
+ const {original,admit}=fixture(20)
+ if(grouped)original.operators.B!.group='request'
+ const request=new MowerTask({type:T.SHIFT_OFF,plan:{room_1_2:['X'],dormitory_1:['Current','B','Current']}})
+ request.ordinaryCoordination=true;request.coordinationRequestNames=['B']
+ request.executionFailure={reason:'等待替班交接完成',rooms:['room_1_2','dormitory_1'],snapshot:{intent:'original',observations:{}}}
+ const before=JSON.stringify({original,request})
+ expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{coordinationRates:fixed,requestNames:['B'],tasks:[request]})).toBe(true)
+ expect(JSON.stringify({original,request})).toBe(before)
+ expect(original.operators.B!.currentRoom).toBe('room_1_2')
+ expect(request.executionFailure).toBeDefined()
+})
+
+it.each(['started','backup','explicit','product','other-owner'] as const)('preserves %s ownership in a recall forecast',protection=>{
+ const {original,admit}=fixture(20)
+ const request=new MowerTask({type:T.SHIFT_OFF,plan:{room_1_2:['X'],dormitory_1:['Current','B','Current']}})
+ request.ordinaryCoordination=true;request.coordinationRequestNames=['B']
+ request.executionFailure={reason:'等待替班交接完成',rooms:['room_1_2','dormitory_1'],snapshot:{intent:'original',observations:{}}}
+ if(protection==='started')request.arrangementStarted=true
+ if(protection==='backup')request.backupShiftActive=true
+ if(protection==='explicit')request.backupExplicitSlots.add('room_1_2\0'+'0')
+ if(protection==='product')request.productShiftLocked=true
+ const pending=[request]
+ if(protection==='other-owner'){
+  const other=new MowerTask({type:T.SELF_CORRECTION,plan:{room_1_2:['B']}})
+  other.executionRetained=true;pending.push(other)
+ }
+ const before=JSON.stringify(pending)
+ expect(mowerRecallCanSustain(original,admit(),new Set(['A']),['B'],{coordinationRates:fixed,requestNames:['B'],tasks:pending})).toBe(false)
+ expect(JSON.stringify(pending)).toBe(before)
+})
+
 describe('replacement recall forecast covers the connected recovery cycle',()=>{
  it.each([{mood:4,result:false},{mood:20,result:true}])('checks actual sustainable work for $mood mood',({mood,result})=>{
   const {original,admit}=fixture(mood),before=JSON.stringify(original)
