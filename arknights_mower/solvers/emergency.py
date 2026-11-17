@@ -7,7 +7,7 @@ from uuid import uuid4
 from arknights_mower.data import base_room_list
 from arknights_mower.solvers.record import emergency_mood_history, save_current_state
 from arknights_mower.utils import config, detector
-from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.csleep import MowerExit, check_cancelled
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.dorm_candidates import (
@@ -1331,9 +1331,11 @@ class EmergencyRecoveryMixin:
             data.refresh_dorm_manager_flags(force=True)
 
     def _emergency_update_targets(self):
+        check_cancelled()
         data, state = self.op_data, self.emergency_state
         if state["phase"] == "returning":
             return
+        now = datetime.now()
         probe = copy.copy(self)
         normal = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
         if normal.swap_plan(list(state["frozen_conditions"]), refresh=True):
@@ -1343,11 +1345,12 @@ class EmergencyRecoveryMixin:
             for room, slots in data.plan.items()
             if not room.startswith("dorm")
         }
-        probe.op_data = normal.project_arrangements([plan])
+        probe.op_data = normal.project_arrangements([plan], now=now)
         probe.tasks = []
         probe._emergency_handoff = True
         opportunities = {}
         for name in state["targets"]:
+            check_cancelled()
             op = data.operators.get(name)
             if op is None:
                 continue
@@ -1745,6 +1748,11 @@ class EmergencyRecoveryMixin:
                 and not op.is_working()
                 and scheduling_mood_reaches(self.op_data, name, state["targets"][name])
             ]
+            # 当前实测和正常替班、床位已允许交接时，先交接，再结束救急。
+            # 未来轮休仅用于尚需恢复时的目标估算。
+            handoff_attempted = self._emergency_ready()
+            if handoff_attempted and self._emergency_restore():
+                return
             self._emergency_update_targets()
             self._emergency_release_ready()
             release_waiting = state.get("release_plan") is not None
@@ -1756,7 +1764,11 @@ class EmergencyRecoveryMixin:
             ):
                 self._emergency_defer_read()
                 return
-            if self._emergency_ready() and self._emergency_restore():
+            if (
+                not handoff_attempted
+                and self._emergency_ready()
+                and self._emergency_restore()
+            ):
                 return
             if state["phase"] == "returning":
                 self._emergency_defer_read()
@@ -1836,6 +1848,7 @@ class EmergencyRecoveryMixin:
         heapq.heapify(queue)
         chosen = set()
         for _ in range(64):
+            check_cancelled()
             if not queue:
                 break
             cost, indices = heapq.heappop(queue)

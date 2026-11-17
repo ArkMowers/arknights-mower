@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from math import ceil, isfinite
 
+from arknights_mower.utils.csleep import MowerExit, check_cancelled
 from arknights_mower.utils.resting_priority import (
     RestingTier,
     crafting_rest_order,
@@ -195,10 +196,12 @@ def exhaust_rest_due(data, op, tasks, now):
 
 def native_opportunity(solver, required, now=None, *, budget=128, current_only=False):
     """在副本上搜索轮休；当前模式只检查可立即执行的安排，不预测速率。"""
-    now = now or datetime.now()
+    now = now or getattr(solver.op_data, "_projection_now", None) or datetime.now()
+    check_cancelled()
     initial = copy.deepcopy(
         solver.op_data, {id(solver.op_data.eval_model): solver.op_data.eval_model}
     )
+    initial._apply_projected_arrangements([], now=now)
     required = set(required)
     pending = [
         task
@@ -236,6 +239,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
     visited = set()
     uncertain = False
     while queue and budget:
+        check_cancelled()
         budget -= 1
         data, when, used, served = queue.popleft()
         served = served | {
@@ -296,6 +300,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     data.shift_group_members(op.group) if op.group else [name],
                 )
         for source, members in groups.values():
+            check_cancelled()
             candidate = copy.copy(trial)
             candidate.op_data = copy.deepcopy(
                 data, {id(data.eval_model): data.eval_model}
@@ -319,8 +324,10 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                         list(members), request_names=[source]
                     )
                     if support:
-                        coordinated = data.project_arrangements([support])
+                        coordinated = data.project_arrangements([support], now=when)
                         queue.append((coordinated, when, used, served))
+            except MowerExit:
+                raise
             except Exception:
                 uncertain = True
                 continue
@@ -332,7 +339,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                         plan.setdefault(room, ["Current"] * len(data.plan[room]))[
                             index
                         ] = bed.name
-                projected = candidate.op_data.project_arrangements([plan])
+                projected = candidate.op_data.project_arrangements([plan], now=when)
                 admitted = {
                     name
                     for name in members
@@ -388,16 +395,14 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     )[worker.index] = member
             events.append((max(when, due), event_id, plan))
         for time, event_id, plan in events:
+            check_cancelled()
             if current_only and time > now:
                 continue
             if time - now > timedelta(hours=12):
                 uncertain = True
                 continue
             projected = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
-            if getattr(projected, "mood_calculation_enabled", False):
-                from arknights_mower.utils.calculated_mood import sync_model
-
-                sync_model(projected, time)
+            projected._apply_projected_arrangements([], now=time)
             if current_only and event_id[0] == "task":
                 event_task = copy.deepcopy(pending[event_id[1]])
                 if event_task.type == TaskTypes.RELEASE_DORM:
@@ -414,6 +419,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     checker.tasks = copy.deepcopy(trial.tasks)
                     try:
                         checker.prepare_release_dorm(event_task)
+                    except MowerExit:
+                        raise
                     except Exception:
                         uncertain = True
                         continue
@@ -439,13 +446,13 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                         timely = False
                         break
                     mood = (
-                        op.current_mood()
+                        op.current_mood(when)
                         - op.depletion_rate * (time - when).total_seconds() / 3600
                     )
                     if mood <= op.lower_limit:
                         timely = False
                         break
-                    op.mood, op.time_stamp = mood, datetime.now()
+                    op.mood, op.time_stamp = mood, time
             if not timely:
                 continue
             for names in plan.values():
@@ -457,7 +464,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                         and projected.operators[name].is_resting()
                     ):
                         op = projected.operators[name]
-                        op.mood, op.time_stamp = op.upper_limit, datetime.now()
+                        op.mood, op.time_stamp = op.upper_limit, time
             charged = set()
             if event_id[0] == "charge":
                 name = charges[event_id[1]].meta_data
@@ -473,7 +480,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     projected.operators[name].mood = projected.operators[
                         name
                     ].upper_limit
-                    projected.operators[name].time_stamp = datetime.now()
+                    projected.operators[name].time_stamp = time
                 charged.add(name)
                 if current_only and not getattr(
                     projected, "mood_calculation_enabled", False
@@ -481,7 +488,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     projected.operators["菲亚梅塔"].mood = 0
             queue.append(
                 (
-                    projected.project_arrangements([plan]),
+                    projected.project_arrangements([plan], now=time),
                     time,
                     used | {event_id},
                     served | charged,
