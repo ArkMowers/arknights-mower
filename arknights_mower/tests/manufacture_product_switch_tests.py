@@ -1431,6 +1431,7 @@ def test_activated_shard_backup_replenishes_depleted_queue(product, quantity):
     solver.tasks, solver.task = [], None
     solver.planned, solver.todo_task = True, False
     solver.enable_party = False
+    config.conf.maa_mall_enable = False
     solver.drone_room = solver.drone_time = None
     solver.no_pending_task = MagicMock(return_value=True)
     solver.reload_time = datetime.now() - timedelta(hours=config.conf.maa_gap + 1)

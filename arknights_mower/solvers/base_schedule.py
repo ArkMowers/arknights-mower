@@ -4488,7 +4488,10 @@ class BaseSchedulerSolver(
             self.planned = True
         elif not self.todo_task:
             if (
-                self.enable_party
+                (
+                    self.enable_party
+                    or getattr(config.conf, "should_run_mower_mall", False)
+                )
                 and (
                     self.last_clue is None
                     or datetime.now() - self.last_clue > timedelta(hours=1)
@@ -4499,7 +4502,9 @@ class BaseSchedulerSolver(
             ):
                 clue_started_at = datetime.now()
                 try:
-                    clue_result = self.clue_new()
+                    clue_result = (
+                        self.clue_new() if self.enable_party else self._run_clue_shop()
+                    )
                 except CreditShopIncomplete as e:
                     task = SchedulerTask(time=clue_started_at, task_type=TaskTypes.CLUE)
                     self.tasks.append(task)

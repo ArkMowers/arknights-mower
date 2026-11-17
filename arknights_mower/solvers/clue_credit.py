@@ -1,4 +1,4 @@
-"""双 Mower 模式的信息板领取；原有线索、访友和购物入口负责调度。"""
+"""Mower 购物按需领取信息板信用，线索流程与独立购物共用入口。"""
 
 from datetime import datetime, timedelta
 
@@ -31,7 +31,7 @@ class ClueCreditMixin:
         return None
 
     def _run_on_demand_clue_shop(self, *, settlement_checked=None, resume=None):
-        """线索流程结束后购物；不发起访友，也不安排额外购物任务。"""
+        """按需购物；不发起访友，也不安排额外定时购物任务。"""
         if config.stop_mower.is_set():
             raise MowerExit
         if getattr(self, "_clue_access_record_exhausted", False):
