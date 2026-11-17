@@ -1,8 +1,9 @@
 """心情不足时按实际效率替换当前阶段协助者，并保存执行方案。"""
 
+import sys
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import MagicMock, Mock
 
 import pytest
 
@@ -291,3 +292,66 @@ def test_restarted_training_recovers_the_replacement_not_the_configured_assistan
     assert task.type == TaskTypes.SWAP_SUPPORT
     assert task.plan_key == str(plan["id"])
     assert task.meta_data == "学员 换入替代协助"
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_recent_dorm_sample_keeps_configured_assistant_for_inherited_stage(
+    case, monkeypatch, legacy
+):
+    monkeypatch.setitem(sys.modules, "arknights_mower.utils.skland", MagicMock())
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.solvers.mastery_support_state import save_runtime
+    from arknights_mower.utils.operators import Operator
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    case.options.update({"望": trainer("望", 70), "冰酿": trainer("冰酿", 0)})
+    case.mood("冰酿", 24)
+    observed_at = datetime.now() - timedelta(seconds=33)
+    operator = Operator(
+        "望",
+        "",
+        current_room="dormitory_3",
+        current_index=0,
+        mood=19.35,
+        time_stamp=observed_at,
+        depletion_rate=-2,
+    )
+    case.solver.op_data.operators["望"] = operator
+    case.solver.op_data.get_dorm_by_name = lambda *a, **kw: (None, None)
+    case.solver.task = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER, task_plan={"dormitory_3": [""]}
+    )
+    case.solver.find_next_task = Mock(return_value=None)
+    case.solver._observe_rescue_staffing_log = Mock()
+    case.solver._scan_card_moods = Mock(
+        side_effect=AssertionError("实读心情足够，不应补扫")
+    )
+    plan = case.plan(dict(level=3, operator="望", efficiency=70), legacy)
+    save_runtime(
+        plan,
+        {
+            "level": 2,
+            "working_operator": "艾丽妮",
+            "working_halves": True,
+            "working_since": (datetime.now() - timedelta(hours=6)).isoformat(),
+        },
+    )
+    monkeypatch.setattr(runtime, "_observed_support", lambda _: ("艾丽妮", "学员"))
+
+    BaseSchedulerSolver._reconcile_room_observation(
+        case.solver, "dormitory_3", [{"agent": ""}]
+    )
+    prepare = (
+        runtime.prepare_legacy_support_mood if legacy else runtime.prepare_plan_supports
+    )
+    prepare(case.solver, plan, 3)
+
+    assert operator.mood == 19.35 and operator.time_stamp == observed_at
+    case.solver._scan_card_moods.assert_not_called()
+    saved = db.get_plan_by_id(plan["id"])
+    assert mastery._get_plan_route(saved, 3)["operator"] == "望"
+    if not legacy:
+        route = stage_for(saved, 3)
+        assert route["half_inherited"] and route["activate_with"] == "艾丽妮"
+        assert route["hours"] == pytest.approx(12 / 1.8)
+        assert not route.get("mood_fallback")

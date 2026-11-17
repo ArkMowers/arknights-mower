@@ -9,6 +9,7 @@ import numpy as np
 import pytest
 
 from arknights_mower.utils import config
+from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
@@ -258,3 +259,43 @@ def test_local_arrangement_readback_does_not_use_outer_task_roster(incident):
     assert physical[ROOM] == ["杜林", "琴柳", "陈", "芬", "夜刀"]
     assert solver.op_data.operators["斯卡蒂"].time_stamp is not None
     assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
+
+
+@pytest.mark.parametrize("sample", ["measured", "prediction", "unknown"])
+def test_departure_below_mood_cap_preserves_only_measured_sample(incident, sample):
+    solver, physical, _ = incident
+    data = solver.op_data
+    name = "望"
+    data.add(Operator(name, "", current_room=ROOM, current_index=3))
+    physical[ROOM][3] = name
+    data.dorm_mood_estimates[name] = (24, datetime.now())
+    data.update_detail(name, 19.35, ROOM, 3, update_time=True)
+    operator = data.operators[name]
+    operator.depletion_rate = -2
+    observed_at = operator.time_stamp
+    assert name not in data.dorm_mood_estimates
+    if sample == "prediction":
+        operator.mood_is_prediction = True
+    elif sample == "unknown":
+        operator.time_stamp = None
+    bed = next(bed for bed in data.dorm if bed.position == (ROOM, 3))
+    bed.name, bed.time = name, datetime.now() + timedelta(hours=3)
+    physical[ROOM][3] = ""
+    solver.task = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER, task_plan={ROOM: physical[ROOM].copy()}
+    )
+
+    solver._reconcile_room_observation(
+        ROOM, [{"agent": occupant} for occupant in physical[ROOM]]
+    )
+
+    assert (operator.current_room, operator.current_index) == ("", -1)
+    assert (bed.name, bed.time) == ("", None)
+    if sample == "measured":
+        assert (operator.mood, operator.time_stamp) == (19.35, observed_at)
+        assert operator.depletion_rate == 0
+        assert dorm_candidate_mood(data, name) == 19.35
+        assert operator.current_mood(datetime.now() + timedelta(hours=2)) == 19.35
+    else:
+        assert operator.time_stamp is None
+        assert dorm_candidate_mood(data, name) is None

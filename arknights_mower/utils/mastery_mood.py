@@ -14,9 +14,10 @@ from .mastery_support_types import (
 
 
 class SupportMoodWait(SupportPlanError):
-    def __init__(self, required, shortages):
+    def __init__(self, required, shortages, *, observation_pending=False):
         self.required = required
         self.shortages = shortages
+        self.observation_pending = observation_pending
         details = "、".join(
             f"{name}（需要 {required[name]:.2f}，"
             + ("心情未知）" if mood is None else f"当前约 {mood:.2f}）")
@@ -27,7 +28,10 @@ class SupportMoodWait(SupportPlanError):
             if any(value is None for value in shortages.values())
             else "恢复心情"
         )
-        super().__init__(f"等待专精协助干员{action}：{details}")
+        message = f"等待专精协助干员{action}：{details}"
+        if observation_pending:
+            message += "；心情补读暂缓，等待临近任务完成"
+        super().__init__(message)
 
 
 def support_mood_requirements(route, *, inherited=False):

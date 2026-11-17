@@ -183,7 +183,7 @@ def test_ordinary_completed_departure_readback_preserves_group_return(
     ],
 )
 @pytest.mark.parametrize("temporary", [False, True])
-def test_unconfirmed_ordinary_departure_invalidates_old_measurement(
+def test_departure_retains_measurement_only_after_confirmed_arrangement(
     solver, unconfirmed, temporary
 ):
     data, names, _ = prepare_group(solver)
@@ -215,7 +215,13 @@ def test_unconfirmed_ordinary_departure_invalidates_old_measurement(
     solver._reconcile_room_observation(room, observed, expected_agents=expected)
 
     assert not operator.current_room
-    assert operator.time_stamp is None
+    if unconfirmed == "below_limit":
+        assert operator.time_stamp == NOW
+        assert operator.mood == operator.upper_limit - 0.1
+        assert operator.depletion_rate == 0
+        assert data.group_is_resting("轮休")
+    else:
+        assert operator.time_stamp is None
 
 
 @pytest.mark.parametrize("unconfirmed", ["occupied_tail", "partial"])
