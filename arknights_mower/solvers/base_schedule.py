@@ -20489,7 +20489,7 @@ class BaseSchedulerSolver(
                 or not all(isinstance(task, dict) for task in tasks.values())
             ):
                 raise ValueError("MAA 活动导航必须是非空任务定义对象")
-            if config.conf.maa_growth_enabled:
+            if getattr(config.conf, "maa_growth_enabled", False):
                 from arknights_mower.utils.growth_execution import merge_growth_tasks
 
                 tasks = merge_growth_tasks(tasks)
@@ -20507,7 +20507,11 @@ class BaseSchedulerSolver(
             save_exception(e)
 
         cached = read_json(ota_tasks_path, None)
-        if isinstance(cached, dict) and cached and config.conf.maa_growth_enabled:
+        if (
+            isinstance(cached, dict)
+            and cached
+            and getattr(config.conf, "maa_growth_enabled", False)
+        ):
             from arknights_mower.utils.growth_execution import merge_growth_tasks
 
             guarded = merge_growth_tasks(cached)
@@ -20551,7 +20555,7 @@ class BaseSchedulerSolver(
             navigation = self.update_maa_navigation(
                 pathlib.Path(resolve_config_path(config.conf.maa_path))
             )
-            if config.conf.maa_growth_enabled:
+            if getattr(config.conf, "maa_growth_enabled", False):
                 from arknights_mower.utils.growth_execution import merge_growth_tasks
 
                 navigation = merge_growth_tasks(navigation or {})

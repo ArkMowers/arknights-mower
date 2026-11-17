@@ -3192,9 +3192,9 @@ class TestSchedulerDispatchDeviceFailure(unittest.TestCase):
 
 class TestRunOrderCountdownTiming(unittest.TestCase):
     def setUp(self):
-        self.conf = SimpleNamespace(
+        self.conf = base_schedule.config.Conf(
             enable_mastery=False,
-            run_order_buffer_time=30,
+            run_order_grandet_mode={"enable": True, "buffer_time": 30},
             run_order_delay=1,
         )
         self.conf_patch = patch.object(base_schedule.config, "conf", self.conf)
@@ -3607,7 +3607,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         solver.sleep.assert_not_called()
 
     def test_non_buffer_mode_does_not_read_before_check_in(self):
-        self.conf.run_order_buffer_time = 0
+        self.conf.run_order_grandet_mode.buffer_time = 0
         solver, room, events = self.make_solver()
         solver.agent_arrange_room({}, room, solver.task.plan)
         self.assertEqual(events, ["roster", "choose", "confirm", "verify"])

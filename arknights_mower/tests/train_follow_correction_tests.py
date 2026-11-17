@@ -263,7 +263,9 @@ def test_train_current_reaches_live_reader_without_stale_cache_substitution(
 
 @pytest.fixture
 def arrangement_solver(monkeypatch):
-    monkeypatch.setattr(config, "conf", config.Conf(enable_mastery=False))
+    monkeypatch.setattr(
+        config, "conf", config.Conf(enable_crafting=True, enable_mastery=False)
+    )
     monkeypatch.setattr(config, "stop_mower", Event())
     monkeypatch.setattr(BaseSchedulerSolver, "__init__", lambda _: None)
     monkeypatch.setattr(
