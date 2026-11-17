@@ -1221,8 +1221,7 @@ onBeforeUnmount(() => {
             :disabled="historyOptionsDisabled"
             @click="selectConversation(item.id)"
           >
-            <strong>{{ item.title }}</strong
-            ><time>{{ historyTime(item.updated) }}</time>
+            <strong>{{ item.title }}</strong><time>{{ historyTime(item.updated) }}</time>
           </button>
           <n-popconfirm
             :disabled="historyOptionsDisabled"
