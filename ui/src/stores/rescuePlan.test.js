@@ -252,3 +252,163 @@ it('救急恢复配置独立保存并随救急表导出', async () => {
   expect(normal.workaholic).toEqual([])
   expect(normal.rescue_free_blacklist).toEqual([])
 })
+
+it('救急普通岗位保留内部空位并裁去编辑器预填尾空，正常表继续压缩空位', async () => {
+  const app = createApp({})
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  const [normal, rescue] = app.runWithContext(() => [usePlanStore(), useRescuePlanStore()])
+  stores = [normal, rescue]
+  const source = {
+    central: { plans: [{ agent: '红' }, { agent: '' }, { agent: '斑点' }] },
+    room_1_1: { name: '制造站', product: 'gold', plans: [{ agent: '砾' }] },
+    recycle: { plans: [{ agent: '' }, { agent: '桑葚', group: '救急组', replacement: [] }] },
+    room_2_1: { name: '贸易站', product: 'lmd', plans: [] },
+    factory: { plans: [{ agent: '' }] },
+    train: { plans: [{ agent: '星熊' }, { agent: '' }] }
+  }
+  axios.get.mockImplementation(async () => ({
+    data: { conf: {}, plan1: structuredClone(source), backup_plans: [] }
+  }))
+  axios.post.mockResolvedValue({ data: {} })
+  await Promise.all([normal.load_plan(), rescue.load_plan()])
+  expect(rescue.plan.room_1_1.plans).toHaveLength(3)
+  expect(rescue.plan.central.plans).toHaveLength(5)
+  const saved = rescue.build_plan()
+  expect(saved.plan1.central.plans.map((slot) => slot.agent)).toEqual(['红', '', '斑点'])
+  expect(saved.plan1.recycle.plans.map((slot) => slot.agent)).toEqual(['', '桑葚'])
+  expect(saved.plan1.recycle.plans[1].replacement).toEqual([])
+  expect(saved.plan1.room_1_1).toMatchObject({
+    name: '制造站',
+    product: 'gold',
+    plans: [{ agent: '砾' }]
+  })
+  expect(saved.plan1).not.toHaveProperty('room_2_1')
+  expect(saved.plan1).not.toHaveProperty('meeting')
+  expect(saved.plan1).not.toHaveProperty('factory')
+  expect(saved.plan1.train.plans.map((slot) => slot.agent)).toEqual(['星熊'])
+  expect(normal.build_plan().plan1.central.plans.map((slot) => slot.agent)).toEqual(['红', '斑点'])
+  await rescue.save_plan()
+  expect(axios.post.mock.lastCall[1].plan1.central.plans.map((slot) => slot.agent)).toEqual([
+    '红',
+    '',
+    '斑点'
+  ])
+  axios.get.mockResolvedValueOnce({ data: JSON.parse(JSON.stringify(saved)) })
+  await rescue.load_plan()
+  expect(rescue.plan.central.plans[2].agent).toBe('斑点')
+  expect(rescue.build_plan().plan1.central.plans.map((slot) => slot.agent)).toEqual([
+    '红',
+    '',
+    '斑点'
+  ])
+})
+
+it('救急副表保留Current及内部空岗位，未填写整房不生成覆盖', async () => {
+  const app = createApp({})
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  const rescue = app.runWithContext(() => useRescuePlanStore())
+  stores = [rescue]
+  axios.get.mockResolvedValue({
+    data: {
+      conf: {},
+      plan1: {},
+      backup_plans: [
+        {
+          name: '副表',
+          conf: {},
+          plan: {
+            central: {
+              plans: [
+                { agent: 'Current' },
+                { agent: '' },
+                {
+                  agent: '斑点',
+                  group: '救急',
+                  replacement: ['红'],
+                  group_bindings: [{ group: '额外组', replacement: ['砾'] }]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  })
+  axios.post.mockResolvedValue({ data: {} })
+  await rescue.load_plan()
+  const saved = rescue.build_plan()
+  expect(saved.backup_plans[0].plan.central.plans.map((slot) => slot.agent)).toEqual([
+    'Current',
+    '',
+    '斑点'
+  ])
+  expect(saved.backup_plans[0].plan.central.plans[2].group_bindings).toEqual([
+    { group: '额外组', replacement: ['砾'] }
+  ])
+  expect(saved.backup_plans[0].plan).not.toHaveProperty('meeting')
+})
+
+it('救急副表区分显式尾空与补齐尾空，导入重载和复制设施后保持继承含义', async () => {
+  const app = createApp({})
+  app.use(createPinia())
+  app.provide('loaded', ref(false))
+  const [normal, rescue] = app.runWithContext(() => [usePlanStore(), useRescuePlanStore()])
+  stores = [normal, rescue]
+  const source = {
+    conf: {},
+    plan1: { central: { plans: [{ agent: '红' }, { agent: '' }] } },
+    backup_plans: [
+      {
+        name: '副表',
+        conf: {},
+        plan: {
+          central: { plans: [{ agent: 'Current' }, { agent: '' }] },
+          room_1_1: { name: '制造站', product: 'gold', plans: [{ agent: '砾' }, { agent: '' }] },
+          recycle: { plans: [{ agent: '桑葚' }] },
+          meeting: { plans: [{ agent: '' }, { agent: '' }] },
+          contact: { plans: [] }
+        }
+      }
+    ]
+  }
+  axios.get.mockImplementation(async () => ({ data: JSON.parse(JSON.stringify(source)) }))
+  axios.post.mockResolvedValue({ data: {} })
+  await Promise.all([normal.load_plan(), rescue.load_plan()])
+  const saved = JSON.parse(JSON.stringify(rescue.build_plan()))
+  const row = saved.backup_plans[0].plan
+  expect(row.central.plans.map((slot) => slot.agent)).toEqual(['Current', ''])
+  expect(row.room_1_1.plans.map((slot) => slot.agent)).toEqual(['砾', ''])
+  expect(row.recycle.plans.map((slot) => slot.agent)).toEqual(['桑葚'])
+  expect(row.meeting.plans.map((slot) => slot.agent)).toEqual(['', ''])
+  expect(row).not.toHaveProperty('contact')
+  expect(normal.build_plan().backup_plans[0].plan.central.plans.map((slot) => slot.agent)).toEqual([
+    'Current'
+  ])
+  axios.get.mockResolvedValueOnce({ data: JSON.parse(JSON.stringify(saved)) })
+  await rescue.load_plan()
+  expect(rescue.build_plan().backup_plans[0].plan).toEqual(row)
+  rescue.sub_plan = 0
+  rescue.import_main_facility('central')
+  expect(rescue.build_plan().backup_plans[0].plan.central.plans.map((slot) => slot.agent)).toEqual([
+    '红'
+  ])
+  rescue.current_plan.central.plans[3].agent = '杜林'
+  expect(rescue.build_plan().backup_plans[0].plan.central.plans).toHaveLength(4)
+  rescue.current_plan.central.plans[3].agent = ''
+  expect(rescue.build_plan().backup_plans[0].plan.central.plans.map((slot) => slot.agent)).toEqual([
+    '红',
+    '',
+    '',
+    ''
+  ])
+  expect(rescue.current_plan.central.plans).toHaveLength(5)
+  const moved = rescue.current_plan.room_1_1
+  rescue.swap_facilities('room_1_1', 'room_1_2')
+  expect(rescue.current_plan.room_1_2).toBe(moved)
+  expect(rescue.build_plan().backup_plans[0].plan.room_1_2.plans.map((slot) => slot.agent)).toEqual(
+    ['砾', '']
+  )
+  expect(rescue.build_plan().backup_plans[0].plan).not.toHaveProperty('room_1_1')
+})

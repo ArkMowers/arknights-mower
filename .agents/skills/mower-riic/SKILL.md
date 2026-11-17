@@ -5,14 +5,14 @@ description: 维护 Mower AI 基建知识、只读主班试排、排班收益演
 
 # Mower RIIC
 
-先区分机制资料、AI 主班草案和前端收益演算。读取[AI 助手子系统说明](../../../docs/subsystems/ai-assistant.md#riic-tools)或[排班编辑器说明](../../../docs/subsystems/plan-editor.md#income-export)中本次操作对应的输入与边界。
+先区分机制资料、Mower AI 排班草案和前端收益演算。Mower AI 已使用共享知识中的基建机制 skill；维护时扩展现有 `plan_generation` 主题及工具，不复制目录、引入另一套 skill 执行器或恢复固定方案生成按钮。读取[AI 助手子系统说明](../../../docs/subsystems/ai-assistant.md#riic-tools)或[排班编辑器说明](../../../docs/subsystems/plan-editor.md#income-export)中本次操作对应的输入与边界。
 
 ## 机制与 AI
 
 - `arknights_mower/data/riic/knowledge.json` 保存精简机制指南及来源。用 `get_riic_knowledge` 的 topic 获取相关主题；维护时同步工具枚举。完整技能和嵌套术语从 `utils/building_skills.py` 的共享资源读取，不复制另一份 AI 目录。
-- `get_riic_context` 读取已同步 BOX、练度和现有设施。用户明确提供的覆盖在每个相关调用中一致传递；未知练度保持未知。每个独立技能槽只用当前已解锁的最高版本。
+- `get_riic_context` 读取已同步 BOX、练度和现有设施，并通过 `normal_plan_issues` 标出旧主表与同次名单的静态冲突；这不是原生排班或收益验证。用户明确提供的覆盖在每个相关调用中一致传递；未知练度保持未知。每个独立技能槽只用当前已解锁的最高版本。
 - 组合名单不是同站名单。先核对提供者、受益者、设施、产品、心情和同一时段条件；档案国籍不能替代技能术语的明确成员。
-- `try_riic_plan` 的成功仅说明只读主班检查通过。展示未检查项，不声称已保存、已执行、长期轮换可行或收益最优。收益计算由前端窗口启动，AI 现有工具不执行演算。
+- `get_riic_knowledge(topic="plan_generation")` 持有按实际 BOX、库存和目标生成单布局主表的指导，也说明多绑组、候补、充能、救急空位继承和养成比较。完整草案通过 `try_riic_plan(plan=..., mode="normal"或"rescue")` 校验；旧 `assignments` 只验证局部主班。成功含义按 `scope`、`status` 和 `unchecked` 解释，不声称已保存、已执行、长期轮换可行或收益最优。收益计算仍由前端窗口启动，AI 现有工具不执行演算。
 
 ## 收益演算维护
 

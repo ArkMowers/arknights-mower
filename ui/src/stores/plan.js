@@ -2,7 +2,7 @@ import { normalizeBackupGroups } from '@/riic/vendor/scheduler/backupGroups'
 import { planBindings, planReplacements } from '@/utils/plan_bindings'
 import { OPERATOR_CONF_FIELDS, swapPlanFacilities } from '@/utils/plan_edit'
 import { defineStore } from 'pinia'
-import { ref, watch, computed, inject } from 'vue'
+import { ref, watch, computed, inject, toRaw } from 'vue'
 import axios from 'axios'
 import { deepcopy } from '@/utils/deepcopy'
 import { factory_product_ids } from '@/utils/base_products'
@@ -32,6 +32,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
     const refresh_drained = ref([])
 
     const plan = ref({})
+    const rescueExplicitLengths = new WeakMap()
     const facility_levels = ref({})
 
     const backup_plans = ref([])
@@ -101,6 +102,7 @@ const createPlanStore = (id, endpoint, rescue = false) =>
 
     function fill_empty(full_plan) {
       for (const i in facility_operator_limit) {
+        const explicitLength = full_plan[i]?.plans.length ?? 0
         let count = 0
         if (!full_plan[i]) {
           count = facility_operator_limit[i]
@@ -122,6 +124,8 @@ const createPlanStore = (id, endpoint, rescue = false) =>
             count = limit - full_plan[i].plans.length
           }
         }
+        if (rescue && !rescueExplicitLengths.has(toRaw(full_plan[i])))
+          rescueExplicitLengths.set(toRaw(full_plan[i]), explicitLength)
         for (let j = 0; j < count; ++j) {
           full_plan[i].plans.push({ agent: '', group: '', replacement: [] })
         }
@@ -158,6 +162,25 @@ const createPlanStore = (id, endpoint, rescue = false) =>
                 group: '',
                 replacement: slot.replacement || []
               }))
+            }
+          }
+          continue
+        }
+        if (
+          rescue &&
+          (i.startsWith('room_') || ['central', 'meeting', 'contact', 'recycle'].includes(i))
+        ) {
+          const facility = plan[i]
+          let end = facility.plans.length
+          while (end > 0 && !facility.plans[end - 1].agent) end--
+          const raw = toRaw(facility)
+          if (backup) end = Math.max(end, rescueExplicitLengths.get(raw) ?? 0)
+          rescueExplicitLengths.set(raw, Math.max(end, rescueExplicitLengths.get(raw) ?? 0))
+          if (end > 0) {
+            plan1[i] = {
+              name: facility.name,
+              plans: deepcopy(facility.plans.slice(0, end)),
+              ...(['制造站', '贸易站'].includes(facility.name) ? { product: facility.product } : {})
             }
           }
           continue
@@ -303,7 +326,10 @@ const createPlanStore = (id, endpoint, rescue = false) =>
           refresh_drained: list2str(refresh_drained.value)
         },
         backup_groups: deepcopy(backup_groups.value),
-        backup_plans: deepcopy(backup_plans.value)
+        backup_plans: backup_plans.value.map((backup) => ({
+          ...deepcopy(backup),
+          plan: deepcopy(strip_plan(backup.plan, true))
+        }))
       }
       if (!rescue && advancedSettingsSource) result.advanced_settings = advancedSettingsSource()
       for (const b of result.backup_plans) {
@@ -318,7 +344,6 @@ const createPlanStore = (id, endpoint, rescue = false) =>
         for (const i of backup_conf_convert_list) {
           b.conf[i] = list2str(b.conf[i])
         }
-        b.plan = strip_plan(b.plan, true)
       }
 
       return result
@@ -463,7 +488,17 @@ const createPlanStore = (id, endpoint, rescue = false) =>
 
     function import_main_facility(facility) {
       if (sub_plan.value === 'main' || !plan.value[facility]) return
-      current_plan.value[facility] = deepcopy(plan.value[facility])
+      const source = plan.value[facility]
+      const copied = deepcopy(source)
+      if (rescue) {
+        let end = source.plans.length
+        while (end > 0 && !source.plans[end - 1].agent) end--
+        rescueExplicitLengths.set(
+          toRaw(copied),
+          Math.max(end, rescueExplicitLengths.get(toRaw(source)) ?? 0)
+        )
+      }
+      current_plan.value[facility] = copied
     }
 
     return {

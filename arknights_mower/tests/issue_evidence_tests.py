@@ -166,9 +166,9 @@ def test_ai_feedback_tool_sends_database_evidence_with_original_fields(
         "id": "bug-evidence",
     }
     with patch.object(agent, "build_llm") as build:
-        build.return_value.invoke.side_effect = [
-            AIMessage(content="", tool_calls=[call]),
-            AIMessage(content="反馈已发送"),
+        build.return_value.stream.side_effect = [
+            iter([AIMessage(content="", tool_calls=[call])]),
+            iter([AIMessage(content="反馈已发送")]),
         ]
         from arknights_mower.agent.execution import Execution
         from arknights_mower.utils.ai_history import HistoryStore
@@ -187,17 +187,19 @@ def test_ai_feedback_tool_sends_database_evidence_with_original_fields(
 
             run = Execution(store, turn, confirm)
             with run.registered():
-                result = agent._run_manual_tool_loop(
-                    agent._build_messages("请反馈换班问题"),
-                    "offline-key",
-                    execution=run,
+                result = list(
+                    agent._run_manual_tool_loop(
+                        agent._build_messages("请反馈换班问题"),
+                        "offline-key",
+                        execution=run,
+                    )
                 )
     assert len(approvals) == 1
     content = approvals[0]["preview"]["content"]
     assert content["description"] == description
     assert (content["start_time"], content["end_time"]) == (START, END)
     assert len(sent) == 1
-    assert "状态：accepted" in build.return_value.invoke.call_args.args[0][-1].content
+    assert "状态：accepted" in build.return_value.stream.call_args.args[0][-1].content
     assert result[-1] == "反馈已发送"
     attachments = parts(sent)
     tasks = [

@@ -91,6 +91,73 @@ def test_rescue_routes_reject_missing_or_invalid_token_before_work(
     assert response.status_code == 403
 
 
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_editor_empty_json_validation_rejects_token_before_parsing(
+    client, monkeypatch, token
+):
+    def forbidden(*args, **kwargs):
+        pytest.fail("未授权验证请求开始解析或校验")
+
+    monkeypatch.setattr(server.app.request_class, "get_json", forbidden)
+    monkeypatch.setattr(server, "build_global_plan", forbidden)
+    monkeypatch.setattr(server, "Operators", forbidden)
+    response = client.post(
+        "/rescue-plan/validate",
+        json={},
+        headers={"token": token} if token else {},
+    )
+    assert response.status_code == 403
+
+
+def test_editor_empty_json_validates_saved_rescue_inheritance_without_mutation(client):
+    config.plan = config.PlanModel(
+        plan1={
+            "central": {"plans": [{"agent": "能天使", "replacement": ["芬"]}]},
+            "room_1_1": {
+                "name": "制造站",
+                "product": "gold",
+                "plans": [
+                    {"agent": "夜烟", "replacement": ["香草"]},
+                    {"agent": "杰西卡", "replacement": ["克洛丝"]},
+                ],
+            },
+            "recycle": {
+                "plans": [
+                    {"agent": "国度", "replacement": ["旅骨"]},
+                    {"agent": "行铃", "replacement": ["旅骨"]},
+                ]
+            },
+        },
+        facility_levels={"central": 5, "room_1_1": 2, "recycle": 3},
+    )
+    config.rescue_plan = config.PlanModel(
+        plan1={
+            "central": {"plans": [{"agent": "红", "replacement": []}]},
+            "room_1_1": {"plans": [{"agent": ""}]},
+        }
+    )
+    original = tuple(
+        model.model_dump() for model in (config.conf, config.plan, config.rescue_plan)
+    )
+    response = client.post(
+        "/rescue-plan/validate", json={}, headers={"token": "rescue-route"}
+    )
+    assert response.status_code == 200
+    assert response.json["success"], response.json
+    assert response.json.get("status") != "incomplete"
+    assert "resolvedPlan" not in response.json
+    assert (
+        tuple(
+            model.model_dump()
+            for model in (config.conf, config.plan, config.rescue_plan)
+        )
+        == original
+    )
+    config.save_plan.assert_not_called()
+    config.save_conf.assert_not_called()
+    config.save_rescue_plan.assert_not_called()
+
+
 @pytest.mark.parametrize("backup_source", ["normal", "rescue", None])
 def test_validation_defers_conditional_plans_and_rejects_product_mismatch(
     client, monkeypatch, backup_source
@@ -140,13 +207,10 @@ def test_validation_defers_conditional_plans_and_rejects_product_mismatch(
 @pytest.mark.parametrize(
     "invalid, expected",
     [
-        ("missing_left", "缺少必填"),
-        ("empty_left", "无效"),
         ("duplicate", "重复"),
         ("replacement", "替换干员"),
         ("backup_name", "无效"),
         ("backup_duplicate", "重复"),
-        ("backup_empty_left", "无效"),
     ],
 )
 @pytest.mark.parametrize("conditional", [False, True])
@@ -241,12 +305,8 @@ def test_rescue_validation_preserves_working_and_specialized_room_rules(
     response = client.post(
         "/rescue-plan/validate", headers={"token": "rescue-route"}
     ).get_json()
-    if room in {"factory", "train"}:
-        assert response["success"] is True
-        assert (response.get("status") == "incomplete") is conditional
-    else:
-        assert response["success"] is False
-        assert room in response["message"]
+    assert response["success"] is True, response
+    assert (response.get("status") == "incomplete") is conditional
     config.save_conf.assert_not_called()
     config.save_plan.assert_not_called()
 

@@ -1,19 +1,43 @@
-"""Read-only RIIC knowledge and owned-operator primary staffing trials."""
+"""Read-only RIIC context, knowledge and detached scheduling-plan validation."""
 
+import copy
 import html
 import json
 import re
 from functools import wraps
 from pathlib import Path
 
+from pydantic import ValidationError
+
 from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils.building_skills import (
     _operator_skills,
+    load_income_cache,
     load_skill_snapshot,
     skill_index,
     term_index,
 )
+from arknights_mower.utils.config.plan import (
+    Facility,
+    GroupBinding,
+    Plan1,
+    PlanConf,
+    PlanModel,
+    Plans,
+    parse_plan_document,
+)
+from arknights_mower.utils.config.plan_advanced import (
+    ADVANCED_SETTING_KEYS,
+    apply_advanced_settings,
+    export_advanced_settings,
+)
+from arknights_mower.utils.emergency_plan import INHERITED_WORK_ROOMS
+from arknights_mower.utils.manufacture_product import (
+    MANUFACTURE_PRODUCTS,
+    TRADE_PRODUCTS,
+)
+from arknights_mower.utils.operators import Operators, build_global_plan
 
 DATA_ROOT = Path(__rootdir__) / "data" / "riic"
 FIXED_FACILITIES = {
@@ -44,6 +68,33 @@ UNCHECKED = [
     "实际设施等级及电力",
     "无人机、订单质量、跑单及长期收益",
 ]
+COMPLETE_UNCHECKED = [
+    "当前心情、实测恢复速度与实际设施建设状态",
+    "设施等级与岗位对应关系、电力和布局建设可行性",
+    "副表条件、专项任务保护及实时预约",
+    "跨设施收益、无人机、跑单、材料持续供应和长期轮换收益",
+]
+OPERATOR_CONF_FIELDS = {
+    "exhaust_require",
+    "rest_in_full",
+    "resting_priority",
+    "resting_priority_replacement",
+    "free_room_exclusions",
+    "resting_standby",
+    "free_blacklist",
+    "workaholic",
+    "refresh_trading",
+    "refresh_drained",
+    "ope_resting_priority",
+}
+
+
+class PlanDocumentError(ValueError):
+    """Expose bounded adapter diagnostics without submitted values or model context."""
+
+    def __init__(self, message, *, details=None):
+        super().__init__(message[:240])
+        self.details = details
 
 
 def _json_tool(function):
@@ -51,6 +102,10 @@ def _json_tool(function):
     def invoke(*args, **kwargs):
         try:
             payload = function(*args, **kwargs)
+        except PlanDocumentError as error:
+            payload = {"error": {"code": "invalid_arguments", "message": str(error)}}
+            if error.details is not None:
+                payload["error"]["details"] = error.details
         except (ValueError, TypeError, KeyError):
             payload = {
                 "error": {
@@ -200,9 +255,42 @@ def _facility(room, facility):
     return FIXED_FACILITIES.get(room, facility.get("name", ""))
 
 
+def _references(plan, *, inherit_blank_work_slots=False):
+    """Read staffing and task references without exposing backup expressions."""
+    names = set()
+    for primary in [plan.plan1, *(entry.plan for entry in plan.backup_plans)]:
+        for room, facility in primary.model_dump(exclude_none=True).items():
+            for slot in facility["plans"]:
+                if (
+                    inherit_blank_work_slots
+                    and room in INHERITED_WORK_ROOMS
+                    and not slot["agent"]
+                ):
+                    continue
+                names.add(slot["agent"])
+                for binding in [slot, *slot.get("group_bindings", [])]:
+                    names.update(binding.get("replacement", []))
+    for conf in [plan.conf, *(entry.conf for entry in plan.backup_plans)]:
+        for field in OPERATOR_CONF_FIELDS:
+            names.update(getattr(conf, field).split(","))
+        names.update(conf.operator_mood_limits)
+    for backup in plan.backup_plans:
+        for row in backup.task.model_dump(exclude_none=True).values():
+            names.update(row)
+    return names - {"", "Free", "Current"}
+
+
+def _main_snapshot(plan):
+    document = plan.model_dump(exclude_none=True)
+    document.pop("backup_groups", None)
+    document["backup_plans"] = []
+    document["advanced_settings"] = export_advanced_settings(config.conf)
+    return document
+
+
 @_json_tool
 def get_riic_context(roster_overrides=None):
-    """Read saved roster, configured primary facilities and curated combination candidates."""
+    """Read cached resources, safe main-plan fields and curated combinations."""
     snapshot, roster = _roster(roster_overrides)
     if len(roster) > 1024:
         raise ValueError("roster size")
@@ -223,10 +311,35 @@ def get_riic_context(roster_overrides=None):
         )
         combinations.append(item)
     plan = _plan()
+    cached = load_income_cache()
+    saved = getattr(config, "plan", None)
+    if saved is None:
+        errors, warnings = [{"code": "plan_unavailable"}], []
+    else:
+        primary = saved.model_copy(deep=True)
+        primary.backup_plans = []
+        errors, warnings = _check_complete_staffing(primary, roster)
     return {
         "has_data": snapshot["has_data"],
         "message": snapshot["message"],
         "base_conditions": snapshot.get("base_conditions", {}),
+        "has_inventory": cached["has_inventory"],
+        "inventory": cached["inventory"],
+        "observed_at": cached["observed_at"],
+        "observation_scope": "本地缓存库存观察时间；练度和设施不代表实时游戏状态",
+        "normal_plan": _main_snapshot(saved) if saved is not None else None,
+        "normal_plan_issues": {
+            "scope": "main_staffing_static_only",
+            "errors": errors,
+            "warnings": warnings,
+            "native_checked": False,
+            "income_checked": False,
+        },
+        "normal_backup_count": len(saved.backup_plans) if saved is not None else 0,
+        "normal_reserved_names": sorted(_references(saved))
+        if saved is not None
+        else [],
+        "facility_levels": dict(saved.facility_levels) if saved is not None else {},
         "owned_operators": [
             {k: a.get(k) for k in ("name", "phase", "level", "source")}
             for a in roster.values()
@@ -238,6 +351,7 @@ def get_riic_context(roster_overrides=None):
                 "facility": _facility(room, f),
                 "capacity": len(f["plans"]),
                 "product": f.get("product"),
+                "level": saved.facility_levels.get(room) if saved is not None else None,
                 "plans": f["plans"],
             }
             for room, f in plan.items()
@@ -299,8 +413,7 @@ def get_riic_knowledge(operators=None, topic="overview", roster_overrides=None):
     }
 
 
-@_json_tool
-def try_riic_plan(assignments, roster_overrides=None):
+def _try_assignments(assignments, roster_overrides=None):
     """Validate a detached primary staffing draft; never save or execute it."""
     if not isinstance(assignments, list) or len(assignments) > 24:
         raise ValueError("assignment count")
@@ -403,6 +516,355 @@ def try_riic_plan(assignments, roster_overrides=None):
     }
 
 
+def _strict_document(document):
+    if not isinstance(document, dict):
+        raise PlanDocumentError("plan 必须是包含 plan1 的完整 Mower 文档对象")
+    if len(json.dumps(document, ensure_ascii=False)) > 65536:
+        raise PlanDocumentError("plan 文档超过 65536 字符上限，请缩小草案")
+    if set(document) - {
+        "default",
+        "plan1",
+        "conf",
+        "facility_levels",
+        "advanced_settings",
+        "backup_plans",
+    }:
+        raise PlanDocumentError(
+            "plan 含不支持的字段；只允许 default、plan1、conf、facility_levels、advanced_settings 和空 backup_plans"
+        )
+    if document.get("backup_plans", []) != []:
+        raise PlanDocumentError("plan.backup_plans 必须为空；本工具只检查单一主表")
+    if document.get("default", "plan1") != "plan1":
+        raise PlanDocumentError("plan.default 只支持 plan1")
+    primary = document.get("plan1")
+    if not isinstance(primary, dict):
+        raise PlanDocumentError("plan.plan1 必须是按房间名组织的设施对象")
+    if set(primary) - Plan1.model_fields.keys():
+        raise PlanDocumentError(
+            "plan.plan1 含未知字段，只能填写设施；conf 应放在 plan.conf，其他设置应放在 plan 对应的顶层字段"
+        )
+    for room, facility in primary.items():
+        if room.startswith("gaming_") or not isinstance(facility, dict):
+            raise PlanDocumentError(
+                f"plan.plan1.{room} 必须是受支持的普通基建设施对象；不支持活动室"
+            )
+        if set(facility) - Facility.model_fields.keys():
+            raise PlanDocumentError(
+                f"plan.plan1.{room} 含未知字段；设施只允许 name、plans 和 product"
+            )
+        slots = facility.get("plans")
+        if not isinstance(slots, list) or len(slots) > 5:
+            raise PlanDocumentError(
+                f"plan.plan1.{room}.plans 必须是至多 5 个工位的列表"
+            )
+        for index, slot in enumerate(slots):
+            path = f"plan.plan1.{room}.plans[{index}]"
+            if not isinstance(slot, dict) or set(slot) - Plans.model_fields.keys():
+                raise PlanDocumentError(
+                    f"{path} 含未知字段或类型错误；工位只允许 agent、group、replacement 和 group_bindings"
+                )
+            agent = slot.get("agent")
+            if not isinstance(agent, str) or len(agent) > 64:
+                raise PlanDocumentError(f"{path}.agent 必须是至多 64 字符的干员代号")
+            bindings = slot.get("group_bindings", [])
+            if not isinstance(bindings, list) or len(bindings) > 16:
+                raise PlanDocumentError(
+                    f"{path}.group_bindings 必须是至多 16 条额外绑定的列表"
+                )
+            for binding_index, binding in enumerate([slot, *bindings]):
+                binding_path = (
+                    path
+                    if binding_index == 0
+                    else f"{path}.group_bindings[{binding_index - 1}]"
+                )
+                if not isinstance(binding, dict) or (
+                    binding is not slot
+                    and set(binding) - GroupBinding.model_fields.keys()
+                ):
+                    raise PlanDocumentError(
+                        f"{binding_path} 含未知字段或类型错误；额外绑定只允许 group 和 replacement"
+                    )
+                group = binding.get("group", "")
+                if not isinstance(group, str) or len(group) > 64:
+                    raise PlanDocumentError(
+                        f"{binding_path}.group 必须是至多 64 字符的组名"
+                    )
+                try:
+                    _names(binding.get("replacement", []), 64)
+                except (ValueError, TypeError):
+                    raise PlanDocumentError(
+                        f"{binding_path}.replacement 必须是至多 64 个非空干员代号的列表，每个代号至多 64 字符"
+                    ) from None
+    conf = document.get("conf", {})
+    if not isinstance(conf, dict) or set(conf) - PlanConf.model_fields.keys():
+        raise PlanDocumentError(
+            "plan.conf 含未知字段或类型错误；请按工具声明填写主表设置"
+        )
+    for key, value in conf.items():
+        if key in OPERATOR_CONF_FIELDS or key == "dorm_order":
+            if not isinstance(value, str) or len(value) > 4096:
+                raise PlanDocumentError(
+                    f"plan.conf.{key} 必须是至多 4096 字符的逗号分隔字符串"
+                )
+    limits = conf.get("operator_mood_limits", {})
+    if not isinstance(limits, dict) or len(limits) > 1024:
+        raise PlanDocumentError(
+            "plan.conf.operator_mood_limits 必须是至多 1024 名干员的心情范围对象"
+        )
+    try:
+        _names(list(limits), 1024)
+    except (ValueError, TypeError):
+        raise PlanDocumentError(
+            "plan.conf.operator_mood_limits 的键必须是至多 64 字符的非空干员代号"
+        ) from None
+    for limit in [conf.get("mood_limits"), *limits.values()]:
+        if limit is not None and (
+            not isinstance(limit, dict) or set(limit) - {"lower", "upper"}
+        ):
+            raise PlanDocumentError("plan.conf 的心情范围只允许 lower 和 upper 字段")
+    advanced = document.get("advanced_settings")
+    if advanced is not None and (
+        not isinstance(advanced, dict) or set(advanced) - set(ADVANCED_SETTING_KEYS)
+    ):
+        raise PlanDocumentError(
+            "plan.advanced_settings 含未知字段或类型错误；只允许工具声明中的排班高级设置"
+        )
+    try:
+        return parse_plan_document(copy.deepcopy(document))
+    except ValidationError as error:
+        safe_fields = (
+            set(PlanModel.model_fields)
+            | set(Plan1.model_fields)
+            | set(Facility.model_fields)
+            | set(Plans.model_fields)
+            | set(PlanConf.model_fields)
+            | set(ADVANCED_SETTING_KEYS)
+            | {"lower", "upper"}
+        )
+        details = [
+            {
+                "loc": [
+                    "plan",
+                    *[
+                        part
+                        if (isinstance(part, str) and part in safe_fields)
+                        or (type(part) is int and 0 <= part <= 1024)
+                        else "<key>"
+                        for part in item["loc"][:8]
+                    ],
+                ],
+                "type": item["type"][:64],
+            }
+            for item in error.errors(
+                include_input=False, include_context=False, include_url=False
+            )[:16]
+        ]
+        raise PlanDocumentError(
+            "排班字段类型或数值无效，请按 details 中的 loc 和 type 修正",
+            details=details,
+        ) from None
+
+
+def _check_operator(name, roster, errors, warnings, *, room=None, role=None, kind=None):
+    operator = _operator(name, roster)
+    code = (
+        "unknown_operator"
+        if not operator["known"]
+        else "unowned_operator"
+        if operator["owned"] is False
+        else "ownership_unknown"
+        if operator["owned"] is not True
+        else "growth_unknown"
+        if not operator["growth_known"]
+        else None
+    )
+    detail = {"operator": name, "room": room, "role": role}
+    if code:
+        errors.append({"code": code, **detail})
+    elif kind and not any(s["roomType"] == kind for s in operator["active_skills"]):
+        locked = any(s["roomType"] == kind for s in skill_index()[name])
+        (errors if locked else warnings).append(
+            {
+                "code": "skill_not_unlocked" if locked else "no_facility_skill",
+                **detail,
+            }
+        )
+
+
+def _check_complete_staffing(plan, roster, *, sparse=False):
+    errors, warnings, seen, checked = [], [], {}, set()
+    for room, facility in plan.plan1.model_dump(exclude_none=True).items():
+        kind = _facility(room, facility)
+        slots = facility["plans"]
+        if kind not in FACILITY_CAPACITY and not (sparse and not kind):
+            errors.append({"code": "unsupported_facility", "room": room})
+        elif kind in FACILITY_CAPACITY and len(slots) > FACILITY_CAPACITY[kind]:
+            errors.append({"code": "capacity_exceeded", "room": room})
+        if room in FIXED_FACILITIES and facility.get("name") not in {"", kind}:
+            errors.append(
+                {
+                    "code": "invalid_fixed_facility",
+                    "room": room,
+                    "expected": kind,
+                    "actual": facility.get("name"),
+                }
+            )
+        if (
+            room.startswith("room_")
+            and kind not in {"制造站", "贸易站", "发电站"}
+            and not (sparse and not kind)
+        ):
+            errors.append({"code": "invalid_left_facility", "room": room})
+        if kind in {"制造站", "贸易站"}:
+            products = MANUFACTURE_PRODUCTS if kind == "制造站" else TRADE_PRODUCTS
+            if facility.get("product") not in products and not (
+                sparse and not facility.get("product")
+            ):
+                errors.append(
+                    {
+                        "code": "invalid_product",
+                        "room": room,
+                        "actual": facility.get("product"),
+                        "allowed": list(products),
+                    }
+                )
+        for slot in slots:
+            name = slot["agent"]
+            if name in {"Free", "Current"} or (sparse and not name):
+                continue
+            if name in seen:
+                errors.append(
+                    {
+                        "code": "duplicate_operator",
+                        "operator": name,
+                        "room": room,
+                        "other_room": seen[name],
+                    }
+                )
+            seen[name] = room
+            _check_operator(
+                name, roster, errors, warnings, room=room, role="primary", kind=kind
+            )
+            checked.add(name)
+            for binding in [slot, *slot.get("group_bindings", [])]:
+                for replacement in binding.get("replacement", []):
+                    if replacement in {"Free", "Current"}:
+                        continue
+                    _check_operator(
+                        replacement,
+                        roster,
+                        errors,
+                        warnings,
+                        room=room,
+                        role="fia_target" if name == "菲亚梅塔" else "replacement",
+                        kind=None if name == "菲亚梅塔" else kind,
+                    )
+                    checked.add(replacement)
+    for name in sorted(_references(plan, inherit_blank_work_slots=sparse) - checked):
+        _check_operator(name, roster, errors, warnings, role="configuration")
+    if not any(
+        facility["plans"]
+        for facility in plan.plan1.model_dump(exclude_none=True).values()
+    ):
+        errors.append({"code": "plan_unavailable"})
+    return errors, warnings
+
+
+def _native_operators(plan, conf):
+    data = Operators(
+        build_global_plan(plan_model=plan, conf_model=conf),
+        runtime_conf=conf,
+        facility_levels=plan.facility_levels,
+    )
+    if error := data.init_and_validate():
+        raise ValueError(str(error))
+    return data
+
+
+@_json_tool
+def try_riic_plan(assignments=None, roster_overrides=None, plan=None, mode="normal"):
+    """Check one detached main plan or legacy primary assignments without execution."""
+    if (assignments is None) == (plan is None) or mode not in {"normal", "rescue"}:
+        raise ValueError("exclusive plan input")
+    if assignments is not None:
+        if mode != "normal":
+            raise ValueError("rescue requires a plan snapshot")
+        return _try_assignments(assignments, roster_overrides)
+    schedule = _strict_document(plan)
+    _, roster = _roster(roster_overrides)
+    errors, warnings = _check_complete_staffing(
+        schedule, roster, sparse=mode == "rescue"
+    )
+    conf = apply_advanced_settings(
+        config.conf.model_copy(deep=True), schedule.advanced_settings
+    )
+    schedule.advanced_settings = export_advanced_settings(conf)
+    result = {
+        "valid": False,
+        "saved": False,
+        "status": "failed",
+        "scope": "complete_main_plan" if mode == "normal" else "rescue_snapshot",
+        "draft": schedule.plan1.model_dump(exclude_none=True),
+        "plan": schedule.model_dump(exclude_none=True, exclude={"backup_groups"}),
+        "errors": errors,
+        "warnings": warnings,
+        "native_checked": False,
+        "unchecked": COMPLETE_UNCHECKED,
+    }
+    if errors:
+        return result
+    try:
+        if mode == "normal":
+            _native_operators(schedule, conf)
+            result["native_checked"] = True
+        else:
+            from arknights_mower.utils.emergency_plan import (
+                effective_rescue_plan,
+                validate_rescue_schedule,
+            )
+
+            normal = getattr(config, "plan", None)
+            if normal is None:
+                raise ValueError("正常排班不可用")
+            explicit = _references(schedule, inherit_blank_work_slots=True)
+            overlap = sorted(explicit & _references(normal))
+            if overlap:
+                errors.append(
+                    {"code": "normal_reference_overlap", "operators": overlap}
+                )
+                return result
+            normal_conf = config.conf.model_copy(deep=True)
+            data = _native_operators(normal, normal_conf)
+            result["normal_native_checked"] = True
+            resolved = validate_rescue_schedule(data, schedule)
+            inherited_errors, inherited_warnings = _check_complete_staffing(
+                resolved, roster, sparse=True
+            )
+            errors.extend(inherited_errors)
+            warnings.extend(inherited_warnings)
+            if errors:
+                return result
+            result["rescue_snapshot_checked"] = True
+            if normal.backup_plans:
+                result["status"] = "incomplete"
+                warnings.append(
+                    {
+                        "code": "conditional_normal_plan",
+                        "message": "正常排班含副表；需实测确定生效排班后再核验救急兼容性",
+                    }
+                )
+                return result
+            effective_rescue_plan(data, schedule)
+            result["resolvedPlan"] = resolved.model_dump(
+                exclude_none=True, exclude={"backup_groups"}
+            )
+    except (ValueError, TypeError) as error:
+        errors.append({"code": "native_validation_failed", "message": str(error)})
+        return result
+    result.update(valid=True, status="passed")
+    return result
+
+
 OVERRIDES_SCHEMA = {
     "type": "array",
     "maxItems": 64,
@@ -424,7 +886,7 @@ get_riic_context_tool_def = {
     "type": "function",
     "function": {
         "name": "get_riic_context",
-        "description": "按实际拥有干员尝试排班前必读：共享BOX练度、主表设施工位和既有基建组合。只读，不同步森空岛。",
+        "description": "按实际拥有干员尝试排班前必读：本地BOX练度、库存观察时间、完整正常主表、显式设施等级、正常排班全部保留姓名和既有组合。只读，不同步森空岛。",
         "parameters": {
             "type": "object",
             "properties": {"roster_overrides": OVERRIDES_SCHEMA},
@@ -458,6 +920,7 @@ get_riic_knowledge_tool_def = {
                         "new_operators",
                         "income_export",
                         "freshness",
+                        "plan_generation",
                     ],
                 },
                 "roster_overrides": OVERRIDES_SCHEMA,
@@ -469,7 +932,7 @@ try_riic_plan_tool_def = {
     "type": "function",
     "function": {
         "name": "try_riic_plan",
-        "description": "试排并检查主班草案。只覆盖指定设施，检查所有保留设施的冲突。通过仅证明主班拥有、练度、工位和占岗检查；不保存或执行，不证明收益或轮换可行。",
+        "description": "只读校验草案。assignments仅覆盖当前布局的主班；plan接受单一新布局的完整plan1/conf/facility_levels/advanced_settings，二者恰选一项。完整主表检查全部主班、替班、多绑及充能目标的拥有练度，并运行原生Operators校验。mode=rescue按保存正常排班编译继承，显式姓名不得与正常全引用重叠；正常含副表则incomplete。不保存、执行或演算，不证明电力、建设、长期轮换或收益。",
         "parameters": {
             "type": "object",
             "properties": {
@@ -491,8 +954,88 @@ try_riic_plan_tool_def = {
                     },
                 },
                 "roster_overrides": OVERRIDES_SCHEMA,
+                "plan": {},
+                "mode": {"type": "string", "enum": ["normal", "rescue"]},
             },
-            "required": ["assignments"],
+            "additionalProperties": False,
         },
     },
 }
+
+
+def _plan_schema():
+    """Publish the accepted main-plan fields from the existing configuration models."""
+    source = PlanModel.model_json_schema()
+    definitions = source["$defs"]
+
+    def inline(value):
+        if isinstance(value, list):
+            return [inline(item) for item in value]
+        if not isinstance(value, dict):
+            return value
+        if "$ref" in value:
+            return inline(definitions[value["$ref"].rsplit("/", 1)[1]])
+        if "allOf" in value and len(value["allOf"]) == 1:
+            return inline(value["allOf"][0])
+        rendered = {
+            key: inline(item)
+            for key, item in value.items()
+            if key not in {"$defs", "title", "default"}
+        }
+        if rendered.get("type") == "object" and "properties" in rendered:
+            rendered["additionalProperties"] = False
+        return rendered
+
+    properties = source["properties"]
+    plan = {
+        "type": "object",
+        "properties": {},
+        "required": ["plan1"],
+        "additionalProperties": False,
+    }
+    for key in ("plan1", "conf", "facility_levels"):
+        plan["properties"][key] = inline(properties[key])
+    plan["properties"]["default"] = {"type": "string", "enum": ["plan1"]}
+    plan["properties"]["backup_plans"] = {"type": "array", "maxItems": 0, "items": {}}
+    plan["properties"]["plan1"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            key: {"$ref": "#/$defs/RIICFacility"}
+            for key in Plan1.model_fields
+            if not key.startswith("gaming_")
+        },
+    }
+    plan["$defs"] = {"RIICFacility": inline(source["$defs"]["Facility"])}
+    plan["$defs"]["RIICFacility"]["properties"]["name"]["enum"] = [
+        "",
+        *FACILITY_CAPACITY,
+    ]
+    product = plan["$defs"]["RIICFacility"]["properties"]["product"]
+    for variant in product["anyOf"]:
+        if variant.get("type") == "string":
+            variant["enum"] = ["", *MANUFACTURE_PRODUCTS, *TRADE_PRODUCTS]
+    slots = plan["$defs"]["RIICFacility"]["properties"]["plans"]
+    slots["maxItems"] = 5
+    slot = slots["items"]["properties"]
+    slot["agent"]["maxLength"] = 64
+    slot["group_bindings"]["maxItems"] = 16
+    for binding in [slot, slot["group_bindings"]["items"]["properties"]]:
+        binding["group"]["maxLength"] = 64
+        binding["replacement"]["maxItems"] = 64
+        binding["replacement"]["items"]["maxLength"] = 64
+    conf_schema = config.Conf.model_json_schema()
+    definitions.update(conf_schema.get("$defs", {}))
+    plan["properties"]["advanced_settings"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            key: inline(conf_schema["properties"][key]) for key in ADVANCED_SETTING_KEYS
+        },
+    }
+    return plan
+
+
+_schema = _plan_schema()
+try_riic_plan_tool_def["function"]["parameters"]["$defs"] = _schema.pop("$defs")
+try_riic_plan_tool_def["function"]["parameters"]["properties"]["plan"] = _schema

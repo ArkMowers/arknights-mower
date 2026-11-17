@@ -12,11 +12,13 @@ from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
 from arknights_mower.utils import config
 from arknights_mower.utils.config.plan import PlanModel
 from arknights_mower.utils.emergency_plan import (
+    compile_rescue_schedule,
     configured_rescue_names,
     effective_rescue_plan,
     rescue_plan_for,
 )
 from arknights_mower.utils.emergency_recovery import NativeProjection
+from arknights_mower.utils.plan import Room
 
 
 def schedule(*names):
@@ -59,7 +61,7 @@ def test_rescue_backups_apply_in_order_without_mutating_normal_plan():
         }
     )
     data = SimpleNamespace(
-        plan={"room_1_1": [object(), object()]},
+        plan={"room_1_1": [Room("芬", "", []), Room("香草", "", [])]},
         evaluate_expression=lambda expression: expression == "(1 == 1)",
     )
     before = document.model_dump()
@@ -129,7 +131,10 @@ def test_recycle_rescue_roster_and_initial_sampling(backup):
         primary["recycle"] = facility
     document = PlanModel(plan1=primary, backup_plans=backups)
     data = SimpleNamespace(
-        plan={"central": [object()], "recycle": [object(), object()]},
+        plan={
+            "central": [Room("红", "", [])],
+            "recycle": [Room("斑点", "", []), Room("克洛丝", "", [])],
+        },
         evaluate_expression=lambda expression: True,
     )
     before = document.model_dump()
@@ -438,8 +443,9 @@ def test_backup_capacity_is_checked_after_conditions_and_overlay():
         "room_1_1": ["初雪", "斑点"]
     }
     data.evaluate_expression = lambda expression: False
-    with pytest.raises(ValueError, match="等级/岗位数不一致"):
-        effective_rescue_plan(data, document)
+    assert effective_rescue_plan(data, document)["rescue_plan"] == {
+        "room_1_1": ["初雪", "砾"]
+    }
 
 
 def test_product_only_backup_keeps_rescue_roster_and_last_active_product():
@@ -551,7 +557,9 @@ def test_rescue_recovery_settings_append_and_dorm_order_overrides(solver):
     assert normal.free_blacklist == ["初雪"]
 
 
-def test_rescue_missing_right_room_prevents_startup(solver, monkeypatch):
+def test_rescue_missing_right_room_inherits_complete_normal_staffing(
+    solver, monkeypatch
+):
     omitted = solver.op_data.operators[PRIMARY[-1]]
     for plan in (solver.op_data.plan, solver.op_data.global_plan["default_plan"].plan):
         plan["contact"] = plan.pop(omitted.room)
@@ -564,20 +572,159 @@ def test_rescue_missing_right_room_prevents_startup(solver, monkeypatch):
     )
     monkeypatch.setattr(emergency, "save_current_state", lambda: True)
     solver._emergency_startup()
-    assert not solver._emergency_active()
-    assert solver.tasks == []
+    assert solver._emergency_active()
+    assert solver.emergency_state["rescue_plan"]["contact"] == [omitted.name]
+    assert omitted.name not in solver.emergency_state["targets"]
     assert omitted.current_room == "contact"
     solver._emergency_schedule_staffing.assert_not_called()
 
 
-def test_rescue_omitted_recycle_is_rejected():
+def test_rescue_omitted_recycle_inherits_both_normal_slots():
     data = SimpleNamespace(
-        plan={"central": [object()], "recycle": [object(), object()]}
+        plan={
+            "central": [Room("红", "", [])],
+            "recycle": [Room("国度", "", ["旅骨"]), Room("行铃", "", ["旅骨"])],
+        }
     )
-    with pytest.raises(ValueError, match="recycle"):
-        effective_rescue_plan(
-            data, PlanModel(plan1={"central": {"plans": [{"agent": "杜林"}]}})
+    result = effective_rescue_plan(
+        data, PlanModel(plan1={"central": {"plans": [{"agent": "杜林"}]}})
+    )
+    assert result["rescue_plan"]["recycle"] == ["国度", "行铃"]
+    assert result["worker_replacements"]["recycle"] == [["旅骨"], ["旅骨"]]
+
+
+@pytest.mark.parametrize("missing", ["room", "empty", "blank", "short"])
+def test_sparse_work_slots_inherit_complete_current_normal_configuration(missing):
+    normal = SimpleNamespace(
+        plan={
+            "central": [Room("阿米娅", "", ["芬"])],
+            "room_1_1": [
+                Room(
+                    "夜烟",
+                    "正常组",
+                    ["香草"],
+                    "制造站",
+                    "gold",
+                    [{"group": "附加", "replacement": ["克洛丝"]}],
+                ),
+                Room("杰西卡", "正常组", ["斑点"], "制造站", "gold"),
+            ],
+            "recycle": [Room("国度", "", ["旅骨"]), Room("行铃", "", ["旅骨"])],
+        },
+        products={"room_1_1": "gold"},
+    )
+    primary = {"central": {"plans": [{"agent": "红", "replacement": []}]}}
+    if missing == "empty":
+        primary["room_1_1"] = {"plans": []}
+    elif missing == "blank":
+        primary["room_1_1"] = {
+            "plans": [{"agent": "", "replacement": ["不存在"]}, {"agent": ""}]
+        }
+    elif missing == "short":
+        primary["room_1_1"] = {"plans": [{"agent": "初雪", "replacement": []}]}
+    source = PlanModel(plan1=primary)
+    before = source.model_dump()
+    resolved = compile_rescue_schedule(normal, source)
+    first, second = resolved.plan1.room_1_1.plans
+    assert second.agent == "杰西卡"
+    assert second.group == "正常组" and second.replacement == ["斑点"]
+    if missing == "short":
+        assert (
+            first.agent == "初雪"
+            and first.replacement == []
+            and first.group_bindings == []
         )
+    else:
+        assert first.agent == "夜烟" and first.group == "正常组"
+        assert first.replacement == ["香草"]
+        assert first.group_bindings[0].group == "附加"
+        assert first.group_bindings[0].replacement == ["克洛丝"]
+    assert resolved.plan1.central.plans[0].replacement == []
+    assert resolved.plan1.room_1_1.product == "gold"
+    assert effective_rescue_plan(normal, source)["rescue_plan"]["recycle"] == [
+        "国度",
+        "行铃",
+    ]
+    resolved.plan1.room_1_1.plans[-1].replacement.append("杜林")
+    assert normal.plan["room_1_1"][-1].replacement == ["斑点"]
+    assert source.model_dump() == before
+
+
+def test_backup_blank_uses_normal_while_current_uses_previous_rescue_layer():
+    normal = SimpleNamespace(
+        plan={"central": [Room("阿米娅", "", ["芬"]), Room("能天使", "", ["香草"])]},
+        evaluate_expression=lambda expression: True,
+    )
+    source = PlanModel(
+        plan1={"central": {"plans": [{"agent": "红"}, {"agent": "初雪"}]}},
+        backup_plans=[
+            {
+                "name": "继承",
+                "plan": {"central": {"plans": [{"agent": "Current"}, {"agent": ""}]}},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+            }
+        ],
+    )
+    result = effective_rescue_plan(normal, source)
+    assert result["rescue_plan"]["central"] == ["红", "能天使"]
+    assert result["worker_replacements"]["central"] == [[], ["香草"]]
+    source.backup_plans[0].plan.central.plans.clear()
+    assert effective_rescue_plan(normal, source)["rescue_plan"]["central"] == [
+        "红",
+        "初雪",
+    ]
+
+
+def test_default_all_inherited_rescue_has_no_effective_takeover():
+    from arknights_mower.utils.emergency_plan import validate_rescue_schedule
+
+    normal = SimpleNamespace(
+        plan={"central": [Room("阿米娅", "", [])]},
+        evaluate_expression=lambda expression: False,
+    )
+    for primary in (
+        {},
+        {"central": {"plans": []}},
+        {"central": {"plans": [{"agent": ""}]}},
+    ):
+        with pytest.raises(ValueError, match="尚无有效救急"):
+            validate_rescue_schedule(normal, PlanModel(plan1=primary))
+    source = PlanModel(
+        plan1={},
+        backup_plans=[
+            {
+                "name": "条件",
+                "plan": {"central": {"plans": [{"agent": "红"}]}},
+                "trigger": {"left": "1", "operator": "==", "right": "0"},
+            }
+        ],
+    )
+    validate_rescue_schedule(normal, source)
+    with pytest.raises(ValueError, match="没有生效"):
+        effective_rescue_plan(normal, source)
+
+
+def test_sparse_inheritance_does_not_change_specialized_or_dorm_semantics():
+    normal = SimpleNamespace(
+        plan={
+            "central": [Room("阿米娅", "", [])],
+            "factory": [Room("年", "", [])],
+            "train": [Room("余", "", []), Room("望", "", [])],
+            "dormitory_1": [Room("塑心", "", [])]
+            + [Room("Free", "", []) for _ in range(4)],
+        }
+    )
+    source = PlanModel(plan1={"central": {"plans": [{"agent": "红"}]}})
+    resolved = compile_rescue_schedule(normal, source)
+    assert resolved.plan1.factory is None and resolved.plan1.train is None
+    assert (
+        effective_rescue_plan(normal, source)["dorm_layout"]["dormitory_1"]
+        == ["Free"] * 5
+    )
+    from arknights_mower.utils.config.plan import Facility
+
+    source.plan1.train = Facility(plans=[{"agent": ""}])
+    assert effective_rescue_plan(normal, source)["rescue_plan"]["train"] == [""]
 
 
 def test_saved_partial_rescue_is_rejected_before_dispatch(solver):

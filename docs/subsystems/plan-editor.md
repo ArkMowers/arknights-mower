@@ -238,6 +238,13 @@ Simulation compiles the saved levels before evaluating production, office condit
 
 The simulator assumes all manufacturing formulas are already unlocked, including both Originium shard recipes and the simulated 1,000-EXP battle record. Recipes remain unlocked after buildings are downgraded, so current levels do not determine historical unlocks; see [PRTS manufacturing facilities](https://prts.wiki/w/制造站). Initial production and backup product switches apply this assumption without a current-level recipe restriction; storage capacity and staffing limits still follow each facility's own level, and finite material costs remain binding. Trading posts retain a per-facility restriction: only a level-three trading post can sell Orundum; another level-three facility does not unlock those orders for lower-level trading posts.
 
+<a id="ai-plan-generation"></a>
+## AI Plan Generation
+
+Plan generation uses the existing Mower AI RIIC skill and read-only tool chain described in [RIIC Tools](ai-assistant.md#riic-tools). There is no separate generator button or fixed-plan enumeration service. The normal editor retains 计算收益 for user-started income simulation; AI draft validation does not run that Worker or save a plan.
+
+Rescue ordinary working blanks follow [Rescue Plan Inheritance](base-scheduler.md#rescue-plan-inheritance). The editor preserves positional blanks instead of shifting later workers left. Main-plan trailing blanks may be omitted because they inherit normal slots. Rescue backup serialization distinguishes explicit trailing blanks, which inherit normal slots, from omitted tails, which keep the preceding rescue layer; `Current` also keeps that layer. Workshop, training and dormitory rules remain unchanged.
+
 ## Backup Idle-Release Setting
 
 In the advanced settings of a backup Scheduling Plan, 宿舍不养闲人 offers 继承, 开启 and 关闭. New and legacy backups default to 继承; it saves as a missing or null `BackupPlanConf.free_room`. Explicit choices save as booleans and survive import, export, autosave and reload. The main-plan checkbox continues to edit the existing global advanced setting. Editing a backup never changes that main selection. The shared merge interval remains a global setting, including when the backup switch inherits.
