@@ -48,13 +48,19 @@ def test_depot_scene_with_expiring_items(filename):
     assert device.mock_calls == []
 
 
-def test_common_home_button_cannot_confirm_operator_selection():
+def test_confirmed_vault_precedes_operator_selection_features():
     recognizer = Recognizer(
         Mock(),
         screencap=(FIXTURES / "depot/consume_false_sort_20261116.jpg").read_bytes(),
     )
 
-    assert recognizer.find("arrange_order_options_scene", threshold=0.9) is None
+    recognizer.find = Mock(wraps=recognizer.find)
+
+    assert recognizer.get_scene() == Scene.DEPOT
+    assert not any(
+        call.args[0] in {"arrange_order_options", "arrange_order_options_scene"}
+        for call in recognizer.find.call_args_list
+    )
 
 
 def test_vault_button_confirms_depot_without_lower_left_background():
@@ -75,8 +81,12 @@ def test_vault_button_confirms_depot_without_lower_left_background():
         "selection/manufacturing_right_edge_20261010.png",
     ],
 )
-def test_operator_selection_keeps_its_scene(filename):
-    recognizer = Recognizer(Mock(), screencap=(FIXTURES / filename).read_bytes())
+@pytest.mark.parametrize("changed_filter", [False, True])
+def test_operator_selection_keeps_its_scene(filename, changed_filter):
+    image = cv2.imread(str(FIXTURES / filename))
+    if changed_filter:
+        image[30:95, 1580:1780] = 0
+    recognizer = Recognizer(Mock(), screencap=cv2.imencode(".png", image)[1].tobytes())
 
     assert recognizer.find("depot") is None
     assert recognizer.find("arrange_order_options_scene", threshold=0.9) is not None

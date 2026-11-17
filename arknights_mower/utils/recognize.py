@@ -881,6 +881,7 @@ class Recognizer:
             "12cadpa": (1810, 21),
             "arrange_confirm": (963, 969),
             "arrange_order_options": (1652, 23),
+            ## "arrange_order_options_scene": (369, 199),
             "clue": (1656, 940),
             "clue/daily": (526, 623),
             "clue/filter_all": (1297, 99),
@@ -1031,8 +1032,6 @@ class Recognizer:
             return None
 
         template_matching = {
-            # 只比较顶部完整“进驻状态”筛选栏，不使用通用首页按钮。
-            "arrange_order_options_scene": ((1580, 30), (1780, 95)),
             # 空槽有固定图标；头像特征误匹配不能确认空槽或清除实际驻员。
             "infra_no_operator": scope or ((0, 0), (1920, 1080)),
             "sss/main": ((1450, 180), (1920, 370)),
