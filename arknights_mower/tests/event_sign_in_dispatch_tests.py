@@ -332,12 +332,12 @@ def test_next_normal_dispatch_recovers_without_repeating_a_success(
     assert actions.mock_calls == [
         call.event(),
         call.recruit(),
-        call.maa(),
+        call.maa(outer_idle_loop=True),
         call.event(),
         call.recruit(),
-        call.maa(),
+        call.maa(outer_idle_loop=True),
         call.recruit(),
-        call.maa(),
+        call.maa(outer_idle_loop=True),
     ]
     assert runtime.daily_event_sign_in == now.value.date()
     assert runtime.daily_event_sign_in_attempt == now.value.date()
