@@ -49,10 +49,23 @@ def identity_key(conf):
 
 
 def run_key(conf):
-    return [identity_key(conf), conf.garrison.target_wins, conf.garrison.run_id]
+    target = "matches" if conf.garrison.mode == "matches" else conf.garrison.target_wins
+    return [identity_key(conf), target, conf.garrison.run_id]
 
 
 def status(conf, progress):
+    if conf.garrison.mode == "matches":
+        prepared = prepare_progress(conf, progress)
+        count = prepared.get("matches_played", 0)
+        limit = conf.garrison.match_limit
+        return {
+            "mode": "matches",
+            "completed": limit > 0 and count >= limit,
+            "count": count,
+            "total": limit,
+            "failed": prepared.get("failed", False),
+            "message": prepared.get("error", ""),
+        }
     wins = (
         progress.get("wins", {})
         if progress.get("identity") == identity_key(conf)
@@ -87,7 +100,10 @@ def prepare_progress(conf, saved):
     )
     if progress.get("key") != run_key(conf):
         if progress.get("key", [None, None, None])[-1] != conf.garrison.run_id:
-            progress["wins"] = {}
+            if conf.garrison.mode == "matches":
+                progress["matches_played"] = 0
+            else:
+                progress["wins"] = {}
         progress.update(key=run_key(conf), failed=False, error="", attempts=0)
     return progress
 

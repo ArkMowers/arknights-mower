@@ -62,12 +62,16 @@ def read_resource(name, remaining):
     return data
 
 
+def panel_open(items):
+    return any("初始生命值" in text.replace(" ", "") for _, _, text in items)
+
+
 def strategy_panel(items):
     """Read the clear count only from the completion banner of an opened panel."""
     texts = [
         (y, unicodedata.normalize("NFKC", t).replace(" ", "")) for _, y, t in items
     ]
-    if not any("初始生命值" in t for _, t in texts):
+    if not panel_open(items):
         return None
     banner = "".join(t for y, t in texts if y < 350)
     if "通过" not in banner:

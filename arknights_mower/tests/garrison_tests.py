@@ -168,7 +168,7 @@ def test_settlement_yields_before_starting_another_match():
     s.wait = Mock(return_value=frame("lobby"))
     s.sleep = Mock()
     s.play(Mock(), result)
-    assert s.progress == {"match": None, "attempts": 1}
+    assert s.progress == {"match": None, "attempts": 1, "settlement_counted": True}
     s.device.tap.assert_called_once_with((125, 225))
 
 
@@ -335,3 +335,64 @@ def test_observed_quick_match_is_saved_for_reconnect():
     s.capture()
     assert s.progress["match"] == {"phase": "active"}
     s.save.assert_called_once()
+
+
+@pytest.mark.parametrize("outcome", ["模拟完成", "模拟失败"])
+def test_match_limit_counts_each_settlement_once_after_restart(
+    outcome, income_db, monkeypatch
+):
+    conf = Conf(
+        maa_long_task_type="garrison",
+        maa_rg_enable=1,
+        garrison={"mode": "matches", "match_limit": 2},
+    )
+    monkeypatch.setattr(runner.config, "conf", conf)
+    progress = model.prepare_progress(conf, {})
+    progress.update(matches_played=1, match={"phase": "active"})
+    result = Frame(
+        None,
+        [Text(outcome, 10, 20, 50, 50), Text("返回主页", 100, 200, 50, 50)],
+        "result",
+        False,
+    )
+    for replay in range(2):
+        s = solver.GarrisonSolver(
+            Mock(), Mock(), progress, record.save_garrison_progress, match_limit=2
+        )
+        s.click = Mock()
+        if not replay:
+            s.click.side_effect = solver.GarrisonYield()
+            with pytest.raises(solver.GarrisonYield):
+                s.play(Mock(), result)
+        else:
+            s.play(Mock(), result)
+        progress = record.load_garrison_progress()
+        assert progress["matches_played"] == 2
+        assert progress["match"] is None
+    assert runner.eligible_progress(conf, 3600) is None
+    conf.garrison.match_limit = 3
+    assert runner.eligible_progress(conf, 3600)["matches_played"] == 2
+    conf.garrison.run_id = "next"
+    assert model.status(conf, progress)["count"] == 0
+
+
+def test_unlimited_matches_can_use_completed_strategy_and_continue_past_200():
+    conf = Conf(garrison={"mode": "matches", "match_limit": 0})
+    progress = model.prepare_progress(conf, {})
+    progress.update(matches_played=200, attempts=200, match={"phase": "active"})
+    s = solver.GarrisonSolver(Mock(), Mock(), progress, Mock(), match_limit=0)
+    assert (
+        s.strategy_action([(0, 220, "已通过模拟⑥次"), (0, 480, "初始生命值")], {})
+        == "play"
+    )
+    assert s.strategy_action([], {}) is None
+    result = Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", False)
+    s._quick_confirmed = True
+    s.click = Mock()
+    s.wait = Mock(return_value=frame("lobby"))
+    s.start_or_resume = Mock(side_effect=solver.GarrisonYield())
+    with pytest.raises(solver.GarrisonYield):
+        s.play(Mock(), result)
+    s.start_or_resume.assert_called_once()
+    detail = model.status(conf, progress)
+    assert (detail["count"], detail["total"], detail["completed"]) == (201, 0, False)

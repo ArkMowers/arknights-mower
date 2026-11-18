@@ -18,6 +18,13 @@ const longTaskEnabled = computed({
   set: (value) => (maa_rg_enable.value = value)
 })
 
+const garrisonGoal = computed({
+  get: () => (garrison.value.mode === 'matches' ? 'matches' : garrison.value.target_wins),
+  set: (value) => {
+    garrison.value.mode = value === 'matches' ? 'matches' : 'medals'
+    if (value !== 'matches') garrison.value.target_wins = value
+  }
+})
 const mobile = inject('mobile')
 
 const maa_long_task_options = [
@@ -178,14 +185,28 @@ watch(
     <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
     <secret-front v-else-if="maa_long_task_type == 'sf'" />
     <template v-else-if="maa_long_task_type == 'garrison'">
-      <n-form-item label="每项策略目标">
+      <n-form-item label="刷取目标">
         <n-select
-          v-model:value="garrison.target_wins"
+          v-model:value="garrisonGoal"
           :options="[
             { label: '三胜 · 金章', value: 3 },
-            { label: '六胜 · 彩章', value: 6 }
+            { label: '六胜 · 彩章', value: 6 },
+            { label: '刷等级 · 按结算局数', value: 'matches' }
           ]"
-          aria-label="每项策略目标"
+          aria-label="刷取目标"
+        />
+      </n-form-item>
+      <n-form-item v-if="garrison.mode === 'matches'" label="刷取局数（0 为不限）">
+        <n-input-number
+          :value="garrison.match_limit"
+          :min="0"
+          :precision="0"
+          aria-label="刷取局数"
+          @update:value="
+            (value) => {
+              if (value !== null) garrison.match_limit = value
+            }
+          "
         />
       </n-form-item>
       <n-p
@@ -200,7 +221,9 @@ watch(
         分钟空档即可重连，临近基建任务时退出游戏。</n-p
       >
       <maa-task-status kind="garrison" :settings="garrison" />
-      <n-button @click="garrison.run_id = String(Date.now())">重新核对并继续</n-button>
+      <n-button @click="garrison.run_id = String(Date.now())">{{
+        garrison.mode === 'matches' ? '重新计数并继续' : '重新核对并继续'
+      }}</n-button>
     </template>
   </n-card>
 </template>

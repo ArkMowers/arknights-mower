@@ -13,7 +13,7 @@ from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 
 from .model import GarrisonError, catalogue, normal_name, record_wins
-from .upstream import FarmSession, strategy_panel
+from .upstream import FarmSession, panel_open, strategy_panel
 from .vision import Vision
 
 RECONNECT_SECONDS = 30
@@ -54,11 +54,13 @@ class GarrisonSolver:
         save,
         *,
         target_wins=3,
+        match_limit=None,
         deadline=None,
         vision=None,
     ):
         self.device, self.recog = device, recog
         self.progress, self.save = progress, save
+        self.match_limit = match_limit
         self.target_wins = target_wins
         if target_wins not in (3, 6):
             raise ValueError("策略刻章目标必须为三胜或六胜")
@@ -103,6 +105,7 @@ class GarrisonSolver:
         }:
             self._quick_confirmed = True
             if frame.screen != "mode" and not self.progress.get("match"):
+                self.progress.pop("settlement_counted", None)
                 self.progress["match"] = {"phase": "active"}
                 self.persist()
         return frame
@@ -172,6 +175,7 @@ class GarrisonSolver:
             if self.remaining() < MATCH_SECONDS:
                 raise GarrisonYield
             # 点击前写入正在开局，避免取消发生在点击与截图之间时误开第二局。
+            self.progress.pop("settlement_counted", None)
             self.progress["match"] = {"phase": "starting"}
             self.persist()
             self.text_click(frame, "^开始模拟$")
@@ -203,6 +207,30 @@ class GarrisonSolver:
             raise GarrisonError("战术决策选项未读到")
         self.click((max(choices)[1], 540))
 
+    def strategy_action(self, panel, strategies):
+        if self.match_limit is not None:
+            return "play" if panel_open(panel) else None
+        wins = strategy_panel(panel)
+        if wins is None:
+            return None
+        key = next(
+            (
+                strategies[normal_name(t)]
+                for _, py, t in panel
+                if 520 < py < 650 and normal_name(t) in strategies
+            ),
+            None,
+        )
+        if key and self.progress["wins"].get(key) != wins:
+            record_wins(self.progress, key, wins)
+            self.persist()
+            if wins >= self.target_wins and all(
+                self.progress["wins"].get(k, -1) >= self.target_wins
+                for k in strategies.values()
+            ):
+                return "completed"
+        return "skip" if wins >= self.target_wins else "play"
+
     def choose_strategy(self, game):
         strategies = {
             normal_name(s["name"]): s["id"] for s in catalogue()["strategies"]
@@ -221,30 +249,14 @@ class GarrisonSolver:
                     game.tap(x, y, 0.7)
                     for attempt in range(3):
                         panel = game.ocr(game.shot(), (1440, 150, 1920, 800))
-                        wins = strategy_panel(panel)
-                        if wins is not None:
+                        action = self.strategy_action(panel, strategies)
+                        if action is not None:
                             break
                         if attempt < 2:
                             self.sleep(0.4)
-                    if wins is None:
-                        continue
-                    key = next(
-                        (
-                            strategies[normal_name(t)]
-                            for _, py, t in panel
-                            if 520 < py < 650 and normal_name(t) in strategies
-                        ),
-                        None,
-                    )
-                    if key and self.progress["wins"].get(key) != wins:
-                        record_wins(self.progress, key, wins)
-                        self.persist()
-                        if wins >= self.target_wins and all(
-                            self.progress["wins"].get(k, -1) >= self.target_wins
-                            for k in strategies.values()
-                        ):
-                            return None
-                    if wins >= self.target_wins:
+                    if action == "completed":
+                        return None
+                    if action != "play":
                         continue
                     frame = self.capture()
                     if frame.screen != "strategy":
@@ -313,7 +325,15 @@ class GarrisonSolver:
             if frame.screen == "unknown":
                 frame = self.wait(lambda f: f.screen != "unknown", 15)
                 continue
-            if not self._quick_confirmed:
+            saved_result = (
+                frame.screen == "result"
+                and frame.find("模拟结束|模拟成功|模拟失败|模拟胜利|模拟完成")
+                and (
+                    self.progress.get("match")
+                    or self.progress.get("settlement_counted")
+                )
+            )
+            if not self._quick_confirmed and not saved_result:
                 raise GarrisonError("未确认当前对局为极速模拟")
             if frame.screen == "info":
                 self.text_click(frame, "[准淮]备就绪|^确认$")
@@ -341,14 +361,31 @@ class GarrisonSolver:
             elif frame.screen == "choice":
                 self.choose_decision(frame)
             elif frame.screen == "result":
-                self.progress["match"] = None
-                self.progress["attempts"] = self.progress.get("attempts", 0) + 1
-                self.persist()
-                self.text_click(frame, "返回主页")
+                home = frame.find("返回主页")
+                if home is None:
+                    frame = self.wait(
+                        lambda f: f.screen == "result" and f.find("返回主页"), 15
+                    )
+                    home = frame.find("返回主页")
+                if not self.progress.get("settlement_counted"):
+                    self.progress["match"] = None
+                    self.progress["settlement_counted"] = True
+                    self.progress["attempts"] = self.progress.get("attempts", 0) + 1
+                    if self.match_limit is not None:
+                        self.progress["matches_played"] = (
+                            self.progress.get("matches_played", 0) + 1
+                        )
+                    self.persist()
+                self.click(home.center)
+                if (
+                    self.match_limit
+                    and self.progress.get("matches_played", 0) >= self.match_limit
+                ):
+                    return
                 frame = self.wait(lambda f: f.screen == "lobby", 20)
                 if self.remaining() < MATCH_SECONDS:
                     return
-                if self.progress["attempts"] >= 200:
+                if self.match_limit is None and self.progress["attempts"] >= 200:
                     raise GarrisonError("已尝试两百局，请核对策略进度")
                 board = game.Board()
                 self._quick_confirmed = False

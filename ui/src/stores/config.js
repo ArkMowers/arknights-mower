@@ -150,7 +150,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_rcl_theme = ref('Tales')
   const rcl = ref({})
   const rogue = ref({})
-  const garrison = ref({ target_wins: 3, run_id: '' })
+  const garrison = ref({ mode: 'medals', match_limit: 1, target_wins: 3, run_id: '' })
   const sss = ref({ type: 1, ec: 1, scripts: [], run_id: '' })
   const paradox = ref({ scripts: [], run_id: '' })
   const copilot = ref({
@@ -631,7 +631,13 @@ export const useConfigStore = defineStore('config', () => {
       maa_rcl_theme.value = response.data.maa_rcl_theme
       rcl.value = response.data.rcl
       rogue.value = response.data.rogue
-      garrison.value = { target_wins: 3, run_id: '', ...response.data.garrison }
+      garrison.value = {
+        mode: 'medals',
+        match_limit: 1,
+        target_wins: 3,
+        run_id: '',
+        ...response.data.garrison
+      }
       sss.value = { scripts: [], run_id: '', ...response.data.sss }
       paradox.value = { scripts: [], run_id: '', ...(response.data.paradox ?? {}) }
       copilot.value = {

@@ -76,7 +76,12 @@ onScopeDispose(() => {
   <n-flex align="center" :size="8">
     <n-text :type="status_type">{{ status_text }}</n-text>
     <n-text v-if="kind === 'garrison' && detail && !failed">
-      已确认达标 {{ detail.count }}/{{ detail.total }} 项策略
+      <template v-if="detail.mode === 'matches'"
+        >已结算 {{ detail.count }}{{ detail.total ? ' / ' + detail.total : '' }} 局{{
+          detail.total ? '' : '（不限）'
+        }}</template
+      >
+      <template v-else>已确认达标 {{ detail.count }}/{{ detail.total }} 项策略</template>
     </n-text>
     <n-text v-if="detail?.message && !failed" type="warning">{{ detail.message }}</n-text>
     <n-button v-if="failed" size="tiny" @click="refresh">重试</n-button>

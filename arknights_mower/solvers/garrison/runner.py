@@ -33,7 +33,11 @@ def run_garrison(scheduler):
         return False
     limit = datetime.now() + timedelta(hours=24)
 
+    settings = conf.garrison.model_copy()
+
     def deadline():
+        if not config.conf.GARRISON or config.conf.garrison != settings:
+            return datetime.now()
         return long_task_deadline(scheduler, limit)
 
     window = (deadline() - datetime.now()).total_seconds()
@@ -47,7 +51,8 @@ def run_garrison(scheduler):
         scheduler.recog,
         progress,
         record.save_garrison_progress,
-        target_wins=conf.garrison.target_wins,
+        target_wins=settings.target_wins,
+        match_limit=settings.match_limit if settings.mode == "matches" else None,
         deadline=deadline,
     )
     logger.info("开始卫戍协议个人极速模拟")
