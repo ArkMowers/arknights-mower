@@ -47,6 +47,9 @@ _DB_TABLE_STMTS = (
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_copilot_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS maa_event_shop_completion ("
+    "activity_id TEXT NOT NULL, start_ts INTEGER NOT NULL,"
+    "PRIMARY KEY (activity_id, start_ts))",
     "CREATE TABLE IF NOT EXISTS maa_blackflow_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_blackflow_boss_progress ("
@@ -415,6 +418,25 @@ def save_state_to_db(saved_state):
 
 def save_current_state():
     return save_state_to_db(current_state())
+
+
+def maa_event_shop_completed(activity_id, start_ts):
+    return bool(
+        _fetchall(
+            "SELECT 1 FROM maa_event_shop_completion WHERE activity_id = ? AND start_ts = ?",
+            activity_id,
+            start_ts,
+        )
+    )
+
+
+def mark_maa_event_shop_complete(activity_id, start_ts):
+    with _conn() as connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO maa_event_shop_completion VALUES (?, ?)",
+            (activity_id, start_ts),
+        )
+        connection.commit()
 
 
 def load_maa_copilot_progress():

@@ -145,7 +145,8 @@ def test_real_daily_dispatch_switches_only_on_confirmed_finite_completion(
     scheduler, navigation, manager, monkeypatch, result
 ):
     setup_shop(scheduler)
-    monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
+    navigate = MagicMock(return_value=True)
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
 
     def running():
         # StartUp and Award precede the separately navigated Custom task.
@@ -183,6 +184,54 @@ def test_real_daily_dispatch_switches_only_on_confirmed_finite_completion(
         assert base_schedule.config.conf.maa_weekly_plan[0].stage == ["1-7"]
     assert scheduler.last_execution["maa"] is not None
     assert scheduler.release_maa.called
+
+    manager.set_active_plan("活动")
+    scheduler.MAA.running.side_effect = None
+    scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=2))
+    assert navigate.call_count == (1 if result == "success" else 2)
+
+
+@pytest.mark.parametrize("activity_id", ["act999side", "act1000side"])
+def test_completed_shop_is_skipped_after_restart_but_next_activity_runs(
+    scheduler, navigation, manager, monkeypatch, activity_id
+):
+    setup_shop(scheduler)
+    base_schedule.config.conf.maa_event_shop.switch_source = ""
+    navigate = MagicMock(return_value=True)
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
+    monkeypatch.setattr(scheduler, "_maa_refresh_deadline", lambda: None)
+
+    def running():
+        emit(scheduler, 20002, node="SS@Store@CheckUnlimited")
+        emit(scheduler, 10002)
+        return False
+
+    def deadline():
+        return datetime.now() + timedelta(hours=2)
+
+    scheduler.MAA.running.side_effect = running
+    scheduler.run_maa_event_shop(deadline)
+    assert manager.get_active_plan_key() == "活动"
+    navigate.assert_called_once_with(ENTRY)
+
+    restarted = object.__new__(base_schedule.BaseSchedulerSolver)
+    restarted._maa_refresh_deadline = lambda: deadline()
+    restarted._defer_maa_event_shop_for_refresh = MagicMock()
+    assert restarted.run_maa_event_shop(deadline, manual=True) is None
+    restarted._defer_maa_event_shop_for_refresh.assert_not_called()
+    navigate.assert_called_once()
+
+    next_activity = {
+        **ENTRY,
+        "activity_id": activity_id,
+        "start_ts": 140 if activity_id == ENTRY["activity_id"] else ENTRY["start_ts"],
+        "end_ts": 240,
+    }
+    navigation.write_text(json.dumps([next_activity]))
+    scheduler.MAA.running.side_effect = None
+    scheduler.run_maa_event_shop(deadline)
+    assert navigate.call_args_list == [call(ENTRY), call(next_activity)]
+    assert scheduler.MAA.append_task.call_count == 2
 
 
 @pytest.mark.parametrize(

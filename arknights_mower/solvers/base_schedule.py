@@ -59,6 +59,8 @@ from arknights_mower.solvers.record import (
     load_maa_copilot_progress,
     load_maa_paradox_progress,
     load_maa_sss_progress,
+    maa_event_shop_completed,
+    mark_maa_event_shop_complete,
     save_agent_action,
     save_current_state,
     save_exception,
@@ -20031,6 +20033,7 @@ class BaseSchedulerSolver(
         from arknights_mower.utils.device.io_budget import device_io_budget
         from arknights_mower.utils.maa_event_shop import (
             select_shop,
+            shop_identity,
             shop_params,
             switch_after_shop,
         )
@@ -20044,12 +20047,7 @@ class BaseSchedulerSolver(
                 return True
             return False
 
-        if defer_for_refresh():
-            return False
-        if (
-            config.stop_maa.is_set()
-            or (deadline() - datetime.now()).total_seconds() <= 300
-        ):
+        if config.stop_maa.is_set():
             return
         with backup_lock:
             settings = config.conf.maa_event_shop.model_copy(deep=True)
@@ -20057,23 +20055,31 @@ class BaseSchedulerSolver(
                 return
             manager = get_weekly_plan_manager()
             shop = select_shop(manager, manager._current_server_timestamp())
+            if shop is None:
+                logger.info(
+                    "没有符合当前理智周计划的当期 SS 活动，跳过商店兑换",
+                    extra={"log_group": "maa-integration"},
+                )
+                return
+            activity_key = shop_identity(shop)
+            if maa_event_shop_completed(*activity_key):
+                logger.debug(
+                    "活动「%s」的商店兑换已完成，跳过本次兑换", shop["activity"]
+                )
+                return
+            source = manager.get_active_plan_key()
             task = {
                 "settings": settings.model_dump(),
-                "activity": shop["activity"] if shop else None,
-                "source": manager.get_active_plan_key(),
-                "target": manager.get_activity_fallbacks().get(
-                    manager.get_active_plan_key(), ""
-                ),
+                "source": source,
+                "target": manager.get_activity_fallbacks().get(source, ""),
                 "revision": manager.get_active_plan_revision(),
                 "finite_done": False,
                 "completed": False,
                 "finished": False,
             }
-        if shop is None:
-            logger.info(
-                "没有符合当前理智周计划的当期 SS 活动，跳过商店兑换",
-                extra={"log_group": "maa-integration"},
-            )
+        if defer_for_refresh():
+            return False
+        if (deadline() - datetime.now()).total_seconds() <= 300:
             return
         self.release_maa()
         navigation_end = monotonic() + min(
@@ -20113,10 +20119,10 @@ class BaseSchedulerSolver(
             if (
                 manager.get_active_plan_revision() != task["revision"]
                 or current_shop is None
-                or current_shop["activity"] != task["activity"]
+                or shop_identity(current_shop) != activity_key
             ):
                 logger.info(
-                    "理智周计划已更改，跳过本次活动商店兑换",
+                    "理智周计划或当期活动已更改，跳过本次活动商店兑换",
                     extra={"log_group": "maa-integration"},
                 )
                 return
@@ -20147,7 +20153,15 @@ class BaseSchedulerSolver(
             if not config.stop_maa.is_set():
                 # Close the native handle before applying a configuration change.
                 self.release_maa()
+                if not (task["finite_done"] and task["completed"]):
+                    return
                 with backup_lock:
+                    mark_maa_event_shop_complete(*activity_key)
+                    logger.info(
+                        "活动「%s」的商店已遇到无限商品，已记录兑换完成",
+                        shop["activity"],
+                        extra={"log_group": "maa-integration"},
+                    )
                     if switch_after_shop(task, config.conf.maa_event_shop, manager):
                         logger.info(
                             "活动商店有限商品已兑换完毕，刷理智方案从 %s 切换为 %s",
