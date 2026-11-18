@@ -365,17 +365,7 @@ class GarrisonSolver:
             )
             return (key, wins) if wins or key else None
 
-        previous = None
-
-        def confirmed(observation):
-            nonlocal previous
-            ready = observation is not None and (
-                observation == "play" or observation == previous
-            )
-            previous = observation
-            return ready
-
-        result = self.wait_for_observation(read, confirmed, 4)
+        result = self.wait_for_observation(read, bool, 4)
         if result is None or result == "play":
             return result
         key, wins = result

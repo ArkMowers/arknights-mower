@@ -468,10 +468,16 @@ def test_choose_strategy_from_count_even_with_unreadable_name(
 
 
 @pytest.mark.parametrize(
-    ("known", "banner", "expected"), [(3, "", 3), (0, "已通过模拟3次", 3), (0, "", 0)]
+    ("known", "banner", "expected", "partial"),
+    [
+        (3, "", 3, False),
+        (0, "已通过模拟3次", 3, False),
+        (0, "已通过模拟3次", 3, True),
+        (0, "", 0, False),
+    ],
 )
-def test_strategy_waits_for_matching_readings_and_preserves_wins(
-    known, banner, expected
+def test_strategy_uses_first_readable_count_and_preserves_wins(
+    known, banner, expected, partial
 ):
     p = {"wins": {"band_amiya": known}}
     worker = solver.GarrisonSolver(Mock(), Mock(), p, Mock())
@@ -479,11 +485,12 @@ def test_strategy_waits_for_matching_readings_and_preserves_wins(
     panel = [(1550, 480, "初始生命值"), (1610, 560, "阿米娅")]
     final = panel + ([(1540, 215, banner)] if banner else [])
     game = Mock()
-    game.ocr.side_effect = [panel, [], final, final]
+    readings = [panel + [(1540, 215, "已通过模拟")], []] if partial else []
+    game.ocr.side_effect = [*readings, final]
     action = worker.read_strategy_action(
         game, {"阿米娅": "band_amiya", "其他策略": "other"}
     )
-    assert game.ocr.call_count == 4
+    assert game.shot.call_count == len(readings) + 1
     assert action == ("skip" if expected >= 3 else "play")
     assert p["wins"]["band_amiya"] == expected
 
