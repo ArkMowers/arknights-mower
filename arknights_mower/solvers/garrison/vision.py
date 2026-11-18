@@ -176,7 +176,9 @@ class Vision:
         screen, quick = classify(texts)
         cost_visible = screen == "unknown" and deployment_cost_visible(image)
         if not quick and (
-            cost_visible or screen in {"info", "strategy", "prep", "battle"}
+            cost_visible
+            or screen
+            in {"info", "strategy", "prep", "battle", "choice", "confirm-ready"}
         ):
             texts += self.texts(image, (140, 20, 300, 80), scale=2)
             screen, quick = classify(texts)

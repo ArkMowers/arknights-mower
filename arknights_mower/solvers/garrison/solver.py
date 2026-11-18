@@ -107,6 +107,8 @@ class GarrisonSolver:
                 "info",
                 "strategy",
                 "squad",
+                "choice",
+                "confirm-ready",
                 "prep",
                 "battle",
             }
@@ -143,17 +145,23 @@ class GarrisonSolver:
     def wait(
         self, predicate, timeout=8, *, error="操作后没有观察到预期画面，保留当前对局"
     ):
+        frame = self.wait_for_observation(self.capture, predicate, timeout)
+        if frame is None:
+            raise GarrisonError(error)
+        return frame
+
+    def wait_for_observation(self, read, predicate, timeout):
         end = time.monotonic() + min(timeout, self.remaining())
         while time.monotonic() < end:
-            frame = self.capture()
-            remaining = end - time.monotonic()
+            frame = read()
+            remaining = min(self.remaining(), end - time.monotonic())
             if remaining <= 0:
                 break
             if predicate(frame):
                 return frame
             self.sleep(min(0.2, remaining))
         self.remaining()
-        raise GarrisonError(error)
+        return None
 
     def persist(self):
         self.save(self.progress)
@@ -229,12 +237,15 @@ class GarrisonSolver:
             ):
                 return None
             match = self.progress.get("match")
-            if not match or (
-                match == {"phase": "starting"}
-                and f.find("^极速模拟$", (1150, 900, 1520, 1040))
-                and f.find("^独立模拟$", (1520, 900, 1920, 1040))
-            ):
+            if not match:
                 return "start"
+            if f.find("^极速模拟$", (1150, 900, 1520, 1040)) and f.find(
+                "^独立模拟$", (1520, 900, 1920, 1040)
+            ):
+                if match == {"phase": "starting"}:
+                    return "start"
+                if match == {"phase": "active"}:
+                    return "verify_start"
             return None
 
         if frame.screen == "lobby":
@@ -248,8 +259,15 @@ class GarrisonSolver:
                 action = lobby_action(frame)
             if action == "switch":
                 self.text_click(frame, "^个人模拟$", personal)
-                frame = self.wait(lambda f: lobby_action(f) in {"resume", "start"}, 12)
+                frame = self.wait(
+                    lambda f: lobby_action(f) in {"resume", "start", "verify_start"}, 12
+                )
                 action = lobby_action(frame)
+            if action == "verify_start":
+                frame = self.wait(
+                    lambda f: lobby_action(f) in {"verify_start", "resume"}, 12
+                )
+                action = "resume" if lobby_action(frame) == "resume" else "start"
         elif self.progress.get("match"):
             raise GarrisonError("已保存未完成对局，但未找到继续入口；未开始新对局")
         else:
@@ -267,6 +285,8 @@ class GarrisonSolver:
                         "battle",
                         "result",
                         "battle-timeout",
+                        "choice",
+                        "confirm-ready",
                     }
                 ),
                 RECONNECT_SECONDS,
@@ -327,20 +347,30 @@ class GarrisonSolver:
         )
         self.click(self.decision_point(frame))
 
-    def strategy_action(self, panel, strategies):
-        if self.match_limit is not None:
-            return "play" if panel_open(panel) else None
-        wins = strategy_panel(panel)
-        if wins is None:
-            return None
-        key = next(
-            (
-                strategies[normal_name(t)]
-                for _, py, t in panel
-                if 520 < py < 650 and normal_name(t) in strategies
-            ),
-            None,
-        )
+    def read_strategy_action(self, game, strategies):
+        def read():
+            panel = game.ocr(game.shot(), (1440, 150, 1920, 800))
+            if self.match_limit is not None:
+                return "play" if panel_open(panel) else None
+            wins = strategy_panel(panel)
+            if wins is None:
+                return None
+            key = next(
+                (
+                    strategies[normal_name(t)]
+                    for _, y, t in panel
+                    if 520 < y < 650 and normal_name(t) in strategies
+                ),
+                None,
+            )
+            return (key, wins) if wins or key else None
+
+        result = self.wait_for_observation(read, bool, 4)
+        if result is None or result == "play":
+            return result
+        key, wins = result
+        if key:
+            wins = max(wins, self.progress["wins"].get(key, 0))
         if key and self.progress["wins"].get(key) != wins:
             record_wins(self.progress, key, wins)
             self.persist()
@@ -367,13 +397,7 @@ class GarrisonSolver:
                     if frame.screen != "strategy":
                         return frame
                     game.tap(x, y, 0.7)
-                    for attempt in range(3):
-                        panel = game.ocr(game.shot(), (1440, 150, 1920, 800))
-                        action = self.strategy_action(panel, strategies)
-                        if action is not None:
-                            break
-                        if attempt < 2:
-                            self.sleep(0.4)
+                    action = self.read_strategy_action(game, strategies)
                     if action == "completed":
                         return None
                     if action != "play":
