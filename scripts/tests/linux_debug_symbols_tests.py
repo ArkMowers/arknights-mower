@@ -1,4 +1,5 @@
 import ctypes
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -60,11 +61,14 @@ class LinuxDebugSymbolsTests(unittest.TestCase):
                     ["mower/_internal/example/.debug/libexample.so.1.debug"],
                 )
                 symbols.extractall(root, filter="data")
-            source_line = subprocess.check_output(
-                ["gdb", "--batch", "-nx", library, "-ex", "info line answer"],
-                text=True,
-            )
-            self.assertIn("example.c", source_line)
+            with self.subTest(check="GDB source lookup"):
+                if shutil.which("gdb") is None:
+                    self.skipTest("GDB is unavailable for source lookup")
+                source_line = subprocess.check_output(
+                    ["gdb", "--batch", "-nx", library, "-ex", "info line answer"],
+                    text=True,
+                )
+                self.assertIn("example.c", source_line)
             (library.parent / ".debug/libexample.so.1.debug").unlink()
             stripped_input.replace(library)
             split_linux_debug_symbols(bundle)
