@@ -19,7 +19,6 @@ from .vision import Vision
 
 RECONNECT_SECONDS = 30
 MATCH_SECONDS = 12 * 60
-HANDOVER_SECONDS = 30
 
 
 class GarrisonYield(BaseException):
@@ -82,7 +81,7 @@ class GarrisonSolver:
             seconds = min(
                 seconds,
                 (self.deadline() - datetime.now()).total_seconds()
-                - (5 if self._restoring_theme else HANDOVER_SECONDS),
+                - (5 if self._restoring_theme else 0),
             )
         if seconds <= 0 or config.stop_maa.is_set():
             raise GarrisonYield

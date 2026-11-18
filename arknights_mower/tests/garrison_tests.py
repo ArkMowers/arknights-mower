@@ -264,13 +264,19 @@ def test_squad_intro_can_outlast_unknown_screen_timeout(monkeypatch, interrupted
 
 
 def test_real_deadline_preempts_before_input(monkeypatch):
+    now = datetime.now()
+    clock = Mock()
+    clock.now.return_value = now
+    monkeypatch.setattr(solver, "datetime", clock)
     s = solver.GarrisonSolver(
         Mock(),
         Mock(),
         {},
         Mock(),
-        deadline=lambda: datetime.now() + timedelta(seconds=20),
+        deadline=lambda: now + timedelta(minutes=12),
     )
+    assert s.remaining() == 720
+    clock.now.return_value = now + timedelta(minutes=12)
     with pytest.raises(solver.GarrisonYield):
         s.click((10, 10))
     s.device.tap.assert_not_called()
@@ -300,7 +306,7 @@ def test_settlement_yields_before_starting_another_match(monkeypatch):
         Mock(),
         {"match": {"phase": "active"}},
         Mock(),
-        deadline=lambda: datetime.now() + timedelta(minutes=12, seconds=29),
+        deadline=lambda: datetime.now() + timedelta(minutes=11, seconds=59),
     )
     s._quick_confirmed = True
     result = Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", False)
@@ -428,7 +434,7 @@ def test_last_confirmed_medal_stops_scan_and_future_dispatch(
 
 @pytest.mark.parametrize(
     ("seconds", "saved_match", "admitted"),
-    [(749, False, False), (750, False, True), (540, True, True), (539, True, False)],
+    [(719, False, False), (720, False, True), (540, True, True), (539, True, False)],
 )
 def test_dispatch_reserves_a_full_new_match(
     seconds, saved_match, admitted, income_db, monkeypatch

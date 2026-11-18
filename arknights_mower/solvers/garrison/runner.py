@@ -10,7 +10,7 @@ from arknights_mower.utils.long_task_windows import long_task_window
 from arknights_mower.utils.scheduler_task import find_next_task
 
 from .model import goal_reached, prepare_progress
-from .solver import HANDOVER_SECONDS, MATCH_SECONDS, GarrisonSolver
+from .solver import MATCH_SECONDS, GarrisonSolver
 
 
 def dispatch_window(scheduler, run_key, match_limit, opening):
@@ -35,7 +35,7 @@ def eligible_progress(conf, window, scheduler, opening):
         return None
     if goal_reached(progress, settings.target_wins, match_limit):
         return progress if progress.get("original_theme") else None
-    if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:
+    if not progress.get("match") and window < MATCH_SECONDS:
         return None
     return progress
 
