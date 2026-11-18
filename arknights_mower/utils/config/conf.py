@@ -10,6 +10,7 @@ from pydantic import (
     Field,
     StrictBool,
     TypeAdapter,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -23,6 +24,7 @@ from arknights_mower.utils.config.device_profile import (
     profile_from_legacy,
     updated_legacy_profile_fields,
 )
+from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     default_performance_mode,
@@ -564,6 +566,12 @@ class MaaStageRatioRule(ConfModel):
     members: list[MaaStageRatioMember] = []
 
 
+def _unexpired_medicine_date(value: str | None) -> str | None:
+    if value is not None and value < get_server_time().date().isoformat():
+        return None
+    return value
+
+
 class RegularTaskPart(ConfModel):
     class MaaDailyPlan(BaseModel):
         medicine: int = 0
@@ -643,7 +651,11 @@ class RegularTaskPart(ConfModel):
     def validate_medicine_use_all_date(cls, value: str | None) -> str | None:
         if value is not None and date.fromisoformat(value).isoformat() != value:
             raise ValueError("日期格式须为 YYYY-MM-DD")
-        return value
+        return _unexpired_medicine_date(value)
+
+    @field_serializer("medicine_use_all_date")
+    def serialize_medicine_use_all_date(self, value: str | None) -> str | None:
+        return _unexpired_medicine_date(value)
 
 
 class WorkShopItem(ConfModel):

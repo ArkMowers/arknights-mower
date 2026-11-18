@@ -6,7 +6,7 @@ import axios from 'axios'
 import { computed, h, inject, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
-import { useGameWeekdayIndex } from '@/composables/gameWeekday'
+import { useGameDay } from '@/composables/gameWeekday'
 import {
   CHIP_STAGES,
   WEEKDAYS,
@@ -113,7 +113,16 @@ watch(editorMode, (mode) => {
   }
 })
 
-const currentWeekdayIndex = useGameWeekdayIndex()
+const { date: gameDate, weekdayIndex: currentWeekdayIndex } = useGameDay()
+const scheduledMedicineDate = computed({
+  get() {
+    const date = medicine_use_all_date.value
+    return date && date >= gameDate.value ? date : null
+  },
+  set(date) {
+    medicine_use_all_date.value = date
+  }
+})
 
 const stageOptions = computed(() => buildStageOptions(latestActivityOptions.value))
 
@@ -356,7 +365,7 @@ function cancelCopyDialogLongPress() {
           >
             <span id="medicine-use-all-date">用完理智药的日期</span>
             <n-date-picker
-              v-model:formatted-value="medicine_use_all_date"
+              v-model:formatted-value="scheduledMedicineDate"
               type="date"
               value-format="yyyy-MM-dd"
               placeholder="选择日期"
@@ -366,7 +375,9 @@ function cancelCopyDialogLongPress() {
             <help-text>
               <div>游戏日从北京时间当天 04:00 到次日 04:00。</div>
               <div>到该游戏日，刷理智时允许使用所有理智药，仍受关卡库存上限和任务时间限制。</div>
-              <div>MAA 按提交刷理智任务时的游戏日判断。清空日期即可取消。</div>
+              <div>
+                游戏日结束后日期自动清空，也可手动清空取消。MAA 按提交刷理智任务时的游戏日判断。
+              </div>
             </help-text>
           </n-flex>
           <n-flex align="center" v-if="stage_plan_runner === 'maa'">

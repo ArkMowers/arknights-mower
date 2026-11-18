@@ -186,6 +186,26 @@ describe('周计划芯片按钮排序联动', () => {
     expect(html).toContain('consistent-menu-width="false"')
   })
 
+  it('游戏日刷新后清空过期日期的显示并保留以后日期', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-25T03:59:59+08:00'))
+    state.config.medicine_use_all_date.value = '2026-11-24'
+    const app = mountEditor()
+    try {
+      expect(state.editor.setupState.scheduledMedicineDate).toBe('2026-11-24')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(state.editor.setupState.scheduledMedicineDate).toBeNull()
+      expect(state.config.medicine_use_all_date.value).toBe('2026-11-24')
+
+      state.editor.setupState.scheduledMedicineDate = '2026-11-26'
+      expect(state.editor.setupState.scheduledMedicineDate).toBe('2026-11-26')
+      expect(state.config.medicine_use_all_date.value).toBe('2026-11-26')
+    } finally {
+      app.unmount()
+      vi.useRealTimers()
+    }
+  })
+
   it('资源变更后重读活动并保留周计划选择', async () => {
     const selected = JSON.stringify(state.config.maa_weekly_plan.value)
     const app = mountEditor()
