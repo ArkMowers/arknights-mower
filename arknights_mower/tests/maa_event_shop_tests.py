@@ -114,7 +114,7 @@ def setup_shop(scheduler):
     scheduler.device = MagicMock()
 
 
-def emit(solver, message, taskid=1, chain="Custom", node=None):
+def emit(solver, message, taskid=1, chain="Custom", node=None, **extra):
     solver.on_maa_callback(
         message,
         json.dumps(
@@ -123,6 +123,7 @@ def emit(solver, message, taskid=1, chain="Custom", node=None):
                 "taskid": taskid,
                 "subtask": "ProcessTask",
                 "details": {"task": node},
+                **extra,
             }
         ).encode(),
         None,
@@ -133,6 +134,7 @@ def emit(solver, message, taskid=1, chain="Custom", node=None):
     "result",
     [
         "success",
+        "short-success",
         "underfunded",
         "error",
         "stop",
@@ -155,6 +157,8 @@ def test_real_daily_dispatch_switches_only_on_confirmed_finite_completion(
             node = (
                 "SS@Store@Underfunded"
                 if result == "underfunded"
+                else "CheckUnlimited"
+                if result == "short-success"
                 else "SS@Store@CheckUnlimited"
             )
             if result != "missing":
@@ -164,6 +168,7 @@ def test_real_daily_dispatch_switches_only_on_confirmed_finite_completion(
                     taskid,
                     "Mall" if result == "unmatched" else "Custom",
                     node,
+                    first=["SS@Store@PurchaseSelected"],
                 )
             if result == "subtask-error":
                 emit(scheduler, 20000, taskid)
@@ -179,8 +184,9 @@ def test_real_daily_dispatch_switches_only_on_confirmed_finite_completion(
             "params": {"event_shop": {"blacklist": ["家具"]}},
         },
     )
-    assert manager.get_active_plan_key() == ("常规" if result == "success" else "活动")
-    if result == "success":
+    switched = result in ("success", "short-success")
+    assert manager.get_active_plan_key() == ("常规" if switched else "活动")
+    if switched:
         assert base_schedule.config.conf.maa_weekly_plan[0].stage == ["1-7"]
     assert scheduler.last_execution["maa"] is not None
     assert scheduler.release_maa.called
@@ -188,7 +194,94 @@ def test_real_daily_dispatch_switches_only_on_confirmed_finite_completion(
     manager.set_active_plan("活动")
     scheduler.MAA.running.side_effect = None
     scheduler.run_maa_event_shop(lambda: datetime.now() + timedelta(hours=2))
-    assert navigate.call_count == (1 if result == "success" else 2)
+    assert navigate.call_count == (1 if switched else 2)
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        "plugin-exhausted",
+        "process-exhausted",
+        "nine-swipes",
+        "wrong-task",
+        "unrelated-swipe",
+        "underfunded",
+        "underfunded-after-plugin",
+        "purchase-after-swipes",
+        "plugin-incomplete",
+        "process-without-limit",
+        "subtask-error",
+        "chain-error",
+        "chain-stopped",
+    ],
+)
+def test_shop_scan_exhaustion_controls_later_dispatch_without_switching_plan(
+    scheduler, navigation, manager, monkeypatch, result
+):
+    setup_shop(scheduler)
+    navigate = MagicMock(return_value=True)
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
+    monkeypatch.setattr(scheduler, "_maa_refresh_deadline", lambda: None)
+    process_only = result.startswith("process-")
+    if process_only:
+        base_schedule.config.conf.maa_event_shop.blacklist = []
+
+    def running():
+        emit(scheduler, 20001, subtask="EventShopTask")
+        if process_only:
+            emit(scheduler, 20002, subtask="EventShopTask")
+        first = ["SS@Store@Begin" if process_only else "SS@Store@Swipe"]
+        if result == "unrelated-swipe":
+            first = ["SomeOtherTask"]
+        for index in range(9 if result == "nine-swipes" else 10):
+            emit(
+                scheduler,
+                20002,
+                taskid=2 if result == "wrong-task" else 1,
+                first=first,
+                details={
+                    "task": "Swipe",
+                    "action": "Swipe",
+                    "exec_times": index + 1 if process_only else 1,
+                    "max_times": 10,
+                },
+            )
+        if result in ("underfunded", "purchase-after-swipes"):
+            purchase = ["SS@Store@PurchaseSelected"]
+            node = "UnderfundedOCR" if result == "underfunded" else "PurchasedConfirm"
+            emit(scheduler, 20001, node=node, first=purchase)
+            emit(scheduler, 20002, node=node, first=purchase)
+        if result == "subtask-error":
+            emit(scheduler, 20000, subtask="EventShopTask")
+        if not process_only and result != "plugin-incomplete":
+            emit(scheduler, 20002, subtask="EventShopTask")
+        if result == "underfunded-after-plugin":
+            emit(scheduler, 20002, node="Underfunded", first=["SS@Store@Begin"])
+        if result == "process-exhausted":
+            emit(
+                scheduler,
+                20003,
+                first=["SS@Store@Begin"],
+                what="ExceededLimit",
+                details={"task": "Swipe", "exec_times": 10, "max_times": 10},
+            )
+        emit(
+            scheduler, {"chain-error": 10000, "chain-stopped": 10004}.get(result, 10002)
+        )
+        return False
+
+    def deadline():
+        return datetime.now() + timedelta(hours=2)
+
+    scheduler.MAA.running.side_effect = running
+    scheduler.run_maa_event_shop(deadline)
+    assert manager.get_active_plan_key() == "活动"
+
+    scheduler.MAA.running.side_effect = None
+    scheduler.run_maa_event_shop(deadline)
+    expected_runs = 1 if result in ("plugin-exhausted", "process-exhausted") else 2
+    assert navigate.call_count == expected_runs
+    assert scheduler.MAA.append_task.call_count == expected_runs
 
 
 @pytest.mark.parametrize("activity_id", ["act999side", "act1000side"])
