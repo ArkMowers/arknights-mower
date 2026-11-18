@@ -603,7 +603,10 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         )
         job = self.jobs["build-linux"]
         binding_step = find_step(job, "Prepare GTK bindings for the build interpreter")
-        self.assertIn("/usr/lib/python3/dist-packages/{gi,cairo}", binding_step["run"])
+        self.assertIn(
+            "/usr/lib/python3/dist-packages/{gi,cairo,pygobject-*,pycairo-*}",
+            binding_step["run"],
+        )
         self.assertIn("import webview.platforms.gtk", binding_step["run"])
         self.assertLess(
             job["steps"].index(binding_step),
