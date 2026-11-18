@@ -2,7 +2,9 @@
 import multiprocessing as mp
 import os
 import platform
+import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import quote
 
 if __name__ == "__main__" and sys.argv[1:2] == ["--repair-permissions"]:
@@ -75,11 +77,7 @@ _LINUX_WEBVIEW_INSTALL_HINT = (
 )
 
 
-def linux_webview_backend_error() -> str | None:
-    """Linux 上检查 pywebview 的窗口后端能否初始化；缺失时返回中文安装指引。"""
-    if platform.system() not in ("Linux", "OpenBSD"):
-        return None
-
+def _linux_webview_backend_available() -> bool:
     # 按 pywebview guilib.initialize 的调度：PYWEBVIEW_GUI 优先，其次
     # KDE_FULL_SESSION 触发 Qt，否则默认 GTK 优先。
     requested_gui = os.environ.get("PYWEBVIEW_GUI", "").strip().lower()
@@ -98,11 +96,35 @@ def linux_webview_backend_error() -> str | None:
         )
         try:
             __import__(module)
-            return None  # 有一个后端可用即可，无需提示
+            return True
         except errors:
             continue
+    return False
 
-    return _LINUX_WEBVIEW_INSTALL_HINT
+
+if __name__ == "__main__" and sys.argv[1:] == ["--check-linux-webview-backend"]:
+    sys.exit(0 if _linux_webview_backend_available() else 2)
+
+
+def linux_webview_backend_error() -> str | None:
+    """在独立进程检查窗口后端，避免托盘和窗口继承已初始化的 GTK。"""
+    if platform.system() not in ("Linux", "OpenBSD"):
+        return None
+    if getattr(sys, "frozen", False):
+        command = [Path(sys.executable).with_name("mower")]
+    else:
+        command = [sys.executable, Path(__file__).resolve()]
+    try:
+        result = subprocess.run([*command, "--check-linux-webview-backend"], timeout=15)
+    except subprocess.TimeoutExpired:
+        return "窗口后端检查超时。"
+    except OSError as exc:
+        return f"无法启动窗口后端检查进程：{exc}"
+    if result.returncode == 2:
+        return _LINUX_WEBVIEW_INSTALL_HINT
+    if result.returncode:
+        return f"窗口后端检查进程异常退出，退出码 {result.returncode}。"
+    return None
 
 
 def exit_if_webview_backend_missing():
