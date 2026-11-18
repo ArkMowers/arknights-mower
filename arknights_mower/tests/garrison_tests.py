@@ -127,8 +127,9 @@ def test_reconnect_requires_positive_personal_selection(highlight):
     assert progress == {"match": {"round": 3}}
 
 
-def test_failure_blocks_unchanged_dispatch_and_retains_other_work(
-    income_db, monkeypatch
+@pytest.mark.parametrize("resume", ["next_order", "manual_recheck", "next_period"])
+def test_failure_yields_until_a_new_window_and_retains_other_work(
+    income_db, monkeypatch, resume
 ):
     conf = Conf(maa_long_task_type="garrison", maa_rg_enable=1)
     monkeypatch.setattr(runner.config, "conf", conf)
@@ -147,9 +148,119 @@ def test_failure_blocks_unchanged_dispatch_and_retains_other_work(
     assert run.call_count == 1
     assert (id(order), order.time, order.plan) == original
     assert scheduler.tasks == [order]
-    conf.garrison.run_id = "retry"
+    assert (
+        model.status(conf, record.load_garrison_progress())["message"] == "未识别棋子"
+    )
+    if resume == "next_order":
+        scheduler.tasks = [
+            SchedulerTask(
+                order.time + timedelta(hours=1), task_type=TaskTypes.RUN_ORDER
+            )
+        ]
+    elif resume == "next_period":
+        monkeypatch.setattr(
+            runner, "long_task_window", lambda *_: (order.time, order.time)
+        )
+    else:
+        conf.garrison.run_id = "retry"
     assert runner.run_garrison(scheduler)
     assert run.call_count == 2
+
+
+@pytest.mark.parametrize("stop_worker", [True, False])
+def test_stop_and_legacy_failed_match_resume_without_reset(
+    income_db, monkeypatch, stop_worker
+):
+    conf = Conf(maa_rg_enable=1, maa_long_task_type="garrison")
+    monkeypatch.setattr(runner.config, "conf", conf)
+    progress = model.prepare_progress(conf, {})
+    progress.update(
+        failed=True,
+        theme_restore_blocked=True,
+        error="旧错误",
+        match={"phase": "active"},
+        wins={"example": 2},
+        matches_played=4,
+        original_theme="乌萨斯齐心团",
+    )
+    record.save_garrison_progress(progress)
+    order = SchedulerTask(
+        datetime.now() + timedelta(hours=1), task_type=TaskTypes.RUN_ORDER
+    )
+    scheduler = SimpleNamespace(
+        device=Mock(), recog=Mock(), tasks=[order], task=None, op_data=None
+    )
+
+    def interrupt(owner):
+        if stop_worker:
+            raise solver.MowerExit
+        runner.config.stop_maa.set()
+
+    monkeypatch.setattr(runner.GarrisonSolver, "run", interrupt)
+    try:
+        if stop_worker:
+            with pytest.raises(solver.MowerExit):
+                runner.run_garrison(scheduler)
+        else:
+            assert runner.run_garrison(scheduler)
+        assert not runner.run_garrison(scheduler)
+        if stop_worker:
+            scheduler = SimpleNamespace(
+                device=Mock(), recog=Mock(), tasks=[order], task=None, op_data=None
+            )
+        else:
+            scheduler.tasks.clear()
+        resumed = Mock()
+        monkeypatch.setattr(runner.GarrisonSolver, "run", resumed)
+        assert runner.run_garrison(scheduler)
+        resumed.assert_called_once()
+        saved = record.load_garrison_progress()
+        for field in ("match", "wins", "matches_played", "original_theme"):
+            assert saved[field] == progress[field]
+        assert not saved.get("failed") and not saved.get("theme_restore_blocked")
+        assert not saved["error"]
+    finally:
+        runner.config.stop_maa.clear()
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_squad_intro_can_outlast_unknown_screen_timeout(monkeypatch, interrupted):
+    now = 0
+    monkeypatch.setattr(solver.time, "monotonic", lambda: now)
+    s = solver.GarrisonSolver(
+        Mock(), Mock(), {"match": {"phase": "starting"}}, Mock(), match_limit=1
+    )
+    s._quick_confirmed = True
+    outcome = Frame(None, [Text("返回主页", 0, 0, 20, 20)], "result", False)
+
+    def capture():
+        if interrupted and now >= 7:
+            raise solver.GarrisonYield
+        if now < 23:
+            return Frame(None, [], "unknown", False)
+        return frame("prep") if now == 23 else outcome
+
+    def advance(seconds):
+        nonlocal now
+        now += 1
+
+    s.capture = capture
+    s.sleep = advance
+    s.click = Mock()
+    game = Mock()
+    game.prep_phase.side_effect = lambda *_: advance(1)
+    game.Board.return_value.prep_done = False
+    monkeypatch.setattr(solver, "save_screenshot_frame", Mock())
+    if interrupted:
+        with pytest.raises(solver.GarrisonYield):
+            s.play(game, frame("post-info"))
+        s.click.assert_not_called()
+        assert s.progress["match"] == {"phase": "starting"}
+    else:
+        s.play(game, frame("post-info"))
+        game.prep_phase.assert_called_once()
+        s.click.assert_called_once_with(outcome.find("返回主页").center)
+    game.pick_squad.assert_called_once()
 
 
 def test_real_deadline_preempts_before_input(monkeypatch):
@@ -400,9 +511,19 @@ def test_match_limit_counts_each_settlement_once_after_restart(
         assert progress["matches_played"] == 2
         assert progress["match"] is None
     screenshot.assert_called_once_with(result.image, "garrison_result")
-    assert runner.eligible_progress(conf, 3600) is None
+    assert (
+        runner.eligible_progress(
+            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None
+        )
+        is None
+    )
     conf.garrison.match_limit = 3
-    assert runner.eligible_progress(conf, 3600)["matches_played"] == 2
+    assert (
+        runner.eligible_progress(
+            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None
+        )["matches_played"]
+        == 2
+    )
     conf.garrison.run_id = "next"
     assert model.status(conf, progress)["count"] == 0
 
@@ -603,7 +724,12 @@ def test_deferred_theme_restoration_after_final_settlement_does_not_play(
     progress.update(matches_played=1, original_theme="乌萨斯齐心团")
     record.save_garrison_progress(progress)
     assert not model.status(conf, progress)["completed"]
-    assert runner.eligible_progress(conf, 540) == progress
+    assert (
+        runner.eligible_progress(
+            conf, 540, SimpleNamespace(tasks=[], op_data=None), None
+        )
+        == progress
+    )
     s = solver.GarrisonSolver(
         Mock(),
         Mock(),
@@ -622,14 +748,20 @@ def test_deferred_theme_restoration_after_final_settlement_does_not_play(
     s.run()
     assert "original_theme" not in record.load_garrison_progress()
     assert model.status(conf, record.load_garrison_progress())["completed"]
-    assert runner.eligible_progress(conf, 1000) is None
+    assert (
+        runner.eligible_progress(
+            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
+        )
+        is None
+    )
 
 
-def test_unreadable_original_theme_does_not_apply_or_retry_until_recheck(income_db):
+def test_unreadable_original_theme_preserves_record_for_next_window(income_db):
     conf = Conf()
     progress = model.prepare_progress(conf, {})
     progress["original_theme"] = "“全能的”可露希尔"
     s = solver.GarrisonSolver(Mock(), Mock(), progress, record.save_garrison_progress)
+    record.save_garrison_progress(progress)
     bad = theme_panel("卫戍协议终端")
     bad.texts = [t for t in bad.texts if "可露希尔" not in t.text]
     s.capture = Mock(return_value=bad)
@@ -637,9 +769,12 @@ def test_unreadable_original_theme_does_not_apply_or_retry_until_recheck(income_
         s.restore_theme()
     s.device.tap.assert_not_called()
     assert record.load_garrison_progress()["original_theme"] == "“全能的”可露希尔"
-    assert runner.eligible_progress(conf, 1000) is None
-    conf.garrison.run_id = "recheck"
-    assert runner.eligible_progress(conf, 1000)["original_theme"] == "“全能的”可露希尔"
+    assert (
+        runner.eligible_progress(
+            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
+        )["original_theme"]
+        == "“全能的”可露希尔"
+    )
 
 
 @pytest.mark.parametrize("limit", [0, 4, None])

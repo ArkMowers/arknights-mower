@@ -7,22 +7,33 @@ from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.long_task_windows import long_task_window
+from arknights_mower.utils.scheduler_task import find_next_task
 
 from .model import goal_reached, prepare_progress
 from .solver import HANDOVER_SECONDS, MATCH_SECONDS, GarrisonSolver
 
 
-def eligible_progress(conf, window):
+def dispatch_window(scheduler, run_key, match_limit, opening):
+    pending = find_next_task(scheduler.tasks, op_data=scheduler.op_data)
+    return (
+        run_key,
+        match_limit,
+        opening,
+        (pending.type, pending.time) if pending else None,
+    )
+
+
+def eligible_progress(conf, window, scheduler, opening):
     if window < 9 * 60:
         return None
     progress = prepare_progress(conf, record.load_garrison_progress())
     settings = conf.garrison
     match_limit = settings.match_limit if settings.mode == "matches" else None
-    if progress.get("theme_restore_blocked"):
-        return None
-    if progress.get("failed") or goal_reached(
-        progress, settings.target_wins, match_limit
+    if getattr(scheduler, "garrison_last_window", None) == dispatch_window(
+        scheduler, progress["key"], match_limit, opening
     ):
+        return None
+    if goal_reached(progress, settings.target_wins, match_limit):
         return progress if progress.get("original_theme") else None
     if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:
         return None
@@ -38,7 +49,7 @@ def run_garrison(scheduler):
     conf = config.conf
     if not conf.GARRISON:
         return False
-    limit, _ = long_task_window(conf, datetime.now())
+    limit, opening = long_task_window(conf, datetime.now())
 
     settings = conf.garrison.model_copy()
 
@@ -48,9 +59,10 @@ def run_garrison(scheduler):
         return long_task_deadline(scheduler, limit)
 
     window = (deadline() - datetime.now()).total_seconds()
-    progress = eligible_progress(conf, window)
+    progress = eligible_progress(conf, window, scheduler, opening)
     if progress is None:
         return False
+    progress["error"] = ""
     record.save_garrison_progress(progress)
     config.stop_maa.clear()
     solver = GarrisonSolver(
@@ -68,9 +80,12 @@ def run_garrison(scheduler):
     except MowerExit:
         raise
     except Exception as exc:
-        progress.update(failed=True, error=str(exc))
+        progress["error"] = str(exc)
         record.save_garrison_progress(progress)
         logger.error(f"卫戍协议保留当前对局：{exc}")
     finally:
         resume_dorm_releases(scheduler)
+        scheduler.garrison_last_window = dispatch_window(
+            scheduler, progress["key"], solver.match_limit, opening
+        )
     return True
