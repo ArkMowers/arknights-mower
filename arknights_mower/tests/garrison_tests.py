@@ -467,6 +467,59 @@ def test_choose_strategy_from_count_even_with_unreadable_name(
     assert s.progress["wins"] == {}
 
 
+@pytest.mark.parametrize(
+    ("known", "banner", "expected"), [(3, "", 3), (0, "已通过模拟3次", 3), (0, "", 0)]
+)
+def test_strategy_waits_for_matching_readings_and_preserves_wins(
+    known, banner, expected
+):
+    p = {"wins": {"band_amiya": known}}
+    worker = solver.GarrisonSolver(Mock(), Mock(), p, Mock())
+    worker.sleep = Mock()
+    panel = [(1550, 480, "初始生命值"), (1610, 560, "阿米娅")]
+    final = panel + ([(1540, 215, banner)] if banner else [])
+    game = Mock()
+    game.ocr.side_effect = [panel, [], final, final]
+    action = worker.read_strategy_action(
+        game, {"阿米娅": "band_amiya", "其他策略": "other"}
+    )
+    assert game.ocr.call_count == 4
+    assert action == ("skip" if expected >= 3 else "play")
+    assert p["wins"]["band_amiya"] == expected
+
+
+@pytest.mark.parametrize("deadline", [1, 30])
+def test_unreadable_strategy_releases_card_or_device(monkeypatch, deadline):
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {"band_amiya": 3}}, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, frame("lobby"))
+    worker._end = deadline
+    game = Mock()
+    game.ocr.return_value = [(1550, 480, "初始生命值"), (1550, 225, "已通过模拟")]
+    if deadline == 1:
+        with pytest.raises(solver.GarrisonYield):
+            worker.read_strategy_action(game, {})
+    else:
+        assert worker.read_strategy_action(game, {}) is None
+    assert game.shot.call_count > 1
+    assert worker.progress["wins"] == {"band_amiya": 3}
+    worker.device.tap.assert_not_called()
+    worker.save.assert_not_called()
+
+
+@pytest.mark.parametrize("screen", ["choice", "confirm-ready"])
+def test_reconnect_recognizes_quick_simulation_prompt(screen):
+    worker = solver.GarrisonSolver(
+        Mock(), Mock(), {"match": {"phase": "active"}}, Mock(), vision=Mock()
+    )
+    worker.click = Mock()
+    prompt = Frame(None, [], screen, False)
+    worker.vision.frame.return_value = prompt
+    assert worker.start_or_resume(frame("left")) is prompt
+    assert not worker.can_dispatch_frame(prompt)
+    worker.vision.frame.return_value = replace(prompt, quick=True)
+    assert worker.can_dispatch_frame(worker.capture())
+
+
 @pytest.mark.parametrize("target", [3, 6])
 def test_last_confirmed_medal_stops_scan_and_future_dispatch(
     target, income_db, monkeypatch
@@ -671,11 +724,9 @@ def test_unlimited_matches_can_use_completed_strategy_and_continue_past_200(
     progress = model.prepare_progress(conf, {})
     progress.update(matches_played=200, attempts=200, match={"phase": "active"})
     s = solver.GarrisonSolver(Mock(), Mock(), progress, Mock(), match_limit=0)
-    assert (
-        s.strategy_action([(0, 220, "已通过模拟⑥次"), (0, 480, "初始生命值")], {})
-        == "play"
-    )
-    assert s.strategy_action([], {}) is None
+    game = Mock()
+    game.ocr.return_value = [(0, 220, "已通过模拟⑥次"), (0, 480, "初始生命值")]
+    assert s.read_strategy_action(game, {}) == "play"
     result = Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", False)
     s._quick_confirmed = True
     s.click = Mock()
