@@ -50,7 +50,23 @@ def open_equipped(owner, frame):
         owner.click((65, 58))
         frame = owner.wait(lambda f: f.screen == "lobby")
     if frame.screen == "lobby":
-        owner.text_click(frame, "^更换主题$", (300, 910, 720, 1080))
+
+        def button_visible(f):
+            return (
+                f.screen == "lobby"
+                and owner.recog.template_match(
+                    "garrison/change_theme", ((480, 921), (568, 1000))
+                )[0]
+                >= 0.90
+            )
+
+        if not button_visible(frame):
+            owner.wait(
+                button_visible,
+                12,
+                error="复核后仍未识别到大厅的更换主题按钮，已保留对局",
+            )
+        owner.click((523, 960))
         frame = owner.wait(equipped)
     if not equipped(frame):
         raise GarrisonError("无法确认卫戍协议当前使用的主题")

@@ -1,6 +1,6 @@
 # Garrison Simulation
 
-The long-task editor offers personal quick simulation with three wins per strategy for a gold medal or six for the plated medal. Mower opens the rightmost terminal tab and the activity's open simulation entry. When the team lobby offers matchmaking, Mower switches to personal simulation and waits for its quick simulation or reconnect button. Before reconnecting, Mower checks the personal simulation label and the highlight on its side of the mode selector. An unreadable selection or a highlighted team mode leaves the match pending for manual review. The solver checks for quick simulation before processing the match.
+The long-task editor offers personal quick simulation with three wins per strategy for a gold medal or six for the plated medal. Mower opens the rightmost terminal tab and the activity's open simulation entry. When the team lobby offers matchmaking, Mower switches to personal simulation and waits for its quick simulation or reconnect button. While the lobby controls are loading, Mower recaptures the screen for up to twelve seconds until it can identify an eligible action. Before reconnecting, Mower checks the personal simulation label and the highlight on its side of the mode selector. An unreadable selection or a highlighted team mode leaves the match pending for manual review. The solver checks for quick simulation before processing the match.
 
 ## Gameplay and device ownership
 
@@ -10,7 +10,7 @@ The script reads 1920 × 1080 frames through Mower's recognizer and OCR engine. 
 
 ## Shop theme
 
-The shop reader uses the card layout of the default theme `卫戍协议终端`. At entry, Mower opens `更换主题` and reads the equipped theme from the panel title and `已设置` button. If a change is needed, it saves the original theme in the account and device progress record before applying the default. Gameplay starts after the panel confirms the selection. An already settled match can be recorded before the next visit to the lobby.
+The shop reader uses the card layout of the default theme `卫戍协议终端`. At entry, Mower waits up to twelve seconds for the wrench icon in its lobby position before opening `更换主题` and reads the equipped theme from the panel title and `已设置` button. If a change is needed, it saves the original theme in the account and device progress record before applying the default. Gameplay starts after the panel confirms the selection. An already settled match can be recorded before the next visit to the lobby.
 
 When base work interrupts farming or the current window ends, Mower retains the default theme and the original theme record. The next eligible window resumes the unfinished goal. Unlimited level farming also keeps the default theme across windows. When the goal is reached, Mower restores the recorded theme and verifies the equipped label before clearing the record. If restoration is interrupted, the next eligible window can finish it even after reaching the goal. An unreadable theme leaves the original name in the progress record for the next eligible window.
 
