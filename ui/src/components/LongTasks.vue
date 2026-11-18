@@ -191,7 +191,7 @@ watch(
           :options="[
             { label: '三胜 · 金章', value: 3 },
             { label: '六胜 · 彩章', value: 6 },
-            { label: '刷等级 · 按结算局数', value: 'matches' }
+            { label: '刷等级', value: 'matches' }
           ]"
           aria-label="刷取目标"
         />
