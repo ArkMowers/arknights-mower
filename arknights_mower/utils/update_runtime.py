@@ -10,6 +10,7 @@ import hashlib
 import json
 import ntpath
 import os
+import struct
 import sys
 import tempfile
 import threading
@@ -234,9 +235,56 @@ def process_alive(pid):
         return True
 
 
+def _macos_process_creation_time(pid):
+    import ctypes
+
+    # struct proc_bsdinfo ends with two uint64_t start-time fields at byte 120.
+    layout = struct.Struct("=120xQQ")
+    buffer = ctypes.create_string_buffer(layout.size)
+    try:
+        query = ctypes.CDLL("/usr/lib/libproc.dylib").proc_pidinfo
+    except (OSError, AttributeError):
+        return None
+    query.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_uint64,
+        ctypes.c_void_p,
+        ctypes.c_int,
+    ]
+    query.restype = ctypes.c_int
+    if query(pid, 3, 0, buffer, layout.size) != layout.size:  # PROC_PIDTBSDINFO
+        return None
+    seconds, microseconds = layout.unpack(buffer)
+    return seconds * 1_000_000 + microseconds
+
+
+def _linux_process_creation_time(pid):
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_bytes()
+        # The parenthesized process name can contain spaces and parentheses.
+        fields = stat.rsplit(b")", 1)[1].split()
+        return int(fields[19])  # Field 22: clock ticks since boot.
+    except (OSError, IndexError, ValueError):
+        return None
+
+
+def _linux_boot_id():
+    try:
+        return (
+            Path("/proc/sys/kernel/random/boot_id").read_text(encoding="ascii").strip()
+        )
+    except (OSError, UnicodeError):
+        return None
+
+
 def process_creation_time(pid):
-    """Return the Windows process creation FILETIME, when available."""
-    if os.name != "nt":
+    """Return the platform's process creation time, when available."""
+    if sys.platform == "darwin":
+        return _macos_process_creation_time(pid)
+    if sys.platform == "linux":
+        return _linux_process_creation_time(pid)
+    if sys.platform != "win32":
         return None
     import ctypes
     from ctypes import wintypes
@@ -255,6 +303,18 @@ def process_creation_time(pid):
             return None
         created = times[0]
         return (created.dwHighDateTime << 32) | created.dwLowDateTime
+
+
+def process_identity(pid):
+    created_at = process_creation_time(pid)
+    if type(created_at) is not int or created_at <= 0:
+        return {}
+    if sys.platform == "linux":
+        boot_id = _linux_boot_id()
+        if not boot_id:
+            return {}
+        return {"process_created_at": created_at, "process_boot_id": boot_id}
+    return {"process_created_at": created_at}
 
 
 def _windows_process_name(pid):
@@ -299,14 +359,21 @@ def _windows_process_name(pid):
 
 
 def _registration_pid_reused(record):
-    if sys.platform != "win32":
-        return False
     pid = record["pid"]
     expected_creation = record.get("process_created_at")
     if type(expected_creation) is int and expected_creation > 0:
-        current_creation = process_creation_time(pid)
+        current = process_identity(pid)
+        current_creation = current.get("process_created_at")
         if current_creation is not None:
+            if sys.platform == "linux":
+                expected_boot = record.get("process_boot_id")
+                if not isinstance(expected_boot, str) or not expected_boot:
+                    return False
+                if expected_boot != current["process_boot_id"]:
+                    return True
             return current_creation != expected_creation
+    if sys.platform != "win32":
+        return False
     # Older registrations only know the executable. An inaccessible process can
     # also be proven unrelated if the system snapshot reports a different name.
     executable = record.get("executable")
@@ -677,8 +744,7 @@ class RuntimeRegistration:
             if kind == "instance"
             else "",
         }
-        if created_at := process_creation_time(self.record["pid"]):
-            self.record["process_created_at"] = created_at
+        self.record.update(process_identity(self.record["pid"]))
         self.publish()
         atexit.register(self.close)
         self.thread = threading.Thread(target=self._heartbeat, daemon=True)

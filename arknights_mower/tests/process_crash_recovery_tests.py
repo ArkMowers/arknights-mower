@@ -836,7 +836,7 @@ def test_updater_waits_for_each_owned_guardian_before_installation(
         {"kind": "instance", "id": "b", "pid": 2},
     ]
     monkeypatch.setattr(update, "instances", lambda state: records)
-    monkeypatch.setattr(update, "process_alive", lambda pid: False)
+    monkeypatch.setattr(update, "registered_process_alive", lambda record: False)
     released = []
 
     def wait(recorded, deadline):

@@ -1226,8 +1226,7 @@ class InstanceController(ManagerTools):
                     ready=False,
                     port=settings["port"],
                 )
-                if created_at := runtime.process_creation_time(process.pid):
-                    pending["process_created_at"] = created_at
+                pending.update(runtime.process_identity(process.pid))
                 key = hashlib.sha256(
                     instance_key(instance["path"]).encode()
                 ).hexdigest()

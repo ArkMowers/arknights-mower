@@ -258,7 +258,7 @@ class ProcessAliveTests(unittest.TestCase):
             self.assertTrue(runtime.process_alive(1234))
 
 
-class WindowsRegistrationIdentityTests(unittest.TestCase):
+class RegistrationIdentityTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
@@ -390,8 +390,10 @@ class WindowsRegistrationIdentityTests(unittest.TestCase):
         release.assert_called_once_with(record, 90)
         worker_clock.sleep.assert_not_called()
 
-    @unittest.skipUnless(sys.platform == "win32", "Windows native creation time")
-    def test_published_creation_time_identifies_the_real_windows_process(self):
+    @unittest.skipUnless(
+        sys.platform in {"win32", "darwin", "linux"}, "Native process creation time"
+    )
+    def test_published_creation_time_identifies_the_real_process(self):
         registration = runtime.RuntimeRegistration(
             "instance", directory=self.state, maintenance=False
         )
@@ -407,6 +409,73 @@ class WindowsRegistrationIdentityTests(unittest.TestCase):
                 {**record, "process_created_at": record["process_created_at"] - 1}
             )
         )
+
+    @unittest.skipUnless(sys.platform in {"darwin", "linux"}, "POSIX manager")
+    def test_manager_releases_stale_registration_and_startup_reservation(self):
+        from arknights_mower.utils.manager_instances import InstanceController
+
+        storage = self.state / "saved-instances.json"
+        space = str(self.state / "instance-data")
+        runtime.write_json(storage, [{"name": "fixture", "path": space}])
+        manager = InstanceController(storage)
+        launch_id = "a" * 32
+        registration = self.state / "instances" / f"{launch_id}.json"
+        reservation = self.state / "manager-controls/reserved.json"
+        request = self.state / "shutdown" / f"{launch_id}.json"
+        identity = runtime.process_identity(os.getpid())
+        live = {
+            **self.record,
+            **identity,
+            "id": launch_id,
+            "pid": os.getpid(),
+            "space": space,
+            "managed": True,
+            "ready": True,
+        }
+        stale = {**live, "process_created_at": live["process_created_at"] - 1}
+        with patch.object(runtime, "state_dir", return_value=self.state):
+            for path in (registration, reservation):
+                with self.subTest(path=path.parent.name):
+                    runtime.write_json(path, live)
+                    runtime.write_json(request, {"manager": True})
+                    self.assertEqual(manager.get_instances()[0]["state"], "stopping")
+                    runtime.write_json(path, stale)
+                    item = manager.get_instances()[0]
+                    self.assertEqual(item["state"], "stopped")
+                    self.assertTrue(item["can_start"])
+                    self.assertEqual(path.exists(), path == registration)
+                    self.assertEqual(request.exists(), path == registration)
+                    path.unlink(missing_ok=True)
+                    request.unlink(missing_ok=True)
+
+    def test_linux_different_boot_identifies_reuse_even_at_the_same_tick(self):
+        record = {
+            **self.record,
+            "process_created_at": 100,
+            "process_boot_id": "previous-boot",
+        }
+        runtime.write_json(self.path, record)
+        with (
+            patch.object(runtime.sys, "platform", "linux"),
+            patch.object(runtime, "process_alive", return_value=True),
+            patch.object(runtime, "process_creation_time", return_value=100),
+            patch.object(
+                runtime, "_linux_boot_id", return_value="current-boot"
+            ) as boot,
+        ):
+            self.assertEqual(runtime.instances(self.state, timeout=0), [])
+            self.assertTrue(self.path.exists())
+            boot.return_value = None
+            self.assertEqual(runtime.instances(self.state, timeout=0), [record])
+            boot.return_value = "current-boot"
+            del record["process_boot_id"]
+            runtime.write_json(self.path, record)
+            self.assertEqual(runtime.instances(self.state, timeout=0), [record])
+
+    def test_linux_start_time_parses_process_name_with_spaces_and_parentheses(self):
+        stat = b"123 (name with ) parentheses) S " + b"1 " * 18 + b"765 42"
+        with patch.object(Path, "read_bytes", return_value=stat):
+            self.assertEqual(runtime._linux_process_creation_time(123), 765)
 
 
 class InstanceScanTests(unittest.TestCase):
