@@ -63,20 +63,21 @@ def test_category_scan_returns_to_start_and_confirms_the_final_boundary(paged):
     frames = list(paged.solver._category_frames())
 
     assert [offset for offset, _ in frames] == [0, 702, 1404, 1500]
-    assert paged.state.moves == [702, 702, 702, -702, -702, -702, -702]
+    assert paged.state.moves == [702, 702, 702, 234, -702, -702, -702, -702, -234]
     assert all(frame.shape == (1080, 1920, 3) for _, frame in frames)
 
 
-def test_category_paging_uses_standard_noinertia_drag_speed(paged):
+def test_category_paging_uses_standard_drag_and_slower_boundary_checks(paged):
     solver = paged.solver
     original_swipe = solver.swipe_noinertia.side_effect
 
     def send_swipe(points, *, durations, up_wait, capture):
-        assert durations == [200, 140, 200]
+        (x0, y0), *_, (x1, y1) = points
+        movement = (x1 - x0, y1 - y0)
+        assert durations == [200, {702: 140, 234: 400}[abs(movement[0])], 200]
         assert up_wait == 400
         assert capture is True
-        (x0, y0), *_, (x1, y1) = points
-        original_swipe(points[0], (x1 - x0, y1 - y0))
+        original_swipe(points[0], movement)
         return solver.recog.img
 
     solver.device = SimpleNamespace(swipe_ext=Mock(side_effect=send_swipe))
@@ -85,7 +86,34 @@ def test_category_paging_uses_standard_noinertia_drag_speed(paged):
     solver.swipe_noinertia = module.SceneGraphSolver.swipe_noinertia.__get__(solver)
 
     assert [offset for offset, _ in solver._category_frames()] == [0, 702, 1404, 1500]
-    assert solver.device.swipe_ext.call_count == 7
+    assert solver.device.swipe_ext.call_count == 9
+
+
+@pytest.mark.parametrize("ignored_at, direction", [(1000, 702), (702, -702)])
+def test_missed_swipe_before_boundary_still_scans_all_columns(
+    paged, ignored_at, direction
+):
+    solver, state = paged.solver, paged.state
+    original_swipe = solver.swipe_noinertia.side_effect
+    ignored = False
+    solver.匹配物品一次 = Mock(return_value=("应急理智顶液", 1))
+
+    def swipe(start, movement, **kwargs):
+        nonlocal ignored
+        if not ignored and state.offset == ignored_at and movement[0] == direction:
+            ignored = True
+            state.moves.append(movement[0])
+            state.clock += 1
+            return
+        original_swipe(start, movement, **kwargs)
+
+    solver.swipe_noinertia.side_effect = swipe
+
+    assert solver.分类扫描({}) is False
+
+    assert ignored
+    assert state.offset == 1500
+    assert solver.结果字典 == {"应急理智顶液": 42}
 
 
 def test_overlapping_and_short_final_pages_count_each_grid_column_once(paged):
@@ -104,14 +132,16 @@ def test_unmatched_page_movement_does_not_claim_complete_coverage(paged):
         list(paged.solver._category_frames())
 
 
-@pytest.mark.parametrize("initial_offset", [0, 1000])
-def test_category_swipe_limit_bounds_start_and_end_search(paged, initial_offset):
-    paged.state.offset = initial_offset
+@pytest.mark.parametrize(
+    "limit,moves", [(1, [702]), (4, [702, 234, -702, -702, -702, -702])]
+)
+def test_category_swipe_limit_includes_boundary_check(paged, limit, moves):
+    paged.state.offset = 0
     paged.solver.recog.img = paged.state.render()
-    paged.solver.CATEGORY_SWIPE_LIMIT = 1
+    paged.solver.CATEGORY_SWIPE_LIMIT = limit
     with pytest.raises(module._DepotScanIncomplete):
         list(paged.solver._category_frames())
-    assert len(paged.state.moves) <= 2
+    assert paged.state.moves == moves
 
 
 def test_category_timeout_stops_without_yielding_a_complete_scan(paged):
@@ -167,7 +197,7 @@ def test_recorded_right_boundary_ignores_small_rendering_changes(monkeypatch):
     solver._category_x = 1063
     solver._wait_for_depot_ready = Mock(return_value=True)
     solver._category_selected = Mock(return_value=True)
-    moves = iter([left, right, boundary])
+    moves = iter([left, left, right, boundary, boundary])
 
     def swipe(*_args, **_kwargs):
         solver.recog.img = next(moves)
@@ -178,7 +208,7 @@ def test_recorded_right_boundary_ignores_small_rendering_changes(monkeypatch):
     pages = list(solver._category_frames())
 
     assert [offset for offset, _ in pages] == [0, 574]
-    assert solver.swipe_noinertia.call_count == 3
+    assert solver.swipe_noinertia.call_count == 5
 
 
 @pytest.mark.parametrize("distance", [1, 24, 234])

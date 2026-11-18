@@ -436,10 +436,10 @@ class depotREC(SceneGraphSolver):
     def _category_frames(self):
         deadline = monotonic() + self.CATEGORY_SCAN_TIMEOUT
 
-        def move(start, movement):
+        def move(start, movement, *, retry):
             if monotonic() >= deadline:
                 raise _DepotScanIncomplete
-            self.swipe_noinertia(start, movement, capture=True)
+            self.swipe_noinertia(start, movement, retry=retry, capture=True)
             if (
                 not self._wait_for_depot_ready()
                 or not self._category_selected(self._category_x)
@@ -449,25 +449,28 @@ class depotREC(SceneGraphSolver):
             return self.recog.img.copy()
 
         frame = self.recog.img
-        for _ in range(self.CATEGORY_SWIPE_LIMIT):
-            after = move((400, 900), (702, 0))
-            if self._same_depot_view(frame, after):
-                frame = after
-                break
-            frame = after
-        else:
-            raise _DepotScanIncomplete
-
         offset = 0
-        yield offset, frame
-        for _ in range(self.CATEGORY_SWIPE_LIMIT):
-            after = move((1600, 900), (-702, 0))
-            if self._same_depot_view(frame, after):
-                return
-            offset += self._depot_scroll_distance(frame, after)
-            frame = after
-            yield offset, frame
-        raise _DepotScanIncomplete
+        for start, direction in (((400, 900), 1), ((1600, 900), -1)):
+            retry = False
+            for _ in range(self.CATEGORY_SWIPE_LIMIT):
+                distance = (234 if retry else 702) * direction
+                after = move(start, (distance, 0), retry=retry)
+                if self._same_depot_view(frame, after):
+                    if retry:
+                        frame = after
+                        break
+                    # 未推进时只复核一列，避免前一次手势延迟生效后跳过新列。
+                    retry = True
+                    continue
+                retry = False
+                if direction < 0:
+                    offset += self._depot_scroll_distance(frame, after)
+                    yield offset, after
+                frame = after
+            else:
+                raise _DepotScanIncomplete
+            if direction > 0:
+                yield offset, frame
 
     def 分类扫描(self, knn模型: vision_np.Knn1Model):
         seen_columns = set()
