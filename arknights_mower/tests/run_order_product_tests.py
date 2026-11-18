@@ -304,6 +304,28 @@ def test_drone_rejects_actual_orundum_discovered_on_order_page(solver):
     solver.adjust_order_time.assert_not_called()
 
 
+def test_trade_drone_acceleration_continues_with_201_drones_above_threshold(solver):
+    room = "room_1_1"
+    use_order_pages(solver, {room: "active"})
+    config.conf.drone_count_limit = 100
+    solver._read_trade_product_card = MagicMock(return_value=("lmd", True))
+    solver._tap_drone_accelerate = MagicMock()
+    solver.accept_order = MagicMock()
+    solver.scene = MagicMock(return_value=Scene.INFRA_DETAILS)
+    solver.recog.gray = object()
+    solver.recog.update = MagicMock()
+    solver.digit_reader = SimpleNamespace(get_drone=MagicMock(side_effect=[201, 99]))
+
+    solver.drone(room, not_customize=True)
+
+    assert solver._tap_drone_accelerate.call_args_list == [
+        call("bill_accelerate", "all_in"),
+        call("bill_accelerate", "all_in"),
+    ]
+    assert solver.accept_order.call_args_list == [call(room=room), call(room=room)]
+    solver.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
+
+
 def test_jaye_collection_survives_saved_queue_and_rechecks_actual_occupants(
     solver, monkeypatch
 ):

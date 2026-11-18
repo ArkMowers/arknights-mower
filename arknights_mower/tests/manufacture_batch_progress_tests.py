@@ -168,6 +168,27 @@ def test_recheck_reduces_drone_count_and_completes_serially(batch):
     assert Clock.now() == scene.started_at + timedelta(seconds=94)
 
 
+@pytest.mark.parametrize("initial_stock, survey_count", [(201, 2), (33, 4)])
+def test_batch_accepts_201_drones_on_initial_or_repeated_survey(
+    batch, initial_stock, survey_count
+):
+    scene = batch({"room_2_1": 3000, "room_2_3": 3240}, available=201)
+    initial_readings = iter([initial_stock] * len(scene.tasks))
+    scene.solver.digit_reader.get_drone.side_effect = lambda *args: next(
+        initial_readings, scene.available
+    )
+
+    scene.run()
+
+    assert sum(event[0] == "survey" for event in scene.events) == survey_count
+    assert scene.accelerations == [
+        ("accelerate", "room_2_3", 18),
+        ("accelerate", "room_2_1", 16),
+    ]
+    assert all(state["product"] == "gold" for state in scene.rooms.values())
+    assert scene.solver.tasks == []
+
+
 def test_interrupted_confirmation_resumes_original_unit_without_more_drones(batch):
     scene = batch({"room_2_1": 3000, "room_2_3": 3260})
     select = scene.solver._select_manufacture_product
