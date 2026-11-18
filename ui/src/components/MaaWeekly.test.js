@@ -130,6 +130,7 @@ describe('周计划芯片按钮排序联动', () => {
         'ap_fallback'
       ].map((key) => [key, ref('')])
     )
+    state.config.filterStageByAvailability = ref(true)
     state.config.maa_weekly_plan = ref([
       { weekday: '周一', stage: ['1-7', 'PR-B-2', 'Annihilation', 'PR-D-2'], medicine: 2 },
       { weekday: '周二', stage: ['1-7', 'PR-D-2', 'CE-6'], sanity_threshold: 50 }
