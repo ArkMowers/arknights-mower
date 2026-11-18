@@ -46,6 +46,11 @@ def 提取特征点(模板):
     return vision_np.hog(模板)
 
 
+_COLOR_ICON_MASK = np.ones((133, 133), dtype=np.uint8)
+# 屏蔽右下角数量区域，给模板的八像素位移留出余量。
+_COLOR_ICON_MASK[97:, 72:] = 0
+
+
 @lru_cache(maxsize=2)
 def _color_templates(directory, classes):
     templates = []
@@ -75,11 +80,12 @@ def _refine_item_color(item, predicted, classes):
     templates = _color_templates(directory, tuple(classes))
     if not any(name == predicted for name, _ in templates):
         return predicted
-    # 比较图标内部并留出位移范围，减少数量、有效期标签和圆形背景的影响。
     region = item[32:181, 32:181]
     scores = []
     for name, template in templates:
-        result = cv2.matchTemplate(region, template, cv2.TM_CCORR_NORMED)
+        result = cv2.matchTemplate(
+            region, template, cv2.TM_CCORR_NORMED, mask=_COLOR_ICON_MASK
+        )
         score = cv2.minMaxLoc(result)[1]
         if np.isfinite(score):
             scores.append((score, name))
@@ -433,7 +439,7 @@ class depotREC(SceneGraphSolver):
         def move(start, movement):
             if monotonic() >= deadline:
                 raise _DepotScanIncomplete
-            self.swipe_noinertia(start, movement, duration=400, capture=True)
+            self.swipe_noinertia(start, movement, capture=True)
             if (
                 not self._wait_for_depot_ready()
                 or not self._category_selected(self._category_x)

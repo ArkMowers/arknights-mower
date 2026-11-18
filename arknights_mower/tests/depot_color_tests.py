@@ -121,6 +121,20 @@ def test_recorded_training_invitation_is_not_downgraded(solver, models):
     ]
 
 
+def test_recorded_ordinary_and_kernel_permits_keep_separate_counts(
+    solver, models, monkeypatch
+):
+    # Two slots from the same recorded basic-item page: ordinary 1, kernel 14.
+    slots = loadimg(FIXTURES / "depot/headhunting_permits_20261118.png")
+    frame = np.full((1080, 1920, 3), 255, dtype=np.uint8)
+    frame[154:700, 1228:1488] = slots
+    monkeypatch.setattr(solver, "_category_frames", lambda: iter([(0, frame)]))
+
+    solver.分类扫描(models["NORMAL"])
+
+    assert solver.结果字典 == {"寻访凭证": 1, "中坚寻访凭证": 14}
+
+
 def test_recorded_medicine_stacks_with_different_expiries_still_sum(
     solver, models, monkeypatch
 ):

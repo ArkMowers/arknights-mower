@@ -67,6 +67,27 @@ def test_category_scan_returns_to_start_and_confirms_the_final_boundary(paged):
     assert all(frame.shape == (1080, 1920, 3) for _, frame in frames)
 
 
+def test_category_paging_uses_standard_noinertia_drag_speed(paged):
+    solver = paged.solver
+    original_swipe = solver.swipe_noinertia.side_effect
+
+    def send_swipe(points, *, durations, up_wait, capture):
+        assert durations == [200, 140, 200]
+        assert up_wait == 400
+        assert capture is True
+        (x0, y0), *_, (x1, y1) = points
+        original_swipe(points[0], (x1 - x0, y1 - y0))
+        return solver.recog.img
+
+    solver.device = SimpleNamespace(swipe_ext=Mock(side_effect=send_swipe))
+    solver.recog.set_frame = Mock()
+    solver.sleep = Mock()
+    solver.swipe_noinertia = module.SceneGraphSolver.swipe_noinertia.__get__(solver)
+
+    assert [offset for offset, _ in solver._category_frames()] == [0, 702, 1404, 1500]
+    assert solver.device.swipe_ext.call_count == 7
+
+
 def test_overlapping_and_short_final_pages_count_each_grid_column_once(paged):
     paged.solver.匹配物品一次 = Mock(return_value=("应急理智顶液", 1))
 
