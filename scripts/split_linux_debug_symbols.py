@@ -9,6 +9,8 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+BINUTILS_TIMEOUT_SECONDS = 120
+
 
 def _elf_identity(path: Path) -> str:
     with path.open("rb") as source:
@@ -57,7 +59,9 @@ def split_linux_debug_symbols(bundle: Path):
             for binary in _elf_files(internal):
                 relative = binary.relative_to(bundle.parent)
                 symbol_name = relative.parent / ".debug" / (binary.name + ".debug")
-                sections = subprocess.check_output(["readelf", "-SW", binary])
+                sections = subprocess.check_output(
+                    ["readelf", "-SW", binary], timeout=BINUTILS_TIMEOUT_SECONDS
+                )
                 if not re.search(rb"\]\s+\.z?debug_info\s", sections):
                     unchanged[symbol_name.as_posix()] = binary
                     continue
@@ -65,7 +69,9 @@ def split_linux_debug_symbols(bundle: Path):
                 debug = work / symbol_name
                 debug.parent.mkdir(parents=True, exist_ok=True)
                 subprocess.run(
-                    ["objcopy", "--only-keep-debug", binary, debug], check=True
+                    ["objcopy", "--only-keep-debug", binary, debug],
+                    check=True,
+                    timeout=BINUTILS_TIMEOUT_SECONDS,
                 )
                 stripped = work / relative
                 subprocess.run(
@@ -78,6 +84,7 @@ def split_linux_debug_symbols(bundle: Path):
                         stripped,
                     ],
                     check=True,
+                    timeout=BINUTILS_TIMEOUT_SECONDS,
                 )
                 shutil.copymode(binary, stripped)
                 member = symbols.gettarinfo(debug, arcname=symbol_name.as_posix())

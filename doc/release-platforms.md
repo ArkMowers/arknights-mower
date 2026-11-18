@@ -162,7 +162,7 @@ Release 任务在全部平台构建成功后附加五个 Mower 产物，并生�
   在独立包里保留调试文件名及其校验值。调试符号的[加载方法](../docs/cookbook/packaging.md#3-linux)
   适用于相同版本和架构的同一次构建。构建检查主程序、`CHANGELOG.md` 和必要资源，
   验证 ELF 架构及动态库解析结果。构建流程在 Xvfb 中启动解包后的主程序，使用独立数据目录，
-  等待实例登记为就绪，并核对 HTTP 首页内容与包内 `index.html` 一致。
+  等待实例登记为就绪且对应端口的主窗口可见，并核对 HTTP 首页内容与包内 `index.html` 一致。
 - macOS spec 显式收集 pywebview Cocoa 后端依赖和当前 wheel 中存在的
   onnxruntime 动态库，并将主程序与多开管理器放入 `.app/Contents/MacOS`。
   构建任务分别检查多开管理器与主程序 GUI，并通过 `MOWER_DATA_DIR` 将冒烟产生的

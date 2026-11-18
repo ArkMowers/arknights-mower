@@ -29,8 +29,22 @@ def wait_for_desktop(bundle, process, state, timeout=120):
                 and record.get("ready")
             ):
                 continue
+            port = record["port"]
+            window = subprocess.run(
+                [
+                    "xdotool",
+                    "search",
+                    "--onlyvisible",
+                    "--name",
+                    f"^arknights-mower .+ - mower@{port}$",
+                ],
+                stdout=subprocess.DEVNULL,
+                timeout=2,
+            )
+            if window.returncode != 0:
+                continue
             request = Request(
-                f"http://127.0.0.1:{record['port']}/",
+                f"http://127.0.0.1:{port}/",
                 headers={"Accept": "text/html", "Accept-Encoding": "identity"},
             )
             try:
@@ -40,13 +54,15 @@ def wait_for_desktop(bundle, process, state, timeout=120):
                         and response.read(len(index) + 1) == index
                     ):
                         print(
-                            "Linux desktop is ready and served its bundled index.html"
+                            f"Verified visible Linux desktop window on port {port} and bundled index.html"
                         )
                         return
             except OSError:
                 pass
         time.sleep(0.5)
-    raise TimeoutError("Linux desktop did not register as ready and serve its Web UI")
+    raise TimeoutError(
+        "Expected a ready instance with a visible desktop window and the bundled Web UI"
+    )
 
 
 def main():

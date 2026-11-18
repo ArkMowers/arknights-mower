@@ -599,7 +599,7 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn('if [ "${missing}" -gt 0 ]', smoke_check)
         self.assertEqual(
             smoke_launch,
-            "dbus-run-session -- xvfb-run -a python scripts/smoke_linux_desktop.py smoke/mower",
+            "xvfb-run -a dbus-run-session -- python scripts/smoke_linux_desktop.py smoke/mower",
         )
         job = self.jobs["build-linux"]
         binding_step = find_step(job, "Prepare GTK bindings for the build interpreter")
@@ -623,7 +623,9 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             smoke_check,
         )
 
-    def test_linux_smoke_requires_ready_registration_and_bundled_page(self):
+    def test_linux_smoke_requires_ready_registration_visible_window_and_bundled_page(
+        self,
+    ):
         from scripts.smoke_linux_desktop import wait_for_desktop
 
         with tempfile.TemporaryDirectory() as temporary:
@@ -640,9 +642,12 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 wait_for_desktop(bundle, process, state, timeout=0.1)
 
-            with HTTPServer(
-                ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=root)
-            ) as server:
+            with (
+                HTTPServer(
+                    ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=root)
+                ) as server,
+                patch("scripts.smoke_linux_desktop.subprocess.run") as window_search,
+            ):
                 record = {
                     "pid": os.getpid(),
                     "kind": "instance",
@@ -655,6 +660,21 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
                 thread.start()
                 try:
                     page = root / "index.html"
+                    page.write_bytes(index.read_bytes())
+                    window_search.return_value.returncode = 1
+                    with self.assertRaises(TimeoutError):
+                        wait_for_desktop(bundle, process, state, timeout=0.1)
+                    self.assertEqual(
+                        window_search.call_args.args[0],
+                        [
+                            "xdotool",
+                            "search",
+                            "--onlyvisible",
+                            "--name",
+                            f"^arknights-mower .+ - mower@{server.server_port}$",
+                        ],
+                    )
+                    window_search.return_value.returncode = 0
                     page.write_bytes(b"unexpected page")
                     with self.assertRaises(TimeoutError):
                         wait_for_desktop(bundle, process, state, timeout=0.1)
