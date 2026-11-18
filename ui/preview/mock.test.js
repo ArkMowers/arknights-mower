@@ -140,12 +140,15 @@ describe('offline preview', () => {
       software_version_language: 'en',
       watermark_visible: true,
       task_settings_layout: 'checklist',
+      task_settings_favorites: ['device', 'stage-plan', 'long'],
       base_report_mode: 'standard',
       halloween_mode: 'auto',
       task_queue_display: 'portraits',
       running_log_layout: 'right_rail'
     })
     await client.put('/gui/appearance', { task_settings_layout: 'waterfall' })
+    const favorites = ['recruit', 'stage-plan']
+    await client.put('/gui/appearance', { task_settings_favorites: favorites })
     await client.put('/gui/appearance', { software_version_display: 'channel' })
     await client.put('/gui/appearance', { software_version_language: 'zh' })
     const customLayout = 'custom:split:daily,log,tasks|screenshot'
@@ -167,6 +170,7 @@ describe('offline preview', () => {
       software_version_language: 'zh',
       watermark_visible: false,
       task_settings_layout: 'waterfall',
+      task_settings_favorites: favorites,
       base_report_mode: 'standard',
       halloween_mode: 'auto',
       task_queue_display: 'portraits',
@@ -189,6 +193,7 @@ describe('offline preview', () => {
       software_version_language: 'en',
       watermark_visible: true,
       task_settings_layout: 'checklist',
+      task_settings_favorites: favorites,
       base_report_mode: 'standard',
       halloween_mode: 'auto',
       task_queue_display: 'portraits',

@@ -314,7 +314,7 @@ watch(
       preset="card"
       title="编辑常用设置"
       aria-label="编辑常用设置"
-      class="checklist-favorites-dialog"
+      style="width: min(520px, calc(100vw - 32px))"
       :closable="!favoritesBusy"
       :mask-closable="!favoritesBusy"
       :close-on-esc="!favoritesBusy"
@@ -492,15 +492,13 @@ watch(
   cursor: wait;
   opacity: 0.6;
 }
-.checklist-favorites-dialog {
-  width: min(480px, calc(100vw - 32px));
-}
 .checklist-favorites-options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(175px, 100%), 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px 8px;
   max-height: min(48dvh, 420px);
-  overflow: auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   margin-top: 12px;
 }
 .checklist-favorites-options label {
@@ -512,7 +510,12 @@ watch(
   cursor: pointer;
 }
 .checklist-favorites-options input {
+  flex: none;
   accent-color: var(--mower-primary);
+}
+.checklist-favorites-options label span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .checklist-favorites-empty,
 .checklist-favorites-error {
