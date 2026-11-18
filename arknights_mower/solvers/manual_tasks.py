@@ -8,6 +8,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.activity_observations import activity_observation
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.long_task_windows import long_task_window
 from arknights_mower.utils.scheduler_task import (
     TaskScope,
     TaskTypes,
@@ -74,20 +75,11 @@ def run_long_task_if_dorm_pending(scheduler):
     ):
         return False
     now = datetime.now()
-    try:
-        start = datetime.strptime(conf.maa_rg_sleep_min, "%H:%M").time()
-        end = datetime.strptime(conf.maa_rg_sleep_max, "%H:%M").time()
-        sleeping = (
-            now.time() > start or now.time() < end
-            if end < start
-            else start < now.time() < end
-        )
-    except ValueError:
-        sleeping = False
-    if sleeping:
+    cutoff, _ = long_task_window(conf, now)
+    if cutoff <= now:
         return False
     garrison = conf.GARRISON
-    window = long_task_deadline(scheduler, now + timedelta(hours=24)) - now
+    window = long_task_deadline(scheduler, cutoff) - now
     if garrison:
         from arknights_mower.solvers.garrison.runner import (
             eligible_progress,
@@ -111,9 +103,7 @@ def run_long_task_if_dorm_pending(scheduler):
     if garrison:
         return run_garrison(scheduler)
     now = datetime.now()
-    if long_task_deadline(scheduler, now + timedelta(hours=24)) - now < timedelta(
-        minutes=9
-    ):
+    if long_task_deadline(scheduler, cutoff) - now < timedelta(minutes=9):
         return False
     scheduler.maa_plan_solver([])
     return True

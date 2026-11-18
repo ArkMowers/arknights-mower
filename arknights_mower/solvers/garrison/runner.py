@@ -1,11 +1,12 @@
 """在现有大型任务空档执行个人极速模拟。"""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from arknights_mower.solvers import record
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.long_task_windows import long_task_window
 
 from .model import prepare_progress, status
 from .solver import HANDOVER_SECONDS, MATCH_SECONDS, GarrisonSolver
@@ -31,7 +32,7 @@ def run_garrison(scheduler):
     conf = config.conf
     if not conf.GARRISON:
         return False
-    limit = datetime.now() + timedelta(hours=24)
+    limit, _ = long_task_window(conf, datetime.now())
 
     settings = conf.garrison.model_copy()
 

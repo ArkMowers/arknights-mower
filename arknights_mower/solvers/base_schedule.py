@@ -124,6 +124,7 @@ from arknights_mower.utils.email import maa_template, send_message, task_templat
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import log_parent_context, logger
+from arknights_mower.utils.long_task_windows import long_task_window
 from arknights_mower.utils.maa_callback import (
     REPORT_REQUEST,
     MaaCallbackLog,
@@ -20960,6 +20961,7 @@ class BaseSchedulerSolver(
         manual=False,
         long_task=None,
         mall_action=None,
+        outer_idle_loop=False,
     ):
         """清日常"""
         copilot_run = None
@@ -21186,21 +21188,17 @@ class BaseSchedulerSolver(
                     None,
                 )
             )
+            now = datetime.now()
+            cutoff, _ = long_task_window(conf, now)
+            if not manual:
+                long_limit = min(long_limit, cutoff)
+                if cutoff - now < timedelta(minutes=9):
+                    selected_long = None
             running_long_task = True
             if selected_long and (refresh := self._maa_refresh_deadline()) is not None:
                 return defer_refresh(refresh)
             if selected_long and deadline() - datetime.now() < timedelta(seconds=30):
                 selected_long = None
-            now_time = datetime.now().time()
-            try:
-                min_time = datetime.strptime(conf.maa_rg_sleep_min, "%H:%M").time()
-                max_time = datetime.strptime(conf.maa_rg_sleep_max, "%H:%M").time()
-                if max_time < min_time:
-                    rg_sleep = now_time > min_time or now_time < max_time
-                else:
-                    rg_sleep = min_time < now_time < max_time
-            except ValueError:
-                rg_sleep = False
             paradox = selected_long == "paradox"
             from arknights_mower.utils.maa_long_task import blackflow_preserved_run
 
@@ -21208,19 +21206,18 @@ class BaseSchedulerSolver(
                 selected_long == "rogue"
                 and conf.maa_rg_theme == "BlackFlow"
                 and blackflow_preserved_run(conf.rogue) is not None
-                and (manual or not rg_sleep)
             ):
                 blackflow_run = self._maa_blackflow_run(conf.rogue)
                 if blackflow_run.get("completed") is True:
                     selected_long = None
-            if selected_long in ("copilot", "paradox") and (manual or not rg_sleep):
+            if selected_long in ("copilot", "paradox"):
                 copilot_conf = conf.paradox if paradox else conf.copilot
                 copilot_run = (
                     self._maa_paradox_run(copilot_conf)
                     if paradox
                     else self._maa_copilot_run(copilot_conf)
                 )
-            if selected_long == "sss" and (manual or not rg_sleep):
+            if selected_long == "sss":
                 sss_run = self._maa_sss_run(conf.sss)
             if (
                 selected_long in ("rogue", "rcl")
@@ -21234,7 +21231,7 @@ class BaseSchedulerSolver(
                     and not copilot_run["failed"]
                     and copilot_run["next"] < len(copilot_conf.scripts)
                 )
-            ) and (manual or not rg_sleep):
+            ):
                 logger.info(
                     "准备开始 MAA 大型任务", extra={"log_group": "maa-integration"}
                 )
@@ -21661,7 +21658,7 @@ class BaseSchedulerSolver(
                 if refresh_deferred:
                     return False
 
-            elif manual or not rg_sleep:
+            elif not outer_idle_loop:
                 if selected_long == "ra":
                     self.back_to_index()
                     ra_solver = ReclamationAlgorithm(self.device, self.recog)
@@ -21753,14 +21750,15 @@ class BaseSchedulerSolver(
                 large_task_started = False
             running_long_task = False
             self.recog.last_scene = None
-            self.rest_until_next_task()
+            if not outer_idle_loop:
+                self.rest_until_next_task()
         else:
             # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
             battle_inventory_active.clear()
             if large_task_started:
                 resume_dorm_releases(self)
                 large_task_started = False
-            if not manual:
+            if not manual and not outer_idle_loop:
                 self.rest_until_next_task()
         finally:
             if large_task_started:
@@ -23134,7 +23132,7 @@ class BaseSchedulerSolver(
             scheduling(self.tasks, op_data=self.op_data)
 
     def rest_until_next_task(self):
-        """完成本轮任务后休息到 `tasks[0].time`，是调度器唯一的「任务间空闲」收尾。
+        """完成本轮任务后，休息到下个可派发任务或大型任务时段开始。
 
         发休息通知、累计任务计数、并真正睡到下个任务。
         maa_plan_solver / mower_plan_solver / __main__ 主循环此前各自复制了
@@ -23168,7 +23166,13 @@ class BaseSchedulerSolver(
         if first is None:
             self._stop_after_round()
             return
-        remaining_time = (first.time - datetime.now()).total_seconds()
+        now = datetime.now()
+        wake_at = first.time
+        if config.conf.maa_rg_enable:
+            _, opening = long_task_window(config.conf, now)
+            if opening is not None:
+                wake_at = min(wake_at, opening)
+        remaining_time = (wake_at - now).total_seconds()
         if remaining_time <= 0:
             return
         for pending in self.tasks:
@@ -23190,18 +23194,26 @@ class BaseSchedulerSolver(
             base_scheduler=self,
         )
         self._stop_after_round(body)
-        presentation = build_task_presentation(first, getattr(self, "op_data", None))
+        window_opens_first = wake_at < first.time
+        presentation = (
+            {}
+            if window_opens_first
+            else build_task_presentation(first, getattr(self, "op_data", None))
+        )
         forecast_now = datetime.now()
-        display_remaining = max(0, (first.time - forecast_now).total_seconds())
-        next_time = first.time.strftime(
-            "%m-%d %H:%M:%S" if first.time.date() != forecast_now.date() else "%H:%M:%S"
+        display_remaining = max(0, (wake_at - forecast_now).total_seconds())
+        next_time = wake_at.strftime(
+            "%m-%d %H:%M:%S" if wake_at.date() != forecast_now.date() else "%H:%M:%S"
         )
         header = f"休息 {format_wait_duration(display_remaining)}，至 {next_time}"
         agents = []
-        if presentation["title"]:
+        if window_opens_first:
+            header += "，随后进入大型任务执行时段"
+        elif presentation["title"]:
             header += f"，随后执行「{presentation['title']}」"
         if (
-            first.type == TaskTypes.EXHAUST_OFF
+            not window_opens_first
+            and first.type == TaskTypes.EXHAUST_OFF
             and not presentation["rooms"]
             and isinstance(first.meta_data, str)
             and first.meta_data
@@ -23211,7 +23223,9 @@ class BaseSchedulerSolver(
                 f"[[operator:{name}]]" for name in agents
             )
         logger.info(
-            format_task_log_message(presentation, header),
+            header
+            if window_opens_first
+            else format_task_log_message(presentation, header),
             extra={
                 "log_agents": agents,
                 "log_task": {
@@ -23223,14 +23237,15 @@ class BaseSchedulerSolver(
         )
         send_message(
             body,
-            f"休息 {format_time(remaining_time)}，到{first.format(timezone_offset).time.strftime('%H:%M:%S')}开始工作",
+            f"休息 {format_time(remaining_time)}，到{(wake_at + timedelta(hours=timezone_offset)).strftime('%H:%M:%S')}开始工作",
             body_is_html=True,
         )
-        if remaining_time > 0:
-            self._idle_sleep(remaining_time, round_end=True)
-            if config.maintenance_recheck.is_set():
-                return
-            self.check_current_focus()
+        if window_opens_first:
+            remaining_time = max(0, (wake_at - datetime.now()).total_seconds())
+        self._idle_sleep(remaining_time, round_end=True)
+        if config.maintenance_recheck.is_set():
+            return
+        self.check_current_focus()
 
     def _get_idle_action(self, remaining_time=0):
         if (

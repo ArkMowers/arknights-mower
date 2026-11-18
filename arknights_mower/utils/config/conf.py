@@ -211,7 +211,14 @@ class RogueRecruitConf(ConfModel):
     use_support: bool = False
 
 
+class LongTaskWindow(ConfModel):
+    start: Annotated[str, Field(pattern=r"^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$")]
+    end: Annotated[str, Field(pattern=r"^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$")]
+
+
 class LongTaskPart(ConfModel):
+    maa_long_task_extra_windows: list[LongTaskWindow] = Field(default_factory=list)
+
     class GarrisonConf(ConfModel):
         mode: Literal["medals", "matches"] = "medals"
         match_limit: int = Field(default=1, ge=0, strict=True)

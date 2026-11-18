@@ -20,6 +20,7 @@ from arknights_mower.utils.device.application import (
 from arknights_mower.utils.device.recovery import wait_for_recovery
 from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.long_task_windows import long_task_window
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
@@ -1213,7 +1214,7 @@ def simulate(saved):
                         remaining_time = 0
 
                     if remaining_time >= 540 and base_scheduler.has_maa_tasks():
-                        base_scheduler.maa_plan_solver()
+                        base_scheduler.maa_plan_solver(outer_idle_loop=True)
 
                 if (
                     find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
@@ -1233,77 +1234,45 @@ def simulate(saved):
                     remaining_time = 0
 
                 if remaining_time > 0:
-                    now_time = datetime.now().time()
-                    try:
-                        min_time = datetime.strptime(
-                            config.conf.maa_rg_sleep_min, "%H:%M"
-                        ).time()
-                        max_time = datetime.strptime(
-                            config.conf.maa_rg_sleep_max, "%H:%M"
-                        ).time()
-                        if max_time < min_time:
-                            rg_sleep = now_time > min_time or now_time < max_time
-                        else:
-                            rg_sleep = min_time < now_time < max_time
-                    except ValueError:
-                        rg_sleep = False
+                    if config.conf.GARRISON:
+                        from arknights_mower.solvers.garrison.runner import run_garrison
 
-                    if not rg_sleep:
+                        run_garrison(base_scheduler)
+                    elif config.conf.RA or config.conf.SF:
                         from arknights_mower.solvers.manual_tasks import (
                             long_task_deadline,
                             resume_dorm_releases,
                         )
 
-                        if config.conf.GARRISON:
-                            from arknights_mower.solvers.garrison.runner import (
-                                run_garrison,
-                            )
+                        now = datetime.now()
+                        cutoff, _ = long_task_window(config.conf, now)
+                        available = long_task_deadline(base_scheduler, cutoff) - now
+                        if available >= timedelta(minutes=9):
+                            if config.conf.RA:
+                                from arknights_mower.solvers.reclamation_algorithm import (
+                                    ReclamationAlgorithm,
+                                )
 
-                            run_garrison(base_scheduler)
-                        elif config.conf.RA:
-                            from arknights_mower.solvers.reclamation_algorithm import (
-                                ReclamationAlgorithm,
-                            )
+                                solver_type = ReclamationAlgorithm
+                            else:
+                                from arknights_mower.solvers.secret_front import (
+                                    SecretFront,
+                                )
 
+                                solver_type = SecretFront
                             base_scheduler.recog.update()
                             base_scheduler.back_to_index()
-                            ra_solver = ReclamationAlgorithm(
-                                base_scheduler.device, base_scheduler.recog
+                            duration = (
+                                long_task_deadline(base_scheduler, cutoff)
+                                - datetime.now()
                             )
-                            try:
-                                ra_solver.run(
-                                    long_task_deadline(
-                                        base_scheduler,
-                                        datetime.now() + timedelta(hours=24),
-                                    )
-                                    - datetime.now()
-                                )
-                            finally:
-                                resume_dorm_releases(base_scheduler)
-                            remaining_time = (
-                                _next_scheduler_task().time - datetime.now()
-                            ).total_seconds()
-                        elif config.conf.SF:
-                            from arknights_mower.solvers.secret_front import SecretFront
-
-                            base_scheduler.recog.update()
-                            base_scheduler.back_to_index()
-                            sf_solver = SecretFront(
-                                base_scheduler.device, base_scheduler.recog
-                            )
-                            try:
-                                sf_solver.run(
-                                    long_task_deadline(
-                                        base_scheduler,
-                                        datetime.now() + timedelta(hours=24),
-                                    )
-                                    - datetime.now()
-                                )
-                            finally:
-                                resume_dorm_releases(base_scheduler)
-                            remaining_time = (
-                                _next_scheduler_task().time - datetime.now()
-                            ).total_seconds()
+                            if duration > timedelta():
+                                try:
+                                    solver_type(
+                                        base_scheduler.device, base_scheduler.recog
+                                    ).run(duration)
+                                finally:
+                                    resume_dorm_releases(base_scheduler)
 
                     base_scheduler.rest_until_next_task()
                     task_failures = 0
