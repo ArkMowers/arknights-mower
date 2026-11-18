@@ -41,14 +41,14 @@ beforeEach(() => {
 
 afterEach(() => store?.$dispose())
 
-async function renderLongTasks(value) {
+async function renderLongTasks(value, overrides = {}) {
   const app = createSSRApp(LongTasks)
   pinia = createPinia()
   app.use(pinia)
   app.provide('loaded', ref(false))
   app.provide('mobile', ref(false))
   store = app.runWithContext(() => useConfigStore())
-  Object.assign(store, { maa_rg_enable: value, maa_long_task_type: '' })
+  Object.assign(store, { maa_rg_enable: value, maa_long_task_type: '', ...overrides })
   return renderToString(app)
 }
 
@@ -75,4 +75,14 @@ describe('long-task switch across configuration layouts', () => {
     state.updateEnabled(true)
     expect(createTaskWorkflow(store).statuses.long).toBe(true)
   })
+})
+
+it.each([0, 12])('shows the configured level farming limit of %i matches', async (match_limit) => {
+  const html = await renderLongTasks(true, {
+    maa_long_task_type: 'garrison',
+    garrison: { mode: 'matches', match_limit, target_wins: 3, run_id: '' }
+  })
+  expect(html).toContain('刷取局数')
+  expect(html).toContain('重新计数并继续')
+  expect(store.garrison.match_limit).toBe(match_limit)
 })

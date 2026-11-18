@@ -1254,7 +1254,13 @@ def simulate(saved):
                             resume_dorm_releases,
                         )
 
-                        if config.conf.RA:
+                        if config.conf.GARRISON:
+                            from arknights_mower.solvers.garrison.runner import (
+                                run_garrison,
+                            )
+
+                            run_garrison(base_scheduler)
+                        elif config.conf.RA:
                             from arknights_mower.solvers.reclamation_algorithm import (
                                 ReclamationAlgorithm,
                             )

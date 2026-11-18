@@ -10,6 +10,7 @@ const axios = inject('axios')
 const store = useConfigStore()
 const completed = ref(null)
 const failed = ref(false)
+const detail = ref(null)
 let generation = 0
 let timer
 let controller
@@ -21,7 +22,9 @@ const status_text = computed(() =>
       ? '读取中'
       : completed.value
         ? '已完成'
-        : '待执行'
+        : detail.value?.failed
+          ? '需要核对'
+          : '待执行'
 )
 const status_type = computed(() =>
   completed.value === null || failed.value ? 'default' : completed.value ? 'success' : 'warning'
@@ -44,6 +47,7 @@ async function refresh() {
     if (current !== generation || disposed) return
     if (typeof data[props.kind]?.completed !== 'boolean') throw new Error('Invalid task status')
     completed.value = data[props.kind].completed
+    detail.value = data[props.kind]
   } catch {
     if (current === generation && !disposed) failed.value = true
   } finally {
@@ -54,6 +58,7 @@ watch(
   () => [props.kind, props.settings],
   () => {
     completed.value = null
+    detail.value = null
     refresh()
   },
   { deep: true }
@@ -70,6 +75,15 @@ onScopeDispose(() => {
 <template>
   <n-flex align="center" :size="8">
     <n-text :type="status_type">{{ status_text }}</n-text>
+    <n-text v-if="kind === 'garrison' && detail && !failed">
+      <template v-if="detail.mode === 'matches'"
+        >已结算 {{ detail.count }}{{ detail.total ? ' / ' + detail.total : '' }} 局{{
+          detail.total ? '' : '（不限）'
+        }}</template
+      >
+      <template v-else>已确认达标 {{ detail.count }}/{{ detail.total }} 项策略</template>
+    </n-text>
+    <n-text v-if="detail?.message && !failed" type="warning">{{ detail.message }}</n-text>
     <n-button v-if="failed" size="tiny" @click="refresh">重试</n-button>
   </n-flex>
 </template>

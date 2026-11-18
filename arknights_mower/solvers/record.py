@@ -43,6 +43,8 @@ _DB_TABLE_STMTS = (
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_sss_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS garrison_progress ("
+    "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_copilot_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_blackflow_progress ("
@@ -478,6 +480,23 @@ def save_maa_sss_progress(progress):
     with _conn() as connection:
         connection.execute(
             "INSERT OR REPLACE INTO maa_sss_progress VALUES (1, ?)",
+            (json.dumps(progress),),
+        )
+        connection.commit()
+
+
+def load_garrison_progress():
+    with _conn() as connection:
+        row = connection.execute(
+            "SELECT payload FROM garrison_progress WHERE id = 1"
+        ).fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def save_garrison_progress(progress):
+    with _conn() as connection:
+        connection.execute(
+            "INSERT OR REPLACE INTO garrison_progress VALUES (1, ?)",
             (json.dumps(progress),),
         )
         connection.commit()

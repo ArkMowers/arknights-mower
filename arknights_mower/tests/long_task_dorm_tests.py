@@ -307,3 +307,35 @@ def test_overdue_protected_release_keeps_time(scheduler, flag):
     scheduler.clock.current = scheduler.now + timedelta(minutes=2)
     manual_tasks.resume_dorm_releases(scheduler.solver)
     assert scheduler.release.time == scheduler.now
+
+
+@pytest.mark.parametrize("window_after_read, expected", [(540, True), (539, False)])
+def test_saved_garrison_can_resume_before_next_order(
+    scheduler, income_db, monkeypatch, window_after_read, expected
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.solvers.garrison import model, runner
+
+    conf = Conf(maa_rg_enable=True, maa_long_task_type="garrison")
+    monkeypatch.setattr(manual_tasks.config, "conf", conf)
+    monkeypatch.setattr(runner, "datetime", scheduler.clock)
+    progress = model.prepare_progress(conf, {})
+    progress["match"] = {"phase": "active"}
+    record.save_garrison_progress(progress)
+    worker = MagicMock()
+    monkeypatch.setattr(runner, "GarrisonSolver", worker)
+    solver = scheduler.solver
+    solver.device = solver.recog = MagicMock()
+    solver._queue_missing_run_order_reads = MagicMock(return_value=True)
+    solver._read_pending_order_times = MagicMock(
+        side_effect=lambda: setattr(
+            scheduler.order,
+            "time",
+            scheduler.now + timedelta(seconds=window_after_read),
+        )
+    )
+    scheduler.order.time = scheduler.now + timedelta(minutes=10)
+    assert manual_tasks.run_long_task_if_dorm_pending(solver) is expected
+    assert worker.called is expected
+    assert scheduler.order in solver.tasks
+    assert scheduler.release in solver.tasks

@@ -10,6 +10,7 @@ const {
   maa_rg_sleep_min,
   maa_rg_sleep_max,
   maa_rcl_theme,
+  garrison,
   rcl
 } = storeToRefs(config_store)
 const longTaskEnabled = computed({
@@ -17,6 +18,13 @@ const longTaskEnabled = computed({
   set: (value) => (maa_rg_enable.value = value)
 })
 
+const garrisonGoal = computed({
+  get: () => (garrison.value.mode === 'matches' ? 'matches' : garrison.value.target_wins),
+  set: (value) => {
+    garrison.value.mode = value === 'matches' ? 'matches' : 'medals'
+    if (value !== 'matches') garrison.value.target_wins = value
+  }
+})
 const mobile = inject('mobile')
 
 const maa_long_task_options = [
@@ -26,7 +34,8 @@ const maa_long_task_options = [
   { label: '保全派驻 (MAA)', value: 'sss' },
   { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
-  { label: '隐秘战线', value: 'sf' }
+  { label: '隐秘战线', value: 'sf' },
+  { label: '卫戍协议 · 个人极速模拟', value: 'garrison' }
 ]
 
 const tool_options = [
@@ -175,6 +184,47 @@ watch(
     <maa-sss v-else-if="maa_long_task_type == 'sss'" />
     <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
     <secret-front v-else-if="maa_long_task_type == 'sf'" />
+    <template v-else-if="maa_long_task_type == 'garrison'">
+      <n-form-item label="刷取目标">
+        <n-select
+          v-model:value="garrisonGoal"
+          :options="[
+            { label: '三胜 · 金章', value: 3 },
+            { label: '六胜 · 彩章', value: 6 },
+            { label: '刷等级', value: 'matches' }
+          ]"
+          aria-label="刷取目标"
+        />
+      </n-form-item>
+      <n-form-item v-if="garrison.mode === 'matches'" label="刷取局数（0 为不限）">
+        <n-input-number
+          :value="garrison.match_limit"
+          :min="0"
+          :precision="0"
+          aria-label="刷取局数"
+          @update:value="
+            (value) => {
+              if (value !== null) garrison.match_limit = value
+            }
+          "
+        />
+      </n-form-item>
+      <n-p
+        >个人极速模拟使用预设编队。首次运行从
+        <a
+          href="https://github.com/UnknownGlyph/GarrisonFarm"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GarrisonFarm</a
+        >
+        下载对局脚本和布局。每局预计 10 分钟，另留 30 秒交接。已保存的对局有 9
+        分钟空档即可重连，临近基建任务时退出游戏。</n-p
+      >
+      <maa-task-status kind="garrison" :settings="garrison" />
+      <n-button @click="garrison.run_id = String(Date.now())">{{
+        garrison.mode === 'matches' ? '重新计数并继续' : '重新核对并继续'
+      }}</n-button>
+    </template>
   </n-card>
 </template>
 

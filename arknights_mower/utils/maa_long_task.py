@@ -85,4 +85,7 @@ def completion_status(conf):
         "completed": progress.get("key") == blackflow_boss_run_key(conf.rogue)
         and progress.get("completed") is True
     }
+    from arknights_mower.solvers.garrison.model import status
+
+    result["garrison"] = status(conf, record.load_garrison_progress())
     return result

@@ -659,6 +659,15 @@ class Device:
         command = f"input keyevent {keycode}"
         self._input_once(lambda: self.client.run(command), transport="adb")
 
+    def motion_events(self, kind, points):
+        """Send Android pointer events on the current device while a drag is held."""
+        if kind not in {"DOWN", "MOVE", "UP"} or not points:
+            raise ValueError("无效的触控事件")
+        command = "; ".join(
+            f"input motionevent {kind} {int(x)} {int(y)}" for x, y in points
+        )
+        self._input_once(lambda: self.client.run(command), transport="adb")
+
     def send_text(self, text: str) -> None:
         """send a text"""
         logger.debug(f"text: {repr(text)}")

@@ -481,7 +481,7 @@ export const taskDefinitions = [
     enabled: false,
     engine: 'Mower / MAA',
     description:
-      '一次选择一种模式；集成战略、保全派驻和 MAA 生息演算使用 MAA，原生生息演算与隐秘战线使用 Mower。',
+      '一次选择一种模式；集成战略、保全派驻和 MAA 生息演算使用 MAA，原生生息演算、隐秘战线与卫戍协议使用 Mower。',
     condition: '在允许时段且基建任务之间有可用时间时运行。',
     effect: '下一次长任务调度使用所选模式与时段，已启动任务遵循原来的停止规则。',
     fields: [
@@ -490,7 +490,8 @@ export const taskDefinitions = [
         { label: '保全派驻 · MAA', value: 'sss' },
         { label: '生息演算 · MAA', value: 'rcl' },
         { label: '生息演算 · Mower', value: 'ra' },
-        { label: '隐秘战线 · Mower', value: 'sf' }
+        { label: '隐秘战线 · Mower', value: 'sf' },
+        { label: '卫戍协议 · 个人极速模拟', value: 'garrison' }
       ]),
       time('maa_rg_sleep_max', '允许开始时间', '00:00', {
         help: '与停止时间相同表示全天允许；到达时刻仍需等待可用的基建空档。'
