@@ -14576,8 +14576,6 @@ class BaseSchedulerSolver(
             (item["available_drones"] for item in accelerated_manufacture),
             default=planned_drones,
         )
-        if available == 201:
-            raise RecognizeError("无人机数量识别异常")
         logger.info(
             f"制造站批量切产物计划共需至多{planned_drones}架无人机，"
             f"当前可用{available}架"
@@ -14626,8 +14624,6 @@ class BaseSchedulerSolver(
                 (item["available_drones"] for item in accelerated_manufacture),
                 default=planned_drones,
             )
-            if available == 201:
-                raise RecognizeError("无人机数量识别异常")
             insufficient_drones = planned_drones > available
             if insufficient_drones:
                 rooms = [item["room"] for item in accelerated_manufacture]
@@ -14862,8 +14858,7 @@ class BaseSchedulerSolver(
                 if not_customize:
                     drone_count = self.digit_reader.get_drone(self.recog.gray)
                     logger.info(f"当前无人机数量为：{drone_count}")
-                    # 200 为识别错误
-                    if drone_count < self.drone_count_limit or drone_count == 201:
+                    if drone_count < self.drone_count_limit:
                         logger.info(f"无人机数量小于{self.drone_count_limit}->停止")
                         break
                 accelerate = self.find("bill_accelerate")
