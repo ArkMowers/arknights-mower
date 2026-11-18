@@ -18,8 +18,7 @@ from .upstream import FarmSession, panel_open, strategy_panel
 from .vision import Vision
 
 RECONNECT_SECONDS = 30
-MATCH_SECONDS = 10 * 60
-HANDOVER_SECONDS = 30
+MATCH_SECONDS = 12 * 60
 
 
 class GarrisonYield(BaseException):
@@ -82,7 +81,7 @@ class GarrisonSolver:
             seconds = min(
                 seconds,
                 (self.deadline() - datetime.now()).total_seconds()
-                - (5 if self._restoring_theme else HANDOVER_SECONDS),
+                - (5 if self._restoring_theme else 0),
             )
         if seconds <= 0 or config.stop_maa.is_set():
             raise GarrisonYield
@@ -179,11 +178,8 @@ class GarrisonSolver:
             logger.info(f"卫戍协议留待下次空档恢复主题「{name}」")
             return
         except Exception as exc:
-            self.progress["theme_restore_blocked"] = True
-            self.persist()
             raise GarrisonError(f"恢复卫戍协议主题「{name}」失败：{exc}") from exc
         self.progress.pop("original_theme")
-        self.progress.pop("theme_restore_blocked", None)
         self.persist()
         logger.info(f"已恢复卫戍协议主题「{name}」")
 
@@ -375,25 +371,17 @@ class GarrisonSolver:
             self.vision = Vision(rapidocr.engine)
         try:
             with device_io_budget(self.remaining), cancellation_scope(cancelled):
-                if self.progress.get("failed") or goal_reached(
-                    self.progress, self.target_wins, self.match_limit
-                ):
+                if goal_reached(self.progress, self.target_wins, self.match_limit):
                     self._entered = True
                     self.restore_theme()
                     return
                 session = FarmSession(self)
                 self._entered = True
                 try:
-                    try:
-                        frame = self.enter()
-                        self.play(session.game, frame)
-                    finally:
-                        session.release()
-                except MowerExit:
-                    raise
-                except Exception:
-                    self.restore_theme()
-                    raise
+                    frame = self.enter()
+                    self.play(session.game, frame)
+                finally:
+                    session.release()
                 if goal_reached(self.progress, self.target_wins, self.match_limit):
                     self.restore_theme()
         except GarrisonYield:
@@ -464,6 +452,14 @@ class GarrisonSolver:
                 continue
             if frame.screen == "squad":
                 game.pick_squad()
+                frame = self.wait(
+                    lambda f: (
+                        f.screen
+                        in {"prep", "battle", "battle-timeout", "choice", "result"}
+                    ),
+                    60,
+                )
+                continue
             elif frame.screen == "prep":
                 game.prep_phase(board, cv2.cvtColor(frame.image, cv2.COLOR_RGB2BGR))
                 if board.prep_done and time.monotonic() - board.last_ready > 10:

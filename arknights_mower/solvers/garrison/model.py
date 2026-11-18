@@ -76,17 +76,15 @@ def status(conf, progress):
     count, total = goal_counts(
         prepared, settings.target_wins, settings.match_limit if matches else None
     )
-    failed = prepared.get("failed", False)
     return {
         **({"mode": "matches"} if matches else {}),
         "completed": total > 0
         and count >= total
-        and not prepared.get("original_theme")
-        and (matches or not failed),
+        and not prepared.get("original_theme"),
         "count": count,
         "total": total,
-        "failed": failed,
-        "message": prepared.get("error", "") if failed else "",
+        "failed": False,
+        "message": prepared.get("error", ""),
     }
 
 
@@ -100,14 +98,15 @@ def prepare_progress(conf, saved):
             "match": None,
         }
     )
+    progress.pop("failed", None)
+    progress.pop("theme_restore_blocked", None)
     if progress.get("key") != run_key(conf):
         if progress.get("key", [None, None, None])[-1] != conf.garrison.run_id:
             if conf.garrison.mode == "matches":
                 progress["matches_played"] = 0
             else:
                 progress["wins"] = {}
-        progress.pop("theme_restore_blocked", None)
-        progress.update(key=run_key(conf), failed=False, error="", attempts=0)
+        progress.update(key=run_key(conf), error="", attempts=0)
     return progress
 
 

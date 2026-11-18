@@ -75,7 +75,7 @@ def run_long_task_if_dorm_pending(scheduler):
     ):
         return False
     now = datetime.now()
-    cutoff, _ = long_task_window(conf, now)
+    cutoff, opening = long_task_window(conf, now)
     if cutoff <= now:
         return False
     garrison = conf.GARRISON
@@ -86,7 +86,7 @@ def run_long_task_if_dorm_pending(scheduler):
             run_garrison,
         )
 
-        if eligible_progress(conf, window.total_seconds()) is None:
+        if eligible_progress(conf, window.total_seconds(), scheduler, opening) is None:
             return False
     elif window < timedelta(minutes=9):
         return False
