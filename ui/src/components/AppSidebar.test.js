@@ -648,7 +648,7 @@ describe('自定义侧边栏', () => {
     expect(await render()).not.toContain('role="dialog"')
     const dialog = await render({}, 'reports')
     expect(dialog).toContain('role="dialog"')
-    expect(dialog).toContain('aria-label="搜索页面"')
+    expect(dialog).toContain('aria-label="搜索页面或设置"')
     expect(dialog).toContain('data-page-key="log"')
     component.finishEditing()
     expect(component.addingGroup).toBeNull()
@@ -683,7 +683,7 @@ describe('自定义侧边栏', () => {
     const html = await render()
     expect(html).toContain('data-sidebar-group="ungrouped"')
     expect(html).not.toContain('app-sidebar__heading-row')
-    for (const item of preferences.catalog.value)
+    for (const item of preferences.catalog.value.filter((item) => !item.settingsShortcut))
       expect(html).toContain('data-sidebar-item="' + item.key + '"')
   })
 

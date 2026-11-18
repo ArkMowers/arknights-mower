@@ -84,7 +84,7 @@ const renderer = createRenderer({
 function mount(navigation, hash = '') {
   const reveal = vi.fn()
   const editing = vi.fn()
-  const route = reactive({ hash })
+  const route = reactive({ hash, path: '/settings', matched: [] })
   const app = renderer.createApp(ClientConfiguration, {
     onReveal: reveal,
     onEditing: editing
@@ -185,6 +185,24 @@ describe('task configuration connection requests', () => {
       expect(page.editor()).toBe('base')
     }
   )
+
+  it('reveals a settings shortcut on entry, change and repeated navigation', async () => {
+    const page = mount(null, '#settings-stage-plan')
+    await nextTick()
+    expect(page.editor()).toBe('stage-plan')
+    expect(state.revealActive).toHaveBeenCalledOnce()
+
+    page.route.hash = '#settings-long'
+    await nextTick()
+    await nextTick()
+    expect(page.editor()).toBe('long')
+    expect(state.revealActive).toHaveBeenCalledTimes(2)
+
+    page.route.matched = []
+    await nextTick()
+    await nextTick()
+    expect(state.revealActive).toHaveBeenCalledTimes(3)
+  })
 
   it('opens a task editor without changing the URL', async () => {
     const page = mount(null)

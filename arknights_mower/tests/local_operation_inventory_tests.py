@@ -129,6 +129,23 @@ def test_cap_ends_current_stage_after_one_confirmed_batch(native, monkeypatch):
     assert not native.active.is_set()
 
 
+def test_selected_date_runs_multiple_batches_until_inventory_cap(native, monkeypatch):
+    native.conf.medicine_use_all_date = "2026-11-24"
+    monkeypatch.setattr(
+        "arknights_mower.utils.datetime.get_server_time", lambda: datetime(2026, 11, 24)
+    )
+    record.save_inventory_counts({"采购凭证": 14})
+    battle = MagicMock(side_effect=lambda: fake_batch(native.solver))
+    monkeypatch.setattr(operation.SceneGraphSolver, "run", battle)
+
+    result = native.solver.run(stage_id="AP-5", ap_cost=30, stage_duration_seconds=30)
+
+    assert battle.call_count == 2
+    assert result["stopped_by_inventory"]
+    assert record.get_inventory_counts() == {"采购凭证": 20}
+    assert not native.active.is_set()
+
+
 def test_already_capped_stage_never_starts_a_batch(native, monkeypatch):
     record.save_inventory_counts({"采购凭证": 20})
     result, battle = run_native(native, monkeypatch)

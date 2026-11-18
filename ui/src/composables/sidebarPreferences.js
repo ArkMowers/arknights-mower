@@ -1,6 +1,7 @@
 import { computed, readonly, ref } from 'vue'
 import axios from 'axios'
-import { navigationSections, sidebarNavigationItems } from '@/navigation'
+import { navigationSections, settingsShortcuts, sidebarNavigationItems } from '@/navigation'
+import { useConfigStore } from '@/stores/config'
 
 export const SIDEBAR_STORAGE_KEY = 'mower.sidebar-preferences.v1'
 const MAX_GROUPS = 20
@@ -10,7 +11,8 @@ const fixedItemKeys = new Set(
 )
 const editableItems = sidebarNavigationItems.filter((item) => !item.footer)
 const editableKeys = new Set(editableItems.map((item) => item.key))
-const MAX_PLACEMENTS = editableItems.length * (MAX_GROUPS + 2)
+const shortcutKeys = new Set(settingsShortcuts({}).map((item) => item.key))
+const MAX_PLACEMENTS = (editableKeys.size + shortcutKeys.size) * (MAX_GROUPS + 2)
 
 const defaultGroups = navigationSections
   .filter((section) => section.items.some((item) => editableKeys.has(item.key)))
@@ -73,7 +75,8 @@ function normalize(saved) {
   const placedIds = new Set(fixedItemKeys)
   const occupied = new Set()
   for (const placement of Array.isArray(saved.placements) ? saved.placements : []) {
-    if (!placement || !editableKeys.has(placement.key)) continue
+    if (!placement || !(editableKeys.has(placement.key) || shortcutKeys.has(placement.key)))
+      continue
     const id = legacy ? placement.key : placement.id
     if (!validKey(id) || placedIds.has(id)) continue
     if (legacy && placedKeys.has(placement.key)) continue
@@ -147,6 +150,7 @@ function browserStorage() {
 
 export function createSidebarPreferences({
   storage = browserStorage(),
+  settingsConfig = {},
   key = SIDEBAR_STORAGE_KEY,
   transport = null,
   endpoint = `${import.meta.env.VITE_HTTP_URL || ''}/gui/sidebar`
@@ -169,13 +173,20 @@ export function createSidebarPreferences({
     }
   }
   const state = ref(transport ? defaults() : readLocal() || defaults())
-  const catalog = computed(() => editableItems)
-  const itemMap = computed(() => new Map(sidebarNavigationItems.map((item) => [item.key, item])))
+  const catalog = computed(() => [...editableItems, ...settingsShortcuts(settingsConfig)])
+  const itemMap = computed(
+    () =>
+      new Map(
+        [...catalog.value, ...sidebarNavigationItems.filter((item) => item.footer)].map((item) => [
+          item.key,
+          item
+        ])
+      )
+  )
   const itemsWhere = (predicate) =>
     state.value.placements
-      .filter((item) => item.visible && predicate(item))
+      .filter((item) => item.visible && itemMap.value.has(item.key) && predicate(item))
       .map((item) => ({ ...itemMap.value.get(item.key), id: item.id }))
-      .filter(Boolean)
   const visibleSections = computed(() =>
     state.value.groups.map((group) => ({
       ...group,
@@ -344,7 +355,7 @@ export function createSidebarPreferences({
       state.value.placements.filter((item) => !fixedItemKeys.has(item.key)).length >= MAX_PLACEMENTS
     )
       return false
-    const fallback = defaultPlacements.find((item) => item.key === itemKey).group
+    const fallback = defaultPlacements.find((item) => item.key === itemKey)?.group
     const group =
       groupKey === 'pinned'
         ? state.value.groups.some((item) => item.key === fallback)
@@ -489,6 +500,9 @@ export function createSidebarPreferences({
 let sharedPreferences
 
 export function useSidebarPreferences() {
-  sharedPreferences ??= createSidebarPreferences({ transport: axios })
+  sharedPreferences ??= createSidebarPreferences({
+    transport: axios,
+    settingsConfig: useConfigStore()
+  })
   return sharedPreferences
 }

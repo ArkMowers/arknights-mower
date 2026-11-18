@@ -5,7 +5,7 @@ import { useConfigStore } from '@/stores/config'
 import { deviceConnectionNavigationKey } from '@/composables/deviceConnectionNavigation'
 import TaskSettingsPanels from '@/components/TaskSettingsPanels.vue'
 import TaskWorkflow from './TaskWorkflow.vue'
-import { createTaskWorkflow, setTaskEnabled } from './model'
+import { createTaskWorkflow, setTaskEnabled, settingsShortcutPrefix } from './model'
 
 defineProps({
   embedded: { type: Boolean, default: false },
@@ -61,6 +61,11 @@ defineExpose({ openEditor })
 async function revealHash(hash) {
   const target = hash?.replace(/^#/, '')
   if (!target) return
+  if (target.startsWith(settingsShortcutPrefix)) {
+    if (!route?.path || route.path === '/settings')
+      openEditor(target.slice(settingsShortcutPrefix.length))
+    return
+  }
   if (legacyEditors[target]) {
     openEditor(legacyEditors[target], target)
     return
@@ -72,7 +77,9 @@ async function revealHash(hash) {
   if (editor) openEditor(editor, target)
 }
 
-watch(() => route?.hash, revealHash, { immediate: true })
+watch([() => route?.hash, () => route?.matched], ([hash]) => revealHash(hash), {
+  immediate: true
+})
 
 watch(
   () => deviceConnectionNavigation?.request.value,

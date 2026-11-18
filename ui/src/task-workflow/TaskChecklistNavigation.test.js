@@ -12,6 +12,8 @@ let scope, component, props, viewport, row, writeScroll, emitted
 
 beforeEach(() => {
   props = reactive({
+    editors: [],
+    favoriteIds: [],
     tasks: [
       { id: 'first', title: '首项', group: 'settings' },
       { id: 'last', title: '末项', group: 'settings' }
@@ -37,7 +39,7 @@ beforeEach(() => {
       writeScroll(value)
     },
     getBoundingClientRect: () => ({ top: 100, bottom: 300, height: 200 }),
-    querySelector: vi.fn(() => ({ getBoundingClientRect: () => row })),
+    querySelectorAll: vi.fn(() => [{ getBoundingClientRect: () => row }]),
     scrollIntoView: vi.fn(),
     focus: vi.fn()
   }
@@ -149,19 +151,30 @@ describe('selected settings directory entry visibility', () => {
     await mountDirectory()
     component.query.value = '首项'
     await nextTick()
-    viewport.querySelector = () =>
-      component.query.value ? null : { getBoundingClientRect: () => row }
+    viewport.querySelectorAll = () =>
+      component.query.value ? [] : [{ getBoundingClientRect: () => row }]
     row = { top: 310, bottom: 350 }
     await selectLast()
     expect(component.query.value).toBe('')
     expect(writeScroll).toHaveBeenCalledExactlyOnceWith(330)
   })
 
-  it('does not move a fixed connection row or an entry missing from the directory', async () => {
+  it('does not move the viewport when an entry is missing from the directory', async () => {
     await mountDirectory()
-    viewport.querySelector = () => null
+    viewport.querySelectorAll = () => []
     props.selectedId = 'device'
     await nextTick()
+    expect(writeScroll).not.toHaveBeenCalled()
+  })
+
+  it('keeps the scroll position when one of two matching rows is already visible', async () => {
+    await mountDirectory()
+    row = { top: 330, bottom: 370 }
+    viewport.querySelectorAll = () => [
+      { getBoundingClientRect: () => row },
+      { getBoundingClientRect: () => ({ top: 155, bottom: 195 }) }
+    ]
+    await selectLast()
     expect(writeScroll).not.toHaveBeenCalled()
   })
 
@@ -201,5 +214,42 @@ describe('selected settings directory entry visibility', () => {
     expect(component.mobileOpen.value).toBe(false)
     expect(mobileFocus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true })
     expect(emitted).toHaveBeenCalledExactlyOnceWith('select', 'last')
+  })
+})
+
+describe('settings favorites editor', () => {
+  it('includes every available editor and keeps the draft after a failed save', async () => {
+    props.editors = [
+      { id: 'first', title: '首项' },
+      { id: 'last', title: '末项' },
+      { id: 'extra', title: '独立设置', searchKeywords: '额外关键字' }
+    ]
+    props.favoriteIds = ['first', 'unavailable']
+    props.loadFavorites = vi.fn().mockResolvedValue(true)
+    props.saveFavorites = vi
+      .fn()
+      .mockResolvedValueOnce(false)
+      .mockImplementation(async (ids) => {
+        props.favoriteIds = ids
+        return true
+      })
+
+    await component.editFavorites()
+    expect(component.favoriteOptions.value.map(({ id }) => id)).toEqual(['first', 'last', 'extra'])
+    component.favoriteQuery.value = '关键字'
+    expect(component.favoriteOptions.value.map(({ id }) => id)).toEqual(['extra'])
+    component.favoriteDraft.value = ['unavailable', 'extra']
+
+    await component.confirmFavorites()
+    expect(component.editingFavorites.value).toBe(true)
+    expect(component.favoriteError.value).toContain('保存失败')
+    expect(component.visibleFavorites.value.map(({ id }) => id)).toEqual(['first'])
+    await component.confirmFavorites()
+    expect(component.editingFavorites.value).toBe(false)
+    expect(props.saveFavorites).toHaveBeenLastCalledWith(['unavailable', 'extra'])
+    expect(component.visibleFavorites.value.map(({ id }) => id)).toEqual(['extra'])
+    expect(component.visibleGroups.value.flatMap(({ tasks }) => tasks.map(({ id }) => id))).toEqual(
+      ['first', 'last']
+    )
   })
 })

@@ -18,6 +18,7 @@ from arknights_mower.solvers.record import (
 from arknights_mower.utils import config
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.datetime import is_game_date
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, thres2
@@ -213,7 +214,9 @@ class OperationSolver(SceneGraphSolver):
                 if self._inventory_limit_reached():
                     self.stopped_by_inventory = True
                     break
-                if self.target_total_runs is None:
+                if self.target_total_runs is None and not is_game_date(
+                    getattr(config.conf, "medicine_use_all_date", None)
+                ):
                     logger.debug(
                         "stop operation loop because target_total_runs is not limited | stage_id=%s",
                         self.stage_id,
@@ -538,6 +541,10 @@ class OperationSolver(SceneGraphSolver):
             self.tap_element("double_confirm/main", x_rate=1)
             return True
         elif scene == Scene.OPERATOR_RECOVER_POTION:
+            if is_game_date(getattr(config.conf, "medicine_use_all_date", None)):
+                logger.info("使用理智药")
+                self.tap((1635, 865))
+                return
             use_medicine = config.conf.medicine_expire_days > 0
             if use_medicine:
                 img = cropimg(self.recog.img, ((1015, 515), (1170, 560)))

@@ -358,6 +358,24 @@ def load_task_settings_layout() -> str:
     return value if value in ("checklist", "waterfall") else "checklist"
 
 
+def _valid_task_settings_favorites(value: object) -> bool:
+    return (
+        isinstance(value, list)
+        and len(value) <= _MAX_KNOWN_KEYS
+        and all(_valid_key(item) for item in value)
+        and len(set(value)) == len(value)
+    )
+
+
+def load_task_settings_favorites() -> list[str]:
+    value = read_gui_data(strict=True).get("task_settings_favorites")
+    return (
+        value
+        if _valid_task_settings_favorites(value)
+        else ["device", "stage-plan", "long"]
+    )
+
+
 def load_task_queue_display() -> str:
     value = read_gui_data(strict=True).get("task_queue_display")
     return value if value in ("portraits", "names") else "portraits"
@@ -450,6 +468,7 @@ def save_appearance(changes: dict) -> dict:
             ("checklist", "waterfall"),
             "任务配置显示方式无效",
         ),
+        "task_settings_favorites": (list, None, "常用设置列表无效"),
         "task_queue_display": (str, ("portraits", "names"), "任务列表显示方式无效"),
         "running_log_layout": (str, None, "运行日志布局无效"),
         "base_report_mode": (str, ("standard", "stock"), "基建报表显示方式无效"),
@@ -471,6 +490,10 @@ def save_appearance(changes: dict) -> dict:
             not isinstance(value, value_type)
             or (choices is not None and value not in choices)
             or (key == "running_log_layout" and not _is_valid_running_log_layout(value))
+            or (
+                key == "task_settings_favorites"
+                and not _valid_task_settings_favorites(value)
+            )
         ):
             raise ValueError(message)
     if values.get("watermark_visible") is False:

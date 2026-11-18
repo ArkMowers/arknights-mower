@@ -158,13 +158,28 @@ describe('sidebar page dialog', () => {
     expect(availableKeys()).not.toContain('chat')
     expect(availableKeys()).not.toContain('mower-settings')
     const html = await render()
-    expect(html).toContain('aria-label="搜索页面"')
+    expect(html).toContain('aria-label="搜索页面或设置"')
     expect(html).not.toContain('data-page-key="chat"')
     expect(html).not.toContain('data-page-key="mower-settings"')
     component.search.value = '  PrTs  '
     expect(availableKeys()).toEqual(['prts'])
     component.search.value = '心情'
     expect(availableKeys()).toEqual(['record-line'])
+    expect(html).toContain('设置快捷入口')
+    component.search.value = '理智药'
+    expect(availableKeys()).toEqual(['settings-stage-plan'])
+    component.selectedKeys.value = ['settings-stage-plan']
+    component.confirm()
+    expect(
+      state.preferences.visibleSections.value.find(({ key }) => key === 'daily').items
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: 'settings-stage-plan',
+          to: { path: '/settings', hash: '#settings-stage-plan' }
+        })
+      ])
+    )
     component.search.value = '不存在的页面'
     expect(availableKeys()).toEqual([])
   })

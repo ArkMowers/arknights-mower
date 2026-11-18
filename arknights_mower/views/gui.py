@@ -68,6 +68,7 @@ def appearance():
         "software_version_display": gui.load_software_version_display(),
         "software_version_language": gui.load_software_version_language(),
         "task_settings_layout": gui.load_task_settings_layout(),
+        "task_settings_favorites": gui.load_task_settings_favorites(),
         "task_queue_display": gui.load_task_queue_display(),
         "running_log_layout": gui.load_running_log_layout(),
         "base_report_mode": gui.load_base_report_mode(),

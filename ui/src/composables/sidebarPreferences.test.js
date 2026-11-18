@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
+import { reactive } from 'vue'
 import { createSidebarPreferences, SIDEBAR_STORAGE_KEY } from './sidebarPreferences'
-import { sidebarNavigationItems } from '@/navigation'
+import { settingsShortcuts, sidebarNavigationItems } from '@/navigation'
 import { createPreviewAdapter, createPreviewData } from '../../preview/mock'
 const editableNavigationItems = sidebarNavigationItems.filter((item) => !item.footer)
+const editableCatalog = [...editableNavigationItems, ...settingsShortcuts({})]
 
 function memoryStorage(initial = null) {
   const values = new Map(initial === null ? [] : [[SIDEBAR_STORAGE_KEY, initial]])
@@ -59,7 +61,7 @@ describe('sidebar preferences', () => {
     expect(keys(displayed).toSorted()).toEqual(keys(sidebarNavigationItems).toSorted())
     expect(new Set(keys(displayed)).size).toBe(displayed.length)
     expect(keys(preferences.footerItems.value)).toEqual(['chat'])
-    expect(keys(preferences.catalog.value)).toEqual(keys(editableNavigationItems))
+    expect(keys(preferences.catalog.value)).toEqual(keys(editableCatalog))
     expect(preferences.pinnedItems.value).toHaveLength(0)
     expect(keys(preferences.visibleSections.value)).toEqual(['daily', 'reports', 'reference'])
     expect(section(preferences, 'daily').title).toBe('常用')
@@ -71,6 +73,28 @@ describe('sidebar preferences', () => {
       id: 'task-settings'
     })
     expect(preferences.state.value.version).toBe(3)
+  })
+
+  it('restores saved settings shortcuts while hiding managed-only exclusions', () => {
+    const storage = memoryStorage()
+    const settingsConfig = reactive({ manager_owned_device: false })
+    const preferences = createSidebarPreferences({ storage, settingsConfig })
+    expect(preferences.addEntry('settings-stage-plan', 'pinned')).toBe(true)
+    expect(preferences.addEntry('settings-device', 'daily')).toBe(true)
+
+    settingsConfig.manager_owned_device = true
+    const restored = createSidebarPreferences({ storage, settingsConfig })
+    expect(keys(restored.pinnedItems.value)).toEqual(['settings-stage-plan'])
+    expect(keys(section(restored, 'daily').items)).not.toContain('settings-device')
+    expect(keys(restored.catalog.value)).not.toContain('settings-device')
+    expect(restored.addEntry('settings-device', 'ungrouped')).toBe(false)
+    expect(restored.pinnedItems.value[0].to).toEqual({
+      path: '/settings',
+      hash: '#settings-stage-plan'
+    })
+
+    settingsConfig.manager_owned_device = false
+    expect(keys(section(restored, 'daily').items)).toContain('settings-device')
   })
 
   it.each(['local', 'server'])(
@@ -199,7 +223,7 @@ describe('sidebar preferences', () => {
     const preferences = createSidebarPreferences({ storage: memoryStorage(JSON.stringify(saved)) })
     expect(keys(preferences.state.value.groups)).toEqual(['daily', 'tools'])
     expect(preferences.state.value).not.toHaveProperty('links')
-    expect(keys(preferences.catalog.value)).toEqual(keys(editableNavigationItems))
+    expect(keys(preferences.catalog.value)).toEqual(keys(editableCatalog))
     expect(preferences.catalog.value.find((item) => item.key === 'log')).toMatchObject({
       label: '运行日志',
       to: '/'
@@ -709,7 +733,7 @@ describe('sidebar preferences', () => {
     })
     expect(imported.state.value.groups).toHaveLength(20)
     expect(keys(imported.state.value.groups)).not.toContain('daily')
-    expect(keys(imported.catalog.value)).toEqual(keys(editableNavigationItems))
+    expect(keys(imported.catalog.value)).toEqual(keys(editableCatalog))
     expect(new Set(keys(imported.state.value.placements)).size).toBe(sidebarNavigationItems.length)
   })
 

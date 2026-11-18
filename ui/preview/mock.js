@@ -1,3 +1,4 @@
+import { defaultSettingsFavorites, validSettingsFavorites } from '../src/task-workflow/model'
 import axios, { AxiosError } from 'axios'
 import screenshot from './screenshot.svg?raw'
 import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '../src/utils/depot_inventory.js'
@@ -484,6 +485,7 @@ export function createPreviewData(config) {
       software_version_language: 'en',
       watermark_visible: true,
       task_settings_layout: 'checklist',
+      task_settings_favorites: [...defaultSettingsFavorites],
       base_report_mode: previewReportMode(),
       halloween_mode: 'auto',
       task_queue_display: 'portraits',
@@ -1025,6 +1027,7 @@ export function createPreviewAdapter(data, requests = []) {
         Object.keys(changes).length === 0 ||
         Object.entries(changes).some(([key, value]) => {
           if (key === 'running_log_layout') return !isValidRunningLogLayout(value)
+          if (key === 'task_settings_favorites') return !validSettingsFavorites(value)
           return !Object.hasOwn(choices, key) || !choices[key].includes(value)
         }) ||
         (Object.hasOwn(body, 'watermark_confirmation') && body.watermark_visible !== false) ||

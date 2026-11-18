@@ -34,6 +34,31 @@ afterEach(() => {
 })
 
 describe('shared GUI appearance preferences', () => {
+  it('loads and saves an ordered favorites list, including an empty list', async () => {
+    const { store } = createStore()
+    expect(store.settingsFavorites).toEqual(['device', 'stage-plan', 'long'])
+    axios.get.mockResolvedValueOnce({
+      data: {
+        software_version_display: 'version',
+        task_settings_favorites: ['accounts', 'recruit']
+      }
+    })
+    expect(await store.load()).toBe(true)
+    expect(store.settingsFavorites).toEqual(['accounts', 'recruit'])
+    expect(await store.setSettingsFavorites(['accounts', 'accounts'])).toBe(false)
+    expect(axios.put).not.toHaveBeenCalled()
+    axios.put.mockRejectedValueOnce(new Error('save failed'))
+    expect(await store.setSettingsFavorites([])).toBe(false)
+    expect(store.settingsFavorites).toEqual(['accounts', 'recruit'])
+    expect(await store.setSettingsFavorites([])).toBe(true)
+    expect(store.settingsFavorites).toEqual([])
+    expect(axios.put).toHaveBeenLastCalledWith(
+      expect.stringMatching(/\/gui\/appearance$/),
+      { task_settings_favorites: [] },
+      { timeout: 5000 }
+    )
+  })
+
   it('saves only the task list display choice and restores it on a later load', async () => {
     const { store } = createStore()
     expect(store.taskQueueDisplay).toBe('portraits')

@@ -21,9 +21,14 @@ let scope
 beforeEach(async () => {
   state.router = createRouter({
     history: createMemoryHistory(),
-    routes: ['/', '/mowersettings', '/maasettings', '/plan-editor', '/record/report'].map(
-      (path) => ({ path, component: emptyPage })
-    )
+    routes: [
+      '/',
+      '/settings',
+      '/mowersettings',
+      '/maasettings',
+      '/plan-editor',
+      '/record/report'
+    ].map((path) => ({ path, component: emptyPage }))
   })
   await state.router.push('/?token=session-token&window_shell=1')
   vi.stubGlobal('window', {
@@ -37,8 +42,8 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-function link(to, replace = false) {
-  return scope.run(() => SessionLink.setup({ to, replace }, { expose: () => {} }))
+function link(to, replace = false, matchHash = false) {
+  return scope.run(() => SessionLink.setup({ to, replace, matchHash }, { expose: () => {} }))
 }
 function click(fields = {}) {
   const event = new Event('click', { cancelable: true })
@@ -81,6 +86,30 @@ describe('session links', () => {
     expect(renderedClasses).toEqual(expect.arrayContaining(['sidebar-link', ...expected]))
     expect(html).toContain('aria-current="page"')
     expect(html).not.toContain('exactactiveclass=')
+  })
+
+  it('highlights only the matching settings shortcut and repeats its navigation', async () => {
+    await state.router.push('/settings?token=session-token#settings-stage-plan')
+    for (const [target, active] of [
+      ['#settings-stage-plan', true],
+      ['#settings-long', false]
+    ]) {
+      const app = createSSRApp(SessionLink, {
+        to: { path: '/settings', hash: target },
+        matchHash: true
+      })
+      app.use(state.router)
+      const html = await renderToString(app)
+      expect(html.includes('aria-current="location"')).toBe(active)
+      expect(html.includes('router-link-exact-active')).toBe(active)
+    }
+
+    const before = state.router.currentRoute.value
+    const navigate = vi.fn()
+    await link('/settings#settings-stage-plan', false, true).follow(click(), navigate)
+    expect(navigate).not.toHaveBeenCalled()
+    expect(state.router.currentRoute.value).not.toBe(before)
+    expect(state.router.currentRoute.value.fullPath).toBe(before.fullPath)
   })
 
   it('omits active classes and the current-page marker for a different page', async () => {

@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import axios from 'axios'
 import { DEFAULT_RUNNING_LOG_LAYOUT, isValidRunningLogLayout } from '@/utils/logLayoutConfig'
+import { defaultSettingsFavorites, validSettingsFavorites } from '@/task-workflow/model'
 
 const appearanceUrl = `${import.meta.env.VITE_HTTP_URL || ''}/gui/appearance`
 const validDisplay = (value) => value === 'version' || value === 'channel'
@@ -15,6 +16,8 @@ export const useGuiStore = defineStore('gui', () => {
   const softwareVersionDisplay = ref('version')
   const softwareVersionLanguage = ref('en')
   const taskSettingsLayout = ref('checklist')
+  const settingsFavorites = ref([...defaultSettingsFavorites])
+  const settingsFavoritesSaving = ref(false)
   const taskQueueDisplay = ref('portraits')
   const runningLogLayout = ref(DEFAULT_RUNNING_LOG_LAYOUT)
   const runningLogLayoutDialogOpen = ref(false)
@@ -107,6 +110,8 @@ export const useGuiStore = defineStore('gui', () => {
         softwareVersionDisplay.value = data.software_version_display
         softwareVersionLanguage.value = data.software_version_language ?? 'en'
         taskSettingsLayout.value = data.task_settings_layout ?? 'checklist'
+        if (validSettingsFavorites(data.task_settings_favorites))
+          settingsFavorites.value = data.task_settings_favorites
         taskQueueDisplay.value = data.task_queue_display ?? 'portraits'
         runningLogLayout.value = isValidRunningLogLayout(data.running_log_layout)
           ? data.running_log_layout
@@ -223,6 +228,26 @@ export const useGuiStore = defineStore('gui', () => {
 
   function retryTaskSettingsLayout() {
     return loaded.value ? setTaskSettingsLayout(failedLayout) : load()
+  }
+
+  async function setSettingsFavorites(value) {
+    if (settingsFavoritesSaving.value || !validSettingsFavorites(value)) return false
+    settingsFavoritesSaving.value = true
+    try {
+      if (!(await load())) return false
+      const { data } = await axios.put(
+        appearanceUrl,
+        { task_settings_favorites: value },
+        { timeout: 5000 }
+      )
+      if (JSON.stringify(data?.task_settings_favorites) !== JSON.stringify(value)) return false
+      settingsFavorites.value = [...value]
+      return true
+    } catch {
+      return false
+    } finally {
+      settingsFavoritesSaving.value = false
+    }
   }
 
   async function setTaskQueueDisplay(value) {
@@ -369,6 +394,9 @@ export const useGuiStore = defineStore('gui', () => {
     softwareVersionDisplay,
     softwareVersionLanguage,
     taskSettingsLayout,
+    settingsFavorites,
+    settingsFavoritesSaving,
+    setSettingsFavorites,
     taskQueueDisplay,
     runningLogLayout,
     runningLogLayoutDialogOpen,
