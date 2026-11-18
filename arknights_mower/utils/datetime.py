@@ -23,6 +23,10 @@ def get_server_time():
     return datetime.now(pytz.timezone("Asia/Dubai"))
 
 
+def is_game_date(day: str | None) -> bool:
+    return day is not None and day == get_server_time().date().isoformat()
+
+
 # newbing说用这个来定义休息时间省事
 def format_time(seconds):
     if seconds < 0:  # 权宜之计 配合刷生息演算

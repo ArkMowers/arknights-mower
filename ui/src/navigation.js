@@ -16,6 +16,8 @@ import TerminalOutline from '@vicons/ionicons5/es/TerminalOutline'
 import TimeOutline from '@vicons/ionicons5/es/TimeOutline'
 import TrendingUpOutline from '@vicons/ionicons5/es/TrendingUpOutline'
 import Recycle from '@vicons/tabler/es/Recycle'
+import PlugConnected20Regular from '@vicons/fluent/es/PlugConnected20Regular'
+import { settingsEditors, settingsShortcutPrefix } from './task-workflow/model'
 import MowerAIIcon from './components/MowerAIIcon.vue'
 
 // Entries carry either `to` (a registered route path) or `href` (an external https URL).
@@ -130,6 +132,26 @@ export const sidebarNavigationItems = [
   ...navigationItems.filter((item) => item.sidebar !== false),
   { key: 'chat', label: 'Mower AI 助手', icon: MowerAIIcon, action: 'chat', footer: true }
 ]
+
+const settingsShortcutIcons = {
+  device: PlugConnected20Regular,
+  'stage-plan': FlashOutline,
+  long: TimeOutline
+}
+
+export function settingsShortcuts(config) {
+  return settingsEditors(config).map(({ id, title, searchKeywords }) => {
+    const key = `${settingsShortcutPrefix}${id}`
+    return {
+      key,
+      label: title,
+      icon: settingsShortcutIcons[id] || SettingsOutline,
+      to: { path: '/settings', hash: `#${key}` },
+      settingsShortcut: true,
+      searchKeywords
+    }
+  })
+}
 
 export const mobileTabs = [...navigationItems, ...navigationSections]
   .filter((item) => item.tab)

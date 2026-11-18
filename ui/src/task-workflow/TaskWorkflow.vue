@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import TaskChecklistNavigation from './TaskChecklistNavigation.vue'
+import { useGuiStore } from '@/stores/gui'
 
 const props = defineProps({
   workflow: { type: Object, required: true },
@@ -11,6 +12,7 @@ const props = defineProps({
   queue: { type: Array, default: () => [] }
 })
 const emit = defineEmits(['update:modelValue', 'select', 'toggle'])
+const gui = useGuiStore()
 const navigationCollapsed = ref(false)
 const editor = computed(() => props.workflow.editors.find((item) => item.id === props.modelValue))
 </script>
@@ -28,11 +30,14 @@ const editor = computed(() => props.workflow.editors.find((item) => item.id === 
         v-model:collapsed="navigationCollapsed"
         :tasks="workflow.tasks"
         :groups="workflow.groups"
-        :selected-id="modelValue === 'idle' ? 'device' : modelValue"
+        :selected-id="modelValue"
+        :editors="workflow.editors"
+        :favorite-ids="gui.settingsFavorites"
+        :save-favorites="gui.setSettingsFavorites"
+        :load-favorites="gui.load"
         :selected-title="editor?.title"
         :statuses="workflow.statuses"
         :connection-enabled="workflow.editors.some(({ id }) => id === 'device')"
-        :connection-keywords="workflow.editors.find(({ id }) => id === 'device')?.searchKeywords"
         :selection-request="editorRequest"
         @select="emit('select', $event)"
         @toggle="(id, value) => emit('toggle', id, value)"

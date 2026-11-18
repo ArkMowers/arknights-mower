@@ -111,7 +111,7 @@ const editorKeywords = {
   'credit-fight': '信用作战 编队 队伍',
   shop: '购物 采购 商店 按需领取信用 按性价比购物 购物性价比阈值 理智/信用 优先购买 黑名单 Mower',
   'stage-plan':
-    '刷图 关卡 战斗 周计划 理智药 临期 药 有效期 库存 上报至企鹅物流 上报至一图流 关卡体力默认值 每次吃药 MAA Mower',
+    '刷图 关卡 战斗 周计划 理智药 临期 药 有效期 库存 上报至企鹅物流 上报至一图流 关卡体力默认值 每次吃药 用完理智药的日期 MAA Mower',
   'event-shop':
     '活动 商店 兑换 Custom 坐标 确认文字 商品黑名单 有限商品 无限商品 结束后方案 定时切换',
   rewards: '邮件奖励 免费单抽 幸运墙 合成玉 限时开采许可 赠送月卡 五周年月卡 限时签到活动奖励',
@@ -196,7 +196,19 @@ export function getDailyStatusItems(config, records) {
   return items
 }
 
-export function createTaskWorkflow(config) {
+export const settingsShortcutPrefix = 'settings-'
+export const defaultSettingsFavorites = ['device', 'stage-plan', 'long']
+
+export function validSettingsFavorites(value) {
+  return (
+    Array.isArray(value) &&
+    value.length <= 100 &&
+    value.every((id) => typeof id === 'string' && /^[a-zA-Z0-9_-]{1,100}$/.test(id)) &&
+    new Set(value).size === value.length
+  )
+}
+
+export function settingsEditors(config) {
   const hiddenEditors = new Set(
     config.manager_owned_device
       ? [
@@ -207,7 +219,7 @@ export function createTaskWorkflow(config) {
         ]
       : []
   )
-  const editors = editorDefinitions
+  return editorDefinitions
     .filter(([id]) => !hiddenEditors.has(id))
     .map(([id, title, description]) => ({
       id,
@@ -221,11 +233,16 @@ export function createTaskWorkflow(config) {
             ? `${editorKeywords[id]} 等待场景网络自适应`
             : editorKeywords[id] || ''
     }))
+}
+
+export function createTaskWorkflow(config) {
+  const editors = settingsEditors(config)
+  const editorsById = new Map(editors.map((editor) => [editor.id, editor]))
   const rewardSelection = getMaaRewardSelection(config)
   const tasks = taskDefinitions
-    .filter(([id]) => !hiddenEditors.has(id))
+    .filter(([id]) => editorsById.has(id))
     .map(([id, group]) => {
-      const editor = editors.find((entry) => entry.id === id)
+      const editor = editorsById.get(id)
       return {
         id,
         editor: id,

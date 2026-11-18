@@ -1,5 +1,6 @@
 import os
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -586,6 +587,8 @@ class RegularTaskPart(ConfModel):
     "日常任务间隔"
     medicine_expire_days: int = 0
     "自动使用将要过期的理智药（剩余天数，0 表示不使用）"
+    medicine_use_all_date: str | None = None
+    "允许使用全部理智药的游戏日"
     ap_fallback: int = 0
     "关卡体力消耗默认值（数据中找不到关卡时的兜底，0 表示不启用）"
     maa_eat_stone: bool = False
@@ -634,6 +637,13 @@ class RegularTaskPart(ConfModel):
     "优先信赖阈值（百分比）"
     trust_rotation_interval: float = Field(default=24, ge=1, le=168)
     "信赖检查间隔（小时）"
+
+    @field_validator("medicine_use_all_date")
+    @classmethod
+    def validate_medicine_use_all_date(cls, value: str | None) -> str | None:
+        if value is not None and date.fromisoformat(value).isoformat() != value:
+            raise ValueError("日期格式须为 YYYY-MM-DD")
+        return value
 
 
 class WorkShopItem(ConfModel):

@@ -51,6 +51,7 @@ class GuiAppearanceTests(unittest.TestCase):
                 "software_version_display": "version",
                 "software_version_language": "en",
                 "task_settings_layout": "checklist",
+                "task_settings_favorites": ["device", "stage-plan", "long"],
                 "task_queue_display": "portraits",
                 "running_log_layout": "right_rail",
                 "base_report_mode": "standard",
@@ -65,6 +66,33 @@ class GuiAppearanceTests(unittest.TestCase):
         self.assertIs(gui.load_watermark_visible(), True)
         self.assertFalse(self.path.parent.exists())
 
+    def test_settings_favorites_round_trip_without_changing_other_preferences(self):
+        gui.save_appearance({"task_queue_display": "names"})
+        for favorites in (["recruit", "stage-plan"], []):
+            with self.subTest(favorites=favorites):
+                response = self.client.put(
+                    "/gui/appearance",
+                    json={"task_settings_favorites": favorites},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json, {"task_settings_favorites": favorites})
+                self.assertEqual(self.read().json["task_settings_favorites"], favorites)
+                self.assertEqual(gui.load_task_queue_display(), "names")
+
+    def test_invalid_settings_favorites_leave_saved_preferences_intact(self):
+        gui.save_appearance({"task_settings_favorites": ["long"]})
+        before = self.path.read_bytes()
+        for value in (None, "long", [None], ["long", "long"], ["invalid/path"]):
+            with self.subTest(value=value):
+                response = self.client.put(
+                    "/gui/appearance",
+                    json={"task_settings_favorites": value},
+                    headers=self.headers,
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(self.path.read_bytes(), before)
+
     def test_valid_values_round_trip_in_gui_file(self):
         for value in ("channel", "version"):
             with self.subTest(value=value):
@@ -77,6 +105,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         **response.json,
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "task_settings_favorites": ["device", "stage-plan", "long"],
                         "task_queue_display": "portraits",
                         "running_log_layout": "right_rail",
                         "base_report_mode": "standard",
@@ -100,6 +129,7 @@ class GuiAppearanceTests(unittest.TestCase):
                         "software_version_display": "version",
                         "software_version_language": "en",
                         "task_settings_layout": "checklist",
+                        "task_settings_favorites": ["device", "stage-plan", "long"],
                         "task_queue_display": "portraits",
                         "running_log_layout": "right_rail",
                         "base_report_mode": "standard",
@@ -183,6 +213,7 @@ class GuiAppearanceTests(unittest.TestCase):
                     {"base_report_mode": "stock"},
                     {"halloween_mode": "off"},
                     {"task_queue_display": "names"},
+                    {"task_settings_favorites": ["recruit"]},
                     {"running_log_layout": "custom:split:daily,tasks|screenshot,log"},
                 ):
                     self.assertEqual(
@@ -600,6 +631,7 @@ class GuiAppearanceTests(unittest.TestCase):
             {
                 **response.json,
                 "software_version_language": "en",
+                "task_settings_favorites": ["device", "stage-plan", "long"],
                 "task_queue_display": "portraits",
                 "running_log_layout": "right_rail",
                 "base_report_mode": "standard",

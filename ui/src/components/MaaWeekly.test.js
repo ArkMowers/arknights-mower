@@ -72,6 +72,7 @@ vi.mock('naive-ui', () => {
         'NCard',
         'NCheckbox',
         'NCheckboxGroup',
+        'NDatePicker',
         'NFlex',
         'NForm',
         'NFormItem',
@@ -124,6 +125,7 @@ describe('周计划芯片按钮排序联动', () => {
         'stage_plan_enable',
         'stage_plan_runner',
         'medicine_expire_days',
+        'medicine_use_all_date',
         'maa_report_to_yituliu',
         'maa_yituliu_id',
         'maa_penguin_id',
@@ -177,6 +179,8 @@ describe('周计划芯片按钮排序联动', () => {
     expect(header.includes('aria-label="启用周计划"')).toBe(showEnable)
     expect(html.split('aria-label="启用周计划"').length - 1).toBe(showEnable ? 1 : 0)
     expect(html).toContain('支持 MAA 支持的所有关卡')
+    expect(html).toContain('用完理智药的日期')
+    expect(html).toContain('value-format="yyyy-MM-dd"')
     expect(html).toContain('PRTS.wiki：关卡一览 / 资源收集')
     expect(html).toContain('href="https://m.prts.wiki/')
     expect(html).toContain('consistent-menu-width="false"')

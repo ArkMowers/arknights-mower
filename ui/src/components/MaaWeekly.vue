@@ -29,6 +29,7 @@ const {
   stage_plan_enable,
   stage_plan_runner,
   medicine_expire_days,
+  medicine_use_all_date,
   maa_report_to_yituliu,
   maa_yituliu_id,
   maa_report_to_penguin,
@@ -345,6 +346,27 @@ function cancelCopyDialogLongPress() {
                 天才用）。
               </div>
               <div>填 0 表示不服用（默认）。</div>
+            </help-text>
+          </n-flex>
+          <n-flex
+            class="weekly-plan-toolbar"
+            align="center"
+            role="group"
+            aria-labelledby="medicine-use-all-date"
+          >
+            <span id="medicine-use-all-date">用完理智药的日期</span>
+            <n-date-picker
+              v-model:formatted-value="medicine_use_all_date"
+              type="date"
+              value-format="yyyy-MM-dd"
+              placeholder="选择日期"
+              clearable
+              style="width: 160px"
+            />
+            <help-text>
+              <div>游戏日从北京时间当天 04:00 到次日 04:00。</div>
+              <div>到该游戏日，刷理智时允许使用所有理智药，仍受关卡库存上限和任务时间限制。</div>
+              <div>MAA 按提交刷理智任务时的游戏日判断。清空日期即可取消。</div>
             </help-text>
           </n-flex>
           <n-flex align="center" v-if="stage_plan_runner === 'maa'">

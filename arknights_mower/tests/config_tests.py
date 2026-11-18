@@ -459,6 +459,24 @@ class TestConfigPersistence(unittest.TestCase):
         written = self.conf_path.read_text(encoding="utf-8")
         self.assertIn("medicine_expire_days", written)
 
+    def test_medicine_use_all_date_round_trips_and_can_be_cleared(self):
+        day = "2026-11-24"
+        with _patched_conf(self.conf_path, Conf(medicine_use_all_date=day)):
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertEqual(config_module.conf.medicine_use_all_date, day)
+            config_module.conf = config_module.conf.updated(
+                {"medicine_use_all_date": None}
+            )
+            config_module.save_conf()
+            config_module.load_conf()
+            self.assertIsNone(config_module.conf.medicine_use_all_date)
+
+    def test_medicine_use_all_date_rejects_invalid_or_noncanonical_values(self):
+        for value in ("", "2026-02-29", "20261124", "2026-W48-2"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                Conf(medicine_use_all_date=value)
+
     def test_mall_and_fight_new_fields_default_without_injection(self):
         # #265：Mall/Fight 新字段未配置时用运行时默认值，且不被标记为已设置（不落盘）
         with _patched_conf(self.conf_path, Conf()):

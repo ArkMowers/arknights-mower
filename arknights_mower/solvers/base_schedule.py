@@ -101,6 +101,7 @@ from arknights_mower.utils.datetime import (
     format_time,
     get_server_time,
     get_server_weekday,
+    is_game_date,
 )
 from arknights_mower.utils.device.adb_client.server import (
     SharedADBError,
@@ -239,6 +240,7 @@ from arknights_mower.utils.workshop_ui import (
 
 _backup_timing_runtime = threading.local()
 _LONG_IDLE_SECONDS = 300
+_MAA_UNLIMITED_MEDICINE = 2**31 - 1
 
 
 class _BackupCalculationTiming:
@@ -20662,6 +20664,9 @@ class BaseSchedulerSolver(
                 filter_by_availability = self.maybe_switch_expired_activity_plan()
                 conf = config.conf
                 _plan = conf.maa_weekly_plan[get_server_weekday()]
+                use_all_medicine = is_game_date(
+                    getattr(conf, "medicine_use_all_date", None)
+                )
             logger.info(
                 f"现在服务器是{_plan.weekday}", extra={"log_group": "maa-integration"}
             )
@@ -20695,7 +20700,9 @@ class BaseSchedulerSolver(
                     # 空值表示上一次
                     # 'stage': '',
                     "stage": stage,
-                    "medicine": _plan.medicine,
+                    "medicine": _MAA_UNLIMITED_MEDICINE
+                    if use_all_medicine
+                    else _plan.medicine,
                     "stone": 999 if conf.maa_eat_stone else 0,
                     "times": 999,
                     "series": 0,
@@ -22472,7 +22479,16 @@ class BaseSchedulerSolver(
                 simulated_current_ap = None
                 threshold = 0
 
-                if stages:
+                if stages and is_game_date(
+                    getattr(conf, "medicine_use_all_date", None)
+                ):
+                    threshold_control_failed = True
+                    threshold_control_reason = "use_all_medicine"
+                    logger.info(
+                        "今天允许使用全部理智药，按游戏内剩余理智刷关",
+                        extra={"log_group": "local-operation"},
+                    )
+                elif stages:
                     player_info = PlayerInfoClient()
                     snapshot = player_info.get_first_available_snapshot()
                     if snapshot is None:

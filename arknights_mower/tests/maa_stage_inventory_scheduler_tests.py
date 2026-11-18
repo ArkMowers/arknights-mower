@@ -1,6 +1,6 @@
 import sys
 import unittest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -18,6 +18,8 @@ def _conf(
     enabled=True,
     package_type=1,
     medicine_expire_days=0,
+    medicine_use_all_date=None,
+    weekly_medicine=0,
     maa_report_to_yituliu=False,
     maa_yituliu_id="",
     maa_report_to_penguin=False,
@@ -37,11 +39,15 @@ def _conf(
         maa_stage_ratio_rules=[],
         maa_weekly_plan=[
             SimpleNamespace(
-                weekday=name, stage=["1-7", "CE-6"], medicine=0, sanity_threshold=0
+                weekday=name,
+                stage=["1-7", "CE-6"],
+                medicine=weekly_medicine,
+                sanity_threshold=0,
             )
             for name in ("周一", "周二", "周三", "周四", "周五", "周六", "周日")
         ],
         medicine_expire_days=medicine_expire_days,
+        medicine_use_all_date=medicine_use_all_date,
         maa_eat_stone=False,
         maa_report_to_yituliu=maa_report_to_yituliu,
         maa_yituliu_id=maa_yituliu_id,
@@ -120,6 +126,27 @@ class MaaFightMedicineExpireDaysTests(unittest.TestCase):
                     )
                     task_config = call.args[1]
                     self.assertEqual(task_config["medicine_expire_days"], days)
+
+    def test_all_medicine_uses_the_selected_game_day(self):
+        for utc_time, expected in (
+            ("2026-11-23T19:59", 2),
+            ("2026-11-23T20:00", 2**31 - 1),
+            ("2026-11-24T20:00", 2),
+        ):
+            utc_now = datetime.fromisoformat(utc_time).replace(tzinfo=timezone.utc)
+            with (
+                self.subTest(utc_now=utc_now),
+                patch("arknights_mower.utils.datetime.datetime") as clock,
+            ):
+                clock.now.side_effect = utc_now.astimezone
+                params = self._append_fight(
+                    medicine_expire_days=3,
+                    medicine_use_all_date="2026-11-24",
+                    weekly_medicine=2,
+                ).args[1]
+                self.assertEqual(params["medicine"], expected)
+                self.assertEqual(params["medicine_expire_days"], 3)
+                self.assertEqual(params["stone"], 0)
 
 
 class MaaFightYituliuTests(unittest.TestCase):

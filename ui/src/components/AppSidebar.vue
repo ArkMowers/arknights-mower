@@ -377,7 +377,13 @@ const palette = computed(() => ({
 
 // Internal entries retain the session; external entries open a new tab without opener access.
 function linkAttrs(item) {
-  if (item.to) return { to: item.to, exactActiveClass: 'is-active', draggable: false }
+  if (item.to)
+    return {
+      to: item.to,
+      exactActiveClass: 'is-active',
+      ...(item.settingsShortcut ? { matchHash: true } : {}),
+      draggable: false
+    }
   if (item.action) return { type: 'button', draggable: false }
   return { href: item.href, target: '_blank', rel: 'noopener noreferrer', draggable: false }
 }

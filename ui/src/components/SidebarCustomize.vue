@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
+import { matchesSettingsSearch } from '@/utils/settingsSearch'
 
 const props = defineProps({ groupKey: { type: String, default: null } })
 const emit = defineEmits(['close'])
@@ -35,9 +36,16 @@ const addedKeys = computed(
     )
 )
 const availableEntries = computed(() => {
-  const query = search.value.trim().toLocaleLowerCase()
-  return catalog.value.filter((item) => item.label.toLocaleLowerCase().includes(query))
+  return catalog.value.filter((item) =>
+    matchesSettingsSearch(search.value, item.label, item.searchKeywords)
+  )
 })
+const entryGroups = computed(() =>
+  [
+    { title: '页面', items: availableEntries.value.filter((item) => !item.settingsShortcut) },
+    { title: '设置快捷入口', items: availableEntries.value.filter((item) => item.settingsShortcut) }
+  ].filter(({ items }) => items.length)
+)
 
 function clearDraft() {
   search.value = ''
@@ -84,33 +92,38 @@ function confirm() {
       v-model="search"
       class="sidebar-customize__search"
       type="search"
-      placeholder="搜索页面"
-      aria-label="搜索页面"
+      placeholder="搜索页面或设置"
+      aria-label="搜索页面或设置"
     />
     <p v-if="persistenceError" class="sidebar-customize__error" role="alert">
       暂时无法保存，更改仅在当前页面有效。
     </p>
     <p v-if="error" class="sidebar-customize__error" role="alert">{{ error }}</p>
     <div class="sidebar-customize__entries">
-      <label
-        v-for="item in availableEntries"
-        :key="item.key"
-        class="sidebar-customize__entry"
-        :class="{ 'sidebar-customize__entry--added': addedKeys.has(item.key) }"
-        :data-sidebar-entry="item.key"
-      >
-        <input
-          v-model="selectedKeys"
-          type="checkbox"
-          :value="item.key"
-          :disabled="addedKeys.has(item.key)"
-          :aria-label="`添加${item.label}`"
-          :data-page-key="item.key"
-        />
-        <n-icon :component="item.icon" aria-hidden="true" />
-        <span>{{ item.label }}</span>
-        <span v-if="addedKeys.has(item.key)" class="sidebar-customize__added">已添加</span>
-      </label>
+      <section v-for="{ title, items } in entryGroups" :key="title">
+        <h3 class="sidebar-customize__group-title">{{ title }}</h3>
+        <div class="sidebar-customize__group">
+          <label
+            v-for="item in items"
+            :key="item.key"
+            class="sidebar-customize__entry"
+            :class="{ 'sidebar-customize__entry--added': addedKeys.has(item.key) }"
+            :data-sidebar-entry="item.key"
+          >
+            <input
+              v-model="selectedKeys"
+              type="checkbox"
+              :value="item.key"
+              :disabled="addedKeys.has(item.key)"
+              :aria-label="`添加${item.label}`"
+              :data-page-key="item.key"
+            />
+            <n-icon :component="item.icon" aria-hidden="true" />
+            <span>{{ item.label }}</span>
+            <span v-if="addedKeys.has(item.key)" class="sidebar-customize__added">已添加</span>
+          </label>
+        </div>
+      </section>
       <p v-if="!availableEntries.length" class="sidebar-customize__empty">没有找到页面</p>
     </div>
     <template #footer>
@@ -144,14 +157,24 @@ function confirm() {
 }
 
 .sidebar-customize__entries {
-  display: grid;
   flex: 1 1 auto;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px;
   min-height: 0;
   max-height: calc(70dvh - 210px);
   margin-top: 12px;
   overflow-y: auto;
+}
+
+.sidebar-customize__group-title {
+  margin: 8px 8px 4px;
+  color: var(--mower-text-muted, #767c82);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sidebar-customize__group {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .sidebar-customize__entry {
@@ -221,7 +244,7 @@ function confirm() {
 }
 
 @media (max-width: 440px) {
-  .sidebar-customize__entries {
+  .sidebar-customize__group {
     grid-template-columns: minmax(0, 1fr);
   }
 }

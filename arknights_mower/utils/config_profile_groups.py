@@ -21,7 +21,7 @@ CONF_GROUPS = {
     ),
     "clue": {"enable_party", "leifeng_mode", "clue_message_board_enable"},
     "weekly_plan": set(
-        "ap_fallback maa_eat_stone maa_penguin_id maa_report_to_penguin maa_report_to_yituliu maa_stage_inventory_enable maa_stage_limit_rules maa_stage_ratio_rules maa_weekly_plan maa_yituliu_id medicine_expire_days stage_plan_enable stage_plan_runner".split()
+        "ap_fallback maa_eat_stone maa_penguin_id maa_report_to_penguin maa_report_to_yituliu maa_stage_inventory_enable maa_stage_limit_rules maa_stage_ratio_rules maa_weekly_plan maa_yituliu_id medicine_expire_days medicine_use_all_date stage_plan_enable stage_plan_runner".split()
     ),
     "maa": set(
         "maa_auto_check_update maa_auto_update maa_conn_preset maa_mirrorchyan_token maa_path maa_resource_auto_check_update maa_resource_auto_update maa_restore_theme maa_restore_theme_enable maa_touch_option maa_update_channel".split()
