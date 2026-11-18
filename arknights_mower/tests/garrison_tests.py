@@ -102,7 +102,8 @@ def test_progress_round_trip_and_unknown_win_rejected(income_db):
 
 
 @pytest.mark.parametrize(
-    "saved", [{"round": 3}, {"phase": "active"}, {"phase": "starting", "round": 3}]
+    "saved",
+    [{"round": 3}, {"phase": "active", "round": 3}, {"phase": "starting", "round": 3}],
 )
 def test_saved_match_does_not_start_another_match(saved, monkeypatch):
     device = Mock()
@@ -115,12 +116,13 @@ def test_saved_match_does_not_start_another_match(saved, monkeypatch):
     device.tap.assert_not_called()
 
 
-def test_unconfirmed_start_uses_personal_lobby_and_preserves_counts():
-    p = {"match": {"phase": "starting"}, "wins": {"band_amiya": 3}, "matches_played": 2}
+@pytest.mark.parametrize("phase", ["active", "starting"])
+def test_saved_phase_uses_personal_lobby_and_preserves_counts(phase):
+    p = {"match": {"phase": phase}, "wins": {"band_amiya": 3}, "matches_played": 2}
     initial = copy.deepcopy(p)
     lobby, mode, info = frame("lobby"), frame("mode"), frame("info")
     s = solver.GarrisonSolver(Mock(), Mock(), p, Mock(), vision=Mock())
-    s.vision.frame.side_effect = [mode, info]
+    s.vision.frame.side_effect = ([lobby] if phase == "active" else []) + [mode, info]
     s.remaining = Mock(return_value=720)
     s.click = Mock()
     assert s.start_or_resume(lobby) is info
@@ -129,6 +131,18 @@ def test_unconfirmed_start_uses_personal_lobby_and_preserves_counts():
         mode.find("^开始模拟$").center,
     ]
     assert p == {**initial, "match": {"phase": "active"}}
+
+
+def test_reconnect_takes_priority_on_active_lobby_recheck():
+    lobby, reconnect, prep = frame("lobby"), frame("left"), frame("prep")
+    worker = solver.GarrisonSolver(
+        Mock(), Mock(), {"match": {"phase": "active"}}, Mock()
+    )
+    worker.capture = Mock(side_effect=[reconnect, prep])
+    worker.click = Mock()
+    assert worker.start_or_resume(lobby) is prep
+    worker.click.assert_called_once_with(reconnect.find("断线重连").center)
+    worker.save.assert_not_called()
 
 
 @pytest.mark.parametrize(

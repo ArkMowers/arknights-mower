@@ -229,12 +229,15 @@ class GarrisonSolver:
             ):
                 return None
             match = self.progress.get("match")
-            if not match or (
-                match == {"phase": "starting"}
-                and f.find("^极速模拟$", (1150, 900, 1520, 1040))
-                and f.find("^独立模拟$", (1520, 900, 1920, 1040))
-            ):
+            if not match:
                 return "start"
+            if f.find("^极速模拟$", (1150, 900, 1520, 1040)) and f.find(
+                "^独立模拟$", (1520, 900, 1920, 1040)
+            ):
+                if match == {"phase": "starting"}:
+                    return "start"
+                if match == {"phase": "active"}:
+                    return "verify_start"
             return None
 
         if frame.screen == "lobby":
@@ -248,8 +251,15 @@ class GarrisonSolver:
                 action = lobby_action(frame)
             if action == "switch":
                 self.text_click(frame, "^个人模拟$", personal)
-                frame = self.wait(lambda f: lobby_action(f) in {"resume", "start"}, 12)
+                frame = self.wait(
+                    lambda f: lobby_action(f) in {"resume", "start", "verify_start"}, 12
+                )
                 action = lobby_action(frame)
+            if action == "verify_start":
+                frame = self.wait(
+                    lambda f: lobby_action(f) in {"verify_start", "resume"}, 12
+                )
+                action = "resume" if lobby_action(frame) == "resume" else "start"
         elif self.progress.get("match"):
             raise GarrisonError("已保存未完成对局，但未找到继续入口；未开始新对局")
         else:
