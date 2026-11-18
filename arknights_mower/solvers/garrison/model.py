@@ -53,41 +53,40 @@ def run_key(conf):
     return [identity_key(conf), target, conf.garrison.run_id]
 
 
-def status(conf, progress):
-    if conf.garrison.mode == "matches":
-        prepared = prepare_progress(conf, progress)
-        count = prepared.get("matches_played", 0)
-        limit = conf.garrison.match_limit
-        return {
-            "mode": "matches",
-            "completed": limit > 0
-            and count >= limit
-            and not prepared.get("original_theme"),
-            "count": count,
-            "total": limit,
-            "failed": prepared.get("failed", False),
-            "message": prepared.get("error", ""),
-        }
-    wins = (
-        progress.get("wins", {})
-        if progress.get("identity") == identity_key(conf)
-        else {}
-    )
+def goal_counts(progress, target_wins, match_limit):
+    if match_limit is not None:
+        return progress.get("matches_played", 0), match_limit
+    wins = progress.get("wins", {})
     strategies = catalogue()["strategies"]
-    count = sum(
-        type(wins.get(s["id"])) is int and wins[s["id"]] >= conf.garrison.target_wins
+    return sum(
+        type(wins.get(s["id"])) is int and wins[s["id"]] >= target_wins
         for s in strategies
+    ), len(strategies)
+
+
+def goal_reached(progress, target_wins, match_limit):
+    count, total = goal_counts(progress, target_wins, match_limit)
+    return total > 0 and count >= total
+
+
+def status(conf, progress):
+    prepared = prepare_progress(conf, progress)
+    settings = conf.garrison
+    matches = settings.mode == "matches"
+    count, total = goal_counts(
+        prepared, settings.target_wins, settings.match_limit if matches else None
     )
-    failed = progress.get("key") == run_key(conf) and bool(progress.get("failed"))
+    failed = prepared.get("failed", False)
     return {
-        "completed": count == len(strategies)
-        and not progress.get("original_theme")
-        and not failed
-        and progress.get("key") == run_key(conf),
+        **({"mode": "matches"} if matches else {}),
+        "completed": total > 0
+        and count >= total
+        and not prepared.get("original_theme")
+        and (matches or not failed),
         "count": count,
-        "total": len(strategies),
+        "total": total,
         "failed": failed,
-        "message": progress.get("error", "") if failed else "",
+        "message": prepared.get("error", "") if failed else "",
     }
 
 

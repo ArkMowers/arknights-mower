@@ -9,11 +9,11 @@ from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.csleep import MowerExit, csleep
 from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.graph import SceneGraphSolver
-from arknights_mower.utils.log import logger
+from arknights_mower.utils.log import logger, save_screenshot_frame
 from arknights_mower.utils.scene import Scene
 
 from . import theme
-from .model import GarrisonError, catalogue, normal_name, record_wins
+from .model import GarrisonError, catalogue, goal_reached, normal_name, record_wins
 from .upstream import FarmSession, panel_open, strategy_panel
 from .vision import Vision
 
@@ -155,8 +155,9 @@ class GarrisonSolver:
         panel = theme.open_equipped(self, frame)
         original = theme.equipped(panel)
         if original != theme.DEFAULT_THEME:
-            self.progress["original_theme"] = original
-            self.persist()
+            if not self.progress.get("original_theme"):
+                self.progress["original_theme"] = original
+                self.persist()
             theme.apply(self, panel, theme.DEFAULT_THEME)
         self.click((65, 58))
         lobby = self.wait(lambda f: f.screen == "lobby")
@@ -374,20 +375,27 @@ class GarrisonSolver:
             self.vision = Vision(rapidocr.engine)
         try:
             with device_io_budget(self.remaining), cancellation_scope(cancelled):
-                if self.progress.get("original_theme"):
+                if self.progress.get("failed") or goal_reached(
+                    self.progress, self.target_wins, self.match_limit
+                ):
                     self._entered = True
                     self.restore_theme()
                     return
                 session = FarmSession(self)
+                self._entered = True
                 try:
-                    self._entered = True
-                    frame = self.enter()
-                    self.play(session.game, frame)
-                finally:
                     try:
-                        session.release()
+                        frame = self.enter()
+                        self.play(session.game, frame)
                     finally:
-                        self.restore_theme()
+                        session.release()
+                except MowerExit:
+                    raise
+                except Exception:
+                    self.restore_theme()
+                    raise
+                if goal_reached(self.progress, self.target_wins, self.match_limit):
+                    self.restore_theme()
         except GarrisonYield:
             logger.info("卫戍协议交还设备，本次空档结束")
         finally:
@@ -435,7 +443,7 @@ class GarrisonSolver:
                 continue
             saved_result = (
                 frame.screen == "result"
-                and frame.find("模拟结束|模拟成功|模拟失败|模拟胜利|模拟完成")
+                and frame.find("模拟结束|模拟成功|模拟失败|模拟胜利|模拟完成|模拟中断")
                 and (
                     self.progress.get("match")
                     or self.progress.get("settlement_counted")
@@ -476,6 +484,7 @@ class GarrisonSolver:
                     )
                     home = frame.find("返回主页")
                 if not self.progress.get("settlement_counted"):
+                    save_screenshot_frame(frame.image, "garrison_result")
                     self.progress["match"] = None
                     self.progress["settlement_counted"] = True
                     self.progress["attempts"] = self.progress.get("attempts", 0) + 1

@@ -6,6 +6,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from arknights_mower.utils.image import loadres
+
 from .model import GarrisonError
 
 
@@ -101,7 +103,7 @@ def classify(texts):
         return "info", quick
     if has("自选编队"):
         return "squad", quick
-    if has("返回主页|模拟结束|模拟成功|模拟失败|模拟胜利|模拟完成"):
+    if has("返回主页|模拟结束|模拟成功|模拟失败|模拟胜利|模拟完成|模拟中断"):
         return "result", quick
     if any(
         re.search("特质|技能|天赋", t.text) and 520 <= t.y <= 590 and t.x < 650
@@ -117,6 +119,12 @@ def classify(texts):
     if has("回合") and not has("[准淮]备就绪"):
         return "battle", quick
     return "unknown", quick
+
+
+def deployment_cost_visible(image):
+    area = cv2.cvtColor(image[887:978, 1720:1820], cv2.COLOR_RGB2GRAY)
+    icon = loadres("garrison/deployment_cost", gray=True)
+    return cv2.matchTemplate(area, icon, cv2.TM_CCOEFF_NORMED).max() >= 0.85
 
 
 class Vision:
@@ -166,7 +174,12 @@ class Vision:
             raise GarrisonError("卫戍协议需要 1920×1080 标准画面")
         texts = self.texts(image)
         screen, quick = classify(texts)
-        if not quick and screen in {"info", "strategy", "prep", "battle"}:
+        cost_visible = screen == "unknown" and deployment_cost_visible(image)
+        if not quick and (
+            cost_visible or screen in {"info", "strategy", "prep", "battle"}
+        ):
             texts += self.texts(image, (140, 20, 300, 80), scale=2)
             screen, quick = classify(texts)
+        if screen == "unknown" and cost_visible:
+            screen = "battle"
         return Frame(image, texts, screen, quick)
