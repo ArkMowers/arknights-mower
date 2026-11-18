@@ -112,9 +112,12 @@ class GarrisonSolver:
             }
         ):
             self._quick_confirmed = True
-            if frame.screen != "mode" and not self.progress.get("match"):
+            match = self.progress.get("match") or {}
+            if frame.screen != "mode" and (
+                not match or match.get("phase") == "starting"
+            ):
                 self.progress.pop("settlement_counted", None)
-                self.progress["match"] = {"phase": "active"}
+                self.progress["match"] = {**match, "phase": "active"}
                 self.persist()
         return frame
 
@@ -235,7 +238,14 @@ class GarrisonSolver:
                 ),
                 RECONNECT_SECONDS,
             )
-        if self.progress.get("match"):
+        match = self.progress.get("match")
+        if match and not (
+            match == {"phase": "starting"}
+            and frame.screen == "lobby"
+            and frame.find("^极速模拟$", (1150, 900, 1520, 1040))
+            and frame.find("^独立模拟$", (1520, 900, 1920, 1040))
+            and not frame.find(reconnect + "|放弃模拟", visible)
+        ):
             raise GarrisonError("已保存未完成对局，但未找到继续入口；未开始新对局")
         if frame.screen == "lobby":
             if not frame.personal_simulation_selected():
