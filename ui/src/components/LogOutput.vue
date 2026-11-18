@@ -1,3 +1,44 @@
+<script>
+let forecastRoomObserver
+
+function fitForecastRooms(rosters) {
+  for (const rooms of rosters) rooms.setAttribute('data-forecast-intrinsic', '')
+
+  const wrapped = new Map()
+  for (const rooms of rosters) {
+    if (rooms.scrollWidth <= rooms.clientWidth) continue
+    const operators = rooms.querySelectorAll('.log-forecast__agents > .log-operator')
+    const widths = Array.from(operators, (operator) => parseFloat(getComputedStyle(operator).width))
+    wrapped.set(rooms, Math.ceil(Math.max(0, ...widths)))
+  }
+
+  for (const [rooms, slotWidth] of wrapped) {
+    rooms.style.setProperty('--log-forecast-slot-width', `${slotWidth}px`)
+    rooms.removeAttribute('data-forecast-intrinsic')
+  }
+}
+
+const fitForecastRoomsDirective = {
+  mounted(marker) {
+    if (!globalThis.ResizeObserver) return
+    forecastRoomObserver ??= new ResizeObserver((entries) => {
+      const rosters = []
+      for (const { target, contentRect } of entries) {
+        if (contentRect.width > 0 && target.parentElement) rosters.push(target.parentElement)
+      }
+      fitForecastRooms(rosters)
+    })
+    forecastRoomObserver.observe(marker)
+  },
+  updated(marker, { value, oldValue }) {
+    if (value !== oldValue && marker.offsetWidth) fitForecastRooms([marker.parentElement])
+  },
+  unmounted(marker) {
+    forecastRoomObserver?.unobserve(marker)
+  }
+}
+</script>
+
 <script setup>
 import {
   computed,
@@ -27,6 +68,8 @@ import { WAIT_DISPLAY_DELAY, formatWaitDuration, scanSceneWaits } from '@/utils/
 import { logLayoutZoom } from '@/utils/logLayout'
 import { useLogSheen } from '@/composables/logSheen'
 import { useLogViewport } from '@/composables/logViewport'
+
+defineOptions({ directives: { fitForecastRooms: fitForecastRoomsDirective } })
 
 const props = defineProps({
   lines: { type: Array, default: () => [] },
@@ -722,6 +765,14 @@ function hasForecastDetails(forecast) {
   return Boolean(forecast.rooms.length || forecast.targets.length || forecast.backups.length)
 }
 
+function refitForecastAfterAvatarError(event) {
+  const rooms = event.currentTarget
+  if (!rooms.classList.contains('log-forecast__rooms--aligned')) return
+  requestAnimationFrame(() => {
+    if (rooms.clientWidth) fitForecastRooms([rooms])
+  })
+}
+
 function operationSummary(event) {
   if (!['started', 'updated'].includes(event.phase) || (event.inProgress && props.running))
     return event.summary
@@ -1382,6 +1433,7 @@ function lineClasses(row) {
                         :class="{
                           'log-forecast__rooms--aligned': item.row.forecast.rooms.length >= 2
                         }"
+                        @error.capture="refitForecastAfterAvatarError"
                       >
                         <span
                           v-for="room in item.row.forecast.rooms"
@@ -1406,6 +1458,12 @@ function lineClasses(row) {
                             />
                           </span>
                         </span>
+                        <span
+                          v-if="item.row.forecast.rooms.length >= 2"
+                          v-fit-forecast-rooms="item.row.forecast.rooms"
+                          class="log-forecast__width"
+                          aria-hidden="true"
+                        ></span>
                       </span>
                       <span
                         v-else-if="item.row.forecast.targets.length"
@@ -1821,7 +1879,6 @@ function lineClasses(row) {
 }
 .log-forecast__details {
   display: block;
-  container: forecast-details / inline-size;
   margin-top: 4px;
   padding: 3px 0 4px 12px;
   border-inline-start: var(--log-hairline, 1px) solid
@@ -1944,23 +2001,35 @@ function lineClasses(row) {
 
 .log-forecast__rooms--aligned .log-forecast__room > .log-forecast__agents {
   display: grid;
-  grid-template-columns: repeat(auto-fill, min(100%, calc(28px + 7ch)));
+  grid-template-columns: repeat(
+    auto-fill,
+    min(100%, var(--log-forecast-slot-width, calc(28px + 7ch)))
+  );
   column-gap: 8px;
   justify-items: start;
 }
 
-@container forecast-details (min-width: 45em) {
-  .log-forecast__rooms--aligned {
-    grid-template-columns: fit-content(40%) repeat(5, minmax(0, max-content));
-  }
+.log-forecast__rooms--aligned {
+  position: relative;
+}
 
-  .log-forecast__rooms--aligned .log-forecast__room > .log-forecast__agents {
-    grid-column: 2 / -1;
-    grid-template-columns: subgrid;
-  }
+.log-forecast__width {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 0;
+}
+
+.log-forecast__rooms--aligned[data-forecast-intrinsic] {
+  grid-template-columns: max-content repeat(5, max-content);
+}
+
+.log-forecast__rooms--aligned[data-forecast-intrinsic] .log-forecast__room > .log-forecast__agents {
+  grid-column: 2 / -1;
+  grid-template-columns: subgrid;
 }
 
 .log-forecast__room > .log-forecast__agents :deep(.log-operator) {
+  flex-wrap: wrap;
   max-width: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
