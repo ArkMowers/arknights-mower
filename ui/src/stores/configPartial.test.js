@@ -84,6 +84,29 @@ function selectedLabels(html) {
 }
 
 describe('partial configuration saves', () => {
+  it('defaults information-board collection on without saving defaults', async () => {
+    await setup()
+    expect(store.clue_message_board_enable).toBe(true)
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('preserves information-board false and saves only its edited key', async () => {
+    const { data } = await setup({ clue_message_board_enable: false, enable_party: 0 })
+    expect(store.clue_message_board_enable).toBe(false)
+    expect(store.build_config().clue_message_board_enable).toBe(false)
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.clue_message_board_enable = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      clue_message_board_enable: true
+    })
+    expect(store.enable_party).toBe(false)
+    data.clue_message_board_enable = false
+    await store.load_config()
+    expect(store.clue_message_board_enable).toBe(false)
+  })
+
   it('persists all group thresholds across additions, edits, removals and reloads', async () => {
     const { data } = await setup({ resting_threshold: 0.65, group_resting_thresholds: {} })
     axios.patch.mockImplementation(async (_url, patch) => {

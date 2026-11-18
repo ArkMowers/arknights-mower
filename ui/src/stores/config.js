@@ -30,6 +30,7 @@ export const useConfigStore = defineStore('config', () => {
   }
   const drone_interval = ref(4)
   const enable_party = ref(true)
+  const clue_message_board_enable = ref(true)
   const leifeng_mode = ref(true)
   const free_blacklist = ref([])
   const maa_adb_path = ref('')
@@ -537,6 +538,7 @@ export const useConfigStore = defineStore('config', () => {
       drone_room.value = response.data.drone_room
       drone_interval.value = response.data.drone_interval
       enable_party.value = response.data.enable_party != 0
+      clue_message_board_enable.value = response.data.clue_message_board_enable ?? true
       leifeng_mode.value = response.data.leifeng_mode != 0
       free_blacklist.value =
         response.data.free_blacklist == '' ? [] : response.data.free_blacklist.split(',')
@@ -765,6 +767,7 @@ export const useConfigStore = defineStore('config', () => {
       right_side_room_order: [...right_side_room_order.value],
       drone_interval: drone_interval.value,
       enable_party: enable_party.value ? 1 : 0,
+      clue_message_board_enable: clue_message_board_enable.value,
       leifeng_mode: leifeng_mode.value ? 1 : 0,
       free_blacklist: free_blacklist.value.join(','),
       maa_adb_path: maa_adb_path.value,
@@ -1163,6 +1166,7 @@ export const useConfigStore = defineStore('config', () => {
     swap_right_side_facilities,
     drone_interval,
     enable_party,
+    clue_message_board_enable,
     leifeng_mode,
     free_blacklist,
     maa_adb_path,
