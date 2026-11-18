@@ -20651,21 +20651,31 @@ class BaseSchedulerSolver(
                 {"client_type": _maa_client_type(getattr(self, "device", None))},
             )
         elif type == "Fight":
-            self.maybe_switch_expired_activity_plan()
-            conf = config.conf
-            server_weekday = get_server_weekday()
-            _plan = conf.maa_weekly_plan[server_weekday]
-            logger.info(
-                f"现在服务器是{_plan.weekday}", extra={"log_group": "maa-integration"}
-            )
-            stages = self.apply_maa_stage_inventory_rules(_plan.stage)
+            from arknights_mower.utils.config_backup import backup_lock
+            from arknights_mower.utils.growth_farming import active_chip_farming_target
             from arknights_mower.utils.maa_stage_inventory import (
                 load_inventory_snapshot,
                 maa_fight_drop_targets,
             )
 
+            with backup_lock:
+                filter_by_availability = self.maybe_switch_expired_activity_plan()
+                conf = config.conf
+                _plan = conf.maa_weekly_plan[get_server_weekday()]
+            logger.info(
+                f"现在服务器是{_plan.weekday}", extra={"log_group": "maa-integration"}
+            )
+            growth = active_chip_farming_target(_plan.weekday, filter_by_availability)
+            growth_rules = growth.rules if growth else {}
+            stages = (
+                (["Annihilation"] if "Annihilation" in _plan.stage else [])
+                + list(growth_rules)
+                if growth_rules
+                else self.apply_maa_stage_inventory_rules(_plan.stage)
+            )
+
             inventory, _ = load_inventory_snapshot()
-            rules = (
+            saved_rules = (
                 copy.deepcopy(conf.maa_stage_limit_rules)
                 if conf.maa_stage_inventory_enable
                 else []
@@ -20673,6 +20683,10 @@ class BaseSchedulerSolver(
             if not hasattr(self, "maa_inventory_tasks"):
                 self.maa_inventory_tasks = {}
             for stage in stages:
+                if growth_rules:
+                    rules = [growth_rules[stage]] if stage in growth_rules else []
+                else:
+                    rules = saved_rules
                 targets = maa_fight_drop_targets(stage, rules, inventory)
                 if targets["reached"]:
                     continue
@@ -20769,7 +20783,7 @@ class BaseSchedulerSolver(
             )
 
     def maybe_switch_expired_activity_plan(self):
-        """刷理智实际选关前，根据活动方案的切换时间更新周计划。"""
+        """Apply any due plan switch and read the selected plan's growth setting."""
         try:
             from arknights_mower.utils.config.weekly_plan_loader import (
                 get_weekly_plan_manager,
@@ -20777,7 +20791,11 @@ class BaseSchedulerSolver(
             from arknights_mower.utils.config_backup import backup_lock
 
             with backup_lock:
-                return get_weekly_plan_manager().maybe_switch_expired_activity_plan()
+                manager = get_weekly_plan_manager()
+                manager.maybe_switch_expired_activity_plan()
+                return manager.get_growth_chip_farming().get(
+                    manager.get_active_plan_key()
+                )
         except Exception:
             logger.exception(
                 "检测活动结束并切换刷理智周计划失败，继续使用当前方案",
@@ -21954,18 +21972,38 @@ class BaseSchedulerSolver(
             },
         )
 
-    def mower_stage_plan(self, excluded_stages=()) -> list[str]:
-        self.maybe_switch_expired_activity_plan()
-        plan = config.conf.maa_weekly_plan[get_server_weekday()]
-        stages = []
-        for stage in plan.stage:
-            if not isinstance(stage, str):
-                continue
-            stage = stage.strip()
-            if not stage or stage in excluded_stages:
-                continue
-            stages.append(stage)
-        return self.apply_maa_stage_inventory_rules(stages)
+    def mower_stage_plan(self, excluded_stages=(), attempted_growth=()):
+        from arknights_mower.utils.config_backup import backup_lock
+        from arknights_mower.utils.growth_farming import active_chip_farming_target
+
+        with backup_lock:
+            filter_by_availability = self.maybe_switch_expired_activity_plan()
+            plan = config.conf.maa_weekly_plan[get_server_weekday()]
+        growth = None
+        if type(filter_by_availability) is bool:
+            growth = active_chip_farming_target(plan.weekday, filter_by_availability)
+        if growth and growth.rules:
+            stages = [
+                stage
+                for stage in growth.rules
+                if (growth.char_id, stage) not in attempted_growth
+            ]
+            if stages:
+                if (
+                    "Annihilation" in plan.stage
+                    and "Annihilation" not in excluded_stages
+                ):
+                    stages.insert(0, "Annihilation")
+                return stages, growth
+        excluded = set(excluded_stages) | {stage for _, stage in attempted_growth}
+        stages = [
+            stage.strip()
+            for stage in plan.stage
+            if isinstance(stage, str)
+            and stage.strip()
+            and stage.strip() not in excluded
+        ]
+        return self.apply_maa_stage_inventory_rules(stages), None
 
     def mower_stage_ap_cost(self, stage_id: str) -> int | None:
         stage_meta = next(
@@ -22091,6 +22129,7 @@ class BaseSchedulerSolver(
         target_total_runs: int | None,
         mode: str,
         threshold: int | None = None,
+        inventory_limit_rules=None,
     ):
         remaining_runs = target_total_runs
         executed_any = False
@@ -22202,6 +22241,7 @@ class BaseSchedulerSolver(
                 simulated_current_ap=simulated_current_ap,
                 ap_cost=ap_cost,
                 sanity_threshold=threshold,
+                inventory_limit_rules=inventory_limit_rules,
             )
             executed_runs += result["executed_runs"]
             reason = next(
@@ -22398,7 +22438,7 @@ class BaseSchedulerSolver(
             else:
                 observe_activity(self, "stage-plan", "mower", "running")
                 activity_started = True
-                stages = self.mower_stage_plan()
+                stages, _ = self.mower_stage_plan()
                 logger.debug(
                     f"local operation plan: {stages}",
                     extra={"log_group": "local-operation"},
@@ -22511,13 +22551,20 @@ class BaseSchedulerSolver(
                         self.clear_local_operation_followups()
 
                     attempted_stages = set()
+                    attempted_growth = set()
                     while True:
-                        # Confirmed drops can cap later stages or unlock fallback stages.
-                        stages = self.mower_stage_plan(excluded_stages=attempted_stages)
+                        stages, growth = self.mower_stage_plan(
+                            excluded_stages=attempted_stages,
+                            attempted_growth=attempted_growth,
+                        )
                         if not stages:
                             break
                         stage = stages[0]
-                        attempted_stages.add(stage)
+                        growth_rule = growth.rules.get(stage) if growth else None
+                        if growth_rule:
+                            attempted_growth.add((growth.char_id, stage))
+                        else:
+                            attempted_stages.add(stage)
                         if manual:
                             next_task_time = manual_task_deadline(self)
                         if next_task_time - datetime.now() < timedelta(minutes=5):
@@ -22605,6 +22652,9 @@ class BaseSchedulerSolver(
                             target_total_runs=target_total_runs,
                             mode=mode,
                             threshold=None if threshold_control_failed else threshold,
+                            inventory_limit_rules=[growth_rule]
+                            if growth_rule
+                            else None,
                         )
                         simulated_current_ap = stage_run_result["simulated_current_ap"]
                         executed_any = executed_any or stage_run_result["executed_any"]
@@ -22618,7 +22668,7 @@ class BaseSchedulerSolver(
 
                     # A skipped Annihilation stage gets no follow-up from this
                     # dispatch; the next dispatch checks it again.
-                    remaining_stages = self.mower_stage_plan(
+                    remaining_stages, _ = self.mower_stage_plan(
                         excluded_stages=skipped_stages
                     )
                     if not remaining_stages:

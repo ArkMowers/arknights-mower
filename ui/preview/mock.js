@@ -611,6 +611,7 @@ export function createPreviewAdapter(data, requests = []) {
     return activate(config, id, incoming, selected)
   }
   let logBackground = null
+  let growthChipFarming = null
   // 养成规划示例数据按需加载，其他预览页面不必创建这部分示例对象。
   let growthAdapter = null
   let growthLoading = null
@@ -643,7 +644,6 @@ export function createPreviewAdapter(data, requests = []) {
       target === '/workshop-status' ||
       target === '/workshop-auto-config' ||
       target.startsWith('/workshop-operators') ||
-      target === '/growth-chip-farming' ||
       target === '/operator'
     )
   }
@@ -853,6 +853,7 @@ export function createPreviewAdapter(data, requests = []) {
       '/weekly-plans': () => ({
         plans: ['默认'],
         active: '默认',
+        growth_chip_farming: growthChipFarming === null ? {} : { 默认: growthChipFarming },
         inventory_config: { enabled: false, limit_rules: [], ratio_rules: [] }
       }),
       '/getwatermark': () => '离线预览 · 示例数据',
@@ -904,7 +905,12 @@ export function createPreviewAdapter(data, requests = []) {
     if (path.startsWith('/config-profiles') && method !== 'GET' && data.status === 'running')
       fail(config, '请先停止 Mower 后操作示例配置', 423)
     if (method === 'GET' && reads[path]) result = reads[path]()
-    else if (
+    else if (method === 'POST' && path === '/growth-chip-farming') {
+      const { plan_key, enabled, filter_stage_by_availability } = body || {}
+      if (plan_key !== '默认') fail(config, '请选择要设置芯片刷取的周计划', 400)
+      growthChipFarming = enabled ? filter_stage_by_availability : null
+      result = { plan_key, enabled }
+    } else if (
       method === 'GET' &&
       previewFramePaths.has(path.slice('/screenshots/'.length)) &&
       path.startsWith('/screenshots/')

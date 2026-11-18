@@ -8,7 +8,7 @@ from threading import Event
 import pytest
 
 from arknights_mower.utils import growth
-from arknights_mower.utils.growth_farming import chip_farming_plan
+from arknights_mower.utils.growth_farming import next_chip_farming_target
 from arknights_mower.utils.growth_workshop import next_recipe
 
 pytestmark = pytest.mark.usefixtures("income_db")
@@ -185,35 +185,186 @@ def test_dual_chips_catalysts_and_vouchers_use_existing_stock_once():
     ]
 
 
-def test_chips_and_ap5_bind_only_missing_drops_preserving_other_stages():
-    plan = [{"weekday": "周一", "stage": ["1-7", "Annihilation"]}]
-    rules = {
-        "enabled": False,
-        "limit_rules": [
-            {"stage": "PR-C-2", "operator": "or", "items": []},
-            {"stage": "1-7", "items": []},
-        ],
-        "ratio_rules": [{"members": [{"stage": "PR-C-2"}, {"stage": "1-7"}]}],
-    }
-    original = copy.deepcopy((plan, rules))
-    summary = {
-        "materials": [
-            {"id": "3212", "name": "先锋芯片组", "required": 8},
-            {"id": "4006", "name": "采购凭证", "required": 360},
-        ],
-        "missing": [{"id": "3212", "count": 4}, {"id": "4006", "count": 90}],
-    }
-    updated, config, stages = chip_farming_plan(plan, rules, summary)
-    assert stages == ["AP-5", "PR-C-2"]
-    assert updated[0]["stage"] == ["Annihilation", "AP-5", "PR-C-2", "1-7"]
-    assert config["enabled"]
-    assert config["limit_rules"][-1]["items"] == [
-        {"item_id": "3212", "item_name": "先锋芯片组", "limit": 8}
+@pytest.fixture
+def chip_farming_case(growth_case):
+    box, skills = growth_case
+    for char_id, item_id in (("char_peer", "3273"), ("char_same", "3213")):
+        box["characters"].append({**box["characters"][0], "id": char_id})
+        definition = copy.deepcopy(skills["growth"]["characters"]["char_test"])
+        definition["phases"][2]["materials"] = [{"id": item_id, "count": 1}]
+        skills["growth"]["characters"][char_id] = definition
+    goals = [
+        {"char_id": char_id, "module_id": "elite2"}
+        for char_id in ("char_peer", "char_same", "char_test")
     ]
-    assert config["limit_rules"][-1]["operator"] == "and"
-    assert config["ratio_rules"][0]["members"] == [{"stage": "1-7"}]
-    assert (plan, rules) == original
-    assert chip_farming_plan(updated, config, summary) == (updated, config, stages)
+    order = ["goal:char_test:elite2", "goal:char_peer:elite2", "goal:char_same:elite2"]
+    inventory = dict.fromkeys(("3213", "3273", "3212", "3272", "4006", "32001"), 0)
+    return box, growth.growth_resources(skills), goals, order, inventory
+
+
+def test_chip_farming_uses_saved_order_and_credits_both_professions(chip_farming_case):
+    box, skills, goals, order, inventory = chip_farming_case
+
+    def target():
+        choice = next_chip_farming_target(box, skills, [], goals, order, inventory)
+        if choice is None:
+            return None
+        return choice.char_id, {
+            stage: [(item["item_id"], item["limit"]) for item in rule["items"]]
+            for stage, rule in choice.rules.items()
+        }
+
+    assert target() == ("char_test", {"AP-5": [("4006", 360)], "PR-C-2": [("3212", 8)]})
+    inventory.update({"3212": 7, "3272": 2, "4006": 360})
+    assert target() == ("char_test", {"PR-C-2": [("3212", 8)]})
+    inventory["3212"] = 8
+    assert target() == ("char_peer", {"AP-5": [("4006", 450)]})
+    inventory["4006"] = 450
+    assert target() == (
+        "char_same",
+        {"AP-5": [("4006", 540)], "PR-C-2": [("3212", 10)]},
+    )
+    inventory.update({"3212": 10, "4006": 540})
+    assert target() is None
+    assert target() is None
+
+
+def test_chip_farming_never_advances_on_unknown_stock(chip_farming_case):
+    box, skills, goals, order, inventory = chip_farming_case
+    inventory["3212"] = 8
+    inventory["3272"] = 2
+    del inventory["4006"]
+    assert next_chip_farming_target(box, skills, [], goals, order, inventory) is None
+    inventory.update({"4006": 360, "3213": 4})
+    inventory.pop("32001")
+    assert next_chip_farming_target(box, skills, [], goals, order, inventory) is None
+    inventory.update({"32001": 1, "3212": 1})
+    assert (
+        next_chip_farming_target(box, skills, [], goals, order, inventory).char_id
+        == "char_same"
+    )
+
+
+def test_maa_and_local_use_confirmed_stock_to_advance_or_fall_back(
+    tmp_path, monkeypatch, chip_farming_case
+):
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from arknights_mower.solvers import base_schedule
+    from arknights_mower.utils import (
+        maa_stage_inventory,
+        mastery_db,
+        mastery_recommendation,
+        path,
+    )
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    box, skills, goals, order, inventory = chip_farming_case
+    box_path = tmp_path / "cultivate.json"
+    box_path.write_text(json.dumps({"data": box}))
+    monkeypatch.setattr(path, "get_path", lambda _: box_path)
+    monkeypatch.setattr(growth, "load_goals", lambda: goals)
+    monkeypatch.setattr(mastery_db, "get_all_plans", lambda: [])
+    monkeypatch.setattr(mastery_recommendation, "get_skill_data", lambda: skills)
+    monkeypatch.setattr(
+        maa_stage_inventory, "load_inventory_snapshot", lambda: (dict(inventory), None)
+    )
+    weekly = [
+        SimpleNamespace(weekday=weekday, stage=["Annihilation", "1-7"], medicine=0)
+        for weekday in ("周一", "周四")
+    ]
+    conf = base_schedule.config.conf.model_copy(deep=True)
+    conf.growth_crafting_order = order
+    conf.maa_stage_inventory_enable = False
+    conf.maa_weekly_plan = weekly
+    monkeypatch.setattr(base_schedule.config, "conf", conf)
+    solver = object.__new__(base_schedule.BaseSchedulerSolver)
+    solver.MAA = MagicMock()
+    solver.MAA.append_task.side_effect = iter(range(1, 25))
+    solver.maa_drop_inventory = MagicMock()
+    solver.maa_drop_inventory.accumulated.return_value = {"3212": 8, "3272": 2}
+    solver.stages = []
+    active_plan = "daily"
+    growth_settings = {"growth": True}
+    manager = SimpleNamespace(
+        maybe_switch_expired_activity_plan=MagicMock(),
+        get_active_plan_key=lambda: active_plan,
+        get_growth_chip_farming=lambda: growth_settings,
+    )
+    monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", lambda: manager)
+
+    def assert_fight(day, stages):
+        monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: day)
+        solver.MAA.append_task.reset_mock()
+        solver.append_maa_task("Fight")
+        assert [
+            (call.args[1]["stage"], call.args[1].get("drops"))
+            for call in solver.MAA.append_task.call_args_list
+        ] == stages
+        local_stages, local_target = solver.mower_stage_plan()
+        assert local_stages == [stage for stage, _ in stages]
+        return local_target
+
+    assert_fight(0, [("Annihilation", None), ("1-7", None)])
+    active_plan = "growth"
+    inventory.pop("3212")
+    assert_fight(0, [("Annihilation", None), ("1-7", None)])
+    inventory["3212"] = 0
+    assert_fight(0, [("Annihilation", None), ("AP-5", {"4006": 360})])
+    inventory["4006"] = 360
+    for _ in range(2):
+        assert_fight(0, [("Annihilation", None), ("1-7", None)])
+    growth_settings["growth"] = False
+    assert_fight(0, [("Annihilation", None), ("PR-C-2", {"3212": 8})])
+    growth_settings["growth"] = True
+    first = assert_fight(1, [("Annihilation", None), ("PR-C-2", {"3212": 8})])
+    last_chip_task = next(reversed(solver.maa_inventory_tasks))
+
+    inventory.update({"3212": 8, "3272": 2})
+    solver.refresh_maa_inventory_targets()
+    assert any(
+        call.args[0] == last_chip_task and call.args[1]["times"] == 0
+        for call in solver.MAA.set_task_params.call_args_list
+    )
+    assert_fight(1, [("Annihilation", None), ("AP-5", {"4006": 90})])
+    inventory["4006"] = 540
+    third = assert_fight(1, [("Annihilation", None), ("PR-C-2", {"3212": 2})])
+    assert first.char_id != third.char_id
+    local_stages, _ = solver.mower_stage_plan(
+        excluded_stages={"Annihilation"},
+        attempted_growth={(first.char_id, "PR-C-2")},
+    )
+    assert local_stages == ["PR-C-2"]
+    local_stages, _ = solver.mower_stage_plan(
+        excluded_stages={"Annihilation"},
+        attempted_growth={(third.char_id, "PR-C-2")},
+    )
+    assert local_stages == ["1-7"]
+    inventory["3212"] = 10
+    assert_fight(1, [("Annihilation", None), ("1-7", None)])
+    assert all(day.stage == ["Annihilation", "1-7"] for day in weekly)
+
+
+def test_local_operation_stops_at_growth_cap_with_manual_limits_disabled(monkeypatch):
+    from arknights_mower.solvers import operation
+
+    conf = operation.config.conf.model_copy(deep=True)
+    conf.maa_stage_inventory_enable = False
+    monkeypatch.setattr(operation.config, "conf", conf)
+    monkeypatch.setattr(
+        operation, "load_inventory_snapshot", lambda: ({"3212": 8, "3272": 0}, None)
+    )
+    solver = object.__new__(operation.OperationSolver)
+    result = solver.run(
+        stage_id="PR-C-2",
+        stage_duration_seconds=60,
+        inventory_limit_rules=[
+            {"stage": "PR-C-2", "items": [{"item_id": "3212", "limit": 8}]}
+        ],
+    )
+    assert result["stopped_by_inventory"]
+    assert result["executed_runs"] == 0
 
 
 def recipe_data():
@@ -323,16 +474,9 @@ def test_goal_selection_persists_atomically_and_validates_module(
     assert growth.set_goal("char_test", "module", False, box, skills) == []
 
 
-def test_goal_api_and_ap5_binding_use_saved_goals(tmp_path, growth_case, monkeypatch):
-    from unittest.mock import MagicMock
-
+def test_growth_goal_api_persists_only_valid_goals(tmp_path, growth_case, monkeypatch):
     import server
-    from arknights_mower.utils import (
-        mastery_db,
-        mastery_materials,
-        mastery_recommendation,
-    )
-    from arknights_mower.utils.config import weekly_plan_loader
+    from arknights_mower.utils import mastery_recommendation
 
     box, skills = growth_case
     cultivate = tmp_path / "cultivate.json"
@@ -350,27 +494,84 @@ def test_goal_api_and_ap5_binding_use_saved_goals(tmp_path, growth_case, monkeyp
     assert (
         client.post("/growth-plan", json={**goal, "selected": "yes"}).status_code == 400
     )
-    monkeypatch.setattr(mastery_db, "get_all_plans", lambda: [])
-    monkeypatch.setattr(mastery_db, "get_failed_plans", lambda: [])
-    summary = MagicMock(
-        return_value={
-            "missing": [{"id": "4006", "count": 80}],
-            "materials": [{"id": "4006", "name": "采购凭证", "required": 180}],
-        }
-    )
-    monkeypatch.setattr(mastery_materials, "plan_material_summary", summary)
-    manager = MagicMock()
-    manager.get_active_plan_key.return_value = "daily"
-    manager.get_plan.return_value = [{"stage": ["1-7"], "weekday": "Monday"}]
-    manager.get_inventory_config.return_value = {"enabled": False}
+
+
+@pytest.mark.parametrize("filter_by_availability", [True, False])
+def test_configure_chip_farming_requires_an_explicit_existing_plan(
+    tmp_path, monkeypatch, filter_by_availability
+):
+    from unittest.mock import MagicMock
+
+    import yaml
+
+    import server
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    monkeypatch.setattr(server.app, "token", "growth-test-token", raising=False)
+    client = server.app.test_client()
+    headers = {"token": "growth-test-token"}
+    manager = object.__new__(weekly_plan_loader.WeeklyPlanManager)
+    path = tmp_path / "weekly_plans.yml"
+    plans = {
+        "daily": [{"weekday": "周一", "stage": ["CE-6"], "medicine": 2}],
+        "growth": [{"weekday": "周一", "stage": ["1-7"]}],
+    }
+    path.write_text(yaml.safe_dump({"plans": plans}))
+    original = path.read_bytes()
+    monkeypatch.setattr(manager, "WEEKLY_PLANS_FILE", path)
+    monkeypatch.setattr(manager, "_read_state", lambda: {"active_weekly_plan": "daily"})
+    write_state = MagicMock()
+    monkeypatch.setattr(manager, "_write_state", write_state)
     monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", lambda: manager)
-    response = client.post("/growth-chip-farming", json={"stage": "ignored"})
-    assert response.status_code == 200 and response.json["stages"] == ["AP-5"]
-    summary.assert_called_once_with([], [goal])
-    args, kwargs = manager.create_or_update_plan.call_args
-    assert args[0] == "daily" and args[1][0]["stage"] == ["AP-5", "1-7"]
-    assert kwargs["inventory_config"]["enabled"]
-    assert kwargs["inventory_config"]["limit_rules"][0]["items"][0]["limit"] == 180
+    payload = {
+        "plan_key": "growth",
+        "filter_stage_by_availability": filter_by_availability,
+    }
+
+    for unauthorized in ({}, {"token": "wrong"}):
+        assert (
+            client.post(
+                "/growth-chip-farming", json=payload, headers=unauthorized
+            ).status_code
+            == 403
+        )
+        assert client.get("/weekly-plans", headers=unauthorized).status_code == 403
+    for invalid, status in (
+        ({}, 400),
+        ({"plan_key": "deleted"}, 404),
+        ({**payload, "filter_stage_by_availability": "false"}, 400),
+        ({**payload, "enabled": "false"}, 400),
+    ):
+        assert (
+            client.post(
+                "/growth-chip-farming", json=invalid, headers=headers
+            ).status_code
+            == status
+        )
+    assert path.read_bytes() == original
+
+    response = client.post("/growth-chip-farming", json=payload, headers=headers)
+    assert response.json == {"plan_key": "growth", "enabled": True}
+    assert client.get("/weekly-plans", headers=headers).json["growth_chip_farming"] == {
+        "growth": filter_by_availability
+    }
+    assert {key: manager.get_plan(key) for key in plans} == plans
+    assert manager.get_active_plan_key() == "daily"
+    assert not manager.get_inventory_config("growth")["enabled"]
+    write_state.assert_not_called()
+
+    response = client.post(
+        "/growth-chip-farming", json={**payload, "enabled": False}, headers=headers
+    )
+    assert response.json == {"plan_key": "growth", "enabled": False}
+    assert manager.get_growth_chip_farming() == {}
+    assert (
+        client.post("/growth-chip-farming", json=payload, headers=headers).status_code
+        == 200
+    )
+    assert manager.delete_plan("growth")
+    assert manager.get_growth_chip_farming() == {}
+    assert "growth_chip_farming" not in yaml.safe_load(path.read_text())
 
 
 def test_idle_target_edit_persists_and_rejects_started_plan(tmp_path, monkeypatch):

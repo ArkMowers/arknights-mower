@@ -394,7 +394,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
                     ),
                 ):
                     solver.append_maa_task("Fight")
-                    local_stages = solver.mower_stage_plan()
+                    local_stages, _ = solver.mower_stage_plan()
                 sent = [
                     call.args[1]["stage"]
                     for call in solver.MAA.append_task.call_args_list
@@ -445,7 +445,7 @@ class MaaStageInventorySchedulerTests(unittest.TestCase):
                 return_value=({"30012": 10, "4001": 0}, "2026-09-04 12:00:00"),
             ),
         ):
-            stages = solver.mower_stage_plan()
+            stages, _ = solver.mower_stage_plan()
 
         auto_switch.assert_called_once_with()
         self.assertEqual(stages, ["CE-6"])

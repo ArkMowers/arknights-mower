@@ -22,6 +22,7 @@ class WeeklyPlanManager:
     ACTIVITY_FALLBACK_SWITCH_TIMES_KEY = "activity_fallback_switch_times"
     ACTIVITY_STAGE_END_TIMES_KEY = "activity_stage_end_times"
     INVENTORY_CONFIGS_KEY = "inventory_configs"
+    GROWTH_CHIP_FARMING_KEY = "growth_chip_farming"
 
     def __init__(self):
         self._ensure_weekly_plans_exists()
@@ -254,6 +255,41 @@ class WeeklyPlanManager:
         configs[key] = normalized
         data[self.INVENTORY_CONFIGS_KEY] = configs
         self._write_weekly_plans(data)
+        return True
+
+    @staticmethod
+    def _growth_chip_farming_settings(data: dict) -> dict[str, bool]:
+        settings = data.get(WeeklyPlanManager.GROWTH_CHIP_FARMING_KEY)
+        if not isinstance(settings, dict):
+            return {}
+        plans = data.get("plans") or {}
+        return {
+            key: filter_by_availability
+            for key, filter_by_availability in settings.items()
+            if key in plans and type(filter_by_availability) is bool
+        }
+
+    def get_growth_chip_farming(self) -> dict[str, bool]:
+        return self._growth_chip_farming_settings(self._read_weekly_plans())
+
+    def set_growth_chip_farming(
+        self, key: str, filter_by_availability: bool | None
+    ) -> bool:
+        data = self._read_weekly_plans()
+        if key not in (data.get("plans") or {}):
+            return False
+        settings = self._growth_chip_farming_settings(data)
+        original = settings.copy()
+        if filter_by_availability is None:
+            settings.pop(key, None)
+        else:
+            settings[key] = filter_by_availability
+        if settings != original:
+            if settings:
+                data[self.GROWTH_CHIP_FARMING_KEY] = settings
+            else:
+                data.pop(self.GROWTH_CHIP_FARMING_KEY, None)
+            self._write_weekly_plans(data)
         return True
 
     def get_activity_fallbacks(self) -> dict[str, str]:
@@ -586,6 +622,12 @@ class WeeklyPlanManager:
         active_before = self.get_active_plan_key()
         data = self._read_weekly_plans()
         del data["plans"][key]
+        if self.GROWTH_CHIP_FARMING_KEY in data:
+            settings = self._growth_chip_farming_settings(data)
+            if settings:
+                data[self.GROWTH_CHIP_FARMING_KEY] = settings
+            else:
+                data.pop(self.GROWTH_CHIP_FARMING_KEY)
         stage_ends = data.get(self.ACTIVITY_STAGE_END_TIMES_KEY)
         if isinstance(stage_ends, dict):
             stage_ends.pop(key, None)

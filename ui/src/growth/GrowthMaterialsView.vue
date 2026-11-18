@@ -17,7 +17,6 @@ const props = defineProps({
   missingSkills: { type: Array, default: () => [] },
   totalGoals: { type: Number, default: 0 },
   planCount: { type: Number, default: 0 },
-  hasChipShortage: Boolean,
   chipLoading: Boolean,
   workshopLoading: Boolean
 })
@@ -111,13 +110,7 @@ const missingList = computed(() =>
           >
             生成缺失材料合成任务
           </n-button>
-          <n-button
-            v-if="hasChipShortage"
-            size="small"
-            secondary
-            :loading="chipLoading"
-            @click="emit('configure-chips')"
-          >
+          <n-button size="small" secondary :loading="chipLoading" @click="emit('configure-chips')">
             设置芯片刷取
           </n-button>
         </div>

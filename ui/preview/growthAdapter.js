@@ -868,8 +868,6 @@ export function createGrowthAdapter(preview) {
         return verb === 'GET'
           ? ok({ recommendations: clone(state.workshopReference.recommendations || {}) })
           : { unhandled: true }
-      case '/growth-chip-farming':
-        return verb === 'POST' ? ok({ stages: ['PR-B'], active: '默认' }) : { unhandled: true }
       case '/operator':
         return verb === 'GET' ? ok(clone(operatorNames)) : { unhandled: true }
       default:

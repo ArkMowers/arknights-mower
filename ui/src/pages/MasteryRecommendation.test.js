@@ -49,9 +49,15 @@ beforeEach(() => {
       workshop_deer_fodder: [],
       fodder_operators: [],
       t5_operators: [],
-      book_operators: []
+      book_operators: [],
+      maa_weekly_plan_options: ['日常', '养成'],
+      maa_weekly_plan_active: '日常',
+      filterStageByAvailability: true
     })
   })()
+  state.config.refresh_weekly_plan_metadata = vi.fn(async () => ({}))
+  state.config.flush_config_saves = vi.fn(async () => {})
+  state.config.load_config = vi.fn(async () => {})
   state.plan = defineStore('form-test-plan', {
     state: () => ({ operators: [], plan: {}, backup_plans: [] })
   })()
@@ -150,6 +156,53 @@ function operators() {
 async function flush() {
   for (let i = 0; i < 5; i++) await nextTick()
 }
+
+describe('设置芯片刷取', () => {
+  it.each([true, false])('选择并确认目标周计划后提交开放日筛选 %s', async (filter) => {
+    const page = setup()
+    state.config.filterStageByAvailability = filter
+    axios.post.mockResolvedValueOnce({ data: { plan_key: '养成', enabled: true } })
+
+    await page.openChipFarming()
+    expect(page.showChipFarming.value).toBe(true)
+    expect(page.chipFarmingPlan.value).toBeNull()
+    expect(page.chipFarmingPlanOptions.value.map(({ value }) => value)).toEqual(['日常', '养成'])
+    await page.configureChipFarming(true)
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(state.config.flush_config_saves).not.toHaveBeenCalled()
+
+    page.chipFarmingPlan.value = '养成'
+    page.showChipFarming.value = false
+    await page.configureChipFarming(true)
+    expect(axios.post).not.toHaveBeenCalled()
+
+    await page.openChipFarming()
+    expect(page.chipFarmingPlan.value).toBeNull()
+    page.chipFarmingPlan.value = '养成'
+    await page.configureChipFarming(true)
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/growth-chip-farming'),
+      { plan_key: '养成', enabled: true, filter_stage_by_availability: filter }
+    )
+    expect(state.config.load_config).not.toHaveBeenCalled()
+    expect(page.showChipFarming.value).toBe(false)
+  })
+
+  it('允许关闭选中方案的自动刷取，包括已关闭开放日筛选的方案', async () => {
+    const page = setup()
+    state.config.refresh_weekly_plan_metadata.mockResolvedValueOnce({
+      growth_chip_farming: { 日常: false }
+    })
+    await page.openChipFarming()
+    page.chipFarmingPlan.value = '日常'
+    expect(page.selectedChipFarmingEnabled.value).toBe(true)
+    await page.configureChipFarming(false)
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/growth-chip-farming'),
+      { plan_key: '日常', enabled: false, filter_stage_by_availability: true }
+    )
+  })
+})
 
 describe('养成规划按需详情', () => {
   it('离开干员视图释放选中详情并忽略迟到结果', async () => {

@@ -75,7 +75,6 @@
           :roster-stats="rosterStats"
           :workshop-status-revision="workshopStatusRevision"
           :workshop-loading="workshopLoading"
-          :has-chip-shortage="hasChipShortage"
           :chip-farming-loading="chipFarmingLoading"
           @open-plan="openCraftingOrder"
           @open-materials="activeView = 'materials'"
@@ -84,7 +83,7 @@
           @open-operator="openOperator"
           @add-target="openOperatorPicker"
           @generate-crafting="autoWorkshop"
-          @configure-chips="configureChipFarming"
+          @configure-chips="openChipFarming"
           @refresh-materials="refreshT3Summary"
           @update:pick-sort="pickSort = $event"
         />
@@ -170,12 +169,11 @@
           :missing-skills="missingPlanSkills"
           :total-goals="totalGoalCount"
           :plan-count="planEntries.length"
-          :has-chip-shortage="hasChipShortage"
           :chip-loading="chipFarmingLoading"
           :workshop-loading="workshopLoading"
           @refresh="refreshT3Summary"
           @generate-crafting="autoWorkshop"
-          @configure-chips="configureChipFarming"
+          @configure-chips="openChipFarming"
           @add-target="openOperatorPicker"
           @open-plan="openCraftingOrder"
         />
@@ -206,6 +204,51 @@
         :name="supportSelection.name"
         @saved="refreshPlanFromServer"
       />
+
+      <n-modal
+        v-model:show="showChipFarming"
+        preset="card"
+        title="设置芯片刷取"
+        :style="{ width: 'min(420px, calc(100vw - 24px))' }"
+        :mask-closable="false"
+        :close-on-esc="!chipFarmingLoading"
+        :closable="!chipFarmingLoading"
+      >
+        <n-form-item label="目标周计划">
+          <n-select
+            v-model:value="chipFarmingPlan"
+            :options="chipFarmingPlanOptions"
+            :disabled="chipFarmingLoading"
+            placeholder="请选择刷理智周计划"
+          />
+        </n-form-item>
+        <p>启用所选周计划后，按养成顺序逐个干员刷取芯片和采购凭证。库存数量未知时，先同步库存。</p>
+        <n-text v-if="!configStore.filterStageByAvailability" type="warning">
+          「只显示当日开放关卡」已关闭，刷取时可能尝试当天未开放的关卡。
+        </n-text>
+        <template #footer>
+          <n-space justify="end">
+            <n-button :disabled="chipFarmingLoading" @click="showChipFarming = false">
+              取消
+            </n-button>
+            <n-button
+              v-if="selectedChipFarmingEnabled"
+              :disabled="chipFarmingLoading"
+              @click="configureChipFarming(false)"
+            >
+              关闭自动刷取
+            </n-button>
+            <n-button
+              type="primary"
+              :disabled="!canConfigureChipFarming"
+              :loading="chipFarmingLoading"
+              @click="configureChipFarming(true)"
+            >
+              {{ selectedChipFarmingEnabled ? '更新筛选设置' : '开启自动刷取' }}
+            </n-button>
+          </n-space>
+        </template>
+      </n-modal>
 
       <!-- 通用专精路线 -->
       <n-modal
@@ -1825,25 +1868,54 @@ onUnmounted(() => detailController?.abort())
 
 const planMaterials = ref(null)
 const chipFarmingLoading = ref(false)
-const hasChipShortage = computed(() =>
-  planMaterials.value?.missing?.some(
-    (row) => (/^32[1-8][12]$/.test(row.id) || row.id === '4006') && row.count > 0
-  )
+const showChipFarming = ref(false)
+const chipFarmingPlan = ref(null)
+const chipFarmingSettings = ref({})
+const chipFarmingPlanOptions = computed(() =>
+  configStore.maa_weekly_plan_options.map((key) => ({
+    label: Object.hasOwn(chipFarmingSettings.value, key) ? `${key}（已开启）` : key,
+    value: key
+  }))
 )
-async function configureChipFarming() {
+const canConfigureChipFarming = computed(() =>
+  configStore.maa_weekly_plan_options.includes(chipFarmingPlan.value)
+)
+const selectedChipFarmingEnabled = computed(() =>
+  Object.hasOwn(chipFarmingSettings.value, chipFarmingPlan.value)
+)
+async function openChipFarming() {
+  if (chipFarmingLoading.value) return
   chipFarmingLoading.value = true
   try {
-    await configStore.flush_config_saves()
-    const response = await axios.post(`${import.meta.env.VITE_HTTP_URL}/growth-chip-farming`)
-    await configStore.load_config()
-    const stages = response.data.stages || []
+    const metadata = await configStore.refresh_weekly_plan_metadata()
+    chipFarmingSettings.value = metadata.growth_chip_farming ?? {}
+    chipFarmingPlan.value = null
+    showChipFarming.value = true
+  } catch {
+    message.error('周计划读取失败，请重试')
+  } finally {
+    chipFarmingLoading.value = false
+  }
+}
+
+async function configureChipFarming(enabled) {
+  if (!showChipFarming.value || !canConfigureChipFarming.value || chipFarmingLoading.value) return
+  const planKey = chipFarmingPlan.value
+  chipFarmingLoading.value = true
+  try {
+    await axios.post(`${import.meta.env.VITE_HTTP_URL}/growth-chip-farming`, {
+      plan_key: planKey,
+      enabled,
+      filter_stage_by_availability: configStore.filterStageByAvailability
+    })
+    showChipFarming.value = false
     message.success(
-      stages.length
-        ? `已开启「${response.data.active}」的库存刷关并加入 ${stages.join('、')}；芯片仍需手动合成。`
-        : '当前芯片与采购凭证库存已满足需求'
+      enabled ? `已保存「${planKey}」的自动刷取设置` : `已关闭「${planKey}」的自动刷取`
     )
   } catch (error) {
-    message.error(error.response?.data?.error || '芯片刷取设置失败')
+    message.error(
+      error.response?.data?.message || error.response?.data?.error || '芯片刷取设置失败'
+    )
   } finally {
     chipFarmingLoading.value = false
   }

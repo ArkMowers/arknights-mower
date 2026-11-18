@@ -25,6 +25,7 @@ import WeeklyPlanSelector from './WeeklyPlanSelector.vue'
 const store = useConfigStore()
 const {
   maa_weekly_plan,
+  filterStageByAvailability,
   stage_plan_enable,
   stage_plan_runner,
   medicine_expire_days,
@@ -74,8 +75,6 @@ const copyTargetDays = ref([])
 let copyDialogLongPressTimer = null
 let copyDialogLongPressTriggered = false
 
-// 关卡过滤开关（活动期间可关闭）
-const filterStageByAvailability = ref(true)
 const editorModeStorageKey = 'maa-weekly-plan-editor-mode'
 const savedEditorMode = window.localStorage.getItem(editorModeStorageKey)
 const editorMode = ref(savedEditorMode === 'table' ? 'table' : 'list')

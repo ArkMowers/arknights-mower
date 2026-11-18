@@ -211,7 +211,13 @@ def test_reselected_stage_without_cost(local, caplog):
     local.plan("1-7", ap=90)
     # 打完 1-7 后，库存规则放出没有体力消耗数据的 X-1。
     local.solver.mower_stage_plan = MagicMock(
-        side_effect=[["1-7"], ["1-7"], ["X-1"], [], ["1-7"]]
+        side_effect=[
+            (["1-7"], None),
+            (["1-7"], None),
+            (["X-1"], None),
+            ([], None),
+            (["1-7"], None),
+        ]
     )
     assert dispatch(local, caplog) == [
         ("INFO", "开始刷理智：1-7"),
