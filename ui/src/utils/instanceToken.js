@@ -4,14 +4,14 @@ const storageKey = 'mower-relay-instance-token'
 export function isRelayPage() {
   return (
     typeof window !== 'undefined' &&
-    window.location.protocol === 'https:' &&
+    window.location?.protocol === 'https:' &&
     window.location.port === '58000' &&
     /^[a-z0-9-]+\.free\.mower\.work$/.test(window.location.hostname)
   )
 }
 
 export function instanceToken() {
-  const query = new URLSearchParams(window.location.search).get('token')
+  const query = new URLSearchParams(window.location?.search).get('token')
   return isRelayPage() ? (activeToken ?? query ?? window.sessionStorage.getItem(storageKey)) : query
 }
 

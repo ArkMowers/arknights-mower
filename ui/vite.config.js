@@ -11,6 +11,7 @@ import vueJsx from '@vitejs/plugin-vue-jsx'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
+import { relayBuildId } from './scripts/relayBuild.js'
 import { incrementalPublicAssets } from './scripts/publicAssets.js'
 import { mockPreview } from './preview/vite-plugin.js'
 
@@ -19,6 +20,21 @@ import { mockPreview } from './preview/vite-plugin.js'
 // 输出与绝对路径构建一致，也避免依赖目录名。
 const srcRoot = fileURLToPath(new URL('./src', import.meta.url)).replace(/\\/g, '/')
 const require = createRequire(import.meta.url)
+
+function relayBuildMetadata() {
+  let build
+  return {
+    name: 'mower-relay-build',
+    apply: 'build',
+    buildStart() {
+      build = relayBuildId(fileURLToPath(new URL('..', import.meta.url)))
+      this.emitFile({ type: 'asset', fileName: 'relay-ui.json', source: JSON.stringify({ build }) })
+    },
+    transformIndexHtml() {
+      return [{ tag: 'meta', attrs: { name: 'mower-relay-build', content: build } }]
+    }
+  }
+}
 
 function mowerChangelog() {
   const moduleId = 'virtual:mower-changelog'
@@ -51,6 +67,7 @@ export default defineConfig(({ command, mode }) => ({
   plugins: [
     incrementalPublicAssets(),
     mowerChangelog(),
+    mode === 'production' ? relayBuildMetadata() : null,
     mode === 'mock-preview' ? mockPreview() : null,
     Inspect(),
     vue(),

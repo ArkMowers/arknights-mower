@@ -141,8 +141,7 @@ onUnmounted(() => {
       </n-space>
       <n-a v-if="url" :href="url" target="_blank" rel="noopener noreferrer">{{ url }}</n-a>
       <n-text depth="3"
-        >中转连接随 Mower 启动，退出 Mower
-        后关闭。大文件导入、软件更新和进程管理请在本机操作。</n-text
+        >中转连接随 Mower 启动，退出 Mower 后关闭。请在本机导入大文件、安装更新或管理进程。</n-text
       >
     </n-space>
   </n-card>
