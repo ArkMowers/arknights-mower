@@ -186,7 +186,11 @@ def test_dual_chips_catalysts_and_vouchers_use_existing_stock_once():
 
 
 def test_chips_and_ap5_bind_only_missing_drops_preserving_other_stages():
-    plan = [{"weekday": "周一", "stage": ["1-7", "Annihilation"]}]
+    plan = [
+        {"weekday": "周一", "stage": ["1-7", "Annihilation"], "medicine": 2},
+        {"weekday": "周三", "stage": ["1-7", "AP-5"], "sanity_threshold": 50},
+        {"weekday": "周四", "stage": ["1-7"]},
+    ]
     rules = {
         "enabled": False,
         "limit_rules": [
@@ -205,7 +209,11 @@ def test_chips_and_ap5_bind_only_missing_drops_preserving_other_stages():
     }
     updated, config, stages = chip_farming_plan(plan, rules, summary)
     assert stages == ["AP-5", "PR-C-2"]
-    assert updated[0]["stage"] == ["Annihilation", "AP-5", "PR-C-2", "1-7"]
+    assert updated == [
+        {"weekday": "周一", "stage": ["Annihilation", "AP-5", "1-7"], "medicine": 2},
+        {"weekday": "周三", "stage": ["PR-C-2", "1-7", "AP-5"], "sanity_threshold": 50},
+        {"weekday": "周四", "stage": ["AP-5", "PR-C-2", "1-7"]},
+    ]
     assert config["enabled"]
     assert config["limit_rules"][-1]["items"] == [
         {"item_id": "3212", "item_name": "先锋芯片组", "limit": 8}
@@ -323,8 +331,16 @@ def test_goal_selection_persists_atomically_and_validates_module(
     assert growth.set_goal("char_test", "module", False, box, skills) == []
 
 
-def test_goal_api_and_ap5_binding_use_saved_goals(tmp_path, growth_case, monkeypatch):
+@pytest.mark.parametrize(
+    ("filter_by_availability", "expected_tuesday"),
+    [(True, ["1-7"]), (False, ["AP-5", "1-7"])],
+)
+def test_goal_api_and_ap5_binding_use_saved_goals(
+    tmp_path, growth_case, monkeypatch, filter_by_availability, expected_tuesday
+):
     from unittest.mock import MagicMock
+
+    import yaml
 
     import server
     from arknights_mower.utils import (
@@ -337,18 +353,22 @@ def test_goal_api_and_ap5_binding_use_saved_goals(tmp_path, growth_case, monkeyp
     box, skills = growth_case
     cultivate = tmp_path / "cultivate.json"
     cultivate.write_text(json.dumps({"data": box}))
-    monkeypatch.setattr(server.app, "token", "", raising=False)
+    monkeypatch.setattr(server.app, "token", "growth-test-token", raising=False)
     monkeypatch.setattr(server, "get_path", lambda _: cultivate)
     monkeypatch.setattr(growth, "get_path", lambda _: tmp_path / "goals.json")
     monkeypatch.setattr(mastery_recommendation, "get_skill_data", lambda: skills)
     client = server.app.test_client()
+    headers = {"token": "growth-test-token"}
     goal = {"char_id": "char_test", "module_id": "elite2"}
-    assert client.post("/growth-plan", json={**goal, "selected": True}).json == {
-        "goals": [goal]
-    }
-    assert client.get("/growth-plan").json == {"goals": [goal]}
+    assert client.post(
+        "/growth-plan", headers=headers, json={**goal, "selected": True}
+    ).json == {"goals": [goal]}
+    assert client.get("/growth-plan", headers=headers).json == {"goals": [goal]}
     assert (
-        client.post("/growth-plan", json={**goal, "selected": "yes"}).status_code == 400
+        client.post(
+            "/growth-plan", headers=headers, json={**goal, "selected": "yes"}
+        ).status_code
+        == 400
     )
     monkeypatch.setattr(mastery_db, "get_all_plans", lambda: [])
     monkeypatch.setattr(mastery_db, "get_failed_plans", lambda: [])
@@ -359,18 +379,75 @@ def test_goal_api_and_ap5_binding_use_saved_goals(tmp_path, growth_case, monkeyp
         }
     )
     monkeypatch.setattr(mastery_materials, "plan_material_summary", summary)
-    manager = MagicMock()
-    manager.get_active_plan_key.return_value = "daily"
-    manager.get_plan.return_value = [{"stage": ["1-7"], "weekday": "Monday"}]
-    manager.get_inventory_config.return_value = {"enabled": False}
+    manager = object.__new__(weekly_plan_loader.WeeklyPlanManager)
+    path = tmp_path / "weekly_plans.yml"
+    daily = [{"weekday": "周一", "stage": ["CE-6"], "medicine": 2}]
+    growth_plan = [
+        {"weekday": "周一", "stage": ["1-7"]},
+        {"weekday": "周二", "stage": ["1-7"]},
+    ]
+    path.write_text(yaml.safe_dump({"plans": {"daily": daily, "growth": growth_plan}}))
+    original = path.read_bytes()
+    state = {"active_weekly_plan": "daily", "active_weekly_plan_revision": "original"}
+    write_state = MagicMock()
+    sync = MagicMock()
+    monkeypatch.setattr(manager, "WEEKLY_PLANS_FILE", path)
+    monkeypatch.setattr(manager, "_read_state", lambda: state.copy())
+    monkeypatch.setattr(manager, "_write_state", write_state)
+    monkeypatch.setattr(manager, "sync_active_plan_to_config", sync)
     monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", lambda: manager)
-    response = client.post("/growth-chip-farming", json={"stage": "ignored"})
-    assert response.status_code == 200 and response.json["stages"] == ["AP-5"]
+    request = {
+        "plan_key": "growth",
+        "filter_stage_by_availability": filter_by_availability,
+    }
+
+    for unauthorized in ({}, {"token": "wrong"}):
+        assert (
+            client.post(
+                "/growth-chip-farming", json=request, headers=unauthorized
+            ).status_code
+            == 403
+        )
+    for invalid, status in (
+        ({}, 400),
+        ({"plan_key": "deleted"}, 404),
+        ({**request, "filter_stage_by_availability": "false"}, 400),
+    ):
+        assert (
+            client.post(
+                "/growth-chip-farming", json=invalid, headers=headers
+            ).status_code
+            == status
+        )
+    summary.assert_not_called()
+    assert path.read_bytes() == original
+
+    response = client.post("/growth-chip-farming", json=request, headers=headers)
+    assert response.status_code == 200
+    assert response.json == {"plan_key": "growth", "stages": ["AP-5"]}
     summary.assert_called_once_with([], [goal])
-    args, kwargs = manager.create_or_update_plan.call_args
-    assert args[0] == "daily" and args[1][0]["stage"] == ["AP-5", "1-7"]
-    assert kwargs["inventory_config"]["enabled"]
-    assert kwargs["inventory_config"]["limit_rules"][0]["items"][0]["limit"] == 180
+    assert manager.get_plan("growth") == [
+        {"weekday": "周一", "stage": ["AP-5", "1-7"]},
+        {"weekday": "周二", "stage": expected_tuesday},
+    ]
+    assert manager.get_plan("daily") == daily
+    assert not manager.get_inventory_config("daily")["enabled"]
+    assert (
+        manager.get_inventory_config("growth")["limit_rules"][0]["items"][0]["limit"]
+        == 180
+    )
+    assert manager.get_active_plan_key() == "daily"
+    write_state.assert_not_called()
+    sync.assert_not_called()
+
+    response = client.post(
+        "/growth-chip-farming", json={**request, "plan_key": "daily"}, headers=headers
+    )
+    assert response.status_code == 200
+    assert manager.get_plan("daily") == [
+        {"weekday": "周一", "stage": ["AP-5", "CE-6"], "medicine": 2}
+    ]
+    sync.assert_called_once_with("daily")
 
 
 def test_idle_target_edit_persists_and_rejects_started_plan(tmp_path, monkeypatch):

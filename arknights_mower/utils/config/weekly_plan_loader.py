@@ -536,7 +536,7 @@ class WeeklyPlanManager:
         return True
 
     def create_or_update_plan(
-        self, key: str, plan_data: list[dict], inventory_config=_UNSET
+        self, key: str, plan_data: list[dict], inventory_config=_UNSET, *, activate=True
     ) -> bool:
         key = (key or "").strip()
         if not key:
@@ -576,7 +576,8 @@ class WeeklyPlanManager:
             else:
                 data.pop(self.ACTIVITY_FALLBACK_END_TIMES_KEY, None)
         self._write_weekly_plans(data)
-        self.set_active_plan(key)
+        if activate or key == self.get_active_plan_key():
+            self.set_active_plan(key)
         return True
 
     def delete_plan(self, key: str) -> bool:

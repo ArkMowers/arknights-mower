@@ -61,6 +61,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_weekly_plan = ref([])
   const maa_weekly_plan_options = ref([])
   const maa_weekly_plan_active = ref('')
+  const filterStageByAvailability = ref(true)
   const maa_weekly_plan_activity_fallbacks = ref({})
   const maa_weekly_plan_activity_switch_times = ref({})
   const maa_weekly_plan_activity_end_times = ref({})
@@ -1210,6 +1211,7 @@ export const useConfigStore = defineStore('config', () => {
     ap_fallback,
     maa_weekly_plan,
     maa_weekly_plan_options,
+    filterStageByAvailability,
     maa_weekly_plan_active,
     maa_weekly_plan_activity_fallbacks,
     maa_weekly_plan_activity_switch_times,

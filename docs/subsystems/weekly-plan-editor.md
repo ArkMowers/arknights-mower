@@ -2,7 +2,7 @@
 
 ## 1. State
 
-The list and table editors share `maa_weekly_plan`. The weekly editor owns the row order saved under `maa-weekly-plan-table-stage-order` and shares it with the table through `v-model:stage-order`. The availability filter remains component state and controls weekday editing without rewriting saved selections.
+The list and table editors share `maa_weekly_plan`. The weekly editor owns the row order saved under `maa-weekly-plan-table-stage-order` and shares it with the table through `v-model:stage-order`. The availability filter is shared for the current Web UI session and controls weekday editing without rewriting saved selections. [Chip Farming Plan](growth-planning.md#chip-farming-plan) reads the same setting when adding stages from growth planning.
 
 ## 2. Table Cells
 

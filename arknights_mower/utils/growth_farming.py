@@ -1,11 +1,17 @@
-"""Bind outstanding chip requirements to the current MAA weekly plan."""
+"""Bind outstanding chip requirements to the selected MAA weekly plan."""
 
+import json
 from copy import deepcopy
 
+from arknights_mower import __rootdir__
 from arknights_mower.utils.maa_stage_inventory import DEFAULT_STAGE_DROP_IDS
 
+RESOURCE_STAGE_OPEN_DAYS = json.loads(
+    (__rootdir__ / "data" / "resource_stage_open_days.json").read_text("utf-8")
+)
 
-def chip_farming_plan(plan, inventory_config, summary):
+
+def chip_farming_plan(plan, inventory_config, summary, *, filter_by_availability=True):
     missing = {row["id"] for row in summary["missing"] if row["count"] > 0}
     needs = {row["id"]: row for row in summary["materials"] if row["id"] in missing}
     rules = []
@@ -43,14 +49,23 @@ def chip_farming_plan(plan, inventory_config, summary):
         ]
     result = deepcopy(plan)
     for day in result:
+        weekday = day.get("weekday")
+        scheduled = [
+            stage
+            for stage in stages
+            if not filter_by_availability
+            or weekday in RESOURCE_STAGE_OPEN_DAYS[stage.rsplit("-", 1)[0]]
+        ]
+        if not scheduled:
+            continue
         existing = day.get("stage", [])
         day["stage"] = (
             (["Annihilation"] if "Annihilation" in existing else [])
-            + stages
+            + scheduled
             + [
                 stage
                 for stage in existing
-                if stage not in stages and stage != "Annihilation"
+                if stage not in scheduled and stage != "Annihilation"
             ]
         )
     return result, config, stages

@@ -59,7 +59,10 @@ beforeEach(() => {
   document.visibilityState = 'visible'
   vi.stubGlobal('document', document)
   state.resource = reactive({ info: { current_version: 'old' } })
-  state.config = { maa_weekly_plan: ref([{ weekday: '周一', stage: ['1-7'] }]) }
+  state.config = {
+    maa_weekly_plan: ref([{ weekday: '周一', stage: ['1-7'] }]),
+    filterStageByAvailability: ref(true)
+  }
 })
 
 afterEach(() => {
@@ -125,4 +128,13 @@ describe.each([
     expect(remove).toHaveBeenCalledWith(event, expect.any(Function))
     expect(vi.getTimerCount()).toBe(0)
   })
+})
+
+it('周计划的开放日筛选读写同一份界面设置', () => {
+  const { instance } = mountEditor(MaaWeekly)
+  const options = () => instance.setupState.filteredStageOptions('周二').map(({ value }) => value)
+  expect(options()).not.toContain('AP-5')
+  instance.setupState.filterStageByAvailability = false
+  expect(state.config.filterStageByAvailability.value).toBe(false)
+  expect(options()).toContain('AP-5')
 })

@@ -4660,23 +4660,36 @@ def growth_chip_farming():
     from arknights_mower.utils.mastery_materials import plan_material_summary
 
     try:
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return {"error": "请选择要添加关卡的周计划"}, 400
+        plan_key = payload.get("plan_key")
+        if not isinstance(plan_key, str) or not plan_key.strip():
+            return {"error": "请选择要添加关卡的周计划"}, 400
+        filter_by_availability = payload.get("filter_stage_by_availability", True)
+        if not isinstance(filter_by_availability, bool):
+            return {"error": "开放日筛选设置格式错误"}, 400
+        manager = get_weekly_plan_manager()
+        plan_key = plan_key.strip()
+        saved_plan = manager.get_plan(plan_key)
+        if saved_plan is None:
+            return {"error": "所选周计划已不存在，请重新选择"}, 404
         keys = [
             f"{p['char_id']}_{p['skill_index']}"
             for p in get_all_plans() + get_failed_plans()
         ]
         summary = plan_material_summary(keys, load_goals())
-        manager = get_weekly_plan_manager()
-        active = manager.get_active_plan_key()
         plan, inventory, stages = chip_farming_plan(
-            manager.get_plan(active) or [],
-            manager.get_inventory_config(active),
+            saved_plan,
+            manager.get_inventory_config(plan_key),
             summary,
+            filter_by_availability=filter_by_availability,
         )
         if stages and not manager.create_or_update_plan(
-            active, plan, inventory_config=inventory
+            plan_key, plan, inventory_config=inventory, activate=False
         ):
             return {"error": "库存刷关方案保存失败"}, 400
-        return {"stages": stages, "active": active}
+        return {"stages": stages, "plan_key": plan_key}
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return {"error": str(exc)}, 400
 
