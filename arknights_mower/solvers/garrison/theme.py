@@ -10,15 +10,30 @@ ACTION = (1440, 930, 1890, 1060)
 
 
 def theme_label(frame, region, name=None):
-    for text in frame.texts:
-        x, y = text.center
-        if text.score < 0.6 or not (
-            region[0] <= x < region[2] and region[1] <= y < region[3]
-        ):
-            continue
-        for theme in (name,) if name else THEMES:
-            if normal_name(text.text) == normal_name(theme):
-                return theme, text.center
+    labels = sorted(
+        (
+            t
+            for t in frame.texts
+            if t.score >= 0.6
+            and region[0] <= t.center[0] < region[2]
+            and region[1] <= t.center[1] < region[3]
+        ),
+        key=lambda t: t.x,
+    )
+    names = {normal_name(theme): theme for theme in ((name,) if name else THEMES)}
+    for label in labels:
+        if theme := names.get(normal_name(label.text)):
+            return theme, label.center
+    if region == TITLE and len(labels) > 1:
+        for left, right in zip(labels, labels[1:]):
+            height = min(left.height, right.height)
+            if (
+                abs(left.center[1] - right.center[1]) > height / 2
+                or abs(right.x - (left.x + left.width)) > height
+            ):
+                return None
+        if theme := names.get(normal_name("".join(t.text for t in labels))):
+            return theme, labels[0].center
     return None
 
 

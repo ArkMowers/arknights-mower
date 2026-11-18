@@ -684,6 +684,11 @@ def test_theme_switch_and_restore_require_observed_equipped_label(original):
     lobby = frame("left")
     default = theme.DEFAULT_THEME
     before = theme_panel(original)
+    if original == "“全能的”可露希尔":
+        before.texts = [t for t in before.texts if t.text != original]
+        before.texts.extend(
+            [Text("可露希尔", 241, 950, 170, 48), Text("“全能的”", 58, 940, 180, 66)]
+        )
     changed = original != default
     frames = [before]
     if changed:
@@ -716,6 +721,24 @@ def test_theme_switch_and_restore_require_observed_equipped_label(original):
         assert events[-1] == ("saved", {})
     else:
         assert events == [("tap", lobby.find("^更换主题$").center), ("tap", (65, 58))]
+
+
+@pytest.mark.parametrize(
+    "part",
+    [
+        Text("可露希尔", 241, 950, 170, 48, 0.5),
+        Text("可露希尔", 450, 950, 170, 48),
+        Text("可露希尔", 241, 984, 170, 48),
+        Text("可露希", 241, 950, 170, 48),
+    ],
+)
+def test_equipped_theme_requires_complete_title_on_one_line(part):
+    from arknights_mower.solvers.garrison import theme
+
+    panel = theme_panel(theme.DEFAULT_THEME)
+    panel.texts = [t for t in panel.texts if not (t.x < 930 and t.y >= 927)]
+    panel.texts.extend([Text("“全能的”", 58, 940, 180, 66), part])
+    assert theme.equipped(panel) is None
 
 
 def test_deferred_theme_restoration_after_final_settlement_does_not_play(
