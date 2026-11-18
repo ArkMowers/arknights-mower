@@ -8,7 +8,18 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 
 from .model import prepare_progress, status
-from .solver import HANDOVER_SECONDS, MATCH_SECONDS, GarrisonSolver
+from .solver import HANDOVER_SECONDS, MATCH_SECONDS, RECONNECT_SECONDS, GarrisonSolver
+
+
+def eligible_progress(conf, window):
+    if window < RECONNECT_SECONDS + HANDOVER_SECONDS:
+        return None
+    progress = prepare_progress(conf, record.load_garrison_progress())
+    if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:
+        return None
+    if progress.get("failed") or status(conf, progress)["completed"]:
+        return None
+    return progress
 
 
 def run_garrison(scheduler):
@@ -26,12 +37,8 @@ def run_garrison(scheduler):
         return long_task_deadline(scheduler, limit)
 
     window = (deadline() - datetime.now()).total_seconds()
-    if window < 540:
-        return False
-    progress = prepare_progress(conf, record.load_garrison_progress())
-    if progress.get("failed") or status(conf, progress)["completed"]:
-        return False
-    if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:
+    progress = eligible_progress(conf, window)
+    if progress is None:
         return False
     record.save_garrison_progress(progress)
     config.stop_maa.clear()

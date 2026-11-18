@@ -84,9 +84,19 @@ def run_long_task_if_dorm_pending(scheduler):
         )
     except ValueError:
         sleeping = False
-    if sleeping or long_task_deadline(
-        scheduler, now + timedelta(hours=24)
-    ) - now < timedelta(minutes=9):
+    if sleeping:
+        return False
+    garrison = conf.GARRISON
+    window = long_task_deadline(scheduler, now + timedelta(hours=24)) - now
+    if garrison:
+        from arknights_mower.solvers.garrison.runner import (
+            eligible_progress,
+            run_garrison,
+        )
+
+        if eligible_progress(conf, window.total_seconds()) is None:
+            return False
+    elif window < timedelta(minutes=9):
         return False
     # 清退可以延期，但上一单结束后缺少的订单读取必须先完成。
     if not scheduler._queue_missing_run_order_reads():
@@ -98,15 +108,13 @@ def run_long_task_if_dorm_pending(scheduler):
         for task in scheduler.tasks
     ):
         return False
+    if garrison:
+        return run_garrison(scheduler)
     now = datetime.now()
     if long_task_deadline(scheduler, now + timedelta(hours=24)) - now < timedelta(
         minutes=9
     ):
         return False
-    if conf.GARRISON:
-        from arknights_mower.solvers.garrison.runner import run_garrison
-
-        return run_garrison(scheduler)
     scheduler.maa_plan_solver([])
     return True
 

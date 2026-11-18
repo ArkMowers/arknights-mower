@@ -289,7 +289,7 @@ def test_last_confirmed_medal_stops_scan_and_future_dispatch(
 
 @pytest.mark.parametrize(
     ("seconds", "saved_match", "admitted"),
-    [(629, False, False), (630, False, True), (540, True, True), (539, True, False)],
+    [(629, False, False), (630, False, True), (60, True, True), (59, True, False)],
 )
 def test_dispatch_reserves_a_full_new_match(
     seconds, saved_match, admitted, income_db, monkeypatch
@@ -324,3 +324,14 @@ def test_match_budget_rechecked_after_navigation_before_saving_new_match():
     assert [call.args[1] for call in s.text_click.call_args_list] == ["^极速模拟$"]
     s.save.assert_not_called()
     assert "match" not in s.progress
+
+
+def test_observed_quick_match_is_saved_for_short_window_reconnect():
+    s = solver.GarrisonSolver(Mock(), Mock(), {"match": None}, Mock(), vision=Mock())
+    s.vision.frame.side_effect = [frame("mode"), frame("prep"), frame("prep")]
+    s.capture()
+    s.save.assert_not_called()
+    s.capture()
+    s.capture()
+    assert s.progress["match"] == {"phase": "active"}
+    s.save.assert_called_once()

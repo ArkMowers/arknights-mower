@@ -16,7 +16,7 @@ from .model import GarrisonError, catalogue, normal_name, record_wins
 from .upstream import FarmSession, strategy_panel
 from .vision import Vision
 
-
+RECONNECT_SECONDS = 30
 MATCH_SECONDS = 10 * 60
 HANDOVER_SECONDS = 30
 
@@ -102,6 +102,9 @@ class GarrisonSolver:
             "battle",
         }:
             self._quick_confirmed = True
+            if frame.screen != "mode" and not self.progress.get("match"):
+                self.progress["match"] = {"phase": "active"}
+                self.persist()
         return frame
 
     def click(self, point):
@@ -122,6 +125,7 @@ class GarrisonSolver:
             if predicate(frame):
                 return frame
             self.sleep(0.2)
+        self.remaining()
         raise GarrisonError("操作后没有观察到预期画面，保留当前对局")
 
     def persist(self):
@@ -148,7 +152,7 @@ class GarrisonSolver:
                     f.screen
                     in {"info", "strategy", "squad", "prep", "battle", "result"}
                 ),
-                30,
+                RECONNECT_SECONDS,
             )
         if self.progress.get("match"):
             raise GarrisonError("已保存未完成对局，但未找到继续入口；未开始新对局")
