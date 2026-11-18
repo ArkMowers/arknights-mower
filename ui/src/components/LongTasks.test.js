@@ -6,7 +6,7 @@ import { useConfigStore } from '@/stores/config'
 import { createTaskWorkflow, setTaskEnabled } from '@/task-workflow/model'
 import LongTasks from './LongTasks.vue'
 
-const state = vi.hoisted(() => ({ updateEnabled: null }))
+const state = vi.hoisted(() => ({ updateEnabled: null, windows: null, pickers: {} }))
 
 vi.mock('naive-ui', async (original) => {
   const library = await original()
@@ -19,8 +19,21 @@ vi.mock('naive-ui', async (original) => {
   return {
     ...library,
     ...Object.fromEntries(
-      ['NCard', 'NForm', 'NFormItem', 'NSelect', 'NTimePicker'].map((name) => [name, container])
+      ['NCard', 'NForm', 'NFormItem', 'NSelect'].map((name) => [name, container])
     ),
+    NDynamicInput: {
+      inheritAttrs: false,
+      setup(_, { attrs, slots }) {
+        state.windows = attrs
+        return () => h(library.NDynamicInput, attrs, slots)
+      }
+    },
+    NTimePicker: {
+      setup(_, { attrs }) {
+        state.pickers[attrs['aria-label']] = attrs['onUpdate:formattedValue']
+        return () => h('input', { value: attrs['formatted-value'] })
+      }
+    },
     NSwitch: {
       inheritAttrs: false,
       setup(_, { attrs }) {
@@ -85,4 +98,26 @@ it.each([0, 12])('shows the configured level farming limit of %i matches', async
   expect(html).toContain('刷取局数')
   expect(html).toContain('重新计数并继续')
   expect(store.garrison.match_limit).toBe(match_limit)
+})
+
+it('edits daily windows with the shared add and remove controls and keeps the first pair in legacy settings', async () => {
+  const html = await renderLongTasks(true, { maa_rg_sleep_max: '8:00', maa_rg_sleep_min: '12:00' })
+  expect(html).toContain('第1段开始时间')
+  expect(state.windows.min).toBe(1)
+  const first = state.windows.value[0]
+  const second = state.windows['on-create'](1)
+  state.windows['onUpdate:value']([first, second])
+  expect(store.maa_long_task_extra_windows).toEqual([{ start: '8:00', end: '12:00' }])
+
+  const app = createSSRApp(LongTasks)
+  app.use(pinia)
+  app.provide('mobile', ref(false))
+  expect(await renderToString(app)).toContain('第2段停止时间')
+  state.pickers['第2段开始时间']('22:00')
+  state.pickers['第2段停止时间']('2:00')
+  expect(store.maa_rg_sleep_max).toBe('8:00')
+  expect(store.maa_long_task_extra_windows).toEqual([{ start: '22:00', end: '2:00' }])
+  state.windows['onUpdate:value'](store.maa_long_task_extra_windows)
+  expect([store.maa_rg_sleep_max, store.maa_rg_sleep_min]).toEqual(['22:00', '2:00'])
+  expect(store.maa_long_task_extra_windows).toEqual([])
 })

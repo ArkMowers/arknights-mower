@@ -904,3 +904,33 @@ def test_unresolved_workstation_target_does_not_claim_departure(solver, target):
     assert result["title"] == task.display_name
     assert result["actions"] == []
     assert result["rooms"][0]["agents"] == [target, "Current"]
+
+
+def test_idle_wakes_for_next_window_without_changing_queue(
+    production_idle_scheduler, monkeypatch, caplog
+):
+    from arknights_mower.solvers import base_schedule as base
+
+    state = production_idle_scheduler
+    instance = state.solver
+    now = state.clock.now()
+    conf = base.config.conf.updated(
+        {
+            "maa_rg_enable": 1,
+            "maa_rg_sleep_max": "05:00",
+            "maa_rg_sleep_min": "06:00",
+            "maa_long_task_extra_windows": [{"start": "11:00", "end": "12:00"}],
+        }
+    )
+    monkeypatch.setattr(base.config, "conf", conf)
+    instance._idle_sleep = Mock()
+    instance.handle_idle_action = Mock()
+    tasks = [(id(t), t.time) for t in instance.tasks]
+    with caplog.at_level(logging.INFO):
+        instance.rest_until_next_task()
+    seconds = (
+        now.replace(hour=11, minute=0, second=0, microsecond=0) - now
+    ).total_seconds()
+    instance._idle_sleep.assert_called_once_with(seconds, round_end=True)
+    assert [(id(t), t.time) for t in instance.tasks] == tasks
+    assert "11:00:00，随后进入大型任务执行时段" in caplog.text

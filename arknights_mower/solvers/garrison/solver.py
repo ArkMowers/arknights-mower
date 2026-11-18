@@ -147,27 +147,50 @@ class GarrisonSolver:
             frame = self.wait(
                 lambda f: f.screen == "lobby" and f.find(lobby_controls, visible), 12
             )
-        resume = frame.find(reconnect, visible)
+        controls = (1150, 900, 1920, 1040)
+        if (
+            frame.screen == "lobby"
+            and frame.find("^搜寻队友$", controls)
+            and not frame.find(reconnect, visible)
+        ):
+            self.text_click(frame, "^个人模拟$", (1050, 730, 1810, 925))
+            frame = self.wait(
+                lambda f: (
+                    f.personal_simulation_selected()
+                    and (f.find(reconnect, controls) or f.find("^极速模拟$", controls))
+                ),
+                12,
+            )
+        resume = frame.find(reconnect, controls)
         if resume:
+            if not frame.personal_simulation_selected():
+                raise GarrisonError(
+                    "未确认已选中个人模拟，已保留对局。请核对大厅模式后继续"
+                )
             self.click(resume.center)
             return self.wait(
                 lambda f: (
                     f.screen
-                    in {"info", "strategy", "squad", "prep", "battle", "result"}
+                    in {
+                        "info",
+                        "strategy",
+                        "squad",
+                        "prep",
+                        "battle",
+                        "result",
+                        "battle-timeout",
+                    }
                 ),
                 RECONNECT_SECONDS,
             )
         if self.progress.get("match"):
             raise GarrisonError("已保存未完成对局，但未找到继续入口；未开始新对局")
         if frame.screen == "lobby":
-            if not frame.find("极速模拟"):
-                if not frame.find("搜寻队友") or not frame.find("同盟模拟|联合模拟"):
-                    raise GarrisonError("无法确认个人模拟入口")
-                self.text_click(frame, "^个人模拟$")
-                frame = self.wait(lambda f: f.screen == "lobby" and f.find("极速模拟"))
+            if not frame.personal_simulation_selected():
+                raise GarrisonError("未确认已选中个人模拟，已保留大厅状态")
             if self.remaining() < MATCH_SECONDS:
                 raise GarrisonYield
-            self.text_click(frame, "^极速模拟$")
+            self.text_click(frame, "^极速模拟$", controls)
             frame = self.wait(lambda f: f.screen in {"mode", "info", "strategy"}, 20)
         if frame.screen == "mode":
             if not frame.quick:
@@ -311,6 +334,7 @@ class GarrisonSolver:
     def play(self, game, frame):
         board = game.Board()
         state = None
+        timeout_round = None
         last_change = time.monotonic()
         while True:
             self.remaining()
@@ -324,6 +348,28 @@ class GarrisonSolver:
                 continue
             if frame.screen == "unknown":
                 frame = self.wait(lambda f: f.screen != "unknown", 15)
+                continue
+            if frame.screen == "battle-timeout":
+                if timeout_round == board.round_done:
+                    raise GarrisonError("同一回合再次出现战斗超时，已保留对局")
+                timeout_round = board.round_done
+                self.text_click(frame, "^确认$", (800, 655, 1120, 800))
+                frame = self.wait(
+                    lambda f: (
+                        f.screen
+                        in {
+                            "battle",
+                            "prep",
+                            "result",
+                            "choice",
+                            "confirm-ready",
+                            "squad",
+                            "info",
+                            "strategy",
+                        }
+                    ),
+                    RECONNECT_SECONDS,
+                )
                 continue
             saved_result = (
                 frame.screen == "result"
@@ -388,6 +434,7 @@ class GarrisonSolver:
                 if self.match_limit is None and self.progress["attempts"] >= 200:
                     raise GarrisonError("已尝试两百局，请核对策略进度")
                 board = game.Board()
+                timeout_round = None
                 self._quick_confirmed = False
                 continue
             else:

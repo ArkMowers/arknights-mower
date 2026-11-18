@@ -7,6 +7,7 @@ const config_store = useConfigStore()
 const {
   maa_rg_enable,
   maa_long_task_type,
+  maa_long_task_extra_windows,
   maa_rg_sleep_min,
   maa_rg_sleep_max,
   maa_rcl_theme,
@@ -17,6 +18,30 @@ const longTaskEnabled = computed({
   get: () => maa_rg_enable.value === true || maa_rg_enable.value === 1,
   set: (value) => (maa_rg_enable.value = value)
 })
+
+const timeWindows = computed({
+  get: () => [
+    { start: maa_rg_sleep_max.value, end: maa_rg_sleep_min.value },
+    ...maa_long_task_extra_windows.value
+  ],
+  set: ([first, ...extra]) => {
+    maa_rg_sleep_max.value = first.start
+    maa_rg_sleep_min.value = first.end
+    maa_long_task_extra_windows.value = extra
+  }
+})
+
+function addTimeWindow(index) {
+  return { ...timeWindows.value[Math.max(0, index - 1)] }
+}
+
+function updateTimeWindow(index, field, value) {
+  if (value !== null) {
+    timeWindows.value = timeWindows.value.map((window, i) =>
+      i === index ? { ...window, [field]: value } : window
+    )
+  }
+}
 
 const garrisonGoal = computed({
   get: () => (garrison.value.mode === 'matches' ? 'matches' : garrison.value.target_wins),
@@ -82,25 +107,36 @@ watch(
         />
       </n-form-item>
       <div class="long-task-time-container">
-        <div class="long-task-times">
-          <n-form-item label-placement="top">
-            <template #label>
-              开始时间
-              <help-text label="大型任务时段说明">
-                <div>开始与结束时间设置为相同值时全天开启。</div>
-                <div>若结束时间早于开始时间，则表示开启至次日。例如：</div>
-                <ul>
-                  <li>23:00开始、8:00结束：表示从23:00至次日8:00执行大型任务；</li>
-                  <li>10:00开始、14:00结束：表示从10:00至当日14:00执行大型任务。</li>
-                </ul>
-              </help-text>
-            </template>
-            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_max" />
-          </n-form-item>
-          <n-form-item label="停止时间" label-placement="top">
-            <n-time-picker format="H:mm" v-model:formatted-value="maa_rg_sleep_min" />
-          </n-form-item>
-        </div>
+        <n-dynamic-input v-model:value="timeWindows" :min="1" :on-create="addTimeWindow">
+          <template #default="{ value, index }">
+            <div class="long-task-times">
+              <n-form-item label-placement="top">
+                <template #label>
+                  开始时间
+                  <help-text v-if="index === 0" label="大型任务时段说明">
+                    <div>
+                      每天在任一执行时段内运行。开始与停止时间相同表示全天开启，停止时间早于开始时间表示跨午夜。
+                    </div>
+                  </help-text>
+                </template>
+                <n-time-picker
+                  format="H:mm"
+                  :formatted-value="value.start"
+                  :aria-label="`第${index + 1}段开始时间`"
+                  @update:formatted-value="updateTimeWindow(index, 'start', $event)"
+                />
+              </n-form-item>
+              <n-form-item label="停止时间" label-placement="top">
+                <n-time-picker
+                  format="H:mm"
+                  :formatted-value="value.end"
+                  :aria-label="`第${index + 1}段停止时间`"
+                  @update:formatted-value="updateTimeWindow(index, 'end', $event)"
+                />
+              </n-form-item>
+            </div>
+          </template>
+        </n-dynamic-input>
       </div>
     </n-form>
     <template v-if="maa_long_task_type == 'rcl'">
@@ -238,6 +274,7 @@ watch(
 }
 
 .long-task-times {
+  width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;

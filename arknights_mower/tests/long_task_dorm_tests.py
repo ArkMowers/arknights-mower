@@ -339,3 +339,40 @@ def test_saved_garrison_can_resume_before_next_order(
     assert worker.called is expected
     assert scheduler.order in solver.tasks
     assert scheduler.release in solver.tasks
+
+
+@pytest.mark.parametrize("end,allowed", [("14:08", False), ("14:09", True)])
+def test_extra_window_bounds_automatic_admission(scheduler, monkeypatch, end, allowed):
+    conf = Conf(
+        maa_rg_enable=True,
+        maa_rg_sleep_max="06:00",
+        maa_rg_sleep_min="08:00",
+        maa_long_task_extra_windows=[{"start": "14:00", "end": end}],
+    )
+    monkeypatch.setattr(manual_tasks.config, "conf", conf)
+    scheduler.solver.maa_plan_solver = MagicMock()
+    original = [(id(t), t.time) for t in scheduler.solver.tasks]
+    assert manual_tasks.run_long_task_if_dorm_pending(scheduler.solver) is allowed
+    assert [(id(t), t.time) for t in scheduler.solver.tasks] == original
+
+
+def test_running_maa_yields_at_end_of_extra_window(scheduler, maa_solver, monkeypatch):
+    conf = Conf(
+        maa_rg_enable=True,
+        maa_rg_sleep_max="06:00",
+        maa_rg_sleep_min="08:00",
+        maa_long_task_extra_windows=[{"start": "14:00", "end": "14:15"}],
+    )
+    monkeypatch.setattr(manual_tasks.config, "conf", conf)
+
+    def tick(_):
+        if maa_solver.MAA.start.called:
+            scheduler.clock.current = scheduler.now + timedelta(minutes=15)
+
+    monkeypatch.setattr(base_schedule, "csleep", tick)
+    assert maa_solver.maa_plan_solver([], outer_idle_loop=True)
+    maa_solver.MAA.start.assert_called_once()
+    maa_solver.maa_stop.assert_called_once()
+    maa_solver.rest_until_next_task.assert_not_called()
+    assert scheduler.release.time == scheduler.clock.current
+    assert scheduler.order.time == scheduler.now + timedelta(hours=1)

@@ -42,6 +42,7 @@ vi.mock('naive-ui', async (original) => {
         .filter((name) => /^N[A-Z]/.test(name))
         .map((name) => [name, wrapper(name)])
     ),
+    NDynamicInput: library.NDynamicInput,
     useMessage: () => ({}),
     useDialog: () => ({})
   }

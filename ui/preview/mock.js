@@ -65,6 +65,7 @@ export function createPreviewConfiguration(config, theme = 'light') {
     adb: '127.0.0.1:16384',
     simulator: { name: 'MuMu12', index: 0 },
     maa_weekly_plan_active: '默认',
+    maa_long_task_extra_windows: [],
     maa_rg_sleep_min: '0:00',
     maa_rg_sleep_max: '0:00',
     start_automatically: false,
