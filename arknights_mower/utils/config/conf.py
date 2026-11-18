@@ -212,6 +212,12 @@ class RogueRecruitConf(ConfModel):
 
 
 class LongTaskPart(ConfModel):
+    class GarrisonConf(ConfModel):
+        target_wins: Literal[3, 6] = 3
+        run_id: str = Field(default="", max_length=128)
+
+    garrison: GarrisonConf = Field(default_factory=GarrisonConf)
+
     class ParadoxQueueItem(ConfModel):
         id: str = Field(pattern=r"^[a-f0-9]{64}$")
 
@@ -1387,6 +1393,10 @@ class Conf(
     @property
     def SF(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sf"
+
+    @property
+    def GARRISON(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "garrison"
 
     @property
     def RCL(self):

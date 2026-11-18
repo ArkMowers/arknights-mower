@@ -10,6 +10,7 @@ const {
   maa_rg_sleep_min,
   maa_rg_sleep_max,
   maa_rcl_theme,
+  garrison,
   rcl
 } = storeToRefs(config_store)
 const longTaskEnabled = computed({
@@ -26,7 +27,8 @@ const maa_long_task_options = [
   { label: '保全派驻 (MAA)', value: 'sss' },
   { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
-  { label: '隐秘战线', value: 'sf' }
+  { label: '隐秘战线', value: 'sf' },
+  { label: '卫戍协议 · 个人极速模拟', value: 'garrison' }
 ]
 
 const tool_options = [
@@ -175,6 +177,18 @@ watch(
     <maa-sss v-else-if="maa_long_task_type == 'sss'" />
     <reclamation-algorithm v-else-if="maa_long_task_type == 'ra'" />
     <secret-front v-else-if="maa_long_task_type == 'sf'" />
+    <template v-else-if="maa_long_task_type == 'garrison'">
+      <n-form-item label="每项策略目标">
+        <n-select
+          v-model:value="garrison.target_wins"
+          :options="[{ label: '三胜 · 金章', value: 3 }, { label: '六胜 · 彩章', value: 6 }]"
+          aria-label="每项策略目标"
+        />
+      </n-form-item>
+      <n-p>个人极速模拟使用预设编队。首次运行从 <a href="https://github.com/UnknownGlyph/GarrisonFarm" target="_blank" rel="noopener noreferrer">GarrisonFarm</a> 下载对局脚本和布局。临近基建任务时退出游戏，下次从断线重连接续。</n-p>
+      <maa-task-status kind="garrison" :settings="garrison" />
+      <n-button @click="garrison.run_id = String(Date.now())">重新核对并继续</n-button>
+    </template>
   </n-card>
 </template>
 

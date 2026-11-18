@@ -142,3 +142,18 @@ def test_status_read_failure_is_not_reported_as_pending(client, monkeypatch):
     )
     assert response.status_code == 500
     assert response.get_json() == {"message": "读取大型任务状态失败"}
+
+
+def test_garrison_status_reads_observed_wins_without_advancing_match(status):
+    from arknights_mower.solvers.garrison.model import catalogue, prepare_progress
+
+    server, read = status
+    p = prepare_progress(server.config.conf, {})
+    p["wins"] = {s["id"]: 3 for s in catalogue()["strategies"]}
+    p["match"] = {"stage": "act3autochess_m01", "round": 4}
+    record.save_garrison_progress(p)
+    assert read()["garrison"]["completed"]
+    assert record.load_garrison_progress() == p
+    server.config.conf.garrison.target_wins = 6
+    assert not read()["garrison"]["completed"]
+    assert record.load_garrison_progress() == p

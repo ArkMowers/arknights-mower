@@ -70,7 +70,7 @@ def run_long_task_if_dorm_pending(scheduler):
     conf = config.conf
     if not any(
         getattr(conf, flag, False)
-        for flag in ("RG", "COPILOT", "PARADOX", "SSS", "RCL", "RA", "SF")
+        for flag in ("RG", "COPILOT", "PARADOX", "SSS", "RCL", "RA", "SF", "GARRISON")
     ):
         return False
     now = datetime.now()
@@ -103,6 +103,10 @@ def run_long_task_if_dorm_pending(scheduler):
         minutes=9
     ):
         return False
+    if conf.GARRISON:
+        from arknights_mower.solvers.garrison.runner import run_garrison
+
+        return run_garrison(scheduler)
     scheduler.maa_plan_solver([])
     return True
 

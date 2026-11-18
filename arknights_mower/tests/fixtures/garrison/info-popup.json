@@ -1,0 +1,298 @@
+[
+  {
+    "text": "X",
+    "x": 1760,
+    "y": 21,
+    "width": 87,
+    "height": 83,
+    "score": 0.41931
+  },
+  {
+    "text": "STRONGHOLD PROTOCOL",
+    "x": 163,
+    "y": 42,
+    "width": 167,
+    "height": 23,
+    "score": 0.96996
+  },
+  {
+    "text": "COLLAB0RATIVE SYSTEY",
+    "x": 166,
+    "y": 66,
+    "width": 142,
+    "height": 19,
+    "score": 0.88051
+  },
+  {
+    "text": "核心盟约",
+    "x": 108,
+    "y": 191,
+    "width": 150,
+    "height": 47,
+    "score": 0.98072
+  },
+  {
+    "text": "国器",
+    "x": 1093,
+    "y": 195,
+    "width": 83,
+    "height": 38,
+    "score": 0.7613
+  },
+  {
+    "text": "STKGGMLBPROTOCO",
+    "x": 1179,
+    "y": 209,
+    "width": 112,
+    "height": 24,
+    "score": 0.74065
+  },
+  {
+    "text": "炎",
+    "x": 74,
+    "y": 412,
+    "width": 34,
+    "height": 30,
+    "score": 0.99992
+  },
+  {
+    "text": "维多利亚",
+    "x": 161,
+    "y": 410,
+    "width": 110,
+    "height": 34,
+    "score": 0.99519
+  },
+  {
+    "text": "乌萨斯",
+    "x": 305,
+    "y": 410,
+    "width": 85,
+    "height": 34,
+    "score": 0.99781
+  },
+  {
+    "text": "伊比利亚",
+    "x": 421,
+    "y": 412,
+    "width": 109,
+    "height": 31,
+    "score": 0.99893
+  },
+  {
+    "text": "萨尔贡",
+    "x": 562,
+    "y": 411,
+    "width": 84,
+    "height": 32,
+    "score": 0.99928
+  },
+  {
+    "text": "谢拉格",
+    "x": 691,
+    "y": 411,
+    "width": 82,
+    "height": 32,
+    "score": 0.99999
+  },
+  {
+    "text": "叙拉古",
+    "x": 821,
+    "y": 412,
+    "width": 84,
+    "height": 31,
+    "score": 0.99972
+  },
+  {
+    "text": "莱塔尼亚",
+    "x": 937,
+    "y": 412,
+    "width": 108,
+    "height": 31,
+    "score": 0.99532
+  },
+  {
+    "text": "敌方领袖",
+    "x": 1602,
+    "y": 485,
+    "width": 111,
+    "height": 37,
+    "score": 0.99963
+  },
+  {
+    "text": "附加盟约",
+    "x": 108,
+    "y": 507,
+    "width": 149,
+    "height": 45,
+    "score": 0.97444
+  },
+  {
+    "text": "部分盟约所含干员阵容不完整",
+    "x": 335,
+    "y": 508,
+    "width": 373,
+    "height": 38,
+    "score": 0.98452
+  },
+  {
+    "text": "国器",
+    "x": 1092,
+    "y": 508,
+    "width": 79,
+    "height": 40,
+    "score": 0.77052
+  },
+  {
+    "text": "矩兽",
+    "x": 1550,
+    "y": 532,
+    "width": 83,
+    "height": 49,
+    "score": 0.99972
+  },
+  {
+    "text": "母中园",
+    "x": 373,
+    "y": 616,
+    "width": 543,
+    "height": 90,
+    "score": 0.5459
+  },
+  {
+    "text": "特训敌人·致命",
+    "x": 1561,
+    "y": 672,
+    "width": 202,
+    "height": 37,
+    "score": 0.99973
+  },
+  {
+    "text": "精准",
+    "x": 58,
+    "y": 726,
+    "width": 60,
+    "height": 33,
+    "score": 0.99134
+  },
+  {
+    "text": "迅捷",
+    "x": 187,
+    "y": 726,
+    "width": 61,
+    "height": 33,
+    "score": 1.0
+  },
+  {
+    "text": "坚守",
+    "x": 317,
+    "y": 726,
+    "width": 59,
+    "height": 33,
+    "score": 0.99984
+  },
+  {
+    "text": "助力",
+    "x": 446,
+    "y": 726,
+    "width": 59,
+    "height": 33,
+    "score": 0.99941
+  },
+  {
+    "text": "不屈",
+    "x": 575,
+    "y": 726,
+    "width": 58,
+    "height": 33,
+    "score": 0.99616
+  },
+  {
+    "text": "调和",
+    "x": 705,
+    "y": 728,
+    "width": 58,
+    "height": 29,
+    "score": 0.99985
+  },
+  {
+    "text": "协防干员",
+    "x": 808,
+    "y": 726,
+    "width": 108,
+    "height": 33,
+    "score": 0.97367
+  },
+  {
+    "text": "奥术",
+    "x": 962,
+    "y": 726,
+    "width": 60,
+    "height": 32,
+    "score": 0.89352
+  },
+  {
+    "text": "远见",
+    "x": 1090,
+    "y": 726,
+    "width": 60,
+    "height": 33,
+    "score": 0.99976
+  },
+  {
+    "text": "聚合",
+    "x": 1219,
+    "y": 726,
+    "width": 58,
+    "height": 33,
+    "score": 0.99886
+  },
+  {
+    "text": "王",
+    "x": 1398,
+    "y": 749,
+    "width": 34,
+    "height": 36,
+    "score": 0.52787
+  },
+  {
+    "text": "特训敌人·频次",
+    "x": 1562,
+    "y": 747,
+    "width": 202,
+    "height": 37,
+    "score": 0.99975
+  },
+  {
+    "text": "本局禁用干员",
+    "x": 88,
+    "y": 824,
+    "width": 222,
+    "height": 43,
+    "score": 0.97552
+  },
+  {
+    "text": "国器",
+    "x": 1093,
+    "y": 825,
+    "width": 82,
+    "height": 39,
+    "score": 0.4795
+  },
+  {
+    "text": "STRONGHOLD PROTOCOL",
+    "x": 159,
+    "y": 42,
+    "width": 198,
+    "height": 24,
+    "score": 0.96769
+  },
+  {
+    "text": "COLLRB0RATIVE SYSTE1",
+    "x": 164,
+    "y": 66,
+    "width": 144,
+    "height": 18,
+    "score": 0.90477
+  }
+]
