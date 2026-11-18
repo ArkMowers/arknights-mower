@@ -196,7 +196,7 @@ watch(
           rel="noopener noreferrer"
           >GarrisonFarm</a
         >
-        下载对局脚本和布局。每局预计 10 分钟，另留 30 秒交接。已保存的对局有 1
+        下载对局脚本和布局。每局预计 10 分钟，另留 30 秒交接。已保存的对局有 9
         分钟空档即可重连，临近基建任务时退出游戏。</n-p
       >
       <maa-task-status kind="garrison" :settings="garrison" />

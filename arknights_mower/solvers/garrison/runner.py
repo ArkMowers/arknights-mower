@@ -8,11 +8,11 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 
 from .model import prepare_progress, status
-from .solver import HANDOVER_SECONDS, MATCH_SECONDS, RECONNECT_SECONDS, GarrisonSolver
+from .solver import HANDOVER_SECONDS, MATCH_SECONDS, GarrisonSolver
 
 
 def eligible_progress(conf, window):
-    if window < RECONNECT_SECONDS + HANDOVER_SECONDS:
+    if window < 9 * 60:
         return None
     progress = prepare_progress(conf, record.load_garrison_progress())
     if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:

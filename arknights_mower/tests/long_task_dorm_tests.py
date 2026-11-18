@@ -309,7 +309,7 @@ def test_overdue_protected_release_keeps_time(scheduler, flag):
     assert scheduler.release.time == scheduler.now
 
 
-@pytest.mark.parametrize("window_after_read, expected", [(90, True), (55, False)])
+@pytest.mark.parametrize("window_after_read, expected", [(540, True), (539, False)])
 def test_saved_garrison_can_resume_before_next_order(
     scheduler, income_db, monkeypatch, window_after_read, expected
 ):
@@ -334,7 +334,7 @@ def test_saved_garrison_can_resume_before_next_order(
             scheduler.now + timedelta(seconds=window_after_read),
         )
     )
-    scheduler.order.time = scheduler.now + timedelta(minutes=2)
+    scheduler.order.time = scheduler.now + timedelta(minutes=10)
     assert manual_tasks.run_long_task_if_dorm_pending(solver) is expected
     assert worker.called is expected
     assert scheduler.order in solver.tasks
