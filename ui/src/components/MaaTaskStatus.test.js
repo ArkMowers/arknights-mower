@@ -77,7 +77,9 @@ describe('MAA task completion status', () => {
 it('shows garrison observations and distinguishes a blocked run from a read error', async () => {
   props.kind = 'garrison'
   state.client.get.mockResolvedValue({
-    data: { garrison: { completed: false, failed: true, count: 2, total: 31, message: '棋子身份未确认' } }
+    data: {
+      garrison: { completed: false, failed: true, count: 2, total: 31, message: '棋子身份未确认' }
+    }
   })
   await nextTick()
   await component.refresh()

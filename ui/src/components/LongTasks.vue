@@ -181,11 +181,23 @@ watch(
       <n-form-item label="每项策略目标">
         <n-select
           v-model:value="garrison.target_wins"
-          :options="[{ label: '三胜 · 金章', value: 3 }, { label: '六胜 · 彩章', value: 6 }]"
+          :options="[
+            { label: '三胜 · 金章', value: 3 },
+            { label: '六胜 · 彩章', value: 6 }
+          ]"
           aria-label="每项策略目标"
         />
       </n-form-item>
-      <n-p>个人极速模拟使用预设编队。首次运行从 <a href="https://github.com/UnknownGlyph/GarrisonFarm" target="_blank" rel="noopener noreferrer">GarrisonFarm</a> 下载对局脚本和布局。临近基建任务时退出游戏，下次从断线重连接续。</n-p>
+      <n-p
+        >个人极速模拟使用预设编队。首次运行从
+        <a
+          href="https://github.com/UnknownGlyph/GarrisonFarm"
+          target="_blank"
+          rel="noopener noreferrer"
+          >GarrisonFarm</a
+        >
+        下载对局脚本和布局。临近基建任务时退出游戏，下次从断线重连接续。</n-p
+      >
       <maa-task-status kind="garrison" :settings="garrison" />
       <n-button @click="garrison.run_id = String(Date.now())">重新核对并继续</n-button>
     </template>

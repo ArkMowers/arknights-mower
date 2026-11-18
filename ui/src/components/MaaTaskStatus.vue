@@ -22,7 +22,9 @@ const status_text = computed(() =>
       ? '读取中'
       : completed.value
         ? '已完成'
-        : detail.value?.failed ? '需要核对' : '待执行'
+        : detail.value?.failed
+          ? '需要核对'
+          : '待执行'
 )
 const status_type = computed(() =>
   completed.value === null || failed.value ? 'default' : completed.value ? 'success' : 'warning'
