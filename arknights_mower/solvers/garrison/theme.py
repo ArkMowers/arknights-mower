@@ -46,7 +46,16 @@ def equipped(frame):
 
 def open_equipped(owner, frame):
     # 重新打开后，游戏默认展示实际启用的主题，即使上一次停在其他主题的预览页。
-    if frame.screen == "theme" and not equipped(frame):
+    if frame.screen == "theme":
+        frame = owner.observe(
+            frame,
+            lambda f: (
+                equipped(f) or (f.screen == "theme" and f.find("^设置主题$", ACTION))
+            ),
+            error="复核后仍未确认卫戍协议当前使用的主题",
+        )
+        if equipped(frame):
+            return frame
         owner.click((65, 58))
         frame = owner.wait(lambda f: f.screen == "lobby")
     if frame.screen == "lobby":
@@ -74,12 +83,16 @@ def open_equipped(owner, frame):
 
 
 def apply(owner, frame, name):
+    frame = owner.observe(
+        frame,
+        lambda f: (
+            equipped(f) == name or (f.screen == "theme" and theme_label(f, CARDS, name))
+        ),
+        error=f"复核后仍未在主题列表中识别到「{name}」",
+    )
     if equipped(frame) == name:
         return
-    card = theme_label(frame, CARDS, name)
-    if not card:
-        raise GarrisonError(f"主题列表中未识别到「{name}」")
-    owner.click(card[1])
+    owner.click(theme_label(frame, CARDS, name)[1])
     frame = owner.wait(
         lambda f: (
             f.screen == "theme"

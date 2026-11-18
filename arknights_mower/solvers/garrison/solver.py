@@ -127,10 +127,18 @@ class GarrisonSolver:
         self.sleep(0.3)
 
     def text_click(self, frame, pattern, region=None):
-        text = frame.find(pattern, region)
-        if text is None:
-            raise GarrisonError(f"未识别到按钮：{pattern}")
-        self.click(text.center)
+        screen = frame.screen
+        frame = self.observe(
+            frame,
+            lambda f: f.screen == screen and f.find(pattern, region),
+            error=f"复核后仍未识别到按钮：{pattern}",
+        )
+        self.click(frame.find(pattern, region).center)
+
+    def observe(self, frame, predicate, *, timeout=8, error):
+        if predicate(frame):
+            return frame
+        return self.wait(predicate, timeout, error=error)
 
     def wait(
         self, predicate, timeout=8, *, error="操作后没有观察到预期画面，保留当前对局"
@@ -138,9 +146,12 @@ class GarrisonSolver:
         end = time.monotonic() + min(timeout, self.remaining())
         while time.monotonic() < end:
             frame = self.capture()
+            remaining = end - time.monotonic()
+            if remaining <= 0:
+                break
             if predicate(frame):
                 return frame
-            self.sleep(0.2)
+            self.sleep(min(0.2, remaining))
         self.remaining()
         raise GarrisonError(error)
 
@@ -266,8 +277,11 @@ class GarrisonSolver:
             self.text_click(frame, "^极速模拟$", controls)
             frame = self.wait(lambda f: f.screen in {"mode", "info", "strategy"}, 20)
         if frame.screen == "mode":
-            if not frame.quick:
-                raise GarrisonError("当前模式不是个人极速模拟")
+            frame = self.observe(
+                frame,
+                lambda f: f.screen == "mode" and f.quick and f.find("^开始模拟$"),
+                error="复核后仍未确认个人极速模拟的开局按钮，已保留对局",
+            )
             if self.remaining() < MATCH_SECONDS:
                 raise GarrisonYield
             # 点击前写入正在开局，避免取消发生在点击与截图之间时误开第二局。
@@ -278,16 +292,20 @@ class GarrisonSolver:
             frame = self.wait(lambda f: f.screen in {"info", "strategy"}, 25)
         return frame
 
-    def choose_decision(self, frame):
-        if frame.find("^确认选择$|^确认$"):
-            self.text_click(frame, "^确认选择$|^确认$")
-            return
+    @staticmethod
+    def decision_point(frame):
+        if frame.screen != "choice":
+            return None
+        if confirm := frame.find("^确认选择$|^确认$"):
+            return confirm.center
         choices = []
         for center in (475, 990, 1500):
             text = "".join(
                 t.text
                 for t in frame.texts
-                if 380 < t.y < 720 and abs(t.center[0] - center) < 240
+                if t.score >= 0.6
+                and 380 < t.y < 720
+                and abs(t.center[0] - center) < 240
             )
             if text:
                 score = (
@@ -299,9 +317,15 @@ class GarrisonSolver:
                     b in text for b in ("生命上限-", "无法被治疗", "流失")
                 )
                 choices.append((score, center))
-        if not choices:
-            raise GarrisonError("战术决策选项未读到")
-        self.click((max(choices)[1], 540))
+        return (max(choices)[1], 540) if choices else None
+
+    def choose_decision(self, frame):
+        frame = self.observe(
+            frame,
+            self.decision_point,
+            error="复核后仍未识别到战术决策选项，已保留对局",
+        )
+        self.click(self.decision_point(frame))
 
     def strategy_action(self, panel, strategies):
         if self.match_limit is not None:
@@ -410,6 +434,26 @@ class GarrisonSolver:
         finally:
             self.leave_match()
 
+    def can_dispatch_frame(self, frame):
+        if frame.screen in {"lobby", "mode", "tutorial", "battle-timeout"}:
+            return True
+        if frame.screen not in {
+            "info",
+            "strategy",
+            "squad",
+            "prep",
+            "battle",
+            "confirm-ready",
+            "choice",
+            "result",
+        }:
+            return False
+        return self._quick_confirmed or (
+            frame.screen == "result"
+            and frame.find("模拟结束|模拟成功|模拟失败|模拟胜利|模拟完成|模拟中断")
+            and (self.progress.get("match") or self.progress.get("settlement_counted"))
+        )
+
     def play(self, game, frame):
         board = game.Board()
         state = None
@@ -417,6 +461,12 @@ class GarrisonSolver:
         last_change = time.monotonic()
         while True:
             self.remaining()
+            frame = self.observe(
+                frame,
+                self.can_dispatch_frame,
+                timeout=15,
+                error="复核后仍未确认卫戍协议的对局画面，已保留对局",
+            )
             current = (frame.screen, board.round_done)
             if current != state:
                 last_change, state = time.monotonic(), current
@@ -425,9 +475,8 @@ class GarrisonSolver:
             if frame.screen in {"lobby", "mode"}:
                 frame = self.start_or_resume(frame)
                 continue
-            if frame.screen == "unknown":
-                frame = self.wait(lambda f: f.screen != "unknown", 15)
-                continue
+            if frame.screen == "tutorial":
+                raise GarrisonError("请先手动完成卫戍协议教程")
             if frame.screen == "battle-timeout":
                 if timeout_round == board.round_done:
                     raise GarrisonError("同一回合再次出现战斗超时，已保留对局")
@@ -450,16 +499,6 @@ class GarrisonSolver:
                     RECONNECT_SECONDS,
                 )
                 continue
-            saved_result = (
-                frame.screen == "result"
-                and frame.find("模拟结束|模拟成功|模拟失败|模拟胜利|模拟完成|模拟中断")
-                and (
-                    self.progress.get("match")
-                    or self.progress.get("settlement_counted")
-                )
-            )
-            if not self._quick_confirmed and not saved_result:
-                raise GarrisonError("未确认当前对局为极速模拟")
             if frame.screen == "info":
                 self.text_click(frame, "[准淮]备就绪|^确认$")
                 frame = self.wait(
@@ -527,6 +566,4 @@ class GarrisonSolver:
                 timeout_round = None
                 self._quick_confirmed = False
                 continue
-            else:
-                raise GarrisonError(f"卫戍协议画面未确认：{frame.screen}")
             frame = self.capture()
