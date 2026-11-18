@@ -88,16 +88,61 @@ def test_progress_round_trip_and_unknown_win_rejected(income_db):
     assert p["wins"] == {}
 
 
-def test_saved_match_does_not_start_another_match():
+@pytest.mark.parametrize(
+    "saved", [{"round": 3}, {"phase": "active"}, {"phase": "starting", "round": 3}]
+)
+def test_saved_match_does_not_start_another_match(saved):
     device = Mock()
-    s = solver.GarrisonSolver(device, Mock(), {"match": {"round": 3}}, Mock())
+    s = solver.GarrisonSolver(device, Mock(), {"match": saved}, Mock())
     with pytest.raises(model.GarrisonError):
         s.start_or_resume(frame("lobby"))
     device.tap.assert_not_called()
 
 
-def test_resume_clicks_reconnect_and_preserves_progress():
-    p = {"match": {"round": 3, "stage": "act3autochess_m01"}}
+def test_unconfirmed_start_uses_personal_lobby_and_preserves_counts():
+    p = {"match": {"phase": "starting"}, "wins": {"band_amiya": 3}, "matches_played": 2}
+    initial = copy.deepcopy(p)
+    lobby, mode, info = frame("lobby"), frame("mode"), frame("info")
+    s = solver.GarrisonSolver(Mock(), Mock(), p, Mock(), vision=Mock())
+    s.vision.frame.side_effect = [mode, info]
+    s.remaining = Mock(return_value=720)
+    s.click = Mock()
+    assert s.start_or_resume(lobby) is info
+    assert [c.args[0] for c in s.click.call_args_list] == [
+        lobby.find("^极速模拟$").center,
+        mode.find("^开始模拟$").center,
+    ]
+    assert p == {**initial, "match": {"phase": "active"}}
+
+
+@pytest.mark.parametrize(
+    "observation", ["missing_quick", "missing_solo", "abandon", "ambiguous_selection"]
+)
+def test_uncertain_personal_lobby_preserves_unconfirmed_start(observation):
+    lobby = frame("lobby")
+    if observation == "missing_quick":
+        lobby.texts.remove(lobby.find("^极速模拟$"))
+    elif observation == "missing_solo":
+        lobby.texts.remove(lobby.find("^独立模拟$"))
+    elif observation == "abandon":
+        lobby.texts.append(Text("放弃模拟", 1120, 989, 84, 40))
+    else:
+        lobby.image[:] = 30
+    p = {"match": {"phase": "starting"}}
+    s = solver.GarrisonSolver(Mock(), Mock(), p, Mock())
+    s.wait = Mock(return_value=lobby)
+    with pytest.raises(model.GarrisonError):
+        s.start_or_resume(lobby)
+    assert p == {"match": {"phase": "starting"}}
+    s.device.tap.assert_not_called()
+    s.save.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "match", [{"round": 3, "stage": "act3autochess_m01"}, {"phase": "starting"}]
+)
+def test_resume_clicks_reconnect_and_preserves_progress(match):
+    p = {"match": match}
     s = solver.GarrisonSolver(Mock(), Mock(), p, Mock())
     s.click = Mock()
     s.wait = Mock(return_value=frame("prep"))
@@ -459,8 +504,10 @@ def test_dispatch_reserves_a_full_new_match(
     assert worker.called is admitted
 
 
-def test_match_budget_rechecked_after_navigation_before_saving_new_match():
-    s = solver.GarrisonSolver(Mock(), Mock(), {}, Mock())
+@pytest.mark.parametrize("progress", [{}, {"match": {"phase": "starting"}}])
+def test_match_budget_rechecked_after_navigation_before_saving_new_match(progress):
+    before = copy.deepcopy(progress)
+    s = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
     s.remaining = Mock(side_effect=[720, 719])
     s.text_click = Mock()
     s.wait = Mock(return_value=frame("mode"))
@@ -468,7 +515,7 @@ def test_match_budget_rechecked_after_navigation_before_saving_new_match():
         s.start_or_resume(frame("lobby"))
     assert [call.args[1] for call in s.text_click.call_args_list] == ["^极速模拟$"]
     s.save.assert_not_called()
-    assert "match" not in s.progress
+    assert s.progress == before
 
 
 def test_observed_quick_match_is_saved_for_reconnect():
