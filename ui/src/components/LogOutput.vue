@@ -1821,6 +1821,7 @@ function lineClasses(row) {
 }
 .log-forecast__details {
   display: block;
+  container: forecast-details / inline-size;
   margin-top: 4px;
   padding: 3px 0 4px 12px;
   border-inline-start: var(--log-hairline, 1px) solid
@@ -1946,6 +1947,17 @@ function lineClasses(row) {
   grid-template-columns: repeat(auto-fill, min(100%, calc(28px + 7ch)));
   column-gap: 8px;
   justify-items: start;
+}
+
+@container forecast-details (min-width: 45em) {
+  .log-forecast__rooms--aligned {
+    grid-template-columns: fit-content(40%) repeat(5, minmax(0, max-content));
+  }
+
+  .log-forecast__rooms--aligned .log-forecast__room > .log-forecast__agents {
+    grid-column: 2 / -1;
+    grid-template-columns: subgrid;
+  }
 }
 
 .log-forecast__room > .log-forecast__agents :deep(.log-operator) {
