@@ -300,7 +300,7 @@ def test_settlement_yields_before_starting_another_match(monkeypatch):
         Mock(),
         {"match": {"phase": "active"}},
         Mock(),
-        deadline=lambda: datetime.now() + timedelta(minutes=10, seconds=29),
+        deadline=lambda: datetime.now() + timedelta(minutes=12, seconds=29),
     )
     s._quick_confirmed = True
     result = Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", False)
@@ -428,7 +428,7 @@ def test_last_confirmed_medal_stops_scan_and_future_dispatch(
 
 @pytest.mark.parametrize(
     ("seconds", "saved_match", "admitted"),
-    [(629, False, False), (630, False, True), (540, True, True), (539, True, False)],
+    [(749, False, False), (750, False, True), (540, True, True), (539, True, False)],
 )
 def test_dispatch_reserves_a_full_new_match(
     seconds, saved_match, admitted, income_db, monkeypatch
@@ -455,7 +455,7 @@ def test_dispatch_reserves_a_full_new_match(
 
 def test_match_budget_rechecked_after_navigation_before_saving_new_match():
     s = solver.GarrisonSolver(Mock(), Mock(), {}, Mock())
-    s.remaining = Mock(side_effect=[600, 599])
+    s.remaining = Mock(side_effect=[720, 719])
     s.text_click = Mock()
     s.wait = Mock(return_value=frame("mode"))
     with pytest.raises(solver.GarrisonYield):

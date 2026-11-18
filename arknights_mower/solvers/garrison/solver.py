@@ -18,7 +18,7 @@ from .upstream import FarmSession, panel_open, strategy_panel
 from .vision import Vision
 
 RECONNECT_SECONDS = 30
-MATCH_SECONDS = 10 * 60
+MATCH_SECONDS = 12 * 60
 HANDOVER_SECONDS = 30
 
 
