@@ -12,6 +12,8 @@ from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 scheduler = recovery.scheduler
 
+SHOP = {"activity": "测试 SS", "activity_id": "act999side", "start_ts": 100}
+
 
 @pytest.fixture
 def run(scheduler, monkeypatch):
@@ -78,6 +80,19 @@ def configure(run, kind, manual=False):
         solver.tasks.insert(0, solver.task)
         kwargs["manual"] = True
     return kwargs
+
+
+def enable_shop(run, monkeypatch):
+    from arknights_mower.solvers.event_shop import EventShopNavigation
+    from arknights_mower.utils import maa_event_shop
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    run.module.config.conf.maa_event_shop.enable = True
+    monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
+    monkeypatch.setattr(maa_event_shop, "select_shop", lambda *a: SHOP)
+    navigate = MagicMock(return_value=True)
+    monkeypatch.setattr(EventShopNavigation, "run", navigate)
+    return navigate
 
 
 @pytest.mark.parametrize("kind", ["daily", "long", "single"])
@@ -262,9 +277,11 @@ def test_repeated_automatic_deferral_keeps_one_fixed_wakeup(run):
     run.solver.MAA.start.assert_not_called()
 
 
-def test_shop_is_not_prepared_inside_window(run):
+def test_shop_is_not_prepared_inside_window(run, monkeypatch, income_db):
+    navigate = enable_shop(run, monkeypatch)
     run.clock.current = datetime(2026, 11, 7, 3, 45)
-    run.solver.run_maa_event_shop(lambda: datetime(2026, 11, 7, 6))
+    assert run.solver.run_maa_event_shop(lambda: datetime(2026, 11, 7, 6)) is False
+    navigate.assert_not_called()
     run.solver.initialize_maa.assert_not_called()
     run.solver.MAA.start.assert_not_called()
 
@@ -275,26 +292,16 @@ def test_shop_is_not_prepared_inside_window(run):
     [(datetime(2026, 11, 7, 3, 45), False), (datetime(2026, 11, 7, 4), True)],
 )
 def test_shop_preparation_rechecks_start_window(
-    run, monkeypatch, phase, instant, allowed
+    run, monkeypatch, income_db, phase, instant, allowed
 ):
-    from arknights_mower.solvers.event_shop import EventShopNavigation
-    from arknights_mower.utils import maa_event_shop
-    from arknights_mower.utils.config import weekly_plan_loader
-
-    run.module.config.conf.maa_event_shop.enable = True
-    monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
-    monkeypatch.setattr(maa_event_shop, "weekly_plan_uses_activity", lambda *a: True)
-    monkeypatch.setattr(
-        maa_event_shop, "select_shop", lambda *a: {"activity": "测试 SS"}
-    )
-    monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
+    navigate = enable_shop(run, monkeypatch)
 
     def advance(*args):
         run.clock.current = instant
         return 1
 
     target = {
-        "navigation": EventShopNavigation.run,
+        "navigation": navigate,
         "initialize": run.solver.initialize_maa,
         "append": run.solver.MAA.append_task,
     }[phase]
@@ -310,19 +317,10 @@ def test_deferred_shop_resumes_saved_step_without_daily_gap(
     run, monkeypatch, income_db, manual, restore
 ):
     from arknights_mower.solvers import record
-    from arknights_mower.solvers.event_shop import EventShopNavigation
-    from arknights_mower.utils import maa_event_shop
-    from arknights_mower.utils.config import weekly_plan_loader
 
     solver = run.solver
-    run.module.config.conf.maa_event_shop.enable = True
+    enable_shop(run, monkeypatch)
     run.module.config.conf.maa_gap = 24
-    monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
-    monkeypatch.setattr(maa_event_shop, "weekly_plan_uses_activity", lambda *a: True)
-    monkeypatch.setattr(
-        maa_event_shop, "select_shop", lambda *a: {"activity": "测试 SS"}
-    )
-    monkeypatch.setattr(EventShopNavigation, "run", MagicMock(return_value=True))
     solver.skland_plan_solver = MagicMock(return_value=True)
 
     def daily_completed():
@@ -377,12 +375,16 @@ def test_deferred_shop_resumes_saved_step_without_daily_gap(
 
 
 @pytest.mark.parametrize("kind", ["daily", "long", "shop"])
-def test_refresh_deferral_crossing_four_uses_original_refresh(run, monkeypatch, kind):
+def test_refresh_deferral_crossing_four_uses_original_refresh(
+    run, monkeypatch, income_db, kind
+):
     from arknights_mower.utils.news_checker import NewsChecker
 
     solver = run.solver
     run.clock.current = datetime(2026, 11, 7, 3, 59, 59, 999999)
     configure(run, kind, manual=True)
+    if kind == "shop":
+        enable_shop(run, monkeypatch)
     if kind in ("daily", "shop"):
         solver.task.type = TaskTypes.DAILY
         solver.task.manual_steps = ["maa_event_shop" if kind == "shop" else "maa_daily"]
@@ -400,7 +402,7 @@ def test_refresh_deferral_crossing_four_uses_original_refresh(run, monkeypatch, 
     assert not getattr(original, "execution_failure", None)
     assert all(task.time <= datetime(2026, 11, 7, 6) for task in solver.tasks)
     assert manual_tasks.run_manual_task(solver, original)
-    assert solver.MAA.start.call_count == int(kind != "shop")
+    solver.MAA.start.assert_called_once()
     assert original.manual_steps == []
     assert original.time == original_time
 

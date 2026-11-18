@@ -111,6 +111,10 @@ def weekly_plan_uses_activity(manager, activity):
     )
 
 
+def shop_identity(shop):
+    return shop["activity_id"], shop["start_ts"]
+
+
 def shop_params(conf):
     return {
         "task_names": ["SS@Store@Begin"],
@@ -120,9 +124,7 @@ def shop_params(conf):
 
 def switch_after_shop(task, conf, manager):
     if (
-        not task.get("finite_done")
-        or not task.get("completed")
-        or task["settings"] != conf.model_dump()
+        task["settings"] != conf.model_dump()
         or not conf.switch_source
         or task["source"] != conf.switch_source
         or not conf.enable
