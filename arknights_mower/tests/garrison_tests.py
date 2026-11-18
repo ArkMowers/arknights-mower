@@ -161,7 +161,7 @@ def test_settlement_yields_before_starting_another_match():
         Mock(),
         {"match": {"phase": "active"}},
         Mock(),
-        deadline=lambda: datetime.now() + timedelta(minutes=8),
+        deadline=lambda: datetime.now() + timedelta(minutes=10, seconds=29),
     )
     s._quick_confirmed = True
     result = Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", False)
@@ -285,3 +285,42 @@ def test_last_confirmed_medal_stops_scan_and_future_dispatch(
         conf.garrison.target_wins = 6
         assert runner.run_garrison(scheduler)
         worker.return_value.run.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("seconds", "saved_match", "admitted"),
+    [(629, False, False), (630, False, True), (540, True, True), (539, True, False)],
+)
+def test_dispatch_reserves_a_full_new_match(
+    seconds, saved_match, admitted, income_db, monkeypatch
+):
+    conf = Conf(maa_long_task_type="garrison", maa_rg_enable=1)
+    monkeypatch.setattr(runner.config, "conf", conf)
+    now = datetime.now()
+    monkeypatch.setattr(runner, "datetime", Mock(now=lambda: now))
+    progress = model.prepare_progress(conf, {})
+    if saved_match:
+        progress["match"] = {"phase": "active"}
+    record.save_garrison_progress(progress)
+    order = SchedulerTask(
+        now + timedelta(seconds=seconds), task_type=TaskTypes.RUN_ORDER
+    )
+    scheduler = SimpleNamespace(
+        tasks=[order], task=None, op_data=None, device=Mock(), recog=Mock()
+    )
+    worker = Mock()
+    monkeypatch.setattr(runner, "GarrisonSolver", worker)
+    assert runner.run_garrison(scheduler) is admitted
+    assert worker.called is admitted
+
+
+def test_match_budget_rechecked_after_navigation_before_saving_new_match():
+    s = solver.GarrisonSolver(Mock(), Mock(), {}, Mock())
+    s.remaining = Mock(side_effect=[600, 599])
+    s.text_click = Mock()
+    s.wait = Mock(return_value=frame("mode"))
+    with pytest.raises(solver.GarrisonYield):
+        s.start_or_resume(frame("lobby"))
+    assert [call.args[1] for call in s.text_click.call_args_list] == ["^极速模拟$"]
+    s.save.assert_not_called()
+    assert "match" not in s.progress

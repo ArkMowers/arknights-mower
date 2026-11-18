@@ -17,6 +17,10 @@ from .upstream import FarmSession, strategy_panel
 from .vision import Vision
 
 
+MATCH_SECONDS = 10 * 60
+HANDOVER_SECONDS = 30
+
+
 class GarrisonYield(BaseException):
     """基建任务即将到期，需要归还设备。"""
 
@@ -71,7 +75,8 @@ class GarrisonSolver:
         seconds = self._end - time.monotonic()
         if self.deadline is not None:
             seconds = min(
-                seconds, (self.deadline() - datetime.now()).total_seconds() - 30
+                seconds,
+                (self.deadline() - datetime.now()).total_seconds() - HANDOVER_SECONDS,
             )
         if seconds <= 0 or config.stop_maa.is_set():
             raise GarrisonYield
@@ -153,11 +158,15 @@ class GarrisonSolver:
                     raise GarrisonError("无法确认个人模拟入口")
                 self.text_click(frame, "^个人模拟$")
                 frame = self.wait(lambda f: f.screen == "lobby" and f.find("极速模拟"))
+            if self.remaining() < MATCH_SECONDS:
+                raise GarrisonYield
             self.text_click(frame, "^极速模拟$")
             frame = self.wait(lambda f: f.screen in {"mode", "info", "strategy"}, 20)
         if frame.screen == "mode":
             if not frame.quick:
                 raise GarrisonError("当前模式不是个人极速模拟")
+            if self.remaining() < MATCH_SECONDS:
+                raise GarrisonYield
             # 点击前写入正在开局，避免取消发生在点击与截图之间时误开第二局。
             self.progress["match"] = {"phase": "starting"}
             self.persist()
@@ -333,7 +342,7 @@ class GarrisonSolver:
                 self.persist()
                 self.text_click(frame, "返回主页")
                 frame = self.wait(lambda f: f.screen == "lobby", 20)
-                if self.remaining() + 30 < 540:
+                if self.remaining() < MATCH_SECONDS:
                     return
                 if self.progress["attempts"] >= 200:
                     raise GarrisonError("已尝试两百局，请核对策略进度")
