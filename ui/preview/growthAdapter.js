@@ -868,11 +868,6 @@ export function createGrowthAdapter(preview) {
         return verb === 'GET'
           ? ok({ recommendations: clone(state.workshopReference.recommendations || {}) })
           : { unhandled: true }
-      case '/growth-chip-farming':
-        if (verb !== 'POST') return { unhandled: true }
-        return payload?.plan_key === '默认'
-          ? ok({ stages: ['PR-B-2'], plan_key: payload.plan_key })
-          : { status: 400, data: { error: '请选择要添加关卡的周计划' } }
       case '/operator':
         return verb === 'GET' ? ok(clone(operatorNames)) : { unhandled: true }
       default:

@@ -158,8 +158,8 @@ def test_local_reselection_excludes_attempted_stage_before_ratio_choice(
         "load_inventory_snapshot",
         lambda: ({"30012": 0, "4001": 5}, None),
     )
-    assert scheduler.mower_stage_plan() == ["1-7"]
-    assert scheduler.mower_stage_plan(excluded_stages={"1-7"}) == ["CE-6"]
+    assert scheduler.mower_stage_plan() == (["1-7"], None)
+    assert scheduler.mower_stage_plan(excluded_stages={"1-7"}) == (["CE-6"], None)
 
 
 def test_initially_full_plan_clears_old_followup_and_continues_daily_tasks(
@@ -171,7 +171,7 @@ def test_initially_full_plan_clears_old_followup_and_continues_daily_tasks(
     )
     scheduler.tasks.append(followup)
     scheduler.local_operation_followup_time = followup.time
-    scheduler.mower_stage_plan = MagicMock(return_value=[])
+    scheduler.mower_stage_plan = MagicMock(return_value=([], None))
     monkeypatch.setattr(base_schedule.config, "conf", SimpleNamespace(maa_gap=4))
     player = MagicMock()
     monkeypatch.setattr(base_schedule, "PlayerInfoClient", player)

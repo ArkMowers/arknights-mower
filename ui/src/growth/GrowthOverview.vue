@@ -30,7 +30,6 @@ const props = defineProps({
   },
   workshopStatusRevision: { type: Number, default: 0 },
   workshopLoading: Boolean,
-  hasChipShortage: Boolean,
   chipFarmingLoading: Boolean
 })
 const emit = defineEmits([
@@ -253,7 +252,6 @@ function formatCount(value) {
               生成合成任务
             </n-button>
             <button
-              v-if="hasChipShortage"
               type="button"
               class="gp-link"
               :disabled="chipFarmingLoading"

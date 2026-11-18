@@ -431,6 +431,12 @@ def _validate_configuration(files):
                 RegularTaskPart.MaaDailyPlan(**entry)
         from arknights_mower.utils.config.weekly_plan_loader import WeeklyPlanManager
 
+        chip_farming = weekly.get(WeeklyPlanManager.GROWTH_CHIP_FARMING_KEY, {})
+        if not isinstance(chip_farming, dict) or any(
+            key not in plans or type(value) is not bool
+            for key, value in chip_farming.items()
+        ):
+            raise ValueError("周计划的养成芯片刷取设置格式错误")
         inventory = weekly.get("inventory_configs", {})
         if not isinstance(inventory, dict):
             raise ValueError("库存选关配置格式错误")

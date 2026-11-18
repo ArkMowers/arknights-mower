@@ -55,7 +55,7 @@ beforeEach(() => {
       filterStageByAvailability: true
     })
   })()
-  state.config.refresh_weekly_plan_metadata = vi.fn(async () => {})
+  state.config.refresh_weekly_plan_metadata = vi.fn(async () => ({}))
   state.config.flush_config_saves = vi.fn(async () => {})
   state.config.load_config = vi.fn(async () => {})
   state.plan = defineStore('form-test-plan', {
@@ -161,40 +161,46 @@ describe('设置芯片刷取', () => {
   it.each([true, false])('选择并确认目标周计划后提交开放日筛选 %s', async (filter) => {
     const page = setup()
     state.config.filterStageByAvailability = filter
-    axios.post.mockResolvedValueOnce({ data: { plan_key: '养成', stages: ['PR-B-2'] } })
+    axios.post.mockResolvedValueOnce({ data: { plan_key: '养成', enabled: true } })
 
     await page.openChipFarming()
     expect(page.showChipFarming.value).toBe(true)
     expect(page.chipFarmingPlan.value).toBeNull()
     expect(page.chipFarmingPlanOptions.value.map(({ value }) => value)).toEqual(['日常', '养成'])
-    await page.configureChipFarming()
+    await page.configureChipFarming(true)
     expect(axios.post).not.toHaveBeenCalled()
     expect(state.config.flush_config_saves).not.toHaveBeenCalled()
 
     page.chipFarmingPlan.value = '养成'
     page.showChipFarming.value = false
-    await page.configureChipFarming()
+    await page.configureChipFarming(true)
     expect(axios.post).not.toHaveBeenCalled()
 
     await page.openChipFarming()
     expect(page.chipFarmingPlan.value).toBeNull()
     page.chipFarmingPlan.value = '养成'
-    await page.configureChipFarming()
+    await page.configureChipFarming(true)
     expect(axios.post).toHaveBeenCalledExactlyOnceWith(
       expect.stringContaining('/growth-chip-farming'),
-      { plan_key: '养成', filter_stage_by_availability: filter }
+      { plan_key: '养成', enabled: true, filter_stage_by_availability: filter }
     )
     expect(state.config.load_config).not.toHaveBeenCalled()
     expect(page.showChipFarming.value).toBe(false)
   })
 
-  it('更新选中的当前方案后重新读取设置', async () => {
+  it('允许关闭选中方案的自动刷取，包括已关闭开放日筛选的方案', async () => {
     const page = setup()
-    axios.post.mockResolvedValueOnce({ data: { plan_key: '日常', stages: ['AP-5'] } })
+    state.config.refresh_weekly_plan_metadata.mockResolvedValueOnce({
+      growth_chip_farming: { 日常: false }
+    })
     await page.openChipFarming()
     page.chipFarmingPlan.value = '日常'
-    await page.configureChipFarming()
-    expect(state.config.load_config).toHaveBeenCalledTimes(1)
+    expect(page.selectedChipFarmingEnabled.value).toBe(true)
+    await page.configureChipFarming(false)
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/growth-chip-farming'),
+      { plan_key: '日常', enabled: false, filter_stage_by_availability: true }
+    )
   })
 })
 

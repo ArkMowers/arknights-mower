@@ -42,12 +42,14 @@ class OperationSolver(SceneGraphSolver):
         ap_cost: int | None = None,
         sanity_threshold: int | None = None,
         stage_duration_seconds: int | None = None,
+        inventory_limit_rules=None,
     ):
         battle_inventory_active.set()
         try:
             logger.info("Start: 代理作战")
             logger.debug("start operation solver")
             self.stage_id = stage_id
+            self.inventory_limit_rules = inventory_limit_rules
             self.next_task_time = next_task_time or stop_time
             self.target_total_runs = target_total_runs
             # Seeded once from SKLand before entering operation; after that we only
@@ -249,12 +251,15 @@ class OperationSolver(SceneGraphSolver):
             battle_inventory_active.clear()
 
     def _inventory_limit_reached(self):
-        if not config.conf.maa_stage_inventory_enable or not self.stage_id:
+        rules = self.inventory_limit_rules
+        if rules is None:
+            if not config.conf.maa_stage_inventory_enable:
+                return False
+            rules = config.conf.maa_stage_limit_rules
+        if not self.stage_id:
             return False
         inventory, _ = load_inventory_snapshot()
-        return stage_limit_status(
-            self.stage_id, config.conf.maa_stage_limit_rules, inventory
-        )[1]
+        return stage_limit_status(self.stage_id, rules, inventory)[1]
 
     def _record_batch_drops(self):
         if self.current_batch_inventory_recorded:
