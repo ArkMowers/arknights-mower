@@ -853,6 +853,14 @@ jobs:
           draft: false
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
 
+      - name: 更新正式版前端预下载版本
+        if: needs.prepare.outputs.prerelease == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          jq '{build}' "$RUNNER_TEMP/release-ui/mower/ui/dist/relay-ui.json" > "$RUNNER_TEMP/channel-stable.json"
+          gh release upload relay-ui "$RUNNER_TEMP/channel-stable.json" --clobber
+
       - name: Request MowerRelease OTA packaging
         continue-on-error: true
         env:

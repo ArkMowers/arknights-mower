@@ -28,7 +28,7 @@ jobs:
         run: |
           build=$(node --input-type=module -e "import { relayBuildId } from './ui/scripts/relayBuild.js'; console.log(relayBuildId('.'))")
           echo "id=$build" >> "$GITHUB_OUTPUT"
-          if gh release view relay-ui --json assets --jq '.assets[].name' | grep -Fx "ui-$build.zip"; then
+          if gh release view relay-ui --json assets --jq '.assets[].name' | grep -Fx "ui-$build.files.json"; then
             echo "exists=true" >> "$GITHUB_OUTPUT"
           fi
       - name: 构建并发布
@@ -40,3 +40,13 @@ jobs:
           (cd ui && npm ci && npm run build)
           test "$(jq -r .build ui/dist/relay-ui.json)" = "$BUILD_ID"
           bash scripts/publish_relay_ui.sh ui/dist
+
+      - name: 更新网关预下载版本
+        if: github.ref_name == 'alpha'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_ID: ${{ steps.bundle.outputs.id }}
+        run: |
+          pointer="channel-alpha.json"
+          jq -n --arg build "$BUILD_ID" '{build:$build}' > "$RUNNER_TEMP/$pointer"
+          gh release upload relay-ui "$RUNNER_TEMP/$pointer" --clobber
