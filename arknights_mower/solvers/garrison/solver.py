@@ -226,6 +226,11 @@ class GarrisonSolver:
                     if key and self.progress["wins"].get(key) != wins:
                         record_wins(self.progress, key, wins)
                         self.persist()
+                        if wins >= self.target_wins and all(
+                            self.progress["wins"].get(k, -1) >= self.target_wins
+                            for k in strategies.values()
+                        ):
+                            return None
                     if wins >= self.target_wins:
                         continue
                     frame = self.capture()
@@ -235,11 +240,6 @@ class GarrisonSolver:
                     return self.wait(
                         lambda f: f.screen != "strategy" and f.screen != "unknown", 20
                     )
-            if all(
-                self.progress["wins"].get(k, -1) >= self.target_wins
-                for k in strategies.values()
-            ):
-                return None
             frame = self.capture()
             if frame.screen != "strategy":
                 return frame

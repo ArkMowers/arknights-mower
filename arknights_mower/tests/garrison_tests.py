@@ -244,3 +244,44 @@ def test_choose_strategy_from_count_even_with_unreadable_name(
             s.choose_strategy(game)
         s.click.assert_called_once_with((1500, 580))
     assert s.progress["wins"] == {}
+
+
+@pytest.mark.parametrize("target", [3, 6])
+def test_last_confirmed_medal_stops_scan_and_future_dispatch(
+    target, income_db, monkeypatch
+):
+    conf = Conf(maa_long_task_type="garrison", maa_rg_enable=1)
+    conf.garrison.target_wins = target
+    monkeypatch.setattr(runner.config, "conf", conf)
+    progress = model.prepare_progress(conf, {})
+    strategies = model.catalogue()["strategies"]
+    progress["wins"] = {s["id"]: target for s in strategies[:-1]}
+    s = solver.GarrisonSolver(
+        Mock(), Mock(), progress, record.save_garrison_progress, target_wins=target
+    )
+    s.click = Mock()
+    s.capture = Mock(return_value=frame("prep"))
+    s.capture.return_value.screen = "strategy"
+    game = Mock(GRID_Y=[400], GRID_X=[700, 900], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.ocr.return_value = [
+        (1600, 250, f"已通过模拟{target}次"),
+        (1600, 500, "初始生命值"),
+        (1600, 565, strategies[-1]["name"]),
+    ]
+    assert s.choose_strategy(game) is None
+    game.tap.assert_called_once_with(700, 400, 0.7)
+    game.scroll_grid.assert_not_called()
+    assert model.status(conf, record.load_garrison_progress())["completed"]
+
+    worker = Mock()
+    monkeypatch.setattr(runner, "GarrisonSolver", worker)
+    scheduler = SimpleNamespace(
+        tasks=[], task=None, op_data=None, device=Mock(), recog=Mock()
+    )
+    for _ in range(2):
+        assert not runner.run_garrison(scheduler)
+    worker.assert_not_called()
+    if target == 3:
+        conf.garrison.target_wins = 6
+        assert runner.run_garrison(scheduler)
+        worker.return_value.run.assert_called_once()
