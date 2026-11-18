@@ -8,7 +8,7 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.long_task_windows import long_task_window
 
-from .model import prepare_progress, status
+from .model import goal_reached, prepare_progress
 from .solver import HANDOVER_SECONDS, MATCH_SECONDS, GarrisonSolver
 
 
@@ -16,9 +16,15 @@ def eligible_progress(conf, window):
     if window < 9 * 60:
         return None
     progress = prepare_progress(conf, record.load_garrison_progress())
-    if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:
+    settings = conf.garrison
+    match_limit = settings.match_limit if settings.mode == "matches" else None
+    if progress.get("theme_restore_blocked"):
         return None
-    if progress.get("failed") or status(conf, progress)["completed"]:
+    if progress.get("failed") or goal_reached(
+        progress, settings.target_wins, match_limit
+    ):
+        return progress if progress.get("original_theme") else None
+    if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:
         return None
     return progress
 

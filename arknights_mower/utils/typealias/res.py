@@ -38,6 +38,7 @@ Res = Literal[
     "manufacture_accelerate",
     "factory_collect",
     "factory_furniture",
+    "garrison/deployment_cost",
     "manufacture_product_cancel_confirm",
     "manufacture_product_change_confirm",
     "manufacture_product_select",
