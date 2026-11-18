@@ -12878,6 +12878,10 @@ class BaseSchedulerSolver(
                 if scene == Scene.INFRA_DETAILS:
                     logger.debug("INFRA_DETAILS", extra={"log_group": "clue"})
                     if ctm.task == "message_board":
+                        if not config.conf.clue_message_board_enable:
+                            self._prepare_clue_room()
+                            ctm.complete("message_board")
+                            continue
                         if self._clue_credit_enabled():
                             if get_server_weekday() == 6:
                                 logger.info(

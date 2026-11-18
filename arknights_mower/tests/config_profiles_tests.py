@@ -1759,3 +1759,26 @@ def test_api_protocol_follows_model_service_profile_group(storage, inherit):
     assert config.conf.ai_base_url == "https://relay.example/v1"
     assert config.conf.ai_context_tokens == 64000
     assert config.conf.ai_deepseek_context_tokens == 512000
+
+
+@pytest.mark.parametrize("keep", [[], ["clue"], ["credit"]])
+def test_information_board_preference_follows_clue_group_on_legacy_import(
+    storage, keep
+):
+    config.conf.clue_message_board_enable = False
+    config.conf.enable_party = 0
+    config.save_conf()
+    files = backup.read_archive(backup.export_archive(include_tmp=False))
+    files["conf.yml"] = yaml.safe_dump({"enable_party": 0}).encode("utf-8")
+
+    profiles.import_profile(
+        backup._archive_bytes(files, {}),
+        "信息板设置",
+        keep,
+        expected_generation="0",
+    )
+
+    saved = config.Conf(**yaml.safe_load(config.conf_path.read_text(encoding="utf-8")))
+    for conf in (config.conf, saved):
+        assert conf.clue_message_board_enable is ("clue" not in keep)
+        assert conf.enable_party == 0

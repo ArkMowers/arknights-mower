@@ -86,6 +86,8 @@ class CluePart(ConfModel):
     "线索搜集"
     leifeng_mode: int = 1
     "雷锋模式"
+    clue_message_board_enable: bool = True
+    "在线索流程和购物中进入会客室信息板领取信用"
     maa_mall_enable: bool = True
     "信用商店购物开关"
     maa_mall_mode: Literal["maa", "mower"] = "mower"
@@ -1409,7 +1411,8 @@ class Conf(
     @property
     def should_defer_clue_credit(self) -> bool:
         return bool(
-            self.clue_credit_on_demand
+            self.clue_message_board_enable
+            and self.clue_credit_on_demand
             and self.should_run_mower_mall
             and self.visit_friend_enable
             and self.visit_friend_mode == "mower"

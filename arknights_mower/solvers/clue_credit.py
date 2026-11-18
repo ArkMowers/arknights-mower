@@ -126,6 +126,8 @@ class ClueCreditMixin:
         )
 
     def _visit_clue_message_board(self, *, collect_current):
+        if not config.conf.clue_message_board_enable:
+            return False
         self.scene_graph_navigation(Scene.INFRA_MAIN)
         if (
             getattr(self, "_clue_access_record_exhausted", False)
@@ -153,6 +155,8 @@ class ClueCreditMixin:
 
     def _open_clue_message_board(self):
         """唤出家具交互入口后打开信息板，仅在确认仍在房间时补救一次。"""
+        if not config.conf.clue_message_board_enable:
+            return False
         self.recog.update()
         if (
             self.scene() == Scene.CLUE_MESSAGE_BOARD
@@ -291,6 +295,8 @@ class ClueCreditMixin:
 
     def _collect_clue_message_board(self, *, collect_current=True):
         """打开信息板并按需领取本周信用，确认页面处理和返回结果。"""
+        if not config.conf.clue_message_board_enable:
+            return False
         if self._open_clue_message_board():
             completed = True
             if collect_current and (collect := self.find("clue/message_board_collect")):

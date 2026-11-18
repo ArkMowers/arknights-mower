@@ -193,6 +193,7 @@ const {
   waiting_scene,
   waiting_scene_network_adaptive,
   enable_party,
+  clue_message_board_enable,
   leifeng_mode,
   item_list,
   workshop_manual_settings,
@@ -557,6 +558,15 @@ const idleOptions = computed(() => [
               <n-flex>
                 <n-checkbox v-model:checked="enable_party">
                   <div class="item">线索搜集</div>
+                </n-checkbox>
+                <n-checkbox v-model:checked="clue_message_board_enable" aria-label="领取信息板信用">
+                  领取信息板信用
+                  <help-text>
+                    <div>默认开启，在线索流程和购物中进入信息板领取上周结算或本周信用。</div>
+                    <div>
+                      关闭后不再自动进入信息板，仍可搜集线索、访问好友、领取商店信用和购物。
+                    </div>
+                  </help-text>
                 </n-checkbox>
                 <n-checkbox v-model:checked="leifeng_mode">
                   雷锋模式

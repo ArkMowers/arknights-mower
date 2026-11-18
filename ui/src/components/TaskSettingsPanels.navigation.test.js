@@ -456,6 +456,24 @@ describe('continuous settings directory and scroll selection', () => {
     expect(config.waiting_scene).toEqual({ CONNECTING: [3, 10] })
   })
 
+  it('edits information-board collection independently of automatic clues and shopping', async () => {
+    const page = await mount()
+    page.config.enable_party = false
+    page.config.maa_mall_enable = true
+    await flush()
+    const field = all(panels('clue')[0]).find(
+      (element) => element.props['aria-label'] === '领取信息板信用'
+    )
+    expect(field.props.checked).toBe(true)
+    field.props['onUpdate:checked'](false)
+    await flush()
+    expect(page.config.clue_message_board_enable).toBe(false)
+    expect(page.config.enable_party).toBe(false)
+    expect(page.config.maa_mall_enable).toBe(true)
+    const task = createTaskWorkflow(page.config).tasks.find((entry) => entry.id === 'clue')
+    expect(task.searchKeywords).toContain('领取信息板信用')
+  })
+
   it('displays the scheduler idle-action priority for old conflicting flags and saves one choice', async () => {
     const { config } = await mount()
     config.close_simulator_when_idle = true

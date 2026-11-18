@@ -19,7 +19,7 @@ CONF_GROUPS = {
     "credit": set(
         "clue_credit_on_demand credit_fight credit_shop_by_value credit_shop_value_threshold maa_credit_fight maa_mall_blacklist maa_mall_buy maa_mall_enable maa_mall_ignore_blacklist_when_full maa_mall_mode maa_mall_only_buy_discount maa_mall_reserve_max_credit visit_friend_enable visit_friend_mode visit_friend".split()
     ),
-    "clue": {"enable_party", "leifeng_mode"},
+    "clue": {"enable_party", "leifeng_mode", "clue_message_board_enable"},
     "weekly_plan": set(
         "ap_fallback maa_eat_stone maa_penguin_id maa_report_to_penguin maa_report_to_yituliu maa_stage_inventory_enable maa_stage_limit_rules maa_stage_ratio_rules maa_weekly_plan maa_yituliu_id medicine_expire_days stage_plan_enable stage_plan_runner".split()
     ),
@@ -77,7 +77,7 @@ _DEFINITIONS = (
     ("任务配置", "base", "基建调度", "换班、心情、菲亚梅塔及基建调度规则"),
     ("任务配置", "runorder", "跑单", "跑单间隔与插拔策略"),
     ("任务配置", "drone", "无人机加速", "无人机使用房间、间隔及保留数量"),
-    ("任务配置", "clue", "线索", "线索赠送与交流规则"),
+    ("任务配置", "clue", "线索", "线索赠送、交流与信息板信用领取"),
     ("任务配置", "trust", "信赖轮换", "信赖轮换开关、间隔及筛选规则"),
     ("任务配置", "daily", "日常任务", "日常任务开关与执行间隔"),
     ("任务配置", "recruit", "公开招募", "招募星级、机器人及许可保留规则"),
