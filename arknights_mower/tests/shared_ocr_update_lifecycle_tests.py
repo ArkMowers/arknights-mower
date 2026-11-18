@@ -220,12 +220,13 @@ def test_automatic_shutdown_keeps_shared_ocr_serving_until_instance_exit(
         task_finished = False
         results = []
 
-        def alive(pid):
+        def alive(record):
+            pid = record["pid"]
             if pid == -1:
                 return not task_finished
             if pid == coordinator.pid:
                 return coordinator.is_alive()
-            return runtime.process_alive(pid)
+            return runtime.registered_process_alive(record)
 
         def advance(_seconds):
             nonlocal task_finished
@@ -240,7 +241,7 @@ def test_automatic_shutdown_keeps_shared_ocr_serving_until_instance_exit(
             time.sleep(0.02)
 
         monkeypatch.setattr(updater, "instances", lambda _: [application, *services])
-        monkeypatch.setattr(updater, "process_alive", alive)
+        monkeypatch.setattr(updater, "registered_process_alive", alive)
         monkeypatch.setattr(
             updater, "time", SimpleNamespace(monotonic=time.monotonic, sleep=advance)
         )

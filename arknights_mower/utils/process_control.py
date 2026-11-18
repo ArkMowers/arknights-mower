@@ -145,7 +145,7 @@ def execute(job_path):
         report("正在等待当前实例正常退出")
         runtime.write_json(request, {"job": job["id"]})
         deadline = time.monotonic() + 90
-        while runtime.process_alive(record["pid"]):
+        while runtime.registered_process_alive(record):
             if time.monotonic() >= deadline:
                 raise RuntimeError(
                     "当前实例未能在 90 秒内退出，已取消操作；其他实例不受影响"

@@ -238,7 +238,7 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
         ]
         with (
             patch.object(worker, "instances", return_value=records),
-            patch.object(worker, "process_alive", return_value=False),
+            patch.object(worker, "registered_process_alive", return_value=False),
             patch.object(worker, "wait_for_supervisor_release"),
         ):
             updater.stop_instances()
@@ -281,7 +281,9 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
         with (
             patch.object(worker, "instances", return_value=records),
             patch.object(
-                worker, "process_alive", side_effect=lambda pid: pid not in stopped
+                worker,
+                "registered_process_alive",
+                side_effect=lambda record: record["pid"] not in stopped,
             ),
             patch.object(worker, "wait_for_supervisor_release"),
             patch.object(
@@ -308,7 +310,7 @@ class SoftwareAutoUpdateTests(unittest.TestCase):
         clock = iter((0, 0, 91))
         with (
             patch.object(worker, "instances", return_value=records),
-            patch.object(worker, "process_alive", return_value=True),
+            patch.object(worker, "registered_process_alive", return_value=True),
             patch.object(
                 worker,
                 "time",

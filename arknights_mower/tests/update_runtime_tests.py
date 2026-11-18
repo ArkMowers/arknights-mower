@@ -258,6 +258,157 @@ class ProcessAliveTests(unittest.TestCase):
             self.assertTrue(runtime.process_alive(1234))
 
 
+class WindowsRegistrationIdentityTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.state = Path(temporary.name)
+        self.path = self.state / "instances/launch.json"
+        self.record = {
+            "id": "launch",
+            "pid": 1234,
+            "kind": "instance",
+            "executable": r"C:\Mower\mower.exe",
+        }
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows manager registration")
+    def test_manager_can_start_after_legacy_registration_pid_is_reused(self):
+        from arknights_mower.utils.manager_instances import InstanceController
+
+        storage = self.state / "saved-instances.json"
+        manager = InstanceController(storage)
+        space = str(self.state / "instance-data")
+        record = {**self.record, "space": space, "managed": True, "ready": True}
+        runtime.write_json(storage, [{"name": "fixture", "path": space}])
+        runtime.write_json(self.path, record)
+        stop = self.state / "shutdown/launch.json"
+        runtime.write_json(stop, {"manager": True})
+        with (
+            patch.object(runtime, "state_dir", return_value=self.state),
+            patch.object(runtime, "process_alive", return_value=True),
+            patch.object(
+                runtime, "_windows_process_name", return_value="MOWER.EXE"
+            ) as process_name,
+        ):
+            item = manager.get_instances()[0]
+            self.assertEqual(item["state"], "stopping")
+            self.assertFalse(item["can_start"])
+            process_name.return_value = "svchost.exe"
+            item = manager.get_instances()[0]
+        self.assertEqual(item["state"], "stopped")
+        self.assertTrue(item["can_start"])
+        self.assertTrue(item["editable"])
+        self.assertTrue(stop.exists())  # A supervised replacement can reuse the ID.
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows manager reservation")
+    def test_manager_releases_startup_reservation_after_launcher_pid_is_reused(self):
+        from arknights_mower.utils.manager_instances import InstanceController
+
+        storage = self.state / "saved-instances.json"
+        space = str(self.state / "instance-data")
+        runtime.write_json(storage, [{"name": "fixture", "path": space}])
+        manager = InstanceController(storage)
+        launch_id = "a" * 32
+        reservation = self.state / "manager-controls/reserved.json"
+        request = self.state / "shutdown" / f"{launch_id}.json"
+        runtime.write_json(
+            reservation,
+            {
+                **self.record,
+                "id": launch_id,
+                "space": space,
+                "managed": True,
+                "ready": False,
+                "process_created_at": 100,
+            },
+        )
+        runtime.write_json(request, {"manager": True})
+        with (
+            patch.object(runtime, "state_dir", return_value=self.state),
+            patch.object(runtime, "process_alive", return_value=True),
+            patch.object(runtime, "process_creation_time", side_effect=(100, 200)),
+        ):
+            self.assertEqual(manager.get_instances()[0]["state"], "stopping")
+            item = manager.get_instances()[0]
+        self.assertEqual(item["state"], "stopped")
+        self.assertTrue(item["can_start"])
+        self.assertFalse(reservation.exists())
+        self.assertFalse(request.exists())
+
+    def test_creation_time_identifies_reuse_by_another_mower(self):
+        record = {**self.record, "process_created_at": 100}
+        runtime.write_json(self.path, record)
+        with (
+            patch.object(runtime.sys, "platform", "win32"),
+            patch.object(runtime, "process_alive", return_value=True),
+            patch.object(
+                runtime, "process_creation_time", return_value=100
+            ) as creation_time,
+            patch.object(runtime, "_windows_process_name", return_value="mower.exe"),
+        ):
+            self.assertEqual(runtime.instances(self.state, timeout=0), [record])
+            creation_time.return_value = 200
+            self.assertEqual(runtime.instances(self.state, timeout=0), [])
+        self.assertEqual(runtime.read_json(self.path), record)
+
+    def test_unavailable_identity_leaves_possibly_live_record_in_scan(self):
+        record = {**self.record, "process_created_at": 100}
+        runtime.write_json(self.path, record)
+        with (
+            patch.object(runtime.sys, "platform", "win32"),
+            patch.object(runtime, "process_alive", return_value=True),
+            patch.object(runtime, "process_creation_time", return_value=None),
+            patch.object(runtime, "_windows_process_name", return_value=None),
+        ):
+            self.assertEqual(runtime.instances(self.state, timeout=0), [record])
+        self.assertTrue(self.path.exists())
+
+    def test_shutdown_wait_uses_original_registration_after_pid_reuse(self):
+        from arknights_mower.utils import software_update_worker
+
+        record = {**self.record, "process_created_at": 100}
+        runtime.write_json(self.path, record)
+        worker = object.__new__(software_update_worker.Worker)
+        worker.state = self.state
+        worker.work = self.state / "job"
+        worker.job = {"id": "update"}
+        worker.report = Mock()
+        worker_clock = SimpleNamespace(
+            monotonic=Mock(side_effect=(0, 0, 91)), sleep=Mock()
+        )
+        with (
+            patch.object(runtime.sys, "platform", "win32"),
+            patch.object(runtime, "process_alive", return_value=True),
+            patch.object(runtime, "process_creation_time", side_effect=(100, 200)),
+            patch.object(software_update_worker, "time", worker_clock),
+            patch.object(
+                software_update_worker, "wait_for_supervisor_release"
+            ) as release,
+        ):
+            worker.stop_instances()
+        self.assertEqual(worker.stopped, [record])
+        release.assert_called_once_with(record, 90)
+        worker_clock.sleep.assert_not_called()
+
+    @unittest.skipUnless(sys.platform == "win32", "Windows native creation time")
+    def test_published_creation_time_identifies_the_real_windows_process(self):
+        registration = runtime.RuntimeRegistration(
+            "instance", directory=self.state, maintenance=False
+        )
+        self.addCleanup(registration.close)
+        record = runtime.read_json(registration.path)
+        self.assertGreater(record["process_created_at"], 0)
+        self.assertEqual(
+            [owner["id"] for owner in runtime.instances(self.state, timeout=0)],
+            [record["id"]],
+        )
+        self.assertFalse(
+            runtime.registered_process_alive(
+                {**record, "process_created_at": record["process_created_at"] - 1}
+            )
+        )
+
+
 class InstanceScanTests(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="mower 登记 ")

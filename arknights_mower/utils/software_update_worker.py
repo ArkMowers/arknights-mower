@@ -34,8 +34,8 @@ if __package__:
         hidden_console_options,
         instances,
         launch_environment,
-        process_alive,
         read_json,
+        registered_process_alive,
         registration_key,
         submission_lock,
         task_stop_requested,
@@ -53,8 +53,8 @@ else:
         hidden_console_options,
         instances,
         launch_environment,
-        process_alive,
         read_json,
+        registered_process_alive,
         registration_key,
         submission_lock,
         task_stop_requested,
@@ -1447,7 +1447,7 @@ class Worker:
         request_shutdown(applications)
         deadline = time.monotonic() + 90
         while time.monotonic() < deadline:
-            self.stopped = [r for r in self.original if not process_alive(r["pid"])]
+            self.stopped = [r for r in self.original if not registered_process_alive(r)]
             if remaining and all(r in self.stopped for r in applications):
                 request_shutdown(remaining)
                 remaining = []
