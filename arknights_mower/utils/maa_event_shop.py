@@ -1,13 +1,90 @@
-"""Select the current SS activity and preserve plan-switch ownership."""
+"""Select the current SS activity and interpret shop task outcomes."""
 
 import json
 import re
+from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StrictInt, model_validator
 
 from arknights_mower.data import stage_data_full
 from arknights_mower.utils.resource_pkg import resource_pkg_path
+
+SHOP_TASK = "SS@Store@Begin"
+SHOP_SWIPE = "SS@Store@Swipe"
+SHOP_PURCHASE = "SS@Store@PurchaseSelected"
+SHOP_SWIPE_LIMIT = 10
+
+
+@dataclass
+class ShopTaskProgress:
+    task_id: int
+    swipes: int = 0
+    plugin_scanning: bool = False
+    scan_exhausted: bool = False
+    finite_done: bool = False
+    underfunded: bool = False
+    finished: bool = False
+    completed: bool = False
+
+    def record(self, msg, details):
+        if (
+            self.finished
+            or type(details.get("taskid")) is not int
+            or details["taskid"] != self.task_id
+            or details.get("taskchain") != "Custom"
+        ):
+            return
+        if msg in (10000, 10002, 10004, 20000):
+            self.finished = True
+            self.completed = msg == 10002
+            return
+        if details.get("subtask") == "EventShopTask":
+            if msg == 20001:
+                self.plugin_scanning = True
+                self.swipes = 0
+            elif msg == 20002 and self.plugin_scanning:
+                self.plugin_scanning = False
+                self.scan_exhausted = self.swipes == SHOP_SWIPE_LIMIT
+                self.swipes = 0
+            return
+        if details.get("subtask") != "ProcessTask":
+            return
+        inner = details.get("details")
+        node = inner.get("task") if isinstance(inner, dict) else None
+        if not isinstance(node, str):
+            return
+        first = details.get("first")
+        if not node.startswith("SS@Store@") and first not in (
+            [SHOP_TASK],
+            [SHOP_SWIPE],
+            [SHOP_PURCHASE],
+        ):
+            return
+        node = node.removeprefix("SS@Store@")
+        if msg == 20001 and (node == "ClickItem" or first == [SHOP_PURCHASE]):
+            self.swipes = 0
+            self.scan_exhausted = False
+        elif msg == 20002:
+            if node == "CheckUnlimited":
+                self.finite_done = True
+            elif node in ("Underfunded", "UnderfundedOCR") or (
+                node == "Stop" and first == [SHOP_PURCHASE]
+            ):
+                self.underfunded = True
+            elif node == "Swipe" and first == [
+                SHOP_SWIPE if self.plugin_scanning else SHOP_TASK
+            ]:
+                self.swipes += 1
+        elif (
+            msg == 20003
+            and not self.plugin_scanning
+            and first == [SHOP_TASK]
+            and node == "Swipe"
+            and details.get("what") == "ExceededLimit"
+            and inner.get("max_times") == self.swipes == SHOP_SWIPE_LIMIT
+        ):
+            self.scan_exhausted = True
 
 
 class ShopNavigation(BaseModel):
@@ -117,7 +194,7 @@ def shop_identity(shop):
 
 def shop_params(conf):
     return {
-        "task_names": ["SS@Store@Begin"],
+        "task_names": [SHOP_TASK],
         "params": {"event_shop": {"blacklist": conf.blacklist}},
     }
 

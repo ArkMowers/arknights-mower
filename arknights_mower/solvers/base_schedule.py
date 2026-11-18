@@ -20000,28 +20000,6 @@ class BaseSchedulerSolver(
         if msg == 3:
             tasks.clear()
 
-    def _record_maa_event_shop_callback(self, msg, details):
-        task = getattr(self, "maa_event_shop_task", None)
-        if (
-            task is None
-            or type(details.get("taskid")) is not int
-            or details["taskid"] != task["id"]
-            or details.get("taskchain") != "Custom"
-            or task["finished"]
-        ):
-            return
-        if msg == 20002 and details.get("subtask") == "ProcessTask":
-            inner = details.get("details")
-            if (
-                isinstance(inner, dict)
-                and inner.get("task") == "SS@Store@CheckUnlimited"
-            ):
-                task["finite_done"] = True
-        elif msg in (10000, 10004, 20000):
-            task["finished"] = True
-        elif msg == 10002:
-            task.update(completed=True, finished=True)
-
     def run_maa_event_shop(self, deadline, *, manual=False):
         from time import monotonic
 
@@ -20032,6 +20010,8 @@ class BaseSchedulerSolver(
         from arknights_mower.utils.config_backup import backup_lock
         from arknights_mower.utils.device.io_budget import device_io_budget
         from arknights_mower.utils.maa_event_shop import (
+            SHOP_SWIPE_LIMIT,
+            ShopTaskProgress,
             select_shop,
             shop_identity,
             shop_params,
@@ -20073,9 +20053,6 @@ class BaseSchedulerSolver(
                 "source": source,
                 "target": manager.get_activity_fallbacks().get(source, ""),
                 "revision": manager.get_active_plan_revision(),
-                "finite_done": False,
-                "completed": False,
-                "finished": False,
             }
         if defer_for_refresh():
             return False
@@ -20130,10 +20107,10 @@ class BaseSchedulerSolver(
             self.initialize_maa()
             if defer_for_refresh():
                 return False
-            task["id"] = self.MAA.append_task("Custom", shop_params(settings))
-            if not task["id"]:
+            task_id = self.MAA.append_task("Custom", shop_params(settings))
+            if not task_id:
                 raise ValueError("MAA 未接受活动商店任务，请检查核心与资源版本")
-            self.maa_event_shop_task = task
+            progress = self.maa_event_shop_task = ShopTaskProgress(task_id)
             if defer_for_refresh():
                 return False
             if not self.MAA.start():
@@ -20153,16 +20130,28 @@ class BaseSchedulerSolver(
             if not config.stop_maa.is_set():
                 # Close the native handle before applying a configuration change.
                 self.release_maa()
-                if not (task["finite_done"] and task["completed"]):
+                if (
+                    not progress.completed
+                    or progress.underfunded
+                    or not (progress.finite_done or progress.scan_exhausted)
+                ):
                     return
                 with backup_lock:
                     mark_maa_event_shop_complete(*activity_key)
+                    reason = (
+                        "已遇到无限商品"
+                        if progress.finite_done
+                        else f"连续滑动 {SHOP_SWIPE_LIMIT} 次后仍未选中下一件商品"
+                    )
                     logger.info(
-                        "活动「%s」的商店已遇到无限商品，已记录兑换完成",
+                        "活动「%s」的商店%s，已记录兑换完成",
                         shop["activity"],
+                        reason,
                         extra={"log_group": "maa-integration"},
                     )
-                    if switch_after_shop(task, config.conf.maa_event_shop, manager):
+                    if progress.finite_done and switch_after_shop(
+                        task, config.conf.maa_event_shop, manager
+                    ):
                         logger.info(
                             "活动商店有限商品已兑换完毕，刷理智方案从 %s 切换为 %s",
                             task["source"],
@@ -20365,7 +20354,8 @@ class BaseSchedulerSolver(
             logger.exception(
                 "保存 MAA 自动战斗作业进度失败", extra={"log_group": "maa-integration"}
             )
-        self._record_maa_event_shop_callback(msg, d)
+        if (shop_task := getattr(self, "maa_event_shop_task", None)) is not None:
+            shop_task.record(msg, d)
         try:
             self._record_maa_sss_callback(msg, d)
         except Exception:
