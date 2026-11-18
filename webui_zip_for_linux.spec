@@ -11,6 +11,7 @@ if str(SPEC_DIR) not in sys.path:
 
 from build_assets import get_pyinstaller_common_datas, get_rapidocr_datas
 from scripts.bundled_linux_adb import configure_linux_adb, linux_adb_assets
+from scripts.split_linux_debug_symbols import split_linux_debug_symbols
 
 adb_binaries, adb_datas = linux_adb_assets()
 
@@ -30,6 +31,7 @@ try:
 
     PYWEBVIEW_GTK_HIDDENIMPORTS = [
         "webview.platforms.gtk",
+        "cairo",
         "gi",
         "gi.repository",
     ]
@@ -52,6 +54,8 @@ try:
         "gi.repository.Soup",
         "gi.repository.WebKit2",
         "gi.repository.HarfBuzz",
+        "gi.repository.AppIndicator3",
+        "gi.repository.AyatanaAppIndicator3",
     ]
 except ImportError:
     # 构建机没有安装 PyGObject：产物不含 pywebview 的 GTK 后端，运行期会用中文提示
@@ -74,8 +78,9 @@ mower_a = Analysis(
     ]
     + get_rapidocr_datas()
     + adb_datas,
+    # Pillow's native ImageTk extension imports the Tk library finder at runtime.
     hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS
-    + ["rapidocr.main", "quickjs", "_quickjs"],
+    + ["PIL._tkinter_finder", "rapidocr.main", "quickjs", "_quickjs"],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
@@ -207,3 +212,4 @@ coll = COLLECT(
 )
 
 configure_linux_adb(coll.name)
+split_linux_debug_symbols(Path(coll.name))

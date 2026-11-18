@@ -46,7 +46,15 @@ def pack_rootfs(source: Path, output: Path) -> None:
                 if any(
                     part in ("__pycache__", "tests", "test", ".pytest_cache")
                     for part in parts
-                ) or name.endswith((".pyc", ".pyo", "/ddddocr/common.onnx")):
+                ) or name.endswith(
+                    (
+                        ".pyc",
+                        ".pyo",
+                        "/ddddocr/common.onnx",
+                        "/rapidocr/models/PP-OCRv6_det_small.onnx",
+                        "/rapidocr/models/PP-OCRv6_rec_small.onnx",
+                    )
+                ):
                     continue
                 # Keep distribution copyrights and package licence metadata.
                 if name.startswith("usr/share/doc/") and not name.endswith(

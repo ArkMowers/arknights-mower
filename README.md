@@ -38,7 +38,7 @@ py -3.12 -m venv .venv
 ```bash
 sudo apt update
 sudo apt install python3.12-venv python3-tk python3-gi \
-    gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 \
+    gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 gir1.2-ayatanaappindicator3-0.1 \
     libzbar0 libgl1 libglib2.0-0 adb
 python3.12 -m venv --system-site-packages .venv
 ./.venv/bin/python -m pip install -r requirements.in

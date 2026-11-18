@@ -185,6 +185,8 @@ class TestResourceOTA(ResourcePkgTestBase):
             "LICENSE",
             "requirements.txt",
             "server.py",
+            "arknights_mower/models/rapidocr/PP-OCRv6_det_tiny.onnx",
+            "arknights_mower/models/rapidocr/PP-OCRv6_rec_tiny.onnx",
             "ui/dist/index.html",
             "ui/Mower入门指北.html",
         ):

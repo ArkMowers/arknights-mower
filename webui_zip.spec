@@ -69,10 +69,17 @@ mower_a = Analysis(
     noarchive=False,
 )
 
-mower_pure = [i for i in mower_a.pure if not i[0].startswith("arknights_mower")]
+
+def modules_without_project_sources(analysis):
+    return [
+        entry
+        for entry in analysis.pure
+        if entry[0].partition(".")[0] != "arknights_mower"
+    ]
+
 
 mower_pyz = PYZ(
-    mower_pure,
+    modules_without_project_sources(mower_a),
     mower_a.zipped_data,
     cipher=block_cipher,
 )
@@ -128,7 +135,7 @@ manager_a = Analysis(
 )
 
 manager_pyz = PYZ(
-    manager_a.pure,
+    modules_without_project_sources(manager_a),
     manager_a.zipped_data,
     cipher=block_cipher,
 )

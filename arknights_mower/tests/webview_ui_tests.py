@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -21,22 +24,77 @@ from webview_ui import (
 
 class TestLinuxWebviewBackendError(unittest.TestCase):
     def test_non_linux_platform_returns_none(self):
-        # 后端检查只在 Linux 上生效；其它平台直接放行，避免在 macOS/Windows 误触发。
-        with mock.patch("webview_ui.platform.system", return_value="Windows"):
-            self.assertIsNone(linux_webview_backend_error())
-        with mock.patch("webview_ui.platform.system", return_value="Darwin"):
-            self.assertIsNone(linux_webview_backend_error())
+        with mock.patch("webview_ui.subprocess.run") as launch:
+            for system in ("Windows", "Darwin"):
+                with mock.patch("webview_ui.platform.system", return_value=system):
+                    self.assertIsNone(linux_webview_backend_error())
+            launch.assert_not_called()
 
-    def test_linux_without_backend_returns_hint(self):
-        # 显式让两个后端都导入失败，无论开发机是否装了 webview/gi/qtpy，断言都确定
-        # 成立，避免在配好依赖的 Linux 机器上跑单测时误报失败。
+    def test_real_probe_imports_backends_in_child_in_desktop_order(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            modules = root / "webview/platforms"
+            modules.mkdir(parents=True)
+            (modules.parent / "__init__.py").touch()
+            (modules / "__init__.py").touch()
+            record = root / "imports"
+            for backend, error in (("gtk", "ValueError"), ("qt", "ImportError")):
+                (modules / f"{backend}.py").write_text(
+                    "import os\n"
+                    "from pathlib import Path\n"
+                    "with Path(os.environ['PROBE_RECORD']).open('a') as stream:\n"
+                    f"    print(os.getpid(), '{backend}', file=stream)\n"
+                    f"if '{backend}' != os.environ['AVAILABLE_BACKEND']:\n"
+                    f"    raise {error}('unavailable')\n"
+                )
+            for gui, kde, available, expected in (
+                ("", False, "qt", ["gtk", "qt"]),
+                ("", True, "qt", ["qt"]),
+                ("gtk", True, "gtk", ["gtk"]),
+                ("qt", False, "", ["qt", "gtk"]),
+            ):
+                with (
+                    self.subTest(gui=gui, kde=kde, available=available),
+                    mock.patch("webview_ui.platform.system", return_value="Linux"),
+                    mock.patch.dict(
+                        os.environ,
+                        PYTHONPATH=temporary,
+                        PROBE_RECORD=str(record),
+                        AVAILABLE_BACKEND=available or "unavailable",
+                        PYWEBVIEW_GUI=gui,
+                    ),
+                ):
+                    if kde:
+                        os.environ["KDE_FULL_SESSION"] = "1"
+                    else:
+                        os.environ.pop("KDE_FULL_SESSION", None)
+                    record.unlink(missing_ok=True)
+                    self.assertEqual(
+                        linux_webview_backend_error(),
+                        None if available else _LINUX_WEBVIEW_INSTALL_HINT,
+                    )
+                    imports = [line.split() for line in record.read_text().splitlines()]
+                    self.assertEqual([name for _, name in imports], expected)
+                    self.assertTrue(all(int(pid) != os.getpid() for pid, _ in imports))
+
+    def test_frozen_manager_uses_bundled_desktop_probe_and_reports_failures(self):
+        manager = Path("/install/多开管理器")
         with (
             mock.patch("webview_ui.platform.system", return_value="Linux"),
-            mock.patch(
-                "builtins.__import__", side_effect=ImportError("backend unavailable")
-            ),
+            mock.patch.object(sys, "frozen", True, create=True),
+            mock.patch.object(sys, "executable", str(manager)),
+            mock.patch("webview_ui.subprocess.run") as launch,
         ):
-            self.assertEqual(linux_webview_backend_error(), _LINUX_WEBVIEW_INSTALL_HINT)
+            launch.return_value.returncode = -11
+            self.assertIn("-11", linux_webview_backend_error())
+            launch.assert_called_once_with(
+                [manager.with_name("mower"), "--check-linux-webview-backend"],
+                timeout=15,
+            )
+            launch.side_effect = subprocess.TimeoutExpired("mower", 15)
+            self.assertIn("超时", linux_webview_backend_error())
+            launch.side_effect = OSError("cannot execute")
+            self.assertIn("cannot execute", linux_webview_backend_error())
 
     def test_install_hint_covers_each_distro(self):
         # 提示文案必须覆盖三个发行版的具体安装命令，缺库时用户能照着安装。

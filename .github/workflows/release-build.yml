@@ -365,6 +365,27 @@ jobs:
           PYTHONUTF8: "1"
         run: python scripts/check_pe_arch.py dist/mower --arch x64
 
+      - name: Verify shared Windows project modules
+        shell: bash
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from PyInstaller.archive.readers import CArchiveReader
+
+          root = Path("dist/mower")
+          sources = root / "_internal/arknights_mower"
+          for name in ("__init__.py", "utils/manager_instances.py", "utils/software_update_worker.py"):
+              if not (sources / name).is_file():
+                  raise SystemExit(f"Missing shared source: {name}")
+          for name in ("mower.exe", "多开管理器.exe"):
+              modules = CArchiveReader(str(root / name)).open_embedded_archive("PYZ.pyz").toc
+              bundled = sorted(module for module in modules if module.partition(".")[0] == "arknights_mower")
+              if bundled:
+                  raise SystemExit(f"{name} embeds shared project modules: {', '.join(bundled)}")
+          PY
+
       - name: Verify asInvoker manifests
         shell: bash
         env:
@@ -451,12 +472,24 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             adb \
+            binutils \
+            gdb \
             patchelf \
             libzbar0 \
             libgl1 \
             libglib2.0-0 \
             libgtk-3-0 \
             libwebkit2gtk-4.1-0 \
+            python3-gi \
+            python3-gi-cairo \
+            python3-cairo \
+            gir1.2-gtk-3.0 \
+            gir1.2-webkit2-4.1 \
+            gir1.2-soup-3.0 \
+            gir1.2-ayatanaappindicator3-0.1 \
+            dbus-x11 \
+            xauth \
+            xdotool \
             xvfb \
             file
 
@@ -480,6 +513,17 @@ jobs:
       - name: Build frontend
         working-directory: ui
         run: npm ci
+
+      - name: Prepare GTK bindings for the build interpreter
+        run: |
+          python_lib="$(python -c 'import sysconfig; print(sysconfig.get_path("platlib"))')"
+          # The PyInstaller GI hook reads the distribution version during Analysis.
+          shopt -s nullglob nocaseglob
+          cp -a /usr/lib/python3/dist-packages/{gi,cairo,pygobject-*,pycairo-*} "${python_lib}/"
+          xvfb-run -a python -c 'from importlib.metadata import version; print(version("PyGObject")); import cairo, gi; gi.require_foreign("cairo"); import webview.platforms.gtk; from pystray import Icon'
+
+      - name: Test Linux debug symbol separation
+        run: python -m unittest scripts.tests.linux_debug_symbols_tests
 
       - name: Build with PyInstaller
         run: python -m PyInstaller webui_zip_for_linux.spec
@@ -561,19 +605,7 @@ jobs:
           echo "主程序与包内 ELF 共享库的依赖解析正常"
 
       - name: Smoke launch
-        run: |
-          rm -f launch.log
-          set +e
-          timeout 30 xvfb-run -a ./smoke/mower/mower > launch.log 2>&1
-          exit_code=$?
-          set -e
-          cat launch.log
-          if [ "${exit_code}" -eq 124 ]; then
-            echo "GUI 进程成功拉起并存活至 timeout（exit ${exit_code}）"
-          else
-            echo "::error::GUI 进程在 timeout 前以 ${exit_code} 退出，见上方日志"
-            exit 1
-          fi
+        run: xvfb-run -a dbus-run-session -- python scripts/smoke_linux_desktop.py smoke/mower
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -581,6 +613,14 @@ jobs:
           name: arknights-mower_${{ needs.prepare.outputs.version }}_linux_${{ matrix.arch }}
           compression-level: 0
           path: dist/arknights-mower_${{ needs.prepare.outputs.version }}_linux_${{ matrix.arch }}.tar.gz
+
+      - name: Upload Linux debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-debug-symbols_${{ needs.prepare.outputs.version }}_${{ matrix.arch }}
+          path: dist/mower-linux-debug.tar.gz
+          if-no-files-found: error
+          compression-level: 0
 
   build-macos:
     name: Build macOS ${{ matrix.arch }}
