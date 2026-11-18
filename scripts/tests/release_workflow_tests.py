@@ -623,6 +623,21 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             smoke_check,
         )
 
+    def test_linux_smoke_reports_unhandled_child_exceptions(self):
+        from scripts.smoke_linux_desktop import check_child_stderr
+
+        traceback = b"Traceback (most recent call last):\n"
+        child_error = b"Process Process-2:\n" + traceback + b"ImportError: example\n"
+        output = io.BytesIO()
+        with self.assertRaisesRegex(RuntimeError, "child process failed"):
+            check_child_stderr(io.BytesIO(child_error), output)
+        self.assertEqual(output.getvalue(), child_error)
+
+        warning = b"Optional desktop service unavailable\n" + traceback
+        output = io.BytesIO()
+        check_child_stderr(io.BytesIO(warning), output)
+        self.assertEqual(output.getvalue(), warning)
+
     def test_linux_smoke_requires_ready_registration_visible_window_and_bundled_page(
         self,
     ):

@@ -163,6 +163,7 @@ Release 任务在全部平台构建成功后附加五个 Mower 产物，并生�
   适用于相同版本和架构的同一次构建。构建检查主程序、`CHANGELOG.md` 和必要资源，
   验证 ELF 架构及动态库解析结果。构建流程在 Xvfb 中启动解包后的主程序，使用独立数据目录，
   等待实例登记为就绪且对应端口的主窗口可见，并核对 HTTP 首页内容与包内 `index.html` 一致。
+  启动画面或托盘等桌面子进程在检查期间抛出未处理异常时，构建失败。
 - macOS spec 显式收集 pywebview Cocoa 后端依赖和当前 wheel 中存在的
   onnxruntime 动态库，并将主程序与多开管理器放入 `.app/Contents/MacOS`。
   构建任务分别检查多开管理器与主程序 GUI，并通过 `MOWER_DATA_DIR` 将冒烟产生的
@@ -235,7 +236,7 @@ gir typelib，否则 `webui_zip_for_linux.spec` 收集不到 `gi`：
 
 ```bash
 # Debian / Ubuntu
-sudo apt install python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 libgirepository1.0-dev
+sudo apt install python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 gir1.2-ayatanaappindicator3-0.1 libgirepository1.0-dev
 ```
 
 如果使用 venv，需要用 `--system-site-packages` 创建以便看到系统 PyGObject，或在
@@ -243,24 +244,22 @@ venv 中 `pip install pygobject`（后者需先安装编译依赖）。
 
 ### 宿主运行依赖
 
-宿主（运行独立包的机器）只需安装 GTK/WebKit2 原生库与 gir typelib，缺库时程序启动
-会给出中文安装提示：
+宿主（运行独立包的机器）为窗口提供 GTK/WebKit2 原生库与 GIR typelib，为主程序和多开管理器的托盘提供 AppIndicator3 或 AyatanaAppIndicator3。以下命令安装窗口依赖和 Ayatana 托盘依赖：
 
 ```bash
 # Debian / Ubuntu
-sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 gir1.2-gtk-3.0 gir1.2-soup-3.0
+sudo apt install libgtk-3-0 libwebkit2gtk-4.1-0 gir1.2-webkit2-4.1 gir1.2-gtk-3.0 gir1.2-soup-3.0 gir1.2-ayatanaappindicator3-0.1
 
 # Fedora
-sudo dnf install webkit2gtk4.1 gi-girepository libgtk-3
+sudo dnf install webkit2gtk4.1 gobject-introspection gtk3 libayatana-appindicator-gtk3
 
 # Arch Linux
-sudo pacman -S webkit2gtk-4.1 gobject-introspection
+sudo pacman -S webkit2gtk-4.1 gobject-introspection libayatana-appindicator
 ```
 
 说明：Debian 的 `gir1.2-webkit2-4.1` 依赖 `libwebkit2gtk-4.1-0`，`gir1.2-gtk-3.0`
 依赖 `libgtk-3-0`，`gir1.2-soup-3.0` 依赖 `libsoup-3.0-0`，传递依赖会随之安装。
-Fedora 的 `webkit2gtk4.1 + gi-girepository` 覆盖 WebKit2 与 GObject 内省，`libgtk-3`
-提供 GTK3。Arch 的 `webkit2gtk-4.1` 会带 `gobject-introspection` 与 GTK3。
+Fedora 的 `webkit2gtk4.1`、`gobject-introspection` 和 `gtk3` 分别提供 WebKit2、GObject 内省和 GTK3。
 
 ## 直接部署的默认 MAA 与 ADB 配置
 

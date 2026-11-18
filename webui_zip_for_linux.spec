@@ -54,6 +54,8 @@ try:
         "gi.repository.Soup",
         "gi.repository.WebKit2",
         "gi.repository.HarfBuzz",
+        "gi.repository.AppIndicator3",
+        "gi.repository.AyatanaAppIndicator3",
     ]
 except ImportError:
     # 构建机没有安装 PyGObject：产物不含 pywebview 的 GTK 后端，运行期会用中文提示
@@ -76,8 +78,9 @@ mower_a = Analysis(
     ]
     + get_rapidocr_datas()
     + adb_datas,
+    # Pillow's native ImageTk extension imports the Tk library finder at runtime.
     hiddenimports=PYWEBVIEW_GTK_HIDDENIMPORTS
-    + ["rapidocr.main", "quickjs", "_quickjs"],
+    + ["PIL._tkinter_finder", "rapidocr.main", "quickjs", "_quickjs"],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[

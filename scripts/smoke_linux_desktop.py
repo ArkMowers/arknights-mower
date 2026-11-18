@@ -65,15 +65,35 @@ def wait_for_desktop(bundle, process, state, timeout=120):
     )
 
 
+def check_child_stderr(log, output):
+    log.seek(0)
+    previous = b""
+    failed = False
+    for line in log:
+        output.write(line)
+        if (
+            previous.startswith(b"Process ")
+            and previous.endswith(b":")
+            and line.rstrip() == b"Traceback (most recent call last):"
+        ):
+            failed = True
+        previous = line.rstrip()
+    if failed:
+        raise RuntimeError("A desktop child process failed during startup")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("bundle", type=Path)
     bundle = parser.parse_args().bundle.resolve(strict=True)
-    with tempfile.TemporaryDirectory(prefix="mower-linux-smoke-") as data:
+    with (
+        tempfile.TemporaryDirectory(prefix="mower-linux-smoke-") as data,
+        tempfile.TemporaryFile() as errors,
+    ):
         os.environ["MOWER_DATA_DIR"] = data
         state = runtime.state_dir(bundle)
         process = subprocess.Popen(
-            [bundle / "mower"], cwd=bundle, start_new_session=True
+            [bundle / "mower"], cwd=bundle, start_new_session=True, stderr=errors
         )
         try:
             wait_for_desktop(bundle, process, state)
@@ -86,6 +106,7 @@ def main():
                 process.wait(timeout=10)
             except ProcessLookupError:
                 process.wait(timeout=10)
+            check_child_stderr(errors, sys.stderr.buffer)
 
 
 if __name__ == "__main__":
