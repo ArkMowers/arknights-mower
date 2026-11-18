@@ -16,6 +16,8 @@ def eligible_progress(conf, window):
     if window < 9 * 60:
         return None
     progress = prepare_progress(conf, record.load_garrison_progress())
+    if progress.get("original_theme"):
+        return None if progress.get("theme_restore_blocked") else progress
     if not progress.get("match") and window < MATCH_SECONDS + HANDOVER_SECONDS:
         return None
     if progress.get("failed") or status(conf, progress)["completed"]:

@@ -417,6 +417,7 @@ def test_unlimited_matches_can_use_completed_strategy_and_continue_past_200():
     s._quick_confirmed = True
     s.click = Mock()
     s.wait = Mock(return_value=frame("lobby"))
+    s._theme_checked = True
     s.start_or_resume = Mock(side_effect=solver.GarrisonYield())
     with pytest.raises(solver.GarrisonYield):
         s.play(Mock(), result)
@@ -494,3 +495,129 @@ def test_switches_team_lobby_before_choosing_quick_or_resuming(saved):
         after_switch.find("断线重连" if saved else "极速模拟").center,
     ]
     assert team.find("搜寻队友").center not in points
+
+
+def theme_panel(name, applied=True):
+    texts = [
+        Text("效果预览", 1250, 980, 115, 38),
+        Text("已设置" if applied else "设置主题", 1510, 980, 160, 38),
+        Text(name, 45, 950, 305, 40),
+        Text("卫戍协议终端", 1670, 238, 180, 38),
+        Text("乌萨斯齐心团", 1670, 428, 180, 38),
+        Text("全能的”可露希尔", 1640, 613, 220, 42),
+    ]
+    screen, quick = classify(texts)
+    return Frame(None, texts, screen, quick)
+
+
+@pytest.mark.parametrize(
+    "original", ["卫戍协议终端", "乌萨斯齐心团", "“全能的”可露希尔"]
+)
+def test_theme_switch_and_restore_require_observed_equipped_label(original):
+    from arknights_mower.solvers.garrison import theme
+
+    lobby = frame("left")
+    default = theme.DEFAULT_THEME
+    before = theme_panel(original)
+    changed = original != default
+    frames = [before]
+    if changed:
+        frames += [theme_panel(default, False), theme_panel(default)]
+    frames.append(lobby)
+    if changed:
+        frames += [theme_panel(default), theme_panel(original, False), before]
+    events = []
+    s = solver.GarrisonSolver(
+        Mock(), Mock(), {}, lambda p: events.append(("saved", dict(p)))
+    )
+    s.click = lambda point: events.append(("tap", point))
+
+    def wait(check, timeout=8):
+        f = frames.pop(0)
+        assert check(f)
+        return f
+
+    s.wait = wait
+    assert s.prepare_theme(lobby) is lobby
+    s.capture = lambda: lobby
+    s.restore_theme()
+    assert not frames
+    assert s.progress == {}
+    if changed:
+        assert events.index(("saved", {"original_theme": original})) < events.index(
+            ("tap", (1760, 257))
+        )
+        assert events.count(("tap", (1590, 999))) == 2
+        assert events[-1] == ("saved", {})
+    else:
+        assert events == [("tap", lobby.find("^更换主题$").center), ("tap", (65, 58))]
+
+
+def test_deferred_theme_restoration_after_final_settlement_does_not_play(
+    income_db, monkeypatch
+):
+    conf = Conf(
+        maa_rg_enable=1,
+        maa_long_task_type="garrison",
+        garrison={"mode": "matches", "match_limit": 1},
+    )
+    progress = model.prepare_progress(conf, {})
+    progress.update(matches_played=1, original_theme="乌萨斯齐心团")
+    record.save_garrison_progress(progress)
+    assert not model.status(conf, progress)["completed"]
+    assert runner.eligible_progress(conf, 540) == progress
+    s = solver.GarrisonSolver(
+        Mock(), Mock(), progress, record.save_garrison_progress, vision=Mock()
+    )
+    monkeypatch.setattr(
+        solver, "FarmSession", Mock(side_effect=AssertionError("恢复主题时不得开局"))
+    )
+    s.capture = Mock(side_effect=solver.GarrisonYield)
+    s.run()
+    assert record.load_garrison_progress() == progress
+    s.capture = Mock(return_value=theme_panel("乌萨斯齐心团"))
+    s.run()
+    assert "original_theme" not in record.load_garrison_progress()
+    assert model.status(conf, record.load_garrison_progress())["completed"]
+    assert runner.eligible_progress(conf, 1000) is None
+
+
+def test_unreadable_original_theme_does_not_apply_or_retry_until_recheck(income_db):
+    conf = Conf()
+    progress = model.prepare_progress(conf, {})
+    progress["original_theme"] = "“全能的”可露希尔"
+    s = solver.GarrisonSolver(Mock(), Mock(), progress, record.save_garrison_progress)
+    bad = theme_panel("卫戍协议终端")
+    bad.texts = [t for t in bad.texts if "可露希尔" not in t.text]
+    s.capture = Mock(return_value=bad)
+    with pytest.raises(model.GarrisonError, match="恢复卫戍协议主题"):
+        s.restore_theme()
+    s.device.tap.assert_not_called()
+    assert record.load_garrison_progress()["original_theme"] == "“全能的”可露希尔"
+    assert runner.eligible_progress(conf, 1000) is None
+    conf.garrison.run_id = "recheck"
+    assert runner.eligible_progress(conf, 1000)["original_theme"] == "“全能的”可露希尔"
+
+
+def test_end_of_session_releases_touch_then_restores_original_theme(monkeypatch):
+    events = []
+    s = solver.GarrisonSolver(Mock(), Mock(), {}, Mock(), vision=Mock())
+    farm = Mock()
+    monkeypatch.setattr(solver, "FarmSession", lambda owner: farm)
+    s.enter = Mock(return_value=frame("prep"))
+    s.play = Mock(side_effect=solver.GarrisonYield())
+    farm.release.side_effect = lambda: events.append("release")
+    s.restore_theme = lambda: events.append("restore")
+    s.device.exit_after_task_stop.side_effect = lambda: events.append("exit")
+    s.run()
+    assert events == ["release", "restore", "exit"]
+
+
+def test_worker_stop_during_theme_restoration_keeps_pending_without_blocking_recovery():
+    progress = {"original_theme": "乌萨斯齐心团"}
+    s = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
+    s.capture = Mock(side_effect=solver.MowerExit)
+    with pytest.raises(solver.MowerExit):
+        s.restore_theme()
+    assert progress == {"original_theme": "乌萨斯齐心团"}
+    s.device.tap.assert_not_called()

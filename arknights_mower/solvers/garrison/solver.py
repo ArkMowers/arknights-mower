@@ -12,6 +12,7 @@ from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.scene import Scene
 
+from . import theme
 from .model import GarrisonError, catalogue, normal_name, record_wins
 from .upstream import FarmSession, panel_open, strategy_panel
 from .vision import Vision
@@ -69,6 +70,8 @@ class GarrisonSolver:
         self.last_frame = None
         self._end = time.monotonic() + 24 * 3600
         self._quick_confirmed = False
+        self._theme_checked = False
+        self._restoring_theme = False
         self._entered = False
 
     def remaining(self):
@@ -78,7 +81,8 @@ class GarrisonSolver:
         if self.deadline is not None:
             seconds = min(
                 seconds,
-                (self.deadline() - datetime.now()).total_seconds() - HANDOVER_SECONDS,
+                (self.deadline() - datetime.now()).total_seconds()
+                - (5 if self._restoring_theme else HANDOVER_SECONDS),
             )
         if seconds <= 0 or config.stop_maa.is_set():
             raise GarrisonYield
@@ -95,14 +99,19 @@ class GarrisonSolver:
         frame = self.vision.frame(self.recog.img.copy())
         self.remaining()
         self.last_frame = frame
-        if frame.quick and frame.screen in {
-            "mode",
-            "info",
-            "strategy",
-            "squad",
-            "prep",
-            "battle",
-        }:
+        if (
+            not self._restoring_theme
+            and frame.quick
+            and frame.screen
+            in {
+                "mode",
+                "info",
+                "strategy",
+                "squad",
+                "prep",
+                "battle",
+            }
+        ):
             self._quick_confirmed = True
             if frame.screen != "mode" and not self.progress.get("match"):
                 self.progress.pop("settlement_counted", None)
@@ -134,10 +143,56 @@ class GarrisonSolver:
     def persist(self):
         self.save(self.progress)
 
+    def theme_lobby(self, frame):
+        if frame.screen in {"lobby", "theme"}:
+            return frame
+        nav = GarrisonNavigation(self.device, self.recog)
+        if frame.screen not in {"terminal-garrison", "unknown"}:
+            nav.restart_game()
+        return nav.run(self.capture, self.click, self.wait)
+
+    def prepare_theme(self, frame):
+        panel = theme.open_equipped(self, frame)
+        original = theme.equipped(panel)
+        if original != theme.DEFAULT_THEME:
+            self.progress["original_theme"] = original
+            self.persist()
+            theme.apply(self, panel, theme.DEFAULT_THEME)
+        self.click((65, 58))
+        lobby = self.wait(lambda f: f.screen == "lobby")
+        self._theme_checked = True
+        return lobby
+
+    def restore_theme(self):
+        name = self.progress.get("original_theme")
+        if not name or config.stop_mower.is_set() or config.stop_maa.is_set():
+            return
+        self._restoring_theme = True
+        self._end = min(self._end, time.monotonic() + 90)
+        try:
+            panel = theme.open_equipped(self, self.theme_lobby(self.capture()))
+            theme.apply(self, panel, name)
+        except MowerExit:
+            raise
+        except GarrisonYield:
+            logger.info(f"卫戍协议留待下次空档恢复主题「{name}」")
+            return
+        except Exception as exc:
+            self.progress["theme_restore_blocked"] = True
+            self.persist()
+            raise GarrisonError(f"恢复卫戍协议主题「{name}」失败：{exc}") from exc
+        self.progress.pop("original_theme")
+        self.progress.pop("theme_restore_blocked", None)
+        self.persist()
+        logger.info(f"已恢复卫戍协议主题「{name}」")
+
     def enter(self):
-        return GarrisonNavigation(self.device, self.recog).run(
-            self.capture, self.click, self.wait
-        )
+        frame = self.capture()
+        if frame.screen == "tutorial":
+            raise GarrisonError("请先手动完成卫戍协议教程")
+        if frame.screen == "result":
+            return frame
+        return self.prepare_theme(self.theme_lobby(frame))
 
     def start_or_resume(self, frame):
         reconnect = "断线重连|继续模拟|返回模拟|继续作战"
@@ -319,13 +374,20 @@ class GarrisonSolver:
             self.vision = Vision(rapidocr.engine)
         try:
             with device_io_budget(self.remaining), cancellation_scope(cancelled):
+                if self.progress.get("original_theme"):
+                    self._entered = True
+                    self.restore_theme()
+                    return
                 session = FarmSession(self)
                 try:
                     self._entered = True
                     frame = self.enter()
                     self.play(session.game, frame)
                 finally:
-                    session.release()
+                    try:
+                        session.release()
+                    finally:
+                        self.restore_theme()
         except GarrisonYield:
             logger.info("卫戍协议交还设备，本次空档结束")
         finally:
@@ -433,6 +495,8 @@ class GarrisonSolver:
                     return
                 if self.match_limit is None and self.progress["attempts"] >= 200:
                     raise GarrisonError("已尝试两百局，请核对策略进度")
+                if not self._theme_checked:
+                    frame = self.prepare_theme(frame)
                 board = game.Board()
                 timeout_round = None
                 self._quick_confirmed = False

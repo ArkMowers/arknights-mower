@@ -60,7 +60,9 @@ def status(conf, progress):
         limit = conf.garrison.match_limit
         return {
             "mode": "matches",
-            "completed": limit > 0 and count >= limit,
+            "completed": limit > 0
+            and count >= limit
+            and not prepared.get("original_theme"),
             "count": count,
             "total": limit,
             "failed": prepared.get("failed", False),
@@ -79,6 +81,7 @@ def status(conf, progress):
     failed = progress.get("key") == run_key(conf) and bool(progress.get("failed"))
     return {
         "completed": count == len(strategies)
+        and not progress.get("original_theme")
         and not failed
         and progress.get("key") == run_key(conf),
         "count": count,
@@ -104,6 +107,7 @@ def prepare_progress(conf, saved):
                 progress["matches_played"] = 0
             else:
                 progress["wins"] = {}
+        progress.pop("theme_restore_blocked", None)
         progress.update(key=run_key(conf), failed=False, error="", attempts=0)
     return progress
 

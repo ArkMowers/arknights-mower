@@ -75,6 +75,8 @@ def classify(texts):
     def has(pattern):
         return any(re.search(pattern, s) for s in strings)
 
+    if has("^效果预览$") and has("^[已己]设置$|^设置主题$"):
+        return "theme", False
     quick = has("极速模拟")
     message = "".join(
         t.text.replace(" ", "")
