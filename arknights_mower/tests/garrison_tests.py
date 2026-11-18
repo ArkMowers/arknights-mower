@@ -26,7 +26,14 @@ FIXTURES = Path(__file__).parent / "fixtures" / "garrison"
 def frame(name):
     texts = [Text(**t) for t in json.loads((FIXTURES / f"{name}.json").read_text())]
     screen, quick = classify(texts)
-    return Frame(np.zeros((1080, 1920, 3), np.uint8), texts, screen, quick)
+    image = np.zeros((1080, 1920, 3), np.uint8)
+    if name == "left":
+        label = next(t for t in texts if t.text == "个人模拟")
+        image[label.y : label.y + label.height, label.x : label.x + label.width] = 205
+        image[label.y : label.y + label.height : 5, label.x : label.x + label.width] = (
+            24
+        )
+    return Frame(image, texts, screen, quick)
 
 
 @pytest.mark.parametrize(
@@ -98,6 +105,26 @@ def test_resume_clicks_reconnect_and_preserves_progress():
     s.start_or_resume(frame("left"))
     s.click.assert_called_once_with(frame("left").find("断线重连").center)
     assert p == before
+
+
+@pytest.mark.parametrize("highlight", ["joint", "both", "neither", "missing_label"])
+def test_reconnect_requires_positive_personal_selection(highlight):
+    lobby = frame("left")
+    label = lobby.find("^个人模拟$")
+    x, y, w, h = label.x, label.y, label.width, label.height
+    if highlight in {"joint", "neither"}:
+        lobby.image[y : y + h, x : x + w] = 30
+    if highlight in {"joint", "both"}:
+        lobby.image[y : y + h, x + 2 * w : x + 3 * w] = 205
+    if highlight == "missing_label":
+        lobby.texts.remove(label)
+    progress = {"match": {"round": 3}}
+    s = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
+    with pytest.raises(model.GarrisonError, match="未确认已选中个人模拟"):
+        s.start_or_resume(lobby)
+    s.device.tap.assert_not_called()
+    s.save.assert_not_called()
+    assert progress == {"match": {"round": 3}}
 
 
 def test_failure_blocks_unchanged_dispatch_and_retains_other_work(
@@ -396,3 +423,37 @@ def test_unlimited_matches_can_use_completed_strategy_and_continue_past_200():
     s.start_or_resume.assert_called_once()
     detail = model.status(conf, progress)
     assert (detail["count"], detail["total"], detail["completed"]) == (201, 0, False)
+
+
+def test_timeout_replay_requires_exact_message_and_button_and_limits_repeat():
+    message = Text("出现超时异常，战斗将重新进行", 685, 456, 550, 49)
+    confirm = Text("确认", 930, 700, 93, 56)
+    observed = frame("prep")
+    observed.texts = [message, confirm]
+    observed.screen, observed.quick = classify(observed.texts)
+    assert observed.screen == "battle-timeout"
+    assert (
+        classify([Text("出现超时异常，本次战斗将结束", 685, 456, 550, 49), confirm])[0]
+        != observed.screen
+    )
+    s = solver.GarrisonSolver(Mock(), Mock(), {"match": {"round": 5}}, Mock())
+    s._quick_confirmed = True
+    s.click = Mock()
+    s.sleep = Mock()
+    s.capture = Mock(return_value=observed)
+    playing = frame("prep")
+    playing.screen = "battle"
+    s.wait = Mock(return_value=playing)
+    game = SimpleNamespace(Board=lambda: SimpleNamespace(round_done=-1))
+    with pytest.raises(model.GarrisonError, match="同一回合"):
+        s.play(game, observed)
+    s.click.assert_called_once_with(confirm.center)
+    assert s.wait.call_args.args[0](playing)
+    assert not s.wait.call_args.args[0](observed)
+    s.save.assert_not_called()
+
+    observed.texts = [message, Text("确认", 150, 100, 60, 40)]
+    s.click.reset_mock()
+    with pytest.raises(model.GarrisonError, match="未识别到按钮"):
+        s.play(game, observed)
+    s.click.assert_not_called()

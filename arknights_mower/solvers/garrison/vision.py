@@ -48,6 +48,26 @@ class Frame:
             None,
         )
 
+    def personal_simulation_selected(self):
+        if self.screen != "lobby":
+            return False
+        label = self.find("^个人模拟$", (1050, 730, 1810, 925))
+        if label is None or label.width <= 0 or label.height <= 0:
+            return False
+        # 两个标签一直可见。以文字框定位左侧选项及其右侧相邻选项的底色。
+        x, y, w, h = label.x, label.y, label.width, label.height
+        other_x = x + 2 * w
+        if other_x + w > self.image.shape[1] or y + h > self.image.shape[0]:
+            return False
+        personal = self.image[y : y + h, x : x + w]
+        other = self.image[y : y + h, other_x : other_x + w]
+        # 选中的个人模拟为浅底深字。右侧也为浅色时，无法确认选中态。
+        return bool(
+            np.mean(personal.min(axis=2) >= 155) > 0.50
+            and np.mean(personal.max(axis=2) <= 100) > 0.05
+            and np.mean(other.max(axis=2) <= 100) > 0.50
+        )
+
 
 def classify(texts):
     strings = [t.text.replace(" ", "") for t in texts if t.score >= 0.6]
@@ -56,6 +76,13 @@ def classify(texts):
         return any(re.search(pattern, s) for s in strings)
 
     quick = has("极速模拟")
+    message = "".join(
+        t.text.replace(" ", "")
+        for t in sorted(texts, key=lambda t: t.x)
+        if t.score >= 0.6 and 390 <= t.center[1] <= 560
+    )
+    if re.fullmatch(r"出现超时异常[，,]?战斗将重新进行[。.]?", message):
+        return "battle-timeout", False
     if has("^(?:模拟开放中|模拟中)$") and has("卫[戍成]协议|STRONGHOLD"):
         return "terminal-garrison", False
     if has("入门协议|新手教程|教学指引"):

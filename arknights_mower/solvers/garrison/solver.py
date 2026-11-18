@@ -147,13 +147,25 @@ class GarrisonSolver:
             frame = self.wait(
                 lambda f: f.screen == "lobby" and f.find(lobby_controls, visible), 12
             )
-        resume = frame.find(reconnect, visible)
+        resume = frame.find(reconnect, (1150, 900, 1920, 1040))
         if resume:
+            if not frame.personal_simulation_selected():
+                raise GarrisonError(
+                    "未确认已选中个人模拟，已保留对局。请核对大厅模式后继续"
+                )
             self.click(resume.center)
             return self.wait(
                 lambda f: (
                     f.screen
-                    in {"info", "strategy", "squad", "prep", "battle", "result"}
+                    in {
+                        "info",
+                        "strategy",
+                        "squad",
+                        "prep",
+                        "battle",
+                        "result",
+                        "battle-timeout",
+                    }
                 ),
                 RECONNECT_SECONDS,
             )
@@ -311,6 +323,7 @@ class GarrisonSolver:
     def play(self, game, frame):
         board = game.Board()
         state = None
+        timeout_round = None
         last_change = time.monotonic()
         while True:
             self.remaining()
@@ -324,6 +337,28 @@ class GarrisonSolver:
                 continue
             if frame.screen == "unknown":
                 frame = self.wait(lambda f: f.screen != "unknown", 15)
+                continue
+            if frame.screen == "battle-timeout":
+                if timeout_round == board.round_done:
+                    raise GarrisonError("同一回合再次出现战斗超时，已保留对局")
+                timeout_round = board.round_done
+                self.text_click(frame, "^确认$", (800, 655, 1120, 800))
+                frame = self.wait(
+                    lambda f: (
+                        f.screen
+                        in {
+                            "battle",
+                            "prep",
+                            "result",
+                            "choice",
+                            "confirm-ready",
+                            "squad",
+                            "info",
+                            "strategy",
+                        }
+                    ),
+                    RECONNECT_SECONDS,
+                )
                 continue
             saved_result = (
                 frame.screen == "result"
@@ -388,6 +423,7 @@ class GarrisonSolver:
                 if self.match_limit is None and self.progress["attempts"] >= 200:
                     raise GarrisonError("已尝试两百局，请核对策略进度")
                 board = game.Board()
+                timeout_round = None
                 self._quick_confirmed = False
                 continue
             else:
