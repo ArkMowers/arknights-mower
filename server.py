@@ -76,6 +76,7 @@ from arknights_mower.views.instances import instances_bp, reject_instance_manage
 from arknights_mower.views.mastery import mastery_bp
 from arknights_mower.views.network import network_bp
 from arknights_mower.views.process_control import process_control_bp
+from arknights_mower.views.relay import relay_bp
 from arknights_mower.views.software_update import software_update_bp
 from arknights_mower.views.task import set_mower_thread, task_bp
 from arknights_mower.views.ui_state import ui_state_bp
@@ -831,6 +832,12 @@ def _is_html_navigation():
         mime == "text/html" and quality > 0
         for mime, quality in request.accept_mimetypes
     ) and request.headers.get("Sec-Fetch-Dest", "") in {"", "document", "iframe"}
+
+
+@app.before_request
+def authorize_relay_request():
+    if request.environ.get("mower.relay"):
+        check_token()
 
 
 @app.before_request
@@ -5288,6 +5295,7 @@ app.register_blueprint(task_bp)
 app.register_blueprint(db_admin_bp)
 app.register_blueprint(software_update_bp)
 app.register_blueprint(network_bp)
+app.register_blueprint(relay_bp)
 
 
 def _recycling_reports_running():

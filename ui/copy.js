@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import zlib from 'zlib'
+import { relayBuildId } from './scripts/relayBuild.js'
 
 const sourceFile = 'Mower入门指北.html'
 const destDir = 'dist/docs'
@@ -26,6 +27,13 @@ function precompress(dir) {
   for (const name of fs.readdirSync(dir)) {
     const full = path.join(dir, name)
     if (fs.statSync(full).isDirectory()) {
+      const build = relayBuildId('..')
+      fs.writeFileSync('dist/relay-ui.json', JSON.stringify({ build }))
+      const index = fs.readFileSync('dist/index.html', 'utf8')
+      fs.writeFileSync(
+        'dist/index.html',
+        index.replace('</head>', `<meta name="mower-relay-build" content="${build}"></head>`)
+      )
       const r = precompress(full)
       count += r.count
       totalBefore += r.before

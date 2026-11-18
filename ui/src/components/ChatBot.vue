@@ -1,4 +1,5 @@
 <script setup>
+import { instanceToken, relaySocketUrl } from '@/utils/instanceToken'
 import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useDialog, useMessage } from 'naive-ui'
@@ -705,7 +706,7 @@ function applySnapshot(snapshot) {
   }
 }
 function connectWS(text, resume = false) {
-  const token = new URLSearchParams(window.location.search).get('token')
+  const token = instanceToken()
   if (!token) {
     failReply('AI 助手需要 Web UI 访问密钥，请从 Mower 窗口或其浏览器入口打开。')
     return
@@ -714,7 +715,7 @@ function connectWS(text, resume = false) {
   connecting.value = true
   const backend = import.meta.env.DEV ? import.meta.env.VITE_HTTP_URL : location.origin
   try {
-    ws = new WebSocket(backend.replace(/^http/, 'ws') + '/ws/chat')
+    ws = new WebSocket(relaySocketUrl(backend.replace(/^http/, 'ws') + '/ws/chat'))
   } catch {
     if (resume) lostConnection()
     else failReply('无法建立 AI 连接，请检查服务地址后重试。')

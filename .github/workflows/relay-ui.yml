@@ -1,0 +1,42 @@
+name: 发布中转前端
+on:
+  push:
+    branches: [alpha, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  publish:
+    if: github.repository == 'ArkMowers/arknights-mower'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: relay-ui-publish-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - name: 检查前端构建是否已发布
+        id: bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          build=$(node --input-type=module -e "import { relayBuildId } from './ui/scripts/relayBuild.js'; console.log(relayBuildId('.'))")
+          echo "id=$build" >> "$GITHUB_OUTPUT"
+          if gh release view relay-ui --json assets --jq '.assets[].name' | grep -Fx "ui-$build.zip"; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: 构建并发布
+        if: steps.bundle.outputs.exists != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_ID: ${{ steps.bundle.outputs.id }}
+        run: |
+          (cd ui && npm ci && npm run build)
+          test "$(jq -r .build ui/dist/relay-ui.json)" = "$BUILD_ID"
+          bash scripts/publish_relay_ui.sh ui/dist

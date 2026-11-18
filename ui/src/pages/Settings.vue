@@ -8,6 +8,8 @@ import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
 import MaaUpdates from '@/components/MaaUpdates.vue'
 import NetworkSettings from '@/components/NetworkSettings.vue'
+import { isRelayPage } from '@/utils/instanceToken'
+import RelaySettings from '@/components/RelaySettings.vue'
 import WebAccessSettings from '@/components/WebAccessSettings.vue'
 import ConfigBackup from '@/components/ConfigBackup.vue'
 import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
@@ -380,6 +382,9 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
         class="settings-card-wide"
       >
         <WebAccessSettings />
+      </div>
+      <div v-if="runtime_platform !== 'android' && !isRelayPage()" class="settings-card-wide">
+        <RelaySettings />
       </div>
     </SettingsSection>
     <SettingsSection

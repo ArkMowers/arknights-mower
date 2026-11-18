@@ -285,6 +285,7 @@
 </template>
 
 <script setup>
+import { instanceToken, isRelayPage } from '@/utils/instanceToken'
 import { storeToRefs } from 'pinia'
 import {
   computed,
@@ -934,8 +935,7 @@ onMounted(async () => {
     actions_on_resize()
   })
 
-  const params = new URLSearchParams(document.location.search)
-  const token = params.get('token')
+  const token = instanceToken()
   provide('token', token)
   axios.defaults.headers.common['token'] = token
   void guiStore.load()
@@ -963,7 +963,7 @@ onMounted(async () => {
       : 'arknights-mower'
   void loadAuthenticatedInstanceTitle(token)
 
-  if (updates_enabled.value === true)
+  if (updates_enabled.value === true && !isRelayPage())
     axios
       .post(
         `${import.meta.env.VITE_HTTP_URL || ''}/software-update/auto-check`,

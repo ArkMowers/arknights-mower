@@ -824,6 +824,14 @@ jobs:
           pattern: arknights-mower_*
           merge-multiple: true
 
+      - name: Publish the frontend from the validated release package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          unzip -q "release-assets/arknights-mower_${RELEASE_VERSION}_android_arm64.zip" 'mower/ui/dist/*' -d "$RUNNER_TEMP/release-ui"
+          bash scripts/publish_relay_ui.sh "$RUNNER_TEMP/release-ui/mower/ui/dist"
+
       - name: Link Android APK downloads
         run: python scripts/sync_android_release.py --body release-metadata/body.md
 

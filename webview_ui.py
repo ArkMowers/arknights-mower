@@ -954,6 +954,12 @@ def _run_desktop():
     # Claim startup before serving pages, including cached frontend versions.
     server.app.config["DESKTOP_STARTUP_HANDLED"] = True
     server.register_shutdown(shutdown)
+    from arknights_mower.utils.mower_relay.client import RelayClient
+
+    relay = RelayClient(server.app)
+    server.app.extensions["mower_relay"] = relay
+    shutdown.own("Mower relay", relay.close, Phase.INTERRUPT)
+    relay.start()
 
     registration.running = lambda: bool(
         server.mower_thread and server.mower_thread.is_alive()

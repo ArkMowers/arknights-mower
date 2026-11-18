@@ -43,6 +43,9 @@ vi.mock('@/components/MaaUpdates.vue', () => ({
   default: { setup: () => () => 'MAA 本体与资源更新' }
 }))
 vi.mock('@/components/NetworkSettings.vue', () => ({ default: { setup: () => () => '网络设置' } }))
+vi.mock('@/components/RelaySettings.vue', () => ({
+  default: { setup: () => () => '免费 Mower 中转' }
+}))
 vi.mock('@/components/WebAccessSettings.vue', () => ({
   default: { setup: () => () => '访问端口与 Token' }
 }))
@@ -105,7 +108,9 @@ describe('network and update settings', () => {
     async (managed, platform, visible) => {
       state.config.manager_owned_device = managed
       state.config.runtime_platform = platform
-      expect((await render()).includes('访问端口与 Token')).toBe(visible)
+      const html = await render()
+      expect(html.includes('访问端口与 Token')).toBe(visible)
+      expect(html.includes('免费 Mower 中转')).toBe(platform !== 'android')
     }
   )
   it('places MAA updates immediately after Mower resources in an authorized managed instance', async () => {
