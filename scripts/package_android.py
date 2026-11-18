@@ -29,6 +29,8 @@ REQUIRED = (
     "arknights_mower/data/version.json",
     "arknights_mower/data/building_skill.json",
     "arknights_mower/data/riic/operators.json",
+    "arknights_mower/models/rapidocr/PP-OCRv6_det_tiny.onnx",
+    "arknights_mower/models/rapidocr/PP-OCRv6_rec_tiny.onnx",
     "ui/dist/index.html",
     "ui/dist/pages/basement_skill/buffer.json",
     "server.py",

@@ -58,7 +58,7 @@ macOS 和 Linux 虽提供独立包，仍建议优先使用 [源码部署](../../
 1. 确保构建环境可以导入 PyGObject，并提供 GTK/WebKit2 typelib、ADB 和 `patchelf`。Ubuntu 24.04 的源码环境已按 README 安装窗口依赖，还需：
 
    ```bash
-   sudo apt install patchelf adb
+   sudo apt install binutils patchelf adb
    ./.venv/bin/python -c "import gi"
    ```
 
@@ -73,6 +73,8 @@ macOS 和 Linux 虽提供独立包，仍建议优先使用 [源码部署](../../
    ```
 
 3. 检查 `dist/mower/mower` 和 `dist/mower/多开管理器`，并在图形桌面中验证窗口可以打开。程序输出本地 HTTP 地址时，也可使用浏览器访问该地址。
+
+4. 排查原生库崩溃时，将同一次构建的调试符号解压到独立包所在的父目录。本地构建可执行 `tar -xzf dist/mower-linux-debug.tar.gz -C dist`。GDB 会从库旁的 `.debug` 目录加载与该库校验值匹配的符号。正式构建的符号可从对应 GitHub Actions 运行的 `linux-debug-symbols_<版本>_<架构>` 构件下载。
 
 Linux 独立包仍依赖宿主提供兼容的 glibc、二维码识别及 GTK/WebKit2 等系统库。运行依赖和各发行版安装命令见 [宿主运行依赖](../../doc/release-platforms.md#宿主运行依赖)。
 

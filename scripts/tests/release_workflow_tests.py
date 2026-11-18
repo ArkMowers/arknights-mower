@@ -2,13 +2,17 @@
 
 import ast
 import io
+import json
 import os
 import shlex
 import subprocess
 import sys
 import tempfile
+import threading
 import unittest
 from contextlib import redirect_stdout
+from functools import partial
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -593,8 +597,18 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("check_ldd smoke/mower/_internal/platform-tools/adb", smoke_check)
         self.assertIn("ldd", smoke_check)
         self.assertIn('if [ "${missing}" -gt 0 ]', smoke_check)
-        self.assertIn('if [ "${exit_code}" -eq 124 ]', smoke_launch)
-        self.assertNotIn('"${exit_code}" -eq 0', smoke_launch)
+        self.assertEqual(
+            smoke_launch,
+            "dbus-run-session -- xvfb-run -a python scripts/smoke_linux_desktop.py smoke/mower",
+        )
+        job = self.jobs["build-linux"]
+        binding_step = find_step(job, "Prepare GTK bindings for the build interpreter")
+        self.assertIn("/usr/lib/python3/dist-packages/{gi,cairo}", binding_step["run"])
+        self.assertIn("import webview.platforms.gtk", binding_step["run"])
+        self.assertLess(
+            job["steps"].index(binding_step),
+            job["steps"].index(find_step(job, "Build with PyInstaller")),
+        )
 
     def test_linux_ldd_uses_packaged_library_directories(self):
         smoke_check = find_step(self.jobs["build-linux"], "Smoke check package")["run"]
@@ -605,6 +619,47 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
             'LD_LIBRARY_PATH="${package_library_path}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"',
             smoke_check,
         )
+
+    def test_linux_smoke_requires_ready_registration_and_bundled_page(self):
+        from scripts.smoke_linux_desktop import wait_for_desktop
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            bundle = root / "mower"
+            index = bundle / "_internal/ui/dist/index.html"
+            index.parent.mkdir(parents=True)
+            index.write_bytes(b"release frontend")
+            state = root / "state"
+            registrations = state / "instances"
+            registrations.mkdir(parents=True)
+            process = Mock()
+            process.poll.return_value = None
+            with self.assertRaises(TimeoutError):
+                wait_for_desktop(bundle, process, state, timeout=0.1)
+
+            with HTTPServer(
+                ("127.0.0.1", 0), partial(SimpleHTTPRequestHandler, directory=root)
+            ) as server:
+                record = {
+                    "pid": os.getpid(),
+                    "kind": "instance",
+                    "root": str(bundle),
+                    "ready": True,
+                    "port": server.server_port,
+                }
+                (registrations / "running.json").write_text(json.dumps(record))
+                thread = threading.Thread(target=server.serve_forever)
+                thread.start()
+                try:
+                    page = root / "index.html"
+                    page.write_bytes(b"unexpected page")
+                    with self.assertRaises(TimeoutError):
+                        wait_for_desktop(bundle, process, state, timeout=0.1)
+                    page.write_bytes(index.read_bytes())
+                    wait_for_desktop(bundle, process, state, timeout=2)
+                finally:
+                    server.shutdown()
+                    thread.join(timeout=2)
 
     def test_pyinstaller_is_pinned_and_shared_workflow_never_pushes(self):
         self.assertEqual(self.workflow["env"]["PYINSTALLER_VERSION"], "6.22.2")

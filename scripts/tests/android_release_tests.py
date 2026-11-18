@@ -4,6 +4,7 @@ import io
 import json
 import lzma
 import sys
+import tarfile
 import tempfile
 import unittest
 import zipfile
@@ -120,11 +121,13 @@ class AndroidPackageTests(unittest.TestCase):
                 package(root, root / "out", "4.2.0", "a" * 40)
             self.assertFalse((root / "out").exists())
 
-    def test_missing_skill_catalog_or_ota_buffer_prevents_packaging(self):
+    def test_missing_catalog_buffer_or_tiny_model_prevents_packaging(self):
         for missing in (
             "arknights_mower/data/building_skill.json",
             "ui/dist/pages/basement_skill/buffer.json",
             "arknights_mower/data/riic/operators.json",
+            "arknights_mower/models/rapidocr/PP-OCRv6_det_tiny.onnx",
+            "arknights_mower/models/rapidocr/PP-OCRv6_rec_tiny.onnx",
         ):
             with self.subTest(missing=missing), tempfile.TemporaryDirectory() as temp:
                 root = Path(temp)
@@ -197,6 +200,42 @@ class AndroidDownloadLinkTests(unittest.TestCase):
 
 
 class AndroidRuntimeBuildTests(unittest.TestCase):
+    def test_export_prunes_only_unused_ocr_models(self):
+        from scripts.build_android_runtime import pack_rootfs
+
+        site_packages = "usr/local/lib/python3.12/site-packages/"
+        required = (
+            "rapidocr/models/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+            "ddddocr/common_det.onnx",
+            "ddddocr/common_old.onnx",
+            "pnnx/pnnx",
+        )
+        unused = (
+            "rapidocr/models/PP-OCRv6_det_small.onnx",
+            "rapidocr/models/PP-OCRv6_rec_small.onnx",
+            "ddddocr/common.onnx",
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "rootfs.tar"
+            with tarfile.open(source, "w") as image:
+                for name in (*required, *unused):
+                    member = tarfile.TarInfo(site_packages + name)
+                    data = name.encode()
+                    member.size = len(data)
+                    image.addfile(member, io.BytesIO(data))
+
+            output = root / "python-runtime.zip.xz"
+            pack_rootfs(source, output)
+            with (
+                lzma.open(output) as compressed,
+                zipfile.ZipFile(compressed) as archive,
+            ):
+                for name in required:
+                    self.assertEqual(archive.read(site_packages + name), name.encode())
+                for name in unused:
+                    self.assertNotIn(site_packages + name, archive.namelist())
+
     def image_smoke_command(self):
         from scripts import build_android_runtime as builder
 

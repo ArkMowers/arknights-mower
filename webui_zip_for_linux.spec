@@ -11,6 +11,7 @@ if str(SPEC_DIR) not in sys.path:
 
 from build_assets import get_pyinstaller_common_datas, get_rapidocr_datas
 from scripts.bundled_linux_adb import configure_linux_adb, linux_adb_assets
+from scripts.split_linux_debug_symbols import split_linux_debug_symbols
 
 adb_binaries, adb_datas = linux_adb_assets()
 
@@ -30,6 +31,7 @@ try:
 
     PYWEBVIEW_GTK_HIDDENIMPORTS = [
         "webview.platforms.gtk",
+        "cairo",
         "gi",
         "gi.repository",
     ]
@@ -207,3 +209,4 @@ coll = COLLECT(
 )
 
 configure_linux_adb(coll.name)
+split_linux_debug_symbols(Path(coll.name))

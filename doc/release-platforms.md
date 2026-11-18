@@ -158,8 +158,11 @@ Release 任务在全部平台构建成功后附加五个 Mower 产物，并生�
   后才真正删除，失败则回滚。
 - Windows 构建下载并校验固定版本的 UPX，PyInstaller 通过 `PATH` 使用它压缩
   支持的 PE 文件。构建在打包前检查可执行文件的 PE 架构。
-- Linux 构建检查主程序、`CHANGELOG.md` 和必要资源，验证 ELF 架构及动态库
-  解析结果，再通过 Xvfb 运行 30 秒 GUI 冒烟。
+- Linux 构建将随包原生库中的 DWARF 调试信息单独上传到该次构建的 Actions 构件，
+  在独立包里保留调试文件名及其校验值。调试符号的[加载方法](../docs/cookbook/packaging.md#3-linux)
+  适用于相同版本和架构的同一次构建。构建检查主程序、`CHANGELOG.md` 和必要资源，
+  验证 ELF 架构及动态库解析结果。构建流程在 Xvfb 中启动解包后的主程序，使用独立数据目录，
+  等待实例登记为就绪，并核对 HTTP 首页内容与包内 `index.html` 一致。
 - macOS spec 显式收集 pywebview Cocoa 后端依赖和当前 wheel 中存在的
   onnxruntime 动态库，并将主程序与多开管理器放入 `.app/Contents/MacOS`。
   构建任务分别检查多开管理器与主程序 GUI，并通过 `MOWER_DATA_DIR` 将冒烟产生的
@@ -232,7 +235,7 @@ gir typelib，否则 `webui_zip_for_linux.spec` 收集不到 `gi`：
 
 ```bash
 # Debian / Ubuntu
-sudo apt install python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 libgirepository1.0-dev
+sudo apt install python3-gi python3-gi-cairo python3-cairo gir1.2-gtk-3.0 gir1.2-webkit2-4.1 gir1.2-soup-3.0 libgirepository1.0-dev
 ```
 
 如果使用 venv，需要用 `--system-site-packages` 创建以便看到系统 PyGObject，或在
