@@ -27,7 +27,7 @@ def frame(name):
     texts = [Text(**t) for t in json.loads((FIXTURES / f"{name}.json").read_text())]
     screen, quick = classify(texts)
     image = np.zeros((1080, 1920, 3), np.uint8)
-    if name == "left":
+    if name in {"lobby", "left"}:
         label = next(t for t in texts if t.text == "个人模拟")
         image[label.y : label.y + label.height, label.x : label.x + label.width] = 205
         image[label.y : label.y + label.height : 5, label.x : label.x + label.width] = (
@@ -457,3 +457,40 @@ def test_timeout_replay_requires_exact_message_and_button_and_limits_repeat():
     with pytest.raises(model.GarrisonError, match="未识别到按钮"):
         s.play(game, observed)
     s.click.assert_not_called()
+
+
+@pytest.mark.parametrize("saved", [False, True])
+def test_switches_team_lobby_before_choosing_quick_or_resuming(saved):
+    # 取自联合模拟大厅截图的按钮文字及中心位置。
+    team = frame("lobby")
+    team.image[:] = 30
+    team.texts = [
+        Text("个人模拟", 1458, 830, 100, 38),
+        Text("联合模拟", 1719, 830, 100, 38),
+        Text("同盟模拟", 1295, 987, 100, 38),
+        Text("搜寻队友", 1725, 987, 100, 38),
+    ]
+    after_switch = frame("left" if saved else "lobby")
+    frames = iter(
+        [after_switch, frame("prep")]
+        if saved
+        else [after_switch, frame("mode"), frame("info")]
+    )
+    worker = solver.GarrisonSolver(
+        Mock(), Mock(), {"match": {"round": 5} if saved else None}, Mock()
+    )
+
+    def wait(predicate, timeout):
+        next_frame = next(frames)
+        assert predicate(next_frame)
+        return next_frame
+
+    worker.wait = wait
+    worker.click = Mock()
+    worker.start_or_resume(team)
+    points = [call.args[0] for call in worker.click.call_args_list]
+    assert points[:2] == [
+        team.find("个人模拟").center,
+        after_switch.find("断线重连" if saved else "极速模拟").center,
+    ]
+    assert team.find("搜寻队友").center not in points

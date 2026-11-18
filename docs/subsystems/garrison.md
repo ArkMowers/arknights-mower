@@ -1,6 +1,6 @@
 # Garrison Simulation
 
-The long-task editor offers personal quick simulation with three wins per strategy for a gold medal or six for the plated medal. Mower opens the rightmost terminal tab and the activity's open simulation entry. Before reconnecting, Mower checks the personal simulation label and the highlight on its side of the mode selector. An unreadable selection or a highlighted team mode leaves the match pending for manual review. The solver checks for quick simulation before processing the match.
+The long-task editor offers personal quick simulation with three wins per strategy for a gold medal or six for the plated medal. Mower opens the rightmost terminal tab and the activity's open simulation entry. When the team lobby offers matchmaking, Mower switches to personal simulation and waits for its quick simulation or reconnect button. Before reconnecting, Mower checks the personal simulation label and the highlight on its side of the mode selector. An unreadable selection or a highlighted team mode leaves the match pending for manual review. The solver checks for quick simulation before processing the match.
 
 ## Gameplay and device ownership
 
