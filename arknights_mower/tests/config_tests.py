@@ -4,10 +4,12 @@ import tempfile
 import threading
 import unittest
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
 from arknights_mower.utils import config as config_module
+from arknights_mower.utils import workshop_config
 from arknights_mower.utils.config import atomic_write, migrate_app_config_paths
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.device_profile import DeviceProfile
@@ -459,7 +461,11 @@ class TestConfigPersistence(unittest.TestCase):
         written = self.conf_path.read_text(encoding="utf-8")
         self.assertIn("medicine_expire_days", written)
 
-    def test_medicine_use_all_date_round_trips_and_can_be_cleared(self):
+    @patch(
+        "arknights_mower.utils.config.conf.get_server_time",
+        return_value=datetime(2026, 11, 24),
+    )
+    def test_medicine_use_all_date_round_trips_and_can_be_cleared(self, _clock):
         day = "2026-11-24"
         with _patched_conf(self.conf_path, Conf(medicine_use_all_date=day)):
             config_module.save_conf()
@@ -471,6 +477,38 @@ class TestConfigPersistence(unittest.TestCase):
             config_module.save_conf()
             config_module.load_conf()
             self.assertIsNone(config_module.conf.medicine_use_all_date)
+
+    def test_past_medicine_date_is_cleared_at_the_game_day_boundary(self):
+        previous = datetime(2026, 11, 24, 19, 59, 59, tzinfo=timezone.utc)
+        reset = datetime(2026, 11, 24, 20, tzinfo=timezone.utc)
+        day = "2026-11-24"
+        future = "2026-11-25"
+        with patch("arknights_mower.utils.datetime.datetime") as clock:
+            clock.now.side_effect = previous.astimezone
+            conf = Conf(medicine_use_all_date=day, medicine_expire_days=3)
+            with _patched_conf(self.conf_path, conf):
+                config_module.save_conf()
+                before = self.conf_path.read_bytes()
+                self.assertEqual(
+                    workshop_config.read_user_config()["medicine_use_all_date"], day
+                )
+
+                clock.now.side_effect = reset.astimezone
+                data = workshop_config.read_user_config()
+                self.assertIsNone(data["medicine_use_all_date"])
+                self.assertEqual(data["medicine_expire_days"], 3)
+                self.assertEqual(self.conf_path.read_bytes(), before)
+                self.assertEqual(
+                    conf.updated(
+                        {"medicine_use_all_date": future}
+                    ).medicine_use_all_date,
+                    future,
+                )
+
+                config_module.load_conf()
+                self.assertIsNone(config_module.conf.medicine_use_all_date)
+                config_module.save_conf()
+                self.assertNotIn(day.encode(), self.conf_path.read_bytes())
 
     def test_medicine_use_all_date_rejects_invalid_or_noncanonical_values(self):
         for value in ("", "2026-02-29", "20261124", "2026-W48-2"):

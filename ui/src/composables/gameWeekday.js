@@ -1,8 +1,8 @@
-import { onActivated, onDeactivated, onMounted, onScopeDispose, ref } from 'vue'
-import { getGameWeekdayIndex, getNextGameDayStart } from '@/utils/maa_weekly_plan'
+import { computed, onActivated, onDeactivated, onMounted, onScopeDispose, ref } from 'vue'
+import { getGameDate, getGameWeekdayIndex, getNextGameDayStart } from '@/utils/maa_weekly_plan'
 
-export function useGameWeekdayIndex() {
-  const weekday = ref(getGameWeekdayIndex())
+export function useGameDay() {
+  const time = ref(new Date())
   let timer
   const pageWindow = globalThis.window
   const pageDocument = globalThis.document
@@ -10,7 +10,7 @@ export function useGameWeekdayIndex() {
   function refresh() {
     clearTimeout(timer)
     const now = new Date()
-    weekday.value = getGameWeekdayIndex(now)
+    time.value = now
     timer = setTimeout(refresh, getNextGameDayStart(now).getTime() - now.getTime())
   }
 
@@ -35,5 +35,12 @@ export function useGameWeekdayIndex() {
   onActivated(start)
   onDeactivated(stop)
   onScopeDispose(stop)
-  return weekday
+  return {
+    date: computed(() => getGameDate(time.value)),
+    weekdayIndex: computed(() => getGameWeekdayIndex(time.value))
+  }
+}
+
+export function useGameWeekdayIndex() {
+  return useGameDay().weekdayIndex
 }
