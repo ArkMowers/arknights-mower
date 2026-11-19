@@ -149,7 +149,7 @@ describe('embedded guide theme', () => {
     state.colors = ref(palettes.dark)
     const media = { matches: true, addEventListener: vi.fn(), removeEventListener: vi.fn() }
     vi.stubGlobal('window', {
-      location: { origin: 'https://mower.local' },
+      location: new URL('https://mower.local/'),
       matchMedia: vi.fn(() => media)
     })
     scope = effectScope()
@@ -175,12 +175,32 @@ describe('embedded guide theme', () => {
     expect(state.config.refs.theme.value).toBe('system')
   })
 
+  it('sends theme changes to the origin serving the relay guide', () => {
+    state.config = { refs: { theme: ref('light') } }
+    state.colors = ref(palettes.light)
+    const guideUrl = 'https://assets.example/files/guide.html'
+    vi.stubGlobal('window', {
+      location: new URL('https://instance.example/'),
+      __MOWER_PUBLIC_ASSETS__: { '/docs/Mower入门指北.html': guideUrl }
+    })
+    scope = effectScope()
+    const component = scope.run(() => DocPage.setup({}, { expose: vi.fn() }))
+    expect(component.docSrc).toBe(guideUrl + '?theme=light')
+    const frame = { postMessage: vi.fn() }
+    component.guideFrame.value = { contentWindow: frame }
+    component.syncTheme()
+    expect(frame.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ theme: 'light' }),
+      'https://assets.example'
+    )
+  })
+
   it.each(['light', 'dark'])(
     'loads %s and switches without reloading the iframe',
     async (theme) => {
       state.config = { refs: { theme: ref(theme) } }
       state.colors = ref(palettes[theme])
-      vi.stubGlobal('window', { location: { origin: 'https://mower.local' } })
+      vi.stubGlobal('window', { location: new URL('https://mower.local/') })
       scope = effectScope()
       const component = scope.run(() => DocPage.setup({}, { expose: vi.fn() }))
       expect(component.docSrc).toBe(`/docs/Mower入门指北.html?theme=${theme}`)

@@ -20,11 +20,12 @@ const description = computed(
     })[displayName.value] ?? displayName.value
 )
 const isPlaceholder = computed(() => ['Current', 'Free', 'Empty'].includes(displayName.value))
-const avatarSource = computed(() =>
-  displayName.value === 'Empty'
-    ? emptyAvatar
-    : publicAsset(`/avatar/${encodeURIComponent(displayName.value)}.webp`)
-)
+const avatarSource = computed(() => {
+  if (displayName.value === 'Empty') return emptyAvatar
+  const path = `avatar/${encodeURIComponent(displayName.value)}.webp`
+  const base = import.meta.env.BASE_URL === './' ? '/' : import.meta.env.BASE_URL
+  return publicAsset(path, base + path)
+})
 const failedSource = ref('')
 const hasAvatar = computed(() => failedSource.value !== avatarSource.value)
 
