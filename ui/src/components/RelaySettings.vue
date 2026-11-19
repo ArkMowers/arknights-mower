@@ -56,19 +56,31 @@ async function refreshStatus() {
   }
 }
 
+async function toggle(value) {
+  enabled.value = value
+  if (!value) {
+    credential.value = ''
+    password.value = ''
+    error.value = ''
+    if (active) await save()
+  }
+}
+
 async function save() {
   busy.value = true
   error.value = ''
   try {
     const { data } = await axios.post(
       base,
-      {
-        enabled: enabled.value,
-        subdomain: subdomain.value,
-        username: username.value,
-        credential: credential.value,
-        password: password.value
-      },
+      enabled.value
+        ? {
+            enabled: true,
+            subdomain: subdomain.value,
+            username: username.value,
+            credential: credential.value,
+            password: password.value
+          }
+        : { enabled: false },
       { headers: { 'X-Mower-Settings': '1' } }
     )
     if (!disposed) {
@@ -79,7 +91,10 @@ async function save() {
       if (active) timer = setTimeout(refreshStatus, 1000)
     }
   } catch (err) {
-    if (!disposed) error.value = err.response?.data?.message || '中转设置保存失败'
+    if (!disposed) {
+      if (!enabled.value) enabled.value = active
+      error.value = err.response?.data?.message || '中转设置保存失败'
+    }
   } finally {
     busy.value = false
   }
@@ -96,15 +111,17 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card id="mower-relay-settings" title="免费 Mower 中转">
-    <n-space vertical :size="16">
+  <n-space id="mower-relay-settings" vertical :size="16">
+    <n-form-item label="启用中转" label-placement="left" label-width="120" :show-feedback="false">
+      <n-switch :value="enabled" :disabled="!ready || busy" @update:value="toggle" />
+    </n-form-item>
+    <n-alert v-if="error" type="error">{{ error }}</n-alert>
+    <template v-if="enabled">
       <n-text depth="3">
         向管理员领取子域名和中转凭据，在此设置自己的登录用户名和密码。远程访问时，先在浏览器认证弹窗登录，再填写实例
         Token。
       </n-text>
-      <n-alert v-if="error" type="error">{{ error }}</n-alert>
       <n-form :disabled="!ready || busy" label-width="120" label-placement="left">
-        <n-form-item label="启用中转"><n-switch v-model:value="enabled" /></n-form-item>
         <n-form-item label="子域名">
           <n-input v-model:value="subdomain" placeholder="管理员批准的名称" :maxlength="32">
             <template #suffix>.free.mower.work</template>
@@ -134,7 +151,11 @@ onUnmounted(() => {
         </n-form-item>
       </n-form>
       <n-space align="center">
-        <n-button type="primary" :loading="busy" :disabled="!ready" @click="save"
+        <n-button
+          type="primary"
+          :loading="busy"
+          :disabled="!ready || (!credentialSaved && !credential)"
+          @click="save"
           >保存并应用</n-button
         >
         <n-text>{{ status }}</n-text>
@@ -143,6 +164,6 @@ onUnmounted(() => {
       <n-text depth="3"
         >中转连接随 Mower 启动，退出 Mower 后关闭。请在本机导入大文件、安装更新或管理进程。</n-text
       >
-    </n-space>
-  </n-card>
+    </template>
+  </n-space>
 </template>

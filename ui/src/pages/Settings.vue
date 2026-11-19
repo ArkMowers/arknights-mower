@@ -377,15 +377,22 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       <ResourceUpdate v-if="updates_enabled === true" />
       <div v-if="updates_enabled === true" class="settings-card-wide"><MaaUpdates /></div>
       <div class="settings-card-wide"><NetworkSettings /></div>
-      <div
-        v-if="!config_store.manager_owned_device && runtime_platform !== 'android'"
+      <n-card
+        v-if="
+          runtime_platform !== 'android' && (!config_store.manager_owned_device || !isRelayPage())
+        "
+        id="web-access-settings"
         class="settings-card-wide"
+        :title="config_store.manager_owned_device ? '免费 Mower 中转' : '访问端口与 Token'"
       >
-        <WebAccessSettings />
-      </div>
-      <div v-if="runtime_platform !== 'android' && !isRelayPage()" class="settings-card-wide">
-        <RelaySettings />
-      </div>
+        <WebAccessSettings v-if="!config_store.manager_owned_device" />
+        <template v-if="!isRelayPage()">
+          <n-divider v-if="!config_store.manager_owned_device" title-placement="left">
+            免费 Mower 中转
+          </n-divider>
+          <RelaySettings />
+        </template>
+      </n-card>
     </SettingsSection>
     <SettingsSection
       v-if="showExtraSettings"

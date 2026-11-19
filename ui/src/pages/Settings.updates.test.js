@@ -21,6 +21,7 @@ vi.mock('naive-ui', async () => {
       'NAlert',
       'NButton',
       'NCard',
+      'NDivider',
       'NCollapse',
       'NCollapseItem',
       'NForm',
@@ -29,7 +30,17 @@ vi.mock('naive-ui', async () => {
       'NSelect',
       'NSlider',
       'NSwitch'
-    ].map((key) => [key, wrapper])
+    ].map((key) => [
+      key,
+      key === 'NCard'
+        ? {
+            setup:
+              (_, { slots }) =>
+              () =>
+                h('article', slots.default?.())
+          }
+        : wrapper
+    ])
   )
 })
 vi.mock('@/components/ChatBotSetting.vue', () => ({ default: { setup: () => () => '' } }))
@@ -111,6 +122,11 @@ describe('network and update settings', () => {
       const html = await render()
       expect(html.includes('访问端口与 Token')).toBe(visible)
       expect(html.includes('免费 Mower 中转')).toBe(platform !== 'android')
+      if (visible) {
+        const card = html.split('id="web-access-settings"')[1].split('</article>')[0]
+        expect(card).toContain('访问端口与 Token')
+        expect(card).toContain('免费 Mower 中转')
+      }
     }
   )
   it('places MAA updates immediately after Mower resources in an authorized managed instance', async () => {
