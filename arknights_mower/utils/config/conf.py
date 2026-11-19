@@ -219,8 +219,13 @@ class LongTaskWindow(ConfModel):
     end: Annotated[str, Field(pattern=r"^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$")]
 
 
+class WeeklyLongTaskWindow(LongTaskWindow):
+    weekdays: list[Annotated[int, Field(strict=True, ge=0, le=6)]]
+
+
 class LongTaskPart(ConfModel):
     maa_long_task_extra_windows: list[LongTaskWindow] = Field(default_factory=list)
+    maa_long_task_weekly_windows: list[WeeklyLongTaskWindow] | None = None
 
     class GarrisonConf(ConfModel):
         mode: Literal["medals", "matches"] = "medals"

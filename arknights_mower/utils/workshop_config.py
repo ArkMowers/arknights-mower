@@ -198,6 +198,7 @@ def save_user_config(req):
                 "maa_rg_sleep_max",
                 "maa_rg_sleep_min",
                 "maa_long_task_extra_windows",
+                "maa_long_task_weekly_windows",
             )
         )
         if long_windows_changed or previous_maintenance_policy != (

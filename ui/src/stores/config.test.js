@@ -13,6 +13,44 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+it('loads and saves an explicit empty long-task week without restoring daily windows', async () => {
+  pinia = createPinia()
+  setActivePinia(pinia)
+  const loaded = ref(false)
+  const app = createApp({})
+  app.use(pinia)
+  app.provide('loaded', loaded)
+  store = app.runWithContext(() => useConfigStore())
+  for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+  const windows = [{ start: '22:00', end: '2:00', weekdays: [4, 6] }]
+  axios.get.mockResolvedValue({
+    data: {
+      ...store.build_config(),
+      maa_weekly_plan_active: '默认',
+      maa_long_task_weekly_windows: windows
+    }
+  })
+  await store.load_config()
+  expect(store.maa_long_task_weekly_windows).toEqual(windows)
+  axios.patch.mockResolvedValue({ data: {} })
+  loaded.value = true
+  await nextTick()
+  await store.flush_config_saves()
+  store.maa_long_task_weekly_windows = []
+  await vi.waitFor(() => expect(axios.patch).toHaveBeenCalledTimes(1))
+  expect(axios.patch.mock.calls[0][1]).toEqual({ maa_long_task_weekly_windows: [] })
+  loaded.value = false
+  axios.get.mockResolvedValue({
+    data: {
+      ...store.build_config(),
+      maa_weekly_plan_active: '默认',
+      maa_long_task_weekly_windows: []
+    }
+  })
+  await store.load_config()
+  expect(store.maa_long_task_weekly_windows).toEqual([])
+})
+
 describe('workshop config autosave', () => {
   it('saves MAA growth separately from native mastery and crafting', async () => {
     pinia = createPinia()

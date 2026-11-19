@@ -6,6 +6,7 @@ import '@/styles/drag.css'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
 import { useConfigStore } from '@/stores/config'
 import { useGameWeekdayIndex } from '@/composables/gameWeekday'
+import WeeklyPlanDayCell from './WeeklyPlanDayCell.vue'
 import {
   WEEKDAYS,
   buildTableStageOptions,
@@ -252,27 +253,17 @@ async function applyStageOrder() {
                   </span>
                 </div>
               </td>
-              <td
+              <WeeklyPlanDayCell
                 v-for="weekday in WEEKDAYS"
                 :key="`${option.value}-${weekday}`"
-                class="stage-cell"
-                :class="{
-                  selected: isSelected(option.value, weekday),
-                  unavailable: isUnavailable(option.value, weekday)
-                }"
+                :selected="isSelected(option.value, weekday)"
+                :unavailable="isUnavailable(option.value, weekday)"
+                :disabled="!canToggle(option.value, weekday)"
+                :label="`${weekday}${isSelected(option.value, weekday) ? '取消' : '选择'}${option.label}`"
+                @toggle="toggleStage(option.value, weekday)"
               >
-                <button
-                  type="button"
-                  class="stage-cell-button"
-                  :disabled="!canToggle(option.value, weekday)"
-                  :aria-pressed="isSelected(option.value, weekday)"
-                  :aria-label="`${weekday}${isSelected(option.value, weekday) ? '取消' : '选择'}${option.label}`"
-                  @click="toggleStage(option.value, weekday)"
-                >
-                  <span v-if="isSelected(option.value, weekday)">打</span>
-                  <span v-else-if="isUnavailable(option.value, weekday)">—</span>
-                </button>
-              </td>
+                打
+              </WeeklyPlanDayCell>
             </tr>
           </template>
         </draggable>
@@ -430,47 +421,6 @@ th.stage-column {
 @media (prefers-reduced-motion: reduce) {
   .task-table tbody > tr {
     transition-duration: 0ms !important;
-  }
-}
-
-.stage-cell {
-  height: 44px;
-  background: rgba(240, 160, 32, 0.08);
-}
-
-.stage-cell.selected {
-  background: rgba(32, 128, 240, 0.22);
-  color: #096dd9;
-  font-weight: 600;
-}
-
-.stage-cell.unavailable:not(.selected) {
-  background: rgba(128, 128, 128, 0.06);
-  color: rgba(128, 128, 128, 0.45);
-}
-
-.stage-cell-button {
-  width: 100%;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  color: inherit;
-  background: transparent;
-  cursor: pointer;
-  transition-property: transform, background-color;
-  transition-duration: 120ms;
-  transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
-
-  &:active:not(:disabled) {
-    transform: scale(0.96);
-  }
-
-  &:hover:not(:disabled) {
-    background: rgba(32, 128, 240, 0.08);
-  }
-
-  &:disabled {
-    cursor: not-allowed;
   }
 }
 

@@ -6,7 +6,13 @@ import { useConfigStore } from '@/stores/config'
 import { createTaskWorkflow, setTaskEnabled } from '@/task-workflow/model'
 import LongTasks from './LongTasks.vue'
 
-const state = vi.hoisted(() => ({ updateEnabled: null, windows: null, pickers: {} }))
+const state = vi.hoisted(() => ({
+  updateEnabled: null,
+  pickers: {},
+  checks: {},
+  days: {},
+  buttons: {}
+}))
 
 vi.mock('naive-ui', async (original) => {
   const library = await original()
@@ -21,11 +27,18 @@ vi.mock('naive-ui', async (original) => {
     ...Object.fromEntries(
       ['NCard', 'NForm', 'NFormItem', 'NSelect'].map((name) => [name, container])
     ),
-    NDynamicInput: {
+    NCheckbox: {
       inheritAttrs: false,
       setup(_, { attrs, slots }) {
-        state.windows = attrs
-        return () => h(library.NDynamicInput, attrs, slots)
+        state.checks[attrs['aria-label']] = attrs
+        return () => h(library.NCheckbox, attrs, slots)
+      }
+    },
+    NButton: {
+      inheritAttrs: false,
+      setup(_, { attrs, slots }) {
+        state.buttons[attrs['aria-label']] = attrs
+        return () => h(library.NButton, attrs, slots)
       }
     },
     NTimePicker: {
@@ -44,12 +57,29 @@ vi.mock('naive-ui', async (original) => {
   }
 })
 vi.mock('./HelpText.vue', () => ({ default: { render: () => null } }))
+vi.mock('./WeeklyPlanDayCell.vue', async (original) => {
+  const { default: cell } = await original()
+  const { h } = await import('vue')
+  return {
+    default: {
+      inheritAttrs: false,
+      setup(_, { attrs, slots }) {
+        state.days[attrs.label] = attrs
+        return () => h(cell, attrs, slots)
+      }
+    }
+  }
+})
 
 let store
 let pinia
 
 beforeEach(() => {
   state.updateEnabled = null
+  state.pickers = {}
+  state.checks = {}
+  state.days = {}
+  state.buttons = {}
 })
 
 afterEach(() => store?.$dispose())
@@ -100,24 +130,52 @@ it.each([0, 12])('shows the configured level farming limit of %i matches', async
   expect(store.garrison.match_limit).toBe(match_limit)
 })
 
-it('edits daily windows with the shared add and remove controls and keeps the first pair in legacy settings', async () => {
-  const html = await renderLongTasks(true, { maa_rg_sleep_max: '8:00', maa_rg_sleep_min: '12:00' })
+it('shows the former daily windows for all seven days until the first weekly edit', async () => {
+  const html = await renderLongTasks(true, {
+    maa_rg_sleep_max: '8:00',
+    maa_rg_sleep_min: '12:00',
+    maa_long_task_extra_windows: [{ start: '22:00', end: '2:00' }]
+  })
   expect(html).toContain('第1段开始时间')
-  expect(state.windows.min).toBe(1)
-  const first = state.windows.value[0]
-  const second = state.windows['on-create'](1)
-  state.windows['onUpdate:value']([first, second])
-  expect(store.maa_long_task_extra_windows).toEqual([{ start: '8:00', end: '12:00' }])
+  expect(html.indexOf('>周日<')).toBeLessThan(html.indexOf('>周一<'))
+  expect(store.maa_long_task_weekly_windows).toBeNull()
+  expect(state.days['第1段周日'].selected).toBe(true)
+  expect(state.days['第2段周六'].selected).toBe(true)
+  expect(html).toContain('aria-pressed="true" aria-label="第1段周日"')
+  expect(html).toContain('✓')
 
-  const app = createSSRApp(LongTasks)
-  app.use(pinia)
-  app.provide('mobile', ref(false))
-  expect(await renderToString(app)).toContain('第2段停止时间')
-  state.pickers['第2段开始时间']('22:00')
-  state.pickers['第2段停止时间']('2:00')
-  expect(store.maa_rg_sleep_max).toBe('8:00')
-  expect(store.maa_long_task_extra_windows).toEqual([{ start: '22:00', end: '2:00' }])
-  state.windows['onUpdate:value'](store.maa_long_task_extra_windows)
-  expect([store.maa_rg_sleep_max, store.maa_rg_sleep_min]).toEqual(['22:00', '2:00'])
-  expect(store.maa_long_task_extra_windows).toEqual([])
+  state.days['第1段周日'].onToggle()
+  state.pickers['第2段停止时间']('3:00')
+
+  expect(store.maa_long_task_weekly_windows).toEqual([
+    { start: '8:00', end: '12:00', weekdays: [0, 1, 2, 3, 4, 5] },
+    { start: '22:00', end: '3:00', weekdays: [0, 1, 2, 3, 4, 5, 6] }
+  ])
+})
+
+it('allows overlapping selections and adds new rows without enabling time', async () => {
+  await renderLongTasks(true, {
+    maa_long_task_weekly_windows: [
+      { start: '8:00', end: '12:00', weekdays: [0] },
+      { start: '10:00', end: '13:00', weekdays: [] }
+    ]
+  })
+  state.days['第2段周一'].onToggle()
+  expect(store.maa_long_task_weekly_windows.map((row) => row.weekdays)).toEqual([[0], [0]])
+  state.checks['第2段全选']['onUpdate:checked'](true)
+  expect(store.maa_long_task_weekly_windows[1].weekdays).toEqual([0, 1, 2, 3, 4, 5, 6])
+  state.buttons['添加执行时段'].onClick()
+  expect(store.maa_long_task_weekly_windows[2].weekdays).toEqual([])
+  expect(state.buttons['删除第1段'].type).toBe('error')
+  expect(state.buttons['删除第1段'].size).toBe(state.buttons['添加执行时段'].size)
+  expect(state.buttons['删除第1段'].round).toBe(state.buttons['添加执行时段'].round)
+  state.buttons['删除第1段'].onClick()
+  expect(store.maa_long_task_weekly_windows[0]).toMatchObject({ start: '10:00', end: '13:00' })
+})
+
+it('keeps a cleared week empty on render', async () => {
+  const html = await renderLongTasks(true, { maa_long_task_weekly_windows: [] })
+  expect(html).toContain('未选执行时段')
+  expect(html).not.toContain('第1段开始时间')
+  expect(store.maa_long_task_weekly_windows).toEqual([])
 })
