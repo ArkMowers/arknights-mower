@@ -1,3 +1,4 @@
+import hashlib
 import inspect
 import json
 import subprocess
@@ -70,6 +71,56 @@ def test_unset_permissions_hide_maintenance_and_disable_ai_without_writing(manag
     saved = read_conf(reopened)
     assert "updates_enabled" not in saved
     assert "ai_assistant_enabled" not in saved
+
+
+def test_manager_saves_relay_for_one_instance_and_reports_verified_link(
+    manager, tmp_path, monkeypatch
+):
+    manager.add("second", str(tmp_path / "second"))
+    fields = {
+        "enabled": True,
+        "credential": "a" * 48,
+        "username": "trial",
+        "password": "p",
+    }
+    with pytest.raises(ValueError, match="Token"):
+        manager.update_settings(0, {"token": "", "port": None, "relay": fields})
+    manager.update_settings(0, {"token": "a+b", "port": None, "relay": fields})
+    first, second = manager.get_instances()
+    assert first["relay"] == {
+        "enabled": True,
+        "username": "trial",
+        "credential_saved": True,
+        "password_saved": True,
+    }
+    assert not second["relay"]["enabled"]
+    assert not first["extra_settings_visible"]
+    live = record(
+        manager, relay_subdomain="trial", token_hash=hashlib.sha256(b"a+b").hexdigest()
+    )
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [live])
+    assert manager.get_instances()[0]["relay_url"].endswith(
+        "trial.free.mower.work:58000/#token=a%2Bb"
+    )
+    live["relay_subdomain"] = "untrusted.example"
+    assert "relay_url" not in manager.get_instances()[0]
+    with pytest.raises(ValueError, match="运行期间"):
+        manager.update_settings(0, {"token": "", "port": None})
+    monkeypatch.setattr(runtime, "instances", lambda **kwargs: [])
+    manager.update_settings(0, {"token": "", "port": None})
+    assert not manager.get_instances()[0]["relay"]["enabled"]
+
+
+def test_manager_failed_config_write_restores_relay(manager, monkeypatch):
+    def fail(*_):
+        raise OSError("write failed")
+
+    monkeypatch.setattr(manager, "_write_instance_config", fail)
+    with pytest.raises(OSError):
+        manager.update_settings(
+            0, {"token": "local", "port": None, "relay": {"username": "edited"}}
+        )
+    assert not (Path(manager.instances[0]["path"]) / "relay/settings.json").exists()
 
 
 @pytest.mark.parametrize("enabled", [False, True])

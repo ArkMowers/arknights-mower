@@ -12,6 +12,7 @@ import threading
 from contextlib import contextmanager
 from pathlib import Path
 from time import monotonic
+from urllib.parse import urlencode
 from uuid import uuid4
 
 import yaml
@@ -21,6 +22,8 @@ from . import manager_common
 from . import update_runtime as runtime
 from .device_compatibility import omit_empty_mumu_binding_fields
 from .manager_tools import ManagerTools
+from .mower_relay import settings as relay_settings
+from .mower_relay.protocol import public_origin, valid_subdomain
 from .path import get_path
 
 
@@ -96,6 +99,8 @@ def validate_settings(settings, *, partial=False):
         "start_automatically",
         "extra_settings_visible",
     }
+    if not partial:
+        allowed.add("relay")
     if (
         not isinstance(settings, dict)
         or not settings
@@ -296,6 +301,28 @@ class InstanceController(ManagerTools):
                     if instance["path"]:
                         _, _, settings = read_webview(instance["path"])
                         item.update(settings)
+                        relay_path = (
+                            instance_directory(instance["path"]) / "relay/settings.json"
+                        )
+                        item["relay"] = relay_settings.public_settings(relay_path)
+                        if (
+                            item["can_open_browser"]
+                            and len(matches) == 1
+                            and item["relay"]["enabled"]
+                            and item["token"]
+                        ):
+                            peer = matches[0]
+                            subdomain = peer.get("relay_subdomain")
+                            if (
+                                valid_subdomain(subdomain)
+                                and peer.get("token_hash")
+                                == hashlib.sha256(item["token"].encode()).hexdigest()
+                            ):
+                                item["relay_url"] = (
+                                    public_origin(subdomain)
+                                    + "/#"
+                                    + urlencode({"token": item["token"]})
+                                )
                     self._start_settings(instance, records)
                     item["can_start"] = True
                 except (OSError, ValueError, yaml.YAMLError) as error:
@@ -616,6 +643,34 @@ class InstanceController(ManagerTools):
             self._write_settings(instance, settings)
 
     def _write_settings(self, instance, settings):
+        if "relay" not in settings and settings.get("token") != "":
+            return self._write_instance_config(instance, settings)
+        if not instance["path"]:
+            raise ValueError("请先选择实例保存目录")
+        relay_path = instance_directory(instance["path"]) / "relay/settings.json"
+        current = relay_settings.load(relay_path)
+        values = dict(settings)
+        changes = values.pop("relay", {"enabled": False})
+        updated = relay_settings.prepare(
+            current, changes, token_ready=bool(values.get("token"))
+        )
+        if updated == current:
+            return self._write_instance_config(instance, values)
+        original = relay_path.read_bytes() if relay_path.exists() else None
+        self._write_config_bytes(
+            relay_path, json.dumps(updated, ensure_ascii=False).encode()
+        )
+        try:
+            self._write_instance_config(instance, values)
+        except Exception:
+            if original is None:
+                relay_path.unlink()
+            else:
+                self._write_config_bytes(relay_path, original)
+            raise
+        return True
+
+    def _write_instance_config(self, instance, settings):
         if not instance["path"]:
             raise ValueError("请先选择实例保存目录")
         destination, raw = read_instance_config(instance["path"])

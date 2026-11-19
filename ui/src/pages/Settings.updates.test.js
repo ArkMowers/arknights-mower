@@ -121,7 +121,7 @@ describe('network and update settings', () => {
       state.config.runtime_platform = platform
       const html = await render()
       expect(html.includes('访问端口与 Token')).toBe(visible)
-      expect(html.includes('远程访问（中转）')).toBe(platform !== 'android')
+      expect(html.includes('远程访问（中转）')).toBe(visible)
       if (visible) {
         const card = html.split('id="web-access-settings"')[1].split('</article>')[0]
         expect(card).toContain('访问端口与 Token')

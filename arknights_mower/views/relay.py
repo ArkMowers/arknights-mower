@@ -2,6 +2,7 @@
 
 from flask import Blueprint, abort, current_app, request
 
+from arknights_mower.utils import managed_device
 from arknights_mower.utils.mower_relay import settings
 from arknights_mower.utils.web_auth import require_token
 
@@ -21,6 +22,8 @@ def relay_settings():
     if client is None:
         return {"ok": False, "message": "请在桌面实例中设置中转"}, 409
     if request.method == "POST":
+        if managed_device.settings_managed():
+            return {"ok": False, "message": "请在本机多开管理器中配置中转"}, 403
         if request.headers.get("X-Mower-Settings") != "1":
             abort(403)
         origin = request.headers.get("Origin")

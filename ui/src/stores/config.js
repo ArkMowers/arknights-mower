@@ -1,3 +1,4 @@
+import { isRelayPage } from '@/utils/instanceToken'
 import axios from 'axios'
 import { normalizePerformanceMode, performanceProfile } from '@/utils/performanceProfile'
 import { defineStore } from 'pinia'
@@ -200,7 +201,7 @@ export const useConfigStore = defineStore('config', () => {
   const recruit_auto_5 = ref('hand')
   const webview = ref({ scale: 1.0 })
   const runtime_platform = ref('')
-  const manager_owned_device = ref(false)
+  const manager_owned_device = ref(isRelayPage())
   const manager_inherited_settings = ref([])
   const extra_settings_visible = ref(false)
   const shop_collect_enable = ref(true)

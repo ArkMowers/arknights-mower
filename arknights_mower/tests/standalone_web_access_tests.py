@@ -51,3 +51,32 @@ class StandaloneWebAccessTests(unittest.TestCase):
                 )
                 self.assertEqual(response.status_code, 403)
         self.assertEqual(self.path.read_bytes(), before)
+
+    def test_relay_restricts_machine_changes_only_for_this_request(self):
+        remote = {"headers": self.headers, "environ_overrides": {"mower.relay": True}}
+        exposed = self.client.get("/conf", **remote).json
+        self.assertTrue(exposed["manager_owned_device"])
+        self.assertFalse(exposed["extra_settings_visible"])
+        before = self.path.read_bytes()
+        for method in (self.client.post, self.client.patch):
+            for changes in (
+                {"webview": {"token": "different"}},
+                {"webview": {"port": 58123}},
+                {"webview": {"tray": not config.conf.webview.tray}},
+                {"extra_settings_visible": True},
+                {"screenshot_interval": config.conf.screenshot_interval + 1},
+            ):
+                response = method("/conf", json=changes, **remote)
+                self.assertEqual(response.status_code, 403, response.json)
+        self.assertEqual(self.path.read_bytes(), before)
+        self.assertEqual(
+            self.client.post("/db-admin/delete", json={}, **remote).status_code, 403
+        )
+        local = self.client.get("/conf", headers=self.headers).json
+        self.assertFalse(local["manager_owned_device"])
+        self.assertEqual(
+            self.client.patch(
+                "/conf", json={"drone_count_limit": 117}, **remote
+            ).status_code,
+            200,
+        )

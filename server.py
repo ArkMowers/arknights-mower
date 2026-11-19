@@ -1167,9 +1167,9 @@ def device_status():
     from arknights_mower.__main__ import device_control
 
     status = device_control.settings_status()
-    from arknights_mower.utils.managed_device import enabled
+    from arknights_mower.utils.managed_device import settings_managed
 
-    status["manager_owned"] = enabled()
+    status["manager_owned"] = settings_managed()
     status["active"] = status["active"] or bool(
         mower_thread and mower_thread.is_alive()
     )
@@ -1247,7 +1247,7 @@ def device_preflight():
         }, 400
     from arknights_mower.utils import managed_device
 
-    if managed_device.enabled():
+    if managed_device.settings_managed():
         try:
             proposed = config.conf.updated({"device": device})
         except (ValidationError, ValueError) as exc:
@@ -1430,10 +1430,10 @@ def device_boss_key():
     from arknights_mower.utils.device.window import trigger_simulator_boss_key
 
     payload = request.get_json(silent=True) or {}
-    from arknights_mower.utils.managed_device import enabled
+    from arknights_mower.utils.managed_device import settings_managed
 
     if (
-        enabled()
+        settings_managed()
         and payload.get("hotkey", config.conf.device.simulator_hotkey)
         != config.conf.device.simulator_hotkey
     ):
@@ -1474,9 +1474,15 @@ def load_config():
         )
 
         data["runtime_platform"] = "android" if is_android_runtime() else __system__
-        from arknights_mower.utils.managed_device import enabled
+        from arknights_mower.utils.managed_device import (
+            enabled,
+            relay_request,
+            settings_managed,
+        )
 
-        data["manager_owned_device"] = enabled()
+        data["manager_owned_device"] = settings_managed()
+        if relay_request():
+            data["extra_settings_visible"] = False
         if enabled():
             data["manager_inherited_settings"] = sorted(
                 config.manager_inherited_settings
@@ -1504,25 +1510,36 @@ def load_config():
         req.pop("manager_inherited_settings", None)
         from arknights_mower.utils import managed_device
 
-        if managed_device.enabled() and "start_automatically" in req:
+        if managed_device.settings_managed() and "start_automatically" in req:
             if req["start_automatically"] != config.conf.start_automatically:
                 return {
                     "error": "manager_owned_setting",
                     "message": "请在多开管理器中修改启动后自动开始任务设置",
                 }, 403
             req.pop("start_automatically")
-        if managed_device.enabled() and "extra_settings_visible" in req:
-            if req["extra_settings_visible"] != config.conf.extra_settings_visible:
+        if managed_device.settings_managed() and "extra_settings_visible" in req:
+            visible = (
+                config.conf.extra_settings_visible
+                and not managed_device.relay_request()
+            )
+            if req["extra_settings_visible"] != visible:
                 return {
                     "error": "manager_owned_setting",
                     "message": "请在实例退出后通过多开管理器修改更新与维护开关",
                 }, 403
             req.pop("extra_settings_visible")
         protected = managed_device.protected_settings(config.conf)
-        managed_window = isinstance(req.get("webview"), dict) and (
-            {"port", "token"} & req["webview"].keys()
+        window_keys = (
+            ("port", "token", "tray", "scale")
+            if managed_device.relay_request()
+            else ("port", "token")
         )
-        if managed_device.enabled() and (set(req) & set(protected) or managed_window):
+        managed_window = isinstance(req.get("webview"), dict) and any(
+            key in req["webview"] for key in window_keys
+        )
+        if managed_device.settings_managed() and (
+            set(req) & set(protected) or managed_window
+        ):
             try:
                 proposed = config.conf.updated(req)
             except (ValidationError, ValueError) as exc:
@@ -1530,8 +1547,10 @@ def load_config():
             if any(
                 getattr(config.conf, key) != getattr(proposed, key) for key in protected
             ) or (
-                proposed.webview.port != config.conf.webview.port
-                or proposed.webview.token != config.conf.webview.token
+                any(
+                    getattr(proposed.webview, key) != getattr(config.conf.webview, key)
+                    for key in window_keys
+                )
             ):
                 return {
                     "error": "manager_owned_setting",
@@ -1541,8 +1560,8 @@ def load_config():
             for key in protected:
                 req.pop(key, None)
             if managed_window:
-                req["webview"].pop("port", None)
-                req["webview"].pop("token", None)
+                for key in window_keys:
+                    req["webview"].pop(key, None)
         if "updates_enabled" in req:
             if req["updates_enabled"] != config.conf.updates_enabled:
                 return {

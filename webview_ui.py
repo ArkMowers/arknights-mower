@@ -959,6 +959,10 @@ def _run_desktop():
     relay = RelayClient(server.app)
     server.app.extensions["mower_relay"] = relay
     shutdown.own("Mower relay", relay.close, Phase.INTERRUPT)
+    if registration.record.get("managed"):
+        registration.relay_subdomain = lambda: (
+            relay.status()["url"].removeprefix("https://").partition(".")[0]
+        )
     relay.start()
 
     registration.running = lambda: bool(
