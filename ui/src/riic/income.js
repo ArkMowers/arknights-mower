@@ -1,3 +1,4 @@
+import { publicAsset } from '@/utils/publicAsset'
 import receptionTemplate from '../../../arknights_mower/resources/room/meeting.png?url'
 import officeTemplate from '../../../arknights_mower/resources/room/contact.png?url'
 import recycleTemplate from '../../../arknights_mower/resources/room/recycle.png?url'
@@ -256,44 +257,49 @@ export function incomeImageMetrics(summary, days) {
       }
     : null
   const rows = [
-    { key: 'exp', icon: '/product/exp3.png', daily: summary.exp, unit: '经验值' },
+    { key: 'exp', icon: publicAsset('/product/exp3.png'), daily: summary.exp, unit: '经验值' },
     {
       key: 'gold',
-      icon: '/product/gold.png',
+      icon: publicAsset('/product/gold.png'),
       daily: parts ? summary.goldCount : incomeGoldEquivalentLmd(summary),
       unit: parts ? '个' : '龙门币'
     },
     {
       key: 'lmd',
-      icon: '/product/lmd.png',
+      icon: publicAsset('/product/lmd.png'),
       daily: summary.orderLmd,
       unit: '龙门币'
     },
     {
       key: 'lmdCost',
-      icon: '/product/lmd.png',
+      icon: publicAsset('/product/lmd.png'),
       daily: -summary.lmdConsumed,
       unit: '龙门币'
     },
     {
       key: 'orirockCost',
-      icon: '/depot/固源岩.webp',
+      icon: publicAsset('/depot/固源岩.webp'),
       daily: -summary.orirockConsumed,
       unit: '个'
     },
     {
       key: 'deviceCost',
-      icon: '/depot/装置.webp',
+      icon: publicAsset('/depot/装置.webp'),
       daily: -summary.deviceConsumed,
       unit: '个'
     },
     {
       key: 'fragment',
-      icon: '/product/orirock.png',
+      icon: publicAsset('/product/orirock.png'),
       daily: summary.fragments,
       unit: '个'
     },
-    { key: 'orundum', icon: '/product/orundum.png', daily: summary.orundum, unit: '个' },
+    {
+      key: 'orundum',
+      icon: publicAsset('/product/orundum.png'),
+      daily: summary.orundum,
+      unit: '个'
+    },
     { key: 'recycle', icon: recycleTemplate, daily: summary.recycleCount, unit: '次' },
     { key: 'recruitment', icon: officeTemplate, daily: summary.recruitmentCount, unit: '次' },
     { key: 'clue', icon: receptionTemplate, daily: summary.clueCount, unit: '个' }

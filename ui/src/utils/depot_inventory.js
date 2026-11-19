@@ -1,3 +1,4 @@
+import { publicAsset } from '@/utils/publicAsset'
 import { pinyin } from 'pinyin-pro'
 
 /**
@@ -1177,7 +1178,7 @@ export function formatRelative(at, now = Date.now()) {
 /** 图标地址：后端按 depot/ 前缀从资源包提供，缺失时页面走 fallback。 */
 export function itemIconUrl(icon) {
   if (!icon) return ''
-  return `/depot/${encodeURIComponent(icon)}.webp`
+  return publicAsset(`/depot/${encodeURIComponent(icon)}.webp`)
 }
 
 /**

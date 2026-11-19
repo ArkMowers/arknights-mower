@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, ref } from 'vue'
 import emptyAvatar from '@/assets/log/empty-operator.svg?url&no-inline'
 
@@ -9,7 +10,6 @@ const props = defineProps({
   size: { type: Number, default: 24 }
 })
 
-const resourceBase = import.meta.env.BASE_URL
 const displayName = computed(() => (!props.name || props.name === '_' ? 'Empty' : props.name))
 const description = computed(
   () =>
@@ -23,7 +23,7 @@ const isPlaceholder = computed(() => ['Current', 'Free', 'Empty'].includes(displ
 const avatarSource = computed(() =>
   displayName.value === 'Empty'
     ? emptyAvatar
-    : `${resourceBase}avatar/${encodeURIComponent(displayName.value)}.webp`
+    : publicAsset(`/avatar/${encodeURIComponent(displayName.value)}.webp`)
 )
 const failedSource = ref('')
 const hasAvatar = computed(() => failedSource.value !== avatarSource.value)

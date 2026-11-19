@@ -27,7 +27,12 @@
       @mousedown.left="onDragStart"
       @dblclick.stop="onTitlebarDoubleClick"
     >
-      <img class="window-titlebar__brand-mark" :src="'/favicon.ico'" alt="" draggable="false" />
+      <img
+        class="window-titlebar__brand-mark"
+        :src="publicAsset('/favicon.ico')"
+        alt=""
+        draggable="false"
+      />
       <HalloweenDecor v-if="halloweenActive" kind="hat" />
     </div>
     <button
@@ -130,6 +135,7 @@
 </template>
 
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { onBeforeUnmount } from 'vue'
 import AppMenuBar from './AppMenuBar.vue'
 import HalloweenDecor from './HalloweenDecor.vue'

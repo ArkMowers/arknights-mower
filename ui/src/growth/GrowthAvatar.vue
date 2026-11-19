@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, ref, watch } from 'vue'
 
 const props = defineProps({
@@ -16,9 +17,11 @@ watch(
     failed.value = false
   }
 )
-const fallback = '/avatar/阿米娅.webp'
+const fallback = publicAsset('/avatar/阿米娅.webp')
 const src = computed(() =>
-  failed.value || !props.name ? fallback : '/avatar/' + encodeURIComponent(props.name) + '.webp'
+  failed.value || !props.name
+    ? fallback
+    : publicAsset('/avatar/' + encodeURIComponent(props.name) + '.webp')
 )
 const px = computed(() => (typeof props.size === 'number' ? props.size + 'px' : props.size))
 const rarityClass = computed(() => (props.rarity ? 'growth-avatar--rarity-' + props.rarity : ''))

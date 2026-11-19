@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
@@ -191,7 +192,7 @@ async function restart_queue() {
             >
             <n-flex align="center">
               <span>关卡</span>
-              <help-text><n-image src="/help/sss-type.png" /></help-text>
+              <help-text><n-image :src="publicAsset('/help/sss-type.png')" /></help-text>
               <n-radio-group v-model:value="item.type">
                 <n-space
                   ><n-radio v-for="value in 2" :key="value" :value="value">{{

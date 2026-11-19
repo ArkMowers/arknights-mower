@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { resourceVersionBadge, resourceVersionHint } from '@/utils/versionBadges'
 import SoftwareVersionBadge from '@/components/SoftwareVersionBadge.vue'
@@ -84,7 +85,7 @@ onUnmounted(() => {
     <div class="sidebar-brand-row">
       <div class="sidebar-brand-home">
         <slot name="home">
-          <img v-if="showLogo" :src="'/favicon.ico'" alt="" width="28" height="28" />
+          <img v-if="showLogo" :src="publicAsset('/favicon.ico')" alt="" width="28" height="28" />
           <span class="sidebar-brand-name" :aria-hidden="collapsed">
             Mower
             <HalloweenDecor v-if="halloweenActive && !collapsed" kind="wordmark" />

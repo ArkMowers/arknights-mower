@@ -15,7 +15,7 @@
 			applyTheme();
 			systemTheme.addEventListener('change', applyTheme);
 			window.addEventListener('message', (event) => {
-				if (event.source !== window.parent || event.origin !== window.location.origin
+				if (event.source !== window.parent || (event.origin !== window.location.origin && !/^https:\/\/[a-z0-9-]+\.free\.mower\.work:58000$/.test(event.origin))
 					|| event.data?.type !== 'mower-doc-theme'
 					|| !['light', 'dark'].includes(event.data.theme)) return;
 				explicitTheme = event.data.theme;

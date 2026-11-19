@@ -2,6 +2,15 @@ import fs from 'fs'
 import path from 'path'
 import zlib from 'zlib'
 
+// A desktop user can open a nested history route directly.
+if (fs.existsSync('dist/index.html')) {
+  const index = fs.readFileSync('dist/index.html', 'utf8')
+  fs.writeFileSync(
+    'dist/index.html',
+    index.replaceAll('="./assets/', '="/assets/').replace('="./favicon.ico"', '="/favicon.ico"')
+  )
+}
+
 const sourceFile = 'Mower入门指北.html'
 const destDir = 'dist/docs'
 

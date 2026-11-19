@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 defineOptions({ name: 'CreditSettings' })
 const props = defineProps({
   task: { type: String, default: 'all' },
@@ -51,7 +52,10 @@ function render_tag({ option, handleClose }) {
         handleClose()
       }
     },
-    { default: () => option.label, avatar: () => h(NAvatar, { src: `/shop/${option.label}.png` }) }
+    {
+      default: () => option.label,
+      avatar: () => h(NAvatar, { src: publicAsset(`/shop/${option.label}.png`) })
+    }
   )
 }
 
@@ -59,7 +63,7 @@ function render_label(option) {
   return h(
     'div',
     { style: { display: 'flex', 'align-items': 'center', gap: '6px', padding: '2px 0' } },
-    [h(NAvatar, { src: `/shop/${option.label}.png` }), option.label]
+    [h(NAvatar, { src: publicAsset(`/shop/${option.label}.png`) }), option.label]
   )
 }
 

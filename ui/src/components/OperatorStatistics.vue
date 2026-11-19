@@ -179,7 +179,7 @@
             <span class="stat-podium__rank gp-num">{{ String(index + 1).padStart(2, '0') }}</span>
             <img
               class="stat-podium__avatar"
-              :src="'/avatar/' + encodeURIComponent(row.name) + '.webp'"
+              :src="publicAsset('/avatar/' + encodeURIComponent(row.name) + '.webp')"
               :alt="row.name"
               loading="lazy"
               @error="(event) => (event.target.style.display = 'none')"
@@ -221,6 +221,7 @@
 </template>
 
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, h, ref } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import VChart from 'vue-echarts'
@@ -349,7 +350,10 @@ const rankingColumns = [
     key: 'name',
     minWidth: 160,
     render: (row) =>
-      assetRow(assetIcon('/avatar/' + encodeURIComponent(row.name) + '.webp', 'avatar'), row.name)
+      assetRow(
+        assetIcon(publicAsset('/avatar/' + encodeURIComponent(row.name) + '.webp'), 'avatar'),
+        row.name
+      )
   },
   { title: '星级', key: 'rarity', width: 65 },
   { title: '等效理智', key: 'sanity', align: 'right', render: (row) => `≈ ${format(row.sanity)}` },

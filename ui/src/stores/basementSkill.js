@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { isRelayPage } from '@/utils/instanceToken'
 import axios from 'axios'
 import skillBundled from '../../../arknights_mower/data/building_skill.json'
 import bufferBundled from '@/pages/basement_skill/buffer.json'
@@ -27,7 +28,7 @@ function loadOwnedOperators() {
 
 export function useBasementSkill() {
   const load = async () => {
-    if (loaded) return
+    if (loaded || isRelayPage()) return
     try {
       const [sk, bf] = await Promise.all([
         axios.get(`${import.meta.env.VITE_HTTP_URL}/basement_skill/skill.json`),

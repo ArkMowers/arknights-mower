@@ -1,3 +1,4 @@
+import { publicAsset } from '@/utils/publicAsset'
 export const professionMap = {
   WARRIOR: '近卫',
   SNIPER: '狙击',
@@ -58,7 +59,7 @@ export function gradeLabel(rarity) {
 export function materialIcon(material) {
   if (!material) return ''
   const name = material.id === 'growth_exp' ? 'EXP' : material.name
-  return '/depot/' + encodeURIComponent(name) + '.webp'
+  return publicAsset('/depot/' + encodeURIComponent(name) + '.webp')
 }
 
 export function skillSummaryLabel(operator, recommendation) {

@@ -824,13 +824,17 @@ jobs:
           pattern: arknights-mower_*
           merge-multiple: true
 
-      - name: Publish the frontend from the validated release package
+      - name: Publish the validated release frontend to R2
         env:
-          GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ vars.R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
         run: |
           unzip -q "release-assets/arknights-mower_${RELEASE_VERSION}_android_arm64.zip" 'mower/ui/dist/*' -d "$RUNNER_TEMP/release-ui"
-          bash scripts/publish_relay_ui.sh "$RUNNER_TEMP/release-ui/mower/ui/dist"
+          python -m pip install 'boto3>=1.36,<2'
+          python scripts/publish_relay_ui.py "$RUNNER_TEMP/release-ui/mower/ui/dist"
 
       - name: Link Android APK downloads
         run: python scripts/sync_android_release.py --body release-metadata/body.md
@@ -852,14 +856,6 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           draft: false
           prerelease: ${{ needs.prepare.outputs.prerelease == 'true' }}
-
-      - name: 更新正式版前端预下载版本
-        if: needs.prepare.outputs.prerelease == 'false'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          jq '{build}' "$RUNNER_TEMP/release-ui/mower/ui/dist/relay-ui.json" > "$RUNNER_TEMP/channel-stable.json"
-          gh release upload relay-ui "$RUNNER_TEMP/channel-stable.json" --clobber
 
       - name: Request MowerRelease OTA packaging
         continue-on-error: true

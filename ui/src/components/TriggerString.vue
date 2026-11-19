@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 const props = defineProps(['data'])
 const emit = defineEmits(['update'])
 
@@ -249,7 +250,7 @@ function render_inventory_option(option) {
     },
     [
       h(NAvatar, {
-        src: `/depot/${option.icon}.webp`,
+        src: publicAsset(`/depot/${option.icon}.webp`),
         round: true,
         size: 'small',
         objectFit: 'contain'

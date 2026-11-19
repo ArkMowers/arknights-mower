@@ -55,6 +55,7 @@ function mowerChangelog() {
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => ({
+  base: command === 'build' && mode === 'production' ? './' : '/',
   define:
     mode === 'mock-preview'
       ? { 'import.meta.env.VITE_HTTP_URL': JSON.stringify('http://mower-preview.invalid') }

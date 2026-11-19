@@ -1,8 +1,8 @@
+import { publicAsset } from '@/utils/publicAsset'
 import droneIcon from '@/assets/log/drone.png?url&no-inline'
 import { BASE_PRODUCT_COLORS, ORDER_COLORS } from './baseReport.js'
 
-const resourceBase = import.meta.env.BASE_URL
-const icon = (name) => `${resourceBase}depot/${encodeURIComponent(name)}.webp`
+const icon = (name) => publicAsset(`/depot/${encodeURIComponent(name)}.webp`)
 const product = (text, item, key) => ({
   text,
   icon: icon(item),
