@@ -1,29 +1,17 @@
-name: 发布中转前端
+name: 通知 MowerRelease 同步开发版界面
 on:
   push:
     branches: [alpha, main]
   workflow_dispatch:
-permissions:
-  contents: read
+permissions: {}
 jobs:
-  publish:
+  notify:
     if: github.repository == 'ArkMowers/arknights-mower'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: ui/package-lock.json
-      - run: npm ci && npm run build
-        working-directory: ui
-      - name: 发布匹配版本到 R2
+      - name: 通知发布仓库同步本次提交
         env:
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ vars.R2_BUCKET }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          GH_TOKEN: ${{ secrets.MOWER_RELEASE_TOKEN }}
         run: |
-          python -m pip install 'boto3>=1.36,<2'
-          python scripts/publish_relay_ui.py ui/dist
+          gh api --method POST repos/ArkMowers/MowerRelease/dispatches \
+            -f event_type=mower_frontend_revision -f "client_payload[revision]=$GITHUB_SHA"

@@ -53,22 +53,13 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("alpha", workflow["on"]["push"]["branches"])
         self.assertNotIn("concurrency", workflow)
         # A shared branch group would discard intermediate pending builds.
-        self.assertNotIn("concurrency", workflow["jobs"]["publish"])
+        self.assertNotIn("concurrency", workflow["jobs"]["notify"])
 
-    def test_prepare_passes_r2_credentials_to_frontend_publisher(self):
-        caller = load_workflow(PREPARE_WORKFLOW_PATH)["jobs"]["build-release"]
-        declared = self.workflow["on"]["workflow_call"]["secrets"]
-        publish = find_step(
-            self.jobs["release"], "Publish the validated release frontend to R2"
-        )
-        for key, env in (
-            ("R2_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID"),
-            ("R2_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY"),
-        ):
-            expression = "${{ secrets." + key + " }}"
-            self.assertEqual(caller["secrets"][key], expression)
-            self.assertTrue(declared[key]["required"])
-            self.assertEqual(publish["env"][env], expression)
+        notify = workflow["jobs"]["notify"]["steps"][0]
+        self.assertIn("repos/ArkMowers/MowerRelease/dispatches", notify["run"])
+        self.assertIn("client_payload[revision]=$GITHUB_SHA", notify["run"])
+        for owner in (workflow, self.workflow, load_workflow(PREPARE_WORKFLOW_PATH)):
+            self.assertNotIn("R2_SECRET_ACCESS_KEY", str(owner))
 
     def test_workflow_name_covers_release_types(self):
         self.assertEqual(self.workflow["name"], "Release & Prerelease")

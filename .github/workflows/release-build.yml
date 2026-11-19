@@ -41,12 +41,6 @@ on:
         type: string
         required: true
     secrets:
-      R2_ACCESS_KEY_ID:
-        description: R2 前端发布凭据的 Access Key ID
-        required: true
-      R2_SECRET_ACCESS_KEY:
-        description: R2 前端发布凭据的 Secret Access Key
-        required: true
       MOWER_RELEASE_TOKEN:
         description: 用于触发 MowerRelease 打包的细粒度令牌
         required: false
@@ -829,18 +823,6 @@ jobs:
           path: release-assets
           pattern: arknights-mower_*
           merge-multiple: true
-
-      - name: Publish the validated release frontend to R2
-        env:
-          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
-          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
-          R2_BUCKET: ${{ vars.R2_BUCKET }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-        run: |
-          unzip -q "release-assets/arknights-mower_${RELEASE_VERSION}_android_arm64.zip" 'mower/ui/dist/*' -d "$RUNNER_TEMP/release-ui"
-          python -m pip install 'boto3>=1.36,<2'
-          python scripts/publish_relay_ui.py "$RUNNER_TEMP/release-ui/mower/ui/dist"
 
       - name: Link Android APK downloads
         run: python scripts/sync_android_release.py --body release-metadata/body.md
