@@ -339,6 +339,37 @@ def test_squad_intro_can_outlast_unknown_screen_timeout(monkeypatch, interrupted
     game.pick_squad.assert_called_once()
 
 
+@pytest.mark.parametrize("outcome", ["settles", "deadline", "timeout"])
+def test_battle_loading_waits_for_confirmed_settlement(monkeypatch, outcome):
+    loading = Frame(None, [], "unknown", False)
+    battle = Frame(None, [], "battle", True)
+    result = Frame(None, [Text("返回主页", 0, 0, 80, 40)], "result", False)
+    worker = solver.GarrisonSolver(
+        Mock(), Mock(), {"match": {"phase": "active"}}, Mock(), match_limit=1
+    )
+    worker._quick_confirmed = True
+    replay_unchanged_lobby(monkeypatch, worker, loading)
+    worker._end = 10 if outcome == "deadline" else 100
+    worker.capture.side_effect = lambda: (
+        result if outcome == "settles" and solver.time.monotonic() >= 24 else loading
+    )
+    archived = Mock()
+    monkeypatch.setattr(solver, "save_screenshot_frame", archived)
+    if outcome == "settles":
+        worker.play(Mock(), battle)
+        archived.assert_called_once_with(result.image, "garrison_result")
+        worker.device.tap.assert_called_once_with(result.find("返回主页").center)
+        assert worker.progress["matches_played"] == 1
+    else:
+        with pytest.raises(
+            solver.GarrisonYield if outcome == "deadline" else model.GarrisonError
+        ):
+            worker.play(Mock(), battle)
+        assert worker.progress == {"match": {"phase": "active"}}
+        archived.assert_not_called()
+        worker.device.tap.assert_not_called()
+
+
 def test_real_deadline_preempts_before_input(monkeypatch):
     now = datetime.now()
     clock = Mock()
