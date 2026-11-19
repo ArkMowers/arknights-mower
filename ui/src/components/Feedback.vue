@@ -1,9 +1,10 @@
 <script setup>
 defineOptions({ name: 'MowerFeedback' })
 
-import { inject, ref, computed } from 'vue'
+import { ref, computed } from 'vue'
 import axios from 'axios'
-const show = inject('show_feedback')
+const show = defineModel('show', { type: Boolean })
+const checkboxRowStyle = { display: 'flex', alignItems: 'center', gap: '8px' }
 
 const feedbackData = ref({
   acknowledged1: false,
@@ -154,17 +155,17 @@ function copy_descrioption() {
           当前配置和代码不代表故障时的历史状态；缺失和截断情况会写入附件清单。
         </n-text>
       </n-space>
-      <n-form-item path="acknowledged1" class="checkbox-wrapper">
+      <n-form-item path="acknowledged1" :style="checkboxRowStyle">
         <n-checkbox v-model:checked="feedbackData.acknowledged1">
           我已在 Mower 设置 → 软件更新中检查当前版本，并查看相关更新说明
         </n-checkbox>
       </n-form-item>
-      <n-form-item path="acknowledged2" class="checkbox-wrapper">
+      <n-form-item path="acknowledged2" :style="checkboxRowStyle">
         <n-checkbox v-model:checked="feedbackData.acknowledged2">
           我已查看反馈表和相关讨论，核对是否已有相同问题
         </n-checkbox>
       </n-form-item>
-      <n-form-item path="acknowledged3" class="checkbox-wrapper">
+      <n-form-item path="acknowledged3" :style="checkboxRowStyle">
         <n-checkbox v-model:checked="feedbackData.acknowledged3">
           我会提供版本、实际现象、期望行为和必要日志，并去除敏感信息
         </n-checkbox>
@@ -174,7 +175,7 @@ function copy_descrioption() {
       </n-form-item>
 
       <template v-if="showTimeFields">
-        <div class="time-row">
+        <div style="display: flex; gap: 16px; align-items: center">
           <n-form-item label="开始时间" path="startTime" v-model:show="showTimeFields">
             <n-date-picker
               v-model:value="feedbackData.startTime"
@@ -204,7 +205,7 @@ function copy_descrioption() {
       </n-form-item>
 
       <!-- 操作按钮 -->
-      <div class="button_row">
+      <div style="margin-top: 8px">
         <n-button type="warning" @click="submitFeedback">提交</n-button>
         <n-button @click="copy_descrioption">复制反馈内容</n-button>
         <n-button @click="reset">重置</n-button>
@@ -212,26 +213,3 @@ function copy_descrioption() {
     </n-form>
   </n-modal>
 </template>
-
-<style scoped lang="scss">
-.button_row {
-  margin-top: 8px;
-}
-
-.checkbox-wrapper {
-  display: flex;
-  /* 让复选框与内容水平对齐 */
-  align-items: center;
-  /* 垂直对齐 */
-  gap: 8px;
-  /* 控制复选框与文字的间距 */
-}
-
-.time-row {
-  display: flex;
-  /* 横向排列 */
-  gap: 16px;
-  /* 设置开始和结束时间之间的间距 */
-  align-items: center;
-}
-</style>

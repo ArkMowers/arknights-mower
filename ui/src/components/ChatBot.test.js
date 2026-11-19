@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, reactive, ref } from 'vue'
+import { effectScope, nextTick, reactive } from 'vue'
 import ChatBot from './ChatBot.vue'
 
 const state = vi.hoisted(() => ({
@@ -52,7 +52,7 @@ async function flush() {
 }
 
 beforeEach(async () => {
-  state.feedback = ref(false)
+  state.feedback = vi.fn()
   state.notice = { success: vi.fn(), error: vi.fn(), warning: vi.fn() }
   state.dialog = { warning: vi.fn() }
   state.mower = reactive({ ai_assistant_enabled: true })
@@ -579,9 +579,8 @@ describe('AI chat interactions', () => {
     const reply = { ...component.chatHistory.value.at(-1) }
     for (let attempt = 0; attempt < 2; attempt++) {
       component.openFeedback()
-      expect(state.feedback.value).toBe(true)
+      expect(state.feedback).toHaveBeenCalledTimes(attempt + 1)
       expect(emit).toHaveBeenCalledWith('update:show', false)
-      state.feedback.value = false
       props.show = true
     }
     expect(component.chatHistory.value.at(-1)).toEqual(reply)

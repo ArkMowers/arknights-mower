@@ -1072,7 +1072,7 @@ describe('desktop page startup', () => {
   it('opens shared help actions without changing task execution', async () => {
     const component = await mount()
     const requests = state.client.get.mock.calls.length
-    component.openHelp('feedback')
+    await component.openHelp('feedback')
     expect(component.showFeedback.value).toBe(true)
     component.openHelp('documentation')
     expect(state.router.push).toHaveBeenCalledWith({ name: 'doc' })

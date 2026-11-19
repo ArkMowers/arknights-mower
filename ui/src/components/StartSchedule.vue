@@ -1,13 +1,20 @@
 <script setup>
-import { computed, defineAsyncComponent, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import AlarmOutline from '@vicons/ionicons5/es/AlarmOutline'
 import PlayIcon from '@vicons/ionicons5/es/PlayOutline'
 import { useMowerStore } from '@/stores/mower'
 import { useHalloweenSeason } from '@/composables/halloween'
+import { useLazyForm } from '@/composables/lazyForm'
+import FormLoadNotice from './FormLoadNotice.vue'
 
-const ScheduledStartDialog = defineAsyncComponent(() => import('./ScheduledStartDialog.vue'))
+const {
+  component: ScheduledStartDialog,
+  show: showModal,
+  failed: scheduleLoadFailed,
+  open: openModal
+} = useLazyForm(() => import('./ScheduledStartDialog.vue'))
 const halloweenActive = useHalloweenSeason()
 const halloweenButtonTheme = computed(() =>
   halloweenActive.value
@@ -43,8 +50,6 @@ const axios = inject('axios')
 const message = useMessage()
 const { scheduled_start_at } = storeToRefs(useMowerStore())
 const now = ref(Date.now())
-const showModal = ref(false)
-const dialogMounted = ref(false)
 const busy = ref(false)
 let clock
 
@@ -71,11 +76,6 @@ const scheduledOptions = [
   { label: '取消定时启动', key: 'cancel' },
   { label: '立即开始执行', key: 'start' }
 ]
-
-function openModal() {
-  dialogMounted.value = true
-  showModal.value = true
-}
 
 async function schedule(delaySeconds) {
   if (busy.value || props.waiting) return
@@ -115,7 +115,7 @@ async function cancel() {
 }
 
 function select(key) {
-  if (key === 'custom') openModal()
+  if (key === 'custom') return openModal()
   else if (key === 'cancel') cancel()
   else if (key === 'start') props.start('2')
   else props.start(key)
@@ -162,13 +162,15 @@ function select(key) {
       </n-button>
     </drop-down>
   </n-config-provider>
-  <ScheduledStartDialog
-    v-if="dialogMounted"
+  <component
+    :is="ScheduledStartDialog"
+    v-if="ScheduledStartDialog"
     v-model:show="showModal"
     :scheduled-start-at="scheduled_start_at"
     :busy="busy"
     @schedule="schedule"
   />
+  <FormLoadNotice :show="scheduleLoadFailed" title="定时启动表单加载失败" @retry="openModal" />
 </template>
 
 <style scoped>

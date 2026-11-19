@@ -34,8 +34,8 @@ const notice = useMessage()
 const dialog = useDialog()
 const mower = useMowerStore()
 const axios = inject('axios')
-const showFeedback = inject('show_feedback', null)
-const feedbackAvailable = showFeedback !== null
+const requestFeedback = inject('open_feedback', null)
+const feedbackAvailable = requestFeedback !== null
 const md = markdownit({ html: false, breaks: true })
 const visibleContent = (content) => content.replace(/<!--MOWER_MISS_STATE:[\s\S]*?-->/g, '')
 const renderMessage = (content) => md.render(visibleContent(content))
@@ -926,8 +926,8 @@ async function copyMessage(msg) {
   }
 }
 function openFeedback() {
-  if (!showFeedback) return
-  showFeedback.value = true
+  if (!requestFeedback) return
+  void requestFeedback()
   show.value = false
 }
 function openSettings() {
@@ -1222,7 +1222,8 @@ onBeforeUnmount(() => {
             :disabled="historyOptionsDisabled"
             @click="selectConversation(item.id)"
           >
-            <strong>{{ item.title }}</strong><time>{{ historyTime(item.updated) }}</time>
+            <strong>{{ item.title }}</strong
+            ><time>{{ historyTime(item.updated) }}</time>
           </button>
           <n-popconfirm
             :disabled="historyOptionsDisabled"

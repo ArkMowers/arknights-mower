@@ -185,7 +185,12 @@
                     :style="mowerCssVariables"
                     @close="leaveSettings"
                   />
-                  <Feedback v-if="feedbackMounted" />
+                  <component :is="Feedback" v-if="Feedback" v-model:show="showFeedback" />
+                  <FormLoadNotice
+                    :show="feedbackLoadFailed"
+                    title="反馈表单加载失败"
+                    @retry="openFeedback"
+                  />
                   <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
                   <n-modal
                     :show="showUpdateNoticeModal"
@@ -304,6 +309,7 @@ import SettingsDialog from '@/components/SettingsDialog.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
 import ConfigSaveNotice from '@/components/ConfigSaveNotice.vue'
+import FormLoadNotice from '@/components/FormLoadNotice.vue'
 import MobileTabBar from '@/components/MobileTabBar.vue'
 import WindowTitlebar from '@/components/WindowTitlebar.vue'
 import AppMenuBar from '@/components/AppMenuBar.vue'
@@ -314,6 +320,7 @@ import SidebarUpdateChecks from '@/components/SidebarUpdateChecks.vue'
 import SidebarEditor from '@/components/SidebarEditor.vue'
 import RunningLogLayoutDialog from '@/components/RunningLogLayoutDialog.vue'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
+import { useLazyForm } from '@/composables/lazyForm'
 import { interfaceZoomShortcuts, useInterfaceZoom } from '@/composables/interfaceZoom'
 import { logViewMenuKey } from '@/stores/logWorkspace'
 import { useResolvedTheme } from '@/composables/theme'
@@ -353,7 +360,6 @@ import {
 import { installModalDragging } from '@/utils/modal-drag.js'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
-const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
 const windowShell = createWindowShellAdapter({
   onCloseRequested: () => handleWindowControl('close')
 })
@@ -381,13 +387,16 @@ provide(
 
 let disposeModalDrag = null
 
-const showFeedback = ref(false)
-const feedbackMounted = ref(false)
-provide('show_feedback', showFeedback)
-watch(showFeedback, () => (feedbackMounted.value = true), { once: true })
+const {
+  component: Feedback,
+  show: showFeedback,
+  failed: feedbackLoadFailed,
+  open: openFeedback
+} = useLazyForm(() => import('@/components/Feedback.vue'))
+provide('open_feedback', openFeedback)
 const helpSection = ref('')
 function openHelp(action) {
-  if (action === 'feedback') showFeedback.value = true
+  if (action === 'feedback') return openFeedback()
   else if (action === 'documentation') void router.push({ name: 'doc' })
   else if (action === 'about' || action === 'changelog') helpSection.value = action
 }
