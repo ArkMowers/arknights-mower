@@ -444,16 +444,23 @@ def test_shop_route_rejects_unauthenticated_resource_read(monkeypatch, token, me
     read.assert_not_called()
 
 
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
 def test_authorized_shop_route_reads_selected_resources(
-    monkeypatch, navigation, manager
+    monkeypatch, navigation, manager, method
 ):
     import server
 
+    entry = {**ENTRY, "token_icon_ids": ["rerun_currency_icon"]}
+    navigation.write_text(json.dumps([entry]))
     monkeypatch.setattr(server.app, "token", "test-shop-token", raising=False)
-    response = server.app.test_client().get(
-        "/maa-event-shop", headers={"token": "test-shop-token"}
+    response = server.app.test_client().open(
+        "/maa-event-shop", method=method, headers={"token": "test-shop-token"}
     )
-    assert response.get_json() == {"shops": [ENTRY]}
+    assert response.status_code == 200
+    if method == "GET":
+        assert response.get_json() == {"shops": [entry]}
+    else:
+        assert response.data == b""
 
 
 @pytest.mark.parametrize("title,ready", [("关闭时间", True), ("活动首页", False)])

@@ -103,6 +103,9 @@ class ShopNavigation(BaseModel):
     token_ids: list[Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$")]] = Field(
         default_factory=list, max_length=16
     )
+    token_icon_ids: list[Annotated[str, Field(pattern=r"^[A-Za-z0-9_]+$")]] = Field(
+        default_factory=list, max_length=16
+    )
 
     @model_validator(mode="after")
     def validate_window(self):

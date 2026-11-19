@@ -65,9 +65,66 @@ def test_current_ss_contains_navigation_metadata_and_no_coordinates():
     assert shop["reward_end_ts"] == REWARD_END
 
 
-@pytest.mark.parametrize("now", [START - 1, END, REWARD_END - 1])
+@pytest.mark.parametrize("now", [END, REWARD_END - 1])
 def test_no_current_ss_after_battle_period_even_if_shop_rewards_remain(now):
     assert generate(now=now) == []
+
+
+def test_preloaded_rerun_switches_at_battle_start(tmp_path, monkeypatch):
+    activity, zones, stages = deepcopy((ACTIVITY, ZONES, STAGES))
+    rerun_start = END + 1
+    activity["basicInfo"]["act46sre"] = {
+        "name": "雪山降临1101·复刻",
+        "templateShopId": "shop_act46sre",
+        "hasStage": True,
+        "startTime": rerun_start,
+        "endTime": rerun_start + 100,
+        "rewardEndTime": rerun_start + 200,
+    }
+    token = "act46side_token_detector_rep_1"
+    icon = "act46side_token_detector"
+    for index, (code, title) in enumerate(
+        [("OS-1", "圣巡之旅"), ("OS-EX-1", "变革之路"), ("OS-S-1", "喀兰之心")], 1
+    ):
+        zone = f"act46sre_zone{index}"
+        activity["zoneToActivity"][zone] = "act46sre"
+        zones[zone] = {"zoneNameSecond": title}
+        stages[code] = {
+            "code": code,
+            "zoneId": zone,
+            "stageDropInfo": {
+                "displayDetailRewards": [{"type": "ACTIVITY_ITEM", "id": token}]
+            },
+        }
+
+    output = tmp_path / "event_shop.json"
+    kwargs = {"zones": zones, "stages": stages, "items": {token: {"iconId": icon}}}
+    shops = generation.write_event_shop_data(activity, output, now=START + 1, **kwargs)
+    assert [shop["activity_id"] for shop in shops] == ["act55side", "act46sre"]
+    assert shops[1]["token_ids"] == [token]
+    assert shops[1]["token_icon_ids"] == [icon]
+    assert shops[1]["chapters"] == {
+        "normal": "圣巡之旅",
+        "ex": "变革之路",
+        "s": "喀兰之心",
+    }
+
+    monkeypatch.setattr(runtime, "resource_pkg_path", lambda _: output)
+    monkeypatch.setattr(runtime, "weekly_plan_uses_activity", lambda *_: True)
+    assert runtime.select_shop(object(), START - 1) is None
+    assert runtime.select_shop(object(), END - 1)["activity_id"] == "act55side"
+    assert runtime.select_shop(object(), rerun_start)["token_icon_ids"] == [icon]
+    assert runtime.select_shop(object(), rerun_start + 100) is None
+
+    del zones["act46sre_zone2"]
+    assert [
+        shop["activity_id"]
+        for shop in generation.write_event_shop_data(
+            activity, output, now=START, **kwargs
+        )
+    ] == ["act55side"]
+    with pytest.raises(ValueError, match="act46sre"):
+        generation.write_event_shop_data(activity, output, now=rerun_start, **kwargs)
 
 
 def test_special_event_and_activity_without_shop_are_not_ss_candidates():

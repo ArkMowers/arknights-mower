@@ -11,15 +11,16 @@
 | `activity_table.json` | `basicInfo` 的活动 ID、名称、`hasStage`、`templateShopId`、`startTime`、`endTime`、`rewardEndTime`；`zoneToActivity` | 识别当前开放且有商店的 SS，绑定章节，区分活动结束和奖励领取截止 |
 | `zone_table.json` | `zones` 中所属区域的 ID、名称和章节顺序 | 提供普通、EX、S 章节名称和活动入口关键词，不能只读取已经有作战关卡的区域 |
 | `stage_table.json` | `stages` 的 `code`、`zoneId`、`stageDropInfo.displayDetailRewards`；生成完整关卡数据时仍保留有效期和掉落 | 关联实际关卡与章节，提取 `ACTIVITY_ITEM` 代币 ID |
-| MAA 物品资源 | 与代币 ID 对应的 `resource/template/items/ID.png`，以及实际安装使用的增量资源 | 在终端和活动首页定位代币图标，不复制上一期的点击坐标 |
+| `item_table.json` | `items` 中代币对应的 `iconId` | 查找复刻代币实际使用的图标 |
+| MAA 物品资源 | 与代币 ID 或图标 ID 对应的 `resource/template/items/ID.png`，以及实际安装使用的增量资源 | 在终端和活动首页定位代币图标 |
 
 SS ID 识别沿用生成器中的 `act数字side` 和复刻 `act数字sre`。同时要求存在关卡和商店。新活动改变这些约定时，修正生成器和测试，不能将小游戏、签到或其他类型商店当成 SS。
 
-活动开放期使用 `startTime <= now < endTime`。`rewardEndTime` 仅记录商店奖励领取截止；不能用仍开放的旧商店冒充当期 SS。没有开放的 SS 时，正常产物是 `[]`，兑换开关保留用户选择并在运行时跳过。输入表缺失、章节关联不全或代币 ID 缺失属于生成失败，不能伪装成没有活动。
+生成前对照[活动商店资源约定](../../../../docs/subsystems/resource-update.md#activity-shop-resources)核对当期和下一期 SS。遇到预载更新时，检查同一资源包能否在活动开始前识别当期 SS，并在复刻开放后识别复刻 SS。商店奖励领取截止沿用 `rewardEndTime`。
 
 ## 生成导航数据
 
-`auto_get_res_new.py` 将活动表、`zone_table.json` 的 `zones` 和 `stage_table.json` 的 `stages` 交给 `write_event_shop_data`，生成 `arknights_mower/data/event_shop.json`。局部生成可在仓库根运行：
+`auto_get_res_new.py` 调用 `write_event_shop_data` 生成 `arknights_mower/data/event_shop.json`。局部生成可在仓库根运行以下代码。
 
 ```python
 import json
@@ -30,10 +31,11 @@ source = Path("/tmp/game")
 activity = json.loads((source / "activity_table.json").read_text("utf-8"))
 zones = json.loads((source / "zone_table.json").read_text("utf-8"))["zones"]
 stages = json.loads((source / "stage_table.json").read_text("utf-8"))["stages"]
-write_event_shop_data(activity, zones=zones, stages=stages)
+items = json.loads((source / "item_table.json").read_text("utf-8"))["items"]
+write_event_shop_data(activity, zones=zones, stages=stages, items=items)
 ```
 
-核对产物中的 `activity_id`、`activity`、`start_ts`、`end_ts`、`reward_end_ts`、`entry_names`、`chapters` 和 `token_ids`，并同步活动关卡的导航名称。`chapters` 使用 `normal`、`ex`、`s`，不写专有活动名到导航源码。
+核对产物中的 `activity_id`、`activity`、`start_ts`、`end_ts`、`reward_end_ts`、`entry_names`、`chapters` 和 `token_ids`，以及实际用于模板查找的 `token_icon_ids`。同步活动关卡的导航名称。`chapters` 使用 `normal`、`ex`、`s`。
 
 章节优先按实际关卡编号和区域关联分类。标准三区式 SS 的后续 EX、S 关卡可能尚未进入关卡表，但 `zone2`、`zone3` 的名称已经存在于区域表；生成器保留这两区的标题。逐期核对公告、区域表和实际菜单的对应关系。不同布局、同类多个区域或无法确认的分类不能靠名称猜测；完善解析后再以关卡编号前缀确认目标地图。
 
@@ -43,7 +45,7 @@ write_event_shop_data(activity, zones=zones, stages=stages)
 
 导航实现位于 [`activity_navigation.py`](../../../../arknights_mower/solvers/activity_navigation.py)。`NavigationSolver` 的活动关卡导航和 `EventShopNavigation` 的商店导航共用活动首页定位；大型任务自动作业继续通过 `NavigationSolver.run(关卡编号)` 调用同一路径。这是 Python 内部调用，不要求新增 HTTP 接口。
 
-- 终端左侧搜索目标活动代币图标，点击检测到的位置；缺图或未匹配时回退名称关键词。活动首页再搜索同一代币定位商店入口，位置和比例可以不同。核对 MAA 资源中实际存在对应图标及正确加载路径；缺图时更新 MAA 资源，不新增手填窗口。
+- 终端左侧搜索目标活动代币图标，点击检测到的位置。缺图或未匹配时回退名称关键词。活动首页再搜索同一代币定位商店入口，位置和比例可以不同。复刻时核对代币物品 ID 和 `iconId`，并确认配置的 MAA 安装或增量资源含对应模板。
 - 点击后确认目标活动页面。普通、EX、S 章节进入后须出现对应关卡编号前缀；未解锁章节或错误地图不能算成功，也不能仅凭画面变化开始作业。
 - 商店页面同时确认关闭或兑换截止信息及商品库存、售罄或已拥有标记。只见到活动首页、代币数量或专有标题不能证明已经进入可兑换页面。
 - MAA 的 `SS@Store@Begin` 负责标准当期活动商店的货架和支付流程，不能推定其他特殊商店也支持。Mower 仅在页面确认后提交该固定任务；黑名单与原有方案切换条件保持独立。
@@ -58,7 +60,7 @@ npm --prefix ui test -- src/components/MaaEventShop.test.js src/stores/maaProtoc
 
 商店准入仍要求当前理智周计划包含关卡数据中已收录的当期活动关卡，不额外推断尚未收录的 EX、S 关卡归属。即使章节资源已提供 EX、S 标题，仅有这些未收录关卡的周计划也应跳过商店；关卡导航继续支持使用章节信息进入 EX、S。
 
-覆盖没有 SS、尚未开始、已经结束、只有其他类型活动、当前 SS 不在周计划、多个同期开启候选、代币位置与缩放变化、空白文本、错误地图和旧配置兼容。没有当期 SS 时断言不启动导航和 MAA 商店任务。
+覆盖没有 SS、预载后尚未开始、复刻开放切换、已经结束、只有其他类型活动、当前 SS 不在周计划、多个同期开启候选、代币位置与缩放变化、空白文本、错误地图和旧配置兼容。没有当期 SS 时断言不启动导航和 MAA 商店任务。
 
 用户要求实机验证时，先确认目标实例及自动任务状态。固定 ADB 目标，仅验证活动首页、已开放章节和商店的进入结果，不因验证导航而购买商品或开始作战。未开放的 S 章记录为未进入，并用离线测试验证其正常分支。区分实际设备画面、离线识别和未验证的购买流程；不能把一次活动的成功扩大为所有活动均已实测。
 
