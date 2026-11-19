@@ -209,10 +209,8 @@ def signing_date(monkeypatch):
     module = importlib.import_module("arknights_mower.solvers.skland")
     monkeypatch.setattr(
         module,
-        "datetime",
-        SimpleNamespace(
-            datetime=SimpleNamespace(now=lambda: datetime(2026, 11, 5, 12))
-        ),
+        "skland_day",
+        lambda timestamp=None: datetime(2026, 11, 5, 12).date(),
     )
     return "2026/11/05"
 
@@ -224,7 +222,7 @@ def test_sign_results_follow_save_outcome_and_keep_status_and_account_groups(
     module = importlib.import_module("arknights_mower.solvers.skland")
     from arknights_mower.utils import csv_utils
 
-    solver = object.__new__(module.SKLand)
+    solver = module.SKLand()
     solver.record_path = tmp_path / "skland.csv"
     solver._log_secrets = {"secret-token"}
     solver.reward = [
@@ -244,22 +242,20 @@ def test_sign_results_follow_save_outcome_and_keep_status_and_account_groups(
         },
     ]
     before = deepcopy(solver.reward)
-    append = csv_utils.append_dated_row
-    written = 0
+    append = csv_utils.append_dict_rows
     write_fails = failed_entry is not None
 
-    def save(*args, **kwargs):
-        nonlocal written
+    def save(path, rows, **kwargs):
         assert not any(text.startswith("已保存 ") for text in messages(caplog))
-        if written == failed_entry:
+        if failed_entry is not None:
+            if failed_entry:
+                append(path, rows[:failed_entry], **kwargs)
             raise PermissionError("occupied")
-        result = append(*args, **kwargs)
-        written += 1
-        return result
+        return append(path, rows, **kwargs)
 
-    monkeypatch.setattr(csv_utils, "append_dated_row", save)
+    monkeypatch.setattr(module, "append_dict_rows", save)
 
-    assert solver.record_log() is True
+    assert solver.record_log() is (not write_fails)
 
     results = [text for text in messages(caplog) if "    账号 " in text]
     assert len(results) == 1
@@ -308,7 +304,7 @@ def test_sign_results_follow_save_outcome_and_keep_status_and_account_groups(
             rows = list(csv.reader(stream))
     assert len(rows) == (2 if failed_entry is None else failed_entry)
     if rows:
-        assert rows[0][-2:] == ["success", "0"]
+        assert rows[0][4:6] == ["success", "0"]
 
 
 @pytest.mark.parametrize("game_id", [1, 3])
@@ -358,12 +354,12 @@ def test_sign_response_status_reaches_saved_grouped_summary(
     monkeypatch.setattr(
         module.requests,
         "post",
-        Mock(return_value=SimpleNamespace(json=lambda: response)),
+        Mock(return_value=SimpleNamespace(headers={}, json=lambda: response)),
     )
     solver = module.SKLand()
     solver.record_path = tmp_path / "skland.csv"
 
-    assert solver.start() is True
+    assert solver.start() is (not code)
 
     assert solver.reward[0]["code"] == code
     assert solver.reward[0]["status"] == ("failure" if code else "success")
@@ -377,7 +373,8 @@ def test_sign_response_status_reaches_saved_grouped_summary(
     assert "offline-secret" not in result and "13800138000" not in result
     with solver.record_path.open(encoding="gbk", newline="") as stream:
         row = next(csv.reader(stream))
-    assert row[-2:] == ["failure" if code else "success", str(code)]
+    assert row[4:6] == ["failure" if code else "success", str(code)]
+    assert len(row[6]) == 64 and len(row[7]) == 32
 
 
 @pytest.mark.parametrize(

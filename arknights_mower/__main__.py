@@ -958,6 +958,7 @@ def simulate(saved):
             )
             base_scheduler.daily_report = saved["daily_report"]
             base_scheduler.daily_skland = saved["daily_skland"]
+            base_scheduler.daily_skland_attempt = saved.get("daily_skland_attempt")
             base_scheduler.daily_mail = saved["daily_mail"]
             base_scheduler.daily_event_sign_in = saved.get(
                 "daily_event_sign_in", get_server_time().date() - timedelta(days=1)
@@ -976,6 +977,7 @@ def simulate(saved):
                 raise
             logger.exception(ex)
     from arknights_mower.solvers.emergency import RESUME_META
+    from arknights_mower.solvers.skland import enabled_sign_in_accounts
     from arknights_mower.utils.emergency_recovery import ORDINARY_SHIFTS
     from arknights_mower.utils.scheduler_task import SchedulerTask
 
@@ -1103,12 +1105,14 @@ def simulate(saved):
                         if base_scheduler.report_plan_solver():
                             base_scheduler.daily_report = get_server_time().date()
 
+                    daily_skland_day = get_server_time().date()
                     if (
                         config.conf.skland_enable
-                        and base_scheduler.daily_skland < get_server_time().date()
+                        and base_scheduler.daily_skland < daily_skland_day
+                        and base_scheduler.daily_skland_attempt != daily_skland_day
+                        and enabled_sign_in_accounts()
                     ):
-                        if base_scheduler.skland_plan_solver():
-                            base_scheduler.daily_skland = get_server_time().date()
+                        base_scheduler.skland_plan_solver()
 
                     if (
                         config.conf.check_mail_enable

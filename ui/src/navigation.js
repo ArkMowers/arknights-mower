@@ -2,6 +2,7 @@
 // mobile page drawer all render from these sections. Every page route appears exactly once.
 import BarChartOutline from '@vicons/ionicons5/es/BarChartOutline'
 import BookOutline from '@vicons/ionicons5/es/BookOutline'
+import CalendarNumberOutline from '@vicons/ionicons5/es/CalendarNumberOutline'
 import CalendarOutline from '@vicons/ionicons5/es/CalendarOutline'
 import ConstructOutline from '@vicons/ionicons5/es/ConstructOutline'
 import CubeOutline from '@vicons/ionicons5/es/CubeOutline'
@@ -93,6 +94,12 @@ export const navigationSections = [
         label: '日志调度',
         icon: TimeOutline,
         to: '/record/log-schedule'
+      },
+      {
+        key: 'record-skland',
+        label: '森空岛签到',
+        icon: CalendarNumberOutline,
+        to: '/record/skland'
       }
     ]
   },

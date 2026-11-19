@@ -250,6 +250,7 @@ class TestMoodInitialization(unittest.TestCase):
                 "conf",
                 base_schedule.config.Conf(
                     skland_enable=True,
+                    skland_info=[{"account": "test-account", "sign_in_official": True}],
                     check_mail_enable=True,
                     recruit_enable=True,
                     maa_depot_enable=False,
@@ -269,6 +270,68 @@ class TestMoodInitialization(unittest.TestCase):
         trust_rotation.assert_called_once_with(
             scheduler.device, scheduler.recog, scheduler.tasks[0].time
         )
+
+    def test_skland_has_one_automatic_attempt_per_game_day_with_enabled_accounts(self):
+        scheduler = MagicMock()
+        scheduler.initialize_operators.return_value = None
+        scheduler.op_data.validate_backup_plans.return_value = {"success": True}
+        scheduler.tasks = []
+        scheduler.daily_skland = scheduler.daily_mail = date.min
+        scheduler.daily_visit_friend = scheduler.daily_report = date.min
+        scheduler.daily_skland_attempt = None
+        scheduler.find_next_task.return_value = None
+        scheduler.skland_plan_solver = BaseSchedulerSolver.skland_plan_solver.__get__(
+            scheduler
+        )
+        signer = MagicMock()
+        signer.start.side_effect = [False, True]
+        scheduler.run.side_effect = lambda: scheduler.tasks.__setitem__(
+            slice(None),
+            [base_schedule.SchedulerTask(time=datetime.now() + timedelta(hours=1))],
+        )
+        conf = base_schedule.config.Conf(
+            skland_enable=True,
+            skland_info=[{"account": "test-account"}],
+            recruit_enable=True,
+            maa_depot_enable=False,
+        )
+        today = datetime(2026, 11, 14, 13)
+        dates = []
+
+        def finish_pass():
+            nonlocal today
+            dates.append((scheduler.daily_skland_attempt, scheduler.daily_skland))
+            if len(dates) == 1:
+                conf.skland_info[0].sign_in_official = True
+            if len(dates) == 3:
+                today += timedelta(days=1)
+            if len(dates) == 4:
+                raise base_schedule.MowerExit
+
+        scheduler.rest_until_next_task.side_effect = finish_pass
+        self.initialize.return_value = scheduler
+        with (
+            patch("arknights_mower.solvers.trust_rotation.run_trust_rotation"),
+            patch.object(self.main, "refresh_resource_at_boundary"),
+            patch.object(self.main, "get_server_time", side_effect=lambda: today),
+            patch.object(base_schedule, "get_server_time", side_effect=lambda: today),
+            patch.object(base_schedule.config, "conf", conf),
+            patch.object(base_schedule, "SKLand", return_value=signer),
+            patch.object(base_schedule, "save_current_state") as save,
+        ):
+            self.main.simulate(None)
+        self.assertEqual(
+            dates,
+            [
+                (None, date.min),
+                (date(2026, 11, 14), date.min),
+                (date(2026, 11, 14), date.min),
+                (date(2026, 11, 15), date(2026, 11, 15)),
+            ],
+        )
+        self.assertEqual(signer.start.call_count, 2)
+        self.assertEqual(save.call_count, 2)
+        self.assertEqual(scheduler.recruit_plan_solver.call_count, 4)
 
     def test_fresh_start_defers_backup_plan_until_mood_read(self):
         scheduler = MagicMock()

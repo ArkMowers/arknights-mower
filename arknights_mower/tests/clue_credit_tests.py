@@ -732,6 +732,7 @@ def main_runtime(monkeypatch):
     runtime.task_count = 0
     runtime.daily_visit_friend = runtime.daily_report = date.min
     runtime.daily_skland = runtime.daily_mail = date.min
+    runtime.daily_skland_attempt = None
     runtime.daily_event_sign_in = date.min
     runtime.daily_event_sign_in_attempt = None
     runtime.daily_visit_friend_attempt = None

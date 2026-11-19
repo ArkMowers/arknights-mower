@@ -46,5 +46,6 @@ def test_new_scheduler_keeps_daily_work_due_in_current_game_day(
         "daily_visit_friend",
     ):
         assert getattr(scheduler, name) == game_day - timedelta(days=1), name
+    assert scheduler.daily_skland_attempt is None
     assert scheduler.daily_event_sign_in_attempt is None
     assert scheduler.daily_visit_friend_attempt is None

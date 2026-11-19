@@ -144,13 +144,21 @@ def test_manual_selection_routes_to_only_the_chosen_executor(
     assert manual.solver.tasks == [later]
 
 
-def test_sign_in_dispatch_updates_daily_marker(manual):
+def test_manual_sign_in_can_complete_after_already_attempted_today(manual, monkeypatch):
     task, later = queue(manual, TaskTypes.SKLAND)
-    manual.solver.skland_plan_solver = Mock(return_value=True)
+    day = manual.clock.now().date()
+    manual.solver.daily_skland_attempt = day
+    signer = Mock()
+    signer.start.return_value = True
+    monkeypatch.setattr(manual.module, "SKLand", Mock(return_value=signer))
+    monkeypatch.setattr(manual.module, "get_server_time", manual.clock.now)
+    saved = Mock()
+    monkeypatch.setattr(manual.module, "save_current_state", saved)
     manual.solver.infra_main()
-    manual.solver.skland_plan_solver.assert_called_once_with()
+    signer.start.assert_called_once_with()
+    saved.assert_called_once_with()
     assert manual.solver.tasks == [later]
-    assert manual.solver.daily_skland == manual.manual.get_server_time().date()
+    assert manual.solver.daily_skland == day
 
 
 def test_unchanged_dependency_retains_task_time_then_releases_on_completion(

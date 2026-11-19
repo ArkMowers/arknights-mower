@@ -38,7 +38,7 @@ def test_signing_allows_stop_while_refusing_configuration_replacement(
     monkeypatch.setattr(
         skland,
         "get_binding_list",
-        lambda token: [
+        lambda token, old_header=None: [
             {
                 "gameId": game,
                 "uid": "offline-uid",
@@ -69,7 +69,7 @@ def test_signing_allows_stop_while_refusing_configuration_replacement(
         assert url == (skland.sign_url if game == 1 else skland.sign_endfield_url)
         entered.set()
         assert release.wait(5)
-        return SimpleNamespace(json=lambda: signing_responses[game])
+        return SimpleNamespace(headers={}, json=lambda: signing_responses[game])
 
     monkeypatch.setattr(skland.requests, "post", post)
     generation = api.profiles.current_generation()

@@ -81,6 +81,7 @@ class DailyStatusTests(unittest.TestCase):
         yesterday = GAME_DAY - timedelta(days=1)
         defaults = {
             "daily_skland": yesterday,
+            "daily_skland_attempt": None,
             "daily_mail": yesterday,
             "daily_event_sign_in": yesterday,
             "daily_event_sign_in_attempt": None,
@@ -102,11 +103,21 @@ class DailyStatusTests(unittest.TestCase):
         return response.json
 
     def test_daily_status_requires_instance_token(self):
-        self.run_live(self.scheduler())
-        for headers in ({}, {"token": "wrong-token"}):
-            with self.subTest(headers=headers):
-                response = self.client.get("/daily-status", headers=headers)
-                self.assertEqual(response.status_code, 403)
+        self.run_live(self.scheduler(daily_skland_attempt=GAME_DAY))
+        for worker in (self.worker, None):
+            self.server.mower_thread = worker
+            with (
+                patch.object(self.server, "_daily_status_values") as read_live,
+                patch.object(self.server, "_saved_daily_status_values") as read_saved,
+            ):
+                for headers in ({}, {"token": "wrong-token"}):
+                    with self.subTest(worker=worker, headers=headers):
+                        response = self.client.get("/daily-status", headers=headers)
+                        self.assertEqual(response.status_code, 403)
+                read_live.assert_not_called()
+                read_saved.assert_not_called()
+        self.run_live(self.scheduler(daily_skland_attempt=GAME_DAY))
+        self.assertEqual(self.get()["records"]["skland"], "attempted")
 
     def test_live_records_follow_scheduler_date_comparisons(self):
         yesterday = GAME_DAY - timedelta(days=1)
@@ -124,7 +135,7 @@ class DailyStatusTests(unittest.TestCase):
             (datetime(2026, 11, 1, 6), None, "pending"),
         )
         for name in DAILY:
-            has_attempt = name in ("event_sign_in", "visit_friend")
+            has_attempt = name in ("skland", "event_sign_in", "visit_friend")
             for completion, attempt, expected in cases:
                 if not has_attempt and expected == "attempted":
                     expected = "pending"
@@ -213,7 +224,8 @@ class DailyStatusTests(unittest.TestCase):
         state = {
             "tasks": [],
             "operators": {},
-            "daily_skland": GAME_DAY,
+            "daily_skland": yesterday,
+            "daily_skland_attempt": GAME_DAY,
             "daily_mail": yesterday,
             "daily_event_sign_in": yesterday,
             "daily_event_sign_in_attempt": GAME_DAY,
@@ -224,7 +236,7 @@ class DailyStatusTests(unittest.TestCase):
         }
         self.assertTrue(record.save_state_to_db(state))
         expected = {name: "pending" for name in RECORDS} | {
-            "skland": "done",
+            "skland": "attempted",
             "event_sign_in": "attempted",
             "report": "done",
             "visit_friend": "done",
