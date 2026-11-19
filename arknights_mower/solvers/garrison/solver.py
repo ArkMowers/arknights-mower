@@ -249,7 +249,18 @@ class GarrisonSolver:
                     return "verify_start"
             return None
 
-        if frame.screen == "lobby":
+        action = None
+        returned_from_mode = False
+        while frame.screen == "lobby" or (
+            frame.screen == "mode"
+            and (action == "resume" or self.progress.get("match"))
+        ):
+            if frame.screen == "mode":
+                if returned_from_mode:
+                    raise GarrisonError("重连再次进入难度选择页，已保留对局")
+                self.click((65, 58))
+                frame = self.wait(lambda f: f.screen == "lobby", 12)
+                returned_from_mode = True
             action = lobby_action(frame)
             if not action:
                 frame = self.wait(
@@ -269,16 +280,14 @@ class GarrisonSolver:
                     lambda f: lobby_action(f) in {"verify_start", "resume"}, 12
                 )
                 action = "resume" if lobby_action(frame) == "resume" else "start"
-        elif self.progress.get("match"):
-            raise GarrisonError("已保存未完成对局，但未找到继续入口；未开始新对局")
-        else:
-            action = None
-        if action == "resume":
+            if action != "resume":
+                break
             self.text_click(frame, reconnect, controls)
-            return self.wait(
+            frame = self.wait(
                 lambda f: (
                     f.screen
                     in {
+                        "mode",
                         "info",
                         "strategy",
                         "squad",
@@ -292,6 +301,8 @@ class GarrisonSolver:
                 ),
                 RECONNECT_SECONDS,
             )
+            if frame.screen != "mode":
+                return frame
         if action == "start":
             if self.remaining() < MATCH_SECONDS:
                 raise GarrisonYield

@@ -182,6 +182,44 @@ def test_resume_clicks_reconnect_and_preserves_progress(match):
     assert p == before
 
 
+@pytest.mark.parametrize("repeat_mode", [False, True])
+def test_reconnect_returns_from_difficulty_to_recheck_personal_lobby(repeat_mode):
+    lobby, mode, prep = frame("left"), frame("mode"), frame("prep")
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"match": {"round": 3}}, Mock())
+    worker.click = Mock()
+    worker.capture = Mock(side_effect=[mode, lobby, mode if repeat_mode else prep])
+    if repeat_mode:
+        with pytest.raises(model.GarrisonError, match="再次进入难度选择页"):
+            worker.start_or_resume(lobby)
+    else:
+        assert worker.start_or_resume(lobby) is prep
+    reconnect = lobby.find("断线重连").center
+    assert [call.args[0] for call in worker.click.call_args_list] == [
+        reconnect,
+        (65, 58),
+        reconnect,
+    ]
+    assert worker.progress == {"match": {"round": 3}}
+    worker.save.assert_not_called()
+
+
+def test_reconnect_difficulty_returns_to_new_lobby_with_short_budget():
+    lobby, mode, fresh = frame("left"), frame("mode"), frame("lobby")
+    worker = solver.GarrisonSolver(
+        Mock(), Mock(), {"match": {"phase": "active"}}, Mock()
+    )
+    worker.remaining = Mock(return_value=600)
+    worker.click = Mock()
+    worker.capture = Mock(side_effect=[mode, fresh, fresh])
+    with pytest.raises(solver.GarrisonYield):
+        worker.start_or_resume(lobby)
+    assert [call.args[0] for call in worker.click.call_args_list] == [
+        lobby.find("断线重连").center,
+        (65, 58),
+    ]
+    worker.save.assert_not_called()
+
+
 @pytest.mark.parametrize("highlight", ["joint", "both", "neither", "missing_label"])
 def test_reconnect_requires_positive_personal_selection(highlight, monkeypatch):
     lobby = frame("left")
