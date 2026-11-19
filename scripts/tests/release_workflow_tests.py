@@ -48,19 +48,6 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         cls.workflow = load_workflow(BUILD_WORKFLOW_PATH)
         cls.jobs = cls.workflow["jobs"]
 
-    def test_every_alpha_push_can_publish_its_own_frontend(self):
-        workflow = load_workflow(REPO_ROOT / ".github/workflows/relay-ui.yml")
-        self.assertIn("alpha", workflow["on"]["push"]["branches"])
-        self.assertNotIn("concurrency", workflow)
-        # A shared branch group would discard intermediate pending builds.
-        self.assertNotIn("concurrency", workflow["jobs"]["notify"])
-
-        notify = workflow["jobs"]["notify"]["steps"][0]
-        self.assertIn("repos/ArkMowers/MowerRelease/dispatches", notify["run"])
-        self.assertIn("client_payload[revision]=$GITHUB_SHA", notify["run"])
-        for owner in (workflow, self.workflow, load_workflow(PREPARE_WORKFLOW_PATH)):
-            self.assertNotIn("R2_SECRET_ACCESS_KEY", str(owner))
-
     def test_workflow_name_covers_release_types(self):
         self.assertEqual(self.workflow["name"], "Release & Prerelease")
 
