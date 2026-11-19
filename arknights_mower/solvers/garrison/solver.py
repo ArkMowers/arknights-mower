@@ -17,6 +17,7 @@ from .model import GarrisonError, catalogue, goal_reached, normal_name, record_w
 from .upstream import FarmSession, panel_open, strategy_panel
 from .vision import Vision
 
+MATCH_TRANSITION_SECONDS = 60
 RECONNECT_SECONDS = 30
 MATCH_SECONDS = 12 * 60
 
@@ -488,7 +489,11 @@ class GarrisonSolver:
             frame = self.observe(
                 frame,
                 self.can_dispatch_frame,
-                timeout=15,
+                timeout=(
+                    MATCH_TRANSITION_SECONDS
+                    if state and state[0] == "battle" and frame.screen == "unknown"
+                    else 15
+                ),
                 error="复核后仍未确认卫戍协议的对局画面，已保留对局",
             )
             current = (frame.screen, board.round_done)
@@ -541,7 +546,7 @@ class GarrisonSolver:
                         f.screen
                         in {"prep", "battle", "battle-timeout", "choice", "result"}
                     ),
-                    60,
+                    MATCH_TRANSITION_SECONDS,
                 )
                 continue
             elif frame.screen == "prep":
