@@ -2,6 +2,7 @@ import os
 import tempfile
 import threading
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -119,6 +120,87 @@ class MaaBackupTests(unittest.TestCase):
                 self.assertEqual((alias / state.name).read_text(), "{}")
             finally:
                 alias.rmdir()
+
+    def test_success_without_backup_skips_cleanup_when_client_occupied(self):
+        from arknights_mower.utils import maa_process
+        from arknights_mower.utils.log import logger
+        from arknights_mower.utils.maa_update import MaaUpdateError
+
+        self.old.rename(self.root / "retired")
+        instance = self.asst()
+        instance.start()
+        with (
+            patch.object(
+                maa_process, "installation_lease", wraps=maa_process.installation_lease
+            ) as lease,
+            patch.object(
+                maa_process, "maa_client_guard", side_effect=MaaUpdateError("occupied")
+            ) as guard,
+            patch.object(logger, "warning") as warning,
+        ):
+            self.finish(instance)
+
+        self.assertTrue(instance.run_successful)
+        warning.assert_not_called()
+        lease.assert_not_called()
+        guard.assert_not_called()
+
+    def test_success_skips_replacement_backup_and_can_retire_restored_backup(self):
+        from arknights_mower.utils import maa_process
+
+        instance = self.asst()
+        instance.start()
+        self.old.rename(self.root / "retired")
+        self.old.mkdir()
+        replacement = self.old / "replacement.bin"
+        replacement.write_text("different backup")
+
+        with (
+            patch.object(maa_process, "installation_lease") as lease,
+            patch.object(maa_process, "maa_client_guard") as guard,
+        ):
+            self.finish(instance)
+
+        self.assertEqual(replacement.read_text(), "different backup")
+        lease.assert_not_called()
+        guard.assert_not_called()
+
+        self.old.rename(self.root / "replacement")
+        (self.root / "retired").rename(self.old)
+        self.finish(instance, messages=())
+        self.assertFalse(self.old.exists())
+
+    def test_success_keeps_backup_while_client_is_occupied_and_reports_reason(self):
+        from arknights_mower.utils import maa_process
+        from arknights_mower.utils.log import logger
+        from arknights_mower.utils.maa_update import MaaUpdateError
+
+        occupied = True
+        reason = "独立 MAA 客户端或更新器正在使用此目录，请先关闭后重试"
+
+        @contextmanager
+        def client_guard(target):
+            if occupied:
+                raise MaaUpdateError(reason)
+            yield
+
+        instance = self.asst()
+        instance.start()
+        with patch.object(maa_process, "maa_client_guard", client_guard):
+            with self.assertLogs(logger, level="WARNING") as logs:
+                self.finish(instance)
+
+            self.assertTrue(instance.run_successful)
+            self.assertTrue(self.old.exists())
+            self.assertEqual(len(logs.records), 1)
+            message = logs.records[0].getMessage()
+            self.assertTrue(message.startswith("MAA 任务已完成，旧备份暂无法清理"))
+            self.assertIn(reason, message)
+
+            occupied = False
+            self.finish(instance, messages=())
+
+        self.assertFalse(self.old.exists())
 
     def test_failed_stopped_empty_or_rejected_runs_keep_backups(self):
         for messages in ((10001, 10000, 10002, 3), (10001, 10004, 3), (3,)):
