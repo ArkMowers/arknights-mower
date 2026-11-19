@@ -201,7 +201,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           label-width="120"
           label-align="left"
         >
-          <n-form-item v-if="!isRelayPage()" class="appearance-scale-row">
+          <n-form-item class="appearance-scale-row">
             <template #label>
               <span class="settings-row-copy">
                 <span>界面缩放</span>
@@ -280,11 +280,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
           <LogBackgroundPreference />
         </n-form>
       </n-card>
-      <n-card
-        v-if="runtime_platform !== 'android' && !isRelayPage()"
-        id="window-settings"
-        title="窗口"
-      >
+      <n-card v-if="runtime_platform !== 'android'" id="window-settings" title="窗口">
         <n-form
           class="settings-row-form"
           :label-placement="mobile ? 'top' : 'left'"
@@ -384,16 +380,16 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       </template>
       <div class="settings-card-wide"><NetworkSettings /></div>
       <n-card
-        v-if="
-          runtime_platform !== 'android' && !config_store.manager_owned_device && !isRelayPage()
-        "
+        v-if="config_store.web_access_editable"
         id="web-access-settings"
         class="settings-card-wide"
         title="访问端口与 Token"
       >
         <WebAccessSettings />
-        <n-divider title-placement="left">远程访问（中转）</n-divider>
-        <RelaySettings />
+        <template v-if="!isRelayPage()">
+          <n-divider title-placement="left">远程访问（中转）</n-divider>
+          <RelaySettings />
+        </template>
       </n-card>
     </SettingsSection>
     <SettingsSection

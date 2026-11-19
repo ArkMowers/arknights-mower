@@ -68,7 +68,7 @@ def settings_managed():
 
 
 def extra_settings_allowed(configuration):
-    return not settings_managed() or configuration.extra_settings_visible
+    return not enabled() or configuration.extra_settings_visible
 
 
 def protected_settings(configuration):

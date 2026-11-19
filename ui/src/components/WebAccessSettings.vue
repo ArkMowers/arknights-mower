@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
+import { isRelayPage } from '@/utils/instanceToken'
 
 const config = useConfigStore()
 const port = ref(config.webview.port ?? 58000)
@@ -40,7 +41,13 @@ async function save() {
 
 <template>
   <n-space vertical :size="16">
-    <n-text depth="3">保存后，请彻底退出并重新启动 Mower。当前连接继续使用原端口和 Token。 </n-text>
+    <n-text v-if="isRelayPage()" depth="3"
+      >端口在下次启动时生效。修改 Token 会断开中转；请在本机重启实例，再使用新 Token 登录。清空
+      Token 会关闭中转。</n-text
+    >
+    <n-text v-else depth="3"
+      >保存后，请彻底退出并重新启动 Mower。当前连接继续使用原端口和 Token。</n-text
+    >
     <n-form label-placement="top" :show-feedback="false">
       <n-form-item label="端口">
         <n-input-number

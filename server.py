@@ -1476,10 +1476,14 @@ def load_config():
         data["runtime_platform"] = "android" if is_android_runtime() else __system__
         from arknights_mower.utils.managed_device import (
             enabled,
+            extra_settings_allowed,
             settings_managed,
         )
 
         data["manager_owned_device"] = settings_managed()
+        data["web_access_editable"] = not enabled() and not is_android_runtime()
+        if data["manager_owned_device"]:
+            data["extra_settings_visible"] = extra_settings_allowed(config.conf)
         if enabled():
             data["manager_inherited_settings"] = sorted(
                 config.manager_inherited_settings
@@ -1515,18 +1519,16 @@ def load_config():
                 }, 403
             req.pop("start_automatically")
         if managed_device.settings_managed() and "extra_settings_visible" in req:
-            if req["extra_settings_visible"] != config.conf.extra_settings_visible:
+            if req["extra_settings_visible"] != managed_device.extra_settings_allowed(
+                config.conf
+            ):
                 return {
                     "error": "manager_owned_setting",
-                    "message": "请通过本机独立实例或多开管理器修改更新与维护开关",
+                    "message": "请通过多开管理器修改更新与维护开关",
                 }, 403
             req.pop("extra_settings_visible")
         protected = managed_device.protected_settings(config.conf)
-        window_keys = (
-            ("port", "token", "tray", "scale")
-            if managed_device.relay_request()
-            else ("port", "token")
-        )
+        window_keys = ("port", "token") if managed_device.enabled() else ()
         managed_window = isinstance(req.get("webview"), dict) and any(
             key in req["webview"] for key in window_keys
         )
@@ -1648,7 +1650,8 @@ def load_config():
         if previous_token != config.conf.webview.token and (
             relay := app.extensions.get("mower_relay")
         ):
-            relay.start()
+            notify = request.environ.get("mower.relay_token_changed", relay.start)
+            notify()
         if request.method == "PATCH":
             from arknights_mower.utils.workshop_config import read_user_config
 

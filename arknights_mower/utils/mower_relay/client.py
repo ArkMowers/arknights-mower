@@ -8,7 +8,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from queue import Empty, Full, Queue
-from threading import BoundedSemaphore, Lock, Thread
+from threading import BoundedSemaphore, Event, Lock, Thread
 
 from simple_websocket import ConnectionClosed
 from werkzeug.security import check_password_hash
@@ -134,7 +134,7 @@ class RelayClient:
         if thread:
             thread.join(timeout=5)
 
-    def dispatch(self, message, origin):
+    def dispatch(self, message, origin, *, token_changed=None):
         if not getattr(self.app, "token", ""):
             raise ValueError("当前启动方式没有实例 token，请使用桌面入口启动")
         method, path = message.get("method"), message.get("path")
@@ -158,6 +158,9 @@ class RelayClient:
         }
         headers["Origin"] = origin
         # The gateway password never substitutes for the instance token.
+        environ = {"mower.relay": True}
+        if token_changed is not None:
+            environ["mower.relay_token_changed"] = token_changed
         with self.app.test_client() as client:
             with client.open(
                 path,
@@ -165,7 +168,7 @@ class RelayClient:
                 base_url=origin,
                 headers=headers,
                 data=body,
-                environ_overrides={"mower.relay": True},
+                environ_overrides=environ,
             ) as response:
                 result = bytearray()
                 for chunk in response.response:
@@ -399,11 +402,13 @@ class RelayClient:
                     task.cancel()
 
     async def _reply(self, ws, executor, message, origin):
+        token_changed = Event()
+
         def work():
             try:
                 if message["op"] == "authenticate":
                     return self.authenticate(message)
-                return self.dispatch(message, origin)
+                return self.dispatch(message, origin, token_changed=token_changed.set)
             finally:
                 self._work_slots.release()
 
@@ -413,8 +418,12 @@ class RelayClient:
             )
         except Exception:
             reply = {"op": "error", "id": message["id"]}
-        if not ws.closed:
-            await ws.send_json(reply)
+        try:
+            if not ws.closed:
+                await ws.send_json(reply)
+        finally:
+            if token_changed.is_set():
+                self.start()
 
     def _open_socket(self, ws, sockets, identity, path, origin):
         loop = asyncio.get_running_loop()

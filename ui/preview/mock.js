@@ -62,6 +62,7 @@ export function createPreviewConfiguration(config, theme = 'light') {
     },
     ai_type: config.ai_type || 'deepseek',
     runtime_platform: 'windows',
+    web_access_editable: true,
     adb: '127.0.0.1:16384',
     simulator: { name: 'MuMu12', index: 0 },
     maa_weekly_plan_active: '默认',

@@ -119,6 +119,7 @@ describe('network and update settings', () => {
     async (managed, platform, visible) => {
       state.config.manager_owned_device = managed
       state.config.runtime_platform = platform
+      state.config.web_access_editable = !managed && platform !== 'android'
       const html = await render()
       expect(html.includes('访问端口与 Token')).toBe(visible)
       expect(html.includes('远程访问（中转）')).toBe(visible)
@@ -129,6 +130,19 @@ describe('network and update settings', () => {
       }
     }
   )
+  it('shows the access editor on an independent relay page without offering relay setup', async () => {
+    vi.stubGlobal('window', { location: new URL('https://trial.free.mower.work:58000/') })
+    try {
+      state.config.web_access_editable = true
+      const html = await render()
+      expect(html).toContain('id="web-access-settings"')
+      expect(html).toContain('访问端口与 Token')
+      expect(html).not.toContain('远程访问（中转）')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it.each([true, false])(
     'shows only supported maintenance tools through the relay (allowed=%s)',
     async (allowed) => {

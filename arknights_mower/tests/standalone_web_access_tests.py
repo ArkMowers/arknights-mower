@@ -1,7 +1,10 @@
 """Independent desktop access settings retain the current session credential."""
 
+import asyncio
+import base64
+import json
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import yaml
 
@@ -56,22 +59,16 @@ class StandaloneWebAccessTests(unittest.TestCase):
         remote = {"headers": self.headers, "environ_overrides": {"mower.relay": True}}
         exposed = self.client.get("/conf", **remote).json
         self.assertTrue(exposed["manager_owned_device"])
-        self.assertFalse(exposed["extra_settings_visible"])
+        self.assertTrue(exposed["extra_settings_visible"])
         before = self.path.read_bytes()
         for method in (self.client.post, self.client.patch):
             for changes in (
-                {"webview": {"token": "different"}},
-                {"webview": {"port": 58123}},
-                {"webview": {"tray": not config.conf.webview.tray}},
-                {"extra_settings_visible": True},
+                {"extra_settings_visible": False},
                 {"screenshot_interval": config.conf.screenshot_interval + 1},
             ):
                 response = method("/conf", json=changes, **remote)
                 self.assertEqual(response.status_code, 403, response.json)
         self.assertEqual(self.path.read_bytes(), before)
-        self.assertEqual(
-            self.client.post("/db-admin/delete", json={}, **remote).status_code, 403
-        )
         local = self.client.get("/conf", headers=self.headers).json
         self.assertFalse(local["manager_owned_device"])
         self.assertEqual(
@@ -81,47 +78,30 @@ class StandaloneWebAccessTests(unittest.TestCase):
             200,
         )
 
-    def test_local_maintenance_choice_applies_to_relay_and_can_be_revoked(self):
+    def test_relay_maintenance_follows_actual_launch_mode(self):
         remote = {"headers": self.headers, "environ_overrides": {"mower.relay": True}}
-        maintenance = {"screenshot_archive_limit_mb": 1024}
-        self.assertEqual(
-            self.client.patch("/conf", json=maintenance, **remote).status_code, 403
-        )
-        self.assertEqual(
-            self.client.get("/network/settings", **remote).status_code, 403
-        )
-        for allowed in (True, False):
-            response = self.client.patch(
-                "/conf", headers=self.headers, json={"extra_settings_visible": allowed}
-            )
-            self.assertEqual(response.status_code, 200, response.json)
-            self.assertIs(
-                yaml.safe_load(self.path.read_text())["extra_settings_visible"], allowed
-            )
-            for managed in (True, False):
-                with patch(
-                    "arknights_mower.utils.managed_device.enabled", return_value=managed
+        for managed in (False, True):
+            for saved in (False, True):
+                allowed = not managed or saved
+                with (
+                    self.subTest(managed=managed, saved=saved),
+                    patch(
+                        "arknights_mower.utils.managed_device.enabled",
+                        return_value=managed,
+                    ),
+                    patch.object(config.conf, "extra_settings_visible", saved),
                 ):
-                    view = self.client.get("/conf", **remote).json
-                    self.assertTrue(view["manager_owned_device"])
-                    self.assertIs(view["extra_settings_visible"], allowed)
-                    for method in (self.client.patch, self.client.post):
-                        update = method(
-                            "/conf",
-                            json={"extra_settings_visible": not allowed},
-                            **remote,
-                        )
-                        self.assertEqual(update.status_code, 403)
-                        self.assertEqual(
-                            method(
-                                "/conf", json={"webview": {"port": 58111}}, **remote
-                            ).status_code,
-                            403,
-                        )
+                    self.assertIs(
+                        self.client.get("/conf", **remote).json[
+                            "extra_settings_visible"
+                        ],
+                        allowed,
+                    )
                     self.assertEqual(
                         self.client.get("/network/settings", **remote).status_code,
                         200 if allowed else 403,
                     )
+                    # Empty categories exercise authorization without deleting records.
                     self.assertEqual(
                         self.client.post(
                             "/db-admin/delete", json={}, **remote
@@ -130,8 +110,65 @@ class StandaloneWebAccessTests(unittest.TestCase):
                     )
                     self.assertEqual(
                         self.client.patch(
-                            "/conf", json=maintenance, **remote
+                            "/conf",
+                            json={
+                                "screenshot_archive_limit_mb": config.conf.screenshot_archive_limit_mb
+                                + 1
+                            },
+                            **remote,
                         ).status_code,
                         200 if allowed else 403,
                     )
-            maintenance["screenshot_archive_limit_mb"] += 1
+
+    def test_standalone_relay_can_edit_access_after_authentication(self):
+        from arknights_mower.utils.mower_relay.client import RelayClient
+        from arknights_mower.utils.mower_relay.protocol import public_origin
+
+        origin = public_origin("test-access")
+        client = RelayClient(self.server.app)
+        self.enterContext(patch.dict(self.server.app.extensions, mower_relay=client))
+        events = []
+        client.start = Mock(side_effect=lambda: events.append("reconnect"))
+
+        async def receive(frame):
+            events.append(frame["status"])
+
+        ws = Mock(closed=False, send_json=AsyncMock(side_effect=receive))
+        message = {
+            "op": "request",
+            "id": "save",
+            "path": "/conf",
+            "method": "PATCH",
+            "headers": {"content-type": "application/json"},
+            "body": base64.b64encode(
+                json.dumps({"webview": {"port": 58111, "token": "new-local"}}).encode()
+            ).decode(),
+        }
+        for token, managed, expected in (
+            ("", False, 403),
+            ("incorrect", False, 403),
+            ("device-token", True, 403),
+            ("device-token", False, 200),
+        ):
+            with patch(
+                "arknights_mower.utils.managed_device.enabled", return_value=managed
+            ):
+                self.assertIs(
+                    self.client.get(
+                        "/conf",
+                        headers=self.headers,
+                        environ_overrides={"mower.relay": True},
+                    ).json["web_access_editable"],
+                    not managed,
+                )
+                events.clear()
+                message["headers"]["token"] = token
+                client._work_slots.acquire()
+                asyncio.run(client._reply(ws, None, message, origin))
+                self.assertEqual(
+                    events, [200, "reconnect"] if expected == 200 else [403]
+                )
+        self.assertEqual(config.conf.webview.port, 58111)
+        self.assertEqual(config.conf.webview.token, "new-local")
+        self.assertFalse(client.token_ready)
+        self.assertEqual(self.server.app.token, "device-token")

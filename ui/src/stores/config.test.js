@@ -730,6 +730,7 @@ describe('standalone web access settings', () => {
     for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
     store.webview = { port: 58000, token: '', scale: 1, tray: true }
     store.runtime_platform = 'darwin'
+    store.web_access_editable = true
     axios.patch.mockResolvedValue({ data: {} })
     loaded.value = true
     await nextTick()
@@ -784,10 +785,9 @@ describe('standalone web access settings', () => {
     expect(axios.patch).not.toHaveBeenCalled()
   })
 
-  it.each(['managed', 'android'])('does not submit desktop access edits for %s', async (mode) => {
+  it('does not submit edits when the instance reports read-only access settings', async () => {
     await setup()
-    if (mode === 'managed') store.manager_owned_device = true
-    else store.runtime_platform = 'android'
+    store.web_access_editable = false
     await expect(store.save_web_access({ port: 58010, token: 'synthetic' })).rejects.toThrow(
       '管理器'
     )
