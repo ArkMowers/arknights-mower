@@ -110,7 +110,12 @@ def validate_response(path, status, mime, data):
     raise ValueError("中转不接受网页或脚本响应")
 
 
+CONVERSATION_PATH = r"/ai/conversations/[0-9a-f]{32}"
 HTTP_OPERATIONS = [
+    (("GET", "DELETE"), "/ai/conversations"),
+    (("GET", "DELETE"), CONVERSATION_PATH),
+    (("POST",), CONVERSATION_PATH + "/summary"),
+    (("POST",), CONVERSATION_PATH + r"/turns/[0-9]+/control"),
     (("GET",), "/basement-skill/operators"),
     (("GET",), "/check-maa"),
     (("GET",), "/check-maa/status"),

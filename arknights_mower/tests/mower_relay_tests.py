@@ -108,10 +108,61 @@ def test_dispatch_scope_and_instance_token(relay):
             request(target, relay.app.token)
 
 
-def test_connection_login_dispatch_and_disable(relay, monkeypatch):
+def test_relay_conversation_operations_require_the_instance_token(relay, monkeypatch):
     import server
+
+    item = "/ai/conversations/" + "a" * 32
+    history = Mock()
+    history.return_value.list.return_value = []
+    monkeypatch.setattr(server, "active_chat_history", history)
+    monkeypatch.setitem(server.app.config, "AI_ASSISTANT_ENABLED", True)
+
+    def request(method, path, headers):
+        return relay.dispatch(
+            {"id": "history", "method": method, "path": path, "headers": headers},
+            public_origin("example"),
+        )
+
+    for path, method in [
+        ("/ai/conversations", "GET"),
+        ("/ai/conversations", "DELETE"),
+        (item, "GET"),
+        (item, "DELETE"),
+        (item + "/summary", "POST"),
+        (item + "/turns/12/control", "POST"),
+    ]:
+        for headers in ({}, {"token": "invalid"}):
+            assert request(method, path, headers)["status"] == 403
+    history.assert_not_called()
+    result = request("GET", "/ai/conversations", {"token": relay.app.token})
+    assert result["status"] == 200
+    assert json.loads(base64.b64decode(result["body"])) == {"conversations": []}
+    for method, path in [
+        ("POST", item),
+        ("GET", item + "/summary"),
+        ("GET", "/ai/settings"),
+    ]:
+        with pytest.raises(ValueError):
+            request(method, path, {"token": relay.app.token})
+
+
+def test_connection_login_dispatch_and_disable(relay, monkeypatch, tmp_path):
+    import server
+    from arknights_mower.agent import agent
+    from arknights_mower.utils import config_profiles
+    from arknights_mower.utils.ai_history import HistoryStore
     from arknights_mower.utils.log_stream import LogStream
 
+    history = HistoryStore("test")
+    history.path = tmp_path / "chat.sqlite3"
+    monkeypatch.setitem(relay.app.config, "AI_ASSISTANT_ENABLED", True)
+    monkeypatch.setattr(server, "active_chat_history", lambda: history)
+    monkeypatch.setattr(
+        config_profiles, "current_generation", lambda: "test-generation"
+    )
+    monkeypatch.setattr(
+        agent, "ask_llm", lambda *args, **kwargs: iter(["fixture reply"])
+    )
     stream = LogStream()
     stream.publish("relay log fixture")
     monkeypatch.setattr(server.log_stream, "serve", stream.serve)
@@ -153,13 +204,46 @@ def test_connection_login_dispatch_and_disable(relay, monkeypatch):
                         "op": "request",
                         "id": "get",
                         "method": "GET",
-                        "path": "/getwatermark",
-                        "headers": {"token": relay.app.token},
+                        "path": "/ai/conversations",
+                        "headers": {
+                            "token": relay.app.token,
+                            "x-mower-config-generation": "test-generation",
+                        },
                     }
                 )
                 response = await ws.receive_json(timeout=3)
                 assert response["status"] == 200
-                assert base64.b64decode(response["body"])
+                assert json.loads(base64.b64decode(response["body"])) == {
+                    "conversations": []
+                }
+                await ws.send_json({"op": "ws_open", "id": "chat", "path": "/ws/chat"})
+                for frame in (
+                    {"token": relay.app.token},
+                    {
+                        "conversation_id": None,
+                        "request_id": "first",
+                        "generation": "test-generation",
+                        "message": "first message",
+                    },
+                ):
+                    await ws.send_json(
+                        {"op": "ws_data", "id": "chat", "data": json.dumps(frame)}
+                    )
+                async with asyncio.timeout(3):
+                    while True:
+                        envelope = await ws.receive_json()
+                        assert (envelope["op"], envelope["id"]) == ("ws_data", "chat")
+                        frame = json.loads(envelope["data"])
+                        assert "error" not in frame
+                        if frame.get("done"):
+                            break
+                turn = history.read(history.list()[0]["id"])["turns"][0]
+                assert (turn["user"], turn["assistant"]) == (
+                    "first message",
+                    "fixture reply",
+                )
+                await ws.send_json({"op": "ws_close", "id": "chat"})
+                assert (await ws.receive_json(timeout=3))["op"] == "ws_close"
                 await ws.send_json({"op": "ws_open", "id": "log", "path": "/log"})
                 await ws.send_json(
                     {
