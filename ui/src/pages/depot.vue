@@ -1111,7 +1111,6 @@ import {
   formatTimestamp,
   groupItemsByTier,
   GARRISON_TARGETS,
-  itemIconUrl,
   parseDepotResponse,
   resolveCopyText,
   sortItems,
@@ -1119,6 +1118,7 @@ import {
   TRAINING_TARGETS,
   usableSnapshots
 } from '@/utils/depot_inventory'
+import { itemIconUrl } from '@/utils/itemIconUrl'
 
 use([
   GridComponent,

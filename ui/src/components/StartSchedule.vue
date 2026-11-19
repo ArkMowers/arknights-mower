@@ -6,7 +6,15 @@ import AlarmOutline from '@vicons/ionicons5/es/AlarmOutline'
 import PlayIcon from '@vicons/ionicons5/es/PlayOutline'
 import { useMowerStore } from '@/stores/mower'
 import { useHalloweenSeason } from '@/composables/halloween'
+import { useLazyForm } from '@/composables/lazyForm'
+import FormLoadNotice from './FormLoadNotice.vue'
 
+const {
+  component: ScheduledStartDialog,
+  show: showModal,
+  failed: scheduleLoadFailed,
+  open: openModal
+} = useLazyForm(() => import('./ScheduledStartDialog.vue'))
 const halloweenActive = useHalloweenSeason()
 const halloweenButtonTheme = computed(() =>
   halloweenActive.value
@@ -42,9 +50,6 @@ const axios = inject('axios')
 const message = useMessage()
 const { scheduled_start_at } = storeToRefs(useMowerStore())
 const now = ref(Date.now())
-const showModal = ref(false)
-const date = ref(Date.now())
-const time = ref(Date.now())
 const busy = ref(false)
 let clock
 
@@ -71,15 +76,6 @@ const scheduledOptions = [
   { label: '取消定时启动', key: 'cancel' },
   { label: '立即开始执行', key: 'start' }
 ]
-
-function openModal() {
-  const target = scheduled_start_at.value
-    ? new Date(scheduled_start_at.value).getTime()
-    : Date.now() + 30 * 60000
-  date.value = target
-  time.value = target
-  showModal.value = true
-}
 
 async function schedule(delaySeconds) {
   if (busy.value || props.waiting) return
@@ -118,22 +114,8 @@ async function cancel() {
   }
 }
 
-function confirm() {
-  const d = new Date(date.value)
-  const t = new Date(time.value)
-  const target = new Date(
-    d.getFullYear(),
-    d.getMonth(),
-    d.getDate(),
-    t.getHours(),
-    t.getMinutes(),
-    t.getSeconds()
-  )
-  schedule(Math.ceil((target.getTime() - Date.now()) / 1000))
-}
-
 function select(key) {
-  if (key === 'custom') openModal()
+  if (key === 'custom') return openModal()
   else if (key === 'cancel') cancel()
   else if (key === 'start') props.start('2')
   else props.start(key)
@@ -180,26 +162,15 @@ function select(key) {
       </n-button>
     </drop-down>
   </n-config-provider>
-  <n-modal
+  <component
+    :is="ScheduledStartDialog"
+    v-if="ScheduledStartDialog"
     v-model:show="showModal"
-    preset="card"
-    title="定时启动"
-    style="width: min(420px, calc(100vw - 32px))"
-  >
-    <n-text depth="3" style="display: block; margin-bottom: 12px">
-      到达预约时间后，将清空运行缓存并启动 Mower。
-    </n-text>
-    <n-space vertical>
-      <n-date-picker v-model:value="date" type="date" style="width: 100%" />
-      <n-time-picker v-model:value="time" style="width: 100%" />
-    </n-space>
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="showModal = false">取消</n-button>
-        <n-button type="primary" :loading="busy" @click="confirm">确定</n-button>
-      </n-space>
-    </template>
-  </n-modal>
+    :scheduled-start-at="scheduled_start_at"
+    :busy="busy"
+    @schedule="schedule"
+  />
+  <FormLoadNotice :show="scheduleLoadFailed" title="定时启动表单加载失败" @retry="openModal" />
 </template>
 
 <style scoped>
