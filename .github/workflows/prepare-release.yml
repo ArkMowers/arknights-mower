@@ -154,6 +154,8 @@ jobs:
       pull-requests: read
     uses: ./.github/workflows/release-build.yml
     secrets:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       MOWER_RELEASE_TOKEN: ${{ secrets.MOWER_RELEASE_TOKEN }}
       ANDROID_RELEASE_TOKEN: ${{ secrets.ANDROID_RELEASE_TOKEN }}
     with:

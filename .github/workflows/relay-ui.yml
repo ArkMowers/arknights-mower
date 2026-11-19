@@ -9,9 +9,6 @@ jobs:
   publish:
     if: github.repository == 'ArkMowers/arknights-mower'
     runs-on: ubuntu-latest
-    concurrency:
-      group: relay-ui-publish-${{ github.ref }}
-      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

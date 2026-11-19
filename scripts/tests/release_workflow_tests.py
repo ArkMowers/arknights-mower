@@ -48,6 +48,28 @@ class CrossPlatformReleaseWorkflowTests(unittest.TestCase):
         cls.workflow = load_workflow(BUILD_WORKFLOW_PATH)
         cls.jobs = cls.workflow["jobs"]
 
+    def test_every_alpha_push_can_publish_its_own_frontend(self):
+        workflow = load_workflow(REPO_ROOT / ".github/workflows/relay-ui.yml")
+        self.assertIn("alpha", workflow["on"]["push"]["branches"])
+        self.assertNotIn("concurrency", workflow)
+        # A shared branch group would discard intermediate pending builds.
+        self.assertNotIn("concurrency", workflow["jobs"]["publish"])
+
+    def test_prepare_passes_r2_credentials_to_frontend_publisher(self):
+        caller = load_workflow(PREPARE_WORKFLOW_PATH)["jobs"]["build-release"]
+        declared = self.workflow["on"]["workflow_call"]["secrets"]
+        publish = find_step(
+            self.jobs["release"], "Publish the validated release frontend to R2"
+        )
+        for key, env in (
+            ("R2_ACCESS_KEY_ID", "AWS_ACCESS_KEY_ID"),
+            ("R2_SECRET_ACCESS_KEY", "AWS_SECRET_ACCESS_KEY"),
+        ):
+            expression = "${{ secrets." + key + " }}"
+            self.assertEqual(caller["secrets"][key], expression)
+            self.assertTrue(declared[key]["required"])
+            self.assertEqual(publish["env"][env], expression)
+
     def test_workflow_name_covers_release_types(self):
         self.assertEqual(self.workflow["name"], "Release & Prerelease")
 

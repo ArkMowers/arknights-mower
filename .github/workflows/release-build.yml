@@ -41,6 +41,12 @@ on:
         type: string
         required: true
     secrets:
+      R2_ACCESS_KEY_ID:
+        description: R2 前端发布凭据的 Access Key ID
+        required: true
+      R2_SECRET_ACCESS_KEY:
+        description: R2 前端发布凭据的 Secret Access Key
+        required: true
       MOWER_RELEASE_TOKEN:
         description: 用于触发 MowerRelease 打包的细粒度令牌
         required: false

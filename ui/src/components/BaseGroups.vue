@@ -377,8 +377,7 @@ function ownershipSummary(group) {
                 :aria-pressed="variant.id === group.id"
                 @click="chooseVariant(group, variant.id)"
               >
-                <span class="variant-rank">{{ index + 1 }}</span
-                >{{ variant.variantTitle
+                <span class="variant-rank">{{ index + 1 }}</span>{{ variant.variantTitle
                 }}<small v-if="variant.efficiency !== undefined" class="variant-efficiency"
                   >{{ Number(variant.efficiency.toFixed(2)) }}%</small
                 >
