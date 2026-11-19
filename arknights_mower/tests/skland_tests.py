@@ -19,6 +19,13 @@ from arknights_mower.utils import (  # noqa: E402
     skland,
     skland_log,
 )
+from arknights_mower.utils.csleep import MowerExit  # noqa: E402
+from arknights_mower.utils.skland_statistics import (  # noqa: E402
+    ACCOUNT_FAILED,
+    ACCOUNT_RECOVERED,
+    read_history,
+    read_sign_in_state,
+)
 
 
 def tearDownModule():
@@ -393,21 +400,220 @@ class TestSignHeaderFields(unittest.TestCase):
         self.assertEqual(s1, s2)
 
 
-class TestSignLogPrivacy(unittest.TestCase):
-    def test_signing_logs_keep_server_message_and_redact_identity(self):
-        account = SimpleNamespace(
+class TestSignInRecording(unittest.TestCase):
+    def setUp(self):
+        self.folder = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.solver = sign_module.SKLand()
+        self.solver.record_path = self.folder / "skland.csv"
+        self.today = datetime.date(2026, 11, 30)
+        self.enterContext(
+            patch.object(
+                sign_module,
+                "skland_day",
+                side_effect=lambda timestamp=None: (
+                    self.today
+                    if timestamp is None
+                    else skland_log.skland_day(timestamp)
+                ),
+            )
+        )
+        self.account = SimpleNamespace(
             account="13800138000",
             arknights_isCheck=True,
             endfield_isCheck=False,
             sign_in_bilibili=False,
             sign_in_official=True,
+            sign_in_endfield_official=True,
+            sign_in_endfield_bilibili=False,
         )
-        role = {
+        self.role = {
             "gameId": 1,
             "uid": "role-1",
             "channelName": "官服",
             "nickName": "私密昵称",
         }
+        self.enterContext(
+            patch.object(
+                sign_module.config,
+                "conf",
+                SimpleNamespace(skland_info=[self.account]),
+            )
+        )
+        self.enterContext(patch.object(sign_module, "log", return_value="secret-token"))
+        self.enterContext(patch.object(sign_module, "get_sign_header", return_value={}))
+        self.enterContext(
+            patch.object(
+                sign_module,
+                "get_cred_by_token",
+                return_value={"cred": "secret-cred", "token": "sign-token"},
+            )
+        )
+        self.bindings = self.enterContext(
+            patch.object(sign_module, "get_binding_list", return_value=[self.role])
+        )
+        self.post = self.enterContext(patch.object(sign_module.requests, "post"))
+
+    @staticmethod
+    def response(body, date=None):
+        return Mock(headers={"Date": date}, json=Mock(return_value=body))
+
+    def test_signing_without_enabled_accounts_is_skipped(self):
+        self.account.sign_in_official = False
+        with patch.object(sign_module.logger, "warning") as warning:
+            self.assertIsNone(self.solver.start())
+        sign_module.log.assert_not_called()
+        self.post.assert_not_called()
+        self.assertFalse(self.solver.record_path.exists())
+        self.assertIn("未启用任何账号", warning.call_args.args[0])
+
+    def test_signing_without_enabled_bindings_remains_incomplete(self):
+        self.bindings.return_value = []
+        with patch.object(sign_module.logger, "warning") as warning:
+            self.assertFalse(self.solver.start())
+        self.post.assert_not_called()
+        (failure,) = read_history(self.solver.record_path)
+        self.assertEqual(failure.outcome, ACCOUNT_FAILED)
+        self.assertEqual(failure.game, "")
+        self.assertIsNone(failure.role_key)
+        self.assertIn("没有可签到的已启用角色", failure.reward)
+        self.assertNotIn(self.account.account, str(warning.call_args_list))
+
+    def test_unsaved_response_does_not_complete_signing(self):
+        self.post.return_value = self.response({"code": 0, "data": {"awards": []}})
+        with patch.object(sign_module, "append_dict_rows", side_effect=OSError):
+            self.assertFalse(self.solver.start())
+        self.post.assert_called_once()
+        self.assertFalse(self.solver.record_path.exists())
+
+    def test_encoding_failure_does_not_leave_a_partial_event(self):
+        self.post.return_value = self.response(
+            {
+                "code": 0,
+                "data": {
+                    "awards": [
+                        {"resource": {"name": "龙门币"}},
+                        {"resource": {"name": "奖励🎁"}},
+                    ]
+                },
+            }
+        )
+        self.solver.record_path.write_text("", encoding="gbk")
+
+        self.assertFalse(self.solver.start())
+        self.assertEqual(self.solver.record_path.read_bytes(), b"")
+        self.assertFalse(self.solver.start())
+        self.assertEqual(self.post.call_count, 2)
+
+    def test_multi_reward_event_writes_a_completion_marker(self):
+        self.post.return_value = self.response(
+            {
+                "code": 0,
+                "data": {
+                    "awards": [
+                        {"resource": {"name": "龙门币"}, "count": 5},
+                        {"resource": {"name": "赤金"}, "count": 7},
+                    ]
+                },
+            }
+        )
+
+        self.assertTrue(self.solver.start())
+
+        rows = self.solver.record_path.read_text(encoding="gbk").splitlines()
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[-1].split(",")[4], "event_committed")
+        completed, failures, _ = read_sign_in_state(self.solver.record_path)
+        self.assertEqual(len(completed), 1)
+        self.assertFalse(failures)
+
+    def test_partially_written_event_is_retried_and_not_completed(self):
+        # 上一次签到只写入了同一事件的第一条奖励，完成标记没有落盘。
+        today = self.today.strftime("%Y/%m/%d")
+        role_key = sign_module.sign_role_key(
+            self.account.account, "明日方舟官服", self.role["uid"]
+        )
+        self.solver.record_path.write_text(
+            f"{today},13800138000,明日方舟官服,龙门币×500,success,0,"
+            f"{role_key},{'a' * 32}\n",
+            encoding="gbk",
+        )
+        self.post.return_value = self.response({"code": 0, "data": {"awards": []}})
+
+        self.assertTrue(self.solver.start())
+
+        self.post.assert_called_once()
+        completed, failures, _ = read_sign_in_state(self.solver.record_path)
+        self.assertEqual(len(completed), 1)
+        self.assertFalse(failures)
+        (record,) = read_history(self.solver.record_path)
+        self.assertNotEqual(record.event_id, "a" * 32)
+
+    def test_login_failure_keeps_the_next_account_eligible(self):
+        second = SimpleNamespace(**{**vars(self.account), "account": "13900139000"})
+        sign_module.config.conf.skland_info.append(second)
+        sign_module.log.side_effect = (
+            RuntimeError(f"登录失败：{self.account.account} provider-text"),
+            "secret-token",
+        )
+        self.post.return_value = self.response({"code": 0, "data": {"awards": []}})
+
+        with patch.object(sign_module.logger, "warning") as warning:
+            results = self.solver.test_sign()
+
+        self.assertEqual(sign_module.log.call_count, 2)
+        self.post.assert_called_once()
+        failure, record = read_history(self.solver.record_path)
+        self.assertEqual(failure.account, "138****8000")
+        self.assertEqual(failure.outcome, ACCOUNT_FAILED)
+        self.assertEqual(failure.game, "")
+        self.assertIsNone(failure.role_key)
+        self.assertEqual(record.account, "139****9000")
+        self.assertEqual(record.outcome, "signed")
+        self.assertIn("登录失败", results[-1])
+        self.assertNotIn(self.account.account, results[-1])
+        self.assertNotIn(self.account.account, str(warning.call_args_list))
+        self.assertNotIn(
+            "provider-text", self.solver.record_path.read_text(encoding="gbk")
+        )
+
+    def test_binding_lookup_recovers_even_if_roles_are_already_signed(self):
+        self.post.return_value = self.response({"code": 0, "data": {"awards": []}})
+        self.bindings.side_effect = ([self.role], requests.Timeout(), [self.role])
+
+        self.assertTrue(self.solver.start())
+        self.assertFalse(self.solver.start())
+        self.assertTrue(self.solver.start())
+
+        self.post.assert_called_once()
+        signed, failure, recovered = read_history(self.solver.record_path)
+        self.assertEqual(signed.outcome, "signed")
+        self.assertEqual(failure.outcome, ACCOUNT_FAILED)
+        self.assertIn("读取森空岛签到角色失败", failure.reward)
+        self.assertEqual(recovered.outcome, ACCOUNT_RECOVERED)
+        self.assertEqual((failure.date, recovered.date), (signed.date, signed.date))
+        self.assertEqual(recovered.game, "")
+        self.assertIsNone(recovered.role_key)
+
+    def test_cancellation_exits_at_authentication_or_signing(self):
+        for operation in (sign_module.log, self.post):
+            with self.subTest(operation=operation):
+                operation.side_effect = MowerExit
+                try:
+                    with self.assertRaises(MowerExit):
+                        self.solver.start()
+                finally:
+                    operation.side_effect = None
+        self.assertFalse(self.solver.record_path.exists())
+
+    def test_manual_signing_test_keeps_the_provider_failure_message(self):
+        self.post.return_value = self.response(
+            {"code": 22, "message": "服务暂时不可用"}
+        )
+        (result,) = self.solver.test_sign()
+        self.assertIn("签到失败，服务暂时不可用", result)
+
+    def test_signing_logs_keep_server_message_and_redact_identity(self):
+        solver = self.solver
         responses = (
             {
                 "code": 1000,
@@ -417,28 +623,12 @@ class TestSignLogPrivacy(unittest.TestCase):
         )
         for response in responses:
             with self.subTest(response_code=response["code"]):
-                solver = sign_module.SKLand()
-                with (
-                    patch.object(
-                        sign_module.config,
-                        "conf",
-                        SimpleNamespace(skland_info=[account]),
-                    ),
-                    patch.object(sign_module, "log", return_value="secret-token"),
-                    patch.object(
-                        sign_module,
-                        "get_cred_by_token",
-                        return_value={"cred": "secret-cred", "token": "sign-token"},
-                    ),
-                    patch.object(sign_module, "get_binding_list", return_value=[role]),
-                    patch.object(solver, "has_record", return_value=False),
-                    patch.object(solver, "record_log", return_value=True),
-                    patch.object(sign_module.logger, "info") as info,
-                    patch.object(sign_module.requests, "post") as post,
-                ):
-                    post.return_value.json.return_value = response
+                solver.record_path = self.folder / f"privacy-{response['code']}.csv"
+                self.post.return_value = self.response(response)
+                with patch.object(sign_module.logger, "info") as info:
                     self.assertTrue(solver.start())
                 logged = str(info.call_args_list)
+                parsed = read_history(solver.record_path)[0]
                 for secret in (
                     "私密昵称",
                     "13800138000",
@@ -446,6 +636,7 @@ class TestSignLogPrivacy(unittest.TestCase):
                     "secret-cred",
                 ):
                     self.assertNotIn(secret, logged)
+                    self.assertNotIn(secret, parsed.reward)
                 if response["code"]:
                     self.assertIn("1000", logged)
                     self.assertIn("今日已签到", logged)
@@ -456,16 +647,142 @@ class TestSignLogPrivacy(unittest.TestCase):
                     "failure" if response["code"] else "success",
                 )
 
+    def test_failed_rows_do_not_count_as_signed_today(self):
+        today = self.today.strftime("%Y/%m/%d")
+        role_key = skland_log.sign_role_key("13800138000", "明日方舟官服", "role-1")
+        cases = (
+            ("服务暂时不可用", "failure", False),
+            ("请勿重复签到！", "failure", True),
+            ("龙门币×500", "success", True),
+        )
+        self.post.return_value = self.response({"code": 0, "data": {"awards": []}})
+        solver = self.solver
+        for reward, status, expected in cases:
+            with self.subTest(status=status, reward=reward):
+                self.post.reset_mock()
+                solver.record_path.write_text(
+                    f"{today},13800138000,明日方舟官服,{reward},{status},1,{role_key}\n",
+                    encoding="gbk",
+                )
+                self.assertTrue(solver.start())
+                self.assertEqual(self.post.call_count, 0 if expected else 1)
+
+    def test_legacy_row_stays_readable_and_never_skips_the_observed_role(self):
+        today = self.today.strftime("%Y/%m/%d")
+        solver = self.solver
+        self.post.return_value = self.response({"code": 1000, "message": "今日已签到"})
+        for encoding in ("gbk", "utf-8-sig"):
+            with self.subTest(encoding=encoding):
+                self.post.reset_mock()
+                solver.record_path.write_text(
+                    f"{today},13800138000,明日方舟官服,龙门币×500,success,0\n",
+                    encoding=encoding,
+                )
+                self.assertTrue(solver.start())
+                self.assertTrue(solver.start())
+                self.post.assert_called_once()
+                legacy, scoped = read_history(solver.record_path)
+                self.assertEqual((legacy.item, legacy.count), ("龙门币", 500))
+                self.assertIsNone(legacy.role_key)
+                self.assertEqual(scoped.outcome, "repeated")
+                self.assertTrue(scoped.event_id)
+                self.assertTrue(scoped.role_key)
+
+    def test_same_region_retry_only_signs_the_failed_role(self):
+        self.account.arknights_isCheck = False
+        self.account.endfield_isCheck = True
+        self.bindings.return_value = [
+            {
+                "gameId": 3,
+                "channelName": "官服",
+                "roles": [
+                    {"roleId": "role-A", "serverId": "1"},
+                    {"roleId": "role-B", "serverId": "1"},
+                ],
+            }
+        ]
+        today = self.today.strftime("%Y/%m/%d")
+        self.solver.record_path.write_text(
+            f"{today},13800138000,终末地官服,折金票×50,success,0\n",
+            encoding="gbk",
+        )
+        success = self.response(
+            {
+                "code": 0,
+                "data": {
+                    "awardIds": [{"id": "item"}],
+                    "resourceInfoMap": {"item": {"name": "折金票", "count": 100}},
+                },
+            }
+        )
+        failure = self.response({"code": 22, "message": "签到服务暂时不可用"})
+        self.post.side_effect = (success, failure, success)
+
+        self.assertFalse(self.solver.start())
+        self.assertTrue(self.solver.start())
+        roles = [call.kwargs["json"]["roleId"] for call in self.post.call_args_list]
+        self.assertEqual(roles, ["role-A", "role-B", "role-B"])
+        first, failed, recovered = read_history(self.solver.record_path)[1:]
+        self.assertNotEqual(first.role_key, failed.role_key)
+        self.assertEqual(failed.role_key, recovered.role_key)
+        self.assertEqual(
+            [first.outcome, failed.outcome, recovered.outcome],
+            ["signed", "failed", "signed"],
+        )
+        self.assertNotIn("role-B", self.solver.record_path.read_text(encoding="gbk"))
+
+    def test_role_failures_are_saved_and_do_not_skip_the_next_role(self):
+        self.bindings.return_value = [
+            {**self.role, "uid": f"role-{index}"} for index in range(1, 5)
+        ]
+        self.post.side_effect = (
+            self.response(
+                {
+                    "code": 0,
+                    "data": {
+                        "awards": [
+                            {"resource": {"name": "龙门币"}, "count": 3},
+                            {"resource": {"name": "龙门币"}, "count": 2},
+                            {"resource": {"name": "赤金"}, "count": 7},
+                        ]
+                    },
+                },
+                "Mon, 30 Nov 2026 16:02:00 GMT",
+            ),
+            requests.exceptions.ConnectionError("连接中断 secret-token"),
+            self.response(None, "Mon, 30 Nov 2026 16:02:00 GMT"),
+            self.response({"code": 0, "data": {"awards": []}}),
+        )
+        self.assertFalse(self.solver.start())
+
+        first, second, connection, malformed, last = read_history(
+            self.solver.record_path
+        )
+        self.assertEqual((first.date, second.date), (datetime.date(2026, 12, 1),) * 2)
+        self.assertEqual((first.item, first.count), ("龙门币", 5))
+        self.assertEqual((second.item, second.count), ("赤金", 7))
+        self.assertTrue(first.event_id)
+        self.assertEqual(first.event_id, second.event_id)
+        self.assertEqual(connection.date, self.today)
+        self.assertEqual(malformed.date, datetime.date(2026, 12, 1))
+        self.assertEqual(
+            [connection.outcome, malformed.outcome, last.outcome],
+            ["failed", "failed", "signed"],
+        )
+        self.assertEqual(
+            [call.kwargs["json"]["uid"] for call in self.post.call_args_list],
+            ["role-1", "role-2", "role-3", "role-4"],
+        )
+        self.assertNotIn(
+            "secret-token", self.solver.record_path.read_text(encoding="gbk")
+        )
+
     def test_record_log_omits_reward_account_data(self):
-        solver = sign_module.SKLand()
+        solver = self.solver
         solver.reward = [
             {"nickName": "13800138000", "game": "明日方舟官服", "reward": "私密奖励"}
         ]
-        with (
-            patch.object(sign_module, "get_path", return_value="skland.csv"),
-            patch("arknights_mower.utils.csv_utils.append_dated_row"),
-            patch.object(sign_module.logger, "info") as info,
-        ):
+        with patch.object(sign_module.logger, "info") as info:
             self.assertTrue(solver.record_log())
         logged = str(info.call_args_list)
         self.assertNotIn("13800138000", logged)

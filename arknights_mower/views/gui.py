@@ -101,6 +101,22 @@ def save_depot_preferences():
         return {"ok": False, "message": "仓库偏好保存失败，请稍后重试"}, 503
 
 
+@gui_bp.get("/skland")
+def skland_preferences():
+    return {"skland": gui.load_skland()}
+
+
+@gui_bp.put("/skland")
+def save_skland_preferences():
+    data = _request_json()
+    if not isinstance(data, dict) or data.keys() != {"skland"}:
+        return {"ok": False, "message": "缺少有效的签到页偏好"}, 400
+    try:
+        return {"skland": gui.save_skland(data["skland"])}
+    except ValueError as exc:
+        return {"ok": False, "message": str(exc)}, 400
+
+
 @gui_bp.put("/appearance")
 def save_appearance():
     data = _request_json()

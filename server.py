@@ -77,6 +77,7 @@ from arknights_mower.views.mastery import mastery_bp
 from arknights_mower.views.network import network_bp
 from arknights_mower.views.process_control import process_control_bp
 from arknights_mower.views.relay import relay_bp
+from arknights_mower.views.skland import skland_bp
 from arknights_mower.views.software_update import software_update_bp
 from arknights_mower.views.task import set_mower_thread, task_bp
 from arknights_mower.views.ui_state import ui_state_bp
@@ -911,8 +912,9 @@ def serialize_configuration_requests():
             "/depot/readdepot",
         }
     )
+    refreshes_skland_rewards = request.endpoint == "skland.refresh_rewards"
     if (
-        changes_configuration
+        (changes_configuration and not refreshes_skland_rewards)
         or request.path
         in {
             "/conf",
@@ -944,6 +946,7 @@ def serialize_configuration_requests():
         "/gui/appearance",
         "/gui/sidebar",
         "/gui/depot",
+        "/gui/skland",
         "/gui/log-background",
     }:
         check_token()
@@ -2020,7 +2023,7 @@ def get_status():
 
 # 记录名、完成日期属性、尝试日期属性。
 _DAILY_STATUS_RECORDS = (
-    ("skland", "daily_skland", None),
+    ("skland", "daily_skland", "daily_skland_attempt"),
     ("mail", "daily_mail", None),
     ("event_sign_in", "daily_event_sign_in", "daily_event_sign_in_attempt"),
     ("report", "daily_report", None),
@@ -5367,6 +5370,7 @@ app.register_blueprint(config_profiles_bp)
 app.register_blueprint(process_control_bp)
 app.register_blueprint(ui_state_bp)
 app.register_blueprint(gui_bp)
+app.register_blueprint(skland_bp)
 app.config["WEB_UI_ORIGIN_ALLOWED"] = _diagnostic_delete_origin_allowed
 app.register_blueprint(instances_bp)
 

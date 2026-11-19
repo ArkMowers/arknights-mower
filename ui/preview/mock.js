@@ -1,6 +1,7 @@
 import { defaultSettingsFavorites, validSettingsFavorites } from '../src/task-workflow/model'
 import axios, { AxiosError } from 'axios'
 import screenshot from './screenshot.svg?raw'
+import { DEFAULT_SKLAND_PREFERENCES } from '../src/stores/sklandPreferences.js'
 import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '../src/utils/depot_inventory.js'
 import { ORDER_PRICES, ORDER_TYPES } from '../src/utils/baseReport.js'
 import { isValidRunningLogLayout } from '../src/utils/logLayoutConfig.js'
@@ -208,6 +209,240 @@ function previewOrderCandles(data, { startDate, endDate, period = '4h' }) {
     recordedCount: candles.reduce((sum, row) => sum + row.count, 0),
     amount: candles.reduce((sum, row) => sum + row.amount, 0)
   }
+}
+
+// 森空岛签到示例：近一年（365 天）、两个账号、四个游戏区服；结果按固定相位生成，刷新可复现。
+const PREVIEW_SKLAND_PAIRS = [
+  ['138****8000', '明日方舟官服'],
+  ['138****8000', '终末地官服'],
+  ['139****9000', '明日方舟官服'],
+  ['139****9000', '明日方舟bilibili服']
+]
+const PREVIEW_SKLAND_REWARDS = [
+  ['龙门币', 1000],
+  ['合成玉', 300],
+  ['赤金', 2],
+  ['招聘许可', 1],
+  ['技巧概要·卷3', 2],
+  ['源岩', 5],
+  ['装置', 1]
+]
+const PREVIEW_ENDFIELD_REWARDS = [
+  ['嵌晶玉', 20],
+  ['武器检查套组', 2],
+  ['折金票', 5000],
+  ['协议棱柱', 2],
+  ['高级作战记录', 2],
+  ['中级作战记录', 6],
+  ['武器检查装置', 5],
+  ['初级认知载体', 5]
+]
+
+function previewSklandDate(date, offset) {
+  const value = new Date(`${date}T00:00:00`)
+  value.setDate(value.getDate() + offset)
+  return value.toLocaleDateString('sv-SE')
+}
+
+function previewSklandOutcome(rows) {
+  const outcomes = new Set(rows.map((row) => row.outcome))
+  if (outcomes.has('signed')) return 'signed'
+  if (outcomes.has('repeated')) return 'repeated'
+  return 'failed'
+}
+
+function previewSklandCurrentStreak(days, today) {
+  const signed = new Set(days)
+  let cursor = signed.has(today) ? today : previewSklandDate(today, -1)
+  if (!signed.has(cursor)) return 0
+  let count = 0
+  while (signed.has(cursor)) {
+    count++
+    cursor = previewSklandDate(cursor, -1)
+  }
+  return count
+}
+
+function previewSklandLongestStreak(days) {
+  let longest = 0
+  let run = 0
+  let previous = null
+  for (const day of days) {
+    run = previous && previewSklandDate(previous, 1) === day ? run + 1 : 1
+    longest = Math.max(longest, run)
+    previous = day
+  }
+  return longest
+}
+
+function previewSklandPairs(records, today) {
+  const grouped = new Map()
+  for (const record of records) {
+    if (!grouped.has(record.pair)) grouped.set(record.pair, [])
+    grouped.get(record.pair).push(record)
+  }
+  const pairs = []
+  for (const [key, rows] of grouped) {
+    const dates = [...new Set(rows.map((row) => row.date))].sort()
+    const signedDays = dates.filter(
+      (date) => previewSklandOutcome(rows.filter((row) => row.date === date)) !== 'failed'
+    )
+    const lastDate = dates.at(-1)
+    pairs.push({
+      key,
+      account: rows[0].account,
+      game: rows[0].game,
+      game_group: rows[0].game_group,
+      channel: rows[0].channel,
+      first_date: dates[0],
+      last_date: lastDate,
+      record_days: dates.length,
+      signed_days: signedDays.length,
+      current_streak: previewSklandCurrentStreak(signedDays, today),
+      longest_streak: previewSklandLongestStreak(signedDays),
+      last_outcome: previewSklandOutcome(rows.filter((row) => row.date === lastDate))
+    })
+  }
+  return pairs.sort(
+    (left, right) =>
+      left.account.localeCompare(right.account) || left.game.localeCompare(right.game)
+  )
+}
+
+function previewSklandSlotRewards(gameGroup, position) {
+  const rewards = gameGroup === '终末地' ? PREVIEW_ENDFIELD_REWARDS : PREVIEW_SKLAND_REWARDS
+  const [item, count] = rewards[position % rewards.length]
+  return [{ item, count }]
+}
+
+function previewSklandHistory(today) {
+  const records = []
+  const claims = new Map()
+  for (let offset = 364; offset >= 0; offset--) {
+    const date = previewSklandDate(today, -offset)
+    for (const [index, [account, game]] of PREVIEW_SKLAND_PAIRS.entries()) {
+      const phase = (offset + index * 5) % 31
+      let outcome = 'signed'
+      if (offset === 0) outcome = index === 3 ? 'repeated' : 'signed'
+      else if (phase === 0) outcome = 'failed'
+      else if (phase === 7) {
+        if (index !== 1) continue
+        outcome = 'external'
+      } else if (phase === 13) outcome = 'repeated'
+
+      const gameGroup = game.startsWith('终末地') ? '终末地' : '明日方舟'
+      const pair = `${account}::${game}`
+      const roleKey = `preview-role-${index + 1}`
+      const monthKey = `${pair}::${date.slice(0, 7)}`
+      let signedDates = claims.get(monthKey)
+      if (!signedDates) {
+        signedDates = []
+        claims.set(monthKey, signedDates)
+      }
+      const position = signedDates.length
+      if (outcome !== 'failed') signedDates.push(date)
+      if (outcome === 'external') continue
+      const record = {
+        date,
+        account,
+        game,
+        game_group: gameGroup,
+        channel: game.slice(gameGroup.length) || '未知区服',
+        pair,
+        role_key: roleKey,
+        event_id: `${roleKey}:${date}`,
+        outcome,
+        reward: '',
+        item: null,
+        count: 0
+      }
+      if (outcome === 'signed') {
+        for (const { item, count } of previewSklandSlotRewards(gameGroup, position)) {
+          records.push({ ...record, reward: `${item}×${count}`, item, count })
+        }
+      } else if (outcome === 'repeated') {
+        records.push({ ...record, reward: '请勿重复签到！' })
+      } else {
+        records.push({ ...record, reward: '服务暂时不可用，签到失败' })
+      }
+    }
+  }
+  return {
+    today,
+    records,
+    claims,
+    pairs: previewSklandPairs(records, today),
+    accounts: [...new Set(records.map((record) => record.account))].sort(),
+    games: [...new Set(records.map((record) => record.game))].sort()
+  }
+}
+
+function previewSklandPayload(history, params) {
+  const today = history.today
+  const start = params.startDate || previewSklandDate(today, -29)
+  const end = params.endDate || today
+  const account = params.account || null
+  const game = params.game || null
+  const matches = (row) => (!account || row.account === account) && (!game || row.game === game)
+  const pairs = history.pairs.filter(matches)
+  const rows = history.records.filter((row) => matches(row) && row.date >= start && row.date <= end)
+  const todayRows = history.records.filter((row) => matches(row) && row.date === today)
+  const counts = { signed: 0, repeated: 0, failed: 0, pending: 0 }
+  for (const pair of pairs) {
+    const pairRows = todayRows.filter((row) => row.pair === pair.key)
+    counts[pairRows.length ? previewSklandOutcome(pairRows) : 'pending'] += 1
+  }
+  return {
+    range: { start, end },
+    today: { date: today, ...counts, total: pairs.length },
+    today_records: todayRows.sort(
+      (left, right) =>
+        left.account.localeCompare(right.account) || left.game.localeCompare(right.game)
+    ),
+    accounts: history.accounts,
+    games: history.games,
+    pairs,
+    records: rows.sort(
+      (left, right) =>
+        right.date.localeCompare(left.date) ||
+        right.account.localeCompare(left.account) ||
+        right.game.localeCompare(left.game)
+    )
+  }
+}
+
+function previewSklandMonthlyRewards(history, date = history.today) {
+  const [year, month] = date.split('-').map(Number)
+  const length = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const roleKeys = new Map(history.records.map(({ pair, role_key }) => [pair, role_key]))
+  return history.pairs.map(({ key, account, game, game_group }) => {
+    const signedDates = (history.claims.get(`${key}::${date.slice(0, 7)}`) || []).filter(
+      (day) => day <= date
+    )
+    const claimed = signedDates.length
+    const signedToday = signedDates.includes(date)
+    return {
+      account,
+      game,
+      role_index: 1,
+      role_key: roleKeys.get(key),
+      display_name:
+        game_group === '终末地'
+          ? '塔卫二管理员'
+          : game.includes('bilibili')
+            ? '罗德岛巡查员'
+            : '罗德岛博士',
+      progress_date: date,
+      signed_today: signedToday,
+      ...(game_group === '明日方舟' ? { signed_dates: signedDates } : {}),
+      reward_slots: Array.from({ length }, (_, index) => ({
+        index: index + 1,
+        done: index < claimed,
+        available: !signedToday && index === claimed,
+        rewards: previewSklandSlotRewards(game_group, index)
+      }))
+    }
+  })
 }
 
 function previewLogTime(milliseconds) {
@@ -472,6 +707,7 @@ export function createPreviewData(config) {
     },
     status: 'running',
     baseReport: previewBaseReport(date),
+    skland: previewSklandHistory(date),
     incomeSettings: {
       base_algorithm: 2,
       base_algorithm_saved: true,
@@ -481,6 +717,7 @@ export function createPreviewData(config) {
     layout: { screenshot_height: 180, task_height: 132, rail_width: null },
     sidebar: null,
     depotPreferences: null,
+    sklandPreferences: { ...DEFAULT_SKLAND_PREFERENCES },
     appearance: {
       software_version_display: 'version',
       software_version_language: 'en',
@@ -522,6 +759,22 @@ function unavailableDevicePreview() {
 }
 
 export function createPreviewAdapter(data, requests = []) {
+  const previousMonthEnd = previewSklandDate(`${data.skland.today.slice(0, 7)}-01`, -1)
+  const previousMonth = previousMonthEnd.slice(0, 7)
+  const previousSklandRewards = {
+    month: previousMonth,
+    cached: true,
+    pairs: previewSklandMonthlyRewards(data.skland, previousMonthEnd),
+    warnings: [],
+    earliest_month: previousMonth
+  }
+  let sklandRewards = {
+    month: data.skland.today.slice(0, 7),
+    cached: false,
+    pairs: [],
+    warnings: [],
+    earliest_month: previousMonth
+  }
   const diagnosticFrames = new Map(
     data.logs
       .filter(({ level }) => level === 'WARNING' || level === 'ERROR')
@@ -739,6 +992,17 @@ export function createPreviewAdapter(data, requests = []) {
       '/report/getReportData': () => clone(data.baseReport.report),
       '/report/getOrundumData': () => clone(data.baseReport.orundum),
       '/report/trading_history': () => clone(data.baseReport.trading),
+      '/skland/statistics': () =>
+        previewSklandPayload(data.skland, {
+          ...Object.fromEntries(requestUrl.searchParams),
+          ...config.params
+        }),
+      '/skland/rewards': () => {
+        const month = config.params?.month || requestUrl.searchParams.get('month')
+        if (!month || month === sklandRewards.month) return clone(sklandRewards)
+        if (month === previousMonth) return clone(previousSklandRewards)
+        return { month, cached: false, pairs: [], warnings: [], earliest_month: previousMonth }
+      },
       '/report/order-candles': () => {
         try {
           return previewOrderCandles(data, {
@@ -887,6 +1151,7 @@ export function createPreviewAdapter(data, requests = []) {
       '/ui-state/log-layout': () => clone(data.layout),
       '/gui/sidebar': () => ({ sidebar: clone(data.sidebar) }),
       '/gui/depot': () => ({ depot: clone(data.depotPreferences) }),
+      '/gui/skland': () => ({ skland: clone(data.sklandPreferences) }),
       '/gui/appearance': () => clone(data.appearance),
       '/db-admin/stats': () => ({ log: 64, task: 5 }),
       '/diagnostics/errors': () => ({ events: [] }),
@@ -913,6 +1178,13 @@ export function createPreviewAdapter(data, requests = []) {
       if (plan_key !== '默认') fail(config, '请选择要设置芯片刷取的周计划', 400)
       growthChipFarming = enabled ? filter_stage_by_availability : null
       result = { plan_key, enabled }
+    } else if (method === 'POST' && path === '/skland/rewards/refresh') {
+      sklandRewards = {
+        ...sklandRewards,
+        cached: true,
+        pairs: previewSklandMonthlyRewards(data.skland)
+      }
+      result = clone(sklandRewards)
     } else if (
       method === 'GET' &&
       previewFramePaths.has(path.slice('/screenshots/'.length)) &&
@@ -983,6 +1255,8 @@ export function createPreviewAdapter(data, requests = []) {
     else if (method === 'PUT' && path === '/gui/sidebar') {
       data.sidebar = clone(body.sidebar)
       result = { sidebar: clone(data.sidebar) }
+    } else if (method === 'PUT' && path === '/gui/skland') {
+      result = { skland: clone(merge(data.sklandPreferences, body.skland)) }
     } else if (method === 'PUT' && path === '/gui/depot') {
       const groups = ['favorites', 'view', 'baseline']
       if (

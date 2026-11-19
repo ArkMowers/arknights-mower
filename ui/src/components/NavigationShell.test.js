@@ -111,7 +111,8 @@ it.each([
       '/record/report',
       '/record/depot',
       '/record/recycling',
-      '/record/log-schedule'
+      '/record/log-schedule',
+      '/record/skland'
     ],
     'reports'
   ]
@@ -247,7 +248,8 @@ describe('[INV-UI-04] MobileTabBar', () => {
         '/record/report',
         '/record/depot',
         '/record/recycling',
-        '/record/log-schedule'
+        '/record/log-schedule',
+        '/record/skland'
       ]
     ]
   ])(

@@ -119,6 +119,12 @@ export const routes = [
             component: () => import('@/pages/LogSchedule.vue'),
             meta: { title: '日志调度' },
             name: 'log_schedule'
+          },
+          {
+            path: 'skland',
+            component: () => import('@/pages/SklandStats.vue'),
+            meta: { title: '森空岛签到统计' },
+            name: 'skland'
           }
         ]
       }

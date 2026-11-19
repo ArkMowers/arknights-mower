@@ -253,10 +253,15 @@ def test_skland_sign_failure_keeps_redaction_and_no_screenshot_override(
     skland.return_value._log_secrets = ("secret-token",)
     skland.return_value.start.side_effect = RuntimeError("令牌 secret-token 无效")
     monkeypatch.setattr(base, "SKLand", skland)
+    monkeypatch.setattr(base, "get_server_time", Clock.now)
+    solver.daily_skland = (NOW - timedelta(days=1)).date()
 
     result = solver.skland_plan_solver()
 
-    assert result == (NOW - timedelta(hours=4)).date()
+    assert result is False
+    assert solver.daily_skland == (NOW - timedelta(days=1)).date()
+    assert solver.daily_skland_attempt == NOW.date()
+    base.save_current_state.assert_called_once_with()
     records = matching(caplog, "森空岛签到失败")
     assert len(records) == 1
     assert live(records[0])["group"] == "local-operation"

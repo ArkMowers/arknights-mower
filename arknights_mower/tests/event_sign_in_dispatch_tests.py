@@ -187,6 +187,7 @@ def main_runtime(monkeypatch, scheduler):
     runtime.task_count = 0
     runtime.daily_visit_friend = runtime.daily_report = date.min
     runtime.daily_skland = runtime.daily_mail = date.min
+    runtime.daily_skland_attempt = None
     runtime.daily_visit_friend_attempt = None
     runtime.maa_copilot_progress = {}
     runtime.maa_daily_completed = {}
@@ -306,6 +307,42 @@ def test_restored_daily_result_only_skips_a_successful_game_day(
     assert runner.run.call_count == (0 if completed else 1)
     assert runtime.daily_event_sign_in == now.value.date()
     assert runtime.daily_event_sign_in_attempt == now.value.date()
+    runtime.recruit_plan_solver.assert_called_once_with()
+
+
+@pytest.mark.parametrize("legacy", [False, True])
+def test_skland_auto_dispatch_respects_restored_attempt(
+    monkeypatch, dispatch, tmp_path, legacy
+):
+    scheduler, _, _, _, now = dispatch
+    runtime = main_runtime(monkeypatch, scheduler)
+    config.conf.skland_enable = True
+    config.conf.skland_info = [
+        Conf.SKLandAccount(account="test-account", sign_in_official=True)
+    ]
+    attempted_day = now.value.date()
+    original_completion = attempted_day - timedelta(days=1)
+    runtime.daily_skland = original_completion
+    runtime.daily_skland_attempt = attempted_day
+    runtime.tasks = [SchedulerTask(time=datetime.now() + timedelta(minutes=20))]
+    database = tmp_path / "restored-skland-state.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE saved_state (time TEXT, state BLOB)")
+    monkeypatch.setattr(record, "_conn", lambda: sqlite3.connect(database))
+
+    assert record.save_current_state()
+    saved = record.load_state(strict=True)
+    assert saved["daily_skland_attempt"] == attempted_day
+    if legacy:
+        saved.pop("daily_skland_attempt")
+    runtime.daily_skland_attempt = None
+    runtime.rest_until_next_task.side_effect = MowerExit
+
+    main.simulate(saved)
+
+    assert runtime.skland_plan_solver.call_count == int(legacy)
+    assert runtime.daily_skland == original_completion
+    assert runtime.daily_skland_attempt == (None if legacy else attempted_day)
     runtime.recruit_plan_solver.assert_called_once_with()
 
 

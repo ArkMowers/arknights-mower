@@ -354,6 +354,7 @@ def current_state():
         ),
         "daily_report": base_scheduler.daily_report,
         "daily_skland": base_scheduler.daily_skland,
+        "daily_skland_attempt": getattr(base_scheduler, "daily_skland_attempt", None),
         "daily_mail": base_scheduler.daily_mail,
         "daily_event_sign_in": getattr(base_scheduler, "daily_event_sign_in", date.min),
         "daily_event_sign_in_attempt": getattr(

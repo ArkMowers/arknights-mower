@@ -262,8 +262,7 @@ def _run_single(scheduler, kind):
         RecruitSolver(scheduler.device, scheduler.recog).run()
         scheduler.last_execution["recruit"] = datetime.now()
     elif kind == TaskTypes.SKLAND:
-        if scheduler.skland_plan_solver():
-            scheduler.daily_skland = today
+        scheduler.skland_plan_solver()
     elif kind == TaskTypes.MAIL:
         MailSolver(scheduler.device, scheduler.recog).run()
         scheduler.daily_mail = today

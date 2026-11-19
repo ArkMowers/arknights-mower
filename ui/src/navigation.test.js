@@ -122,7 +122,8 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
       '/record/report',
       '/record/depot',
       '/record/recycling',
-      '/record/log-schedule'
+      '/record/log-schedule',
+      '/record/skland'
     ])
   })
 
@@ -134,7 +135,8 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
       '/record/report',
       '/record/depot',
       '/record/recycling',
-      '/record/log-schedule'
+      '/record/log-schedule',
+      '/record/skland'
     ])
     expect(navigationSections.some((section) => section.title === '数据工具')).toBe(false)
   })

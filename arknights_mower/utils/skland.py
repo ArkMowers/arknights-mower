@@ -310,17 +310,20 @@ def get_cred(grant):
     return resp["data"]
 
 
-def get_binding_list(sign_token):
+def get_binding_list(sign_token, *, old_header=None, timeout=_AUTH_REQUEST_TIMEOUT):
+    request_header = header if old_header is None else old_header
     v = []
     # 用 headers_factory 每次尝试现算签名头：重试不再携带过期时间戳
     resp = request_with_retry(
         "get",
         binding_url,
+        timeout=timeout,
         headers_factory=lambda: get_sign_header(
             binding_url,
             "get",
             None,
             sign_token,
+            request_header,
         ),
     )
     _sync_server_time(resp)
@@ -332,7 +335,7 @@ def get_binding_list(sign_token):
             "请求角色列表失败（状态码：%s）：%s",
             code if isinstance(code, int) else "未知",
             redact_signing_text(
-                body.get("message", ""), sign_token, header.get("cred")
+                body.get("message", ""), sign_token, request_header.get("cred")
             ),
         )
         if body.get("message") == "用户未登录":

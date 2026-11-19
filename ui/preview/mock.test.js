@@ -19,6 +19,38 @@ afterEach(() => {
 })
 
 describe('offline preview', () => {
+  it('generates date records and ordinal rewards from the same sign-ins across a missed day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-19T04:00:00Z'))
+    const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
+    const { data: history } = await client.get('/skland/statistics', {
+      params: { startDate: '2026-11-01', endDate: '2026-11-19' }
+    })
+    const { data: current } = await client.post('/skland/rewards/refresh', {})
+    const { data: october } = await client.get('/skland/rewards', { params: { month: '2026-10' } })
+    const first = current.pairs.find((pair) => pair.role_key === 'preview-role-1')
+    const external = current.pairs.find((pair) => pair.role_key === 'preview-role-2')
+    expect(first.reward_slots).toHaveLength(30)
+    expect(first.signed_dates).not.toContain('2026-11-12')
+    expect(first.signed_dates.at(-1)).toBe('2026-11-19')
+    expect(first.signed_dates).toHaveLength(18)
+    expect(october.pairs[0].reward_slots).toHaveLength(31)
+    expect(external).not.toHaveProperty('signed_dates')
+    expect(external.reward_slots.filter((slot) => slot.done)).toHaveLength(19)
+    expect(
+      history.records.some((row) => row.role_key === external.role_key && row.date === '2026-11-17')
+    ).toBe(false)
+    for (const { date, role_key, item, count } of history.records.filter(
+      (row) => row.outcome === 'signed'
+    )) {
+      const role = current.pairs.find((pair) => pair.role_key === role_key)
+      const ordinal = role.signed_dates
+        ? role.signed_dates.indexOf(date)
+        : Number(date.slice(-2)) - 1
+      expect(role.reward_slots[ordinal]).toMatchObject({ done: true, rewards: [{ item, count }] })
+    }
+  })
+
   it('supplies a single task forecast and readable refresh target without inferring group shifts', () => {
     const data = createPreviewData({})
     const forecast = data.logs.find((entry) => entry.task)

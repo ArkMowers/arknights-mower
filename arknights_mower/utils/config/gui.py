@@ -9,6 +9,7 @@ import re
 import secrets
 import time
 from contextlib import contextmanager
+from datetime import date
 from threading import RLock
 
 import yaml
@@ -334,6 +335,97 @@ def save_depot(value: object, *, migrate=False) -> dict:
         result = {**(current or _depot_defaults()), **changes}
         data["depot"] = result
         return result
+
+    return update_gui_data(update)
+
+
+_SKLAND_DEFAULTS = {
+    "account": None,
+    "game": None,
+    "detailView": "day",
+    "statsAccount": None,
+    "statsGame": None,
+    "statsPreset": "month",
+    "statsRange": None,
+}
+
+
+def _validate_skland_range(value):
+    if value is None:
+        return None
+    try:
+        if not isinstance(value, list) or len(value) != 2:
+            raise ValueError
+        start, end = (date.fromisoformat(day) for day in value)
+        canonical = [start.isoformat(), end.isoformat()]
+        if canonical != value or not 0 <= (end - start).days < 366:
+            raise ValueError
+        return canonical
+    except (TypeError, ValueError) as error:
+        raise ValueError("签到统计日期范围无效") from error
+
+
+def _validate_skland(value: object) -> dict:
+    if (
+        not isinstance(value, dict)
+        or not value
+        or not value.keys() <= _SKLAND_DEFAULTS.keys()
+    ):
+        raise ValueError("签到页偏好格式无效")
+    clean = dict(value)
+    for key in ("account", "game", "statsAccount", "statsGame"):
+        name = clean.get(key)
+        if name is not None:
+            if not isinstance(name, str) or not name.strip() or len(name) > 128:
+                raise ValueError("签到页筛选值无效")
+            clean[key] = name.strip()
+    if "detailView" in clean and clean["detailView"] not in (
+        "day",
+        "rewards",
+        "failures",
+    ):
+        raise ValueError("签到明细视图无效")
+    if "statsPreset" in clean and clean["statsPreset"] not in (
+        "week",
+        "month",
+        "90",
+        "year",
+        "custom",
+    ):
+        raise ValueError("签到奖励统计日期预设无效")
+    if "statsRange" in clean:
+        clean["statsRange"] = _validate_skland_range(clean["statsRange"])
+    return clean
+
+
+def _normalize_skland_range(preferences):
+    if preferences["statsPreset"] != "custom":
+        preferences["statsRange"] = None
+    elif preferences["statsRange"] is None:
+        raise ValueError("请选择自定义日期范围")
+    return preferences
+
+
+def _read_skland(data: dict) -> dict:
+    try:
+        return _normalize_skland_range(
+            {**_SKLAND_DEFAULTS, **_validate_skland(data.get("skland"))}
+        )
+    except ValueError:
+        return dict(_SKLAND_DEFAULTS)
+
+
+def load_skland() -> dict:
+    return _read_skland(read_gui_data(strict=True))
+
+
+def save_skland(value: object) -> dict:
+    changes = _validate_skland(value)
+
+    def update(data):
+        preferences = _normalize_skland_range({**_read_skland(data), **changes})
+        data["skland"] = preferences
+        return preferences
 
     return update_gui_data(update)
 

@@ -624,6 +624,7 @@ class BaseSchedulerSolver(
         previous_game_day = get_server_time().date() - timedelta(days=1)
         self.daily_report = previous_game_day
         self.daily_skland = previous_game_day
+        self.daily_skland_attempt = None
         self.daily_mail = previous_game_day
         self.daily_event_sign_in = previous_game_day
         self.daily_event_sign_in_attempt = None
@@ -21797,10 +21798,11 @@ class BaseSchedulerSolver(
         return True
 
     def skland_plan_solver(self):
+        today = get_server_time().date()
         solver = None
         try:
             solver = SKLand()
-            return solver.start()
+            completed = solver.start()
         except MowerExit:
             raise
         except Exception as e:
@@ -21815,8 +21817,14 @@ class BaseSchedulerSolver(
                 extra={"log_group": "local-operation", "archive_screenshots": False},
             )
             send_message(message, subject="森空岛签到失败", level="ERROR")
-        # 仅尝试一次 不再尝试
-        return (datetime.now() - timedelta(hours=4)).date()
+            completed = False
+        if completed is None:
+            return False
+        self.daily_skland_attempt = today
+        if completed:
+            self.daily_skland = today
+        save_current_state()
+        return completed
 
     def recruit_plan_solver(self):
         if self.last_execution[
