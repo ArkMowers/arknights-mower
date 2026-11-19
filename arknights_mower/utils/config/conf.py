@@ -1133,7 +1133,7 @@ class Conf(
     AIAgentPart,
 ):
     extra_settings_visible: StrictBool = False
-    "多开管理器启动的实例是否允许使用更新与维护设置"
+    "是否允许受管实例页面及中转访问使用更新与维护设置"
 
     @model_validator(mode="before")
     @classmethod

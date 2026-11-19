@@ -1455,7 +1455,7 @@ function addInstance() {
                   :disabled="unavailable || !!assistantConfirmation"
                 />
                 <n-text depth="3">
-                  下次启动时生效。开启后，实例页面显示“网络与更新”和“数据与维护”，并允许对应操作；关闭后隐藏这两组并禁止对应操作。管理器仍可执行维护。
+                  下次启动时生效。此权限也适用于中转访问。开启后，实例页面显示“网络与更新”和“数据与维护”，并允许对应操作；关闭后隐藏这两组并禁止对应操作。管理器仍可执行维护。
                 </n-text>
               </n-space>
             </n-form-item>

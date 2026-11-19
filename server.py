@@ -1476,13 +1476,10 @@ def load_config():
         data["runtime_platform"] = "android" if is_android_runtime() else __system__
         from arknights_mower.utils.managed_device import (
             enabled,
-            relay_request,
             settings_managed,
         )
 
         data["manager_owned_device"] = settings_managed()
-        if relay_request():
-            data["extra_settings_visible"] = False
         if enabled():
             data["manager_inherited_settings"] = sorted(
                 config.manager_inherited_settings
@@ -1518,14 +1515,10 @@ def load_config():
                 }, 403
             req.pop("start_automatically")
         if managed_device.settings_managed() and "extra_settings_visible" in req:
-            visible = (
-                config.conf.extra_settings_visible
-                and not managed_device.relay_request()
-            )
-            if req["extra_settings_visible"] != visible:
+            if req["extra_settings_visible"] != config.conf.extra_settings_visible:
                 return {
                     "error": "manager_owned_setting",
-                    "message": "请在实例退出后通过多开管理器修改更新与维护开关",
+                    "message": "请通过本机独立实例或多开管理器修改更新与维护开关",
                 }, 403
             req.pop("extra_settings_visible")
         protected = managed_device.protected_settings(config.conf)

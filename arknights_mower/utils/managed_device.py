@@ -68,9 +68,7 @@ def settings_managed():
 
 
 def extra_settings_allowed(configuration):
-    return not relay_request() and (
-        not enabled() or configuration.extra_settings_visible
-    )
+    return not settings_managed() or configuration.extra_settings_visible
 
 
 def protected_settings(configuration):
@@ -102,10 +100,15 @@ def operation_blocked(path, method, configuration):
         "/maa-conn-preset",
     } or (path == "/device/performance-test" and method not in {"GET", "HEAD"}):
         return True
-    if relay_request() and path in {"/db-admin/delete", "/record/clear-data"}:
-        return True
     if extra_settings_allowed(configuration):
         return False
+    if relay_request() and path in {
+        "/db-admin/delete",
+        "/record/clear-data",
+        "/config-backup/export",
+        "/network/settings",
+    }:
+        return True
     return (
         (
             path.startswith(("/maa-update/", "/maa-resource-update/"))

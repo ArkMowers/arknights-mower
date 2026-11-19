@@ -80,6 +80,21 @@ async function toggle(value) {
   }
 }
 
+async function setMaintenance(allowed) {
+  busy.value = true
+  error.value = ''
+  try {
+    const { data } = await axios.patch(`${import.meta.env.VITE_HTTP_URL || ''}/conf`, {
+      extra_settings_visible: allowed
+    })
+    config.extra_settings_visible = data.extra_settings_visible
+  } catch (err) {
+    if (!disposed) error.value = err.response?.data?.message || '更新与维护权限保存失败'
+  } finally {
+    busy.value = false
+  }
+}
+
 async function save() {
   busy.value = true
   error.value = ''
@@ -164,6 +179,22 @@ onUnmounted(() => {
           />
         </n-form-item>
       </n-form>
+      <n-form-item
+        label="更新与维护"
+        label-placement="left"
+        label-width="120"
+        :show-feedback="false"
+      >
+        <n-switch
+          :value="config.extra_settings_visible"
+          aria-label="允许通过中转进行更新与维护"
+          :disabled="!ready || busy"
+          @update:value="setMaintenance"
+        />
+      </n-form-item>
+      <n-text depth="3"
+        >开启后，可通过中转修改各实例共用的网络设置，或本实例的归档设置，也可导出备份、清理记录。权限立即生效，刷新中转页面即可看到。</n-text
+      >
       <n-space align="center">
         <n-button
           type="primary"

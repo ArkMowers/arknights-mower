@@ -80,3 +80,58 @@ class StandaloneWebAccessTests(unittest.TestCase):
             ).status_code,
             200,
         )
+
+    def test_local_maintenance_choice_applies_to_relay_and_can_be_revoked(self):
+        remote = {"headers": self.headers, "environ_overrides": {"mower.relay": True}}
+        maintenance = {"screenshot_archive_limit_mb": 1024}
+        self.assertEqual(
+            self.client.patch("/conf", json=maintenance, **remote).status_code, 403
+        )
+        self.assertEqual(
+            self.client.get("/network/settings", **remote).status_code, 403
+        )
+        for allowed in (True, False):
+            response = self.client.patch(
+                "/conf", headers=self.headers, json={"extra_settings_visible": allowed}
+            )
+            self.assertEqual(response.status_code, 200, response.json)
+            self.assertIs(
+                yaml.safe_load(self.path.read_text())["extra_settings_visible"], allowed
+            )
+            for managed in (True, False):
+                with patch(
+                    "arknights_mower.utils.managed_device.enabled", return_value=managed
+                ):
+                    view = self.client.get("/conf", **remote).json
+                    self.assertTrue(view["manager_owned_device"])
+                    self.assertIs(view["extra_settings_visible"], allowed)
+                    for method in (self.client.patch, self.client.post):
+                        update = method(
+                            "/conf",
+                            json={"extra_settings_visible": not allowed},
+                            **remote,
+                        )
+                        self.assertEqual(update.status_code, 403)
+                        self.assertEqual(
+                            method(
+                                "/conf", json={"webview": {"port": 58111}}, **remote
+                            ).status_code,
+                            403,
+                        )
+                    self.assertEqual(
+                        self.client.get("/network/settings", **remote).status_code,
+                        200 if allowed else 403,
+                    )
+                    self.assertEqual(
+                        self.client.post(
+                            "/db-admin/delete", json={}, **remote
+                        ).status_code,
+                        400 if allowed else 403,
+                    )
+                    self.assertEqual(
+                        self.client.patch(
+                            "/conf", json=maintenance, **remote
+                        ).status_code,
+                        200 if allowed else 403,
+                    )
+            maintenance["screenshot_archive_limit_mb"] += 1

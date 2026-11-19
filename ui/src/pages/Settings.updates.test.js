@@ -129,6 +129,24 @@ describe('network and update settings', () => {
       }
     }
   )
+  it.each([true, false])(
+    'shows only supported maintenance tools through the relay (allowed=%s)',
+    async (allowed) => {
+      vi.stubGlobal('window', { location: new URL('https://trial.free.mower.work:58000/') })
+      try {
+        state.config.extra_settings_visible = allowed
+        const html = await render()
+        expect(html.includes('网络设置')).toBe(allowed)
+        expect(html.includes('id="archive-settings"')).toBe(allowed)
+        expect(html).not.toContain('Mower 软件更新')
+        expect(html).not.toContain('MAA 本体与资源更新')
+        expect(html).not.toContain('id="web-access-settings"')
+      } finally {
+        vi.unstubAllGlobals()
+      }
+    }
+  )
+
   it('places MAA updates immediately after Mower resources in an authorized managed instance', async () => {
     const html = await render()
     const section = html.split('id="mower-updates"')[1].split('</section>')[0]

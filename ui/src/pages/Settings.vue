@@ -367,7 +367,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
     <SettingsSection v-bind="section['mower-profiles']" data-task-editor="mower-profiles">
       <ConfigProfilesSettings />
       <ProcessControl
-        v-if="runtime_platform !== 'android'"
+        v-if="runtime_platform !== 'android' && !isRelayPage()"
         :running="running"
         :resume-only="!showExtraSettings"
       />
@@ -377,9 +377,11 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       v-bind="section['mower-updates']"
       data-task-editor="mower-updates"
     >
-      <SoftwareUpdate v-if="updates_enabled === true" />
-      <ResourceUpdate v-if="updates_enabled === true" />
-      <div v-if="updates_enabled === true" class="settings-card-wide"><MaaUpdates /></div>
+      <template v-if="updates_enabled === true && !isRelayPage()">
+        <SoftwareUpdate />
+        <ResourceUpdate />
+        <div class="settings-card-wide"><MaaUpdates /></div>
+      </template>
       <div class="settings-card-wide"><NetworkSettings /></div>
       <n-card
         v-if="
