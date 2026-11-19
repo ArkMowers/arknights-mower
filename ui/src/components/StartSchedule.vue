@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, defineAsyncComponent, inject, onMounted, onUnmounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import AlarmOutline from '@vicons/ionicons5/es/AlarmOutline'
@@ -7,6 +7,7 @@ import PlayIcon from '@vicons/ionicons5/es/PlayOutline'
 import { useMowerStore } from '@/stores/mower'
 import { useHalloweenSeason } from '@/composables/halloween'
 
+const ScheduledStartDialog = defineAsyncComponent(() => import('./ScheduledStartDialog.vue'))
 const halloweenActive = useHalloweenSeason()
 const halloweenButtonTheme = computed(() =>
   halloweenActive.value
@@ -43,8 +44,7 @@ const message = useMessage()
 const { scheduled_start_at } = storeToRefs(useMowerStore())
 const now = ref(Date.now())
 const showModal = ref(false)
-const date = ref(Date.now())
-const time = ref(Date.now())
+const dialogMounted = ref(false)
 const busy = ref(false)
 let clock
 
@@ -73,11 +73,7 @@ const scheduledOptions = [
 ]
 
 function openModal() {
-  const target = scheduled_start_at.value
-    ? new Date(scheduled_start_at.value).getTime()
-    : Date.now() + 30 * 60000
-  date.value = target
-  time.value = target
+  dialogMounted.value = true
   showModal.value = true
 }
 
@@ -116,20 +112,6 @@ async function cancel() {
   } finally {
     busy.value = false
   }
-}
-
-function confirm() {
-  const d = new Date(date.value)
-  const t = new Date(time.value)
-  const target = new Date(
-    d.getFullYear(),
-    d.getMonth(),
-    d.getDate(),
-    t.getHours(),
-    t.getMinutes(),
-    t.getSeconds()
-  )
-  schedule(Math.ceil((target.getTime() - Date.now()) / 1000))
 }
 
 function select(key) {
@@ -180,26 +162,13 @@ function select(key) {
       </n-button>
     </drop-down>
   </n-config-provider>
-  <n-modal
+  <ScheduledStartDialog
+    v-if="dialogMounted"
     v-model:show="showModal"
-    preset="card"
-    title="定时启动"
-    style="width: min(420px, calc(100vw - 32px))"
-  >
-    <n-text depth="3" style="display: block; margin-bottom: 12px">
-      到达预约时间后，将清空运行缓存并启动 Mower。
-    </n-text>
-    <n-space vertical>
-      <n-date-picker v-model:value="date" type="date" style="width: 100%" />
-      <n-time-picker v-model:value="time" style="width: 100%" />
-    </n-space>
-    <template #footer>
-      <n-space justify="end">
-        <n-button @click="showModal = false">取消</n-button>
-        <n-button type="primary" :loading="busy" @click="confirm">确定</n-button>
-      </n-space>
-    </template>
-  </n-modal>
+    :scheduled-start-at="scheduled_start_at"
+    :busy="busy"
+    @schedule="schedule"
+  />
 </template>
 
 <style scoped>

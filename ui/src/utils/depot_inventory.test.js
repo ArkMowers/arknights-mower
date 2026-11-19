@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import { itemIconUrl } from './itemIconUrl'
 
 import {
   alignSnapshotsToRange,
@@ -34,7 +35,6 @@ import {
   isTokenItem,
   isValidBaselineRange,
   isValidSnapshotKey,
-  itemIconUrl,
   loadBaselineConfig,
   loadFavorites,
   loadViewPrefs,
@@ -1235,6 +1235,16 @@ describe('formatting helpers', () => {
   it('builds icon urls with escaping', () => {
     expect(itemIconUrl('至纯源石')).toBe('/depot/%E8%87%B3%E7%BA%AF%E6%BA%90%E7%9F%B3.webp')
     expect(itemIconUrl('')).toBe('')
+  })
+
+  it('uses the relay mapping for a warehouse item icon', () => {
+    const url = 'https://assets.example.invalid/depot/item.webp'
+    vi.stubGlobal('window', { __MOWER_PUBLIC_ASSETS__: { '/depot/至纯源石.webp': url } })
+    try {
+      expect(itemIconUrl('至纯源石')).toBe(url)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('resolves the copy text only when it is a real string', () => {

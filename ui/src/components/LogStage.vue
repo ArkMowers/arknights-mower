@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, ref, useId, watch } from 'vue'
 import { NPopover } from 'naive-ui'
-import { itemIconUrl } from '@/utils/depot_inventory'
+import { itemIconUrl } from '@/utils/itemIconUrl'
 import '@/styles/logGlassSurface.css'
 
 const props = defineProps({

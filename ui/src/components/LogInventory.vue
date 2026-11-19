@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, useId } from 'vue'
-import { itemIconUrl } from '@/utils/depot_inventory'
+import { itemIconUrl } from '@/utils/itemIconUrl'
 
 const props = defineProps({
   items: { type: Array, required: true },

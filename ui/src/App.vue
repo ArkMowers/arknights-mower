@@ -185,7 +185,7 @@
                     :style="mowerCssVariables"
                     @close="leaveSettings"
                   />
-                  <Feedback />
+                  <Feedback v-if="feedbackMounted" />
                   <GlobalUpdateDrop v-if="loaded && updates_enabled === true" />
                   <n-modal
                     :show="showUpdateNoticeModal"
@@ -301,7 +301,6 @@ import {
 } from 'vue'
 import AppSidebar from '@/components/AppSidebar.vue'
 import SettingsDialog from '@/components/SettingsDialog.vue'
-import Feedback from '@/components/Feedback.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
 import ConfigSaveNotice from '@/components/ConfigSaveNotice.vue'
@@ -354,6 +353,7 @@ import {
 import { installModalDragging } from '@/utils/modal-drag.js'
 
 const ChatBot = defineAsyncComponent(() => import('@/components/ChatBot.vue'))
+const Feedback = defineAsyncComponent(() => import('@/components/Feedback.vue'))
 const windowShell = createWindowShellAdapter({
   onCloseRequested: () => handleWindowControl('close')
 })
@@ -382,7 +382,9 @@ provide(
 let disposeModalDrag = null
 
 const showFeedback = ref(false)
+const feedbackMounted = ref(false)
 provide('show_feedback', showFeedback)
+watch(showFeedback, () => (feedbackMounted.value = true), { once: true })
 const helpSection = ref('')
 function openHelp(action) {
   if (action === 'feedback') showFeedback.value = true

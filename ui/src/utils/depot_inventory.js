@@ -1,4 +1,3 @@
-import { publicAsset } from '@/utils/publicAsset'
 import { pinyin } from 'pinyin-pro'
 
 /**
@@ -1173,12 +1172,6 @@ export function formatRelative(at, now = Date.now()) {
   if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`
   if (diff < 2592000) return `${Math.floor(diff / 86400)} 天前`
   return formatTimestamp(seconds)
-}
-
-/** 图标地址：后端按 depot/ 前缀从资源包提供，缺失时页面走 fallback。 */
-export function itemIconUrl(icon) {
-  if (!icon) return ''
-  return publicAsset(`/depot/${encodeURIComponent(icon)}.webp`)
 }
 
 /**
