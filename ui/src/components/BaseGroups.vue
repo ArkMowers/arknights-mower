@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, ref, shallowRef, watch } from 'vue'
 import { dormRecoveryFor } from '@/utils/baseDormRecovery'
 import OperatorSkillTooltip from '@/components/OperatorSkillTooltip.vue'
@@ -22,7 +23,6 @@ const props = defineProps({
   baseConditions: { type: Object, default: () => ({}) },
   conditionSource: { type: String, default: '' }
 })
-const resourceBase = import.meta.env.BASE_URL
 const groups = builtinGroups
 const allOptions = [...allGroupOptions, ...singleRecommendations]
 const view = ref('groups')
@@ -425,7 +425,7 @@ function ownershipSummary(group) {
                       >{{ selections[group.id].includes(member.name) ? '✓' : '' }}</span
                     >
                     <n-avatar
-                      :src="`${resourceBase}avatar/${encodeURIComponent(member.name)}.webp`"
+                      :src="publicAsset(`/avatar/${encodeURIComponent(member.name)}.webp`)"
                       :size="32"
                       round
                       :img-props="{ alt: member.name }"

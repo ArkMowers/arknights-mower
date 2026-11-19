@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { richText2HTML } from '@/stores/richText2HTML'
 import { useBasementSkill } from '@/stores/basementSkill'
 import { ownershipLabels, skillStatusLabels, basementSkillTerms } from '@/utils/basementSkills'
@@ -7,7 +8,6 @@ import BufferInfo from '@/components/bufferinfo.vue'
 const { buffer } = useBasementSkill()
 defineOptions({ name: 'BasementSkillRows' })
 defineProps({ item: { type: Object, required: true } })
-const resourceBase = import.meta.env.BASE_URL
 </script>
 
 <template>
@@ -46,7 +46,7 @@ const resourceBase = import.meta.env.BASE_URL
             class="operator-link"
           >
             <n-avatar
-              :src="`${resourceBase}avatar/${encodeURIComponent(item.avatar)}.webp`"
+              :src="publicAsset(`/avatar/${encodeURIComponent(item.avatar)}.webp`)"
               :size="40"
               round
               :img-props="{ alt: item.avatar }"
@@ -87,7 +87,7 @@ const resourceBase = import.meta.env.BASE_URL
           <n-tag :bordered="false" :color="{ color: skill.buffColor, textColor: skill.textColor }">
             <template #avatar>
               <n-avatar
-                :src="`${resourceBase}building_skill/${encodeURIComponent(skill.skillIcon)}.webp`"
+                :src="publicAsset(`/building_skill/${encodeURIComponent(skill.skillIcon)}.webp`)"
                 :size="22"
                 round
                 style="background-color: transparent"

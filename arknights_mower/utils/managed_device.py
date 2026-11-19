@@ -57,6 +57,16 @@ EXTRA_SETTINGS = (
 )
 
 
+def relay_request():
+    from flask import has_request_context, request
+
+    return has_request_context() and bool(request.environ.get("mower.relay"))
+
+
+def settings_managed():
+    return enabled() or relay_request()
+
+
 def extra_settings_allowed(configuration):
     return not enabled() or configuration.extra_settings_visible
 
@@ -75,7 +85,7 @@ def protected_settings(configuration):
 
 
 def operation_blocked(path, method, configuration):
-    if not enabled() or method == "OPTIONS":
+    if not settings_managed() or method == "OPTIONS":
         return False
     if path in {
         "/device/preflight",
@@ -92,6 +102,13 @@ def operation_blocked(path, method, configuration):
         return True
     if extra_settings_allowed(configuration):
         return False
+    if relay_request() and path in {
+        "/db-admin/delete",
+        "/record/clear-data",
+        "/config-backup/export",
+        "/network/settings",
+    }:
+        return True
     return (
         (
             path.startswith(("/maa-update/", "/maa-resource-update/"))

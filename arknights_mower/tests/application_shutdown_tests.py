@@ -226,6 +226,7 @@ class DesktopExitTests(unittest.TestCase):
                 registration.take_commands.side_effect = lambda: []
                 server = Mock()
                 server.app.config = {}
+                server.app.extensions = {}
 
                 def register(lifecycle):
                     lifecycle.own("gate", lambda: events.append("gate"), Phase.GATE)

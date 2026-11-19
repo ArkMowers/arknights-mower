@@ -8,6 +8,8 @@ import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
 import MaaUpdates from '@/components/MaaUpdates.vue'
 import NetworkSettings from '@/components/NetworkSettings.vue'
+import { isRelayPage } from '@/utils/instanceToken'
+import RelaySettings from '@/components/RelaySettings.vue'
 import WebAccessSettings from '@/components/WebAccessSettings.vue'
 import ConfigBackup from '@/components/ConfigBackup.vue'
 import ConfigProfilesSettings from '@/components/ConfigProfilesSettings.vue'
@@ -361,7 +363,7 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
     <SettingsSection v-bind="section['mower-profiles']" data-task-editor="mower-profiles">
       <ConfigProfilesSettings />
       <ProcessControl
-        v-if="runtime_platform !== 'android'"
+        v-if="runtime_platform !== 'android' && !isRelayPage()"
         :running="running"
         :resume-only="!showExtraSettings"
       />
@@ -371,16 +373,24 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       v-bind="section['mower-updates']"
       data-task-editor="mower-updates"
     >
-      <SoftwareUpdate v-if="updates_enabled === true" />
-      <ResourceUpdate v-if="updates_enabled === true" />
-      <div v-if="updates_enabled === true" class="settings-card-wide"><MaaUpdates /></div>
+      <template v-if="updates_enabled === true && !isRelayPage()">
+        <SoftwareUpdate />
+        <ResourceUpdate />
+        <div class="settings-card-wide"><MaaUpdates /></div>
+      </template>
       <div class="settings-card-wide"><NetworkSettings /></div>
-      <div
-        v-if="!config_store.manager_owned_device && runtime_platform !== 'android'"
+      <n-card
+        v-if="config_store.web_access_editable"
+        id="web-access-settings"
         class="settings-card-wide"
+        title="访问端口与 Token"
       >
         <WebAccessSettings />
-      </div>
+        <template v-if="!isRelayPage()">
+          <n-divider title-placement="left">远程访问（中转）</n-divider>
+          <RelaySettings />
+        </template>
+      </n-card>
     </SettingsSection>
     <SettingsSection
       v-if="showExtraSettings"

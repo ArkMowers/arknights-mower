@@ -1,3 +1,4 @@
+import { instanceToken, relaySocketUrl } from '@/utils/instanceToken'
 import { defineStore } from 'pinia'
 import ReconnectingWebSocket from 'reconnecting-websocket'
 import { computed, onScopeDispose, ref, toRaw, watch } from 'vue'
@@ -93,7 +94,7 @@ export const useMowerStore = defineStore('mower', () => {
   }
 
   function listen_ws() {
-    const token = new URLSearchParams(window.location.search).get('token')
+    const token = instanceToken()
     let backend_url
     if (import.meta.env.DEV) {
       backend_url = import.meta.env.VITE_HTTP_URL
@@ -101,7 +102,7 @@ export const useMowerStore = defineStore('mower', () => {
       backend_url = location.origin
     }
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
-    ws.value = new ReconnectingWebSocket(ws_url)
+    ws.value = new ReconnectingWebSocket(relaySocketUrl(ws_url))
     let awaitingHistory = true
     ws.value.onopen = () => {
       awaitingHistory = true

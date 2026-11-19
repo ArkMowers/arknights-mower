@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import PlanFacilityLevels from './PlanFacilityLevels.vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
@@ -248,7 +249,7 @@ const render_product = (option) => {
     },
     [
       h(NAvatar, {
-        src: '/product/' + (option.icon || option.value) + '.png',
+        src: publicAsset('/product/' + (option.icon || option.value) + '.png'),
         round: true,
         size: 'small',
         style: { flexShrink: 0 }
@@ -306,7 +307,7 @@ function set_facility(e) {
               class="product-bg"
               v-if="['制造站', '贸易站'].includes(current_plan[r].name)"
               :style="{
-                'background-image': `url(/product/${current_plan[r].product}.png)`
+                'background-image': `url(${publicAsset(`/product/${current_plan[r].product}.png`)})`
               }"
             ></div>
             <div
@@ -327,7 +328,7 @@ function set_facility(e) {
                 <template v-for="(i, slot) in current_plan[r].plans" :key="slot">
                   <div class="avatar-wrapper" v-if="i.agent">
                     <img
-                      :src="`avatar/${i.agent}.webp`"
+                      :src="publicAsset(`avatar/${i.agent}.webp`)"
                       width="45"
                       height="45"
                       :style="bindingColorStyle(i, group_colors)"
@@ -361,7 +362,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, slot) in current_plan.central.plans"
                   :key="slot"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -382,7 +383,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, slot) in current_plan.dormitory_1.plans"
                   :key="slot"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -403,7 +404,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, slot) in current_plan.dormitory_2.plans"
                   :key="slot"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -424,7 +425,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, slot) in current_plan.dormitory_3.plans"
                   :key="slot"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -445,7 +446,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, slot) in current_plan.dormitory_4.plans"
                   :key="slot"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -469,7 +470,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, slot) in current_plan.meeting.plans"
                   :key="slot"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -490,7 +491,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, slot) in current_plan.factory.plans"
                   :key="slot"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -535,7 +536,7 @@ function set_facility(e) {
                 <img
                   v-for="(i, index) in current_plan[r].plans"
                   :key="index"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -558,7 +559,7 @@ function set_facility(e) {
               <div class="avatars">
                 <img
                   v-for="i in current_plan.gaming_1.plans"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -578,7 +579,7 @@ function set_facility(e) {
               <div class="avatars">
                 <img
                   v-for="i in current_plan.gaming_2.plans"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"
@@ -598,7 +599,7 @@ function set_facility(e) {
               <div class="avatars">
                 <img
                   v-for="i in current_plan.gaming_3.plans"
-                  :src="`avatar/${i.agent}.webp`"
+                  :src="publicAsset(`avatar/${i.agent}.webp`)"
                   width="45"
                   height="45"
                   :style="bindingColorStyle(i, group_colors)"

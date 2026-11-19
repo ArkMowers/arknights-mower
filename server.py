@@ -76,6 +76,7 @@ from arknights_mower.views.instances import instances_bp, reject_instance_manage
 from arknights_mower.views.mastery import mastery_bp
 from arknights_mower.views.network import network_bp
 from arknights_mower.views.process_control import process_control_bp
+from arknights_mower.views.relay import relay_bp
 from arknights_mower.views.software_update import software_update_bp
 from arknights_mower.views.task import set_mower_thread, task_bp
 from arknights_mower.views.ui_state import ui_state_bp
@@ -834,6 +835,12 @@ def _is_html_navigation():
 
 
 @app.before_request
+def authorize_relay_request():
+    if request.environ.get("mower.relay"):
+        check_token()
+
+
+@app.before_request
 def serve_frontend_page():
     if request.method not in {"GET", "HEAD"} or not _is_frontend_page(request.path):
         return None
@@ -1160,9 +1167,9 @@ def device_status():
     from arknights_mower.__main__ import device_control
 
     status = device_control.settings_status()
-    from arknights_mower.utils.managed_device import enabled
+    from arknights_mower.utils.managed_device import settings_managed
 
-    status["manager_owned"] = enabled()
+    status["manager_owned"] = settings_managed()
     status["active"] = status["active"] or bool(
         mower_thread and mower_thread.is_alive()
     )
@@ -1240,7 +1247,7 @@ def device_preflight():
         }, 400
     from arknights_mower.utils import managed_device
 
-    if managed_device.enabled():
+    if managed_device.settings_managed():
         try:
             proposed = config.conf.updated({"device": device})
         except (ValidationError, ValueError) as exc:
@@ -1423,10 +1430,10 @@ def device_boss_key():
     from arknights_mower.utils.device.window import trigger_simulator_boss_key
 
     payload = request.get_json(silent=True) or {}
-    from arknights_mower.utils.managed_device import enabled
+    from arknights_mower.utils.managed_device import settings_managed
 
     if (
-        enabled()
+        settings_managed()
         and payload.get("hotkey", config.conf.device.simulator_hotkey)
         != config.conf.device.simulator_hotkey
     ):
@@ -1467,9 +1474,16 @@ def load_config():
         )
 
         data["runtime_platform"] = "android" if is_android_runtime() else __system__
-        from arknights_mower.utils.managed_device import enabled
+        from arknights_mower.utils.managed_device import (
+            enabled,
+            extra_settings_allowed,
+            settings_managed,
+        )
 
-        data["manager_owned_device"] = enabled()
+        data["manager_owned_device"] = settings_managed()
+        data["web_access_editable"] = not enabled() and not is_android_runtime()
+        if data["manager_owned_device"]:
+            data["extra_settings_visible"] = extra_settings_allowed(config.conf)
         if enabled():
             data["manager_inherited_settings"] = sorted(
                 config.manager_inherited_settings
@@ -1497,25 +1511,30 @@ def load_config():
         req.pop("manager_inherited_settings", None)
         from arknights_mower.utils import managed_device
 
-        if managed_device.enabled() and "start_automatically" in req:
+        if managed_device.settings_managed() and "start_automatically" in req:
             if req["start_automatically"] != config.conf.start_automatically:
                 return {
                     "error": "manager_owned_setting",
                     "message": "请在多开管理器中修改启动后自动开始任务设置",
                 }, 403
             req.pop("start_automatically")
-        if managed_device.enabled() and "extra_settings_visible" in req:
-            if req["extra_settings_visible"] != config.conf.extra_settings_visible:
+        if managed_device.settings_managed() and "extra_settings_visible" in req:
+            if req["extra_settings_visible"] != managed_device.extra_settings_allowed(
+                config.conf
+            ):
                 return {
                     "error": "manager_owned_setting",
-                    "message": "请在实例退出后通过多开管理器修改更新与维护开关",
+                    "message": "请通过多开管理器修改更新与维护开关",
                 }, 403
             req.pop("extra_settings_visible")
         protected = managed_device.protected_settings(config.conf)
-        managed_window = isinstance(req.get("webview"), dict) and (
-            {"port", "token"} & req["webview"].keys()
+        window_keys = ("port", "token") if managed_device.enabled() else ()
+        managed_window = isinstance(req.get("webview"), dict) and any(
+            key in req["webview"] for key in window_keys
         )
-        if managed_device.enabled() and (set(req) & set(protected) or managed_window):
+        if managed_device.settings_managed() and (
+            set(req) & set(protected) or managed_window
+        ):
             try:
                 proposed = config.conf.updated(req)
             except (ValidationError, ValueError) as exc:
@@ -1523,8 +1542,10 @@ def load_config():
             if any(
                 getattr(config.conf, key) != getattr(proposed, key) for key in protected
             ) or (
-                proposed.webview.port != config.conf.webview.port
-                or proposed.webview.token != config.conf.webview.token
+                any(
+                    getattr(proposed.webview, key) != getattr(config.conf.webview, key)
+                    for key in window_keys
+                )
             ):
                 return {
                     "error": "manager_owned_setting",
@@ -1534,8 +1555,8 @@ def load_config():
             for key in protected:
                 req.pop(key, None)
             if managed_window:
-                req["webview"].pop("port", None)
-                req["webview"].pop("token", None)
+                for key in window_keys:
+                    req["webview"].pop(key, None)
         if "updates_enabled" in req:
             if req["updates_enabled"] != config.conf.updates_enabled:
                 return {
@@ -1615,6 +1636,7 @@ def load_config():
         ]
         from arknights_mower.utils.workshop_config import save_user_config
 
+        previous_token = config.conf.webview.token
         try:
             state = save_user_config(req)
         except (ValidationError, ValueError) as exc:
@@ -1625,6 +1647,11 @@ def load_config():
                 "error": "configuration_save_failed",
                 "message": "配置保存失败，请检查文件权限或稍后重试",
             }, 500
+        if previous_token != config.conf.webview.token and (
+            relay := app.extensions.get("mower_relay")
+        ):
+            notify = request.environ.get("mower.relay_token_changed", relay.start)
+            notify()
         if request.method == "PATCH":
             from arknights_mower.utils.workshop_config import read_user_config
 
@@ -5283,6 +5310,7 @@ app.register_blueprint(task_bp)
 app.register_blueprint(db_admin_bp)
 app.register_blueprint(software_update_bp)
 app.register_blueprint(network_bp)
+app.register_blueprint(relay_bp)
 
 
 def _recycling_reports_running():

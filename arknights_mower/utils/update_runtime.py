@@ -722,6 +722,7 @@ class RuntimeRegistration:
         self.request = self.directory / "shutdown" / f"{self.id}.json"
         self.running = running or (lambda: False)
         self.idle = lambda: False
+        self.relay_subdomain = None
         self.closed = threading.Event()
         self._publication_lock = threading.Lock()
         self.record = {
@@ -779,6 +780,8 @@ class RuntimeRegistration:
                 idle=bool(self.idle()),
                 heartbeat=time.time(),
             )
+            if self.relay_subdomain is not None:
+                self.record["relay_subdomain"] = self.relay_subdomain()
             write_json(self.path, self.record.copy(), sync=True)
 
     def _heartbeat(self):

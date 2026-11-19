@@ -97,6 +97,35 @@ function restoreTurn(turn) {
 }
 
 describe('AI chat interactions', () => {
+  it('waits for relay history before sending the first authenticated chat turn', async () => {
+    vi.stubEnv('DEV', false)
+    const origin = 'https://trial.free.mower.work:58000'
+    window.location = new URL(origin)
+    window.sessionStorage = { getItem: () => 'relay-instance-token' }
+    vi.stubGlobal('location', window.location)
+    vi.stubGlobal('document', { querySelector: () => ({ content: 'a'.repeat(64) }) })
+    component.historyReady.value = false
+    let finish
+    state.axios.get.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)))
+    const loading = component.loadHistory({ restore: true })
+    expect(state.axios.get).toHaveBeenLastCalledWith('/ai/conversations')
+    expect(send('第一条消息')).toBeUndefined()
+    finish({ data: { conversations: [] } })
+    await loading
+    const socket = send('第一条消息')
+    expect(socket.url).toBe(
+      'wss://trial.free.mower.work:58000/ws/chat?relay_build=' + 'a'.repeat(64)
+    )
+    socket.open()
+    const frames = socket.send.mock.calls.map(([data]) => JSON.parse(data))
+    expect(frames[0]).toEqual({ token: 'relay-instance-token' })
+    expect(frames[1]).toMatchObject({
+      message: '第一条消息',
+      conversation_id: null,
+      generation: 'page-generation'
+    })
+  })
+
   it.each([
     ['http://mower.example:18000', 'ws://mower.example:18000/ws/chat'],
     ['https://mower.example', 'wss://mower.example/ws/chat'],

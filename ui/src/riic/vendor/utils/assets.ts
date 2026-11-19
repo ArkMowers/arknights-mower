@@ -1,3 +1,4 @@
+import { publicAsset } from '@/utils/publicAsset'
 /**
  * 静态资源路径解析工具
  *
@@ -18,6 +19,9 @@ export function resolveAssetUrl(path: string): string {
   // 去除开头的斜杠
   const cleanPath = path.startsWith('/') ? path.slice(1) : path
 
+  const hosted = publicAsset('/' + cleanPath)
+  if (hosted !== '/' + cleanPath) return hosted
+
   // 1. 如果配置了外部静态资源基地址（如 Vercel 部署域名），优先使用
   const customAssetBase = import.meta.env?.VITE_ASSET_BASE_URL
   if (customAssetBase) {
@@ -25,7 +29,7 @@ export function resolveAssetUrl(path: string): string {
   }
 
   // 2. 否则使用 Vite 注入的 BASE_URL（GitHub Pages 为 /R.I.I.C-Calculator/，Vercel/本地为 /）
-  const base = import.meta.env?.BASE_URL || '/'
+  const base = import.meta.env?.BASE_URL === './' ? '/' : import.meta.env?.BASE_URL || '/'
   const normalizedBase = base.endsWith('/') ? base : `${base}/`
   return `${normalizedBase}${cleanPath}`
 }

@@ -63,6 +63,7 @@ function mount(overrides = {}) {
 afterEach(() => {
   for (const app of mounted.splice(0)) app.unmount()
   vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
 })
 
 describe('log operator portraits', () => {
@@ -82,6 +83,13 @@ describe('log operator portraits', () => {
     expect(page.root().props['aria-label']).toBe('阿米娅')
     expect(page.root().props['data-operator-name']).toBe('阿米娅')
     expect(page.text()).toBe('')
+  })
+
+  it('uses the relay build portrait before the local deployment path', () => {
+    const url = 'https://assets.example/files/portrait.webp'
+    vi.stubEnv('BASE_URL', '/mower/')
+    vi.stubGlobal('window', { __MOWER_PUBLIC_ASSETS__: { '/avatar/阿米娅.webp': url } })
+    expect(mount().image().props.src).toBe(url)
   })
 
   it('keeps one copied name with and without a successfully loaded portrait', async () => {

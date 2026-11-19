@@ -50,7 +50,7 @@
             :key="item.key"
             class="plan-row plan-row--prepared"
           >
-            <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="32" round />
+            <n-avatar :src="publicAsset('/avatar/' + item.char_name + '.webp')" :size="32" round />
             <div class="plan-row__text">
               <b>{{ item.char_name }}</b>
               <span class="plan-row__label">{{ item.label }}</span>
@@ -157,7 +157,11 @@
                 <span class="plan-row__index gp-mono">{{
                   String(index + 1).padStart(2, '0')
                 }}</span>
-                <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="34" round />
+                <n-avatar
+                  :src="publicAsset('/avatar/' + item.char_name + '.webp')"
+                  :size="34"
+                  round
+                />
                 <div class="plan-row__text">
                   <span class="plan-row__name">
                     <b>{{ item.char_name }}</b>
@@ -200,7 +204,11 @@
               :key="item.key"
               class="plan-row"
             >
-              <n-avatar :src="'/avatar/' + item.char_name + '.webp'" :size="34" round />
+              <n-avatar
+                :src="publicAsset('/avatar/' + item.char_name + '.webp')"
+                :size="34"
+                round
+              />
               <div class="plan-row__text">
                 <span class="plan-row__name"
                   ><b>{{ item.char_name }}</b
@@ -250,6 +258,7 @@
 </template>
 
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, ref, watch } from 'vue'
 import { useConfigStore } from '@/stores/config'
 import axios from 'axios'

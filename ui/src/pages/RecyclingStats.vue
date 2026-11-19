@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
@@ -410,7 +411,7 @@ onUnmounted(() => {
                     <div class="material-icon">
                       <img
                         v-if="!failedIcons.has(name)"
-                        :src="`/depot/${encodeURIComponent(name)}.webp`"
+                        :src="publicAsset(`/depot/${encodeURIComponent(name)}.webp`)"
                         :alt="name"
                         loading="lazy"
                         @error="failedIcons.add(name)"

@@ -445,6 +445,10 @@ function edit(idx, kind) {
   draft.value = {
     name: instances.value[idx].name,
     path: instances.value[idx].path,
+    relayEnabled: instances.value[idx].relay?.enabled === true,
+    relayUsername: instances.value[idx].relay?.username || '',
+    relayCredential: '',
+    relayPassword: '',
     token: instances.value[idx].token,
     port: instances.value[idx].port,
     ai_assistant_enabled: instances.value[idx].ai_assistant_enabled === true,
@@ -455,6 +459,7 @@ function edit(idx, kind) {
     idx,
     kind,
     target: { name: draft.value.name, path: draft.value.path },
+    originalRelay: { ...instances.value[idx].relay },
     originalAssistant: draft.value.ai_assistant_enabled,
     originalAutomatic: draft.value.start_automatically,
     originalExtraSettings: draft.value.extra_settings_visible
@@ -586,6 +591,24 @@ async function save() {
     return
   }
   const settings = { token: draft.value.token, port: draft.value.port }
+  const { originalRelay } = editing.value
+  const { relayEnabled, relayUsername, relayCredential, relayPassword } = draft.value
+  if (draft.value.token && relayEnabled) {
+    if (
+      !originalRelay.enabled ||
+      relayUsername !== originalRelay.username ||
+      relayCredential ||
+      relayPassword
+    )
+      settings.relay = {
+        enabled: true,
+        username: relayUsername,
+        credential: relayCredential,
+        password: relayPassword
+      }
+  } else if (originalRelay.enabled) {
+    settings.relay = { enabled: false }
+  }
   if (draft.value.ai_assistant_enabled !== originalAssistant)
     settings.ai_assistant_enabled = draft.value.ai_assistant_enabled
   if (draft.value.start_automatically !== originalAutomatic)
@@ -1019,6 +1042,13 @@ function addInstance() {
             @click="openInstancePage(idx)"
             >打开页面</n-button
           >
+          <n-a
+            v-if="instance.relay_url"
+            :href="instance.relay_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            >中转链接</n-a
+          >
           <n-button
             :type="instance.state === 'stopped' ? 'primary' : 'default'"
             size="small"
@@ -1358,6 +1388,51 @@ function addInstance() {
                 clearable
                 :disabled="unavailable"
             /></n-form-item>
+            <n-form-item label="远程访问（中转）">
+              <n-switch
+                @update:value="draft.relayEnabled = $event"
+                :value="!!draft.token && draft.relayEnabled"
+                aria-label="启用中转"
+                :disabled="unavailable || !draft.token"
+              />
+              <n-text v-if="!draft.token" depth="3">请先设置 Token。</n-text>
+            </n-form-item>
+            <template v-if="draft.token && draft.relayEnabled">
+              <n-form-item label="中转凭据">
+                <n-input
+                  v-model:value="draft.relayCredential"
+                  type="password"
+                  show-password-on="click"
+                  :placeholder="
+                    displayedEditing.originalRelay.credential_saved
+                      ? '留空继续使用已保存凭据'
+                      : '管理员发放的中转凭据'
+                  "
+                  :disabled="unavailable"
+                />
+              </n-form-item>
+              <n-form-item label="登录用户名">
+                <n-input
+                  v-model:value="draft.relayUsername"
+                  :maxlength="64"
+                  :disabled="unavailable"
+                />
+              </n-form-item>
+              <n-form-item label="登录密码">
+                <n-input
+                  v-model:value="draft.relayPassword"
+                  type="password"
+                  show-password-on="click"
+                  :input-props="{ autocomplete: 'new-password' }"
+                  :placeholder="
+                    displayedEditing.originalRelay.password_saved
+                      ? '留空继续使用已保存密码'
+                      : '设置登录密码'
+                  "
+                  :disabled="unavailable"
+                />
+              </n-form-item>
+            </template>
             <n-form-item label="Mower AI 助手">
               <n-switch
                 :value="draft.ai_assistant_enabled"
@@ -1380,7 +1455,7 @@ function addInstance() {
                   :disabled="unavailable || !!assistantConfirmation"
                 />
                 <n-text depth="3">
-                  下次启动时生效。开启后，实例页面显示“网络与更新”和“数据与维护”，并允许对应操作；关闭后隐藏这两组并禁止对应操作。管理器仍可执行维护。
+                  下次启动时生效。此权限也适用于中转访问。开启后，实例页面显示“网络与更新”和“数据与维护”，并允许对应操作；关闭后隐藏这两组并禁止对应操作。管理器仍可执行维护。
                 </n-text>
               </n-space>
             </n-form-item>

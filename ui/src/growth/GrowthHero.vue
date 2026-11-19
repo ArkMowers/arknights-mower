@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed } from 'vue'
 import { NButton, NIcon, NSwitch } from 'naive-ui'
 import AddCircleOutline from '@vicons/ionicons5/es/AddCircleOutline'
@@ -103,7 +104,11 @@ const syncLabel = computed(() => {
     :class="{ 'growth-hero--compact': compact }"
     aria-labelledby="growth-hero-title"
   >
-    <div class="growth-hero__art" aria-hidden="true" />
+    <div
+      class="growth-hero__art"
+      :style="{ backgroundImage: `url(${publicAsset('/bg.webp')})` }"
+      aria-hidden="true"
+    />
     <div class="growth-hero__hatch" aria-hidden="true" />
 
     <div class="growth-hero__grid">
@@ -342,7 +347,6 @@ const syncLabel = computed(() => {
   position: absolute;
   inset: -12% -6% -12% auto;
   width: 66%;
-  background-image: url('/bg.webp');
   background-size: cover;
   background-position: 52% 30%;
   filter: grayscale(1) contrast(1.05) brightness(0.82);

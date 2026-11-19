@@ -750,6 +750,33 @@ describe('manager instance controls', () => {
     expect(component.editing.value).toBeNull()
   })
 
+  it('saves relay settings for the selected instance with maintenance disabled', async () => {
+    await mount()
+    component.edit(0, 'settings')
+    Object.assign(component.draft.value, {
+      token: 'local',
+      relayEnabled: true,
+      relayUsername: 'trial',
+      relayPassword: 'p',
+      relayCredential: 'c'.repeat(48)
+    })
+    await component.save()
+    expect(api.update_settings).toHaveBeenCalledExactlyOnceWith(
+      0,
+      {
+        token: 'local',
+        port: null,
+        relay: {
+          enabled: true,
+          username: 'trial',
+          password: 'p',
+          credential: 'c'.repeat(48)
+        }
+      },
+      { name: 'first', path: '/first' }
+    )
+  })
+
   it('disables without a reading dialog and persists only on Save', async () => {
     rows[0].ai_assistant_enabled = true
     await mount()

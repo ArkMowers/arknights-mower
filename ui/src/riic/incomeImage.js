@@ -1,3 +1,4 @@
+import { publicAsset } from '@/utils/publicAsset'
 import {
   CALCULATOR_REVISION,
   MOWER_REFERENCE,
@@ -180,6 +181,7 @@ export function incomeReportLines(result, settings, plan, label) {
 
 async function loadImage(url) {
   const image = new Image()
+  image.crossOrigin = 'anonymous'
   image.src = url
   await image.decode()
   return image
@@ -219,7 +221,7 @@ export async function renderIncomeImage(
     const metrics = incomeImageMetrics(result.summary, result.observedHours / 24)
     const [source, drone, ...icons] = await Promise.all([
       loadImage(sourceUrl),
-      loadImage('/product/drone.svg'),
+      loadImage(publicAsset('/product/drone.svg')),
       ...metrics.map((row) => loadImage(row.icon))
     ])
     const width = source.naturalWidth

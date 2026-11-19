@@ -2,6 +2,10 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { routes } from '@/routes'
 import { sessionLocation } from '@/utils/sessionNavigation'
 
+import { consumeRelayLinkToken } from '@/utils/instanceToken'
+
+// Remove the credential before Vue Router captures the initial address.
+consumeRelayLinkToken()
 const router = createRouter({
   history: createWebHistory(),
   routes

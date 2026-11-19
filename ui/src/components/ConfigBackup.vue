@@ -1,5 +1,6 @@
 <script setup>
 import { inject, ref } from 'vue'
+import { isRelayPage } from '@/utils/instanceToken'
 import { useConfigStore } from '@/stores/config'
 import { usePlanStore, useRescuePlanStore } from '@/stores/plan'
 import { createSaveCoordinator } from '@/utils/configPersistence'
@@ -125,7 +126,7 @@ function reload() {
             导出完整备份
           </n-button>
         </div>
-        <div class="config-backup-row" data-settings-label="恢复当前配置">
+        <div v-if="!isRelayPage()" class="config-backup-row" data-settings-label="恢复当前配置">
           <div class="config-backup-copy">
             <span class="config-backup-label">恢复当前配置</span>
             <p>使用 ZIP 备份覆盖当前档案的配置与对应数据，不新建档案。恢复前自动备份现有数据。</p>

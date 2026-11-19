@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed } from 'vue'
 import { NButton, NIcon, NSelect } from 'naive-ui'
 import ArrowForwardOutline from '@vicons/ionicons5/es/ArrowForwardOutline'
@@ -115,10 +116,10 @@ function formatCount(value) {
             <span class="gp-queue__index gp-mono">{{ String(index + 1).padStart(2, '0') }}</span>
             <span class="gp-queue__avatar">
               <img
-                :src="'/avatar/' + encodeURIComponent(item.name) + '.webp'"
+                :src="publicAsset('/avatar/' + encodeURIComponent(item.name) + '.webp')"
                 :alt="item.name"
                 loading="lazy"
-                @error="(event) => (event.target.src = '/avatar/阿米娅.webp')"
+                @error="(event) => (event.target.src = publicAsset('/avatar/阿米娅.webp'))"
               />
             </span>
             <div class="gp-queue__text">

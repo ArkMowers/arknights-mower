@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 defineOptions({ name: 'MowerDocPage' })
 
 import { computed, ref, watch } from 'vue'
@@ -13,7 +14,7 @@ const { theme: themePreference } = storeToRefs(useConfigStore())
 const theme = useResolvedTheme(themePreference)
 const themeVars = useThemeVars()
 const guideFrame = ref(null)
-const docSrc = `/docs/Mower入门指北.html?theme=${theme.value === 'dark' ? 'dark' : 'light'}`
+const docSrc = `${publicAsset('/docs/Mower入门指北.html')}?theme=${theme.value === 'dark' ? 'dark' : 'light'}`
 const guideColors = computed(() => {
   const colors = themeVars.value
   return {
@@ -46,7 +47,7 @@ function syncTheme() {
       theme: theme.value === 'dark' ? 'dark' : 'light',
       colors: guideColors.value
     },
-    window.location.origin
+    new URL(docSrc, window.location.href).origin
   )
 }
 

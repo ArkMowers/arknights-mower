@@ -1,4 +1,5 @@
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 defineOptions({ name: 'BaseReportPage' })
 
 import PageLayout from '@/components/PageLayout.vue'
@@ -1280,7 +1281,7 @@ function cell(day, key) {
                   <span class="item__icon">
                     <img
                       v-if="!failedIcons.has(row.icon)"
-                      :src="`/depot/${encodeURIComponent(row.icon)}.webp`"
+                      :src="publicAsset(`/depot/${encodeURIComponent(row.icon)}.webp`)"
                       alt=""
                       @error="failedIcons.add(row.icon)"
                     />

@@ -105,6 +105,7 @@
 </template>
 
 <script setup>
+import { publicAsset } from '@/utils/publicAsset'
 import { computed } from 'vue'
 import {
   formatMaterialAmount as formatAmount,
@@ -136,7 +137,7 @@ const otherMissing = computed(() => props.summary?.missing.filter((item) => !ite
 
 function iconFor(material) {
   const name = material.id === 'growth_exp' ? 'EXP' : material.name
-  return '/depot/' + encodeURIComponent(name) + '.webp'
+  return publicAsset('/depot/' + encodeURIComponent(name) + '.webp')
 }
 function percentFor(material) {
   if (!material.required) return 100
