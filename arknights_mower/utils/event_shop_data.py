@@ -1,4 +1,4 @@
-"""Compile current SS identity, chapter names and currency IDs from game tables."""
+"""Compile SS chapter and currency navigation data from game tables."""
 
 import json
 import math
@@ -50,8 +50,8 @@ def button_rect(chain):
     return left, top, right, bottom
 
 
-def compile_activity_shops(activity_table, *, zones, stages, now=None):
-    """从活动和关卡表生成当前开放的 SS 导航信息。"""
+def compile_activity_shops(activity_table, *, zones, stages, items=None, now=None):
+    """生成已开放和下一期已预载的 SS 导航信息。"""
     basic = activity_table.get("basicInfo")
     if (
         not isinstance(basic, dict)
@@ -60,8 +60,9 @@ def compile_activity_shops(activity_table, *, zones, stages, now=None):
     ):
         raise ValueError("SS 活动生成输入不完整")
     now = time() if now is None else now
-    result = []
+    items = {} if items is None else items
     zone_to_activity = activity_table.get("zoneToActivity", {})
+    windows = []
     for activity_id, info in basic.items():
         if not re.fullmatch(r"act\d+(?:side|sre)", activity_id):
             continue
@@ -77,34 +78,45 @@ def compile_activity_shops(activity_table, *, zones, stages, now=None):
             or not 0 < start < end <= reward_end
         ):
             raise ValueError(f"SS 活动开放时间无效：{activity_id}")
-        if not start <= now < end:
+        if now < end:
+            windows.append((start, end, reward_end, activity_id, info["name"]))
+
+    next_start = min((start for start, *_ in windows if start > now), default=None)
+    result = []
+    for start, end, reward_end, activity_id, name in windows:
+        upcoming = start > now
+        if upcoming and start != next_start:
             continue
         zone_ids = {
             key for key, value in zone_to_activity.items() if value == activity_id
         }
         if not zone_ids or any(zone not in zones for zone in zone_ids):
+            if upcoming:
+                continue
             raise ValueError(f"SS 活动缺少章节信息：{activity_id}")
         related = [
             stage for stage in stages.values() if stage.get("zoneId") in zone_ids
         ]
         if not related:
+            if upcoming:
+                continue
             raise ValueError(f"SS 活动缺少关卡信息：{activity_id}")
-        names, chapters, tokens = set(), {}, set()
-        titles = {}
-        for zone_id in sorted(zone_ids):
-            zone = zones[zone_id]
-            title = next(
+        chapters, tokens = {}, set()
+        titles = {
+            zone_id: next(
                 (
-                    zone.get(key)
+                    zones[zone_id][key]
                     for key in ("zoneNameSecond", "zoneNameFirst", "zoneNameThird")
-                    if zone.get(key)
+                    if zones[zone_id].get(key)
                 ),
                 None,
             )
-            if not title:
-                raise ValueError(f"SS 活动章节名称为空：{activity_id}")
-            titles[zone_id] = title
-            names.add(title)
+            for zone_id in zone_ids
+        }
+        if not all(titles.values()):
+            if upcoming:
+                continue
+            raise ValueError(f"SS 活动章节名称为空：{activity_id}")
         for stage in related:
             title = titles[stage["zoneId"]]
             code = stage.get("code") or ""
@@ -126,21 +138,30 @@ def compile_activity_shops(activity_table, *, zones, stages, now=None):
                 kind = {"1": "normal", "2": "ex", "3": "s"}[suffix[1]]
                 chapters.setdefault(kind, set()).add(titles[zone_id])
         if not tokens:
+            if upcoming:
+                continue
             raise ValueError(f"SS 活动缺少代币信息：{activity_id}")
+        icon_ids = {items.get(token, {}).get("iconId") for token in tokens}
+        aliases = sorted(
+            icon
+            for icon in icon_ids - tokens
+            if re.fullmatch(r"[A-Za-z0-9_]+", icon or "")
+        )
         result.append(
             {
-                "activity": info["name"].replace("·复刻", "").strip(),
+                "activity": name.replace("·复刻", "").strip(),
                 "activity_id": activity_id,
                 "start_ts": start,
                 "end_ts": end,
                 "reward_end_ts": reward_end,
-                "entry_names": sorted(names),
+                "entry_names": sorted(set(titles.values())),
                 "chapters": {
                     key: next(iter(chapters[key]))
                     for key in ("normal", "ex", "s")
                     if key in chapters and len(chapters[key]) == 1
                 },
                 "token_ids": sorted(tokens),
+                **({"token_icon_ids": aliases} if aliases else {}),
             }
         )
     return sorted(result, key=lambda shop: (shop["start_ts"], shop["activity"]))
@@ -152,9 +173,12 @@ def write_event_shop_data(
     *,
     zones,
     stages,
+    items=None,
     now=None,
 ):
-    shops = compile_activity_shops(activity_table, zones=zones, stages=stages, now=now)
+    shops = compile_activity_shops(
+        activity_table, zones=zones, stages=stages, items=items, now=now
+    )
     Path(output).write_text(
         json.dumps(shops, ensure_ascii=False, indent=2) + "\n", "utf-8"
     )

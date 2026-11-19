@@ -1270,6 +1270,8 @@ if __name__ == "__main__":
             "./ArknightsGameResource/gamedata/excel/zone_table.json"
         )["zones"],
         stages=数据处理器.关卡表["stages"],
+        items=数据处理器.物品表["items"],
+        now=数据处理器.当前时间戳,
     )
 
     # 和 数据处理器.添加物品() 有联动 ， 添加物品提供了分类的图片位置

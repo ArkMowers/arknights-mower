@@ -104,6 +104,7 @@ class ActivityNavigation:
             if drop.get("type") == "ACTIVITY_ITEM"
             and re.fullmatch(r"[A-Za-z0-9_]+", drop.get("id", ""))
         }
+        tokens.update(self.shop.get("token_icon_ids", []))
         installation = Path(resolve_config_path(config.conf.maa_path))
         roots = [
             installation / "cache/resource/template/items",

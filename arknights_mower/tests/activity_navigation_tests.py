@@ -74,6 +74,30 @@ def test_currency_template_is_found_at_different_positions(
     assert nav.ActivityNavigation(solver).token_entry() == expected
 
 
+def test_rerun_currency_reuses_game_icon_at_both_entrances(
+    activity, tmp_path, monkeypatch
+):
+    stages, shop = activity
+    token = "act46side_token_detector_rep_1"
+    icon = "act46side_token_detector"
+    stages[0]["drop"][0]["id"] = token
+    shop.update(token_ids=[token], token_icon_ids=[icon])
+    root = tmp_path / "cache/resource/template/items"
+    root.mkdir(parents=True)
+    template = np.random.default_rng(123).integers(0, 256, (64, 64, 3), dtype=np.uint8)
+    cv2.imwrite(str(root / f"{icon}.png"), template)
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    solver = SimpleNamespace(stage_meta=stages[0], recog=SimpleNamespace(img=frame))
+    monkeypatch.setattr(nav.config.conf, "maa_path", str(tmp_path))
+    navigator = nav.ActivityNavigation(solver)
+
+    frame[300:364, 120:184] = cv2.cvtColor(template, cv2.COLOR_BGR2RGB)
+    assert navigator.token_entry() == (152, 332)
+    frame.fill(0)
+    frame[220:284, 1500:1564] = cv2.cvtColor(template, cv2.COLOR_BGR2RGB)
+    assert navigator.shop_entry() == (1532, 252)
+
+
 def test_missing_currency_does_not_match_unrelated_image(
     activity, tmp_path, monkeypatch
 ):
