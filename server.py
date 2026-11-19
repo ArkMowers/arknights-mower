@@ -1622,6 +1622,7 @@ def load_config():
         ]
         from arknights_mower.utils.workshop_config import save_user_config
 
+        previous_token = config.conf.webview.token
         try:
             state = save_user_config(req)
         except (ValidationError, ValueError) as exc:
@@ -1632,6 +1633,10 @@ def load_config():
                 "error": "configuration_save_failed",
                 "message": "配置保存失败，请检查文件权限或稍后重试",
             }, 500
+        if previous_token != config.conf.webview.token and (
+            relay := app.extensions.get("mower_relay")
+        ):
+            relay.start()
         if request.method == "PATCH":
             from arknights_mower.utils.workshop_config import read_user_config
 

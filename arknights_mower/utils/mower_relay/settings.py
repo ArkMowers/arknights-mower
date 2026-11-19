@@ -6,12 +6,9 @@ from threading import RLock
 
 from werkzeug.security import generate_password_hash
 
-from arknights_mower.utils.mower_relay.protocol import public_origin, valid_subdomain
-
 lock = RLock()
 DEFAULTS = {
     "enabled": False,
-    "subdomain": "",
     "credential": "",
     "username": "",
     "password_hash": "",
@@ -32,26 +29,24 @@ def load():
             return dict(DEFAULTS)
         if not isinstance(value, dict):
             raise ValueError("中转配置文件无效，请检查 relay/settings.json")
-        return {**DEFAULTS, **value}
+        return {key: value.get(key, default) for key, default in DEFAULTS.items()}
 
 
 def public_settings():
     data = load()
-    return {key: data[key] for key in ("enabled", "subdomain", "username")} | {
+    return {
+        "enabled": data["enabled"],
+        "username": data["username"],
         "credential_saved": bool(data["credential"]),
         "password_saved": bool(data["password_hash"]),
-        "url": public_origin(data["subdomain"])
-        if valid_subdomain(data["subdomain"])
-        else "",
     }
 
 
-def save(payload):
+def save(payload, *, token_ready):
     from arknights_mower.utils.config import atomic_write
 
     if not isinstance(payload, dict) or set(payload) - {
         "enabled",
-        "subdomain",
         "credential",
         "username",
         "password",
@@ -59,7 +54,7 @@ def save(payload):
         raise ValueError("中转配置字段无效")
     with lock:
         data = load()
-        for key in ("enabled", "subdomain", "username"):
+        for key in ("enabled", "username"):
             if key in payload:
                 data[key] = payload[key]
         for key in ("credential", "password"):
@@ -83,14 +78,11 @@ def save(payload):
             or ":" in data["username"]
         ):
             raise ValueError("登录用户名无效")
-        if not isinstance(data["subdomain"], str):
-            raise ValueError("子域名格式无效")
-        if data["subdomain"] and not valid_subdomain(data["subdomain"]):
-            public_origin(data["subdomain"])
+        if data["enabled"] and not token_ready:
+            raise ValueError("请先配置访问 Token 并重启实例")
         if data["enabled"] and not all(
-            data[key]
-            for key in ("subdomain", "credential", "username", "password_hash")
+            data[key] for key in ("credential", "username", "password_hash")
         ):
-            raise ValueError("开启中转前请填写子域名、审核凭据、用户名和密码")
+            raise ValueError("请填写中转凭据、登录用户名和密码")
         atomic_write(settings_path(), lambda f: json.dump(data, f, ensure_ascii=False))
     return public_settings()

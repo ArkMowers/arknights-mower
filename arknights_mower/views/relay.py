@@ -27,10 +27,15 @@ def relay_settings():
         if origin and origin.rstrip("/") != request.host_url.rstrip("/"):
             abort(403)
         try:
-            settings.save(request.get_json(silent=True))
+            settings.save(request.get_json(silent=True), token_ready=client.token_ready)
         except ValueError as exc:
             return {"ok": False, "message": str(exc)}, 400
         except OSError:
             return {"ok": False, "message": "中转配置保存失败，请检查目录权限"}, 500
         client.start()
-    return {"ok": True, **settings.public_settings(), **client.status()}
+    return {
+        "ok": True,
+        **settings.public_settings(),
+        **client.status(),
+        "token_ready": client.token_ready,
+    }

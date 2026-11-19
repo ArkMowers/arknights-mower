@@ -15,6 +15,7 @@ from arknights_mower.utils.mower_relay.protocol import public_origin
 def relay(tmp_path, monkeypatch):
     import server
 
+    monkeypatch.setattr(server.config.conf.webview, "token", "instance-token")
     monkeypatch.setattr(settings, "settings_path", lambda: tmp_path / "relay.json")
     monkeypatch.setattr(server.app, "token", "instance-token", raising=False)
     monkeypatch.setattr(server.app, "static_folder", str(tmp_path))
@@ -28,7 +29,6 @@ def relay(tmp_path, monkeypatch):
 def config(password):
     return dict(
         enabled=True,
-        subdomain="example",
         credential="a" * 40,
         username="玩家",
         password=password,
@@ -121,7 +121,7 @@ def test_connection_login_dispatch_and_disable(relay, monkeypatch):
         disconnected = asyncio.Event()
 
         async def connect(request):
-            assert request.headers["X-Mower-Subdomain"] == "example"
+            assert "X-Mower-Subdomain" not in request.headers
             assert request.headers["Authorization"] == "Bearer " + "a" * 40
             ws = web.WebSocketResponse()
             await ws.prepare(request)
@@ -131,7 +131,14 @@ def test_connection_login_dispatch_and_disable(relay, monkeypatch):
                     "version": 1,
                     "ui_build": "b" * 64,
                 }
-                await ws.send_json({"op": "ready", "version": 1, "ui_build": "b" * 64})
+                await ws.send_json(
+                    {
+                        "op": "ready",
+                        "version": 1,
+                        "ui_build": "b" * 64,
+                        "subdomain": "example",
+                    }
+                )
                 await ws.send_json(
                     {
                         "op": "authenticate",
@@ -184,14 +191,46 @@ def test_connection_login_dispatch_and_disable(relay, monkeypatch):
             )
             relay.start()
             assert relay._thread is None
-            settings.save(config("短"))
+            settings.save(config("短"), token_ready=relay.token_ready)
             relay.start()
             await asyncio.wait_for(received, 5)
             assert relay.status()["state"] == "connected"
-            settings.save({"enabled": False})
+            assert relay.status()["url"] == public_origin("example")
+            settings.save({"enabled": False}, token_ready=relay.token_ready)
             relay.start()
             await asyncio.wait_for(disconnected.wait(), 5)
             await asyncio.to_thread(relay.close)
             assert not relay._thread.is_alive()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "configured,temporary", [("", True), ("changed", False), ("instance-token", True)]
+)
+def test_enable_requires_active_configured_token(
+    relay, monkeypatch, configured, temporary
+):
+    import server
+
+    monkeypatch.setattr(server.config.conf.webview, "token", configured)
+    monkeypatch.setitem(relay.app.config, "WEBVIEW_LOCAL_ONLY_NO_TOKEN", temporary)
+    headers = {"token": relay.app.token, "X-Mower-Settings": "1"}
+    browser = relay.app.test_client()
+    assert browser.get("/relay/settings", headers=headers).json["token_ready"] is False
+    assert (
+        browser.post(
+            "/relay/settings", headers=headers, json=config("密码")
+        ).status_code
+        == 400
+    )
+    assert not settings.settings_path().exists()
+    settings.save(config("密码"), token_ready=True)
+    relay.start()
+    assert relay._thread is None
+    assert (
+        browser.post(
+            "/relay/settings", headers=headers, json={"enabled": False}
+        ).status_code
+        == 200
+    )

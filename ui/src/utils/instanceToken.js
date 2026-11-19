@@ -10,19 +10,22 @@ export function isRelayPage() {
   )
 }
 
+export function consumeRelayLinkToken() {
+  if (!isRelayPage() || !window.location.hash.startsWith('#token=')) return
+  const url = new URL(window.location.href)
+  activeToken = new URLSearchParams(url.hash.slice(1)).get('token')
+  url.hash = ''
+  window.history.replaceState(window.history.state, '', url)
+}
+
 export function instanceToken() {
-  const query = new URLSearchParams(window.location?.search).get('token')
-  return isRelayPage() ? (activeToken ?? query ?? window.sessionStorage.getItem(storageKey)) : query
+  if (!isRelayPage()) return new URLSearchParams(window.location?.search).get('token')
+  return activeToken ?? window.sessionStorage.getItem(storageKey)
 }
 
 export function rememberRelayToken(token) {
   activeToken = token
   window.sessionStorage.setItem(storageKey, token)
-  const url = new URL(window.location.href)
-  if (url.searchParams.has('token')) {
-    url.searchParams.delete('token')
-    window.history.replaceState(window.history.state, '', url)
-  }
 }
 
 export function relayBuild() {

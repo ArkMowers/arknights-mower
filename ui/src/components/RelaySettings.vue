@@ -1,10 +1,15 @@
 <script setup>
 import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 
+import { useConfigStore } from '@/stores/config'
+import { instanceToken } from '@/utils/instanceToken'
+
+const config = useConfigStore()
 const axios = inject('axios')
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/relay/settings`
 const enabled = ref(false)
-const subdomain = ref('')
+const origin = ref('')
+const tokenReady = ref(false)
 const username = ref('')
 const credential = ref('')
 const password = ref('')
@@ -14,23 +19,32 @@ const status = ref('尚未连接')
 const busy = ref(false)
 const ready = ref(false)
 const error = ref('')
-const url = computed(() =>
-  /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(subdomain.value)
-    ? `https://${subdomain.value}.free.mower.work:58000`
-    : ''
+const canEnable = computed(
+  () => tokenReady.value && !!config.webview.token && config.webview.token === instanceToken()
 )
+const url = computed(() => {
+  if (!origin.value || !canEnable.value) return ''
+  const link = new URL(origin.value)
+  link.hash = new URLSearchParams({ token: config.webview.token }).toString()
+  return link.href
+})
 let timer
 let active = false
 let disposed = false
 
+function updateStatus(data) {
+  status.value = data.message
+  origin.value = data.url
+  tokenReady.value = data.token_ready
+}
+
 function apply(data) {
   active = data.enabled
   enabled.value = data.enabled
-  subdomain.value = data.subdomain
   username.value = data.username
   credentialSaved.value = data.credential_saved
   passwordSaved.value = data.password_saved
-  status.value = data.message
+  updateStatus(data)
 }
 
 async function load() {
@@ -41,14 +55,14 @@ async function load() {
       ready.value = true
     }
   } catch (err) {
-    if (!disposed) error.value = err.response?.data?.message || '请在本机 Mower 中配置免费中转'
+    if (!disposed) error.value = err.response?.data?.message || '请在本机 Mower 中配置远程访问'
   }
 }
 
 async function refreshStatus() {
   try {
     const { data } = await axios.get(base)
-    if (!disposed && !busy.value) status.value = data.message
+    if (!disposed && !busy.value) updateStatus(data)
   } catch {
     // Configuration errors stay visible until the next explicit save.
   } finally {
@@ -75,7 +89,6 @@ async function save() {
       enabled.value
         ? {
             enabled: true,
-            subdomain: subdomain.value,
             username: username.value,
             credential: credential.value,
             password: password.value
@@ -113,20 +126,21 @@ onUnmounted(() => {
 <template>
   <n-space id="mower-relay-settings" vertical :size="16">
     <n-form-item label="启用中转" label-placement="left" label-width="120" :show-feedback="false">
-      <n-switch :value="enabled" :disabled="!ready || busy" @update:value="toggle" />
+      <n-switch
+        :value="enabled"
+        :disabled="!ready || busy || (!enabled && !canEnable)"
+        @update:value="toggle"
+      />
     </n-form-item>
+    <n-text v-if="ready && !canEnable" depth="3"
+      >请先设置访问 Token，保存并重启实例后即可启用中转。</n-text
+    >
     <n-alert v-if="error" type="error">{{ error }}</n-alert>
     <template v-if="enabled">
       <n-text depth="3">
-        向管理员领取子域名和中转凭据，在此设置自己的登录用户名和密码。远程访问时，先在浏览器认证弹窗登录，再填写实例
-        Token。
+        填写管理员发放的中转凭据，并设置登录用户名和密码。连接成功后，打开远程访问链接即可登录。
       </n-text>
       <n-form :disabled="!ready || busy" label-width="120" label-placement="left">
-        <n-form-item label="子域名">
-          <n-input v-model:value="subdomain" placeholder="管理员批准的名称" :maxlength="32">
-            <template #suffix>.free.mower.work</template>
-          </n-input>
-        </n-form-item>
         <n-form-item label="中转凭据">
           <n-input
             v-model:value="credential"
@@ -154,13 +168,15 @@ onUnmounted(() => {
         <n-button
           type="primary"
           :loading="busy"
-          :disabled="!ready || (!credentialSaved && !credential)"
+          :disabled="!ready || !canEnable || (!credentialSaved && !credential)"
           @click="save"
           >保存并应用</n-button
         >
         <n-text>{{ status }}</n-text>
       </n-space>
-      <n-a v-if="url" :href="url" target="_blank" rel="noopener noreferrer">{{ url }}</n-a>
+      <n-a v-if="url" :href="url" target="_blank" rel="noopener noreferrer"
+        >打开远程访问（含实例 Token）</n-a
+      >
       <n-text depth="3"
         >中转连接随 Mower 启动，退出 Mower 后关闭。请在本机导入大文件、安装更新或管理进程。</n-text
       >

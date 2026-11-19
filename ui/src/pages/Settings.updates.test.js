@@ -55,7 +55,7 @@ vi.mock('@/components/MaaUpdates.vue', () => ({
 }))
 vi.mock('@/components/NetworkSettings.vue', () => ({ default: { setup: () => () => '网络设置' } }))
 vi.mock('@/components/RelaySettings.vue', () => ({
-  default: { setup: () => () => '免费 Mower 中转' }
+  default: { setup: () => () => '远程访问（中转）' }
 }))
 vi.mock('@/components/WebAccessSettings.vue', () => ({
   default: { setup: () => () => '访问端口与 Token' }
@@ -121,11 +121,11 @@ describe('network and update settings', () => {
       state.config.runtime_platform = platform
       const html = await render()
       expect(html.includes('访问端口与 Token')).toBe(visible)
-      expect(html.includes('免费 Mower 中转')).toBe(platform !== 'android')
+      expect(html.includes('远程访问（中转）')).toBe(platform !== 'android')
       if (visible) {
         const card = html.split('id="web-access-settings"')[1].split('</article>')[0]
         expect(card).toContain('访问端口与 Token')
-        expect(card).toContain('免费 Mower 中转')
+        expect(card).toContain('远程访问（中转）')
       }
     }
   )

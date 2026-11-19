@@ -83,23 +83,42 @@ class RelayClient:
         self._state = "stopped"
         self._message = "尚未连接"
 
+        self._origin = ""
+        self._requested_credential = None
+
+    @property
+    def token_ready(self):
+        from arknights_mower.utils import config
+
+        token = config.conf.webview.token
+        return bool(
+            token
+            and token == getattr(self.app, "token", None)
+            and not self.app.config.get("WEBVIEW_LOCAL_ONLY_NO_TOKEN")
+        )
+
     def status(self):
         with self._lock:
-            return {"state": self._state, "message": self._message}
+            return {"state": self._state, "message": self._message, "url": self._origin}
 
-    def _set(self, state, message):
+    def _set(self, state, message, *, origin="", credential=None):
         with self._lock:
-            self._state, self._message = state, message
+            if origin and credential != self._requested_credential:
+                return
+            self._state, self._message, self._origin = state, message, origin
 
     def start(self):
         try:
-            enabled = settings.load()["enabled"]
+            data = settings.load()
+            enabled = data["enabled"] and self.token_ready
         except (OSError, ValueError):
             self._set("error", "读取中转设置失败")
             return
         with self._lock:
             if self._closing:
                 return
+            self._requested_credential = data["credential"] if enabled else None
+            self._origin = ""
             if self._loop is not None:
                 self._loop.call_soon_threadsafe(self._changed.set)
             if enabled and not (self._thread and self._thread.is_alive()):
@@ -217,12 +236,12 @@ class RelayClient:
             while not self._closing:
                 changed.clear()
                 data = settings.load()
-                if not data["enabled"] or not getattr(self.app, "token", ""):
+                if not data["enabled"] or not self.token_ready:
                     self._set(
                         "stopped",
                         "中转已关闭"
                         if not data["enabled"]
-                        else "请使用带实例 Token 的桌面入口",
+                        else "请先配置访问 Token 并重启实例",
                     )
                     await changed.wait()
                     continue
@@ -253,7 +272,7 @@ class RelayClient:
                         if exc.status in {401, 403, 409}:
                             self._set(
                                 "error",
-                                "请核对中转凭据和子域名，并确认没有其他实例占用连接",
+                                "请核对中转凭据，并确认没有其他实例占用连接",
                             )
                             await changed.wait()
                             continue
@@ -290,7 +309,6 @@ class RelayClient:
                     CONNECT_URL,
                     headers={
                         "Authorization": f"Bearer {data['credential']}",
-                        "X-Mower-Subdomain": data["subdomain"],
                     },
                     heartbeat=20,
                     max_msg_size=MAX_FRAME,
@@ -302,14 +320,22 @@ class RelayClient:
                     frame = await ws.receive(timeout=10)
                     if frame.type != aiohttp.WSMsgType.TEXT:
                         raise ConnectionError("网关未确认前端版本")
-                    if json.loads(frame.data) != {
+                    ready = json.loads(frame.data)
+                    if not isinstance(ready, dict):
+                        raise ValueError("网关响应无效")
+                    origin = public_origin(ready.pop("subdomain", None))
+                    if ready != {
                         "op": "ready",
                         "version": VERSION,
                         "ui_build": build,
                     }:
                         raise ValueError("协议版本不兼容")
-                    self._set("connected", "中转已连接")
-                    origin = public_origin(data["subdomain"])
+                    self._set(
+                        "connected",
+                        "中转已连接",
+                        origin=origin,
+                        credential=data["credential"],
+                    )
                     async for frame in ws:
                         if self._closing:
                             break

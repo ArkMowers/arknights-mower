@@ -965,7 +965,7 @@ def _run_desktop():
         server.mower_thread and server.mower_thread.is_alive()
     )
     url = f"http://127.0.0.1:{port}"
-    url += f"?token={runtime_token}"
+    url += f"?token={quote(runtime_token, safe='')}"
     start_http_server(server.app, host, port)
     instance_path = path.get_path("@app", space=path.global_space).resolve()
     identity = sha256(

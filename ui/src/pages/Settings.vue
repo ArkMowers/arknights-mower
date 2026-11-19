@@ -383,12 +383,12 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
         "
         id="web-access-settings"
         class="settings-card-wide"
-        :title="config_store.manager_owned_device ? '免费 Mower 中转' : '访问端口与 Token'"
+        :title="config_store.manager_owned_device ? '远程访问（中转）' : '访问端口与 Token'"
       >
         <WebAccessSettings v-if="!config_store.manager_owned_device" />
         <template v-if="!isRelayPage()">
           <n-divider v-if="!config_store.manager_owned_device" title-placement="left">
-            免费 Mower 中转
+            远程访问（中转）
           </n-divider>
           <RelaySettings />
         </template>
