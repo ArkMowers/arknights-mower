@@ -33,6 +33,8 @@ from ..utils.resource_pkg import resource_pkg_path, resource_ui_path
 
 _DEPOT_ITEM_ROWS = (144, 430, 715)
 _DEPOT_PAGE_ROWS = slice(140, 990)
+_DEPOT_LABEL_EDGE_MARGIN = 32
+_DEPOT_EDGE_MAX_STROKE_AREA = 512
 
 
 def 导入_数字模板():
@@ -126,14 +128,24 @@ def _same_depot_icon_positions(before, after):
     return matched
 
 
-def _same_depot_labels(before, after):
+def _same_depot_labels(before, after, *, edge_margin=0):
     def label_bands(frame):
         return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
 
     def strokes(labels):
         # 提取数量和有效期的浅色笔画，滤掉大面积背景亮度变化。
         contrast = cv2.morphologyEx(labels, cv2.MORPH_TOPHAT, np.ones((7, 7), np.uint8))
-        return cv2.inRange(labels, 195, 255) & cv2.inRange(contrast, 40, 255)
+        bright = cv2.inRange(labels, 195, 255)
+        mask = bright & cv2.inRange(contrast, 40, 255)
+        if edge_margin:
+            # 去除连到大片亮背景的边缘像素，保留面积较小的细长横笔。
+            _, components, stats, _ = cv2.connectedComponentsWithStats(bright)
+            small = (stats[:, cv2.CC_STAT_AREA] <= _DEPOT_EDGE_MAX_STROKE_AREA).astype(
+                np.uint8
+            ) * 255
+            for edge in (slice(0, edge_margin), slice(-edge_margin, None)):
+                mask[:, edge] &= small[components[:, edge]]
+        return mask
 
     first = label_bands(before)
     second = label_bands(after)
@@ -491,7 +503,11 @@ class depotREC(SceneGraphSolver):
         matched = [
             candidate
             for candidate in candidates
-            if _same_depot_labels(before[:, candidate:], after[:, : width - candidate])
+            if _same_depot_labels(
+                before[:, candidate:],
+                after[:, : width - candidate],
+                edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
+            )
         ]
         if len(matched) != 1 or matched[0] == 0:
             raise _DepotScanIncomplete
