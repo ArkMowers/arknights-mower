@@ -18,7 +18,7 @@ When base work interrupts farming or the current window ends, Mower retains the 
 
 ## Strategy progress
 
-For medal farming, Mower checks the badges on one grid frame before opening cards. A gold or colored badge skips the card for a three-win goal. Only a colored badge skips it for a six-win goal. Mower scrolls past marked cards to look for a candidate. If that search finds none, it goes back through the marked cards to verify outstanding win counts from their panels. Level farming can select a marked card immediately.
+For medal farming, Mower checks the badges on one grid frame before opening cards. A gold or colored badge skips the card for a three-win goal. Only a colored badge skips it for a six-win goal. Mower scrolls past marked cards to look for a candidate. If that search finds none and at least one card was skipped for its badge, Mower scans back through all visible cards and reads their panels regardless of badge appearance. Level farming can select a marked card immediately.
 
 Mower reads the completion banner after recognizing the open strategy panel. For medals, Mower uses the first usable win count and retries an unreadable panel for up to four seconds per card. A blank banner can indicate zero only for a recognized strategy. A lower reading preserves the recorded wins. A readable positive count can guide selection even when the name is unknown. Only a recognized strategy contributes to the per-account, per-device progress record. The results screen counts attempts. On the first settlement of each match Mower submits the result frame to the instance screenshot archive under `garrison_result` before tapping the return button. Medal completion requires observed counts for all strategies in the season.
 

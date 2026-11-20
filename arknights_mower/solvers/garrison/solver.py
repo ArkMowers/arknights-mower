@@ -400,22 +400,24 @@ class GarrisonSolver:
         self.click((1500, 580))
         page, rows = game.shot(), game.GRID_Y
         skipped_badges = False
-        for verify_badges in (False, True):
-            if verify_badges and not skipped_badges:
+        for recheck_panels in (False, True):
+            if recheck_panels and not skipped_badges:
                 break
             for page_index in range(8):
                 for y in rows:
                     if not game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40:
                         continue
                     for x in game.GRID_X:
-                        marked = self.match_limit is None and (
-                            game.has_color_badge(page, x, y)
-                            or self.target_wins == 3
-                            and game.has_badge(page, x, y)
-                        )
-                        if marked:
+                        if (
+                            not recheck_panels
+                            and self.match_limit is None
+                            and (
+                                game.has_color_badge(page, x, y)
+                                or self.target_wins == 3
+                                and game.has_badge(page, x, y)
+                            )
+                        ):
                             skipped_badges = True
-                        if marked != verify_badges:
                             continue
                         frame = self.capture()
                         if frame.screen != "strategy":
@@ -437,7 +439,7 @@ class GarrisonSolver:
                 frame = self.capture()
                 if frame.screen != "strategy":
                     return frame
-                next_page = self.scroll_strategy_page(game, backwards=verify_badges)
+                next_page = self.scroll_strategy_page(game, backwards=recheck_panels)
                 if next_page is None:
                     break
                 page, rows = next_page

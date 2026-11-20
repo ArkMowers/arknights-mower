@@ -580,17 +580,25 @@ def test_marked_cards_do_not_cost_panel_reads(
     game.swipe.assert_not_called()
 
 
-def test_all_marked_pages_verify_named_counts_before_completing(monkeypatch):
+@pytest.mark.parametrize("first_card_wins", [0, 3])
+def test_badge_fallback_reads_panels_after_row_centers_shift(
+    monkeypatch, first_card_wins
+):
     strategies = model.catalogue()["strategies"]
     progress = {"wins": {s["id"]: 3 for s in strategies}}
     missing = strategies[0]
     del progress["wins"][missing["id"]]
     worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
-    replay_unchanged_lobby(monkeypatch, worker, Frame(None, [], "strategy", True))
+    replay_unchanged_lobby(
+        monkeypatch,
+        worker,
+        Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True),
+    )
     worker.click = Mock()
-    game = Mock(GRID_X=[700], GRID_Y=[400], GRID_TOP=250, GRID_BOTTOM=1050)
+    worker.wait = Mock(return_value=frame("prep"))
+    game = Mock(GRID_X=[680], GRID_Y=[370], GRID_TOP=250, GRID_BOTTOM=1050)
     game.has_color_badge.return_value = False
-    game.has_badge.return_value = True
+    game.has_badge.side_effect = lambda page, x, y: y in (370, 610)
     page = 0
 
     def scroll():
@@ -605,19 +613,25 @@ def test_all_marked_pages_verify_named_counts_before_completing(monkeypatch):
     game.scroll_grid.side_effect = scroll
     game.swipe.side_effect = back
     game.grid_shift.side_effect = lambda before, after: (after - before) * 210
-    game.detect_rows.side_effect = lambda image: [610 if image else 400]
+    game.detect_rows.side_effect = lambda image: [610 if image else 390]
     game.ocr.side_effect = lambda *args: [
-        (1550, 220, "已通过模拟3次"),
+        (1550, 220, f"已通过模拟{3 if page else first_card_wins}次"),
         (1550, 480, "初始生命值"),
         (1610, 560, strategies[page]["name"]),
     ]
-    assert worker.choose_strategy(game) is None
+    result = worker.choose_strategy(game)
+    if first_card_wins:
+        assert result is None
+        worker.click.assert_called_once_with((1500, 580))
+    else:
+        assert result.screen == "prep"
+        assert worker.click.call_args.args == ((1675, 940),)
     assert [call.args[:2] for call in game.tap.call_args_list] == [
-        (700, 610),
-        (700, 400),
+        (680, 610),
+        (680, 390),
     ]
-    assert progress["wins"][missing["id"]] == 3
-    worker.click.assert_called_once_with((1500, 580))
+    assert progress["wins"][missing["id"]] == first_card_wins
+    assert game.has_badge.call_count == 2
 
 
 @pytest.mark.parametrize(
