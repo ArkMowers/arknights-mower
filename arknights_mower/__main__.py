@@ -20,7 +20,7 @@ from arknights_mower.utils.device.application import (
 from arknights_mower.utils.device.recovery import wait_for_recovery
 from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.long_task_windows import long_task_window
+from arknights_mower.utils.long_task_windows import long_task_schedule
 from arknights_mower.utils.news_checker import MaintenanceInfo, NewsChecker
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.path import get_path
@@ -1072,6 +1072,7 @@ def simulate(saved):
                 if config.maintenance_recheck.is_set():
                     continue
             if _next_scheduler_task() is not None:
+                idle_started = datetime.now()
                 # 维护避让先于日常任务和等待预算，包含从存档恢复的专精换人。
                 protect_priority_tasks(
                     base_scheduler.tasks,
@@ -1217,6 +1218,7 @@ def simulate(saved):
                     else:
                         remaining_time = 0
 
+                    idle_started = datetime.now()
                     if remaining_time >= 540 and base_scheduler.has_maa_tasks():
                         base_scheduler.maa_plan_solver(outer_idle_loop=True)
 
@@ -1238,21 +1240,23 @@ def simulate(saved):
                     remaining_time = 0
 
                 if remaining_time > 0:
-                    if config.conf.GARRISON:
+                    now = datetime.now()
+                    kind, cutoff, _ = long_task_schedule(config.conf, now)
+                    if kind == "garrison":
+                        idle_started = now
                         from arknights_mower.solvers.garrison.runner import run_garrison
 
                         run_garrison(base_scheduler)
-                    elif config.conf.RA or config.conf.SF:
+                    elif kind in ("ra", "sf"):
+                        idle_started = now
                         from arknights_mower.solvers.manual_tasks import (
                             long_task_deadline,
                             resume_dorm_releases,
                         )
 
-                        now = datetime.now()
-                        cutoff, _ = long_task_window(config.conf, now)
                         available = long_task_deadline(base_scheduler, cutoff) - now
                         if available >= timedelta(minutes=9):
-                            if config.conf.RA:
+                            if kind == "ra":
                                 from arknights_mower.solvers.reclamation_algorithm import (
                                     ReclamationAlgorithm,
                                 )
@@ -1278,6 +1282,12 @@ def simulate(saved):
                                 finally:
                                     resume_dorm_releases(base_scheduler)
 
+                    if getattr(config.conf, "maa_rg_enable", 0):
+                        _, _, opening = long_task_schedule(config.conf, idle_started)
+                        if opening is not None and opening <= datetime.now():
+                            base_scheduler._stop_after_round()
+                            task_failures = 0
+                            continue
                     base_scheduler.rest_until_next_task()
                     task_failures = 0
                     # A maintenance timer may have ended this sleep. Recheck the

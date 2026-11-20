@@ -8,7 +8,7 @@ from arknights_mower.utils import config
 from arknights_mower.utils.activity_observations import activity_observation
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import get_server_time
-from arknights_mower.utils.long_task_windows import long_task_window
+from arknights_mower.utils.long_task_windows import long_task_schedule
 from arknights_mower.utils.scheduler_task import (
     TaskScope,
     TaskTypes,
@@ -69,16 +69,11 @@ def run_long_task_if_dorm_pending(scheduler):
     if pending is None or not deferrable_dorm_release(pending):
         return False
     conf = config.conf
-    if not any(
-        getattr(conf, flag, False)
-        for flag in ("RG", "COPILOT", "PARADOX", "SSS", "RCL", "RA", "SF", "GARRISON")
-    ):
-        return False
     now = datetime.now()
-    cutoff, opening = long_task_window(conf, now)
-    if cutoff <= now:
+    kind, cutoff, opening = long_task_schedule(conf, now)
+    if kind is None:
         return False
-    garrison = conf.GARRISON
+    garrison = kind == "garrison"
     window = long_task_deadline(scheduler, cutoff) - now
     if garrison:
         from arknights_mower.solvers.garrison.runner import (

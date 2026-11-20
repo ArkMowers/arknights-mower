@@ -127,7 +127,11 @@ from arknights_mower.utils.email import maa_template, send_message, task_templat
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import log_parent_context, logger
-from arknights_mower.utils.long_task_windows import long_task_window
+from arknights_mower.utils.long_task_windows import (
+    MAA_LONG_TASK_TYPES,
+    long_task_schedule,
+    long_task_window,
+)
 from arknights_mower.utils.maa_callback import (
     REPORT_REQUEST,
     MaaCallbackLog,
@@ -20922,15 +20926,11 @@ class BaseSchedulerSolver(
 
     def has_maa_tasks(self) -> bool:
         conf = config.conf
-        if hasattr(conf, "has_maa_tasks"):
-            return conf.has_maa_tasks
+        kind, _, _ = long_task_schedule(conf, datetime.now())
         return (
             self.has_maa_daily_tasks()
-            or getattr(conf, "RG", False)
-            or getattr(conf, "SSS", False)
-            or getattr(conf, "RCL", False)
-            or getattr(conf, "COPILOT", False)
-            or getattr(conf, "PARADOX", False)
+            or getattr(conf, "maa_growth_enabled", False)
+            or kind in MAA_LONG_TASK_TYPES
         )
 
     def _maa_refresh_deadline(self):
@@ -21210,31 +21210,17 @@ class BaseSchedulerSolver(
                         )
                         self.tasks.insert(0, SchedulerTask(time=datetime.now()))
             conf = config.conf
-            selected_long = (
-                long_task
-                if manual
-                else next(
-                    (
-                        name
-                        for flag, name in (
-                            ("RG", "rogue"),
-                            ("COPILOT", "copilot"),
-                            ("PARADOX", "paradox"),
-                            ("SSS", "sss"),
-                            ("RCL", "rcl"),
-                            ("RA", "ra"),
-                            ("SF", "sf"),
-                        )
-                        if getattr(conf, flag, False)
-                    ),
-                    None,
-                )
-            )
             now = datetime.now()
-            cutoff, _ = long_task_window(conf, now)
+            selected_long = long_task
             if not manual:
+                selected_long, cutoff, _ = long_task_schedule(conf, now)
                 long_limit = min(long_limit, cutoff)
-                if cutoff - now < timedelta(minutes=9):
+                if (
+                    cutoff - now < timedelta(minutes=9)
+                    or selected_long == "garrison"
+                    or outer_idle_loop
+                    and selected_long not in MAA_LONG_TASK_TYPES
+                ):
                     selected_long = None
             running_long_task = True
             if selected_long and (refresh := self._maa_refresh_deadline()) is not None:

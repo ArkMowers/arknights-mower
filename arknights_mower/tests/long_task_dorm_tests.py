@@ -299,6 +299,32 @@ def test_no_large_task_started_keeps_release_time(scheduler, maa_solver):
     assert scheduler.release.time == scheduler.now
 
 
+def test_automatic_dispatch_runs_the_window_type_instead_of_the_default(
+    scheduler, maa_solver, monkeypatch
+):
+    conf = Conf(
+        maa_rg_enable=1,
+        maa_long_task_type="rogue",
+        maa_long_task_weekly_windows=[
+            {
+                "start": "14:00",
+                "end": "14:20",
+                "weekdays": [scheduler.now.weekday()],
+                "task_type": "sf",
+            }
+        ],
+    )
+    monkeypatch.setattr(manual_tasks.config, "conf", conf)
+    worker = MagicMock()
+    monkeypatch.setattr(base_schedule, "SecretFront", MagicMock(return_value=worker))
+
+    assert maa_solver.maa_plan_solver([])
+
+    worker.run.assert_called_once_with(timedelta(minutes=20))
+    maa_solver.MAA.start.assert_not_called()
+    assert conf.maa_long_task_type == "rogue"
+
+
 @pytest.mark.parametrize(
     "flag", ["strict_mood_limit", "emergency_recovery_release", "execution_retained"]
 )
