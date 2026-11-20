@@ -15,6 +15,14 @@ class DeviceRecoveryError(ConnectionError):
     """当前设备恢复预算耗尽；任务保留意图并在冷却后建立新的有限预算。"""
 
 
+class DeviceStartupCleanupError(DeviceRecoveryError):
+    """Carry the unfinished device through a failed constructor."""
+
+    def __init__(self, device, error):
+        super().__init__(str(error))
+        self.device = device
+
+
 class UIUnresponsiveError(DeviceRecoveryError):
     """ADB 可读，但两次有界输入投递均未能完成。"""
 

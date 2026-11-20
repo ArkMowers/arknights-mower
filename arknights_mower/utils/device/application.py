@@ -31,6 +31,7 @@ from arknights_mower.utils.device.preparation import (
 )
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
+    DeviceStartupCleanupError,
     UIUnresponsiveError,
 )
 from arknights_mower.utils.device.redroid import redroid_repair
@@ -1089,6 +1090,9 @@ class DeviceControl(Generic[D]):
             if self._shutdown.is_set() or self._pending_close.is_set():
                 raise MowerExit("设备会话正在关闭")
         except BaseException as exc:
+            if isinstance(exc, DeviceStartupCleanupError):
+                self._cleanup_device = exc.device
+                self._helper_cleanup_error = exc
             self._close_failure(exc, "device_start_failed")
             if not isinstance(exc, Exception):
                 raise
@@ -1100,6 +1104,11 @@ class DeviceControl(Generic[D]):
             )
             if self._session is not None or isinstance(exc, TouchFailure):
                 self._session_error = exc
+            if (
+                isinstance(exc, DeviceStartupCleanupError)
+                and self._helper_cleanup_error
+            ):
+                return self._failure("close_failed", self._helper_cleanup_error)
             return self._failure("start_failed", exc)
         if self._session is not None:
             self._device.session_control = self
