@@ -1,4 +1,5 @@
 // Ordinary cover checks follow Mower ae9fc3223 replacement_check.py (MIT).
+import {isTradeRunOrderOperator} from '../domain/shiftRunPolicy'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import type {MowerOperatorState} from './mowerOperatorState'
 import type {RuntimeState} from './rosterRuntime'
@@ -10,11 +11,10 @@ import {mowerRecoveryMoodComplete} from './mowerGroupRecovery'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {retainMowerFailedTask} from './mowerTaskFailure'
 
-const runners=new Set(['但书','龙舌兰','佩佩','可露希尔','U-Official'])
 type Target=NonNullable<MowerTask['workingReplacementCheck']>
 function candidates(data:MowerSchedulingData,owner:MowerOperatorState):string[]{
  const names=owner.multiGroup?mowerSharedReplacements(owner,mowerRestingBindingGroups(data,owner)):owner.replacement
- return [...new Set(names)].filter(name=>name!=='Free'&&!runners.has(data.operators[name]?.nativeName??name))
+ return [...new Set(names)].filter(name=>name!=='Free'&&!isTradeRunOrderOperator(data.operators[name]?.nativeName??name))
 }
 export function mowerWorkingReplacementApplies(data:MowerSchedulingData,target:Target):boolean{
  const {room,index,owner,cover}=target,primary=data.operators[owner],worker=data.operators[cover]

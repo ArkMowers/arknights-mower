@@ -174,3 +174,12 @@ def test_runner_mood_gate_applies_to_new_entries_and_not_current_residents(
             data, current_residents={name}, now=now
         ).filling
     )
+
+
+def test_u_official_can_fill_a_vacancy_at_full_mood(op_data):
+    name = "U-Official"
+    now = datetime.now()
+    op_data.add(Operator(name, "", mood=24, time_stamp=now))
+    assert name in candidates.dorm_candidates(op_data, now=now).filling
+    op_data.config.free_blacklist.append(name)
+    assert name not in candidates.dorm_candidates(op_data, now=now).filling

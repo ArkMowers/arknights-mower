@@ -4,7 +4,8 @@ import {MowerOperatorState} from './mowerOperatorState'
 import {MowerSchedulingData,MowerDormState} from './mowerSchedulingData'
 import {mowerResting} from './mowerOrdinaryPlanning'
 import {MowerTaskQueue} from './mowerTaskQueue'
-import {alphaRestingTier,alphaSlotTakable} from './mowerAlphaDorm'
+import {isTradeRunOrderOperator} from '../domain/shiftRunPolicy'
+import {alphaRestingTier,alphaSlotTakable,alphaTradeDormEntryBlocked} from './mowerAlphaDorm'
 import {mowerUpdateDetail,projectMowerArrangements} from './mowerObservations'
 import {planMowerMetadata} from './mowerMetadata'
 import {mowerAverageMood} from './mowerDormAssignment'
@@ -45,6 +46,15 @@ describe('standby priority follows current mood without promotion',()=>{
   expect(alphaRestingTier(data,name)).not.toBe(7)
   mowerUpdateDetail(data,name,20,'dormitory_1',4,true)
   expect(alphaRestingTier(data,name)).not.toBe(7)
+ })
+ it.each(['U-Official','char_4091_ulika'])('allows full-mood U-Official to enter a dorm as an ordinary operator (%s)',name=>{
+  const {data}=fixture()
+  expect(isTradeRunOrderOperator(name)).toBe(false)
+  expect(alphaTradeDormEntryBlocked(data,name,24)).toBe(false)
+  data.operators[name]=new MowerOperatorState({name,nativeName:'U-Official',mood:24,timeStampMicros:0})
+  expect(alphaRestingTier(data,name)).not.toBe(7)
+  data.freeBlacklist.push(name)
+  expect(alphaRestingTier(data,name)).toBe(7)
  })
  it.each([4,0])('keeps tier 4 after observing and planning with morale %s',mood=>{
   const {data}=fixture()

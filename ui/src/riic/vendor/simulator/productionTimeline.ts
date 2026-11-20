@@ -257,9 +257,8 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
    if(a.base.mode==='gold'){
     const policy=(state.config.runOrderPolicies??schedule.runOrderPolicies).find(p=>p.roomId===t.roomId)
     const level=schedule.rooms.find(r=>r.roomId===t.roomId)!.level
-    const runners=policy?.orderedOperatorIds.filter(id=>{const name=OPERATOR_MAP.get(id)?.name;return name==='但书'||level===3&&name==='龙舌兰'||name==='U-Official'})??[]
+    const runners=policy?.orderedOperatorIds.filter(id=>{const name=OPERATOR_MAP.get(id)?.name;return name==='但书'||level===3&&name==='龙舌兰'})??[]
     if(runners.length){
-     c.uOfficial=c.uOfficial||runners.some(id=>hasOperatorSkill(frame.config,id,'trade_ord_spd&wt[000]'))
      c.proviso=Math.max(c.proviso??0,...runners.map(id=>runOrderSkillRank(frame.config,id,'proviso'))) as 0|1|2
      c.tequila=Math.max(c.tequila??0,...runners.map(id=>runOrderSkillRank(frame.config,id,'tequila'))) as 0|1|2
      if(recordRunners)record('run-order-ideal',{roomId:t.roomId,orderId:a.id,operatorIds:[...new Set(runners)]})
@@ -580,7 +579,7 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   if(potential)diagnostic('POTENTIAL_OUTPUT_MODEL',theoretical?'理论期望按工作量累计产出；潜在模式忽略材料不足，库存记录仅供调度和观察，不代表实际到账。':'直观产出模式：忽略材料库存不足，设施容量与收取按 Mower 排班执行，完成即计产出；账本为测算辅助，不代表实际到账。无人机仍按所选策略及实际生成量使用。')
   diagnostic('MANUFACTURING_RECIPES_UNLOCKED','制造配方默认已解锁，不根据当前制造站等级推断历史解锁状态。')
   if(expectationMode)diagnostic('EXPECTED_ORDER_MODEL',(theoretical?'理论期望模式：':'数学期望模式：')+'按有效工作时间累计制造、订单、材料成本和回收的小数产出；订单按原始概率逐档应用特殊效果。'+(theoretical?'无人机仅按采样期生成能力及当前生效目标分段计算，不模拟库存、容量、阈值和用机等待；切产物预留份额优先结算，未结算部分不计收益。':'无人机按采样期生成的加速能力折算，不计期初库存，也不重复计入实际消耗。')+'调度、缺料、容量和库存阈值耦合下为连续平均模型的近似期望。')
-  diagnostic('IDEAL_RUN_ORDER_ASSUMPTIONS',theoretical?'理论模式保留理想跑单的订单效果，不安排临时换人或原生读单唤醒，不消耗跑单干员心情和额外无人机。':'理想跑单按已解锁的佩佩/可露希尔候选决定新单模式，在普通订单完成时应用 U-Official/但书/龙舌兰效果；保留 Mower 任务读取、排序与唤醒，不临时换人、不等待、不消耗跑单干员心情或无人机。常规排班和无人机目标策略仍执行。')
+  diagnostic('IDEAL_RUN_ORDER_ASSUMPTIONS',theoretical?'理论模式保留理想跑单的订单效果，不安排临时换人或原生读单唤醒，不消耗跑单干员心情和额外无人机。':'理想跑单按已解锁的佩佩/可露希尔候选决定新单模式，在普通订单完成时应用但书或龙舌兰的跑单效果；保留 Mower 任务读取、排序与唤醒，不临时换人、不等待、不消耗跑单干员心情或无人机。常规排班和无人机目标策略仍执行。')
   diagnostic('DRONE_ALLOCATION_POLICY',theoretical?'理论模式按生成能力连续分配至当前生效目标；目标变更后按新房间和产物计算，切产物份额先结算，无法使用的能力不产生收益。不模拟无人机库存与使用阈值。':nativeScheduler?`无人机由 Mower 的任务阶段使用：每 ${schedule.assumptions.droneIntervalHours ?? 3} 小时待办检查；普通制造站保留 ${schedule.assumptions.droneCountLimit ?? 100} 架，贸易站按当前订单及跑单规则加速；产物切换沿用专用规则，不额外消耗跑单无人机。`:`无人机采用满仓及每日彻底清空加速${options.droneRoomId&&target!=='none'?`设施(${options.droneRoomId})`:target==='gold'?'赤金':target==='exp'?'作战记录':target==='trading'?`贸易站(${options.droneTradingRoomId??'默认'})`:'关闭'}、保留 ${reserve} 架策略，以保证计算稳定。`)
 
   // Concrete facilities are the only owner of production timers and drone stock.

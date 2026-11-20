@@ -1040,7 +1040,8 @@ function movePlanForward() {
         <template #label>
           <span>宿舍黑名单</span>
           <help-text>
-            不参与动态分床和补床，固定宿舍岗位不受影响。 跑单干员心情达到个人上限的 80%
+            不参与动态分床和补床，固定宿舍岗位不受影响。
+            但书、龙舌兰、佩佩、可露希尔心情达到个人上限的 80%
             时默认跳过新入住，已入住的干员可以继续休息。
           </help-text>
         </template>
