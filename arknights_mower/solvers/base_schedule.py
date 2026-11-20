@@ -19308,11 +19308,13 @@ class BaseSchedulerSolver(
             self.tasks.append(self.task)
         return False
 
-    def _run_order_dorm_fits(self, room):
+    def _should_prepare_run_order_dorm(self, room):
         task = self.task
         conf = config.conf
-        if task.adjusted or conf.run_order_buffer_time <= 0:
+        if task.adjusted:
             return True
+        if conf.run_order_buffer_time <= 0:
+            return False
         start = getattr(task, "run_order_calibrated_time", task.time)
         confirm_at = start + timedelta(
             seconds=run_order_entry_seconds(task, conf)
@@ -19349,10 +19351,10 @@ class BaseSchedulerSolver(
             if (
                 room not in pending
                 and room not in saved_plan
-                and not self._run_order_dorm_fits(room)
+                and not self._should_prepare_run_order_dorm(room)
             ):
                 logger.info(
-                    "跑单确认前时间不足，跳过%s补位，直接前往%s",
+                    "本次跑单跳过%s补位，直接前往%s",
                     self.translate_room(room),
                     self.translate_room(task.meta_data),
                     extra={"log_room": room},
