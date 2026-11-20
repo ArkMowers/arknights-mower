@@ -211,13 +211,54 @@ def test_recorded_right_boundary_ignores_small_rendering_changes(monkeypatch):
     assert solver.swipe_noinertia.call_count == 5
 
 
-@pytest.mark.parametrize("distance", [1, 24, 234])
+@pytest.mark.parametrize("distance", [1, 24, 107, 234])
 def test_recorded_content_movement_is_not_a_boundary(distance):
     frame = cv2.imread(str(FIXTURES / "depot/consume_right_before_20261117.webp"))
     shifted = frame.copy()
     shifted[140:950] = np.roll(frame[140:950], distance, axis=1)
 
     assert not module.depotREC._same_depot_view(frame, shifted)
+
+
+@pytest.mark.parametrize("retry_distance", [0, 107])
+def test_stationary_consumables_with_background_change_still_check_the_next_page(
+    retry_distance,
+):
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    changed = frame.copy()
+    changed[600:680, 1700:1820] = 137
+    advanced = changed.copy()
+    advanced[140:950] = np.roll(changed[140:950], -retry_distance, axis=1)
+    captures = iter([frame, frame, changed, advanced, advanced, advanced])
+    solver = module.depotREC.__new__(module.depotREC)
+    solver.recog = SimpleNamespace(img=frame)
+    solver._category_x = 1063
+    solver._wait_for_depot_ready = Mock(return_value=True)
+    solver._category_selected = Mock(return_value=True)
+
+    def swipe(*args, **kwargs):
+        solver.recog.img = next(captures)
+
+    solver.swipe_noinertia = Mock(side_effect=swipe)
+
+    offsets = [0, retry_distance] if retry_distance else [0]
+    swipes = [702, 234, -702, -234]
+    if retry_distance:
+        swipes.extend([-702, -234])
+    assert [offset for offset, _ in solver._category_frames()] == offsets
+    assert [call.args[1][0] for call in solver.swipe_noinertia.call_args_list] == swipes
+
+
+@pytest.mark.parametrize("appearing", [False, True])
+def test_changed_visible_item_does_not_confirm_a_boundary(appearing):
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    missing_item = frame.copy()
+    missing_item[168:375, 75:300] = 255
+    before, after = (missing_item, frame) if appearing else (frame, missing_item)
+
+    assert not module.depotREC._same_depot_view(before, after)
 
 
 def test_zero_scope_follows_installed_category_models_and_excludes_cloud_items(

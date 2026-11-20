@@ -31,6 +31,8 @@ from ..utils.resource_pkg import resource_pkg_path, resource_ui_path
 # 竖排间隔 = 234
 # [140:1000, :]
 
+_DEPOT_ITEM_ROWS = (144, 430, 715)
+
 
 def 导入_数字模板():
     模板文件夹 = f"{__rootdir__}/resources/depot_num"
@@ -96,6 +98,31 @@ def _refine_item_color(item, predicted, classes):
     if scores[0][0] - scores[1][0] < 0.025:
         return predicted
     return scores[0][1]
+
+
+def _same_depot_icon_positions(before, after):
+    search = 4
+    right = before.shape[1] - search
+    matches = 0
+    for y in _DEPOT_ITEM_ROWS:
+        # 只比较图标主体，避开下方的数量和有效期提示。
+        rows = slice(y - 74, y + 24)
+        for x in range(search, right, 234):
+            end = min(x + 234, right)
+            template = before[rows, x:end]
+            textured_before = cv2.meanStdDev(template)[1].item() >= 5
+            textured_after = cv2.meanStdDev(after[rows, x:end])[1].item() >= 5
+            if textured_before != textured_after:
+                return False
+            if not textured_before:
+                continue
+            region = after[rows, x - search : end + search]
+            scores = cv2.matchTemplate(region, template, cv2.TM_CCOEFF_NORMED)
+            _, score, _, position = cv2.minMaxLoc(scores)
+            if score < 0.97 or position != (search, 0):
+                return False
+            matches += 1
+    return matches >= 2
 
 
 def 识别空物品(物品灰):
@@ -188,8 +215,7 @@ class depotREC(SceneGraphSolver):
     def 切图主程序(self, 拼接好的图片, 横坐标=None):
         if 横坐标 is None:
             横坐标 = [188 + 234 * i for i in range(0, 8)]
-        纵坐标 = [144, 430, 715]
-        切图列表 = 切图(横坐标, 纵坐标, 拼接好的图片)
+        切图列表 = 切图(横坐标, _DEPOT_ITEM_ROWS, 拼接好的图片)
         return 切图列表
 
     def 读取物品数字(self, 数字图片, 距离阈值=5, 阈值=0.85):
@@ -417,7 +443,7 @@ class depotREC(SceneGraphSolver):
             return False
         # 边界处的背景和物品特效仍会变化；比较原位置的整体内容，不搜索平移。
         score = cv2.matchTemplate(before, after, cv2.TM_CCOEFF_NORMED)[0, 0]
-        return score >= 0.995
+        return score >= 0.995 or _same_depot_icon_positions(before, after)
 
     @staticmethod
     def _depot_scroll_distance(before, after):
