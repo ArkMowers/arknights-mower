@@ -6,7 +6,7 @@ from arknights_mower.solvers import record
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.long_task_windows import long_task_window
+from arknights_mower.utils.long_task_windows import long_task_schedule
 from arknights_mower.utils.scheduler_task import find_next_task
 
 from .model import goal_reached, prepare_progress
@@ -47,16 +47,18 @@ def run_garrison(scheduler):
     )
 
     conf = config.conf
-    if not conf.GARRISON:
+    kind, limit, opening = long_task_schedule(conf, datetime.now())
+    if kind != "garrison":
         return False
-    limit, opening = long_task_window(conf, datetime.now())
 
     settings = conf.garrison.model_copy()
 
     def deadline():
-        if not config.conf.GARRISON or config.conf.garrison != settings:
-            return datetime.now()
-        return long_task_deadline(scheduler, limit)
+        now = datetime.now()
+        active, cutoff, _ = long_task_schedule(config.conf, now)
+        if active != "garrison" or config.conf.garrison != settings:
+            return now
+        return long_task_deadline(scheduler, min(limit, cutoff))
 
     window = (deadline() - datetime.now()).total_seconds()
     progress = eligible_progress(conf, window, scheduler, opening)

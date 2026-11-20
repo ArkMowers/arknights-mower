@@ -127,7 +127,11 @@ from arknights_mower.utils.email import maa_template, send_message, task_templat
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import log_parent_context, logger
-from arknights_mower.utils.long_task_windows import long_task_window
+from arknights_mower.utils.long_task_windows import (
+    MAA_LONG_TASK_TYPES,
+    long_task_schedule,
+    long_task_window,
+)
 from arknights_mower.utils.maa_callback import (
     REPORT_REQUEST,
     MaaCallbackLog,
@@ -20951,15 +20955,11 @@ class BaseSchedulerSolver(
 
     def has_maa_tasks(self) -> bool:
         conf = config.conf
-        if hasattr(conf, "has_maa_tasks"):
-            return conf.has_maa_tasks
+        kind, _, _ = long_task_schedule(conf, datetime.now())
         return (
             self.has_maa_daily_tasks()
-            or getattr(conf, "RG", False)
-            or getattr(conf, "SSS", False)
-            or getattr(conf, "RCL", False)
-            or getattr(conf, "COPILOT", False)
-            or getattr(conf, "PARADOX", False)
+            or getattr(conf, "maa_growth_enabled", False)
+            or kind in MAA_LONG_TASK_TYPES
         )
 
     def _maa_refresh_deadline(self):
@@ -21239,31 +21239,17 @@ class BaseSchedulerSolver(
                         )
                         self.tasks.insert(0, SchedulerTask(time=datetime.now()))
             conf = config.conf
-            selected_long = (
-                long_task
-                if manual
-                else next(
-                    (
-                        name
-                        for flag, name in (
-                            ("RG", "rogue"),
-                            ("COPILOT", "copilot"),
-                            ("PARADOX", "paradox"),
-                            ("SSS", "sss"),
-                            ("RCL", "rcl"),
-                            ("RA", "ra"),
-                            ("SF", "sf"),
-                        )
-                        if getattr(conf, flag, False)
-                    ),
-                    None,
-                )
-            )
             now = datetime.now()
-            cutoff, _ = long_task_window(conf, now)
+            selected_long = long_task
             if not manual:
+                selected_long, cutoff, _ = long_task_schedule(conf, now)
                 long_limit = min(long_limit, cutoff)
-                if cutoff - now < timedelta(minutes=9):
+                if (
+                    cutoff - now < timedelta(minutes=9)
+                    or selected_long == "garrison"
+                    or outer_idle_loop
+                    and selected_long not in MAA_LONG_TASK_TYPES
+                ):
                     selected_long = None
             running_long_task = True
             if selected_long and (refresh := self._maa_refresh_deadline()) is not None:
@@ -23250,7 +23236,7 @@ class BaseSchedulerSolver(
             try_workshop_tasks(self.op_data, self.tasks)
             scheduling(self.tasks, op_data=self.op_data)
 
-    def rest_until_next_task(self):
+    def rest_until_next_task(self, *, window_observed_at=None):
         """完成本轮任务后，休息到下个可派发任务或大型任务时段开始。
 
         发休息通知、累计任务计数、并真正睡到下个任务。
@@ -23263,6 +23249,11 @@ class BaseSchedulerSolver(
             if first is None or first.time > datetime.now():
                 self._stop_after_round()
             return
+        opening_before_cleanup = None
+        if config.conf.maa_rg_enable:
+            _, opening_before_cleanup = long_task_window(
+                config.conf, window_observed_at or datetime.now()
+            )
         from arknights_mower.solvers.mastery_reader import (
             discard_completed_mastery_tasks,
         )
@@ -23282,10 +23273,14 @@ class BaseSchedulerSolver(
         # 保留任务的原时间不代表当前可执行；休眠预算沿用关键任务避让顺序。
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
         first = self.find_next_task()
-        if first is None:
+        now = datetime.now()
+        if first is None or (
+            config.conf.maa_rg_enable
+            and opening_before_cleanup is not None
+            and opening_before_cleanup <= now
+        ):
             self._stop_after_round()
             return
-        now = datetime.now()
         wake_at = first.time
         if config.conf.maa_rg_enable:
             _, opening = long_task_window(config.conf, now)

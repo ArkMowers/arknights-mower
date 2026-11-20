@@ -25,6 +25,7 @@ from arknights_mower.utils.config.device_profile import (
     updated_legacy_profile_fields,
 )
 from arknights_mower.utils.datetime import get_server_time
+from arknights_mower.utils.long_task_windows import validate_long_task_windows
 from arknights_mower.utils.performance import (
     PERFORMANCE_PRESETS,
     default_performance_mode,
@@ -221,11 +222,22 @@ class LongTaskWindow(ConfModel):
 
 class WeeklyLongTaskWindow(LongTaskWindow):
     weekdays: list[Annotated[int, Field(strict=True, ge=0, le=6)]]
+    task_type: (
+        Literal["rogue", "copilot", "paradox", "sss", "rcl", "ra", "sf", "garrison"]
+        | None
+    ) = None
 
 
 class LongTaskPart(ConfModel):
     maa_long_task_extra_windows: list[LongTaskWindow] = Field(default_factory=list)
     maa_long_task_weekly_windows: list[WeeklyLongTaskWindow] | None = None
+
+    @model_validator(mode="after")
+    def validate_weekly_long_task_windows(self):
+        validate_long_task_windows(
+            self.maa_long_task_weekly_windows, self.maa_long_task_type
+        )
+        return self
 
     class GarrisonConf(ConfModel):
         mode: Literal["medals", "matches"] = "medals"

@@ -273,7 +273,9 @@ def test_failure_yields_until_a_new_window_and_retains_other_work(
         ]
     elif resume == "next_period":
         monkeypatch.setattr(
-            runner, "long_task_window", lambda *_: (order.time, order.time)
+            runner,
+            "long_task_schedule",
+            lambda *_: ("garrison", order.time, order.time),
         )
     else:
         conf.garrison.run_id = "retry"

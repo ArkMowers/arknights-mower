@@ -4,11 +4,76 @@ import pytest
 from pydantic import ValidationError
 
 from arknights_mower.utils.config.conf import Conf
-from arknights_mower.utils.long_task_windows import long_task_window
+from arknights_mower.utils.long_task_windows import long_task_schedule, long_task_window
 
 
 def moment(value):
     return datetime.strptime("2026-11-" + value, "%Y-%m-%d %H:%M")
+
+
+def test_adjacent_different_tasks_keep_their_own_cutoff_and_next_opening():
+    conf = Conf(
+        maa_rg_enable=1,
+        maa_long_task_type="rogue",
+        maa_long_task_weekly_windows=[
+            {"start": "22:00", "end": "02:00", "weekdays": [6]},
+            {"start": "02:00", "end": "05:00", "weekdays": [0], "task_type": "sss"},
+        ],
+    )
+    assert long_task_schedule(conf, moment("23 01:00")) == (
+        "rogue",
+        moment("23 02:00"),
+        moment("23 02:00"),
+    )
+    assert long_task_schedule(conf, moment("23 02:00")) == (
+        "sss",
+        moment("23 05:00"),
+        moment("29 22:00"),
+    )
+    assert (
+        long_task_schedule(conf.updated({"maa_rg_enable": 0}), moment("23 02:00"))[0]
+        is None
+    )
+
+
+def test_default_type_changes_cannot_create_cross_week_conflicts():
+    conf = Conf(
+        maa_long_task_type="rogue",
+        maa_long_task_weekly_windows=[
+            {"start": "22:00", "end": "02:00", "weekdays": [6]},
+            {"start": "01:00", "end": "03:00", "weekdays": [0], "task_type": "rogue"},
+        ],
+    )
+    assert long_task_window(conf, moment("23 01:00"))[0] == moment("23 03:00")
+    with pytest.raises(ValidationError, match="大型任务"):
+        conf.updated({"maa_long_task_type": "sss"})
+
+
+def test_conflicting_windows_do_not_replace_the_saved_plan(monkeypatch):
+    from unittest.mock import Mock
+
+    from arknights_mower.utils import workshop_config
+
+    saved = Conf(maa_rg_enable=1, workshop_preset_migrated=True)
+    persist = Mock()
+    monkeypatch.setattr(workshop_config.config, "conf", saved)
+    monkeypatch.setattr(workshop_config, "save_conf", persist)
+    with pytest.raises(ValidationError, match="大型任务"):
+        workshop_config.save_user_config(
+            {
+                "maa_long_task_weekly_windows": [
+                    {"start": "08:00", "end": "12:00", "weekdays": [0]},
+                    {
+                        "start": "11:00",
+                        "end": "14:00",
+                        "weekdays": [0],
+                        "task_type": "sss",
+                    },
+                ]
+            }
+        )
+    persist.assert_not_called()
+    assert workshop_config.config.conf is saved
 
 
 @pytest.mark.parametrize(
