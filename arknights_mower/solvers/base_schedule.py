@@ -149,6 +149,7 @@ from arknights_mower.utils.mastery_support_types import TrainingObservationError
 from arknights_mower.utils.network_adaptation import get_network_adaptation
 from arknights_mower.utils.operation_timing import (
     estimate_dorm_minutes,
+    estimate_work_minutes,
     record_dorm_recovery,
     record_selection_retry,
     timed_room,
@@ -19285,6 +19286,21 @@ class BaseSchedulerSolver(
             self.tasks.append(self.task)
         return False
 
+    def _run_order_dorm_fits(self, room):
+        task = self.task
+        conf = config.conf
+        if task.adjusted or conf.run_order_buffer_time <= 0:
+            return True
+        start = getattr(task, "run_order_calibrated_time", task.time)
+        confirm_at = start + timedelta(
+            seconds=run_order_entry_seconds(task, conf)
+            - run_order_buffer_seconds(task, conf)
+        )
+        preparation = timedelta(
+            minutes=estimate_dorm_minutes(room) + estimate_work_minutes(task.meta_data)
+        )
+        return datetime.now() + preparation < confirm_at
+
     def _prepare_run_order_dorm_departures(self, plan):
         """跑单先替换宿舍中的换入者，避免连续跑单长期留下空床。"""
         task = self.task
@@ -19295,19 +19311,34 @@ class BaseSchedulerSolver(
         ):
             return True
         targets = set(plan.get(task.meta_data, ())) & set(TRADE_ORDER_AGENTS)
-        pending = getattr(task, "run_order_dorm_slots", {})
+        source_slots = {}
         for name in targets:
             op = self.op_data.operators.get(name)
             if op is not None and op.current_room.startswith("dorm"):
-                positions = pending.setdefault(op.current_room, set())
+                positions = source_slots.setdefault(op.current_room, set())
                 if op.current_index >= 0:
                     positions.add(op.current_index)
+        pending = getattr(task, "run_order_dorm_slots", {})
         saved_plan = getattr(task, "run_order_dorm_plan", {})
-        rooms = set(pending) | set(saved_plan)
+        rooms = source_slots.keys() | pending.keys() | saved_plan.keys()
         if rooms:
-            task.run_order_dorm_slots = pending
             task.__dict__.pop("run_order_staffing_wait", None)
         for room in sorted(rooms):
+            if (
+                room not in pending
+                and room not in saved_plan
+                and not self._run_order_dorm_fits(room)
+            ):
+                logger.info(
+                    "跑单确认前时间不足，跳过%s补位，直接前往%s",
+                    self.translate_room(room),
+                    self.translate_room(task.meta_data),
+                    extra={"log_room": room},
+                )
+                continue
+            slots = pending.setdefault(room, set())
+            slots.update(source_slots.get(room, ()))
+            task.run_order_dorm_slots = pending
             try:
                 self.enter_room(room)
                 self.turn_on_room_detail(room)
@@ -19317,11 +19348,9 @@ class BaseSchedulerSolver(
                     not item.get("observed", True) for item in observed
                 ):
                     raise RecognizeError("跑单前宿舍实际驻员未读完整")
-                slots = pending.setdefault(room, set())
                 slots.update(
                     index for index, name in enumerate(actual) if name in targets
                 )
-                task.run_order_dorm_slots = pending
                 departing = [
                     index
                     for index in slots
