@@ -1283,12 +1283,11 @@ def simulate(saved):
                                     resume_dorm_releases(base_scheduler)
 
                     if getattr(config.conf, "maa_rg_enable", 0):
-                        _, _, opening = long_task_schedule(config.conf, idle_started)
-                        if opening is not None and opening <= datetime.now():
-                            base_scheduler._stop_after_round()
-                            task_failures = 0
-                            continue
-                    base_scheduler.rest_until_next_task()
+                        base_scheduler.rest_until_next_task(
+                            window_observed_at=idle_started
+                        )
+                    else:
+                        base_scheduler.rest_until_next_task()
                     task_failures = 0
                     # A maintenance timer may have ended this sleep. Recheck the
                     # announcement before dispatching another scheduler task.
