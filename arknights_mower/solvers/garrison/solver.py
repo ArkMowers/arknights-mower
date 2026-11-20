@@ -398,39 +398,69 @@ class GarrisonSolver:
             normal_name(s["name"]): s["id"] for s in catalogue()["strategies"]
         }
         self.click((1500, 580))
-        rows = game.GRID_Y
-        for _ in range(8):
-            before = game.shot()
-            for y in rows:
-                if not game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40:
-                    continue
-                for x in game.GRID_X:
-                    frame = self.capture()
-                    if frame.screen != "strategy":
-                        return frame
-                    game.tap(x, y, 0.7)
-                    action = self.read_strategy_action(game, strategies)
-                    if action == "completed":
-                        return None
-                    if action != "play":
+        page, rows = game.shot(), game.GRID_Y
+        skipped_badges = False
+        for verify_badges in (False, True):
+            if verify_badges and not skipped_badges:
+                break
+            for page_index in range(8):
+                for y in rows:
+                    if not game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40:
                         continue
-                    frame = self.capture()
-                    if frame.screen != "strategy":
-                        return frame
-                    self.text_click(frame, "确认选择|准备就绪|淮备就绪")
-                    return self.wait(
-                        lambda f: f.screen != "strategy" and f.screen != "unknown", 20
-                    )
-            frame = self.capture()
-            if frame.screen != "strategy":
-                return frame
+                    for x in game.GRID_X:
+                        marked = self.match_limit is None and (
+                            game.has_color_badge(page, x, y)
+                            or self.target_wins == 3
+                            and game.has_badge(page, x, y)
+                        )
+                        if marked:
+                            skipped_badges = True
+                        if marked != verify_badges:
+                            continue
+                        frame = self.capture()
+                        if frame.screen != "strategy":
+                            return frame
+                        game.tap(x, y, 0.7)
+                        action = self.read_strategy_action(game, strategies)
+                        if action == "completed":
+                            return None
+                        if action == "play":
+                            frame = self.capture()
+                            if frame.screen != "strategy":
+                                return frame
+                            self.text_click(frame, "确认选择|准备就绪|淮备就绪")
+                            return self.wait(
+                                lambda f: f.screen not in {"strategy", "unknown"}, 20
+                            )
+                if page_index == 7:
+                    break
+                frame = self.capture()
+                if frame.screen != "strategy":
+                    return frame
+                next_page = self.scroll_strategy_page(game, backwards=verify_badges)
+                if next_page is None:
+                    break
+                page, rows = next_page
+        raise GarrisonError("本次未找到可刷策略，部分胜场仍待核对")
+
+    def scroll_strategy_page(self, game, *, backwards):
+        before = game.shot()
+        if backwards:
+            game.swipe(1000, 480, 1000, 900, ms=800)
+        else:
             game.scroll_grid()
+
+        def read():
             after = game.shot()
             shift = game.grid_shift(before, after)
+            if shift is not None and abs(shift) < 20:
+                return None
             rows = game.detect_rows(after)
-            if not rows or shift is not None and abs(shift) < 20:
-                break
-        raise GarrisonError("本次未找到可刷策略，部分胜场仍待核对")
+            if any(game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40 for y in rows):
+                return after, rows
+            return None
+
+        return self.wait_for_observation(read, bool, 4)
 
     def leave_match(self):
         if self._entered:

@@ -521,6 +521,8 @@ def test_choose_strategy_from_count_even_with_unreadable_name(
     s.capture = Mock(return_value=current)
     s.wait = Mock(return_value=frame("prep"))
     game = Mock(GRID_Y=[400], GRID_X=[700], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.has_color_badge.return_value = game.has_badge.return_value = False
+    game.grid_shift.return_value = 0
     game.ocr.return_value = [
         (1600, 220, f"已通过模拟{observed}次"),
         (1600, 520, "初始生命值"),
@@ -534,6 +536,88 @@ def test_choose_strategy_from_count_even_with_unreadable_name(
             s.choose_strategy(game)
         s.click.assert_called_once_with((1500, 580))
     assert s.progress["wins"] == {}
+
+
+@pytest.mark.parametrize(
+    ("target", "match_limit", "expected", "scrolled"),
+    [
+        (3, None, (700, 610), True),
+        (6, None, (900, 400), False),
+        (3, 0, (700, 400), False),
+    ],
+)
+def test_marked_cards_do_not_cost_panel_reads(
+    monkeypatch, target, match_limit, expected, scrolled
+):
+    worker = solver.GarrisonSolver(
+        Mock(),
+        Mock(),
+        {"wins": {}},
+        Mock(),
+        target_wins=target,
+        match_limit=match_limit,
+    )
+    current = Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True)
+    replay_unchanged_lobby(monkeypatch, worker, current)
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    game = Mock(
+        GRID_X=[700, 900, 1100, 1310],
+        GRID_Y=[400, 580, 790, 1000],
+        GRID_TOP=250,
+        GRID_BOTTOM=1050,
+    )
+    game.has_color_badge.side_effect = lambda page, x, y: y != 610 and x == 700
+    game.has_badge.side_effect = lambda page, x, y: y != 610 and x != 700
+    game.grid_shift.side_effect = [0, None, 210]
+    game.detect_rows.side_effect = [[], [610]]
+    game.ocr.return_value = [(1550, 480, "初始生命值"), (1610, 560, "阿米娅")]
+
+    assert worker.choose_strategy(game).screen == "prep"
+    game.tap.assert_called_once_with(*expected, 0.7)
+    assert game.ocr.call_count == 1
+    assert game.scroll_grid.call_count == int(scrolled)
+    game.swipe.assert_not_called()
+
+
+def test_all_marked_pages_verify_named_counts_before_completing(monkeypatch):
+    strategies = model.catalogue()["strategies"]
+    progress = {"wins": {s["id"]: 3 for s in strategies}}
+    missing = strategies[0]
+    del progress["wins"][missing["id"]]
+    worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, Frame(None, [], "strategy", True))
+    worker.click = Mock()
+    game = Mock(GRID_X=[700], GRID_Y=[400], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.has_color_badge.return_value = False
+    game.has_badge.return_value = True
+    page = 0
+
+    def scroll():
+        nonlocal page
+        page = 1
+
+    def back(*args, **kwargs):
+        nonlocal page
+        page = 0
+
+    game.shot.side_effect = lambda: page
+    game.scroll_grid.side_effect = scroll
+    game.swipe.side_effect = back
+    game.grid_shift.side_effect = lambda before, after: (after - before) * 210
+    game.detect_rows.side_effect = lambda image: [610 if image else 400]
+    game.ocr.side_effect = lambda *args: [
+        (1550, 220, "已通过模拟3次"),
+        (1550, 480, "初始生命值"),
+        (1610, 560, strategies[page]["name"]),
+    ]
+    assert worker.choose_strategy(game) is None
+    assert [call.args[:2] for call in game.tap.call_args_list] == [
+        (700, 610),
+        (700, 400),
+    ]
+    assert progress["wins"][missing["id"]] == 3
+    worker.click.assert_called_once_with((1500, 580))
 
 
 @pytest.mark.parametrize(
@@ -613,6 +697,7 @@ def test_last_confirmed_medal_stops_scan_and_future_dispatch(
     s.capture = Mock(return_value=frame("prep"))
     s.capture.return_value.screen = "strategy"
     game = Mock(GRID_Y=[400], GRID_X=[700, 900], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.has_color_badge.return_value = game.has_badge.return_value = False
     game.ocr.return_value = [
         (1600, 250, f"已通过模拟{target}次"),
         (1600, 500, "初始生命值"),
