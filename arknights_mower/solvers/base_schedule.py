@@ -179,7 +179,6 @@ from arknights_mower.utils.resting_priority import (
     resting_key,
     resting_mood,
     resting_tier,
-    trade_order_dorm_entry_blocked,
 )
 from arknights_mower.utils.run_order_network import (
     bind_run_order_network,
@@ -16214,11 +16213,6 @@ class BaseSchedulerSolver(
                 row[index] = "Free"
         return observed
 
-    def _allow_dorm_filler_mood(self, name, mood):
-        return not trade_order_dorm_entry_blocked(
-            self.op_data, name, card_mood=mood, require_known=True
-        )
-
     def _check_workshop_selection_mood(self, name, mood):
         """选择加工干员前复用当前卡片，低心情取消换入，未知沿用入站实读。"""
         from arknights_mower.utils.workshop_automation import workshop_task_snapshot
@@ -16298,32 +16292,7 @@ class BaseSchedulerSolver(
             and not recovery_padding
             and getattr(task, "type", None) != TaskTypes.FIAMMETTA
         ):
-            new_runners = {
-                name
-                for index, name in enumerate(agents)
-                if name in TRADE_ORDER_AGENTS
-                and not getattr(
-                    self.op_data.operators.get(name), "current_room", ""
-                ).startswith("dorm")
-                and self.op_data.is_dynamic_dorm_position(room, index, name)
-            }
-            if new_runners:
-
-                def check_dorm_entry(name, mood):
-                    if name not in new_runners or self._allow_dorm_filler_mood(
-                        name, mood
-                    ):
-                        return
-                    if mood is not None:
-                        observed_at = datetime.now()
-                        self.op_data.dorm_mood_estimates[name] = (mood, observed_at)
-                        if self.op_data.mood_calculation_enabled:
-                            self.op_data.mood_model.observe(name, mood, observed_at)
-                    raise AgentSelectionNotReady(
-                        f"{name} 的心情不符合跑单干员入住条件，重新选择宿舍补位"
-                    )
-
-                selection_mood_check = check_dorm_entry
+            selection_mood_check = self._dorm_entry_mood_check(agents, room)
         # Free 已尝试满心情和未登记空闲者兜底，明确留空的位置不参与选人。
         if "" in agents:
             fast_mode = False

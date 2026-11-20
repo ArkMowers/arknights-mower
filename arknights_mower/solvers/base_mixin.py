@@ -28,6 +28,7 @@ from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
 )
+from arknights_mower.utils.resting_priority import trade_order_dorm_entry_blocked
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.swipe import NOINERTIA_OFFSET
 
@@ -845,6 +846,40 @@ class BaseMixin:
             f"两次滑动后整页干员及位置均未变化，可能已到末尾或手势未生效；"
             f"返回房间重试，仍需查找：{agent}"
         )
+
+    def _allow_dorm_filler_mood(self, name, mood):
+        return not trade_order_dorm_entry_blocked(
+            self.op_data, name, card_mood=mood, require_known=True
+        )
+
+    def _dorm_entry_mood_check(self, agents, room):
+        from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
+
+        new_runners = {
+            name
+            for index, name in enumerate(agents)
+            if name in TRADE_ORDER_AGENTS
+            and not getattr(
+                self.op_data.operators.get(name), "current_room", ""
+            ).startswith("dorm")
+            and self.op_data.is_dynamic_dorm_position(room, index, name)
+        }
+        if not new_runners:
+            return None
+
+        def check_dorm_entry(name, mood):
+            if name not in new_runners or self._allow_dorm_filler_mood(name, mood):
+                return
+            if mood is not None:
+                observed_at = datetime.now()
+                self.op_data.dorm_mood_estimates[name] = (mood, observed_at)
+                if self.op_data.mood_calculation_enabled:
+                    self.op_data.mood_model.observe(name, mood, observed_at)
+            raise AgentSelectionNotReady(
+                f"{name} 的心情不符合跑单干员入住条件，重新选择宿舍补位"
+            )
+
+        return check_dorm_entry
 
     def scan_agent(
         self,
