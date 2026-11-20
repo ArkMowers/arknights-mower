@@ -476,32 +476,26 @@ class depotREC(SceneGraphSolver):
         template = before[:, 900:1400]
         if np.std(template) < 5:
             raise _DepotScanIncomplete
-        scores = cv2.matchTemplate(after[:, 100:1400], template, cv2.TM_CCOEFF_NORMED)
-        _, score, _, position = cv2.minMaxLoc(scores)
-        if score < 0.9:
+        search = after[:, 100:1400]
+        scores = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)[0]
+        best_score = float(scores.max())
+        if best_score < 0.9:
             raise _DepotScanIncomplete
-        distance = 800 - position[0]
-        near_best = np.flatnonzero(scores[0] >= score - 0.0001)
+        # 背景变化可能使正确位移略低于重复图标的最高分。
+        near_best = np.flatnonzero(scores >= max(0.9, best_score - 0.005))
         peaks = np.split(near_best, np.flatnonzero(np.diff(near_best) > 8) + 1)
-        if len(peaks) > 1:
-            # 重复图标可能有多个近似峰值，用重叠区域的标签判定实际位移。
-            if len(peaks) > 8:
-                raise _DepotScanIncomplete
-            candidates = [800 - peak[scores[0, peak].argmax()] for peak in peaks]
-            width = after.shape[1]
-            matched = [
-                candidate
-                for candidate in candidates
-                if _same_depot_labels(
-                    before[:, candidate:], after[:, : width - candidate]
-                )
-            ]
-            if len(matched) != 1:
-                raise _DepotScanIncomplete
-            distance = int(matched[0])
-        if not 0 < distance <= 800:
+        if len(peaks) > 8:
             raise _DepotScanIncomplete
-        return distance
+        candidates = [800 - peak[scores[peak].argmax()] for peak in peaks]
+        width = after.shape[1]
+        matched = [
+            candidate
+            for candidate in candidates
+            if _same_depot_labels(before[:, candidate:], after[:, : width - candidate])
+        ]
+        if len(matched) != 1 or matched[0] == 0:
+            raise _DepotScanIncomplete
+        return int(matched[0])
 
     def _category_frames(self):
         deadline = monotonic() + self.CATEGORY_SCAN_TIMEOUT

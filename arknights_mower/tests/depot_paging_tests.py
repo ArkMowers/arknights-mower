@@ -246,7 +246,8 @@ def test_stationary_consumables_with_background_change_still_check_the_next_page
     changed = frame.copy()
     changed[600:680, 1700:1820] = 137
     advanced = changed.copy()
-    advanced[140:950] = np.roll(changed[140:950], -retry_distance, axis=1)
+    advanced[140:990] = np.roll(changed[140:990], -retry_distance, axis=1)
+    advanced[970:, 1560:] = changed[970:, 1560:]
     pages, swipes = replay_consumable_pages(
         frame, [frame, frame, changed, advanced, advanced, advanced]
     )
@@ -272,7 +273,9 @@ def test_single_consumable_with_background_change_confirms_the_boundary():
     assert swipes == [702, 234, -702, -234]
 
 
-def repeated_stack_pages(label_y, background_change, distinct_columns):
+def repeated_stack_pages(
+    label_y, background_change, distinct_columns, *, template_change=False
+):
     image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
     cell = np.full((1080, 234, 3), 255, dtype=np.uint8)
     row = 571 if label_y == 983 else 0
@@ -297,6 +300,10 @@ def repeated_stack_pages(label_y, background_change, distinct_columns):
     shifted = shelf[:, 234:2154].copy()
     if background_change:
         shifted[600:680, 1700:1820] = 137
+    if template_change:
+        # 降低 234 和 702 像素候选的得分，让 468 像素成为唯一最高分。
+        shifted[440:456, 1010:1032] = 155
+        shifted[440:456, 250:272] = 155
     return frame, shifted
 
 
@@ -317,8 +324,11 @@ def test_slow_swipe_reads_repeated_icons_with_different_labels(
     assert swipes == [702, 234, -702, -234, -702, -234]
 
 
-def test_repeated_icons_use_labels_outside_the_displacement_template():
-    frame, shifted = repeated_stack_pages(356, False, (1,))
+@pytest.mark.parametrize("template_change", [False, True])
+def test_repeated_icons_use_labels_outside_the_displacement_template(template_change):
+    frame, shifted = repeated_stack_pages(
+        356, False, (1,), template_change=template_change
+    )
     pages, _ = replay_consumable_pages(
         frame, [frame, frame, frame, shifted, shifted, shifted]
     )
@@ -326,8 +336,11 @@ def test_repeated_icons_use_labels_outside_the_displacement_template():
     assert [offset for offset, _ in pages] == [0, 234]
 
 
-def test_repeated_icons_without_a_unique_displacement_stop_the_scan():
-    frame, shifted = repeated_stack_pages(356, False, (8,))
+@pytest.mark.parametrize("template_change", [False, True])
+def test_repeated_icons_without_a_unique_displacement_stop_the_scan(template_change):
+    frame, shifted = repeated_stack_pages(
+        356, False, (8,), template_change=template_change
+    )
 
     with pytest.raises(module._DepotScanIncomplete):
         replay_consumable_pages(frame, [frame, frame, frame, shifted, shifted, shifted])
