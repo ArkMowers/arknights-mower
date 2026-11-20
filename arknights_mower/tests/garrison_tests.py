@@ -182,6 +182,81 @@ def test_resume_clicks_reconnect_and_preserves_progress(match):
     assert p == before
 
 
+@pytest.mark.parametrize(("entry", "target"), [("left", "prep"), ("mode", "info")])
+def test_slow_match_entry_waits_for_the_first_playable_frame(
+    monkeypatch, entry, target
+):
+    lobby = frame(entry)
+    ready = frame(target)
+    loading = Frame(None, [], "unknown", False)
+    worker = solver.GarrisonSolver(Mock(), Mock(), {}, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, loading)
+    worker.capture.side_effect = lambda: (
+        ready if solver.time.monotonic() >= 42 else loading
+    )
+    assert worker.start_or_resume(lobby) is ready
+    worker.device.tap.assert_called_once()
+    assert 42 <= solver.time.monotonic() < 43
+
+
+@pytest.mark.parametrize(
+    ("budget", "error"), [(12, solver.GarrisonYield), (70, model.GarrisonError)]
+)
+def test_reconnect_loading_ends_at_deadline_or_timeout(monkeypatch, budget, error):
+    progress = {"match": {"round": 3}}
+    worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
+    loading = Frame(None, [], "unknown", False)
+    replay_unchanged_lobby(monkeypatch, worker, loading)
+    worker._end = budget
+    with pytest.raises(error):
+        worker.start_or_resume(frame("left"))
+    assert min(budget, 60) <= solver.time.monotonic() < min(budget, 60) + 1
+    assert progress == {"match": {"round": 3}}
+    worker.device.tap.assert_called_once()
+
+
+def test_slow_event_entry_reaches_lobby(monkeypatch):
+    terminal, lobby = frame("terminal-tab"), frame("lobby")
+    loading = Frame(None, [], "unknown", False)
+    worker = solver.GarrisonSolver(Mock(), Mock(), {}, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, loading)
+    worker.capture.side_effect = lambda: (
+        lobby if solver.time.monotonic() >= 42 else loading
+    )
+    nav = solver.GarrisonNavigation(worker.device, worker.recog)
+    assert nav.run(lambda: terminal, worker.click, worker.wait) is lobby
+    worker.device.tap.assert_called_once_with(terminal.find("模拟开放中").center)
+
+
+def test_slow_battle_replay_and_return_to_lobby(monkeypatch):
+    confirm = Text("确认", 930, 700, 93, 56)
+    replay = Frame(None, [confirm], "battle-timeout", True)
+    result = Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", True)
+    loading, lobby = Frame(None, [], "unknown", False), frame("lobby")
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"match": {"round": 1}}, Mock())
+    worker._quick_confirmed = True
+    replay_unchanged_lobby(monkeypatch, worker, loading)
+    worker._end = 120
+
+    def capture():
+        elapsed = solver.time.monotonic()
+        if elapsed >= 84:
+            return lobby
+        if elapsed >= 42 and not worker.progress.get("settlement_counted"):
+            return result
+        return loading
+
+    worker.capture.side_effect = capture
+    monkeypatch.setattr(solver, "save_screenshot_frame", Mock())
+    worker.play(Mock(), replay)
+    assert [c.args[0] for c in worker.device.tap.call_args_list] == [
+        confirm.center,
+        result.find("返回主页").center,
+    ]
+    assert worker.progress["attempts"] == 1
+    assert 84 <= solver.time.monotonic() < 85
+
+
 @pytest.mark.parametrize("repeat_mode", [False, True])
 def test_reconnect_returns_from_difficulty_to_recheck_personal_lobby(repeat_mode):
     lobby, mode, prep = frame("left"), frame("mode"), frame("prep")

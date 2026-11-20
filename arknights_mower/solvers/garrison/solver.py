@@ -18,7 +18,6 @@ from .upstream import FarmSession, panel_open, strategy_panel
 from .vision import Vision
 
 MATCH_TRANSITION_SECONDS = 60
-RECONNECT_SECONDS = 30
 MATCH_SECONDS = 12 * 60
 
 
@@ -43,7 +42,7 @@ class GarrisonNavigation(SceneGraphSolver):
             click((1780, 1005))
             frame = wait(lambda f: f.screen == "terminal-garrison", 10)
         click(frame.find("^(?:模拟开放中|模拟中)$").center)
-        return wait(lambda f: f.screen == "lobby", 20)
+        return wait(lambda f: f.screen == "lobby", MATCH_TRANSITION_SECONDS)
 
 
 class GarrisonSolver:
@@ -299,7 +298,7 @@ class GarrisonSolver:
                         "confirm-ready",
                     }
                 ),
-                RECONNECT_SECONDS,
+                MATCH_TRANSITION_SECONDS,
             )
             if frame.screen != "mode":
                 return frame
@@ -321,7 +320,9 @@ class GarrisonSolver:
             self.progress["match"] = {"phase": "starting"}
             self.persist()
             self.text_click(frame, "^开始模拟$")
-            frame = self.wait(lambda f: f.screen in {"info", "strategy"}, 25)
+            frame = self.wait(
+                lambda f: f.screen in {"info", "strategy"}, MATCH_TRANSITION_SECONDS
+            )
         return frame
 
     @staticmethod
@@ -568,7 +569,7 @@ class GarrisonSolver:
                             "strategy",
                         }
                     ),
-                    RECONNECT_SECONDS,
+                    MATCH_TRANSITION_SECONDS,
                 )
                 continue
             if frame.screen == "info":
@@ -627,7 +628,9 @@ class GarrisonSolver:
                     and self.progress.get("matches_played", 0) >= self.match_limit
                 ):
                     return
-                frame = self.wait(lambda f: f.screen == "lobby", 20)
+                frame = self.wait(
+                    lambda f: f.screen == "lobby", MATCH_TRANSITION_SECONDS
+                )
                 if self.remaining() < MATCH_SECONDS:
                     return
                 if self.match_limit is None and self.progress["attempts"] >= 200:
