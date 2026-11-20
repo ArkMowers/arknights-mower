@@ -211,13 +211,150 @@ def test_recorded_right_boundary_ignores_small_rendering_changes(monkeypatch):
     assert solver.swipe_noinertia.call_count == 5
 
 
-@pytest.mark.parametrize("distance", [1, 24, 234])
+@pytest.mark.parametrize("distance", [1, 24, 107, 234])
 def test_recorded_content_movement_is_not_a_boundary(distance):
     frame = cv2.imread(str(FIXTURES / "depot/consume_right_before_20261117.webp"))
     shifted = frame.copy()
     shifted[140:950] = np.roll(frame[140:950], distance, axis=1)
 
     assert not module.depotREC._same_depot_view(frame, shifted)
+
+
+def replay_consumable_pages(frame, captures):
+    solver = module.depotREC.__new__(module.depotREC)
+    solver.recog = SimpleNamespace(img=frame)
+    solver._category_x = 1063
+    solver._wait_for_depot_ready = Mock(return_value=True)
+    solver._category_selected = Mock(return_value=True)
+    frames = iter(captures)
+
+    def swipe(*args, **kwargs):
+        solver.recog.img = next(frames)
+
+    solver.swipe_noinertia = Mock(side_effect=swipe)
+    pages = list(solver._category_frames())
+    swipes = [call.args[1][0] for call in solver.swipe_noinertia.call_args_list]
+    return pages, swipes
+
+
+@pytest.mark.parametrize("retry_distance", [0, 107])
+def test_stationary_consumables_with_background_change_still_check_the_next_page(
+    retry_distance,
+):
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    changed = frame.copy()
+    changed[600:680, 1700:1820] = 137
+    advanced = changed.copy()
+    advanced[140:990] = np.roll(changed[140:990], -retry_distance, axis=1)
+    advanced[970:, 1560:] = changed[970:, 1560:]
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, changed, advanced, advanced, advanced]
+    )
+
+    if retry_distance:
+        assert [offset for offset, _ in pages] == [0, retry_distance]
+        assert swipes == [702, 234, -702, -234, -702, -234]
+    else:
+        assert [offset for offset, _ in pages] == [0]
+        assert swipes == [702, 234, -702, -234]
+
+
+def test_single_consumable_with_background_change_confirms_the_boundary():
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    frame = np.full_like(image, 255)
+    frame[165:387, 15:230] = cv2.cvtColor(image[165:387, 79:294], cv2.COLOR_BGR2RGB)
+    changed = frame.copy()
+    changed[600:680, 1700:1820] = 137
+
+    pages, swipes = replay_consumable_pages(frame, [frame, frame, changed, changed])
+
+    assert [offset for offset, _ in pages] == [0]
+    assert swipes == [702, 234, -702, -234]
+
+
+def repeated_stack_pages(
+    label_y, background_change, distinct_columns, *, template_change=False
+):
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    cell = np.full((1080, 234, 3), 255, dtype=np.uint8)
+    row = 571 if label_y == 983 else 0
+    cell[165 + row : 388 + row, 15:230] = cv2.cvtColor(
+        image[165:388, 79:294], cv2.COLOR_BGR2RGB
+    )
+    label_background = (45, 45, 45) if label_y == 356 else (163, 199, 119)
+    cv2.rectangle(cell, (150, label_y - 26), (207, label_y + 5), label_background, -1)
+    shelf = np.tile(cell, (1, 10, 1))
+    templates = FIXTURES.parent.parent / "resources" / "depot_num"
+    digits = {
+        value: cv2.imread(str(templates / f"digit_{value}.png"), cv2.IMREAD_GRAYSCALE)
+        for value in (6, 8)
+    }
+    for column in range(10):
+        digit = digits[8 if column in distinct_columns else 6]
+        height, width = digit.shape
+        right = column * 234 + 198
+        area = shelf[label_y - height : label_y, right - width : right]
+        np.maximum(area, digit[:, :, None], out=area)
+    frame = shelf[:, :1920].copy()
+    shifted = shelf[:, 234:2154].copy()
+    if background_change:
+        shifted[600:680, 1700:1820] = 137
+    if template_change:
+        # 降低 234 和 702 像素候选的得分，让 468 像素成为唯一最高分。
+        shifted[440:456, 1010:1032] = 155
+        shifted[440:456, 250:272] = 155
+    return frame, shifted
+
+
+@pytest.mark.parametrize(
+    "label_y", [356, 412, 983], ids=["quantity", "expiration", "bottom-expiration"]
+)
+@pytest.mark.parametrize("background_change", [False, True])
+def test_slow_swipe_reads_repeated_icons_with_different_labels(
+    label_y, background_change
+):
+    frame, shifted = repeated_stack_pages(label_y, background_change, (5, 8))
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, 234]
+    assert np.array_equal(pages[-1][1], shifted)
+    assert swipes == [702, 234, -702, -234, -702, -234]
+
+
+@pytest.mark.parametrize("template_change", [False, True])
+def test_repeated_icons_use_labels_outside_the_displacement_template(template_change):
+    frame, shifted = repeated_stack_pages(
+        356, False, (1,), template_change=template_change
+    )
+    pages, _ = replay_consumable_pages(
+        frame, [frame, frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, 234]
+
+
+@pytest.mark.parametrize("template_change", [False, True])
+def test_repeated_icons_without_a_unique_displacement_stop_the_scan(template_change):
+    frame, shifted = repeated_stack_pages(
+        356, False, (8,), template_change=template_change
+    )
+
+    with pytest.raises(module._DepotScanIncomplete):
+        replay_consumable_pages(frame, [frame, frame, frame, shifted, shifted, shifted])
+
+
+@pytest.mark.parametrize("appearing", [False, True])
+def test_changed_visible_item_does_not_confirm_a_boundary(appearing):
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    missing_item = frame.copy()
+    missing_item[168:375, 75:300] = 255
+    before, after = (missing_item, frame) if appearing else (frame, missing_item)
+
+    assert not module.depotREC._same_depot_view(before, after)
 
 
 def test_zero_scope_follows_installed_category_models_and_excludes_cloud_items(

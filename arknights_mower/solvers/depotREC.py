@@ -31,6 +31,9 @@ from ..utils.resource_pkg import resource_pkg_path, resource_ui_path
 # 竖排间隔 = 234
 # [140:1000, :]
 
+_DEPOT_ITEM_ROWS = (144, 430, 715)
+_DEPOT_PAGE_ROWS = slice(140, 990)
+
 
 def 导入_数字模板():
     模板文件夹 = f"{__rootdir__}/resources/depot_num"
@@ -96,6 +99,50 @@ def _refine_item_color(item, predicted, classes):
     if scores[0][0] - scores[1][0] < 0.025:
         return predicted
     return scores[0][1]
+
+
+def _same_depot_icon_positions(before, after):
+    search = 4
+    right = before.shape[1] - search
+    matched = False
+    for y in _DEPOT_ITEM_ROWS:
+        # 只比较图标主体，避开下方的数量和有效期提示。
+        rows = slice(y - 74, y + 24)
+        for x in range(search, right, 234):
+            end = min(x + 234, right)
+            template = before[rows, x:end]
+            textured_before = cv2.meanStdDev(template)[1].item() >= 5
+            textured_after = cv2.meanStdDev(after[rows, x:end])[1].item() >= 5
+            if textured_before != textured_after:
+                return False
+            if not textured_before:
+                continue
+            region = after[rows, x - search : end + search]
+            scores = cv2.matchTemplate(region, template, cv2.TM_CCOEFF_NORMED)
+            _, score, _, position = cv2.minMaxLoc(scores)
+            if score < 0.97 or position != (search, 0):
+                return False
+            matched = True
+    return matched
+
+
+def _same_depot_labels(before, after):
+    def label_bands(frame):
+        return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
+
+    def strokes(labels):
+        # 提取数量和有效期的浅色笔画，滤掉大面积背景亮度变化。
+        contrast = cv2.morphologyEx(labels, cv2.MORPH_TOPHAT, np.ones((7, 7), np.uint8))
+        return cv2.inRange(labels, 195, 255) & cv2.inRange(contrast, 40, 255)
+
+    first = label_bands(before)
+    second = label_bands(after)
+    changed = cv2.inRange(cv2.absdiff(first, second), 50, 255)
+    if not cv2.countNonZero(changed):
+        return True
+    changed &= strokes(first) | strokes(second)
+    local_change = cv2.boxFilter(changed // 255, cv2.CV_16U, (16, 16), normalize=False)
+    return local_change.max() < 24
 
 
 def 识别空物品(物品灰):
@@ -188,8 +235,7 @@ class depotREC(SceneGraphSolver):
     def 切图主程序(self, 拼接好的图片, 横坐标=None):
         if 横坐标 is None:
             横坐标 = [188 + 234 * i for i in range(0, 8)]
-        纵坐标 = [144, 430, 715]
-        切图列表 = 切图(横坐标, 纵坐标, 拼接好的图片)
+        切图列表 = 切图(横坐标, _DEPOT_ITEM_ROWS, 拼接好的图片)
         return 切图列表
 
     def 读取物品数字(self, 数字图片, 距离阈值=5, 阈值=0.85):
@@ -409,29 +455,47 @@ class depotREC(SceneGraphSolver):
 
     @staticmethod
     def _same_depot_view(before, after):
-        before = cv2.cvtColor(before[140:950], cv2.COLOR_RGB2GRAY)
-        after = cv2.cvtColor(after[140:950], cv2.COLOR_RGB2GRAY)
-        if np.mean(cv2.absdiff(before, after)) < 0.5:
+        before = cv2.cvtColor(before[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
+        after = cv2.cvtColor(after[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
+        if np.array_equal(before, after):
             return True
-        if min(np.std(before), np.std(after)) < 5:
-            return False
-        # 边界处的背景和物品特效仍会变化；比较原位置的整体内容，不搜索平移。
-        score = cv2.matchTemplate(before, after, cv2.TM_CCOEFF_NORMED)[0, 0]
-        return score >= 0.995
+        old_view, new_view = before[:810], after[:810]
+        if np.mean(cv2.absdiff(old_view, new_view)) >= 0.5:
+            if min(np.std(old_view), np.std(new_view)) < 5:
+                return False
+            # 边界处的背景和物品特效仍会变化，先比较原位置的整体内容。
+            score = cv2.matchTemplate(old_view, new_view, cv2.TM_CCOEFF_NORMED)[0, 0]
+            if score < 0.995 and not _same_depot_icon_positions(old_view, new_view):
+                return False
+        return _same_depot_labels(before, after)
 
     @staticmethod
     def _depot_scroll_distance(before, after):
-        before = cv2.cvtColor(before[140:950], cv2.COLOR_RGB2GRAY)
-        after = cv2.cvtColor(after[140:950], cv2.COLOR_RGB2GRAY)
+        before = cv2.cvtColor(before[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
+        after = cv2.cvtColor(after[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
         template = before[:, 900:1400]
         if np.std(template) < 5:
             raise _DepotScanIncomplete
-        scores = cv2.matchTemplate(after[:, 100:1400], template, cv2.TM_CCOEFF_NORMED)
-        _, score, _, position = cv2.minMaxLoc(scores)
-        distance = 800 - position[0]
-        if score < 0.9 or not 0 < distance <= 800:
+        search = after[:, 100:1400]
+        scores = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)[0]
+        best_score = float(scores.max())
+        if best_score < 0.9:
             raise _DepotScanIncomplete
-        return distance
+        # 背景变化可能使正确位移略低于重复图标的最高分。
+        near_best = np.flatnonzero(scores >= max(0.9, best_score - 0.005))
+        peaks = np.split(near_best, np.flatnonzero(np.diff(near_best) > 8) + 1)
+        if len(peaks) > 8:
+            raise _DepotScanIncomplete
+        candidates = [800 - peak[scores[peak].argmax()] for peak in peaks]
+        width = after.shape[1]
+        matched = [
+            candidate
+            for candidate in candidates
+            if _same_depot_labels(before[:, candidate:], after[:, : width - candidate])
+        ]
+        if len(matched) != 1 or matched[0] == 0:
+            raise _DepotScanIncomplete
+        return int(matched[0])
 
     def _category_frames(self):
         deadline = monotonic() + self.CATEGORY_SCAN_TIMEOUT
