@@ -1,7 +1,7 @@
 // Port of dorm_recovery.py and default ensure_dorm_recovery_order, Mower alpha.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 import {MowerArrangementError} from './mowerArrangementError'
-import {alphaRestingTier} from './mowerAlphaDorm'
+import {alphaRestingTier,alphaTradeDormEntryBlocked} from './mowerAlphaDorm'
 import {hasRestingMood,restingMood,type MowerOperatorState,type MowerRecoveryManager} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskQueue} from './mowerTaskQueue'
@@ -23,7 +23,7 @@ const sameManagers=(a:MowerRecoveryManager[],b:MowerRecoveryManager[])=>a.length
 function active(op:MowerOperatorState,room:string,index:number){return op.dormRecoveryRoom===room&&op.dormRecoveryIndex===index&&op.currentRoom===room&&op.currentIndex===index}
 function tier(data:MowerSchedulingData,name:string):number {
  const op=data.operators[name]!
- if(data.freeBlacklist.includes(name)||op.workaholic)return 7
+ if(data.freeBlacklist.includes(name)||op.workaholic||data.alpha&&alphaTradeDormEntryBlocked(data,name))return 7
  if(data.restingPriorityNames.includes(name))return 0
  if(op.room==='train'&&op.index===0||op.currentRoom==='train'&&op.currentIndex===0)return 5
  if(op.isHigh())return op.restingPriority==='high'?1:op.restingPriority==='low'?2:4

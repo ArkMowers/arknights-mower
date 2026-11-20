@@ -135,15 +135,17 @@ def test_timed_order_checks_dorm_budget_before_entering(
     [
         (24, 21, 10, False),
         (24, 19.3, 10, False),
-        (24, 19.2, 10, True),
+        (24, 19.2, 10, False),
+        (24, 19.1, 10, True),
         (24, 5, 10, True),
         (12, 9.7, 10, False),
-        (12, 9.6, 10, True),
-        (24, 21, 24, True),
-        (24, 21, None, True),
+        (12, 9.6, 10, False),
+        (12, 9.5, 10, True),
+        (24, 21, 24, False),
+        (24, 21, None, False),
     ],
 )
-def test_completed_order_keeps_normal_replacement_takeover_threshold(
+def test_completed_order_uses_trade_operator_dorm_admission_threshold(
     orders, monkeypatch, upper, mood, resident_mood, allowed
 ):
     solver, first, _, events = orders

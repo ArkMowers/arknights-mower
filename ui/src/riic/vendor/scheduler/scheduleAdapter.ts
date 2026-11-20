@@ -27,7 +27,7 @@ export function isOrdinaryReplacementCandidate(operatorId: string, roomType: str
  * Pure function adapter converting a CompiledSchedule to a RuntimeConfig.
  *
  * Rules:
- * 1. Trading positions exclude all five dedicated run-order operators from ordinary replacements.
+ * 1. Trading positions exclude dedicated run-order operators from ordinary replacements.
  * 2. schedule.runOrderPolicies retains its exact original order.
  * 3. RuntimeConfig.excludedCandidates includes configured run-order candidates.
  * 4. Fiammetta swap policy is mapped to runtime fiammetta config.
@@ -45,8 +45,11 @@ export function compiledScheduleToRuntimeConfig(schedule: CompiledSchedule): Run
     if (id) shiftRunIds.add(id)
   }
 
-  // Also collect any from runOrderPolicies
-  for (const policy of schedule.runOrderPolicies) {
+  const runOrderPolicies = schedule.runOrderPolicies.map(policy => ({
+    roomId: policy.roomId,
+    orderedOperatorIds: policy.orderedOperatorIds.filter(isTradeRunOrderOperator),
+  })).filter(policy => policy.orderedOperatorIds.length > 0)
+  for (const policy of runOrderPolicies) {
     for (const id of policy.orderedOperatorIds) {
       shiftRunIds.add(id)
     }
@@ -139,7 +142,7 @@ export function compiledScheduleToRuntimeConfig(schedule: CompiledSchedule): Run
   for (const [id, st] of Object.entries(schedule.operators)) {
     initialMorale[id] = st.morale
   }
-  for (const id of [...positions.flatMap(p=>p.candidates),...schedule.runOrderPolicies.flatMap(p=>p.orderedOperatorIds),...schedule.fiammettaPolicies.flatMap(p=>p.orderedTargets),...(schedule.assumptions.idleOperators ?? [])]) initialMorale[id] ??= schedule.assumptions.initialMorale
+  for (const id of [...positions.flatMap(p=>p.candidates),...runOrderPolicies.flatMap(p=>p.orderedOperatorIds),...schedule.fiammettaPolicies.flatMap(p=>p.orderedTargets),...(schedule.assumptions.idleOperators ?? [])]) initialMorale[id] ??= schedule.assumptions.initialMorale
   if (schedule.assumptions.operatorMorale) {
     for (const [id, m] of Object.entries(schedule.assumptions.operatorMorale)) {
       initialMorale[id] = m
@@ -157,12 +160,6 @@ export function compiledScheduleToRuntimeConfig(schedule: CompiledSchedule): Run
       fool: schedule.assumptions.fiammettaFool ?? true,
     }
   }
-
-  // Preserved runOrderPolicies (original order maintained)
-  const runOrderPolicies = schedule.runOrderPolicies.map(p => ({
-    roomId: p.roomId,
-    orderedOperatorIds: [...p.orderedOperatorIds],
-  }))
 
   const sourceList=(key:string)=>{const raw=(schedule.policies as Record<string,unknown>)[key];return (Array.isArray(raw)?raw:typeof raw==='string'?raw.split(','):[]).map(String).filter(Boolean).map(resolveOperatorCharId)}
   return {

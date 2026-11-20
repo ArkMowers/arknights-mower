@@ -25,11 +25,11 @@ import {runDefaultTradeSegment,dispatchDefaultRefreshTime,dispatchMowerCollectio
 // Headless adapter for pinned default Mower task decisions.
 // Source: c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88 (MIT, Copyright 2021 Nano).
 // Physical room reads come from the RIIC simulation; reservations and observations stay separate.
-// Trade runner recognition extends the pinned source list with U-Official for this app.
 import {mowerPlanEntries} from './mowerPlanOrder'
 import {initializeMowerAlphaMoodLimits} from './mowerMoodLimits'
 import {scheduleMowerTasks,protectMowerSupportSwaps} from './mowerTaskScheduling'
 import {deferMowerAlphaDorm} from './mowerAlphaTaskProtection'
+import {alphaTradeDormEntryBlocked} from './mowerAlphaDorm'
 import {mowerAlphaDormCandidates,planMowerAlphaDormFill} from './mowerAlphaCandidates'
 import {fillMowerAlphaEmptyDorms,mowerWaitingDormReservations,prepareMowerAlphaDormFill,protectMowerAlphaDormFillDispatch} from './mowerAlphaDormPlanning'
 import {deferMowerArrangementRetry} from './mowerArrangementRetry'
@@ -79,9 +79,8 @@ export interface MowerSourceRuntime {
  lastTrainMoodReadMicros?:number;lastWakeMicros?:number;trace:{timeMicros:number;type:string;plan:MowerTaskPlan;metadata:string}[]
 }
 const slotIndex=(id:string)=>Number(id.slice(id.lastIndexOf('_')+1))
-const isConfiguredTradeRoom=(config:RuntimeConfig,room:string)=>config.runOrderPolicies?.some(policy=>policy.roomId===room)??false
 function configuredRunOrderRoom(config:RuntimeConfig,room:string):boolean{
- return config.mowerRunOrderEnabled!==false&&room.startsWith('room')&&(config.mowerSourcePlan?.[room]??[]).some(slot=>[...slot.replacement,...(slot.groupBindings??[]).flatMap(binding=>binding.replacement)].some(id=>isTradeRunOrderOperator(id)&&((OPERATOR_MAP.get(id)?.name??id)!=='U-Official'||isConfiguredTradeRoom(config,room))))
+ return config.mowerRunOrderEnabled!==false&&room.startsWith('room')&&(config.mowerSourcePlan?.[room]??[]).some(slot=>[...slot.replacement,...(slot.groupBindings??[]).flatMap(binding=>binding.replacement)].some(isTradeRunOrderOperator))
 }
 function syncMowerOrderCollectionRoom(s:RuntimeState,source:MowerSourceRuntime):void{
  const jaye=source.data.operators.char_272_strong,room=jaye?.currentRoom
@@ -378,7 +377,9 @@ function freeCandidateNames(s:RuntimeState,data:MowerSchedulingData,forbidden:Se
  if(data.useDormFillers)known=known.filter(op=>isMowerDormFiller(op.name)?room.startsWith('dorm'):data.freeRoomExcluded(op.name)||!data.excludedCandidates.has(op.name)&&(mowerDormCandidateMood(data,op.name)??op.mood)<op.upperLimit)
  if(known.some(op=>!op.workshop&&op.currentMood(data.nowMicros)<=22))known=known.filter(op=>!op.workshop)
  const unseen=(data.useDormFillers?[]:s.config.availableIdleOperators??[]).filter(name=>OPERATOR_MAP.has(name)&&!data.operators[name]&&!forbidden.has(name))
- return [...known.map(op=>op.name),...unseen].sort((a,b)=>(s.morale[a]??24)-(s.morale[b]??24))
+ const candidates=[...known.map(op=>op.name),...unseen]
+ const admitted=data.alpha&&room.startsWith('dorm')?candidates.filter(name=>!alphaTradeDormEntryBlocked(data,name,mowerDormCandidateMood(data,name)??s.morale[name]??24)):candidates
+ return admitted.sort((a,b)=>(s.morale[a]??24)-(s.morale[b]??24))
 }
 /** Neutral padding belongs to the destination place, even when every filler is already resident. */
 function takeMowerFreeCandidate(data:MowerSchedulingData,free:string[],room:string,index:number):string|undefined {

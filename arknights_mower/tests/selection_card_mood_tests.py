@@ -672,3 +672,29 @@ def test_cancelled_selection_reads_back_without_submit_or_timer_reset(
     instance.op_data.room_observations["meeting"] = 1
     instance.agent_get_mood()
     assert not instance.op_data.idle_dorm_release_suspended
+
+
+@pytest.mark.parametrize("slow", [False, True])
+def test_dorm_card_skips_new_full_runner_and_selects_next_candidate(
+    solver, monkeypatch, slow
+):
+    instance, _ = solver
+    page = (("但书", SCOPE), ("红", ((0, 96), (189, 128))))
+    frame = np.concatenate([strip("full"), strip("low")])
+    instance.recog = SimpleNamespace(img=frame, update=MagicMock())
+    monkeypatch.setattr(BaseMixin, "low_frame_rate_mode", property(lambda self: slow))
+    instance.find = MagicMock(return_value=False)
+    instance.wait_for_agent_page = MagicMock(return_value=page)
+    monkeypatch.setattr(base_mixin, "operator_list", MagicMock(return_value=page))
+    monkeypatch.setattr(base_mixin, "agent_card_selected", lambda *a, **kw: False)
+    instance.tap = MagicMock()
+    chosen, _ = BaseMixin.scan_agent(
+        instance,
+        ["但书", "红"],
+        max_agent_count=1,
+        mood_estimates=instance.op_data.dorm_mood_estimates,
+        mood_check=instance._allow_dorm_filler_mood,
+    )
+    assert chosen == ["红"]
+    instance.tap.assert_called_once()
+    assert instance.tap.call_args.args == (page[1][1],)

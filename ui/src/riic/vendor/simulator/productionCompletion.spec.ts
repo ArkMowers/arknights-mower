@@ -1,5 +1,6 @@
 import {afterEach,describe,expect,it,vi} from 'vitest'
 import {createDefaultWorkspace} from '../workbench/defaults'
+import {compiledScheduleToRuntimeConfig} from '../scheduler/scheduleAdapter'
 import {compileRosterSchedule} from '../scheduler/compileRosterSchedule'
 import {simulateSchedule,type ScheduleSimulationOptions} from './scheduleSimulation'
 import {scoreSimulationProduction} from './productionScore'
@@ -66,6 +67,37 @@ describe('sample endpoint production collection',()=>{
   expect(report.production!.sample.completed.exp).toBe(expected)
   expect(report.production!.manufacturing[0]!.pendingItems).toBe(0)
   expect(report.production!.events.every(event=>event.time<=sampleHours)).toBe(true)
+ })
+ it.each([false,true])('uses U-Official as ordinary trading cover with another runner present: %s',withRunner=>{
+  const workspace=fixture('money'),room=workspace.mainPlan.facilities.room_3_1
+  const uOfficial='char_4091_ulika',proviso='char_4032_provs'
+  room.slots[0]!.replacements=withRunner?[uOfficial,proviso]:[uOfficial]
+  const schedule=compileRosterSchedule(workspace,{idleOperators:[]})
+  const policies=withRunner?[{roomId:'room_3_1',orderedOperatorIds:[proviso]}]:[]
+  expect(schedule.runOrderPolicies).toEqual(policies)
+  // Older compiled schedules included U-Official among the trading post's runners.
+  schedule.runOrderPolicies=[{roomId:'room_3_1',orderedOperatorIds:[...room.slots[0]!.replacements]}]
+  const config=compiledScheduleToRuntimeConfig(schedule)
+  expect(config.runOrderPolicies).toEqual(policies)
+  expect(config.positions.find(p=>p.roomId==='room_3_1')?.candidates).toEqual([uOfficial])
+  expect(config.excludedCandidates).not.toContain(uOfficial)
+  const source=getMowerSourceRuntime(rosterRuntime.createRosterRuntime(config))
+  expect(Object.keys(source.data.runOrderRooms)).toEqual(withRunner?['room_3_1']:[])
+  const report=simulateSchedule(schedule,{sampleHours:3,production})
+  expect(report.success).toBe(true)
+  expect(report.production!.events.filter(e=>e.type==='run-order-ideal').map(e=>e.operatorIds)).toEqual(withRunner?[[proviso]]:[])
+  const completed=report.production!.events.find(e=>e.type==='order-completed')
+  expect(completed?.order).toBeDefined()
+  expect(completed!.order!.kind).not.toBe('uOfficial')
+ })
+ it('applies U-Official’s trading skill when she staffs the room',()=>{
+  const workspace=fixture('money'),room=workspace.mainPlan.facilities.room_3_1
+  room.slots[0]!.occupant={kind:'operator',operatorId:'char_4091_ulika'}
+  workspace.mainPlan.conf.workaholic=['U-Official']
+  const report=simulateSchedule(compileRosterSchedule(workspace,{idleOperators:[]}),{sampleHours:5,production})
+  expect(report.success).toBe(true)
+  expect(report.production!.events.find(e=>e.type==='order-completed')?.order?.kind).toBe('uOfficial')
+  expect(report.production!.events.filter(e=>e.type==='run-order-ideal')).toEqual([])
  })
  it('finishes and pays an order exactly at the endpoint without acquiring another order',()=>{
   const {report}=run('money',{production:{initialResources:{gold:2}}})
