@@ -32,6 +32,7 @@ from ..utils.resource_pkg import resource_pkg_path, resource_ui_path
 # [140:1000, :]
 
 _DEPOT_ITEM_ROWS = (144, 430, 715)
+_DEPOT_PAGE_ROWS = slice(140, 990)
 
 
 def 导入_数字模板():
@@ -103,7 +104,7 @@ def _refine_item_color(item, predicted, classes):
 def _same_depot_icon_positions(before, after):
     search = 4
     right = before.shape[1] - search
-    matches = 0
+    matched = False
     for y in _DEPOT_ITEM_ROWS:
         # 只比较图标主体，避开下方的数量和有效期提示。
         rows = slice(y - 74, y + 24)
@@ -121,8 +122,27 @@ def _same_depot_icon_positions(before, after):
             _, score, _, position = cv2.minMaxLoc(scores)
             if score < 0.97 or position != (search, 0):
                 return False
-            matches += 1
-    return matches >= 2
+            matched = True
+    return matched
+
+
+def _same_depot_labels(before, after):
+    def label_bands(frame):
+        return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
+
+    def strokes(labels):
+        # 提取数量和有效期的浅色笔画，滤掉大面积背景亮度变化。
+        contrast = cv2.morphologyEx(labels, cv2.MORPH_TOPHAT, np.ones((7, 7), np.uint8))
+        return cv2.inRange(labels, 195, 255) & cv2.inRange(contrast, 40, 255)
+
+    first = label_bands(before)
+    second = label_bands(after)
+    changed = cv2.inRange(cv2.absdiff(first, second), 50, 255)
+    if not cv2.countNonZero(changed):
+        return True
+    changed &= strokes(first) | strokes(second)
+    local_change = cv2.boxFilter(changed // 255, cv2.CV_16U, (16, 16), normalize=False)
+    return local_change.max() < 24
 
 
 def 识别空物品(物品灰):
@@ -435,27 +455,51 @@ class depotREC(SceneGraphSolver):
 
     @staticmethod
     def _same_depot_view(before, after):
-        before = cv2.cvtColor(before[140:950], cv2.COLOR_RGB2GRAY)
-        after = cv2.cvtColor(after[140:950], cv2.COLOR_RGB2GRAY)
-        if np.mean(cv2.absdiff(before, after)) < 0.5:
+        before = cv2.cvtColor(before[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
+        after = cv2.cvtColor(after[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
+        if np.array_equal(before, after):
             return True
-        if min(np.std(before), np.std(after)) < 5:
-            return False
-        # 边界处的背景和物品特效仍会变化；比较原位置的整体内容，不搜索平移。
-        score = cv2.matchTemplate(before, after, cv2.TM_CCOEFF_NORMED)[0, 0]
-        return score >= 0.995 or _same_depot_icon_positions(before, after)
+        old_view, new_view = before[:810], after[:810]
+        if np.mean(cv2.absdiff(old_view, new_view)) >= 0.5:
+            if min(np.std(old_view), np.std(new_view)) < 5:
+                return False
+            # 边界处的背景和物品特效仍会变化，先比较原位置的整体内容。
+            score = cv2.matchTemplate(old_view, new_view, cv2.TM_CCOEFF_NORMED)[0, 0]
+            if score < 0.995 and not _same_depot_icon_positions(old_view, new_view):
+                return False
+        return _same_depot_labels(before, after)
 
     @staticmethod
     def _depot_scroll_distance(before, after):
-        before = cv2.cvtColor(before[140:950], cv2.COLOR_RGB2GRAY)
-        after = cv2.cvtColor(after[140:950], cv2.COLOR_RGB2GRAY)
+        before = cv2.cvtColor(before[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
+        after = cv2.cvtColor(after[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
         template = before[:, 900:1400]
         if np.std(template) < 5:
             raise _DepotScanIncomplete
         scores = cv2.matchTemplate(after[:, 100:1400], template, cv2.TM_CCOEFF_NORMED)
         _, score, _, position = cv2.minMaxLoc(scores)
+        if score < 0.9:
+            raise _DepotScanIncomplete
         distance = 800 - position[0]
-        if score < 0.9 or not 0 < distance <= 800:
+        near_best = np.flatnonzero(scores[0] >= score - 0.0001)
+        peaks = np.split(near_best, np.flatnonzero(np.diff(near_best) > 8) + 1)
+        if len(peaks) > 1:
+            # 重复图标可能有多个近似峰值，用重叠区域的标签判定实际位移。
+            if len(peaks) > 8:
+                raise _DepotScanIncomplete
+            candidates = [800 - peak[scores[0, peak].argmax()] for peak in peaks]
+            width = after.shape[1]
+            matched = [
+                candidate
+                for candidate in candidates
+                if _same_depot_labels(
+                    before[:, candidate:], after[:, : width - candidate]
+                )
+            ]
+            if len(matched) != 1:
+                raise _DepotScanIncomplete
+            distance = int(matched[0])
+        if not 0 < distance <= 800:
             raise _DepotScanIncomplete
         return distance
 

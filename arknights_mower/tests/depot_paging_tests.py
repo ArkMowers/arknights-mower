@@ -220,6 +220,23 @@ def test_recorded_content_movement_is_not_a_boundary(distance):
     assert not module.depotREC._same_depot_view(frame, shifted)
 
 
+def replay_consumable_pages(frame, captures):
+    solver = module.depotREC.__new__(module.depotREC)
+    solver.recog = SimpleNamespace(img=frame)
+    solver._category_x = 1063
+    solver._wait_for_depot_ready = Mock(return_value=True)
+    solver._category_selected = Mock(return_value=True)
+    frames = iter(captures)
+
+    def swipe(*args, **kwargs):
+        solver.recog.img = next(frames)
+
+    solver.swipe_noinertia = Mock(side_effect=swipe)
+    pages = list(solver._category_frames())
+    swipes = [call.args[1][0] for call in solver.swipe_noinertia.call_args_list]
+    return pages, swipes
+
+
 @pytest.mark.parametrize("retry_distance", [0, 107])
 def test_stationary_consumables_with_background_change_still_check_the_next_page(
     retry_distance,
@@ -230,24 +247,90 @@ def test_stationary_consumables_with_background_change_still_check_the_next_page
     changed[600:680, 1700:1820] = 137
     advanced = changed.copy()
     advanced[140:950] = np.roll(changed[140:950], -retry_distance, axis=1)
-    captures = iter([frame, frame, changed, advanced, advanced, advanced])
-    solver = module.depotREC.__new__(module.depotREC)
-    solver.recog = SimpleNamespace(img=frame)
-    solver._category_x = 1063
-    solver._wait_for_depot_ready = Mock(return_value=True)
-    solver._category_selected = Mock(return_value=True)
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, changed, advanced, advanced, advanced]
+    )
 
-    def swipe(*args, **kwargs):
-        solver.recog.img = next(captures)
-
-    solver.swipe_noinertia = Mock(side_effect=swipe)
-
-    offsets = [0, retry_distance] if retry_distance else [0]
-    swipes = [702, 234, -702, -234]
     if retry_distance:
-        swipes.extend([-702, -234])
-    assert [offset for offset, _ in solver._category_frames()] == offsets
-    assert [call.args[1][0] for call in solver.swipe_noinertia.call_args_list] == swipes
+        assert [offset for offset, _ in pages] == [0, retry_distance]
+        assert swipes == [702, 234, -702, -234, -702, -234]
+    else:
+        assert [offset for offset, _ in pages] == [0]
+        assert swipes == [702, 234, -702, -234]
+
+
+def test_single_consumable_with_background_change_confirms_the_boundary():
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    frame = np.full_like(image, 255)
+    frame[165:387, 15:230] = cv2.cvtColor(image[165:387, 79:294], cv2.COLOR_BGR2RGB)
+    changed = frame.copy()
+    changed[600:680, 1700:1820] = 137
+
+    pages, swipes = replay_consumable_pages(frame, [frame, frame, changed, changed])
+
+    assert [offset for offset, _ in pages] == [0]
+    assert swipes == [702, 234, -702, -234]
+
+
+def repeated_stack_pages(label_y, background_change, distinct_columns):
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    cell = np.full((1080, 234, 3), 255, dtype=np.uint8)
+    row = 571 if label_y == 983 else 0
+    cell[165 + row : 388 + row, 15:230] = cv2.cvtColor(
+        image[165:388, 79:294], cv2.COLOR_BGR2RGB
+    )
+    label_background = (45, 45, 45) if label_y == 356 else (163, 199, 119)
+    cv2.rectangle(cell, (150, label_y - 26), (207, label_y + 5), label_background, -1)
+    shelf = np.tile(cell, (1, 10, 1))
+    templates = FIXTURES.parent.parent / "resources" / "depot_num"
+    digits = {
+        value: cv2.imread(str(templates / f"digit_{value}.png"), cv2.IMREAD_GRAYSCALE)
+        for value in (6, 8)
+    }
+    for column in range(10):
+        digit = digits[8 if column in distinct_columns else 6]
+        height, width = digit.shape
+        right = column * 234 + 198
+        area = shelf[label_y - height : label_y, right - width : right]
+        np.maximum(area, digit[:, :, None], out=area)
+    frame = shelf[:, :1920].copy()
+    shifted = shelf[:, 234:2154].copy()
+    if background_change:
+        shifted[600:680, 1700:1820] = 137
+    return frame, shifted
+
+
+@pytest.mark.parametrize(
+    "label_y", [356, 412, 983], ids=["quantity", "expiration", "bottom-expiration"]
+)
+@pytest.mark.parametrize("background_change", [False, True])
+def test_slow_swipe_reads_repeated_icons_with_different_labels(
+    label_y, background_change
+):
+    frame, shifted = repeated_stack_pages(label_y, background_change, (5, 8))
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, 234]
+    assert np.array_equal(pages[-1][1], shifted)
+    assert swipes == [702, 234, -702, -234, -702, -234]
+
+
+def test_repeated_icons_use_labels_outside_the_displacement_template():
+    frame, shifted = repeated_stack_pages(356, False, (1,))
+    pages, _ = replay_consumable_pages(
+        frame, [frame, frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, 234]
+
+
+def test_repeated_icons_without_a_unique_displacement_stop_the_scan():
+    frame, shifted = repeated_stack_pages(356, False, (8,))
+
+    with pytest.raises(module._DepotScanIncomplete):
+        replay_consumable_pages(frame, [frame, frame, frame, shifted, shifted, shifted])
 
 
 @pytest.mark.parametrize("appearing", [False, True])
