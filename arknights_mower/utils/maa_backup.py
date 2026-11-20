@@ -78,47 +78,59 @@ def installation_identity(target):
 class BackupCheckpoint:
     def __init__(self, target):
         self.target = Path(target).expanduser().absolute()
+        self.backup = self.target / ".old"
         with _update_lock:
             self.installation = installation_identity(self.target)
-            self.backups = {path: identity(path) for path in (self.target / ".old",)}
+            self.backup_identity = identity(self.backup)
 
     def retire(self):
+        if self.backup_identity is None:
+            return True
+        from arknights_mower.utils.maa_process import (
+            installation_lease,
+            maa_client_guard,
+        )
+        from arknights_mower.utils.maa_storage import protected_storage_paths
+        from arknights_mower.utils.maa_update import MaaUpdateError
+
         if not _update_lock.acquire(blocking=False):
             return False
-        lease = None
         try:
-            from arknights_mower.utils.maa_process import (
-                installation_lease,
-                maa_client_guard,
-            )
-            from arknights_mower.utils.maa_storage import protected_storage_paths
-
-            lease = installation_lease(self.target, exclusive=True)
-            if self.installation != installation_identity(self.target):
+            # An update in another process can still restore this backup.
+            if self.backup_identity != identity(self.backup):
                 return False
-            with maa_client_guard(self.target):
-                for path, expected in self.backups.items():
-                    if expected is None or expected != identity(path):
-                        continue
-                    resolved = path.resolve()
+            with installation_lease(self.target, exclusive=True):
+                if self.installation != installation_identity(self.target):
+                    return False
+                with maa_client_guard(self.target):
+                    if self.backup_identity != identity(self.backup):
+                        return True
+                    resolved = self.backup.resolve()
                     if any(
-                        root.is_relative_to(path) or root.is_relative_to(resolved)
+                        root.is_relative_to(self.backup)
+                        or root.is_relative_to(resolved)
                         for root in protected_storage_paths(self.target)
                     ):
                         return False
-                    if path.is_symlink():
-                        path.unlink()
-                    elif path.is_dir():
-                        shutil.rmtree(path)
+                    if self.backup.is_symlink():
+                        self.backup.unlink()
+                    elif self.backup.is_dir():
+                        shutil.rmtree(self.backup)
             return True
+        except MaaUpdateError as error:
+            from arknights_mower.utils.log import logger
+
+            logger.warning("MAA 任务已完成，旧备份暂无法清理。%s", error)
+            return False
         except (OSError, RuntimeError):
             from arknights_mower.utils.log import logger
 
-            logger.warning("MAA 任务已完成，旧备份暂无法清理")
+            logger.warning(
+                "MAA 任务已完成，旧备份暂无法清理，请检查 MAA 目录权限和文件占用"
+            )
+            logger.debug("清理 MAA 旧备份失败", exc_info=True)
             return False
         finally:
-            if lease is not None:
-                lease.close()
             _update_lock.release()
 
 
