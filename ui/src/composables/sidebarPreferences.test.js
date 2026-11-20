@@ -6,6 +6,8 @@ import { settingsShortcuts, sidebarNavigationItems } from '@/navigation'
 import { createPreviewAdapter, createPreviewData } from '../../preview/mock'
 const editableNavigationItems = sidebarNavigationItems.filter((item) => !item.footer)
 const editableCatalog = [...editableNavigationItems, ...settingsShortcuts({})]
+const sanityShortcut = 'settings-stage-plan'
+const defaultPlacementKeys = [...sidebarNavigationItems.map((item) => item.key), sanityShortcut]
 
 function memoryStorage(initial = null) {
   const values = new Map(initial === null ? [] : [[SIDEBAR_STORAGE_KEY, initial]])
@@ -51,14 +53,14 @@ describe('sidebar preferences', () => {
     }
   )
 
-  it('shows every catalog entry once and keeps the assistant in the default footer', () => {
+  it('shows the default entries once and keeps the assistant in the footer', () => {
     const preferences = createSidebarPreferences({ storage: memoryStorage() })
     const displayed = [
       ...preferences.pinnedItems.value,
       ...preferences.visibleSections.value.flatMap((group) => group.items),
       ...preferences.footerItems.value
     ]
-    expect(keys(displayed).toSorted()).toEqual(keys(sidebarNavigationItems).toSorted())
+    expect(keys(displayed).toSorted()).toEqual(defaultPlacementKeys.toSorted())
     expect(new Set(keys(displayed)).size).toBe(displayed.length)
     expect(keys(preferences.footerItems.value)).toEqual(['chat'])
     expect(keys(preferences.catalog.value)).toEqual(keys(editableCatalog))
@@ -72,7 +74,55 @@ describe('sidebar preferences', () => {
       key: 'task-settings',
       id: 'task-settings'
     })
+    expect(section(preferences, 'daily').items.at(-1)).toMatchObject({
+      key: sanityShortcut,
+      label: '刷理智',
+      to: { path: '/settings', hash: '#settings-stage-plan' }
+    })
     expect(preferences.state.value.version).toBe(3)
+  })
+
+  it('appends the shortcut after custom daily entries and remembers its removal', async () => {
+    const saved = {
+      version: 3,
+      knownKeys: keys(editableNavigationItems),
+      groups: [{ key: 'daily', title: '我的页面', collapsed: true }],
+      placements: [
+        { id: 'mastery', key: 'mastery', group: 'daily', visible: true, pinned: false },
+        { id: 'custom-doc', key: 'doc', group: 'daily', visible: true, pinned: false }
+      ]
+    }
+    const transport = remoteTransport(saved)
+    const preferences = createSidebarPreferences({ transport, storage: memoryStorage() })
+    await preferences.initialize()
+    expect(section(preferences, 'daily')).toMatchObject({ title: '我的页面', collapsed: true })
+    expect(keys(section(preferences, 'daily').items)).toEqual(['mastery', 'doc', sanityShortcut])
+    expect(transport.put).not.toHaveBeenCalled()
+
+    expect(preferences.removeEntry(sanityShortcut)).toBe(true)
+    await preferences.flush()
+    const edited = transport.put.mock.calls[0][1].sidebar
+    expect(edited.knownKeys).toContain(sanityShortcut)
+    const restored = createSidebarPreferences({ storage: memoryStorage(JSON.stringify(edited)) })
+    expect(restored.state.value.placements).not.toContainEqual(
+      expect.objectContaining({ key: sanityShortcut })
+    )
+  })
+
+  it('keeps a previously added sanity shortcut in its existing position', () => {
+    const saved = snapshot(createSidebarPreferences({ storage: memoryStorage() }))
+    saved.knownKeys = saved.knownKeys.filter((key) => key !== sanityShortcut)
+    Object.assign(
+      saved.placements.find((item) => item.key === sanityShortcut),
+      {
+        id: 'custom-sanity',
+        group: 'reference',
+        pinned: true
+      }
+    )
+    const restored = createSidebarPreferences({ storage: memoryStorage(JSON.stringify(saved)) })
+    expect(keys(section(restored, 'daily').items)).not.toContain(sanityShortcut)
+    expect(restored.pinnedItems.value).toMatchObject([{ id: 'custom-sanity', key: sanityShortcut }])
   })
 
   it('restores saved settings shortcuts while hiding managed-only exclusions', () => {
@@ -121,6 +171,13 @@ describe('sidebar preferences', () => {
       expect(preferences.state.value.groups).toEqual(saved.groups)
       expect(preferences.state.value.placements).toEqual([
         saved.placements[0],
+        {
+          id: sanityShortcut,
+          key: sanityShortcut,
+          group: 'ungrouped',
+          visible: true,
+          pinned: false
+        },
         { id: 'chat', key: 'chat', group: 'footer', visible: true, pinned: false }
       ])
       for (const key of ['rescue-plan', 'mower-settings']) {
@@ -258,10 +315,14 @@ describe('sidebar preferences', () => {
       )
     })
     expect(section(preferences, 'daily')).toMatchObject({ title: '常用页面', collapsed: true })
-    expect(keys(section(preferences, 'daily').items)).toEqual(['task-settings', 'mastery'])
+    expect(keys(section(preferences, 'daily').items)).toEqual([
+      'task-settings',
+      'mastery',
+      sanityShortcut
+    ])
     expect(keys(preferences.pinnedItems.value)).toEqual(['plan'])
     expect(placement(preferences, 'log').visible).toBe(false)
-    expect(preferences.state.value.placements).toHaveLength(sidebarNavigationItems.length)
+    expect(preferences.state.value.placements).toHaveLength(defaultPlacementKeys.length)
   })
 
   it('restores the fixed footer and returns older footer entries to editable groups', () => {
@@ -332,7 +393,7 @@ describe('sidebar preferences', () => {
         })
       )
     })
-    expect(keys(section(preferences, 'daily').items)).toEqual(['mastery'])
+    expect(keys(section(preferences, 'daily').items)).toEqual(['mastery', sanityShortcut])
     expect(section(preferences, 'daily').items[0].id).toBe('mastery')
     expect(preferences.state.value.knownKeys).toContain('mastery')
     expect(keys(preferences.footerItems.value)).toEqual(['chat'])
@@ -351,7 +412,12 @@ describe('sidebar preferences', () => {
       storage: memoryStorage(JSON.stringify(saved))
     })
     expect(section(preferences, 'daily').title).toBe('我的页面')
-    expect(keys(section(preferences, 'daily').items)).toEqual(['mastery', 'log', 'task-settings'])
+    expect(keys(section(preferences, 'daily').items)).toEqual([
+      'mastery',
+      'log',
+      'task-settings',
+      sanityShortcut
+    ])
     expect(
       preferences.state.value.placements.filter((item) => item.key !== 'task-settings')
     ).toEqual(saved.placements)
@@ -381,7 +447,9 @@ describe('sidebar preferences', () => {
     async (source) => {
       const saved = {
         version: 3,
-        knownKeys: keys(editableNavigationItems).filter((key) => key !== 'task-settings'),
+        knownKeys: [...keys(editableNavigationItems), sanityShortcut].filter(
+          (key) => key !== 'task-settings'
+        ),
         groups: [{ key: 'custom-daily', title: '常用', collapsed: false }],
         placements: [
           { id: 'log', key: 'log', group: 'custom-daily', visible: true, pinned: false },
@@ -478,10 +546,13 @@ describe('sidebar preferences', () => {
         })
       )
     })
-    expect(section(preferences, 'daily').items.map((item) => item.id)).toEqual(['log'])
+    expect(section(preferences, 'daily').items.map((item) => item.id)).toEqual([
+      'log',
+      sanityShortcut
+    ])
     expect(section(preferences, 'tools').items.map((item) => item.id)).toEqual(['log-copy'])
     expect(preferences.pinnedItems.value.map((item) => item.id)).toEqual(['log-pinned'])
-    expect(preferences.state.value.placements).toHaveLength(4)
+    expect(preferences.state.value.placements).toHaveLength(5)
     expect(keys(preferences.footerItems.value)).toEqual(['chat'])
   })
 
@@ -489,7 +560,7 @@ describe('sidebar preferences', () => {
     for (const saved of ['{broken', 'null', '[]', JSON.stringify({ version: 999, groups: [] })]) {
       const preferences = createSidebarPreferences({ storage: memoryStorage(saved) })
       expect(keys(preferences.footerItems.value)).toEqual(['chat'])
-      expect(preferences.state.value.placements).toHaveLength(sidebarNavigationItems.length)
+      expect(preferences.state.value.placements).toHaveLength(defaultPlacementKeys.length)
       expect(keys(preferences.visibleSections.value)).toEqual(['daily', 'reports', 'reference'])
     }
   })
@@ -647,7 +718,7 @@ describe('sidebar preferences', () => {
     const reset = createSidebarPreferences({ storage })
     expect(keys(reset.visibleSections.value)).toEqual(['daily', 'reports', 'reference'])
     expect(section(reset, 'daily').title).toBe('常用')
-    expect(reset.state.value.placements).toHaveLength(sidebarNavigationItems.length)
+    expect(reset.state.value.placements).toHaveLength(defaultPlacementKeys.length)
     expect(placement(reset, 'log').visible).toBe(true)
     expect(reset.pinnedItems.value).toHaveLength(0)
     expect(section(reset, 'reports').collapsed).toBe(false)
@@ -734,7 +805,7 @@ describe('sidebar preferences', () => {
     expect(imported.state.value.groups).toHaveLength(20)
     expect(keys(imported.state.value.groups)).not.toContain('daily')
     expect(keys(imported.catalog.value)).toEqual(keys(editableCatalog))
-    expect(new Set(keys(imported.state.value.placements)).size).toBe(sidebarNavigationItems.length)
+    expect(new Set(keys(imported.state.value.placements)).size).toBe(defaultPlacementKeys.length)
   })
 
   it('dissolves every group and restores independent pages without recreating daily on reload', () => {
@@ -744,7 +815,7 @@ describe('sidebar preferences', () => {
       expect(preferences.removeGroup(group.key)).toBe(true)
     expect(preferences.state.value.groups).toEqual([])
     expect(keys(preferences.standaloneItems.value).toSorted()).toEqual(
-      keys(editableNavigationItems).toSorted()
+      [...keys(editableNavigationItems), sanityShortcut].toSorted()
     )
     const restored = createSidebarPreferences({ storage })
     expect(restored.state.value).toEqual(preferences.state.value)
@@ -805,7 +876,8 @@ describe('sidebar preferences', () => {
       expect(preferences.state.value.groups).toEqual([])
       expect(placement(preferences, 'log')).toMatchObject({ group: 'ungrouped', visible: false })
       expect(keys(preferences.standaloneItems.value)).toContain('mastery')
-      if (version !== 1) expect(keys(preferences.standaloneItems.value)).toEqual(['mastery'])
+      if (version !== 1)
+        expect(keys(preferences.standaloneItems.value)).toEqual(['mastery', sanityShortcut])
     }
   )
 
@@ -825,7 +897,10 @@ describe('sidebar preferences', () => {
       )
     })
     expect(preferences.state.value.groups).toEqual([])
-    expect(preferences.standaloneItems.value.map((item) => item.id)).toEqual(['log'])
+    expect(preferences.standaloneItems.value.map((item) => item.id)).toEqual([
+      'log',
+      sanityShortcut
+    ])
     expect(preferences.pinnedItems.value.map((item) => item.id)).toEqual(['log-pinned'])
   })
 })
@@ -923,7 +998,8 @@ describe('server sidebar preferences', () => {
     await preferences.flush()
     expect(preferences.state.value.groups).toEqual([])
     expect(preferences.pinnedItems.value.map((item) => item.id)).toEqual(['saved-log'])
-    expect(preferences.state.value.placements).toHaveLength(2)
+    expect(keys(preferences.standaloneItems.value)).toEqual([sanityShortcut])
+    expect(preferences.state.value.placements).toHaveLength(3)
     expect(transport.put).toHaveBeenCalledWith(
       expect.any(String),
       { sidebar: snapshot(preferences) },

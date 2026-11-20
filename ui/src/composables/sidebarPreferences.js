@@ -1,6 +1,11 @@
 import { computed, readonly, ref } from 'vue'
 import axios from 'axios'
-import { navigationSections, settingsShortcuts, sidebarNavigationItems } from '@/navigation'
+import {
+  defaultSidebarShortcuts,
+  navigationSections,
+  settingsShortcuts,
+  sidebarNavigationItems
+} from '@/navigation'
 import { useConfigStore } from '@/stores/config'
 
 export const SIDEBAR_STORAGE_KEY = 'mower.sidebar-preferences.v1'
@@ -12,6 +17,7 @@ const fixedItemKeys = new Set(
 const editableItems = sidebarNavigationItems.filter((item) => !item.footer)
 const editableKeys = new Set(editableItems.map((item) => item.key))
 const shortcutKeys = new Set(settingsShortcuts({}).map((item) => item.key))
+const defaultKnownKeys = [...editableKeys, ...defaultSidebarShortcuts.map((item) => item.key)]
 const MAX_PLACEMENTS = (editableKeys.size + shortcutKeys.size) * (MAX_GROUPS + 2)
 
 const defaultGroups = navigationSections
@@ -27,6 +33,9 @@ const defaultPlacements = navigationSections.flatMap((section) =>
       visible: true,
       pinned: false
     }))
+)
+defaultPlacements.push(
+  ...defaultSidebarShortcuts.map((item) => ({ ...item, visible: true, pinned: false }))
 )
 defaultPlacements.push({ key: 'chat', group: 'footer', visible: true, pinned: false })
 defaultPlacements.sort(
@@ -44,7 +53,7 @@ function newKey(prefix) {
 function defaults() {
   return {
     version: 3,
-    knownKeys: [...editableKeys],
+    knownKeys: [...defaultKnownKeys],
     groups: defaultGroups.map((group) => ({ ...group })),
     placements: defaultPlacements.map((item) => ({ ...item, id: item.key }))
   }
@@ -117,11 +126,13 @@ function normalize(saved) {
       : logPlacements.length === 1
         ? logPlacements[0].group
         : 'ungrouped'
-    const precedingKeys = defaultPlacements
-      .slice(0, defaultPlacements.indexOf(item))
-      .filter((entry) => entry.group === item.group)
-      .map((entry) => entry.key)
-      .reverse()
+    const precedingKeys = shortcutKeys.has(item.key)
+      ? []
+      : defaultPlacements
+          .slice(0, defaultPlacements.indexOf(item))
+          .filter((entry) => entry.group === item.group)
+          .map((entry) => entry.key)
+          .reverse()
     const previous = precedingKeys
       .map((key) =>
         placements.findIndex((entry) => entry.key === key && entry.group === group && !entry.pinned)
@@ -137,7 +148,7 @@ function normalize(saved) {
     placedKeys.add(item.key)
     placedIds.add(id)
   }
-  return { version: 3, knownKeys: [...editableKeys], groups, placements }
+  return { version: 3, knownKeys: [...defaultKnownKeys], groups, placements }
 }
 
 function browserStorage() {

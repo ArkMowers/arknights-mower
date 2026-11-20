@@ -20,6 +20,7 @@ import Recycle from '@vicons/tabler/es/Recycle'
 import PlugConnected20Regular from '@vicons/fluent/es/PlugConnected20Regular'
 import { settingsEditors, settingsShortcutPrefix } from './task-workflow/model'
 import MowerAIIcon from './components/MowerAIIcon.vue'
+import SanityIcon from './components/SanityIcon.vue'
 
 // Entries carry either `to` (a registered route path) or `href` (an external https URL).
 // `tab` sets an entry or section's mobile tab order under its `shortLabel`.
@@ -142,9 +143,12 @@ export const sidebarNavigationItems = [
 
 const settingsShortcutIcons = {
   device: PlugConnected20Regular,
-  'stage-plan': FlashOutline,
-  long: TimeOutline
+  'stage-plan': SanityIcon
 }
+
+export const defaultSidebarShortcuts = [
+  { key: `${settingsShortcutPrefix}stage-plan`, group: 'daily' }
+]
 
 export function settingsShortcuts(config) {
   return settingsEditors(config).map(({ id, title, searchKeywords }) => {

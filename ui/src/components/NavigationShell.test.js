@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import AppSidebar from './AppSidebar.vue'
 import MowerAIIcon from './MowerAIIcon.vue'
 import MobileTabBar from './MobileTabBar.vue'
+import SanityIcon from './SanityIcon.vue'
 import {
   mobileTabItems,
   mobileTabs,
@@ -93,9 +94,10 @@ const isActive = (tag) => /\bclass="[^"]*\bis-active\b/.test(tag)
 const moreButton = (html) =>
   html.match(/<button\b[^>]*\bclass="[^"]*\bmobile-tab-bar__more\b[^"]*"[^>]*>/)[0]
 const internalPaths = sidebarNavigationItems.filter((item) => item.to).map((item) => item.to)
+const sanityPath = '/settings#settings-stage-plan'
 
 it.each([
-  ['sidebar', AppSidebar, internalPaths],
+  ['sidebar', AppSidebar, [...internalPaths, sanityPath]],
   ['mobile tabs', MobileTabBar, mobileTabs.filter((item) => !item.items).map((item) => item.to)],
   [
     'mobile report picker',
@@ -121,11 +123,13 @@ it.each([
     await render(component, {}, '/?token=session-token&window_shell=1', openTab)
   )
   const internal = rendered.filter((link) => !/^https?:/.test(link.href))
-  expect(
-    internal.map((link) => new URL(link.href, 'http://localhost').pathname).toSorted()
-  ).toEqual(paths.toSorted())
-  for (const link of internal) {
-    const destination = new URL(link.href.replaceAll('&amp;', '&'), 'http://localhost')
+  const destinations = internal.map(
+    (link) => new URL(link.href.replaceAll('&amp;', '&'), 'http://localhost')
+  )
+  expect(destinations.map(({ pathname, hash }) => `${pathname}${hash}`).toSorted()).toEqual(
+    paths.toSorted()
+  )
+  for (const destination of destinations) {
     expect(destination.searchParams.get('token')).toBe('session-token')
     expect(destination.searchParams.get('window_shell')).toBe('1')
   }
@@ -141,18 +145,33 @@ function iconBodies(html) {
 }
 
 describe('[INV-UI-04] AppSidebar', () => {
-  it('renders one link per navigation entry', async () => {
+  it('renders one link per default sidebar entry', async () => {
     const html = await render(AppSidebar)
     expect(
       links(html)
         .map((link) => link.href)
         .toSorted()
     ).toEqual(
-      sidebarNavigationItems
-        .filter((item) => item.to || item.href)
-        .map((item) => item.to ?? item.href)
-        .toSorted()
+      [
+        ...internalPaths,
+        ...sidebarNavigationItems.flatMap((item) => item.href || []),
+        sanityPath
+      ].toSorted()
     )
+  })
+
+  it('renders the sanity icon and marks the settings shortcut for its fragment', async () => {
+    const html = await render(AppSidebar, {}, sanityPath)
+    const shortcut = html.match(
+      /<a\b[^>]*href="\/settings#settings-stage-plan"[^>]*>[\s\S]*?<\/a>/
+    )?.[0]
+    expect(shortcut).toContain('aria-current="location"')
+    expect(shortcut).toContain('刷理智')
+    expect(shortcut).toContain(await renderToString(createSSRApp(SanityIcon)))
+    expect(shortcut).toContain('mask:url(')
+    expect(shortcut).toContain('fill="currentColor"')
+    expect(shortcut).not.toContain('<image')
+    expect(html).not.toContain('空闲长任务')
   })
 
   it('starts with logs and all settings and keeps only the assistant in the footer', async () => {

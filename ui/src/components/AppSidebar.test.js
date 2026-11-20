@@ -70,8 +70,8 @@ afterEach(() => {
   for (const app of mounted.splice(0)) app.unmount()
 })
 
-async function render(props = {}, addingGroup = null, dragKey = null) {
-  const router = createRouter({
+function createSidebarRouter() {
+  return createRouter({
     history: createMemoryHistory(),
     routes: navigationItems
       .filter((item) => item.to)
@@ -80,6 +80,10 @@ async function render(props = {}, addingGroup = null, dragKey = null) {
         component: { render: () => null }
       }))
   })
+}
+
+async function render(props = {}, addingGroup = null, dragKey = null) {
+  const router = createSidebarRouter()
   await router.push('/')
   const component =
     addingGroup || dragKey
@@ -145,6 +149,8 @@ describe('自定义侧边栏', () => {
       expect(body).toContain(`aria-label="管理${item.label}"`)
     }
     expect(body).toContain('aria-label="管理全部设置"')
+    expect(body).toContain('href="/settings#settings-stage-plan"')
+    expect(body).toContain('aria-label="管理刷理智"')
     expect(mobile).not.toContain('data-sidebar-item="rescue-plan"')
     expect(mobile).not.toContain('data-sidebar-item="mower-settings"')
     expect(body).toContain('aria-label="管理常用分组"')
@@ -195,13 +201,15 @@ describe('自定义侧边栏', () => {
     expect(collapseTag(expanded, 'reports')).toContain('aria-hidden="true"')
     expect(expanded).toContain('href="/record/line"')
     const rail = await render({ collapsed: true })
+    const router = createSidebarRouter()
     expect(rail).toMatch(/id="[^"]+-reports"[^>]*aria-expanded="true"/)
     for (const section of preferences.visibleSections.value) {
       expect(collapseTag(rail, section.key)).not.toContain('display:none;')
       expect(collapseTag(rail, section.key)).not.toContain(' inert')
       expect(collapseTag(rail, section.key)).not.toContain('aria-hidden="true"')
       for (const item of section.items) {
-        expect(rail).toContain(`href="${item.to ?? item.href}"`)
+        const href = item.to ? router.resolve(item.to).href : item.href
+        expect(rail).toContain(`href="${href}"`)
       }
     }
     expect(rail).not.toMatch(/\sdraggable="true"/)

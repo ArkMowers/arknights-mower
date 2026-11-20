@@ -4,6 +4,7 @@ import {
   mobileTabs,
   navigationItems,
   navigationSections,
+  settingsShortcuts,
   sidebarNavigationItems
 } from './navigation'
 import { routes } from './routes'
@@ -66,6 +67,12 @@ describe('[INV-UI-04] Single Navigation Definition', () => {
     expect(settings.icon).toBe(SettingsOutline)
     expect(settings.shortLabel).toBe('设置')
     expect(mobileTabs.some((item) => item.key === 'mower-settings')).toBe(false)
+  })
+
+  it('uses the general settings icon for the idle long task shortcut', () => {
+    expect(settingsShortcuts({}).find((item) => item.key === 'settings-long').icon).toBe(
+      SettingsOutline
+    )
   })
 
   it('opens external entries over canonical https URLs only', () => {
