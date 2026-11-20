@@ -13,7 +13,7 @@ from arknights_mower.tests.automatic_rescue_tests import offline as offline
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
 from arknights_mower.tests.run_order_restoration_tests import prepare_order
-from arknights_mower.utils import resting_priority
+from arknights_mower.utils import operation_timing, resting_priority
 from arknights_mower.utils.dorm_candidates import retained_task_reservations
 from arknights_mower.utils.operators import Operator
 from arknights_mower.utils.recognize import Scene
@@ -95,6 +95,39 @@ def test_consecutive_orders_replace_each_dorm_occupant_before_insertion(orders):
     assert second.plan == {}
     assert not hasattr(first, "run_order_original_roster")
     assert not hasattr(second, "run_order_original_roster")
+
+
+@pytest.mark.parametrize(
+    "elapsed,expected_rooms",
+    [
+        (0, [DORM, TRADE, TRADE]),
+        (70, [TRADE, TRADE]),
+        (120, [TRADE, TRADE]),
+        (181, [TRADE, TRADE]),
+    ],
+)
+def test_timed_order_checks_dorm_budget_before_entering(
+    orders, monkeypatch, elapsed, expected_rooms
+):
+    solver, task, _, events = orders
+    task.adjusted = False
+    task.time = NOW - timedelta(seconds=elapsed)
+    monkeypatch.delitem(operation_timing._dorm_durations, (DORM, False), raising=False)
+    monkeypatch.delitem(operation_timing._work_durations, TRADE, raising=False)
+    base_schedule.config.conf.run_order_delay = 3
+    base_schedule.config.conf.run_order_grandet_mode.buffer_time = 8
+    solver.get_order_remaining_time.side_effect = [30, 5]
+
+    solver.agent_arrange(task.plan)
+
+    assert [room for room, _ in events] == expected_rooms
+    solver.accept_order.assert_called_once()
+    assert solver.op_data.get_current_room(TRADE, True) == [COVERS[0], COVERS[1]]
+    assert not hasattr(task, "run_order_dorm_slots")
+    assert not hasattr(task, "run_order_dorm_plan")
+    if DORM not in expected_rooms:
+        assert all(call.args[0] != DORM for call in solver.enter_room.call_args_list)
+        assert not solver.op_data.get_current_room(DORM, True)[2]
 
 
 @pytest.mark.parametrize(
@@ -235,6 +268,9 @@ def test_saved_source_bed_is_filled_even_if_departing_operator_is_already_idle(o
     )
     assert solver.op_data.operators["但书"].current_room == ""
 
+    first.adjusted = False
+    first.time = NOW - timedelta(minutes=10)
+    solver.get_order_remaining_time.side_effect = [30, 5]
     solver.agent_arrange(first.plan)
 
     assert events[0] == (DORM, ["冰酿", "闪灵", "红", "龙舌兰", COVERS[2]])
