@@ -132,8 +132,8 @@ it.each([0, 12])('shows the configured level farming limit of %i matches', async
 
 it('shows the former daily windows for all seven days until the first weekly edit', async () => {
   const html = await renderLongTasks(true, {
-    maa_rg_sleep_max: '8:00',
-    maa_rg_sleep_min: '12:00',
+    maa_rg_sleep_max: '08:05',
+    maa_rg_sleep_min: '11:00',
     maa_long_task_extra_windows: [{ start: '22:00', end: '2:00' }]
   })
   expect(html).toContain('第1段开始时间')
@@ -145,10 +145,15 @@ it('shows the former daily windows for all seven days until the first weekly edi
   expect(html).toContain('✓')
 
   state.days['第1段周日'].onToggle()
+  expect(store.maa_long_task_weekly_windows[0]).toEqual({
+    start: '08:05',
+    end: '11:00',
+    weekdays: [0, 1, 2, 3, 4, 5]
+  })
   state.pickers['第2段停止时间']('3:00')
 
   expect(store.maa_long_task_weekly_windows).toEqual([
-    { start: '8:00', end: '12:00', weekdays: [0, 1, 2, 3, 4, 5] },
+    { start: '08:05', end: '11:00', weekdays: [0, 1, 2, 3, 4, 5] },
     { start: '22:00', end: '3:00', weekdays: [0, 1, 2, 3, 4, 5, 6] }
   ])
 })

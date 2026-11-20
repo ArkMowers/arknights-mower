@@ -10,12 +10,16 @@ ONE_DAY = timedelta(days=1)
 ONE_WEEK = timedelta(days=7)
 
 
+def parse_long_task_clock(value):
+    return datetime.strptime(value, "%H:%M").time()
+
+
 @lru_cache(maxsize=64)
 def _merged_windows(pairs):
     intervals = []
     for start, end, weekdays in pairs:
         try:
-            times = [datetime.strptime(value, "%H:%M") for value in (start, end)]
+            times = [parse_long_task_clock(value) for value in (start, end)]
         except (ValueError, TypeError):
             continue
         start, end = (t.hour * 60 + t.minute for t in times)
