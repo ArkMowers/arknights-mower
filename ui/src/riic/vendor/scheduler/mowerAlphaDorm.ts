@@ -1,3 +1,4 @@
+import {isTradeRunOrderOperator} from '../domain/shiftRunPolicy'
 import {mowerDormCapacityAllows} from './mowerDormCapacity'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
 import {MowerShiftPreviewError} from './mowerNativeErrors'
@@ -12,9 +13,15 @@ import {projectMowerArrangements} from './mowerObservations'
 import {MOWER_TASK_TYPES as T,type MowerTask,type MowerTaskPlan} from './mowerTaskQueue'
 
 export const alphaPosition=(room:string,index:number)=>room+'\0'+index
+export function alphaTradeDormEntryBlocked(data:MowerSchedulingData,name:string,cardMood?:number):boolean {
+ const op=data.operators[name]
+ if(!isTradeRunOrderOperator(op?.nativeName??name)||op?.isResting())return false
+ const mood=cardMood??mowerDormCandidateMood(data,name)
+ return mood!==undefined&&mood>=(op?.upperLimit??24)*80/100
+}
 export function alphaRestingTier(data:MowerSchedulingData,name:string,referencedReplacements?:ReadonlySet<string>):number{
  const op=data.operators[name]
- if(data.freeBlacklist.includes(name)||op?.workaholic)return 7
+ if(data.freeBlacklist.includes(name)||op?.workaholic||alphaTradeDormEntryBlocked(data,name))return 7
  if(alphaFullDynamicCandidate(data,name))return 6
  if(data.restingPriorityNames.includes(name))return 0
  if(data.standbyNames.includes(name))return 4

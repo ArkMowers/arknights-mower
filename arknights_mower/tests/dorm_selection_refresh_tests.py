@@ -282,3 +282,21 @@ def test_recovery_preparation_observes_candidates_with_tier_appropriate_confirma
     else:
         instance.tap_confirm.assert_not_called()
     instance.back.assert_not_called()
+
+
+def test_planned_trade_operator_replaced_when_selection_card_crosses_entry_limit(
+    solver, monkeypatch
+):
+    instance, selected = solver
+    cached_idle(instance, monkeypatch)
+    data = instance.op_data
+    data.add(Operator("但书", "", mood=2, time_stamp=datetime.now()))
+    plan = instance.task.plan[ROOM]
+    instance.preserve_resting_crafters(plan, ROOM)
+    assert plan[-1] == "但书"
+    first_page(instance, monkeypatch, {"但书": 21, "陈": 10})
+
+    instance.choose_agent(plan, ROOM)
+
+    assert plan == selected and plan[-1] == "陈"
+    assert data.dorm_mood_estimates["但书"][0] == 21

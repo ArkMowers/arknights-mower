@@ -149,3 +149,28 @@ def test_candidate_snapshot_preserves_calculated_mood_and_projection_clock(
     )
     assert data.operators["年"].mood == 6
     assert data.operators["年"].time_stamp == observed
+
+
+@pytest.mark.parametrize("name", ["但书", "龙舌兰", "佩佩", "可露希尔"])
+def test_runner_mood_gate_applies_to_new_entries_and_not_current_residents(
+    op_data, name
+):
+    data = op_data
+    now = datetime.now()
+    data.dorm_mood_estimates[name] = (24, now)
+    assert name not in candidates.dorm_candidates(data, now=now).filling
+    data.add(Operator(name, "", mood=20, time_stamp=now))
+    data.config.resting_priority_replacement.append(name)
+    assert name not in candidates.dorm_candidates(data, now=now).filling
+
+    data.operators[name].current_room = "dormitory_1"
+    result = candidates.dorm_candidates(data, current_residents={name}, now=now)
+    assert name in result.recovering
+    assert name not in data.config.free_blacklist
+    data.config.free_blacklist.append(name)
+    assert (
+        name
+        not in candidates.dorm_candidates(
+            data, current_residents={name}, now=now
+        ).filling
+    )

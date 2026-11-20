@@ -7,6 +7,25 @@ from itertools import zip_longest
 from arknights_mower.data import agent_list
 
 
+def trade_order_dorm_entry_blocked(
+    op_data, name, now=None, *, card_mood=None, require_known=False
+):
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+    from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
+
+    if name not in TRADE_ORDER_AGENTS:
+        return False
+    op = op_data.operators.get(name)
+    if op is not None and op.is_resting():
+        return False
+    mood = (
+        card_mood if card_mood is not None else dorm_candidate_mood(op_data, name, now)
+    )
+    if mood is None:
+        return require_known
+    return mood >= getattr(op, "upper_limit", 24) * 80 / 100
+
+
 def unregistered_idle_candidates(op_data, excluded=()):
     """沿用 Free 选人的全名单兜底，实际持有者由游戏选人页确认。"""
     excluded = (
@@ -40,7 +59,11 @@ def _replacement_tier(op_data, name):
 
 def resting_tier(op_data, name, now=None, *, replacement_names=None):
     op = op_data.operators.get(name)
-    if name in op_data.config.free_blacklist or (op is not None and op.workaholic):
+    if (
+        name in op_data.config.free_blacklist
+        or (op is not None and op.workaholic)
+        or trade_order_dorm_entry_blocked(op_data, name, now)
+    ):
         return RestingTier.EXCLUDED
     if is_full_dynamic_candidate(op_data, name, now):
         return RestingTier.IDLE

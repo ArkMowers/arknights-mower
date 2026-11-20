@@ -13,6 +13,7 @@ from arknights_mower.utils.resting_priority import (
     resting_key,
     resting_mood,
     resting_tier,
+    trade_order_dorm_entry_blocked,
     unregistered_idle_candidates,
 )
 
@@ -478,7 +479,7 @@ def dorm_candidates(
             or op.current_room
             and not (name in current_residents and op.current_room.startswith("dorm"))
             or op_data.rest_mood_complete(name)
-            or resting_tier(op_data, name, replacement_names=replacement_names)
+            or resting_tier(op_data, name, now, replacement_names=replacement_names)
             == RestingTier.EXCLUDED
         ):
             continue
@@ -506,7 +507,11 @@ def dorm_candidates(
         op_data, recovering, replacement_names=replacement_names
     )
 
-    unknown.extend(unregistered_idle_candidates(op_data, excluded))
+    unknown.extend(
+        name
+        for name in unregistered_idle_candidates(op_data, excluded)
+        if not trade_order_dorm_entry_blocked(op_data, name, now)
+    )
 
     def estimate_key(name):
         if name not in estimate_keys:

@@ -179,6 +179,7 @@ from arknights_mower.utils.resting_priority import (
     resting_key,
     resting_mood,
     resting_tier,
+    trade_order_dorm_entry_blocked,
 )
 from arknights_mower.utils.run_order_network import (
     bind_run_order_network,
@@ -16213,6 +16214,11 @@ class BaseSchedulerSolver(
                 row[index] = "Free"
         return observed
 
+    def _allow_dorm_filler_mood(self, name, mood):
+        return not trade_order_dorm_entry_blocked(
+            self.op_data, name, card_mood=mood, require_known=True
+        )
+
     def _check_workshop_selection_mood(self, name, mood):
         """选择加工干员前复用当前卡片，低心情取消换入，未知沿用入站实读。"""
         from arknights_mower.utils.workshop_automation import workshop_task_snapshot
@@ -16275,13 +16281,8 @@ class BaseSchedulerSolver(
             self._check_group_shift_targets(agents, room, reason="选人前恢复原任务目标")
         fallback_selected = []
         padding_selected = []
-        # Free 已尝试满心情和未登记空闲者兜底，明确留空的位置不参与选人。
-        if "" in agents:
-            fast_mode = False
-            agents = [item for item in agents if item != ""]
-        agent = copy.deepcopy(agents)
         task = getattr(self, "task", None)
-        workshop_mood_check = (
+        selection_mood_check = (
             self._check_workshop_selection_mood
             if room == "factory"
             and task is not None
@@ -16291,6 +16292,43 @@ class BaseSchedulerSolver(
             and task.meta_data in agents
             else None
         )
+        if (
+            room.startswith("dorm")
+            and not preserve_dorm_occupants
+            and not recovery_padding
+            and getattr(task, "type", None) != TaskTypes.FIAMMETTA
+        ):
+            new_runners = {
+                name
+                for index, name in enumerate(agents)
+                if name in TRADE_ORDER_AGENTS
+                and not getattr(
+                    self.op_data.operators.get(name), "current_room", ""
+                ).startswith("dorm")
+                and self.op_data.is_dynamic_dorm_position(room, index, name)
+            }
+            if new_runners:
+
+                def check_dorm_entry(name, mood):
+                    if name not in new_runners or self._allow_dorm_filler_mood(
+                        name, mood
+                    ):
+                        return
+                    if mood is not None:
+                        observed_at = datetime.now()
+                        self.op_data.dorm_mood_estimates[name] = (mood, observed_at)
+                        if self.op_data.mood_calculation_enabled:
+                            self.op_data.mood_model.observe(name, mood, observed_at)
+                    raise AgentSelectionNotReady(
+                        f"{name} 的心情不符合跑单干员入住条件，重新选择宿舍补位"
+                    )
+
+                selection_mood_check = check_dorm_entry
+        # Free 已尝试满心情和未登记空闲者兜底，明确留空的位置不参与选人。
+        if "" in agents:
+            fast_mode = False
+            agents = [item for item in agents if item != ""]
+        agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
             current_room = self.op_data.get_current_room(room, True)
@@ -16396,7 +16434,7 @@ class BaseSchedulerSolver(
                 changed, ret = self.scan_agent(
                     agent,
                     full_scan=last_special_filter == "ALL",
-                    mood_check=workshop_mood_check,
+                    mood_check=selection_mood_check,
                     mood_estimates=self.op_data.dorm_mood_estimates
                     if is_dorm and preserve_dorm_occupants
                     else None,
@@ -16435,7 +16473,7 @@ class BaseSchedulerSolver(
                             changed, ret = self.scan_agent(
                                 agent,
                                 full_scan=last_special_filter == "ALL",
-                                mood_check=workshop_mood_check,
+                                mood_check=selection_mood_check,
                             )
                             if changed:
                                 selected.extend(changed)
@@ -16499,7 +16537,7 @@ class BaseSchedulerSolver(
                 agent,
                 full_scan=last_special_filter == "ALL",
                 observation=observation,
-                mood_check=workshop_mood_check,
+                mood_check=selection_mood_check,
                 mood_estimates=self.op_data.dorm_mood_estimates
                 if is_dorm and preserve_dorm_occupants
                 else None,
@@ -16570,6 +16608,7 @@ class BaseSchedulerSolver(
                     observation=observation,
                     mood_estimates=estimates,
                     require_full_mood=True,
+                    mood_check=self._allow_dorm_filler_mood,
                 )
                 padding_selected.extend(chosen)
                 selected.extend(chosen)
@@ -16640,6 +16679,14 @@ class BaseSchedulerSolver(
             screening = bool(
                 mood_fallback and estimates is not None and len(retainable) >= free_num
             )
+            rejected = set()
+
+            def allow_free_card(name, mood):
+                if self._allow_dorm_filler_mood(name, mood):
+                    return True
+                rejected.add(name)
+                return False
+
             observation = None
             previous_page = None
             while free_num:
@@ -16650,7 +16697,8 @@ class BaseSchedulerSolver(
                     free_list = [
                         name
                         for name in free_list
-                        if self.op_data.dorm_capacity_allows(
+                        if name not in rejected
+                        and self.op_data.dorm_capacity_allows(
                             name,
                             bed_position,
                             plan=capacity_plan,
@@ -16703,6 +16751,7 @@ class BaseSchedulerSolver(
                     observation=observation,
                     mood_estimates=estimates,
                     skip_full_mood=screening,
+                    mood_check=allow_free_card if is_dorm else None,
                 )
                 observation = None
                 if screening and not selected_name:
@@ -16747,7 +16796,7 @@ class BaseSchedulerSolver(
                     selected_name.remove(selected_name[0])
                 if free_num == 0:
                     break
-                elif changed:
+                elif changed or rejected.intersection(candidates):
                     right_swipe = self.swipe_left(right_swipe, last_special_filter)
                 else:
                     if right_swipe >= max_swipe:

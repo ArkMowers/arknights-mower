@@ -7,7 +7,7 @@ import {mowerDormIsolationCost,planMowerDormIsolation} from './mowerDormIsolatio
 // Shared dorm candidates and observed-card estimates, Mower alpha b2d9ac8 (MIT).
 import {orderMowerAlphaDormIndices} from './mowerDormOrder'
 import {hasRestingMood,type MowerOperatorState} from './mowerOperatorState'
-import {alphaRestingTier,alphaFullDynamicCandidate,alphaFullDormFiller,alphaBedTakeoverAllowed,alphaRestingKey,compareAlphaKeys,alphaPosition,alphaSlotTakable,alphaPrioritizeRecovery} from './mowerAlphaDorm'
+import {alphaTradeDormEntryBlocked,alphaRestingTier,alphaFullDynamicCandidate,alphaFullDormFiller,alphaBedTakeoverAllowed,alphaRestingKey,compareAlphaKeys,alphaPosition,alphaSlotTakable,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue} from './mowerTaskQueue'
 import {simplifyMowerAlphaDormFill} from './mowerAlphaTaskProtection'
@@ -26,7 +26,7 @@ export function mowerAlphaDormCandidates(data:MowerSchedulingData,excluded=new S
   else if(!data.idleRestChecked(op.name)&&mood!==undefined&&mood<op.upperLimit)recovering.push(op.name)
   else if(!op.isHigh()&&!op.restMoodLimit)full.push(op.name)
  }
- unknown.push(...data.unregisteredIdleNames.filter(n=>!data.operators[n]&&!excluded.has(n)&&!data.freeBlacklist.includes(n)&&!data.busyRestingNames.has(n)))
+ unknown.push(...data.unregisteredIdleNames.filter(n=>!data.operators[n]&&!alphaTradeDormEntryBlocked(data,n)&&!excluded.has(n)&&!data.freeBlacklist.includes(n)&&!data.busyRestingNames.has(n)))
  const estimates=new Map<string,[number,number]>(),recoveryKeys=new Map<string,[number,number,number]>()
  const estimateKey=(name:string):[number,number]=>{let key=estimates.get(name);if(!key){key=[mowerDormCandidateMood(data,name)??24,tier(name)];estimates.set(name,key)}return key}
  const recoveryKey=(name:string):[number,number,number]=>{let key=recoveryKeys.get(name);if(!key){key=alphaRestingKey(data,name,tier(name));recoveryKeys.set(name,key)}return key}

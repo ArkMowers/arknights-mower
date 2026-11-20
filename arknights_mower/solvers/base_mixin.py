@@ -1068,8 +1068,8 @@ class BaseMixin:
             if name not in eligible:
                 continue
             mood = estimate_agent_mood(self.recog.img, scope)
-            if mood_check is not None:
-                mood_check(name, mood)
+            if mood_check is not None and mood_check(name, mood) is False:
+                eligible.discard(name)
             if mood is None:
                 estimates.pop(name, None)
                 if require_full:
