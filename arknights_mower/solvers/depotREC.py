@@ -33,6 +33,7 @@ from ..utils.resource_pkg import resource_pkg_path, resource_ui_path
 
 _DEPOT_ITEM_ROWS = (144, 430, 715)
 _DEPOT_PAGE_ROWS = slice(140, 990)
+_DEPOT_LABEL_EDGE_MARGIN = 32
 
 
 def 导入_数字模板():
@@ -487,11 +488,16 @@ class depotREC(SceneGraphSolver):
         if len(peaks) > 8:
             raise _DepotScanIncomplete
         candidates = [800 - peak[scores[peak].argmax()] for peak in peaks]
-        width = after.shape[1]
+        # 屏幕边缘的固定背景会改变标签圆角附近的亮度。
+        margin = _DEPOT_LABEL_EDGE_MARGIN
+        right = after.shape[1] - margin
         matched = [
             candidate
             for candidate in candidates
-            if _same_depot_labels(before[:, candidate:], after[:, : width - candidate])
+            if _same_depot_labels(
+                before[:, candidate + margin : right],
+                after[:, margin : right - candidate],
+            )
         ]
         if len(matched) != 1 or matched[0] == 0:
             raise _DepotScanIncomplete

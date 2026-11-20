@@ -237,6 +237,21 @@ def replay_consumable_pages(frame, captures):
     return pages, swipes
 
 
+def test_depot_paging_ignores_fixed_background_at_the_edge_of_the_overlap():
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    shifted = frame.copy()
+    shifted[140:990] = np.roll(frame[140:990], -341, axis=1)
+    shifted[140:990, :32] = frame[140:990, :32]
+
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, 341]
+    assert swipes == [702, 234, -702, -702, -234]
+
+
 @pytest.mark.parametrize("retry_distance", [0, 107])
 def test_stationary_consumables_with_background_change_still_check_the_next_page(
     retry_distance,
