@@ -289,7 +289,12 @@ def test_single_consumable_with_background_change_confirms_the_boundary():
 
 
 def repeated_stack_pages(
-    label_y, background_change, distinct_columns, *, template_change=False
+    label_y,
+    background_change,
+    distinct_columns,
+    *,
+    template_change=False,
+    edge_label=False,
 ):
     image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
     cell = np.full((1080, 234, 3), 255, dtype=np.uint8)
@@ -298,7 +303,16 @@ def repeated_stack_pages(
         image[165:388, 79:294], cv2.COLOR_BGR2RGB
     )
     label_background = (45, 45, 45) if label_y == 356 else (163, 199, 119)
-    cv2.rectangle(cell, (150, label_y - 26), (207, label_y + 5), label_background, -1)
+    label_left, label_right, digit_right = (
+        (0, 31, 24) if edge_label else (150, 207, 198)
+    )
+    cv2.rectangle(
+        cell,
+        (label_left, label_y - 26),
+        (label_right, label_y + 5),
+        label_background,
+        -1,
+    )
     shelf = np.tile(cell, (1, 10, 1))
     templates = FIXTURES.parent.parent / "resources" / "depot_num"
     digits = {
@@ -308,7 +322,7 @@ def repeated_stack_pages(
     for column in range(10):
         digit = digits[8 if column in distinct_columns else 6]
         height, width = digit.shape
-        right = column * 234 + 198
+        right = column * 234 + digit_right
         area = shelf[label_y - height : label_y, right - width : right]
         np.maximum(area, digit[:, :, None], out=area)
     frame = shelf[:, :1920].copy()
@@ -359,6 +373,15 @@ def test_repeated_icons_without_a_unique_displacement_stop_the_scan(template_cha
 
     with pytest.raises(module._DepotScanIncomplete):
         replay_consumable_pages(frame, [frame, frame, frame, shifted, shifted, shifted])
+
+
+def test_repeated_icons_preserve_edge_label_evidence_against_wrong_displacement():
+    frame, shifted = repeated_stack_pages(412, False, (1,), edge_label=True)
+    # 真实位移为 234 像素，这块变化让 702 像素成为唯一的高分候选。
+    shifted[440:520, 880:970] = 140
+
+    with pytest.raises(module._DepotScanIncomplete):
+        replay_consumable_pages(frame, [frame, frame, shifted, shifted, shifted])
 
 
 @pytest.mark.parametrize("appearing", [False, True])

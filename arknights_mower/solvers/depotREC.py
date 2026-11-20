@@ -127,14 +127,23 @@ def _same_depot_icon_positions(before, after):
     return matched
 
 
-def _same_depot_labels(before, after):
+def _same_depot_labels(before, after, *, edge_margin=0):
     def label_bands(frame):
         return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
 
     def strokes(labels):
         # 提取数量和有效期的浅色笔画，滤掉大面积背景亮度变化。
         contrast = cv2.morphologyEx(labels, cv2.MORPH_TOPHAT, np.ones((7, 7), np.uint8))
-        return cv2.inRange(labels, 195, 255) & cv2.inRange(contrast, 40, 255)
+        mask = cv2.inRange(labels, 195, 255) & cv2.inRange(contrast, 40, 255)
+        if edge_margin:
+            # 边缘只保留横向也有局部反差的笔画，过滤连成片的亮背景。
+            horizontal = cv2.morphologyEx(
+                labels, cv2.MORPH_TOPHAT, np.ones((1, 9), np.uint8)
+            )
+            edges = cv2.inRange(horizontal, 40, 255)
+            mask[:, :edge_margin] &= edges[:, :edge_margin]
+            mask[:, -edge_margin:] &= edges[:, -edge_margin:]
+        return mask
 
     first = label_bands(before)
     second = label_bands(after)
@@ -488,15 +497,14 @@ class depotREC(SceneGraphSolver):
         if len(peaks) > 8:
             raise _DepotScanIncomplete
         candidates = [800 - peak[scores[peak].argmax()] for peak in peaks]
-        # 屏幕边缘的固定背景会改变标签圆角附近的亮度。
-        margin = _DEPOT_LABEL_EDGE_MARGIN
-        right = after.shape[1] - margin
+        width = after.shape[1]
         matched = [
             candidate
             for candidate in candidates
             if _same_depot_labels(
-                before[:, candidate + margin : right],
-                after[:, margin : right - candidate],
+                before[:, candidate:],
+                after[:, : width - candidate],
+                edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
             )
         ]
         if len(matched) != 1 or matched[0] == 0:
