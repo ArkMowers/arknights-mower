@@ -1127,14 +1127,7 @@ class EmergencyRecoveryMixin:
             if getattr(task, "emergency_staffing", False)
             and not getattr(task, "emergency_recovery_release", False)
         ]
-        reserved, positions = retained_task_reservations(data, self.tasks)
-        plan = {
-            room: [
-                "Current" if (room, index) in positions or name in reserved else name
-                for index, name in enumerate(row)
-            ]
-            for room, row in rescue_plan_for(data, state["rescue_plan"]).items()
-        }
+        plan = rescue_plan_for(data, state["rescue_plan"])
         self._suppress_train_arrangement(plan)
         if (room_state := getattr(self, "train_room_state", None)) is not None:
             self._emergency_protect_training(plan, room_state)
@@ -1147,23 +1140,39 @@ class EmergencyRecoveryMixin:
             self._emergency_reconcile_staffing()
             if state.get("staffing_complete"):
                 return True
-        pending = {}
+        reserved, positions = retained_task_reservations(data, self.tasks)
+        pending, outstanding = {}, {}
         for room, names in plan.items():
-            if all(name == "Current" for name in names):
-                continue
             current = data.get_current_room(room, True)
-            if current is not None and all(
-                name == "Current" or index < len(current) and current[index] == name
+            allowed = [
+                "Current" if (room, index) in positions or name in reserved else name
                 for index, name in enumerate(names)
-            ):
-                self._emergency_sync_compensation({room: names})
-                continue
-            pending[room] = list(names)
+            ]
+            expected = allowed if state["takeover_complete"] else names
+            for target, rooms in ((expected, outstanding), (allowed, pending)):
+                if any(
+                    name != "Current"
+                    and (
+                        current is None
+                        or index >= len(current)
+                        or current[index] != name
+                    )
+                    for index, name in enumerate(target)
+                ):
+                    rooms[room] = list(target)
+            if room not in pending:
+                self._emergency_sync_compensation({room: allowed})
+        for queued in retained_staffing:
+            for room, row in queued.plan.items():
+                target = outstanding.setdefault(room, ["Current"] * len(row))
+                for index, name in enumerate(row):
+                    if name != "Current":
+                        target[index] = name
+        state["staffing_plan"] = outstanding
         if not pending:
-            if retained_staffing:
+            if outstanding or retained_staffing:
                 state["staffing_complete"] = False
                 return True
-            self._emergency_sync_compensation(plan)
             state["staffing_complete"] = True
             state["takeover_complete"] = True
             state["staffing_plan"] = {}
@@ -1174,14 +1183,6 @@ class EmergencyRecoveryMixin:
             for name in row:
                 if name not in ("", "Current") and name not in data.operators:
                     data.add(Operator(name, ""))
-        summary = copy.deepcopy(pending)
-        for queued in retained_staffing:
-            for room, row in queued.plan.items():
-                target = summary.setdefault(room, ["Current"] * len(row))
-                for index, name in enumerate(row):
-                    if name != "Current":
-                        target[index] = name
-        state["staffing_plan"] = summary
         state["staffing_members"] = list(state["targets"])
         temporary = state.setdefault("temporary_roster", {})
         for room in plan:
@@ -1489,6 +1490,56 @@ class EmergencyRecoveryMixin:
             candidates, key=lambda name: (data.operators[name].current_mood(), name)
         )
 
+    def _emergency_supersede_coordination(self, queued):
+        """救急替代首次提交前失效的替班方案，保留原用尽请求供交接实读后复核。"""
+        supports = [
+            task
+            for task in queued
+            if self._unsubmitted_coordination(task)
+            and not getattr(task, "backup_group_request", None)
+            and not getattr(task, "arrangement_retry_room", None)
+        ]
+        if not supports:
+            return set()
+        superseded = {id(task) for task in supports}
+        requests = {
+            frozenset(task.coordination_request_names)
+            for task in supports
+            if not getattr(task, "ordinary_coordination", False)
+            and getattr(task, "coordination_request_names", ())
+        }
+        state = self.emergency_state
+        for task in queued:
+            if (
+                task.type == TaskTypes.EXHAUST_OFF
+                and not task.plan
+                and not getattr(task, "ordinary_coordination", False)
+                and frozenset(getattr(task, "coordination_request_names", ()))
+                in requests
+                and not getattr(task, "backup_group_request", None)
+                and not getattr(task, "urgent_recovery_reserved_names", ())
+                and not getattr(task, "urgent_recovery_reserved_slots", ())
+            ):
+                state.setdefault("deferred_exhaust_requests", []).append(task)
+                superseded.add(id(task))
+        if state["phase"] != "returning":
+            # 旧批次可能只核对过未被预约遮住的工作岗位。
+            state.update(
+                phase="staffing",
+                staffing_complete=False,
+                takeover_complete=False,
+                staffing_plan=copy.deepcopy(state["rescue_plan"]),
+            )
+            state.pop("dorm_replan_plan", None)
+            state["dorm_replan_pending"] = True
+            superseded.update(
+                id(task)
+                for task in queued
+                if getattr(task, "emergency_dorm", False)
+                and not self._emergency_preserves_task(task)
+            )
+        return superseded
+
     def _emergency_filter_tasks(self, *, initial=False):
         """两个队列统一作废旧状态派生的普通排班，交接后由正常规划重建。"""
         if not self._emergency_frozen():
@@ -1506,7 +1557,12 @@ class EmergencyRecoveryMixin:
             )
         }
 
+        waiting = getattr(self, "waiting_group_shifts", [])
+        superseded = self._emergency_supersede_coordination([*self.tasks, *waiting])
+
         def keep(task):
+            if id(task) in superseded:
+                return False
             if self._emergency_preserves_task(task):
                 return True
             return (
@@ -1563,7 +1619,6 @@ class EmergencyRecoveryMixin:
             )
 
         self.tasks[:] = [task for task in self.tasks if keep(task)]
-        waiting = getattr(self, "waiting_group_shifts", [])
         waiting[:] = [task for task in waiting if keep(task)]
 
     def _emergency_reconcile_staffing(self):
@@ -1677,7 +1732,9 @@ class EmergencyRecoveryMixin:
                 for task in self.tasks
                 if getattr(task, "emergency_staffing", False)
             ]
-            if not pending or task_view(pending, TaskScope.DISPATCH, self.op_data):
+            if task_view(pending, TaskScope.DISPATCH, self.op_data) or (
+                not pending and not state.get("staffing_plan")
+            ):
                 return
         self.plan_metadata()
         protect_priority_tasks(self.tasks, op_data=getattr(self, "op_data", None))
@@ -2440,6 +2497,17 @@ class EmergencyRecoveryMixin:
             self._emergency_save()
             return False
         self.op_data.commit_group_shifts(transitions)
+        for request in state.get("deferred_exhaust_requests", ()):
+            if any(
+                (op := self.op_data.operators.get(name)) is not None
+                and op.is_working()
+                and op.exhaust_require
+                and exhaust_rest_due(self.op_data, op, (), datetime.now())
+                for name in request.coordination_request_names
+            ):
+                # 读回仍需用尽下班时，原请求按原时间重新寻找替班。
+                request.__dict__.pop("execution_failure", None)
+                self.tasks.append(request)
         self.emergency_state = None
         self._prune_rescue_staffing_logs()
         self.tasks[:] = [

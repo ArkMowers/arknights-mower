@@ -2613,10 +2613,10 @@ class BaseSchedulerSolver(
         }
         return True
 
-    def _refresh_coordination_support(self, task):
-        refresh_unsubmitted = (
-            getattr(task, "coordination_commit_pending", False)
-            and not getattr(task, "execution_failure", None)
+    def _unsubmitted_coordination(self, task):
+        return (
+            getattr(task, "exhaust_support", False)
+            and getattr(task, "coordination_commit_pending", False)
             and not self._coordination_commit_started(task)
             and not any(
                 getattr(task, flag, False)
@@ -2628,8 +2628,14 @@ class BaseSchedulerSolver(
                 )
             )
         )
+
+    def _refresh_coordination_support(self, task):
+        refresh_unsubmitted = self._unsubmitted_coordination(task) and not getattr(
+            task, "execution_failure", None
+        )
         if (
             not getattr(task, "exhaust_support", False)
+            or self._coordination_commit_started(task)
             or getattr(task, "coordination_commit_pending", False)
             and not refresh_unsubmitted
             or getattr(task, "backup_shift_active", False)
@@ -19495,6 +19501,12 @@ class BaseSchedulerSolver(
             elif (
                 not getattr(self.task, "emergency_staffing", False)
                 and any(not room.startswith("dorm") for room in plan)
+                and not (
+                    self.task.type == TaskTypes.SELF_CORRECTION
+                    and getattr(self.task, "exhaust_support", False)
+                    and self._coordination_commit_started(self.task)
+                    and plan == self.task.plan
+                )
                 and self.task.type
                 not in (
                     TaskTypes.WORKSHOP,

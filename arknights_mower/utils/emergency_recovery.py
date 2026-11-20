@@ -547,6 +547,8 @@ def emergency_dorm_plan(
         and (not scheduling_mood_reaches(data, name, target))
         for name, target in targets.items()
     )
+    # 等待主班离岗期间，已离岗者仍可入宿，余床按实际住客增量补位。
+    reallocate = reallocate and not waiting_primary
     if members is None and not waiting_primary:
         candidates = dorm_candidates(
             data, reserved | set(targets) | ready, current_residents=residents

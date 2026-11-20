@@ -399,3 +399,173 @@ def test_live_source_training_check_keeps_residents_and_dispatches_other_work(
     for _ in range(3):
         solver._emergency_schedule_staffing()
         assert not solver.tasks
+
+
+@pytest.mark.parametrize("restored", [False, True])
+def test_rescue_takes_over_unsubmitted_exhaust_handoff_and_fills_beds(
+    staffing, restored
+):
+    solver, state = staffing.solver, staffing.state
+    request = SchedulerTask(
+        NOW - timedelta(hours=8), task_type=TaskTypes.EXHAUST_OFF, meta_data=PRIMARY[2]
+    )
+    request.coordination_request_names = [PRIMARY[2]]
+    solver.op_data.operators[PRIMARY[2]].exhaust_require = True
+    support = SchedulerTask(
+        request.time,
+        task_plan={
+            "dormitory_1": ["Current", "Current", PRIMARY[0], "Current", "Current"]
+        },
+        task_type=TaskTypes.SELF_CORRECTION,
+    )
+    support.exhaust_support = support.coordination_commit_pending = True
+    support.group_shift_expected = {("dormitory_1", 2): PRIMARY[0]}
+    support.coordination_request_names = [PRIMARY[2]]
+    solver.tasks = [request, support]
+    solver._retain_failed_task(
+        request, "等待替班交接完成", support.plan, dependency=True
+    )
+    solver._retain_failed_task(
+        support, "进房心情未达到本轮回班要求", support.plan, dependency=True
+    )
+    if restored:
+        state["phase"] = "recovering"
+        state["staffing_complete"] = state["takeover_complete"] = True
+        stale = SchedulerTask(
+            task_type=TaskTypes.FILL_DORM,
+            task_plan={"dormitory_1": ["Current", "Current", "", "", ""]},
+        )
+        stale.emergency_dorm = True
+        solver.tasks.append(stale)
+        state["dorm_replan_plan"] = copy.deepcopy(stale.plan)
+        solver.emergency_state, solver.tasks = pickle.loads(
+            pickle.dumps((state, solver.tasks))
+        )
+        state = solver.emergency_state
+    for _ in range(2):
+        solver._emergency_tick()
+    task = takeover(solver)
+    assert task.plan == state["rescue_plan"]
+    assert len(solver.tasks) == 1
+    assert [t.time for t in state["deferred_exhaust_requests"]] == [request.time]
+    assert "dorm_replan_plan" not in state
+    staffing.place(task.plan)
+    solver.tasks.remove(task)
+    assert solver._emergency_reconcile_staffing()
+    solver._emergency_sync_reservations()
+    solver._open_emergency_beds()
+    solver._emergency_plan_beds(state)
+    filled = solver.op_data.project_arrangements([solver.tasks[0].plan])
+    assert all(filled.operators[name].is_resting() for name in PRIMARY)
+
+
+def test_rescue_reallocation_keeps_occupied_beds_until_workers_can_leave(staffing):
+    solver, state = staffing.solver, staffing.state
+    data = solver.op_data
+    resident = COVERS[0]
+    solver.op_data = data.project_arrangements(
+        [{"dormitory_1": ["塑心", "冰酿", resident, "", ""]}]
+    )
+    state["dorm_replan_pending"] = True
+    solver._emergency_plan_beds(state)
+    projected = solver.op_data.project_arrangements(
+        [task.plan for task in solver.tasks]
+    )
+    assert projected.get_current_operator("dormitory_1", 2).name == resident
+
+
+def test_started_handoff_keeps_its_slots_and_rescue_finishes_after_release(staffing):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    solver, state = staffing.solver, staffing.state
+    room = solver.op_data.operators[PRIMARY[0]].room
+    support = SchedulerTask(
+        NOW - timedelta(hours=2),
+        task_plan={room: [PRIMARY[0]]},
+        task_type=TaskTypes.SELF_CORRECTION,
+    )
+    support.exhaust_support = support.coordination_commit_pending = True
+    support.coordination_request_names = [PRIMARY[2]]
+    support.mood_physical_started = True
+    solver.tasks.append(support)
+    solver._retain_failed_task(support, "进房失败", [room])
+    solver._emergency_tick()
+    partial = takeover(solver)
+    assert room not in partial.plan
+    staffing.place(partial.plan)
+    solver.tasks.remove(partial)
+    for _ in range(2):
+        assert not solver._emergency_reconcile_staffing()
+        solver._emergency_schedule_staffing()
+        assert not state["takeover_complete"]
+        assert solver.tasks == [support]
+    # 岗位观测变化后通过原换人入口完成剩余交接。
+    solver.task = support
+    solver.back_to_infrastructure = MagicMock()
+    solver._finish_idle_dorm_shift = MagicMock()
+
+    def arrange(new_plan, room, plan, **kwargs):
+        staffing.place({room: plan.pop(room)})
+        return new_plan
+
+    solver.agent_arrange_room = MagicMock(side_effect=arrange)
+    support.mood_physical_started = False
+    with pytest.raises(RuntimeError, match="救急期间暂停普通工作站换班"):
+        BaseSchedulerSolver.agent_arrange(solver, support.plan)
+    solver.agent_arrange_room.assert_not_called()
+    support.mood_physical_started = True
+    solver._resume_failed_tasks()
+    assert not getattr(support, "execution_failure", None)
+    solver.agent_arrange = BaseSchedulerSolver.agent_arrange.__get__(solver)
+    solver.backup_plan_solver = BaseSchedulerSolver.backup_plan_solver.__get__(solver)
+    solver.find = MagicMock(return_value=True)
+    solver.skip = MagicMock()
+    solver._emergency_tick = MagicMock()
+    solver.refresh_connecting = True
+    solver.infra_main()
+    solver.agent_arrange_room.assert_called_once()
+    assert not support.plan
+    assert support not in solver.tasks
+    solver._emergency_schedule_staffing()
+    remainder = takeover(solver)
+    assert remainder.plan == {
+        solver.op_data.operators[name].room: [cover]
+        for name, cover in zip(PRIMARY[:2], COVERS[:2])
+    }
+    staffing.place(remainder.plan)
+    solver.tasks.remove(remainder)
+    assert solver._emergency_reconcile_staffing()
+    assert state["takeover_complete"]
+
+
+@pytest.mark.parametrize("mood,still_due", [(0, True), (24, False)])
+def test_confirmed_normal_handoff_rechecks_original_exhaust_request(
+    staffing, mood, still_due
+):
+    solver, state = staffing.solver, staffing.state
+    name = PRIMARY[0]
+    request = SchedulerTask(
+        NOW - timedelta(hours=8), task_type=TaskTypes.EXHAUST_OFF, meta_data=name
+    )
+    request.coordination_request_names = [name]
+    solver._retain_failed_task(request, "等待已排定的替班交接", [], dependency=True)
+    state["deferred_exhaust_requests"] = [request]
+    solver.emergency_state = pickle.loads(pickle.dumps(state))
+    request = solver.emergency_state["deferred_exhaust_requests"][0]
+    op = solver.op_data.operators[name]
+    op.exhaust_require = True
+    op.mood, op.time_stamp = mood, NOW
+    solver._emergency_read_rooms = MagicMock(side_effect=[False, True])
+    solver._emergency_defer_read = MagicMock()
+    solver._emergency_ready = MagicMock(return_value=True)
+    solver._emergency_handoff_feasible = MagicMock(return_value=True)
+    solver.agent_get_mood = MagicMock(return_value={})
+    solver.plan_metadata = MagicMock()
+    assert not solver._emergency_finish_handoff()
+    assert request not in solver.tasks
+    assert solver._emergency_finish_handoff()
+    assert solver.emergency_state is None
+    assert (request in solver.tasks) is still_due
+    if still_due:
+        assert not getattr(request, "execution_failure", None)
+        assert request.time == NOW - timedelta(hours=8)
