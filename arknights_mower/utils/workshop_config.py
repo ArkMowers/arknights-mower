@@ -5,6 +5,7 @@ from threading import RLock
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RIICPart
+from arknights_mower.utils.long_task_windows import parse_long_task_clock
 from arknights_mower.utils.path import get_path
 
 workshop_lock = RLock()
@@ -104,7 +105,14 @@ def read_user_config():
         warning = initialize_manual_settings(conf)
         # Loading a settings page must not persist migrations. The save path
         # initializes the same manual state before applying an explicit edit.
-        return {**conf.model_dump(), **workshop_state(conf, warning)}
+        data = conf.model_dump()
+        if conf.maa_long_task_weekly_windows is None:
+            for field in ("maa_rg_sleep_max", "maa_rg_sleep_min"):
+                try:
+                    data[field] = parse_long_task_clock(data[field]).strftime("%H:%M")
+                except ValueError:
+                    continue
+        return {**data, **workshop_state(conf, warning)}
 
 
 def _edit_manual(conf, req):
@@ -198,6 +206,7 @@ def save_user_config(req):
                 "maa_rg_sleep_max",
                 "maa_rg_sleep_min",
                 "maa_long_task_extra_windows",
+                "maa_long_task_weekly_windows",
             )
         )
         if long_windows_changed or previous_maintenance_policy != (

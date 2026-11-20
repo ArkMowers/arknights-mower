@@ -144,6 +144,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_mall_only_buy_discount = ref(false)
   const maa_mall_reserve_max_credit = ref(false)
   const maa_long_task_extra_windows = ref([])
+  const maa_long_task_weekly_windows = ref(null)
   const maa_rg_sleep_min = ref('00:00')
   const maa_rg_sleep_max = ref('00:00')
   const maa_credit_fight = ref(true)
@@ -629,6 +630,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_only_buy_discount.value = false
       maa_mall_reserve_max_credit.value = false
       maa_long_task_extra_windows.value = response.data.maa_long_task_extra_windows ?? []
+      maa_long_task_weekly_windows.value = response.data.maa_long_task_weekly_windows ?? null
       maa_rg_sleep_max.value = response.data.maa_rg_sleep_max
       maa_rg_sleep_min.value = response.data.maa_rg_sleep_min
       maa_credit_fight.value = response.data.maa_credit_fight
@@ -866,6 +868,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_mall_only_buy_discount: false,
       maa_mall_reserve_max_credit: false,
       maa_long_task_extra_windows: maa_long_task_extra_windows.value,
+      maa_long_task_weekly_windows: maa_long_task_weekly_windows.value,
       maa_rg_sleep_max: maa_rg_sleep_max.value,
       maa_rg_sleep_min: maa_rg_sleep_min.value,
       maa_credit_fight: maa_credit_fight.value,
@@ -1285,6 +1288,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_mall_only_buy_discount,
     maa_mall_reserve_max_credit,
     maa_long_task_extra_windows,
+    maa_long_task_weekly_windows,
     maa_rg_sleep_min,
     maa_rg_sleep_max,
     maa_credit_fight,

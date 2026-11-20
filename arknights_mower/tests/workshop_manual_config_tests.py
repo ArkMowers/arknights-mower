@@ -220,6 +220,40 @@ def test_edited_backup_is_persisted_across_restart(next_skill, tmp_path, monkeyp
     assert config.conf.workshop_manual_backup == config.conf.workshop_settings
 
 
+@pytest.mark.parametrize("legacy_start", ["8:5", "\u0668:\u0665"])
+def test_conf_read_preserves_legacy_long_task_times_for_weekly_editor(
+    next_skill, monkeypatch, legacy_start
+):
+    import server
+
+    monkeypatch.setattr(server.app, "token", "long-task-instance", raising=False)
+    manager = MagicMock()
+    manager.get_active_plan_key.return_value = "默认"
+    get_manager = MagicMock(return_value=manager)
+    monkeypatch.setattr(
+        "arknights_mower.utils.config.weekly_plan_loader.get_weekly_plan_manager",
+        get_manager,
+    )
+    save = MagicMock()
+    monkeypatch.setattr(config, "save_conf", save)
+    conf = config.conf.updated(
+        {"maa_rg_sleep_max": legacy_start, "maa_rg_sleep_min": "11:0"}
+    )
+    monkeypatch.setattr(config, "conf", conf)
+
+    client = server.app.test_client()
+    for headers in ({}, {"token": "wrong"}):
+        assert client.get("/conf", headers=headers).status_code == 403
+    get_manager.assert_not_called()
+    response = client.get("/conf", headers={"token": "long-task-instance"})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert (data["maa_rg_sleep_max"], data["maa_rg_sleep_min"]) == ("08:05", "11:00")
+    assert data["maa_long_task_weekly_windows"] is None
+    assert (conf.maa_rg_sleep_max, conf.maa_rg_sleep_min) == (legacy_start, "11:0")
+    save.assert_not_called()
+
+
 @pytest.mark.parametrize("method", ["POST", "PATCH"])
 def test_maa_growth_setting_uses_current_token_and_wakes_running_scheduler(
     next_skill, monkeypatch, method

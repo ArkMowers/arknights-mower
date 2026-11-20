@@ -3,11 +3,14 @@ defineProps({ showEnable: { type: Boolean, default: true } })
 import { computed, inject, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
+import { WEEKDAYS } from '@/utils/maa_weekly_plan'
+import WeeklyPlanDayCell from './WeeklyPlanDayCell.vue'
 const config_store = useConfigStore()
 const {
   maa_rg_enable,
   maa_long_task_type,
   maa_long_task_extra_windows,
+  maa_long_task_weekly_windows,
   maa_rg_sleep_min,
   maa_rg_sleep_max,
   maa_rcl_theme,
@@ -19,28 +22,55 @@ const longTaskEnabled = computed({
   set: (value) => (maa_rg_enable.value = value)
 })
 
-const timeWindows = computed({
-  get: () => [
+const everyDay = WEEKDAYS.map((_, day) => day)
+const weekColumns = [6, 0, 1, 2, 3, 4, 5]
+const validTime = (value) => /^(?:[01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value)
+const timeWindows = computed(() => {
+  if (maa_long_task_weekly_windows.value !== null) return maa_long_task_weekly_windows.value
+  const daily = [
     { start: maa_rg_sleep_max.value, end: maa_rg_sleep_min.value },
     ...maa_long_task_extra_windows.value
-  ],
-  set: ([first, ...extra]) => {
-    maa_rg_sleep_max.value = first.start
-    maa_rg_sleep_min.value = first.end
-    maa_long_task_extra_windows.value = extra
-  }
+  ].filter(({ start, end }) => validTime(start) && validTime(end))
+  if (!daily.length) daily.push({ start: '0:00', end: '0:00' })
+  return daily.map((window) => ({ ...window, weekdays: everyDay.slice() }))
 })
 
-function addTimeWindow(index) {
-  return { ...timeWindows.value[Math.max(0, index - 1)] }
+function addTimeWindow() {
+  maa_long_task_weekly_windows.value = [
+    ...timeWindows.value,
+    { start: '8:00', end: '12:00', weekdays: [] }
+  ]
+}
+
+function removeTimeWindow(index) {
+  maa_long_task_weekly_windows.value = timeWindows.value.filter((_, i) => i !== index)
+}
+
+function updateWindow(index, update) {
+  maa_long_task_weekly_windows.value = timeWindows.value.map((window, i) =>
+    i === index ? { ...window, ...update } : window
+  )
 }
 
 function updateTimeWindow(index, field, value) {
-  if (value !== null) {
-    timeWindows.value = timeWindows.value.map((window, i) =>
-      i === index ? { ...window, [field]: value } : window
-    )
-  }
+  if (validTime(value)) updateWindow(index, { [field]: value })
+}
+
+function toggleWeekday(index, day) {
+  const days = timeWindows.value[index].weekdays
+  const checked = !days.includes(day)
+  updateWindow(index, {
+    weekdays: everyDay.filter((weekday) => (weekday === day ? checked : days.includes(weekday)))
+  })
+}
+
+function allDaysSelected(window) {
+  return everyDay.every((day) => window.weekdays.includes(day))
+}
+
+function clockMinute(time) {
+  const [hour, minute] = time.split(':').map(Number)
+  return hour * 60 + minute
 }
 
 const garrisonGoal = computed({
@@ -106,37 +136,90 @@ watch(
           aria-label="任务类型"
         />
       </n-form-item>
-      <div class="long-task-time-container">
-        <n-dynamic-input v-model:value="timeWindows" :min="1" :on-create="addTimeWindow">
-          <template #default="{ value, index }">
-            <div class="long-task-times">
-              <n-form-item label-placement="top">
-                <template #label>
-                  开始时间
-                  <help-text v-if="index === 0" label="大型任务时段说明">
-                    <div>
-                      每天在任一执行时段内运行。开始与停止时间相同表示全天开启，停止时间早于开始时间表示跨午夜。
-                    </div>
-                  </help-text>
-                </template>
-                <n-time-picker
-                  format="H:mm"
-                  :formatted-value="value.start"
-                  :aria-label="`第${index + 1}段开始时间`"
-                  @update:formatted-value="updateTimeWindow(index, 'start', $event)"
-                />
-              </n-form-item>
-              <n-form-item label="停止时间" label-placement="top">
-                <n-time-picker
-                  format="H:mm"
-                  :formatted-value="value.end"
-                  :aria-label="`第${index + 1}段停止时间`"
-                  @update:formatted-value="updateTimeWindow(index, 'end', $event)"
-                />
-              </n-form-item>
-            </div>
-          </template>
-        </n-dynamic-input>
+      <div class="long-task-weekly">
+        <div class="long-task-weekly-toolbar">
+          <span>
+            执行时段
+            <help-text label="大型任务时段说明">
+              按 Mower
+              运行机器的时间，午夜换日。重叠或相接的时段合并执行。起止时间相同表示当天全天，停止时间早于开始时间表示运行到次日。
+            </help-text>
+          </span>
+          <n-button size="small" aria-label="添加执行时段" @click="addTimeWindow">
+            添加执行时段
+          </n-button>
+        </div>
+        <div class="long-task-table-wrap">
+          <table class="long-task-table" aria-label="大型任务周计划">
+            <thead>
+              <tr>
+                <th scope="col" class="select-all-column">全选</th>
+                <th scope="col" class="time-column">时间段</th>
+                <th v-for="day in weekColumns" :key="day" scope="col">{{ WEEKDAYS[day] }}</th>
+                <th scope="col" class="window-action">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(window, index) in timeWindows" :key="index">
+                <td class="select-all-column">
+                  <n-checkbox
+                    :checked="allDaysSelected(window)"
+                    :indeterminate="window.weekdays.length > 0 && !allDaysSelected(window)"
+                    :aria-label="`第${index + 1}段全选`"
+                    @update:checked="
+                      updateWindow(index, { weekdays: $event ? everyDay.slice() : [] })
+                    "
+                  />
+                </td>
+                <td class="time-column">
+                  <div class="time-inputs">
+                    <n-time-picker
+                      size="small"
+                      format="H:mm"
+                      :formatted-value="window.start"
+                      :aria-label="`第${index + 1}段开始时间`"
+                      @update:formatted-value="updateTimeWindow(index, 'start', $event)"
+                    />
+                    <span>至</span>
+                    <n-time-picker
+                      size="small"
+                      format="H:mm"
+                      :formatted-value="window.end"
+                      :aria-label="`第${index + 1}段停止时间`"
+                      @update:formatted-value="updateTimeWindow(index, 'end', $event)"
+                    />
+                    <small v-if="clockMinute(window.end) === clockMinute(window.start)">全天</small>
+                    <small v-else-if="clockMinute(window.end) < clockMinute(window.start)"
+                      >次日</small
+                    >
+                  </div>
+                </td>
+                <WeeklyPlanDayCell
+                  v-for="day in weekColumns"
+                  :key="day"
+                  :selected="window.weekdays.includes(day)"
+                  :label="`第${index + 1}段${WEEKDAYS[day]}`"
+                  @toggle="toggleWeekday(index, day)"
+                >
+                  ✓
+                </WeeklyPlanDayCell>
+                <td class="window-action">
+                  <n-button
+                    type="error"
+                    size="small"
+                    :aria-label="`删除第${index + 1}段`"
+                    @click="removeTimeWindow(index)"
+                  >
+                    删除
+                  </n-button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <n-text v-if="!timeWindows.some((window) => window.weekdays.length)" depth="3">
+          未选执行时段，大型任务暂停自动执行。
+        </n-text>
       </div>
     </n-form>
     <template v-if="maa_long_task_type == 'rcl'">
@@ -278,39 +361,71 @@ watch(
   margin-bottom: 16px;
 }
 
-.long-task-time-container {
-  container: long-task-times / inline-size;
-}
-
-.long-task-times {
+.long-task-weekly {
   width: 100%;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
-}
-
-.long-task-setup .long-task-times :deep(.n-form-item) {
   min-width: 0;
-  margin: 0;
-  padding: 0;
-  grid-template-rows: 32px auto auto;
 }
 
-.long-task-times :deep(.n-form-item-label) {
-  min-height: 24px;
-  padding: 0 0 8px;
+.long-task-weekly-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.long-task-table-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.06),
+    0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.long-task-table {
+  width: 100%;
+  min-width: 700px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: center;
+}
+
+.long-task-table :is(th, td) {
+  padding: 0;
+  box-shadow: inset -1px -1px 0 rgba(0, 0, 0, 0.06);
+}
+
+.long-task-table th {
+  height: 40px;
+  font-weight: 600;
+}
+
+.select-all-column {
+  width: 44px;
+}
+
+.time-column {
+  width: 260px;
+  text-align: left;
+}
+
+.long-task-table .time-column {
+  padding: 0 8px;
+}
+
+.window-action {
+  width: 64px;
+}
+
+.time-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) 28px;
   align-items: center;
   gap: 6px;
 }
 
-.long-task-times :deep(.n-time-picker) {
-  width: 100%;
-  min-width: 0;
-}
-
-@container long-task-times (max-width: 440px) {
-  .long-task-times {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.time-inputs small {
+  white-space: nowrap;
 }
 </style>
