@@ -34,6 +34,7 @@ from ..utils.resource_pkg import resource_pkg_path, resource_ui_path
 _DEPOT_ITEM_ROWS = (144, 430, 715)
 _DEPOT_PAGE_ROWS = slice(140, 990)
 _DEPOT_LABEL_EDGE_MARGIN = 32
+_DEPOT_EDGE_MAX_STROKE_AREA = 512
 
 
 def 导入_数字模板():
@@ -134,15 +135,16 @@ def _same_depot_labels(before, after, *, edge_margin=0):
     def strokes(labels):
         # 提取数量和有效期的浅色笔画，滤掉大面积背景亮度变化。
         contrast = cv2.morphologyEx(labels, cv2.MORPH_TOPHAT, np.ones((7, 7), np.uint8))
-        mask = cv2.inRange(labels, 195, 255) & cv2.inRange(contrast, 40, 255)
+        bright = cv2.inRange(labels, 195, 255)
+        mask = bright & cv2.inRange(contrast, 40, 255)
         if edge_margin:
-            # 边缘只保留横向也有局部反差的笔画，过滤连成片的亮背景。
-            horizontal = cv2.morphologyEx(
-                labels, cv2.MORPH_TOPHAT, np.ones((1, 9), np.uint8)
-            )
-            edges = cv2.inRange(horizontal, 40, 255)
-            mask[:, :edge_margin] &= edges[:, :edge_margin]
-            mask[:, -edge_margin:] &= edges[:, -edge_margin:]
+            # 去除连到大片亮背景的边缘像素，保留面积较小的细长横笔。
+            _, components, stats, _ = cv2.connectedComponentsWithStats(bright)
+            small = (stats[:, cv2.CC_STAT_AREA] <= _DEPOT_EDGE_MAX_STROKE_AREA).astype(
+                np.uint8
+            ) * 255
+            for edge in (slice(0, edge_margin), slice(-edge_margin, None)):
+                mask[:, edge] &= small[components[:, edge]]
         return mask
 
     first = label_bands(before)

@@ -375,8 +375,18 @@ def test_repeated_icons_without_a_unique_displacement_stop_the_scan(template_cha
         replay_consumable_pages(frame, [frame, frame, frame, shifted, shifted, shifted])
 
 
-def test_repeated_icons_preserve_edge_label_evidence_against_wrong_displacement():
-    frame, shifted = repeated_stack_pages(412, False, (1,), edge_label=True)
+@pytest.mark.parametrize("label_fragment", ["digit", "horizontal-stroke"])
+def test_repeated_icons_preserve_edge_label_evidence_against_wrong_displacement(
+    label_fragment,
+):
+    distinct_columns = (1,) if label_fragment == "digit" else ()
+    frame, shifted = repeated_stack_pages(412, False, distinct_columns, edge_label=True)
+    if label_fragment == "horizontal-stroke":
+        for image in (frame, shifted):
+            for column in range(0, image.shape[1], 234):
+                image[386:418, column : column + 32] = (163, 199, 119)
+        frame[400:403, 238:259] = 255
+        shifted[400:403, 4:25] = 255
     # 真实位移为 234 像素，这块变化让 702 像素成为唯一的高分候选。
     shifted[440:520, 880:970] = 140
 
