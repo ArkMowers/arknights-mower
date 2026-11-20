@@ -65,6 +65,37 @@ def orders(solver, monkeypatch):
     return solver, first, second, events
 
 
+def test_ordinary_drone_order_moves_resting_operator_directly_to_trade(orders):
+    solver, task, _, events = orders
+    task.adjusted = False
+    base_schedule.config.conf.run_order_grandet_mode.enable = False
+    original_time = task.time
+
+    solver.agent_arrange(task.plan)
+
+    assert events == [(TRADE, ["但书", COVERS[1]]), ("order", [])]
+    assert task.run_order_restore_pending
+    solver.agent_arrange(task.plan)
+
+    assert events[2:] == [(TRADE, [COVERS[0], COVERS[1]])]
+    assert all(call.args[0] != DORM for call in solver.enter_room.call_args_list)
+    assert solver.op_data.get_current_room(DORM, True) == [
+        "冰酿",
+        "闪灵",
+        "",
+        "龙舌兰",
+        COVERS[2],
+    ]
+    assert task.time == original_time
+    assert task.plan == {}
+    solver.tasks.remove(task)
+    try_add_release_dorm({}, None, solver.op_data, solver.tasks)
+    assert any(
+        DORM in remaining.plan and remaining.plan[DORM][2] not in ("", "Current")
+        for remaining in solver.tasks
+    )
+
+
 def test_consecutive_orders_replace_each_dorm_occupant_before_insertion(orders):
     solver, first, second, events = orders
     original_times = first.time, second.time
@@ -262,7 +293,10 @@ def test_new_occupant_observation_does_not_evict_unrelated_resident(orders):
     assert solver.op_data.get_current_room(DORM, True)[2] == "红"
 
 
-def test_saved_source_bed_is_filled_even_if_departing_operator_is_already_idle(orders):
+@pytest.mark.parametrize("grandet_enabled", [True, False])
+def test_saved_source_bed_is_filled_even_if_departing_operator_is_already_idle(
+    orders, grandet_enabled
+):
     solver, first, _, events = orders
     first.run_order_dorm_slots = {DORM: {2}}
     solver.op_data = solver.op_data.project_arrangements(
@@ -272,6 +306,7 @@ def test_saved_source_bed_is_filled_even_if_departing_operator_is_already_idle(o
 
     first.adjusted = False
     first.time = NOW - timedelta(minutes=10)
+    base_schedule.config.conf.run_order_grandet_mode.enable = grandet_enabled
     solver.get_order_remaining_time.side_effect = [30, 5]
     solver.agent_arrange(first.plan)
 
