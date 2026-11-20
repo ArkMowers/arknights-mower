@@ -32,7 +32,7 @@ from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device import droidcast
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.adb_client.server import run_adb as guarded_run_adb
-from arknights_mower.utils.device.application import DeviceControl
+from arknights_mower.utils.device.application import DeviceControl, LegacyDeviceAdapter
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
@@ -493,6 +493,93 @@ class DroidCastTests(unittest.TestCase):
         self.assertEqual(self.control.start().error.code, "close_failed")
         self.assertEqual(self.android.processes[0].terminated, 1)
         self.assertEqual(self.http.closed, 1)
+
+    def fail_input_after_droidcast_start(self, failure):
+        self.assertTrue(self.control.close().ok)
+        self.control._adapter = LegacyDeviceAdapter()
+        self.conf.droidcast.enable = True
+        client = Mock(device_id="USB-A", adb_bin="chosen-adb")
+        device_module = "arknights_mower.utils.device.device"
+        connect = self.enterContext(
+            patch(f"{device_module}.ADBClient", return_value=client)
+        )
+        self.enterContext(patch.object(Device, "check_resolution", return_value=True))
+        self.enterContext(
+            patch.object(
+                Device,
+                "Control",
+                side_effect=[
+                    failure,
+                    self.input_control,
+                ],
+            )
+        )
+        self.enterContext(patch(f"{device_module}.atexit.register"))
+        self.android.remote[456] = "foreign-process"
+        return connect
+
+    def timeout_pidof(self, argv, **options):
+        if argv[3:5] == ["shell", "pidof"]:
+            raise subprocess.TimeoutExpired(argv, 10)
+        return self.android.run(argv, **options)
+
+    def test_startup_cleanup_timeout_recovers_before_opening_another_device(self):
+        connect = self.fail_input_after_droidcast_start(
+            ConnectionError("input helper unavailable")
+        )
+        with patch(f"{MODULE}.run_adb", self.timeout_pidof):
+            failed = self.control.start()
+            self.assertFalse(failed.ok)
+            self.assertIn("pidof", failed.error.message)
+            self.assertFalse(self.control.recover().ok)
+            self.assertFalse(self.control.close().ok)
+            self.assertFalse(self.control.start().ok)
+            connect.assert_called_once()
+            connect.return_value.close.assert_called_once()
+            self.assertEqual(self.http.closed, 1)
+
+        recovered = self.control.recover()
+        self.assertTrue(recovered.ok, recovered.error)
+        self.assertEqual(recovered.serial, "USB-A")
+        self.assertEqual(connect.call_count, 2)
+        self.assertEqual(
+            self.android.remote,
+            {456: "foreign-process", 102: recovered.value._droidcast.name},
+        )
+
+    def test_startup_cleanup_succeeding_on_first_retry_releases_failure(self):
+        connect = self.fail_input_after_droidcast_start(
+            ConnectionError("input helper unavailable")
+        )
+        timed_out = False
+
+        def fail_once(argv, **options):
+            nonlocal timed_out
+            if not timed_out and argv[3:5] == ["shell", "pidof"]:
+                timed_out = True
+                return self.timeout_pidof(argv, **options)
+            return self.android.run(argv, **options)
+
+        with patch(f"{MODULE}.run_adb", fail_once):
+            self.assertFalse(self.control.start().ok)
+        self.assertTrue(timed_out)
+        self.assertEqual(self.android.remote, {456: "foreign-process"})
+        self.assertTrue(self.control.recover().ok)
+        self.assertEqual(connect.call_count, 2)
+
+    def test_startup_cleanup_keeps_unowned_input_failure_after_droidcast_release(self):
+        cause = OSError("input helper still running")
+        cause.cleanup_failed = True
+        connect = self.fail_input_after_droidcast_start(
+            TouchFailure(self.conf.device, "linux", cause)
+        )
+        with patch(f"{MODULE}.run_adb", self.timeout_pidof):
+            self.assertFalse(self.control.start().ok)
+        recovered = self.control.recover()
+        self.assertFalse(recovered.ok)
+        self.assertIn("input helper still running", recovered.error.message)
+        self.assertEqual(self.android.remote, {456: "foreign-process"})
+        connect.assert_called_once()
 
     def test_offline_cleanup_recovery_releases_old_owners_before_new_start(self):
         self.assertTrue(self.control.capture().ok)

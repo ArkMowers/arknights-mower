@@ -42,6 +42,7 @@ from arknights_mower.utils.device.mumu_popup import (
 )
 from arknights_mower.utils.device.recovery import (
     DeviceRecoveryError,
+    DeviceStartupCleanupError,
     UIUnresponsiveError,
     recover_connection,
 )
@@ -292,7 +293,9 @@ class Device:
         self._adb_capture = None
         try:
             self.start(wait_for_device=wait_for_device)
-        except Exception:
+        except Exception as exc:
+            if self._pending_cleanup:
+                raise DeviceStartupCleanupError(self, exc) from exc
             self.close()
             raise
         # 进程退出时释放 adb 资源，避免退出后 DroidCast/scrcpy 等常驻连接藕断丝连
@@ -416,7 +419,14 @@ class Device:
                 if self.control is None:
                     self.control = Device.Control(self, self.client)
                 self._check_open()
-            except Exception:
+            except Exception as exc:
+                if (
+                    isinstance(exc, TouchFailure)
+                    and exc.cleanup_failed
+                    and self.control is None
+                ):
+                    # The failed control constructor never handed us its helper.
+                    self._unowned_cleanup_error = exc
                 self.close()
                 raise
 
