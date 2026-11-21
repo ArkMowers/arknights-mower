@@ -126,6 +126,28 @@ def test_overlapping_and_short_final_pages_count_each_grid_column_once(paged):
     assert paged.solver.匹配物品一次.call_count == 42
 
 
+def test_missing_columns_prevent_confirming_the_category(paged):
+    frame = paged.state.render()
+    paged.solver._category_frames = Mock(return_value=iter([(0, frame), (2500, frame)]))
+    paged.solver.匹配物品一次 = Mock(return_value=("应急理智顶液", 1))
+
+    with pytest.raises(module._DepotScanIncomplete):
+        paged.solver.分类扫描({})
+
+
+def test_seek_cannot_accept_movement_in_the_opposite_direction(paged):
+    def swipe(*_args, **_kwargs):
+        paged.state.offset = 1500
+        paged.solver.recog.img = paged.state.render()
+
+    paged.solver.swipe_noinertia.side_effect = swipe
+
+    with pytest.raises(module._DepotScanIncomplete):
+        list(paged.solver._category_frames())
+
+    paged.solver.swipe_noinertia.assert_called_once()
+
+
 def test_unmatched_page_movement_does_not_claim_complete_coverage(paged):
     paged.state.corrupt = True
     with pytest.raises(module._DepotScanIncomplete):
@@ -180,8 +202,7 @@ def test_recorded_category_highlight_precedes_absence_inference(filename, select
 
 def test_ambiguous_uniform_content_cannot_establish_movement():
     frame = np.full((1080, 1920, 3), 255, dtype=np.uint8)
-    with pytest.raises(module._DepotScanIncomplete):
-        module.depotREC._depot_scroll_distance(frame, frame)
+    assert module.depotREC._depot_motion(frame, frame, -1) == 0
 
 
 def test_recorded_right_boundary_ignores_small_rendering_changes(monkeypatch):
@@ -217,7 +238,7 @@ def test_recorded_content_movement_is_not_a_boundary(distance):
     shifted = frame.copy()
     shifted[140:950] = np.roll(frame[140:950], distance, axis=1)
 
-    assert not module.depotREC._same_depot_view(frame, shifted)
+    assert module.depotREC._depot_motion(frame, shifted, 1) != 0
 
 
 def replay_consumable_pages(frame, captures):
@@ -235,6 +256,19 @@ def replay_consumable_pages(frame, captures):
     pages = list(solver._category_frames())
     swipes = [call.args[1][0] for call in solver.swipe_noinertia.call_args_list]
     return pages, swipes
+
+
+def test_partial_stationary_votes_do_not_confirm_right_boundary():
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    source = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    frame = np.full_like(source, 255)
+    icon = source[165:316, 79:294]
+    for x in (781, 1015):
+        frame[165:316, x : x + icon.shape[1]] = icon
+    shifted = np.roll(frame, 234, axis=1)
+
+    with pytest.raises(module._DepotScanIncomplete):
+        replay_consumable_pages(frame, [frame, frame, shifted, shifted])
 
 
 def test_depot_paging_ignores_fixed_background_at_the_edge_of_the_overlap():
@@ -261,6 +295,31 @@ def shift_depot_frame(frame, distance):
         borderMode=cv2.BORDER_REPLICATE,
     )
     return shifted
+
+
+@pytest.mark.parametrize(
+    "filename,distance",
+    [
+        ("depot_consume_expiring_20261018.jpg", 341),
+        ("depot_basic_lmd_20261031.jpg", 340.625),
+    ],
+    ids=["whole-pixel", "fractional"],
+)
+def test_depot_paging_uses_other_icon_blocks_when_central_content_changes(
+    filename, distance
+):
+    image = cv2.imread(str(FIXTURES / filename))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    shifted = shift_depot_frame(frame, distance)
+    # Cover the central icons in the overlap while preserving their labels.
+    shifted[147:322, 559:1059] = 235
+
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, 341]
+    assert swipes == [702, 234, -702, -702, -234]
 
 
 @pytest.mark.parametrize(
@@ -442,21 +501,41 @@ def test_depot_paging_rejects_multiple_valid_fractional_displacements(monkeypatc
 
     monkeypatch.setattr(module, "_same_depot_labels", record_compare)
 
-    with pytest.raises(module._DepotScanIncomplete):
-        module.depotREC._depot_scroll_distance(frame, shifted)
+    assert module.depotREC._depot_motion(frame, shifted, -1) is None
 
     assert integer_results and not any(integer_results)
     assert sum(refined_results) >= 2
 
 
-def test_fractional_retry_rejects_wrong_repeated_peak_after_near_best_filtering():
+@pytest.mark.parametrize(
+    "exclude_true_peak", [False, True], ids=["retained", "filtered"]
+)
+def test_repeated_peak_cannot_override_the_true_displacement(
+    monkeypatch, exclude_true_peak
+):
     frame, _ = repeated_stack_pages(412, False, (1,), distinct_digit=5)
     shifted = shift_depot_frame(frame, 421.875)
     # The non-label change makes the 656-pixel peak outscore the real shift.
     shifted[211:261, 880:965] = 145
 
-    with pytest.raises(module._DepotScanIncomplete):
-        module.depotREC._depot_scroll_distance(frame, shifted)
+    if not exclude_true_peak:
+        assert module.depotREC._depot_motion(frame, shifted, -1) == 422
+        return
+
+    before, after = (
+        cv2.cvtColor(image[140:990], cv2.COLOR_RGB2GRAY) for image in (frame, shifted)
+    )
+    scores = cv2.matchTemplate(
+        after[:, 100:1400], before[:, 900:1400], cv2.TM_CCOEFF_NORMED
+    )[0]
+    # Keep the weaker peaks above the score floor but outside every block's vote.
+    for displacement in (188, 422):
+        position = 800 - displacement
+        scores[position - 8 : position + 9] -= 0.04
+    monkeypatch.setattr(
+        module, "_depot_scroll_block_scores", lambda *_: np.tile(scores, (3, 1))
+    )
+    assert module.depotREC._depot_motion(frame, shifted, -1) is None
 
 
 @pytest.mark.parametrize("label_fragment", ["digit", "horizontal-stroke"])
@@ -474,8 +553,9 @@ def test_repeated_icons_preserve_edge_label_evidence_against_wrong_displacement(
     # 真实位移为 234 像素，这块变化让 702 像素成为唯一的高分候选。
     shifted[440:520, 880:970] = 140
 
-    with pytest.raises(module._DepotScanIncomplete):
-        replay_consumable_pages(frame, [frame, frame, shifted, shifted, shifted])
+    pages, _ = replay_consumable_pages(frame, [frame, frame, shifted, shifted, shifted])
+
+    assert [offset for offset, _ in pages] == [0, 234]
 
 
 @pytest.mark.parametrize("appearing", [False, True])
@@ -486,7 +566,7 @@ def test_changed_visible_item_does_not_confirm_a_boundary(appearing):
     missing_item[168:375, 75:300] = 255
     before, after = (missing_item, frame) if appearing else (frame, missing_item)
 
-    assert not module.depotREC._same_depot_view(before, after)
+    assert module.depotREC._depot_motion(before, after, -1) is None
 
 
 def test_zero_scope_follows_installed_category_models_and_excludes_cloud_items(
