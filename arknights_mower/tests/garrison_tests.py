@@ -1287,7 +1287,61 @@ def test_terminated_team_reconnect_returns_to_lobby_without_personal_settlement(
         expected.append(result.find("返回主页").center)
     assert [call.args[0] for call in worker.click.call_args_list] == expected
     assert worker.progress == progress
-    worker.save.assert_not_called()
+    assert worker.save.call_count == 2
+
+
+@pytest.mark.parametrize("interrupt_at", ["reconnect", "return_home"])
+def test_interrupted_team_exit_resumes_without_counting_personal_match(
+    interrupt_at, income_db, monkeypatch
+):
+    conf = Conf(garrison={"mode": "matches", "match_limit": 3})
+    original = model.prepare_progress(conf, {})
+    original.update(match={"round": 5}, matches_played=2, attempts=2)
+    record.save_garrison_progress(original)
+    team, lobby = terminated_team_lobby(), frame("lobby")
+    texts = [Text("模拟结束", 800, 200, 200, 50), Text("返回主页", 1650, 930, 140, 45)]
+    result = Frame(None, texts, *classify(texts))
+    first = solver.GarrisonSolver(
+        Mock(), Mock(), record.load_garrison_progress(), record.save_garrison_progress
+    )
+    first.read_frame = Mock(return_value=result)
+
+    at_reconnect = {}
+
+    def interrupt(point):
+        if point == team.find("断线重连").center:
+            at_reconnect.update(record.load_garrison_progress())
+            if interrupt_at == "return_home":
+                return
+        raise solver.GarrisonYield
+
+    first.click = interrupt
+    with pytest.raises(solver.GarrisonYield):
+        first.start_or_resume(team)
+
+    restarted = solver.GarrisonSolver(
+        Mock(),
+        Mock(),
+        model.prepare_progress(conf, record.load_garrison_progress()),
+        record.save_garrison_progress,
+        match_limit=3,
+        vision=Mock(),
+    )
+    restarted.vision.frame.side_effect = [result, lobby]
+    restarted.sleep = Mock()
+    panel = Mock(side_effect=solver.GarrisonYield)
+    monkeypatch.setattr(solver.theme, "open_equipped", panel)
+    screenshot = Mock()
+    monkeypatch.setattr(solver, "save_screenshot_frame", screenshot)
+    try:
+        restarted.play(Mock(), restarted.enter())
+    except solver.GarrisonYield:
+        pass
+    assert record.load_garrison_progress() == original
+    assert at_reconnect == {**original, "team_exit_pending": True}
+    restarted.device.tap.assert_called_once_with(result.find("返回主页").center)
+    panel.assert_called_once_with(restarted, lobby)
+    screenshot.assert_not_called()
 
 
 def test_enter_leaves_terminated_team_before_checking_theme(monkeypatch):
@@ -1307,7 +1361,7 @@ def test_enter_leaves_terminated_team_before_checking_theme(monkeypatch):
         team.find("断线重连").center,
         (65, 58),
     ]
-    worker.save.assert_not_called()
+    assert worker.save.call_count == 2
 
 
 @pytest.mark.parametrize(
@@ -1330,7 +1384,8 @@ def test_team_reconnect_requires_confirmed_termination_and_clicks_once(
     with pytest.raises(model.GarrisonError):
         worker.start_or_resume(team)
     assert worker.click.call_count == int(alteration == "unchanged")
-    worker.save.assert_not_called()
+    assert worker.save.call_count == int(alteration == "unchanged")
+    assert bool(worker.progress.get("team_exit_pending")) == (alteration == "unchanged")
 
 
 @pytest.mark.parametrize("saved", [False, True])
