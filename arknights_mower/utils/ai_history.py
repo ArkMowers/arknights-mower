@@ -331,13 +331,35 @@ class HistoryStore:
             result["turns"] = [
                 dict(row)
                 for row in db.execute(
-                    "SELECT id,user,assistant,status,events,operations,mode,continuation,failure FROM turns WHERE conversation=? ORDER BY id",
+                    "SELECT id,user,assistant,status,events,mode,continuation,failure FROM turns WHERE conversation=? ORDER BY id",
                     (identifier,),
                 )
             ]
+            attachments = {}
+            for row in db.execute(
+                """
+                SELECT t.id AS turn_id, a.id,
+                       json_extract(a.payload, '$.name') AS name,
+                       json_extract(a.payload, '$.kind') AS kind,
+                       json_extract(a.payload, '$.truncated') AS truncated
+                FROM turns t
+                JOIN turn_attachments ta ON ta.turn_id = t.id
+                JOIN attachments a ON a.id = ta.attachment_id
+                WHERE t.conversation = ? AND a.profile = ? AND ta.direct = 1
+                ORDER BY t.id, a.created, a.id
+                """,
+                (identifier, self.profile_id),
+            ):
+                attachments.setdefault(row["turn_id"], []).append(
+                    {
+                        "id": row["id"],
+                        "name": row["name"],
+                        "kind": row["kind"],
+                        "truncated": bool(row["truncated"]),
+                    }
+                )
             for turn in result["turns"]:
                 turn["events"] = json.loads(turn["events"])
-                turn.pop("operations")
                 continuation = json.loads(turn.pop("continuation"))
                 turn["continued_from"] = continuation.get("from")
                 index = continuation.get("instruction_index")
@@ -345,10 +367,7 @@ class HistoryStore:
                     continuation["instructions"][index] if index is not None else ""
                 )
                 turn["failure"] = json.loads(turn["failure"])
-                turn["attachments"] = [
-                    {key: item[key] for key in ("id", "name", "kind", "truncated")}
-                    for item in self._attachments(db, turn["id"])
-                ]
+                turn["attachments"] = attachments.get(turn["id"], [])
             result["busy"] = self._key(identifier) in _active
             return result
 

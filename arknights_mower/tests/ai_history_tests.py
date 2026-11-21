@@ -58,6 +58,68 @@ def complete(store, user="hello", reply="world", identifier=None):
     return turn.conversation_id
 
 
+def test_long_conversation_reads_attachment_metadata_in_one_query(history, monkeypatch):
+    server, _, _, store = history
+    identifier = complete(store)
+    with store._db() as db:
+        db.executemany(
+            "INSERT INTO turns(conversation,user) VALUES(?,?)",
+            [(identifier, str(index)) for index in range(1, 100)],
+        )
+        last_turn = db.execute(
+            "SELECT MAX(id) FROM turns WHERE conversation=?", (identifier,)
+        ).fetchone()[0]
+        for file_id in ("b", "a", "context", "foreign"):
+            payload = json.dumps(
+                {
+                    "name": file_id,
+                    "kind": "text",
+                    "truncated": True,
+                    "content": "private",
+                }
+            )
+            db.execute(
+                "INSERT INTO attachments VALUES(?,?,?,?,1)",
+                (
+                    file_id,
+                    "other" if file_id == "foreign" else store.profile_id,
+                    payload,
+                    1.0,
+                ),
+            )
+            db.execute(
+                "INSERT INTO turn_attachments VALUES(?,?,?)",
+                (last_turn, file_id, file_id != "context"),
+            )
+
+    queries = []
+    connect = sqlite3.connect
+
+    def traced_connect(database, *args, **kwargs):
+        connection = connect(database, *args, **kwargs)
+        if database == store.path:
+            connection.set_trace_callback(queries.append)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", traced_connect)
+    response = server.app.test_client().get(
+        f"/ai/conversations/{identifier}", headers=headers()
+    )
+    assert response.status_code == 200
+    saved = response.json["turns"]
+    assert len(saved) == 100
+    assert all(turn["attachments"] == [] for turn in saved[:-1])
+    assert saved[-1]["attachments"] == [
+        {"id": name, "name": name, "kind": "text", "truncated": True}
+        for name in ("a", "b")
+    ]
+    selects = [
+        query for query in queries if query.lstrip().upper().startswith("SELECT")
+    ]
+    assert len(selects) <= 3
+    assert sum("turn_attachments" in query for query in selects) == 1
+
+
 def test_streamed_reply_survives_new_socket_and_store_without_replaying(
     history, monkeypatch
 ):
