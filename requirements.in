@@ -44,7 +44,6 @@ pytz==2024.1
 requests[socks]==2.34.2
 httpx[socks]==0.28.1
 beautifulsoup4==4.12.3
-lxml==5.2.2
 
 # 邮件模板
 Jinja2==3.1.6

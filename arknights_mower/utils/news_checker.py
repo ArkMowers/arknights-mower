@@ -214,7 +214,7 @@ class NewsChecker:
 
         from bs4 import BeautifulSoup
 
-        return BeautifulSoup(response.text, "lxml").get_text(" ", strip=True)
+        return BeautifulSoup(response.text, "html.parser").get_text(" ", strip=True)
 
     @classmethod
     def _parse_maintenance(cls, item, detail, now_server, local_tz):

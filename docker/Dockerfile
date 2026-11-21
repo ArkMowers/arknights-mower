@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.19
 FROM python:3.12-slim AS base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
@@ -50,10 +51,13 @@ FROM base AS runtime
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /app
 
-COPY --from=python-deps /opt/venv /opt/venv
+COPY --from=python-deps \
+    --exclude=**/rapidocr/models/PP-OCRv6_det_small.onnx \
+    --exclude=**/rapidocr/models/PP-OCRv6_rec_small.onnx \
+    /opt/venv /opt/venv
 COPY --from=ui-builder /app/ui/dist ui/dist
 
-COPY arknights_mower ./arknights_mower
+COPY --exclude=**/tests --exclude=**/__pycache__ arknights_mower ./arknights_mower
 COPY server.py webview_ui.py manager.py ./
 COPY requirements.txt requirements.in ./
 COPY docker/entrypoint.sh /usr/local/bin/mower-entrypoint.sh

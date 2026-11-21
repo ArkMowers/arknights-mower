@@ -16,7 +16,7 @@ def stock(tmp_path, monkeypatch, income_db):
     monkeypatch.setattr(
         depot, "get_path", lambda key: tmp_path / key.rsplit("/", 1)[-1]
     )
-    monkeypatch.setattr(depot, "_快照行缓存", None)
+    monkeypatch.setattr(depot, "_快照行缓存", {})
     (tmp_path / "cultivate.json").write_text(
         json.dumps({"data": {"items": []}}), encoding="utf-8"
     )

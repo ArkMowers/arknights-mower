@@ -189,8 +189,6 @@ langsmith==0.4.4
     #   langchain-core
 lazy-loader==0.5
     # via scikit-image
-lxml==5.2.2
-    # via -r requirements.txt
 markupsafe==2.1.5
     # via
     #   -r requirements.txt

@@ -440,6 +440,20 @@ def mark_maa_event_shop_complete(activity_id, start_ts):
         connection.commit()
 
 
+def load_long_task_progress():
+    rows = _fetchall(
+        """
+        SELECT 'copilot', payload FROM maa_copilot_progress WHERE id = 1
+        UNION ALL SELECT 'paradox', payload FROM maa_paradox_progress WHERE id = 1
+        UNION ALL SELECT 'sss', payload FROM maa_sss_progress WHERE id = 1
+        UNION ALL SELECT 'blackflow', payload FROM maa_blackflow_progress WHERE id = 1
+        UNION ALL SELECT 'blackflow_boss', payload FROM maa_blackflow_boss_progress WHERE id = 1
+        UNION ALL SELECT 'garrison', payload FROM garrison_progress WHERE id = 1
+        """
+    )
+    return {kind: json.loads(payload) for kind, payload in rows}
+
+
 def load_maa_copilot_progress():
     with _conn() as connection:
         row = connection.execute(

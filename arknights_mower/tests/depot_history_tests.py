@@ -1,5 +1,9 @@
 import csv
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+from unittest.mock import Mock, call
 
 import pytest
 
@@ -39,6 +43,86 @@ def write_rows(path, rows):
 
 def snapshot(at, items):
     return [at, json.dumps(items, ensure_ascii=False), json.dumps({"空": ""})]
+
+
+def test_history_reuses_each_csv_until_its_version_changes(depot_lines, monkeypatch):
+    scan = depot_lines["@app/tmp/depotresult.csv"]
+    merged = depot_lines["@app/tmp/depotmerged.csv"]
+    write_rows(scan, [snapshot(100, {"赤金": 1})])
+    write_rows(merged, [snapshot(100, {"糖": 2})])
+    read = Mock(wraps=read_csv_rows)
+    monkeypatch.setattr(module, "read_csv_rows", read)
+    initial = [{"at": 100, "items": {"赤金": 1, "糖": 2}}]
+    assert module.读取仓库历史() == initial
+    assert module.读取仓库历史() == initial
+    assert read.call_args_list == [call(scan), call(merged)]
+
+    # 相同大小的扫描文件由修改时间区分。
+    previous = scan.stat()
+    write_rows(scan, [snapshot(100, {"赤金": 3})])
+    os.utime(scan, ns=(previous.st_atime_ns, previous.st_mtime_ns + 2_000_000_000))
+    assert scan.stat().st_size == previous.st_size
+    assert module.读取仓库历史()[0]["items"] == {"赤金": 3, "糖": 2}
+    assert read.call_args_list == [call(scan), call(merged), call(scan)]
+
+    # 修改时间相同时，文件大小也能反映追加的记录。
+    previous = merged.stat()
+    write_rows(merged, [snapshot(100, {"糖": 2}), snapshot(200, {"糖": 4})])
+    os.utime(merged, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    assert module.读取仓库历史()[-1] == {"at": 200, "items": {"糖": 4}}
+    assert read.call_args_list == [call(scan), call(merged), call(scan), call(merged)]
+
+
+def test_history_reloads_replaced_csv_with_preserved_size_and_mtime(depot_lines):
+    scan = depot_lines["@app/tmp/depotresult.csv"]
+    merged = depot_lines["@app/tmp/depotmerged.csv"]
+    write_rows(scan, [snapshot(100, {"赤金": 1})])
+    write_rows(merged, [snapshot(100, {"糖": 2})])
+    assert module.读取仓库历史()[0]["items"] == {"赤金": 1, "糖": 2}
+
+    previous = scan.stat()
+    replacement = scan.with_suffix(".tmp")
+    write_rows(replacement, [snapshot(100, {"赤金": 3})])
+    os.utime(replacement, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    replacement.replace(scan)
+    assert scan.stat().st_size == previous.st_size
+    assert scan.stat().st_mtime_ns == previous.st_mtime_ns
+    assert module.读取仓库历史()[0]["items"] == {"赤金": 3, "糖": 2}
+
+
+def test_concurrent_history_reads_use_only_the_current_directory(tmp_path, monkeypatch):
+    first, second = tmp_path / "first", tmp_path / "second"
+    for directory, count in ((first, 1), (second, 2)):
+        directory.mkdir()
+        for filename, item in (("depotresult.csv", "赤金"), ("depotmerged.csv", "糖")):
+            path = directory / filename
+            write_rows(path, [snapshot(100, {item: count})])
+            os.utime(path, (1_700_000_000, 1_700_000_000))
+
+    read = Mock(wraps=read_csv_rows)
+    monkeypatch.setattr(module, "read_csv_rows", read)
+
+    def query(start):
+        start.wait(timeout=5)
+        return module.读取仓库历史()
+
+    for directory, count in ((first, 1), (second, 2), (first, 1)):
+        monkeypatch.setattr(
+            module,
+            "get_path",
+            lambda key, root=directory: root / key.rsplit("/", 1)[-1],
+        )
+        start = Barrier(2)
+        expected = [{"at": 100, "items": {"赤金": count, "糖": count}}]
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            requests = [pool.submit(query, start) for _ in range(2)]
+            for request in requests:
+                assert request.result() == expected
+        assert read.call_args_list == [
+            call(directory / "depotresult.csv"),
+            call(directory / "depotmerged.csv"),
+        ]
+        read.reset_mock()
 
 
 def test_common_resources_include_gold_and_orundum_shards(tmp_path, monkeypatch):
