@@ -516,9 +516,7 @@ class Recognizer:
         self.check_freeze(current_time)
         return self.scene
 
-    def find_ra_battle_exit(self) -> bool:
-        im = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
-        im = cv2.inRange(im, (29, 0, 0), (31, 255, 255))
+    def find_ra_battle_exit(self) -> tp.Scope | None:
         score, scope = self.template_match(
             "ra/battle_exit", ((75, 47), (165, 126)), cv2.TM_CCOEFF_NORMED
         )
