@@ -406,7 +406,8 @@ def test_stop_and_legacy_failed_match_resume_without_reset(
         assert runner.run_garrison(scheduler)
         resumed.assert_called_once()
         saved = record.load_garrison_progress()
-        for field in ("match", "wins", "matches_played", "original_theme"):
+        assert "original_theme" not in saved
+        for field in ("match", "wins", "matches_played"):
             assert saved[field] == progress[field]
         assert not saved.get("failed") and not saved.get("theme_restore_blocked")
         assert not saved["error"]
@@ -539,35 +540,28 @@ def test_settlement_yields_before_starting_another_match(monkeypatch):
     s.device.tap.assert_called_once_with((125, 225))
 
 
-def test_packaged_garrison_files_load_without_cache_or_network(monkeypatch):
+def test_packaged_garrison_files_initialize_gameplay():
     from arknights_mower.solvers.garrison import upstream
 
-    monkeypatch.setattr(upstream, "get_path", Mock(side_effect=AssertionError))
-    monkeypatch.setattr(upstream, "urlopen", Mock(side_effect=AssertionError))
     session = upstream.FarmSession(Mock(target_wins=3))
     assert session.game.TARGET == 3
     assert session.game.LAYOUT["safe"]
     assert callable(session.game.set_profile)
 
 
-def test_garrison_download_uses_only_personal_fork_and_reuses_cache(
-    tmp_path, monkeypatch
+@pytest.mark.parametrize("missing", ["garrison_farm.py", "tiles.json"])
+def test_missing_bundled_file_reports_incomplete_installation(
+    tmp_path, monkeypatch, missing
 ):
-    from io import BytesIO
-
     from arknights_mower.solvers.garrison import upstream
 
-    monkeypatch.setattr(upstream, "get_path", lambda *a, **kw: tmp_path)
-    monkeypatch.setattr(upstream, "BUNDLED_DIR", tmp_path / "empty-install")
-    path = tmp_path / "garrison_farm.py"
-    fetch = Mock(return_value=BytesIO(b"from personal fork"))
-    monkeypatch.setattr(upstream, "urlopen", fetch)
-    assert upstream.read_resource(path.name, lambda: 3) == b"from personal fork"
-    assert upstream.read_resource(path.name, lambda: 3) == path.read_bytes()
-    fetch.assert_called_once_with(
-        f"https://raw.githubusercontent.com/ALEXsun0/GarrisonFarm/{upstream.REVISION}/{path.name}",
-        timeout=3,
-    )
+    for name in ("garrison_farm.py", "tiles.json"):
+        if name != missing:
+            (tmp_path / name).write_bytes((upstream.BUNDLED_DIR / name).read_bytes())
+    monkeypatch.setattr(upstream, "BUNDLED_DIR", tmp_path)
+    with pytest.raises(model.GarrisonError, match=missing):
+        upstream.FarmSession(Mock(target_wins=3))
+    assert not (tmp_path / missing).exists()
 
 
 def test_interruption_releases_held_touch_before_closing_game(monkeypatch):
@@ -1267,7 +1261,7 @@ def test_waits_for_personal_highlight_before_clicking_reconnect():
 @pytest.mark.parametrize(
     "original", ["卫戍协议终端", "乌萨斯齐心团", "“全能的”可露希尔"]
 )
-def test_theme_switch_and_restore_require_observed_equipped_label(original):
+def test_theme_switch_requires_observed_equipped_label(original):
     from arknights_mower.solvers.garrison import theme
 
     lobby = frame("left")
@@ -1283,8 +1277,6 @@ def test_theme_switch_and_restore_require_observed_equipped_label(original):
     if changed:
         frames += [theme_panel(default, False), theme_panel(default)]
     frames.append(lobby)
-    if changed:
-        frames += [theme_panel(default), theme_panel(original, False), before]
     events = []
     s = solver.GarrisonSolver(
         Mock(), Mock(), {}, lambda p: events.append(("saved", dict(p)))
@@ -1299,16 +1291,11 @@ def test_theme_switch_and_restore_require_observed_equipped_label(original):
 
     s.wait = wait
     assert s.prepare_theme(lobby) is lobby
-    s.capture = lambda: lobby
-    s.restore_theme()
     assert not frames
     assert s.progress == {}
     if changed:
-        assert events.index(("saved", {"original_theme": original})) < events.index(
-            ("tap", (1760, 257))
-        )
-        assert events.count(("tap", (1590, 999))) == 2
-        assert events[-1] == ("saved", {})
+        assert events.count(("tap", (1590, 999))) == 1
+        assert events[-1] == ("tap", (65, 58))
     else:
         assert events == [("tap", (523, 960)), ("tap", (65, 58))]
 
@@ -1353,103 +1340,34 @@ def test_theme_rechecks_equipped_title_and_missing_card(monkeypatch):
     ]
 
 
-def test_deferred_theme_restoration_after_final_settlement_does_not_play(
-    income_db, monkeypatch
-):
-    conf = Conf(
-        maa_rg_enable=1,
-        maa_long_task_type="garrison",
-        garrison={"mode": "matches", "match_limit": 1},
-    )
+def test_completed_goal_skips_device_with_legacy_theme_record(income_db):
+    conf = Conf(garrison={"mode": "matches", "match_limit": 1})
     progress = model.prepare_progress(conf, {})
     progress.update(matches_played=1, original_theme="乌萨斯齐心团")
     record.save_garrison_progress(progress)
-    assert not model.status(conf, progress)["completed"]
-    assert (
-        runner.eligible_progress(
-            conf, 540, SimpleNamespace(tasks=[], op_data=None), None
-        )
-        == progress
-    )
-    s = solver.GarrisonSolver(
-        Mock(),
-        Mock(),
-        progress,
-        record.save_garrison_progress,
-        match_limit=1,
-        vision=Mock(),
-    )
-    monkeypatch.setattr(
-        solver, "FarmSession", Mock(side_effect=AssertionError("恢复主题时不得开局"))
-    )
-    s.capture = Mock(side_effect=solver.GarrisonYield)
-    s.run()
-    assert record.load_garrison_progress() == progress
-    s.capture = Mock(return_value=theme_panel("乌萨斯齐心团"))
-    s.run()
-    assert "original_theme" not in record.load_garrison_progress()
-    assert model.status(conf, record.load_garrison_progress())["completed"]
+    assert model.status(conf, progress)["completed"]
     assert (
         runner.eligible_progress(
             conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
         )
         is None
     )
+    worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock(), match_limit=1)
+    worker.run()
+    assert not worker.device.mock_calls
+    assert not worker.recog.mock_calls
 
 
-def test_unreadable_original_theme_preserves_record_for_next_window(
-    income_db, monkeypatch
-):
-    conf = Conf()
-    progress = model.prepare_progress(conf, {})
-    progress["original_theme"] = "“全能的”可露希尔"
-    s = solver.GarrisonSolver(Mock(), Mock(), progress, record.save_garrison_progress)
-    record.save_garrison_progress(progress)
-    bad = theme_panel("卫戍协议终端")
-    bad.texts = [t for t in bad.texts if "可露希尔" not in t.text]
-    replay_unchanged_lobby(monkeypatch, s, bad)
-    with pytest.raises(model.GarrisonError, match="恢复卫戍协议主题"):
-        s.restore_theme()
-    s.device.tap.assert_not_called()
-    assert record.load_garrison_progress()["original_theme"] == "“全能的”可露希尔"
-    assert (
-        runner.eligible_progress(
-            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
-        )["original_theme"]
-        == "“全能的”可露希尔"
+@pytest.mark.parametrize(
+    "old, expected", [("maa_medals", "medals"), ("maa_score", "matches")]
+)
+def test_preview_settings_retain_target_and_match_limit_without_maa(old, expected):
+    settings = Conf(garrison={"mode": old, "target_wins": 6, "match_limit": 4}).garrison
+    assert (settings.mode, settings.target_wins, settings.match_limit) == (
+        expected,
+        6,
+        4,
     )
-
-
-@pytest.mark.parametrize("limit", [0, 4, None])
-def test_unfinished_goal_keeps_theme_across_two_windows(monkeypatch, limit):
-    events = []
-    progress = {"original_theme": "乌萨斯齐心团", "matches_played": 1}
-    farm = Mock()
-    monkeypatch.setattr(solver, "FarmSession", lambda owner: farm)
-    farm.release.side_effect = lambda: events.append("release")
-    for outcome in (solver.GarrisonYield(), None):
-        s = solver.GarrisonSolver(
-            Mock(), Mock(), progress, Mock(), match_limit=limit, vision=Mock()
-        )
-        s.enter = Mock(return_value=frame("prep"))
-        s.play = Mock(side_effect=outcome)
-        s.restore_theme = Mock()
-        s.device.exit_after_task_stop.side_effect = lambda: events.append("exit")
-        s.run()
-        s.play.assert_called_once()
-        s.restore_theme.assert_not_called()
-        assert progress["original_theme"] == "乌萨斯齐心团"
-    assert events == ["release", "exit", "release", "exit"]
-
-
-def test_worker_stop_during_theme_restoration_keeps_pending_without_blocking_recovery():
-    progress = {"original_theme": "乌萨斯齐心团"}
-    s = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
-    s.capture = Mock(side_effect=solver.MowerExit)
-    with pytest.raises(solver.MowerExit):
-        s.restore_theme()
-    assert progress == {"original_theme": "乌萨斯齐心团"}
-    s.device.tap.assert_not_called()
 
 
 def test_deployment_cost_marks_battle_without_round_text_and_preserves_dialog():
@@ -1468,218 +1386,3 @@ def test_deployment_cost_marks_battle_without_round_text_and_preserves_dialog():
         return_value=[Text("出现超时异常，战斗将重新进行", 685, 456, 550, 49)]
     )
     assert inspect.frame(image).screen == "battle-timeout"
-
-
-@pytest.mark.parametrize("target", [3, 6])
-def test_maa_badges_check_window_between_attempts_and_require_completion_notice(target):
-    from arknights_mower.solvers.garrison.maa import MaaGarrisonSolver
-
-    conf = Conf(garrison={"mode": "maa_medals", "target_wins": target})
-    progress = model.prepare_progress(conf, {})
-    scheduler = Mock()
-    scheduler._maa_refresh_deadline.return_value = None
-    worker = MaaGarrisonSolver(
-        Mock(),
-        Mock(),
-        progress,
-        Mock(),
-        scheduler=scheduler,
-        mode="maa_medals",
-        target_wins=target,
-    )
-    worker.enter = Mock(return_value=frame("left"))
-    worker._quick_confirmed = True
-
-    def resume(_frame):
-        worker._quick_confirmed = True
-        return frame("prep")
-
-    worker.start_or_resume = Mock(side_effect=resume)
-    worker.wait = Mock(return_value=frame("lobby"))
-    core = scheduler.MAA
-    core.get_version.return_value = "v6.23.0-beta.1"
-    core.append_task.side_effect = [41, 42]
-
-    def finish():
-        callback = scheduler.initialize_maa.call_args.kwargs["task_callback"]
-        if worker.task_id == 41:
-            callback(
-                20003,
-                {
-                    "taskchain": "StrongholdProtocol",
-                    "taskid": 41,
-                    "what": "StrongholdSettlement",
-                    "details": {"cleared": False},
-                },
-            )
-        else:
-            callback(
-                20003,
-                {
-                    "taskchain": "StrongholdProtocol",
-                    "taskid": 42,
-                    "what": "StrongholdStrategiesCompleted",
-                    "details": {"target": target},
-                },
-            )
-        return False
-
-    core.running.side_effect = finish
-    worker.run_game()
-    assert core.append_task.call_count == worker.start_or_resume.call_count == 2
-    core.append_task.assert_called_with(
-        "StrongholdProtocol",
-        {
-            "mode": "badge",
-            "theme": "Regulation",
-            "target": target,
-            "attempts": 1,
-            "runs": 1,
-        },
-    )
-    assert model.status(conf, progress)["completed"]
-    assert not progress["wins"]
-    conf.garrison.run_id = "recheck"
-    assert not model.status(conf, progress)["completed"]
-    scheduler.maa_stop.assert_called_once()
-
-
-@pytest.mark.parametrize(
-    "outcome",
-    [
-        "stale_id",
-        "other_task",
-        "wrong_target",
-        "ordinary_completion",
-        "stop",
-        "short_window",
-    ],
-)
-def test_maa_badge_handover_never_fabricates_completion(outcome):
-    from arknights_mower.solvers.garrison.maa import MaaGarrisonSolver
-
-    conf = Conf(garrison={"mode": "maa_medals"})
-    progress = model.prepare_progress(conf, {})
-    scheduler = Mock()
-    scheduler._maa_refresh_deadline.return_value = None
-    worker = MaaGarrisonSolver(
-        Mock(), Mock(), progress, Mock(), scheduler=scheduler, mode="maa_medals"
-    )
-    worker.enter = Mock(return_value=frame("prep"))
-    worker._quick_confirmed = True
-    core = scheduler.MAA
-    core.get_version.return_value = "v6.23.0-beta.1"
-    core.append_task.return_value = 41
-
-    def running():
-        if outcome == "stop":
-            raise solver.GarrisonYield
-        worker.record_message(
-            10002 if outcome == "ordinary_completion" else 20003,
-            {
-                "taskid": 40 if outcome == "stale_id" else 41,
-                "taskchain": "Custom"
-                if outcome == "other_task"
-                else "StrongholdProtocol",
-                "what": "StrongholdSettlement"
-                if outcome == "short_window"
-                else "StrongholdStrategiesCompleted",
-                "details": {
-                    "target": 6 if outcome == "wrong_target" else 3,
-                    "cleared": True,
-                },
-            },
-        )
-        return False
-
-    core.running.side_effect = running
-    worker.remaining = Mock(return_value=719)
-    if outcome == "short_window":
-        worker.run_game()
-    else:
-        with pytest.raises(
-            solver.GarrisonYield if outcome == "stop" else model.GarrisonError
-        ):
-            worker.run_game()
-    core.append_task.assert_called_once()
-    assert not model.status(conf, progress)["completed"]
-    scheduler.maa_stop.assert_called_once()
-    assert scheduler.release_maa.call_count == 2
-
-
-@pytest.mark.parametrize(
-    "version,scene,admitted",
-    [
-        ("v6.22.1-beta.1", "lobby", False),
-        ("v6.23.0", "left", False),
-        ("v6.23.0", "lobby", True),
-    ],
-)
-def test_maa_score_only_starts_with_compatible_core_and_empty_personal_lobby(
-    version, scene, admitted
-):
-    from arknights_mower.solvers.garrison.maa import MaaGarrisonSolver
-
-    scheduler = Mock()
-    scheduler._maa_refresh_deadline.return_value = None
-    worker = MaaGarrisonSolver(
-        Mock(), Mock(), {}, Mock(), scheduler=scheduler, mode="maa_score"
-    )
-    worker.enter = Mock(return_value=frame(scene))
-    core = scheduler.MAA
-    core.get_version.return_value = version
-    core.running.return_value = False
-    if admitted:
-        worker.run_game()
-        core.append_task.assert_called_once_with(
-            "StrongholdProtocol", {"mode": "score"}
-        )
-    else:
-        with pytest.raises(model.GarrisonError):
-            worker.run_game()
-        core.append_task.assert_not_called()
-    worker.device.tap.assert_not_called()
-
-
-def test_maa_badges_stop_automatic_dispatch_until_target_or_request_changes(
-    income_db, monkeypatch
-):
-    from arknights_mower.solvers.garrison import maa
-
-    conf = Conf(
-        maa_long_task_type="garrison", maa_rg_enable=1, garrison={"mode": "maa_medals"}
-    )
-    monkeypatch.setattr(runner.config, "conf", conf)
-    progress = model.prepare_progress(conf, {})
-    progress["maa_badge_target"] = 3
-    record.save_garrison_progress(progress)
-    factory = Mock()
-    monkeypatch.setattr(maa, "MaaGarrisonSolver", factory)
-    scheduler = SimpleNamespace(
-        tasks=[], task=None, op_data=None, device=Mock(), recog=Mock()
-    )
-    for _ in range(2):
-        assert not runner.run_garrison(scheduler)
-    factory.assert_not_called()
-    conf.garrison.target_wins = 6
-    assert runner.run_garrison(scheduler)
-    assert factory.call_args.kwargs["scheduler"] is scheduler
-    assert factory.call_args.kwargs["target_wins"] == 6
-    factory.return_value.run.assert_called_once()
-
-
-def test_maa_garrison_defers_if_daily_refresh_starts_after_admission():
-    from arknights_mower.solvers.garrison.maa import MaaGarrisonSolver
-
-    refresh = datetime.now() + timedelta(minutes=5)
-    scheduler = Mock()
-    scheduler._maa_refresh_deadline.side_effect = [None, None, refresh]
-    worker = MaaGarrisonSolver(
-        Mock(), Mock(), {}, Mock(), scheduler=scheduler, mode="maa_score"
-    )
-    worker.enter = Mock(return_value=frame("lobby"))
-    scheduler.MAA.get_version.return_value = "v6.23.0"
-    worker.run_game()
-    scheduler._defer_maa_for_refresh.assert_called_once_with(refresh)
-    scheduler.MAA.start.assert_not_called()
-    scheduler.maa_stop.assert_called_once()

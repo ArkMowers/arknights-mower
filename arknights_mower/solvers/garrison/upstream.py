@@ -1,14 +1,10 @@
 """Load the pinned GarrisonFarm gameplay functions into an instance-local session."""
 
 import json
-import os
 import re
-import tempfile
 import time
 import unicodedata
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from urllib.request import urlopen
 
 import cv2
 import numpy as np
@@ -16,47 +12,11 @@ import numpy as np
 from arknights_mower import __rootdir__
 from arknights_mower.utils.device.io_budget import touch_release_budget
 from arknights_mower.utils.log import logger, save_screenshot_frame
-from arknights_mower.utils.path import get_path
 
 from .model import GarrisonError
 
 REVISION = "fd373c9b1ab1e8fbb52ad78b8da4c461ab325abb"
 BUNDLED_DIR = __rootdir__ / "data" / "garrisonfarm" / REVISION
-
-
-def read_resource(name, remaining):
-    if name not in ("garrison_farm.py", "tiles.json"):
-        raise ValueError("未知的 GarrisonFarm 文件")
-    bundled = BUNDLED_DIR / name
-    if bundled.is_file():
-        return bundled.read_bytes()
-    directory = get_path(f"@app/downloads/garrisonfarm/{REVISION}", space="")
-    path = directory / name
-    if path.is_file():
-        return path.read_bytes()
-    directory.mkdir(parents=True, exist_ok=True)
-    url = f"https://raw.githubusercontent.com/ALEXsun0/GarrisonFarm/{REVISION}/{name}"
-    with urlopen(url, timeout=min(10, remaining())) as response:
-        buffer = bytearray()
-        while len(buffer) <= 512 * 1024:
-            remaining()
-            chunk = response.read1(64 * 1024)
-            if not chunk:
-                break
-            buffer.extend(chunk)
-        data = bytes(buffer)
-    remaining()
-    if len(data) > 512 * 1024:
-        raise GarrisonError(f"GarrisonFarm 文件超过下载大小上限：{name}")
-    with tempfile.NamedTemporaryFile(dir=directory, delete=False) as stream:
-        temporary = Path(stream.name)
-        try:
-            stream.write(data)
-            stream.close()
-            os.replace(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
-    return data
 
 
 def panel_open(items):
@@ -81,8 +41,15 @@ class FarmSession:
     def __init__(self, owner):
         self.owner = owner
         self.held = None
-        script = read_resource("garrison_farm.py", owner.remaining).decode("utf-8-sig")
-        layout = json.loads(read_resource("tiles.json", owner.remaining))
+        try:
+            script = (BUNDLED_DIR / "garrison_farm.py").read_text(encoding="utf-8-sig")
+            layout = json.loads(
+                (BUNDLED_DIR / "tiles.json").read_text(encoding="utf-8")
+            )
+        except FileNotFoundError as exc:
+            raise GarrisonError(
+                f"缺少内置卫戍文件，请重新安装 Mower：{exc.filename}"
+            ) from exc
         # The pinned standalone script has no importable gameplay entry point. Its
         # OCR and gameplay section precedes main() and has no host startup steps.
         start = script.index("def ocr(img, box=None):")

@@ -81,10 +81,6 @@ onScopeDispose(() => {
           detail.total ? '' : '（不限）'
         }}</template
       >
-      <template v-else-if="detail.mode === 'maa_score'">按空档刷分</template>
-      <template v-else-if="detail.mode === 'maa_medals'">{{
-        detail.completed ? '全部策略已达标' : '等待核对全部策略角标'
-      }}</template>
       <template v-else>已确认达标 {{ detail.count }}/{{ detail.total }} 项策略</template>
     </n-text>
     <n-text v-if="detail?.message && !failed" type="warning">{{ detail.message }}</n-text>

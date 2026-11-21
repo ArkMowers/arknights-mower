@@ -50,21 +50,10 @@ def identity_key(conf):
 
 def run_key(conf):
     target = "matches" if conf.garrison.mode == "matches" else conf.garrison.target_wins
-    if conf.garrison.mode.startswith("maa_"):
-        target = (
-            [conf.garrison.mode, conf.garrison.target_wins]
-            if conf.garrison.mode == "maa_medals"
-            else "maa_score"
-        )
     return [identity_key(conf), target, conf.garrison.run_id]
 
 
-def goal_counts(progress, target_wins, match_limit, mode="medals"):
-    if mode == "maa_score":
-        return 0, 0
-    if mode == "maa_medals" and progress.get("maa_badge_target", 0) >= target_wins:
-        total = len(catalogue()["strategies"])
-        return total, total
+def goal_counts(progress, target_wins, match_limit):
     if match_limit is not None:
         return progress.get("matches_played", 0), match_limit
     wins = progress.get("wins", {})
@@ -75,8 +64,8 @@ def goal_counts(progress, target_wins, match_limit, mode="medals"):
     ), len(strategies)
 
 
-def goal_reached(progress, target_wins, match_limit, mode="medals"):
-    count, total = goal_counts(progress, target_wins, match_limit, mode)
+def goal_reached(progress, target_wins, match_limit):
+    count, total = goal_counts(progress, target_wins, match_limit)
     return total > 0 and count >= total
 
 
@@ -85,16 +74,11 @@ def status(conf, progress):
     settings = conf.garrison
     matches = settings.mode == "matches"
     count, total = goal_counts(
-        prepared,
-        settings.target_wins,
-        settings.match_limit if matches else None,
-        settings.mode,
+        prepared, settings.target_wins, settings.match_limit if matches else None
     )
     return {
-        **({"mode": settings.mode} if settings.mode != "medals" else {}),
-        "completed": total > 0
-        and count >= total
-        and not prepared.get("original_theme"),
+        **({"mode": "matches"} if matches else {}),
+        "completed": total > 0 and count >= total,
         "count": count,
         "total": total,
         "failed": False,
@@ -113,10 +97,11 @@ def prepare_progress(conf, saved):
         }
     )
     progress.pop("failed", None)
+    progress.pop("original_theme", None)
     progress.pop("theme_restore_blocked", None)
+    progress.pop("maa_badge_target", None)
     if progress.get("key") != run_key(conf):
         if progress.get("key", [None, None, None])[-1] != conf.garrison.run_id:
-            progress.pop("maa_badge_target", None)
             if conf.garrison.mode == "matches":
                 progress["matches_played"] = 0
             else:

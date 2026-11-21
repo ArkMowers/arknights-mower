@@ -57,12 +57,10 @@ class GarrisonSolver:
         match_limit=None,
         deadline=None,
         vision=None,
-        mode="medals",
     ):
         self.device, self.recog = device, recog
         self.progress, self.save = progress, save
         self.match_limit = match_limit
-        self.mode = mode
         self.target_wins = target_wins
         if target_wins not in (3, 6):
             raise ValueError("策略刻章目标必须为三胜或六胜")
@@ -72,7 +70,6 @@ class GarrisonSolver:
         self._end = time.monotonic() + 24 * 3600
         self._quick_confirmed = False
         self._theme_checked = False
-        self._restoring_theme = False
         self._entered = False
 
     def remaining(self):
@@ -82,8 +79,7 @@ class GarrisonSolver:
         if self.deadline is not None:
             seconds = min(
                 seconds,
-                (self.deadline() - datetime.now()).total_seconds()
-                - (5 if self._restoring_theme else 0),
+                (self.deadline() - datetime.now()).total_seconds(),
             )
         if seconds <= 0 or config.stop_maa.is_set():
             raise GarrisonYield
@@ -100,21 +96,16 @@ class GarrisonSolver:
         frame = self.vision.frame(self.recog.img.copy())
         self.remaining()
         self.last_frame = frame
-        if (
-            not self._restoring_theme
-            and frame.quick
-            and frame.screen
-            in {
-                "mode",
-                "info",
-                "strategy",
-                "squad",
-                "choice",
-                "confirm-ready",
-                "prep",
-                "battle",
-            }
-        ):
+        if frame.quick and frame.screen in {
+            "mode",
+            "info",
+            "strategy",
+            "squad",
+            "choice",
+            "confirm-ready",
+            "prep",
+            "battle",
+        }:
             self._quick_confirmed = True
             match = self.progress.get("match") or {}
             if frame.screen != "mode" and (
@@ -178,36 +169,12 @@ class GarrisonSolver:
 
     def prepare_theme(self, frame):
         panel = theme.open_equipped(self, frame)
-        original = theme.equipped(panel)
-        if original != theme.DEFAULT_THEME:
-            if not self.progress.get("original_theme"):
-                self.progress["original_theme"] = original
-                self.persist()
+        if theme.equipped(panel) != theme.DEFAULT_THEME:
             theme.apply(self, panel, theme.DEFAULT_THEME)
         self.click((65, 58))
         lobby = self.wait(lambda f: f.screen == "lobby")
         self._theme_checked = True
         return lobby
-
-    def restore_theme(self):
-        name = self.progress.get("original_theme")
-        if not name or config.stop_mower.is_set() or config.stop_maa.is_set():
-            return
-        self._restoring_theme = True
-        self._end = min(self._end, time.monotonic() + 90)
-        try:
-            panel = theme.open_equipped(self, self.theme_lobby(self.capture()))
-            theme.apply(self, panel, name)
-        except MowerExit:
-            raise
-        except GarrisonYield:
-            logger.info(f"卫戍协议留待下次空档恢复主题「{name}」")
-            return
-        except Exception as exc:
-            raise GarrisonError(f"恢复卫戍协议主题「{name}」失败：{exc}") from exc
-        self.progress.pop("original_theme")
-        self.persist()
-        logger.info(f"已恢复卫戍协议主题「{name}」")
 
     def enter(self):
         frame = self.capture()
@@ -482,35 +449,24 @@ class GarrisonSolver:
             self.remaining()
             return False
 
+        if goal_reached(self.progress, self.target_wins, self.match_limit):
+            return
         if self.vision is None:
             rapidocr.initialize_ocr()
             self.vision = Vision(rapidocr.engine)
         try:
             with device_io_budget(self.remaining), cancellation_scope(cancelled):
-                if goal_reached(
-                    self.progress, self.target_wins, self.match_limit, self.mode
-                ):
-                    self._entered = True
-                    self.restore_theme()
-                    return
-                self.run_game()
-                if goal_reached(
-                    self.progress, self.target_wins, self.match_limit, self.mode
-                ):
-                    self.restore_theme()
+                session = FarmSession(self)
+                self._entered = True
+                try:
+                    frame = self.enter()
+                    self.play(session.game, frame)
+                finally:
+                    session.release()
         except GarrisonYield:
             logger.info("卫戍协议交还设备，本次空档结束")
         finally:
             self.leave_match()
-
-    def run_game(self):
-        session = FarmSession(self)
-        self._entered = True
-        try:
-            frame = self.enter()
-            self.play(session.game, frame)
-        finally:
-            session.release()
 
     def can_dispatch_frame(self, frame):
         if frame.screen in {"lobby", "mode", "tutorial", "battle-timeout"}:
