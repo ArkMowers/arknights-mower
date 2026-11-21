@@ -1,12 +1,20 @@
 name: Test Docker Build and Runtime
 
 on:
+  pull_request:
+    branches: [alpha]
+    paths:
+      - docker/Dockerfile
+      - .github/workflows/docker-build-test.yml
   workflow_dispatch:
     inputs:
       baseline_ref:
         description: Optional Git ref to build and compare image sizes
         type: string
         required: false
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -21,9 +29,13 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref || github.event.pull_request.base.sha }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -109,14 +121,14 @@ jobs:
           exit 1
 
       - name: Check out the comparison revision
-        if: inputs.baseline_ref != ''
+        if: env.BASELINE_REF != ''
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.baseline_ref }}
+          ref: ${{ env.BASELINE_REF }}
           path: baseline
 
       - name: Build the comparison image on the same runner
-        if: inputs.baseline_ref != ''
+        if: env.BASELINE_REF != ''
         uses: docker/build-push-action@v5
         with:
           context: ./baseline
@@ -127,7 +139,7 @@ jobs:
           tags: mower:baseline
 
       - name: Compare image sizes in bytes
-        if: inputs.baseline_ref != ''
+        if: env.BASELINE_REF != ''
         shell: bash
         run: |
           {
