@@ -361,7 +361,9 @@ class GarrisonSolver:
                 for k in strategies.values()
             ):
                 return "completed"
-        return "skip" if wins >= self.target_wins else "play"
+        if wins < self.target_wins:
+            return "play"
+        return "verified" if key is not None else "skip"
 
     def choose_strategy(self, game):
         strategies = {
@@ -398,7 +400,7 @@ class GarrisonSolver:
                             return frame
                         game.tap(x, y, 0.7)
                         action = self.read_strategy_action(game, strategies)
-                        if action == "skip":
+                        if action == "verified":
                             checked_rows[x].append(y + offset)
                         if action == "completed":
                             return None

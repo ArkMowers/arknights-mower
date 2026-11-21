@@ -681,7 +681,7 @@ def test_strategy_grid_alignment_matches_overlapping_frames(shift):
     assert strategy_grid_shift(viewport(0), viewport(1000)) is None
 
 
-@pytest.mark.parametrize("overlap_read", ["skip", None])
+@pytest.mark.parametrize("overlap_read", ["verified", "skip", None])
 def test_overlapping_pages_keep_unread_cards_eligible(monkeypatch, overlap_read):
     worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock())
     replay_unchanged_lobby(monkeypatch, worker, frame("prep"))
@@ -709,7 +709,7 @@ def test_overlapping_pages_keep_unread_cards_eligible(monkeypatch, overlap_read)
     assert worker.choose_strategy(game).screen == "prep"
     assert [c.args[:2] for c in game.tap.call_args_list] == [
         (680, 580),
-        (890 if overlap_read == "skip" else 680, 390),
+        (890 if overlap_read == "verified" else 680, 390),
     ]
 
 
@@ -725,7 +725,9 @@ def test_reverse_scan_skips_read_panels_but_opens_badge_only_card(monkeypatch):
     game.shot.return_value = 0
     game.has_color_badge.side_effect = lambda page, x, y: page == 0 and x == 890
     game.has_badge.return_value = False
-    worker.read_strategy_action = Mock(side_effect=["skip", "skip", "skip", "play"])
+    worker.read_strategy_action = Mock(
+        side_effect=["verified", "verified", "verified", "play"]
+    )
     assert worker.choose_strategy(game).screen == "prep"
     assert [c.args[:2] for c in game.tap.call_args_list] == [
         (680, 370),
@@ -733,6 +735,37 @@ def test_reverse_scan_skips_read_panels_but_opens_badge_only_card(monkeypatch):
         (890, 600),
         (890, 390),
     ]
+
+
+@pytest.mark.parametrize("target", [3, 6])
+def test_return_scan_records_target_when_strategy_name_appears(monkeypatch, target):
+    strategies = model.catalogue()["strategies"]
+    missing = strategies[-1]
+    progress = {"wins": {s["id"]: target for s in strategies[:-1]}}
+    worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock(), target_wins=target)
+    current = Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True)
+    replay_unchanged_lobby(monkeypatch, worker, current)
+    worker.click = Mock()
+    worker.scroll_strategy_page = Mock(return_value=None)
+    game = Mock(GRID_X=[680, 890], GRID_Y=[370], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.has_color_badge.side_effect = lambda page, x, y: x == 890
+    game.has_badge.return_value = False
+
+    def panel(*args):
+        items = [(1550, 220, f"已通过模拟{target}次"), (1550, 480, "初始生命值")]
+        if game.tap.call_args.args[0] == 890:
+            return items + [(1610, 560, strategies[0]["name"])]
+        if game.tap.call_count > 1:
+            assert missing["id"] not in progress["wins"]
+            return items + [(1610, 560, missing["name"])]
+        return items
+
+    game.ocr.side_effect = panel
+    assert worker.choose_strategy(game) is None
+    assert [c.args[:2] for c in game.tap.call_args_list] == [(680, 370), (680, 370)]
+    assert model.goal_reached(progress, target, None)
+    worker.save.assert_called_once_with(progress)
+    worker.click.assert_called_once_with((1500, 580))
 
 
 @pytest.mark.parametrize("first_card_wins", [0, 3])
@@ -813,7 +846,7 @@ def test_strategy_uses_first_readable_count_and_preserves_wins(
         game, {"阿米娅": "band_amiya", "其他策略": "other"}
     )
     assert game.shot.call_count == len(readings) + 1
-    assert action == ("skip" if expected >= 3 else "play")
+    assert action == ("verified" if expected >= 3 else "play")
     assert p["wins"]["band_amiya"] == expected
 
 

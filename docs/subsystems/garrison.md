@@ -18,7 +18,7 @@ The selected theme stays equipped after settlement, interruption and completion.
 
 ## Strategy progress
 
-During one grid scan, Mower uses the observed scroll distance and column to skip panels already read as meeting the target, including on the return pass. Badge-only skips and unreadable panels remain eligible. Uncertain page alignment clears the position history.
+During one grid scan, Mower uses the observed scroll distance and column to skip cards whose strategy ID and qualifying win count have been confirmed, including on the return pass. A qualifying count without a recognized name skips play for that visit and leaves the card eligible for another panel read. Badge-only skips and unreadable panels also remain eligible. Uncertain page alignment clears the position history.
 
 For medal farming, Mower checks the badges on one grid frame before opening cards. A gold or colored badge skips the card for a three-win goal. Only a colored badge skips it for a six-win goal. Mower scrolls past marked cards to look for a candidate. If that search finds none and at least one card was skipped for its badge, Mower scans back through all visible cards and reads their panels regardless of badge appearance. Level farming can select a marked card immediately.
 
