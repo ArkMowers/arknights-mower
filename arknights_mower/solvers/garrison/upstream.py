@@ -1,6 +1,5 @@
 """Load the pinned GarrisonFarm gameplay functions into an instance-local session."""
 
-import hashlib
 import json
 import os
 import re
@@ -14,6 +13,7 @@ from urllib.request import urlopen
 import cv2
 import numpy as np
 
+from arknights_mower import __rootdir__
 from arknights_mower.utils.device.io_budget import touch_release_budget
 from arknights_mower.utils.log import logger, save_screenshot_frame
 from arknights_mower.utils.path import get_path
@@ -21,24 +21,21 @@ from arknights_mower.utils.path import get_path
 from .model import GarrisonError
 
 REVISION = "fd373c9b1ab1e8fbb52ad78b8da4c461ab325abb"
-FILES = {
-    "garrison_farm.py": "f8f24ccea25f8b75825c25bfdc2dbdb3f83436f780d7288bed1f3bcd46ad6bf6",
-    "tiles.json": "f857148da331ebd0e6ecf9d8c90d9485067b533b49187d23b9c54e8046926768",
-}
+BUNDLED_DIR = __rootdir__ / "data" / "garrisonfarm" / REVISION
 
 
 def read_resource(name, remaining):
+    if name not in ("garrison_farm.py", "tiles.json"):
+        raise ValueError("未知的 GarrisonFarm 文件")
+    bundled = BUNDLED_DIR / name
+    if bundled.is_file():
+        return bundled.read_bytes()
     directory = get_path(f"@app/downloads/garrisonfarm/{REVISION}", space="")
     path = directory / name
-    digest = FILES[name]
     if path.is_file():
-        data = path.read_bytes()
-        if hashlib.sha256(data).hexdigest() == digest:
-            return data
+        return path.read_bytes()
     directory.mkdir(parents=True, exist_ok=True)
-    url = (
-        f"https://raw.githubusercontent.com/UnknownGlyph/GarrisonFarm/{REVISION}/{name}"
-    )
+    url = f"https://raw.githubusercontent.com/ALEXsun0/GarrisonFarm/{REVISION}/{name}"
     with urlopen(url, timeout=min(10, remaining())) as response:
         buffer = bytearray()
         while len(buffer) <= 512 * 1024:
@@ -49,8 +46,8 @@ def read_resource(name, remaining):
             buffer.extend(chunk)
         data = bytes(buffer)
     remaining()
-    if hashlib.sha256(data).hexdigest() != digest:
-        raise GarrisonError(f"GarrisonFarm 文件校验失败：{name}")
+    if len(data) > 512 * 1024:
+        raise GarrisonError(f"GarrisonFarm 文件超过下载大小上限：{name}")
     with tempfile.NamedTemporaryFile(dir=directory, delete=False) as stream:
         temporary = Path(stream.name)
         try:

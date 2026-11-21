@@ -57,10 +57,12 @@ class GarrisonSolver:
         match_limit=None,
         deadline=None,
         vision=None,
+        mode="medals",
     ):
         self.device, self.recog = device, recog
         self.progress, self.save = progress, save
         self.match_limit = match_limit
+        self.mode = mode
         self.target_wins = target_wins
         if target_wins not in (3, 6):
             raise ValueError("策略刻章目标必须为三胜或六胜")
@@ -485,23 +487,30 @@ class GarrisonSolver:
             self.vision = Vision(rapidocr.engine)
         try:
             with device_io_budget(self.remaining), cancellation_scope(cancelled):
-                if goal_reached(self.progress, self.target_wins, self.match_limit):
+                if goal_reached(
+                    self.progress, self.target_wins, self.match_limit, self.mode
+                ):
                     self._entered = True
                     self.restore_theme()
                     return
-                session = FarmSession(self)
-                self._entered = True
-                try:
-                    frame = self.enter()
-                    self.play(session.game, frame)
-                finally:
-                    session.release()
-                if goal_reached(self.progress, self.target_wins, self.match_limit):
+                self.run_game()
+                if goal_reached(
+                    self.progress, self.target_wins, self.match_limit, self.mode
+                ):
                     self.restore_theme()
         except GarrisonYield:
             logger.info("卫戍协议交还设备，本次空档结束")
         finally:
             self.leave_match()
+
+    def run_game(self):
+        session = FarmSession(self)
+        self._entered = True
+        try:
+            frame = self.enter()
+            self.play(session.game, frame)
+        finally:
+            session.release()
 
     def can_dispatch_frame(self, frame):
         if frame.screen in {"lobby", "mode", "tutorial", "battle-timeout"}:

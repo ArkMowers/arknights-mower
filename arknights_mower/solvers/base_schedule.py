@@ -20590,7 +20590,7 @@ class BaseSchedulerSolver(
             return guarded
         return cached if isinstance(cached, dict) and cached else None
 
-    def initialize_maa(self):
+    def initialize_maa(self, *, task_callback=None, reset_stop=True):
         from arknights_mower.utils.maa_backup import (
             MaaCallError,
             VerifiedAsst,
@@ -20601,6 +20601,8 @@ class BaseSchedulerSolver(
         observation_run = begin_maa_observations(self)
 
         def callback(msg, details, arg):
+            if task_callback is not None:
+                task_callback(msg, parse_details(details))
             return self.on_maa_callback(
                 msg, details, arg, observation_run=observation_run
             )
@@ -20618,7 +20620,8 @@ class BaseSchedulerSolver(
         if os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.maa import Asst
 
-            config.stop_maa.clear()
+            if reset_stop:
+                config.stop_maa.clear()
             self.maa_callback = MaaCallbackLog()
             self.MAA = VerifiedAsst(Asst, config.conf.maa_path, callback)
             self.stages = []
@@ -20657,7 +20660,8 @@ class BaseSchedulerSolver(
             return
         from arknights_mower.utils.maa_runtime import load_maa_with_navigation
 
-        config.stop_maa.clear()
+        if reset_stop:
+            config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(resolve_config_path(conf.maa_path))
         self.maa_callback = MaaCallbackLog()

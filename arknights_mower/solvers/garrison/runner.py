@@ -33,7 +33,7 @@ def eligible_progress(conf, window, scheduler, opening):
         scheduler, progress["key"], match_limit, opening
     ):
         return None
-    if goal_reached(progress, settings.target_wins, match_limit):
+    if goal_reached(progress, settings.target_wins, match_limit, settings.mode):
         return progress if progress.get("original_theme") else None
     if not progress.get("match") and window < MATCH_SECONDS:
         return None
@@ -67,7 +67,14 @@ def run_garrison(scheduler):
     progress["error"] = ""
     record.save_garrison_progress(progress)
     config.stop_maa.clear()
-    solver = GarrisonSolver(
+    solver_class = GarrisonSolver
+    options = {}
+    if settings.mode in {"maa_medals", "maa_score"}:
+        from .maa import MaaGarrisonSolver
+
+        solver_class = MaaGarrisonSolver
+        options = {"scheduler": scheduler, "mode": settings.mode}
+    solver = solver_class(
         scheduler.device,
         scheduler.recog,
         progress,
@@ -75,6 +82,7 @@ def run_garrison(scheduler):
         target_wins=settings.target_wins,
         match_limit=settings.match_limit if settings.mode == "matches" else None,
         deadline=deadline,
+        **options,
     )
     logger.info("开始卫戍协议个人极速模拟")
     try:

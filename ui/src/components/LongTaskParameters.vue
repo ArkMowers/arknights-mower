@@ -7,11 +7,24 @@ defineProps({ taskType: String })
 const { maa_rcl_theme, garrison, rcl } = storeToRefs(useConfigStore())
 const mobile = inject('mobile')
 
-const garrisonGoal = computed({
-  get: () => (garrison.value.mode === 'matches' ? 'matches' : garrison.value.target_wins),
+const garrisonEngine = computed({
+  get: () => (garrison.value.mode.startsWith('maa_') ? 'maa' : 'mower'),
   set: (value) => {
-    garrison.value.mode = value === 'matches' ? 'matches' : 'medals'
-    if (value !== 'matches') garrison.value.target_wins = value
+    garrison.value.mode = value === 'maa' ? 'maa_medals' : 'medals'
+  }
+})
+const garrisonGoal = computed({
+  get: () =>
+    ['matches', 'maa_score'].includes(garrison.value.mode)
+      ? garrison.value.mode
+      : garrison.value.target_wins,
+  set: (value) => {
+    if (typeof value === 'number') {
+      garrison.value.mode = garrisonEngine.value === 'maa' ? 'maa_medals' : 'medals'
+      garrison.value.target_wins = value
+    } else {
+      garrison.value.mode = value
+    }
   }
 })
 const tool_options = [
@@ -121,13 +134,25 @@ watch(
   <reclamation-algorithm v-else-if="taskType == 'ra'" />
   <secret-front v-else-if="taskType == 'sf'" />
   <template v-else-if="taskType == 'garrison'">
+    <n-form-item label="执行方式">
+      <n-select
+        v-model:value="garrisonEngine"
+        :options="[
+          { label: 'Mower', value: 'mower' },
+          { label: 'MAA', value: 'maa' }
+        ]"
+        aria-label="卫戍协议执行方式"
+      />
+    </n-form-item>
     <n-form-item label="刷取目标">
       <n-select
         v-model:value="garrisonGoal"
         :options="[
           { label: '三胜 · 金章', value: 3 },
           { label: '六胜 · 彩章', value: 6 },
-          { label: '刷等级', value: 'matches' }
+          garrisonEngine === 'maa'
+            ? { label: '刷分', value: 'maa_score' }
+            : { label: '刷等级', value: 'matches' }
         ]"
         aria-label="刷取目标"
       />
@@ -145,28 +170,32 @@ watch(
         "
       />
     </n-form-item>
-    <n-p>
-      开局前可在游戏的「选配助战」里借用自己缺少的干员。商店优先购买的前六名依次为塔露拉、史尔特尔、耀骑士临光、逻各斯、克莱门莎、锏。
-    </n-p>
-    <details>
-      <summary>查看其余助战推荐（按购买优先级）</summary>
-      <n-p>
-        帕拉斯、真言、蕾缪安、烛煌、艾丽妮、薇薇安娜、维娜·维多利亚、乌尔比安、棘刺、怒潮凛冬、圣聆初雪、迷迭香、鸿雪、贝洛内、佩佩、隐德来希、冻河、酒神。
-      </n-p>
-    </details>
-    <n-p
-      >个人极速模拟使用预设编队。首次运行从
-      <a
-        href="https://github.com/UnknownGlyph/GarrisonFarm"
-        target="_blank"
-        rel="noopener noreferrer"
-        >GarrisonFarm</a
-      >
-      下载对局脚本和布局。新局需要至少 12 分钟空档。已保存的对局有 9
-      分钟空档即可重连，基建任务到期时退出游戏。</n-p
+    <n-p v-if="garrisonEngine === 'maa'"
+      >需要 MAA v6.23.0-beta.1 或更新版本及配套资源。<span v-if="garrison.mode === 'maa_score'"
+        >刷分从没有存档的个人模拟大厅开始，MAA 会提前结束自己开启的对局以获取积分。</span
+      ><span v-else>每局结算后检查下一个基建任务。MAA 确认所有策略达标后停止刷章。</span></n-p
     >
+    <template v-else>
+      <n-p>
+        开局前可在游戏的「选配助战」里借用自己缺少的干员。商店优先购买的前六名依次为塔露拉、史尔特尔、耀骑士临光、逻各斯、克莱门莎、锏。
+      </n-p>
+      <details>
+        <summary>查看其余助战推荐（按购买优先级）</summary>
+        <n-p>
+          帕拉斯、真言、蕾缪安、烛煌、艾丽妮、薇薇安娜、维娜·维多利亚、乌尔比安、棘刺、怒潮凛冬、圣聆初雪、迷迭香、鸿雪、贝洛内、佩佩、隐德来希、冻河、酒神。
+        </n-p>
+      </details>
+      <n-p
+        >个人极速模拟使用预设编队。优先使用包内的对局脚本和布局，缺失时从
+        <a href="https://github.com/ALEXsun0/GarrisonFarm" target="_blank" rel="noopener noreferrer"
+          >GarrisonFarm 个人 fork</a
+        >
+        下载并缓存。新局需要至少 12 分钟空档。已保存的对局有 9
+        分钟空档即可重连，基建任务到期时退出游戏。</n-p
+      >
+    </template>
     <maa-task-status kind="garrison" :settings="garrison" />
-    <n-button @click="garrison.run_id = String(Date.now())">{{
+    <n-button v-if="garrison.mode !== 'maa_score'" @click="garrison.run_id = String(Date.now())">{{
       garrison.mode === 'matches' ? '重新计数并继续' : '重新核对并继续'
     }}</n-button>
   </template>

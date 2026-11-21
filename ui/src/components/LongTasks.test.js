@@ -252,3 +252,24 @@ it('shows the full simulation name and puts the green configuration shortcut bef
   expect(store.maa_long_task_type).toBe('rogue')
   expect(store.maa_long_task_weekly_windows).toEqual(windows)
 })
+
+it('keeps the Mower default and saves the MAA score and badge choices', async () => {
+  await renderLongTasks(true, {}, LongTaskParameters, { taskType: 'garrison' })
+  expect(state.selects['卫戍协议执行方式'].value).toBe('mower')
+  state.selects['卫戍协议执行方式']['onUpdate:value']('maa')
+  expect(store.garrison.mode).toBe('maa_medals')
+  state.selects['刷取目标']['onUpdate:value'](6)
+  expect(store.garrison.target_wins).toBe(6)
+  state.selects['刷取目标']['onUpdate:value']('maa_score')
+  expect(store.garrison.mode).toBe('maa_score')
+  const html = await renderLongTasks(
+    true,
+    { garrison: { ...store.garrison } },
+    LongTaskParameters,
+    { taskType: 'garrison' }
+  )
+  expect(html).toContain('提前结束自己开启的对局')
+  expect(html).not.toContain('GarrisonFarm')
+  state.selects['卫戍协议执行方式']['onUpdate:value']('mower')
+  expect(store.garrison.mode).toBe('medals')
+})

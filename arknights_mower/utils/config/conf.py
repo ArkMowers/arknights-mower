@@ -240,7 +240,7 @@ class LongTaskPart(ConfModel):
         return self
 
     class GarrisonConf(ConfModel):
-        mode: Literal["medals", "matches"] = "medals"
+        mode: Literal["medals", "matches", "maa_medals", "maa_score"] = "medals"
         match_limit: int = Field(default=1, ge=0, strict=True)
         target_wins: Literal[3, 6] = 3
         run_id: str = Field(default="", max_length=128)
