@@ -106,31 +106,6 @@ def _refine_item_color(item, predicted, classes):
     return scores[0][1]
 
 
-def _same_depot_icon_positions(before, after):
-    search = 4
-    right = before.shape[1] - search
-    matched = False
-    for y in _DEPOT_ITEM_ROWS:
-        # 只比较图标主体，避开下方的数量和有效期提示。
-        rows = slice(y - 74, y + 24)
-        for x in range(search, right, 234):
-            end = min(x + 234, right)
-            template = before[rows, x:end]
-            textured_before = cv2.meanStdDev(template)[1].item() >= 5
-            textured_after = cv2.meanStdDev(after[rows, x:end])[1].item() >= 5
-            if textured_before != textured_after:
-                return False
-            if not textured_before:
-                continue
-            region = after[rows, x - search : end + search]
-            scores = cv2.matchTemplate(region, template, cv2.TM_CCOEFF_NORMED)
-            _, score, _, position = cv2.minMaxLoc(scores)
-            if score < 0.97 or position != (search, 0):
-                return False
-            matched = True
-    return matched
-
-
 def _same_depot_labels(before, after, *, edge_margin=0, unwarped_before=None):
     def label_bands(frame):
         return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
@@ -168,34 +143,38 @@ def _depot_scroll_block_scores(before, after):
     block_matches = []
     for y in _DEPOT_ITEM_ROWS:
         rows = slice(y - 56, y + 26)
-        for x in range(850, before.shape[1] - 110, 234):
+        for x in range(148, before.shape[1] - 110, 234):
             # 用图标主体匹配位移，数量和有效期留到候选复核。
             anchor = before[rows, x : x + 110]
             if anchor.std() < 8:
                 continue
-            search = after[rows, x - _DEPOT_MAX_SCROLL : x + 110]
+            span = min(_DEPOT_MAX_SCROLL, x - _DEPOT_LABEL_EDGE_MARGIN)
+            search = after[rows, x - span : x + 110]
             scores = cv2.matchTemplate(search, anchor, cv2.TM_CCOEFF_NORMED)[0]
             if scores.max() >= _DEPOT_MIN_SCROLL_SCORE:
-                block_matches.append(scores)
-    if not block_matches:
-        raise _DepotScanIncomplete
-    return np.stack(block_matches)
+                # 该块已滑出画面的位移没有对应区域，用相关系数范围外的值标记。
+                block_matches.append(
+                    np.pad(scores, (_DEPOT_MAX_SCROLL - span, 0), constant_values=-2)
+                )
+    return np.stack(block_matches) if block_matches else None
 
 
 def _depot_scroll_candidates(scores, supported, *, strongest_only):
     votes = np.count_nonzero(supported, axis=0)
-    minimum_votes = 1
+    eligible = votes > 0
     if strongest_only:
-        best_votes = int(votes.max())
-        minimum_votes = best_votes if best_votes <= 2 else best_votes - 1
-    positions = np.flatnonzero(votes >= minimum_votes)
+        # 按仍可重叠的图标块比较支持率，允许一块证据缺失。
+        available = np.count_nonzero(scores >= -1, axis=0)
+        strength = votes / np.maximum(available, 1)
+        eligible &= votes + 1 >= strength.max() * available
+    positions = np.flatnonzero(eligible)
     if not positions.size:
         return []
     peaks = np.split(
         positions, np.flatnonzero(np.diff(positions) > _DEPOT_SCROLL_PEAK_GAP) + 1
     )
     if len(peaks) > 8:
-        raise _DepotScanIncomplete
+        return None
 
     # 先按支持块数选峰内位置，再用相关分数打破平局；不同峰交给标签校验。
     rank = votes + (scores * supported).sum(axis=0) / (len(scores) + 1)
@@ -523,40 +502,33 @@ class depotREC(SceneGraphSolver):
         )
 
     @staticmethod
-    def _same_depot_view(before, after):
+    def _depot_motion(before, after, direction):
+        """Return zero, movement in the requested direction, or None if uncertain."""
         before = cv2.cvtColor(before[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
         after = cv2.cvtColor(after[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
         if np.array_equal(before, after):
-            return True
-        old_view, new_view = before[:810], after[:810]
-        if np.mean(cv2.absdiff(old_view, new_view)) >= 0.5:
-            if min(np.std(old_view), np.std(new_view)) < 5:
-                return False
-            # 边界处的背景和物品特效仍会变化，先比较原位置的整体内容。
-            score = cv2.matchTemplate(old_view, new_view, cv2.TM_CCOEFF_NORMED)[0, 0]
-            if score < 0.995 and not _same_depot_icon_positions(old_view, new_view):
-                return False
-        return _same_depot_labels(before, after)
-
-    @staticmethod
-    def _depot_scroll_distance(before, after):
-        before = cv2.cvtColor(before[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
-        after = cv2.cvtColor(after[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
+            return 0
+        if direction > 0:
+            before, after = cv2.flip(before, 1), cv2.flip(after, 1)
         scores = _depot_scroll_block_scores(before, after)
+        if scores is None:
+            return None
         supported = scores >= np.maximum(
             _DEPOT_MIN_SCROLL_SCORE, scores.max(axis=1, keepdims=True) - 0.03
         )
         candidates = _depot_scroll_candidates(scores, supported, strongest_only=True)
+        if not candidates:
+            return None
         width = after.shape[1]
-        matched = [
-            candidate
-            for candidate, _ in candidates
-            if _same_depot_labels(
+
+        def labels_match(candidate):
+            return _same_depot_labels(
                 before[:, candidate:],
                 after[:, : width - candidate],
-                edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
+                edge_margin=_DEPOT_LABEL_EDGE_MARGIN if candidate else 0,
             )
-        ]
+
+        matched = [candidate for candidate, _ in candidates if labels_match(candidate)]
         if not matched:
             # 被投票筛掉的有效峰仍可在回退时否决歧义。
             local_maxima = cv2.dilate(
@@ -565,27 +537,26 @@ class depotREC(SceneGraphSolver):
             peak_support = (scores >= _DEPOT_MIN_SCROLL_SCORE) & (
                 scores == local_maxima
             )
+            all_peaks = _depot_scroll_candidates(
+                scores, peak_support, strongest_only=False
+            )
+            if all_peaks is None:
+                return None
             preferred = {candidate for candidate, _ in candidates}
             alternatives = [
                 (offset, correction)
-                for offset, correction in _depot_scroll_candidates(
-                    scores, peak_support, strongest_only=False
-                )
+                for offset, correction in all_peaks
                 if all(
                     abs(offset - candidate) > _DEPOT_SCROLL_PEAK_GAP
                     for candidate in preferred
                 )
             ]
             if len(candidates) + len(alternatives) > 8:
-                raise _DepotScanIncomplete
+                return None
             for candidate, correction in candidates + alternatives:
-                original = before[:, candidate:]
-                target = after[:, : width - candidate]
-                if candidate not in preferred and _same_depot_labels(
-                    original, target, edge_margin=_DEPOT_LABEL_EDGE_MARGIN
-                ):
-                    raise _DepotScanIncomplete
-                if not correction:
+                if candidate not in preferred and labels_match(candidate):
+                    return None
+                if not candidate or not correction:
                     continue
                 displacement = candidate - correction
                 aligned = cv2.warpAffine(
@@ -597,16 +568,14 @@ class depotREC(SceneGraphSolver):
                 )
                 if _same_depot_labels(
                     aligned,
-                    target,
+                    after[:, : width - candidate],
                     edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
-                    unwarped_before=original,
+                    unwarped_before=before[:, candidate:],
                 ):
                     if candidate not in preferred:
-                        raise _DepotScanIncomplete
+                        return None
                     matched.append(candidate)
-        if len(matched) != 1 or matched[0] == 0:
-            raise _DepotScanIncomplete
-        return int(matched[0])
+        return matched[0] if len(matched) == 1 else None
 
     def _category_frames(self):
         deadline = monotonic() + self.CATEGORY_SCAN_TIMEOUT
@@ -630,7 +599,10 @@ class depotREC(SceneGraphSolver):
             for _ in range(self.CATEGORY_SWIPE_LIMIT):
                 distance = (234 if retry else 702) * direction
                 after = move(start, (distance, 0), retry=retry)
-                if self._same_depot_view(frame, after):
+                displacement = self._depot_motion(frame, after, direction)
+                if displacement is None:
+                    raise _DepotScanIncomplete
+                if displacement == 0:
                     if retry:
                         frame = after
                         break
@@ -639,7 +611,7 @@ class depotREC(SceneGraphSolver):
                     continue
                 retry = False
                 if direction < 0:
-                    offset += self._depot_scroll_distance(frame, after)
+                    offset += displacement
                     yield offset, after
                 frame = after
             else:
@@ -648,18 +620,19 @@ class depotREC(SceneGraphSolver):
                 yield offset, frame
 
     def 分类扫描(self, knn模型: vision_np.Knn1Model):
-        seen_columns = set()
+        next_column = 0
         visible_items = 0
         已覆盖物品数 = 0
         for offset, frame in self._category_frames():
             first = max(0, (offset - 58 + 233) // 234)
             last = (offset + 1652) // 234
-            columns = [i for i in range(first, last + 1) if i not in seen_columns]
-            if not columns:
+            if first > next_column:
+                raise _DepotScanIncomplete
+            if last < next_column:
                 continue
-            centers = [188 + 234 * i - offset for i in columns]
+            centers = [188 + 234 * i - offset for i in range(next_column, last + 1)]
             items = self.切图主程序(frame[140:1000], centers)
-            seen_columns.update(columns)
+            next_column = last + 1
             visible_items += len(items)
             for 物品, 物品灰, _ in items:
                 物品名称, 物品数字 = self.匹配物品一次(物品, 物品灰, knn模型)
