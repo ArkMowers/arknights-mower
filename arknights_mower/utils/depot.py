@@ -2,6 +2,7 @@ import csv
 import json
 import os
 from datetime import datetime
+from threading import Lock
 
 from arknights_mower.data import key_mapping, workshop_formula
 from arknights_mower.solvers.record import save_inventory_counts
@@ -314,21 +315,24 @@ def 记录合并快照(at, 物品):
     )
 
 
-# 读取结果按 (mtime, size) 缓存。depotresult.csv 只追加不清理，而每次打开仓库页都会读
-# 它：没有这层缓存，扫描记录越多、刷新越慢，同一份文件还要被解析两遍（当前库存 + 历史）。
-_快照行缓存 = None
+_快照行缓存 = {}
+_快照行缓存锁 = Lock()
 
 
 def _读取快照行(path):
-    """读 depotresult.csv 的数据行；文件没变时直接复用上一次的解析结果。"""
-    global _快照行缓存
-    stat = os.stat(path)
-    key = (path, stat.st_mtime_ns, stat.st_size)
-    if _快照行缓存 is not None and _快照行缓存[0] == key:
-        return _快照行缓存[1]
-    _, rows = read_csv_rows(path)
-    _快照行缓存 = (key, rows)
-    return rows
+    """分别缓存扫描和合并快照的 CSV 行，最多保留两个文件。"""
+    key = os.path.abspath(path)
+    with _快照行缓存锁:
+        stat = os.stat(path)
+        version = (stat.st_mtime_ns, stat.st_size)
+        cached = _快照行缓存.get(key)
+        if cached is not None and cached[0] == version:
+            return cached[1]
+        _, rows = read_csv_rows(path)
+        if cached is None and len(_快照行缓存) == 2:
+            del _快照行缓存[next(iter(_快照行缓存))]
+        _快照行缓存[key] = (version, rows)
+        return rows
 
 
 def _解析快照行(row):
