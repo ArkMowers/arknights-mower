@@ -39,6 +39,40 @@ class NewsCheckerTests(unittest.TestCase):
         mower_main._cancel_maintenance_timer()
         config.maintenance_recheck.clear()
 
+    def test_historical_notice_html_supplies_maintenance_window_and_type(self):
+        zone = ZoneInfo("Asia/Shanghai")
+        cases = (
+            (
+                "1440",
+                "<p>此外，《明日方舟》计划将于2026年11月01日06:00至12:00对客户端进行版本更新停机维护。"
+                '<span style="color: rgb(192, 57, 43);"><strong>本次更新为强制更新，'
+                "更新结束后，需玩家对游戏客户端进行重新下载和安装。</strong></span></p>",
+                datetime(2026, 11, 1, 6),
+                datetime(2026, 11, 1, 12),
+                "major",
+            ),
+            (
+                "6230",
+                '<span style="color: rgb(192, 57, 43);">2026年11月16日16:00 ~ 16:10</span>',
+                datetime(2026, 11, 16, 16),
+                datetime(2026, 11, 16, 16, 10),
+                "hot",
+            ),
+        )
+        for cid, html, start, end, update_type in cases:
+            with (
+                self.subTest(cid=cid),
+                patch(
+                    "arknights_mower.utils.news_checker.requests.get",
+                    return_value=Mock(text=html),
+                ),
+            ):
+                detail = NewsChecker._fetch_detail(cid)
+                info = NewsChecker._parse_maintenance({"cid": cid}, detail, start, zone)
+                self.assertEqual(
+                    (info.start, info.end, info.update_type), (start, end, update_type)
+                )
+
     def test_major_update_is_detected_from_client_download_notice(self):
         item = {
             "cid": "5102",

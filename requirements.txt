@@ -131,8 +131,6 @@ langgraph-sdk==0.1.72
     # via langgraph
 langsmith==0.4.4
     # via langchain-core
-lxml==5.2.2
-    # via -r requirements.in
 markupsafe==2.1.5
     # via
     #   flask
