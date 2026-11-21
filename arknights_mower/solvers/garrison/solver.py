@@ -369,6 +369,8 @@ class GarrisonSolver:
         }
         self.click((1500, 580))
         page, rows = game.shot(), game.GRID_Y
+        offset = 0
+        checked_rows = {x: [] for x in game.GRID_X}
         skipped_badges = False
         for recheck_panels in (False, True):
             if recheck_panels and not skipped_badges:
@@ -378,6 +380,8 @@ class GarrisonSolver:
                     if not game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40:
                         continue
                     for x in game.GRID_X:
+                        if any(abs(y + offset - row) <= 40 for row in checked_rows[x]):
+                            continue
                         if (
                             not recheck_panels
                             and self.match_limit is None
@@ -394,6 +398,8 @@ class GarrisonSolver:
                             return frame
                         game.tap(x, y, 0.7)
                         action = self.read_strategy_action(game, strategies)
+                        if action == "skip":
+                            checked_rows[x].append(y + offset)
                         if action == "completed":
                             return None
                         if action == "play":
@@ -412,7 +418,13 @@ class GarrisonSolver:
                 next_page = self.scroll_strategy_page(game, backwards=recheck_panels)
                 if next_page is None:
                     break
-                page, rows = next_page
+                page, rows, shift = next_page
+                if shift is None:
+                    # Unknown page alignment cannot identify previously opened cards.
+                    checked_rows = {x: [] for x in game.GRID_X}
+                    offset = 0
+                else:
+                    offset += shift
         raise GarrisonError("本次未找到可刷策略，部分胜场仍待核对")
 
     def scroll_strategy_page(self, game, *, backwards):
@@ -429,7 +441,7 @@ class GarrisonSolver:
                 return None
             rows = game.detect_rows(after)
             if any(game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40 for y in rows):
-                return after, rows
+                return after, rows, shift
             return None
 
         return self.wait_for_observation(read, bool, 4)

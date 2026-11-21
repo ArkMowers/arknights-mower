@@ -37,6 +37,34 @@ def strategy_panel(items):
     return int(match[1]) if match else None
 
 
+def strategy_grid_shift(before, after):
+    """Measure signed grid travel using a textured strip still visible in both frames."""
+    top, bottom = 250, 1050
+    old, new = (
+        cv2.cvtColor(img[top:bottom, 600:1400:4], cv2.COLOR_BGR2GRAY)
+        for img in (before, after)
+    )
+    if np.array_equal(old, new):
+        return 0
+    # A two-row swipe can carry the middle strip entirely out of the viewport.
+    shifts = []
+    for y in (80, 300, 550):
+        strip = old[y : y + 128]
+        if strip.std() < 10:
+            continue
+        scores = cv2.matchTemplate(new, strip, cv2.TM_CCOEFF_NORMED).ravel()
+        best = int(scores.argmax())
+        score = scores[best]
+        if score < 0.85:
+            continue
+        scores[max(0, best - 8) : best + 9] = -1
+        if scores.max() < score - 0.05:
+            shifts.append(y - best)
+    if shifts and max(shifts) - min(shifts) <= 4:
+        return round(sum(shifts) / len(shifts))
+    return None
+
+
 class FarmSession:
     def __init__(self, owner):
         self.owner = owner
@@ -57,6 +85,7 @@ class FarmSession:
         farm = ModuleType("garrison_farm")
         farm.cv2, farm.np = cv2, np
         exec(compile(script[start:end], "garrison_farm.py", "exec"), vars(farm))
+        farm.grid_shift = strategy_grid_shift
         farm.shot = self.shot
         farm.ocr_engine = owner.vision.engine
         farm.tap = self.tap

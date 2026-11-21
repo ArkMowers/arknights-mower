@@ -666,6 +666,75 @@ def test_marked_cards_do_not_cost_panel_reads(
     game.swipe.assert_not_called()
 
 
+@pytest.mark.parametrize("shift", [0, 419, -419])
+def test_strategy_grid_alignment_matches_overlapping_frames(shift):
+    from arknights_mower.solvers.garrison.upstream import strategy_grid_shift
+
+    texture = np.random.default_rng(42).integers(0, 256, (1900, 800, 3), dtype=np.uint8)
+
+    def viewport(offset):
+        image = np.zeros((1080, 1920, 3), np.uint8)
+        image[250:1050, 600:1400] = texture[offset : offset + 800]
+        return image
+
+    assert strategy_grid_shift(viewport(500), viewport(500 + shift)) == shift
+    assert strategy_grid_shift(viewport(0), viewport(1000)) is None
+
+
+@pytest.mark.parametrize("overlap_read", ["skip", None])
+def test_overlapping_pages_keep_unread_cards_eligible(monkeypatch, overlap_read):
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, frame("prep"))
+    worker.capture.return_value = Frame(
+        None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True
+    )
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    game = Mock(GRID_X=[680, 890], GRID_Y=[370, 580], GRID_TOP=250, GRID_BOTTOM=1050)
+    page = 0
+
+    def scroll():
+        nonlocal page
+        page = 1
+
+    game.scroll_grid.side_effect = scroll
+    game.shot.side_effect = lambda: page
+    game.grid_shift.side_effect = lambda before, after: (after - before) * 210
+    game.detect_rows.return_value = [390, 600]
+    game.has_color_badge.side_effect = lambda image, x, y: (
+        image == 0 and (x != 680 or y != 580)
+    )
+    game.has_badge.return_value = False
+    worker.read_strategy_action = Mock(side_effect=[overlap_read, "play"])
+    assert worker.choose_strategy(game).screen == "prep"
+    assert [c.args[:2] for c in game.tap.call_args_list] == [
+        (680, 580),
+        (890 if overlap_read == "skip" else 680, 390),
+    ]
+
+
+def test_reverse_scan_skips_read_panels_but_opens_badge_only_card(monkeypatch):
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock())
+    current = Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True)
+    replay_unchanged_lobby(monkeypatch, worker, current)
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    game = Mock(GRID_X=[680, 890], GRID_Y=[370], GRID_TOP=250, GRID_BOTTOM=1050)
+    pages = iter([(1, [600], 210), None, (0, [390], -210)])
+    worker.scroll_strategy_page = Mock(side_effect=pages)
+    game.shot.return_value = 0
+    game.has_color_badge.side_effect = lambda page, x, y: page == 0 and x == 890
+    game.has_badge.return_value = False
+    worker.read_strategy_action = Mock(side_effect=["skip", "skip", "skip", "play"])
+    assert worker.choose_strategy(game).screen == "prep"
+    assert [c.args[:2] for c in game.tap.call_args_list] == [
+        (680, 370),
+        (680, 600),
+        (890, 600),
+        (890, 390),
+    ]
+
+
 @pytest.mark.parametrize("first_card_wins", [0, 3])
 def test_badge_fallback_reads_panels_after_row_centers_shift(
     monkeypatch, first_card_wins
