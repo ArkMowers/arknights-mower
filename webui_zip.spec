@@ -1,5 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import os
+import subprocess
 import sys
 
 import rapidocr
@@ -174,4 +176,17 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name="mower",
+)
+
+# Apply after COLLECT so UPX cannot rewrite CPython's signed DLLs.
+openssl_source = os.environ.get("MOWER_OPENSSL_SOURCE")
+subprocess.run(
+    [
+        sys.executable,
+        str(SPEC_DIR / "scripts" / "install_windows_openssl.py"),
+        *(["--source", openssl_source] if openssl_source else ["--download"]),
+        "--bundle",
+        coll.name,
+    ],
+    check=True,
 )

@@ -355,9 +355,62 @@ jobs:
         working-directory: ui
         run: npm ci
 
+      - name: Checkout CPython's Windows x64 OpenSSL binaries
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: python/cpython-bin-deps
+          ref: ddb46a415b4995440723183e644f8d2c346567a2 # openssl-bin-3.5.9
+          path: openssl-staging
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /amd64/libcrypto-3.dll
+            /amd64/libssl-3.dll
+            /amd64/LICENSE.txt
+
       - name: Build with PyInstaller
         shell: bash
+        env:
+          MOWER_OPENSSL_SOURCE: ${{ github.workspace }}/openssl-staging/amd64
         run: python -m PyInstaller webui_zip.spec
+
+      - name: Verify the bundled SSL and hashing modules
+        shell: bash
+        run: |
+          python -I -S - <<'PY'
+          import ctypes
+          import os
+          import sys
+          import _winapi
+          from pathlib import Path
+
+          bundle = Path("dist/mower/_internal").resolve(strict=True)
+          sys.path.insert(0, str(bundle))
+          with os.add_dll_directory(bundle):
+              import _hashlib
+              import _ssl
+              import ssl
+
+              for module in (_hashlib, _ssl):
+                  assert Path(module.__file__).resolve() == bundle / f"{module.__name__}.pyd", module.__file__
+              get_handle = ctypes.windll.kernel32.GetModuleHandleW
+              get_handle.argtypes = (ctypes.c_wchar_p,)
+              get_handle.restype = ctypes.c_void_p
+              for name in ("libcrypto-3.dll", "libssl-3.dll"):
+                  handle = get_handle(name)
+                  assert handle, f"{name} was not loaded"
+                  path = Path(_winapi.GetModuleFileName(handle)).resolve()
+                  assert path == bundle / name, path
+
+              assert ssl.OPENSSL_VERSION_INFO == (3, 5, 0, 9, 0), ssl.OPENSSL_VERSION
+              context = ssl.create_default_context()
+              assert context.verify_mode == ssl.CERT_REQUIRED and context.check_hostname
+              assert context.get_ca_certs(), "No trusted CAs available"
+              assert _hashlib.openssl_sha256(b"abc").hexdigest() == (
+                  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+              )
+              print(f"Verified {ssl.OPENSSL_VERSION} from {bundle}")
+          PY
 
       - name: Verify PE architecture
         shell: bash
