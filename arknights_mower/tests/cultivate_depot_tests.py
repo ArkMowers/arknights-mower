@@ -826,7 +826,7 @@ def test_growth_sync_preserves_scan_only_items_in_warehouse(
     monkeypatch.setattr(
         depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
     )
-    monkeypatch.setattr(depot, "_快照行缓存", None)
+    monkeypatch.setattr(depot, "_快照行缓存", {})
     monkeypatch.setattr(stock_db, "workshop_inventory_changed", Event())
     monkeypatch.setattr(config, "wake_scheduler", Event())
     scanned = {
@@ -959,7 +959,7 @@ def test_previously_invalidated_scan_only_stock_requires_a_new_scan(
     monkeypatch.setattr(
         depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
     )
-    monkeypatch.setattr(depot, "_快照行缓存", None)
+    monkeypatch.setattr(depot, "_快照行缓存", {})
     with stock_db._conn() as conn:
         conn.execute(
             "INSERT INTO workshop_inventory_updates (item_name, observed_at) VALUES (?, ?)",
@@ -994,7 +994,7 @@ def test_partial_scan_does_not_record_unmarked_stock_as_new_history(
     monkeypatch.setattr(
         depot, "get_path", lambda name: tmp_path / name.rsplit("/", 1)[-1]
     )
-    monkeypatch.setattr(depot, "_快照行缓存", None)
+    monkeypatch.setattr(depot, "_快照行缓存", {})
     stock_db.save_inventory_counts({"龙门币": 999})
     syncer.record_path.write_text(
         json.dumps({"data": {"items": [], "characters": [{"id": "char_test"}]}}),

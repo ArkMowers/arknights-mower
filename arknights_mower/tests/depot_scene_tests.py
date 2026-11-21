@@ -753,7 +753,7 @@ def test_complete_categories_clear_consumed_items_in_database_current_and_histor
     monkeypatch.setattr(
         depot, "get_path", lambda key: scan.path.parent / key.rsplit("/", 1)[-1]
     )
-    monkeypatch.setattr(depot, "_快照行缓存", None)
+    monkeypatch.setattr(depot, "_快照行缓存", {})
     scan.solver._category_scopes = {
         1063: {"技术调查补给", "应急理智顶液"},
         1298: {"可露希尔珍藏券I", "合成玉"},
