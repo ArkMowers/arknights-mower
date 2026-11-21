@@ -994,10 +994,14 @@ def _run_desktop():
     url += f"?token={quote(runtime_token, safe='')}"
     startup_ready = Event()
     explicitly_stopped = os.environ.pop("MOWER_UPDATE_TASK_STOPPED", "") == "1"
+    stop_order = os.environ.pop("MOWER_UPDATE_TASK_STOP_ORDER", "")
     if restart_job := os.environ.get("MOWER_RESTART_JOB"):
-        if explicitly_stopped or server._restore_scheduled_start(
-            restart_job, startup_ready=startup_ready
-        ):
+        restored = server._restore_scheduled_start(
+            restart_job,
+            startup_ready=startup_ready,
+            stop_order=stop_order if explicitly_stopped else None,
+        )
+        if explicitly_stopped or restored:
             resume = False
     start_http_server(server.app, host, port)
     instance_path = path.get_path("@app", space=path.global_space).resolve()

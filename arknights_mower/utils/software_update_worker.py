@@ -38,7 +38,7 @@ if __package__:
         registered_process_alive,
         registration_key,
         submission_lock,
-        task_stop_requested,
+        task_stop_request,
         utf8_output,
         wait_for_supervisor_release,
         write_json,
@@ -57,7 +57,7 @@ else:
         registered_process_alive,
         registration_key,
         submission_lock,
-        task_stop_requested,
+        task_stop_request,
         utf8_output,
         wait_for_supervisor_release,
         write_json,
@@ -1654,8 +1654,8 @@ class Worker:
         else:
             self.new_processes = processes
         for record in records:
-            explicitly_stopped = task_stop_requested(record, self.job["id"], self.state)
-            if explicitly_stopped:
+            stop = task_stop_request(record, self.job["id"], self.state)
+            if stop is not None:
                 record = {**record, "running": False}
             if (
                 record["kind"] == "manager"
@@ -1664,8 +1664,11 @@ class Worker:
             ):
                 continue
             env = launch_environment(record, self.job["id"], self.job["background"])
-            if explicitly_stopped:
+            if stop is not None:
                 env["MOWER_UPDATE_TASK_STOPPED"] = "1"
+                order = stop.get("order")
+                if type(order) is int and order > 0:
+                    env["MOWER_UPDATE_TASK_STOP_ORDER"] = str(order)
             if record["kind"] == "instance" and record.get("running"):
                 env["MOWER_RESUME_MODE"] = "0"
                 env["MOWER_UPDATE_REPLAN"] = "1"

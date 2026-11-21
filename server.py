@@ -125,6 +125,7 @@ scheduled_start_timer = None
 scheduled_start_at = None
 scheduled_start_generation = None
 scheduled_start_type = None
+scheduled_start_order = None
 scheduled_start_handoff = None
 performance_test_lock = RLock()
 performance_test_cancel = Event()
@@ -193,11 +194,13 @@ def _run_performance_test(configuration):
 
 def _cancel_scheduled_start():
     global scheduled_start_timer, scheduled_start_at, scheduled_start_handoff
+    global scheduled_start_order
     with scheduled_start_lock:
         if scheduled_start_timer is not None:
             scheduled_start_timer.cancel()
         scheduled_start_timer = None
         scheduled_start_at = None
+        scheduled_start_order = None
         if scheduled_start_handoff is not None:
             transfer, reservation_id = scheduled_start_handoff
             try:
@@ -283,6 +286,7 @@ def _arm_scheduled_start(at, generation, start_type, delay, startup_ready=None):
 
 
 def _schedule_start(delay_seconds, *, start_type="2"):
+    global scheduled_start_order
     from arknights_mower.utils.config_profiles import current_generation
 
     with backup_lock, scheduled_start_lock:
@@ -292,6 +296,7 @@ def _schedule_start(delay_seconds, *, start_type="2"):
         at = datetime.datetime.now().astimezone() + datetime.timedelta(
             seconds=delay_seconds
         )
+        scheduled_start_order = time.monotonic_ns()
         _arm_scheduled_start(at, generation, start_type, delay_seconds)
         return at.isoformat()
 
@@ -319,6 +324,7 @@ def _shutdown_for_software_update(job):
                         "at": scheduled_start_at.isoformat(),
                         "generation": scheduled_start_generation,
                         "start_type": scheduled_start_type,
+                        "order": scheduled_start_order,
                     },
                     sync=True,
                 )
@@ -337,14 +343,21 @@ def _shutdown_for_software_update(job):
         shutdown.request("runtime_request")
 
 
-def _restore_scheduled_start(job, *, startup_ready=None):
-    global scheduled_start_handoff
+def _restore_scheduled_start(job, *, startup_ready=None, stop_order=None):
+    global scheduled_start_handoff, scheduled_start_order
     from arknights_mower.utils.config_backup import LocalConfigError
     from arknights_mower.utils.config_profiles import ProfileConflict, check_generation
 
     transfer = _scheduled_start_transfer(job)
     if transfer is None:
         return False
+    if stop_order is not None:
+        try:
+            stop_order = int(stop_order)
+        except ValueError:
+            return False
+        if stop_order <= 0:
+            return False
     with backup_lock, scheduled_start_lock:
         try:
             record = json.loads(transfer.read_text(encoding="utf-8"))
@@ -364,6 +377,11 @@ def _restore_scheduled_start(job, *, startup_ready=None):
             generation, start_type = record["generation"], record["start_type"]
             if at.tzinfo is None or start_type not in ("0", "2"):
                 raise ValueError("预约时间或启动模式无效")
+            order = record.get("order")
+            if stop_order is not None and (
+                type(order) is not int or order <= stop_order
+            ):
+                return False
             check_generation(generation, allow_legacy=False)
         except FileNotFoundError:
             return False
@@ -377,6 +395,7 @@ def _restore_scheduled_start(job, *, startup_ready=None):
         except OSError:
             logger.exception("软件更新后无法读取预约启动")
             return False
+        scheduled_start_order = order if type(order) is int and order > 0 else None
         _arm_scheduled_start(
             at,
             generation,

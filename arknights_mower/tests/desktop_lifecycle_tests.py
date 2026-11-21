@@ -261,6 +261,7 @@ class DesktopStartupTests(unittest.TestCase):
         restart=False,
         restart_job="fixture",
         update_task_stopped="",
+        update_task_stop_order="",
         resume_run="0",
         resume_mode="",
         resource_result=None,
@@ -388,6 +389,7 @@ class DesktopStartupTests(unittest.TestCase):
                         "MOWER_MANAGED": "1" if managed else "0",
                         "MOWER_RESTART_JOB": restart_job if restart else "",
                         "MOWER_UPDATE_TASK_STOPPED": update_task_stopped,
+                        "MOWER_UPDATE_TASK_STOP_ORDER": update_task_stop_order,
                         "MOWER_RESTART_PORT": restart_port,
                         "MOWER_MANAGER_PORT": manager_port,
                         "MOWER_RESUME_RUN": resume_run,
@@ -605,8 +607,10 @@ class DesktopStartupTests(unittest.TestCase):
         )
         server.start.assert_not_called()
 
-    def test_update_handoff_overrides_running_snapshot_but_not_explicit_stop(self):
+    def test_update_handoff_preserves_the_last_accepted_appointment_action(self):
         import server as task_server
+        from arknights_mower.solvers import record as state_record
+        from arknights_mower.utils import crash_recovery, instance_supervisor
         from arknights_mower.utils.software_update_worker import Worker
 
         job_id = "a" * 32
@@ -616,23 +620,57 @@ class DesktopStartupTests(unittest.TestCase):
             "space": "",
             "name": "",
             "running": True,
+            "pid": os.getpid(),
+            "executable": sys.executable,
         }
-        for explicitly_stopped in (False, True):
+        for action in (
+            "running_snapshot",
+            "legacy_stop",
+            "newer_stop_marker",
+            "stop_then_put",
+            "put_then_stop",
+        ):
             with (
-                self.subTest(explicitly_stopped=explicitly_stopped),
+                self.subTest(action=action),
                 TemporaryDirectory() as folder,
                 patch.object(task_server, "state_dir", return_value=Path(folder)),
+                patch.object(runtime, "state_dir", return_value=Path(folder)),
                 patch.object(task_server, "Timer"),
                 patch.object(task_server, "shutdown", Shutdown()),
+                patch.object(task_server, "mower_thread", None),
+                patch.object(task_server.config, "stop_mower", threading.Event()),
+                patch.object(crash_recovery, "cancel"),
+                patch.object(instance_supervisor, "task_intent"),
+                patch.object(state_record, "save_state_to_db"),
             ):
                 state = Path(folder)
-                expected = task_server._schedule_start(3600, start_type="0")
+                runtime.write_json(
+                    state / "active/owner.json", {"id": job_id, "pid": os.getpid()}
+                )
+                runtime.write_json(state / "instances/instance.json", record)
+                client = task_server.app.test_client()
+                headers = {"token": getattr(task_server.app, "token", "")}
+                if action == "stop_then_put":
+                    self.assertEqual(client.get("/stop", headers=headers).data, b"true")
+                    response = client.put(
+                        "/scheduled-start",
+                        json={"delay_seconds": 3600},
+                        headers=headers,
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    expected = response.json["scheduled_start_at"]
+                else:
+                    expected = task_server._schedule_start(3600, start_type="0")
+                if action == "put_then_stop":
+                    self.assertEqual(client.get("/stop", headers=headers).data, b"true")
                 self.addCleanup(task_server._cancel_scheduled_start)
                 task_server._shutdown_for_software_update(job_id)
-                if explicitly_stopped:
+                if action == "legacy_stop":
                     runtime.write_json(
                         state / "active/task-stops/instance.json", {"job": job_id}
                     )
+                elif action == "newer_stop_marker":
+                    runtime.record_task_stop()
                 job = state / "jobs" / job_id / "job.json"
                 runtime.write_json(
                     job,
@@ -645,9 +683,20 @@ class DesktopStartupTests(unittest.TestCase):
                         "background": True,
                     },
                 )
-                with patch.object(subprocess, "Popen") as process:
+                with (
+                    patch.object(subprocess, "Popen") as process,
+                    patch.dict(
+                        os.environ,
+                        {
+                            "MOWER_UPDATE_TASK_STOPPED": "1",
+                            "MOWER_UPDATE_TASK_STOP_ORDER": "99",
+                        },
+                    ),
+                ):
                     Worker(job).restart([record], verify=False)
                 env = process.call_args.kwargs["env"]
+                if action in ("running_snapshot", "legacy_stop"):
+                    self.assertNotIn("MOWER_UPDATE_TASK_STOP_ORDER", env)
 
                 def configure(stack, task_server, server, config, events):
                     server._restore_scheduled_start.side_effect = (
@@ -662,21 +711,26 @@ class DesktopStartupTests(unittest.TestCase):
                         resume_mode=env.get("MOWER_RESUME_MODE", ""),
                         update_replan=env.get("MOWER_UPDATE_REPLAN", ""),
                         update_task_stopped=env.get("MOWER_UPDATE_TASK_STOPPED", ""),
+                        update_task_stop_order=env.get(
+                            "MOWER_UPDATE_TASK_STOP_ORDER", ""
+                        ),
                         configure_startup=configure,
                     )
                     server.start.assert_not_called()
-                    if explicitly_stopped:
-                        self.assertEqual(env["MOWER_UPDATE_TASK_STOPPED"], "1")
-                        server._restore_scheduled_start.assert_not_called()
-                        self.assertIsNone(task_server.scheduled_start_at)
-                    else:
-                        self.assertEqual(env["MOWER_RESUME_RUN"], "1")
-                        self.assertNotIn("MOWER_UPDATE_TASK_STOPPED", env)
-                        server._restore_scheduled_start.assert_called_once()
+                    self.assertEqual(
+                        env["MOWER_RESUME_RUN"],
+                        "1" if action == "running_snapshot" else "0",
+                    )
+                    if action in ("running_snapshot", "stop_then_put"):
                         self.assertEqual(
                             task_server.scheduled_start_at.isoformat(), expected
                         )
-                        self.assertEqual(task_server.scheduled_start_type, "0")
+                        self.assertEqual(
+                            task_server.scheduled_start_type,
+                            "2" if action == "stop_then_put" else "0",
+                        )
+                    else:
+                        self.assertIsNone(task_server.scheduled_start_at)
                 finally:
                     task_server._cancel_scheduled_start()
 

@@ -777,9 +777,15 @@ def test_user_stop_after_job_admission_overrides_captured_running_state(
         )
     environment = create.call_args.kwargs["env"]
     assert environment["MOWER_RESUME_RUN"] == ("0" if user_requested else "1")
-    assert (environment.get("MOWER_UPDATE_TASK_STOPPED") == "1") is (
-        replacement == "update" and user_requested
-    )
+    marker = environment.get("MOWER_UPDATE_TASK_STOPPED")
+    order = environment.get("MOWER_UPDATE_TASK_STOP_ORDER")
+    if replacement == "update" and user_requested:
+        request = runtime.task_stop_request(record, job_id, state)
+        assert marker == "1"
+        assert order == str(request["order"])
+    else:
+        assert marker is None
+        assert order is None
     if user_requested:
         assert environment.get("MOWER_RESUME_MODE") not in ("0", "1")
     assert record["running"] is True
