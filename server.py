@@ -127,6 +127,7 @@ scheduled_start_generation = None
 scheduled_start_type = None
 scheduled_start_order = None
 scheduled_start_handoff = None
+unconfirmed_restart_transfer = None
 performance_test_lock = RLock()
 performance_test_cancel = Event()
 performance_test_job = {"status": "idle", "id": None}
@@ -192,6 +193,20 @@ def _run_performance_test(configuration):
         )
 
 
+def _invalidate_scheduled_start_transfer(transfer, reservation_id):
+    try:
+        transfer.unlink(missing_ok=True)
+    except OSError:
+        try:
+            write_json(
+                transfer.with_suffix(".cancelled"), {"id": reservation_id}, sync=True
+            )
+        except OSError:
+            logger.exception("无法使预约启动的更新交接记录失效")
+            return False
+    return True
+
+
 def _cancel_scheduled_start():
     global scheduled_start_timer, scheduled_start_at, scheduled_start_handoff
     global scheduled_start_order
@@ -202,21 +217,8 @@ def _cancel_scheduled_start():
         scheduled_start_at = None
         scheduled_start_order = None
         if scheduled_start_handoff is not None:
-            transfer, reservation_id = scheduled_start_handoff
-            try:
-                transfer.unlink(missing_ok=True)
-            except OSError:
-                try:
-                    write_json(
-                        transfer.with_suffix(".cancelled"),
-                        {"id": reservation_id},
-                        sync=True,
-                    )
-                except OSError:
-                    logger.exception(
-                        "已取消当前进程中的预约启动，但无法使更新交接记录失效"
-                    )
-                    return False
+            if not _invalidate_scheduled_start_transfer(*scheduled_start_handoff):
+                return False
             scheduled_start_handoff = None
         return True
 
@@ -310,17 +312,34 @@ def _scheduled_start_transfer(job):
 
 
 def _shutdown_for_software_update(job):
-    global scheduled_start_handoff
+    return handoff_scheduled_start(_scheduled_start_transfer(job))
+
+
+class RestartHandoffRejected(RuntimeError):
+    """The host confirmed that this request cannot restart the instance."""
+
+
+def handoff_scheduled_start(transfer, *, before_shutdown=None):
+    """Transfer the timer before its host commits the update restart."""
+    global scheduled_start_handoff, scheduled_start_timer, unconfirmed_restart_transfer
     with scheduled_start_lock:
-        if shutdown.closing:
-            return
-        transfer = _scheduled_start_transfer(job)
-        if scheduled_start_at is not None:
+        if shutdown.closing or unconfirmed_restart_transfer is not None:
+            return False
+        pending = scheduled_start_at is not None
+        if (
+            not pending
+            and scheduled_start_handoff
+            and scheduled_start_handoff[0] == transfer
+            and not _cancel_scheduled_start()
+        ):
+            return False
+        if pending:
+            reservation_id = uuid4().hex
             try:
                 write_json(
                     transfer,
                     {
-                        "id": uuid4().hex,
+                        "id": reservation_id,
                         "at": scheduled_start_at.isoformat(),
                         "generation": scheduled_start_generation,
                         "start_type": scheduled_start_type,
@@ -330,25 +349,75 @@ def _shutdown_for_software_update(job):
                 )
             except OSError:
                 logger.exception("软件更新前无法交接预约启动，保留预约和当前实例")
-                return
+                return False
+        if before_shutdown is not None:
+            try:
+                before_shutdown(pending)
+            except RestartHandoffRejected:
+                if pending:
+                    _invalidate_scheduled_start_transfer(transfer, reservation_id)
+                raise
+            except Exception:
+                unconfirmed_restart_transfer = transfer
+                if pending:
+                    scheduled_start_timer.cancel()
+                    scheduled_start_timer = None
+                    scheduled_start_handoff = (transfer, reservation_id)
+                raise
+        if pending:
             if scheduled_start_handoff and scheduled_start_handoff[0] == transfer:
                 scheduled_start_handoff = None
             _cancel_scheduled_start()
-        elif (
-            scheduled_start_handoff
-            and scheduled_start_handoff[0] == transfer
-            and not _cancel_scheduled_start()
-        ):
-            return
         shutdown.request("runtime_request")
+        return True
+
+
+def resolve_scheduled_start_handoff(transfer, *, accepted):
+    """Only the host that owns the pending restart may release its paused timer."""
+    global scheduled_start_handoff, unconfirmed_restart_transfer
+    with scheduled_start_lock:
+        if transfer != unconfirmed_restart_transfer:
+            return
+        owned = scheduled_start_handoff and scheduled_start_handoff[0] == transfer
+        if accepted:
+            if owned:
+                scheduled_start_handoff = None
+                _cancel_scheduled_start()
+            shutdown.request("runtime_request")
+        elif owned and scheduled_start_timer is None:
+            if not _invalidate_scheduled_start_transfer(*scheduled_start_handoff):
+                raise OSError("无法清除已撤回的预约交接文件")
+            scheduled_start_handoff = None
+            if scheduled_start_at is not None:
+                _arm_scheduled_start(
+                    scheduled_start_at,
+                    scheduled_start_generation,
+                    scheduled_start_type,
+                    max(0, scheduled_start_at.timestamp() - time.time()),
+                )
+        unconfirmed_restart_transfer = None
+
+
+def _notify_update_host_of_stop():
+    callback = app.extensions.get("update_host_task_stop")
+    if callback is not None:
+        callback()
 
 
 def _restore_scheduled_start(job, *, startup_ready=None, stop_order=None):
+    return restore_scheduled_start(
+        _scheduled_start_transfer(job),
+        startup_ready=startup_ready,
+        stop_order=stop_order,
+    )
+
+
+def restore_scheduled_start(transfer, *, startup_ready=None, stop_order=None):
+    """Restore an update reservation from the owning host's handoff file."""
     global scheduled_start_handoff, scheduled_start_order
     from arknights_mower.utils.config_backup import LocalConfigError
     from arknights_mower.utils.config_profiles import ProfileConflict, check_generation
 
-    transfer = _scheduled_start_transfer(job)
     if transfer is None:
         return False
     if stop_order is not None:
@@ -2600,6 +2669,18 @@ def scheduled_start():
         with scheduled_start_lock:
             if shutdown.closing:
                 return {"error": "Mower 正在退出"}, 409
+            if scheduled_start_at is not None:
+                from arknights_mower.utils.update_runtime import (
+                    InstanceScanError,
+                    record_task_stop,
+                )
+
+                try:
+                    record_task_stop()
+                    _notify_update_host_of_stop()
+                except (InstanceScanError, OSError, ValueError):
+                    logger.exception("无法记录更新期间的预约取消操作，保留预约")
+                    return {"error": "无法记录取消操作，请重试"}, 503
             if not _cancel_scheduled_start():
                 return {"error": "当前计时已取消，但无法清除更新交接记录"}, 503
         logger.info("已取消预约启动")
@@ -2616,6 +2697,8 @@ def scheduled_start():
     with backup_lock, maa_maintenance_lock, scheduled_start_lock:
         if shutdown.closing:
             return {"error": "Mower 正在退出"}, 409
+        if unconfirmed_restart_transfer is not None:
+            return {"error": "更新重启结果尚未确认，请先核对本次更新"}, 409
         if mower_thread and mower_thread.is_alive():
             return {"error": "Mower 正在运行"}, 409
         start_at = _schedule_start(delay_seconds)
@@ -2675,6 +2758,11 @@ def stop(*, user_requested=True, preserve_scheduled_start=False):
                 return {"error": "Mower 正在退出"}, 409
             _request_mower_stop()
             reservation_cancelled = _cancel_scheduled_start()
+            try:
+                _notify_update_host_of_stop()
+            except OSError:
+                reservation_cancelled = False
+                logger.exception("无法记录宿主更新期间的停止操作")
             try:
                 record_task_stop()
             except Exception:
@@ -2819,11 +2907,23 @@ def register_shutdown(lifecycle):
         if not stopped:
             raise TimeoutError("Mower 工作线程未在退出预算内结束")
 
+    def close_scheduled_start():
+        global scheduled_start_handoff, unconfirmed_restart_transfer
+        with scheduled_start_lock:
+            if (
+                scheduled_start_handoff
+                and scheduled_start_handoff[0] == unconfirmed_restart_transfer
+            ):
+                # Native shutdown may reach atexit before the reply is recovered.
+                scheduled_start_handoff = None
+            unconfirmed_restart_transfer = None
+            _cancel_scheduled_start()
+
     lifecycle.own(
         "device gate", lambda: mower.device_control.begin_shutdown(), Phase.GATE
     )
     lifecycle.own("worker signal", config.stop_mower.set, Phase.SIGNAL)
-    lifecycle.own("scheduled starts", _cancel_scheduled_start, Phase.SIGNAL)
+    lifecycle.own("scheduled starts", close_scheduled_start, Phase.SIGNAL)
     lifecycle.own(
         "device I/O", lambda: mower.device_control.interrupt_io(), Phase.INTERRUPT
     )

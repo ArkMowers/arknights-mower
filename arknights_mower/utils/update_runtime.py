@@ -398,8 +398,25 @@ def record_task_stop():
     """Keep a user Stop effective across an already accepted replacement job."""
     order = time.monotonic_ns()
     directory = state_dir()
-    owner = read_json(directory / "active/owner.json", {})
-    if not owner or not process_alive(owner.get("pid")):
+    try:
+        owner = json.loads(
+            (directory / "active/owner.json").read_text(encoding="utf-8")
+        )
+    except FileNotFoundError:
+        return
+    if (
+        not isinstance(owner, dict)
+        or type(owner.get("pid")) is not int
+        or owner["pid"] <= 0
+        or not isinstance(owner.get("id"), str)
+        or not owner["id"]
+    ):
+        raise ValueError("更新作业记录缺少有效的作业标识或进程编号")
+    try:
+        alive = process_alive(owner["pid"])
+    except OverflowError as exc:
+        raise ValueError("更新作业的进程编号无效") from exc
+    if not alive:
         return
     current = next(
         (
