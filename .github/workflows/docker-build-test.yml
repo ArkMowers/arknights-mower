@@ -1,6 +1,11 @@
 name: Test Docker Build and Runtime
 
 on:
+  pull_request:
+    branches: [alpha]
+    paths:
+      - docker/Dockerfile
+      - .github/workflows/docker-build-test.yml
   workflow_dispatch:
 
 jobs:

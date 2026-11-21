@@ -13,18 +13,17 @@ import gen_server_requirements as generator  # noqa: E402
 
 
 class ServerRequirementsTests(unittest.TestCase):
-    def test_filters_desktop_packages_and_preserves_ocr_requirements(self):
-        source = [
-            "# OCR 依赖\n",
-            "opencv-python-headless==4.11.0.86\n",
-            "rapidocr==3.10.0\n",
-            "ddddocr==1.5.6\n",
-            "pywebview==5.1\n",
-            "PyAutoGUI==0.9.54\n",
-            "pystray==0.19.5\n",
-            "pythonnet==3.0.5\n",
-        ]
-        self.assertEqual(list(generator.transform_lines(source)), source[:4])
+    def test_filter_preserves_each_server_root_and_its_extras(self):
+        source = (
+            (REPO_ROOT / "requirements.in").read_text(encoding="utf-8-sig").splitlines()
+        )
+        filtered = list(generator.transform_lines(source))
+        self.assertEqual(
+            {line.split("==", 1)[0].lower() for line in source if line not in filtered},
+            {"pywebview", "pystray", "pyautogui"},
+        )
+        self.assertTrue(any(line.startswith("requests[socks]") for line in filtered))
+        self.assertTrue(any(line.startswith("httpx[socks]") for line in filtered))
 
     def test_does_not_replace_an_opencv_distribution(self):
         source = ["OpenCV-Python==4.11.0.86 # preserved input\n"]
@@ -72,13 +71,18 @@ class DockerDependencyInstallTests(unittest.TestCase):
         self.assertLess(check, smoke)
         self.assertIn("--no-deps pnnx==20260526", dockerfile)
 
-    def test_server_installs_the_resolved_graph_before_checking_and_pruning(self):
+    def test_server_installs_filtered_roots_with_locked_version_constraints(self):
         dockerfile = (REPO_ROOT / "docker/Dockerfile").read_text(encoding="utf-8")
+        self.assertIn(
+            "python gen_server_requirements.py requirements.in requirements-server.txt",
+            dockerfile,
+        )
         install = next(
             line
             for line in dockerfile.splitlines()
             if "-r requirements-server.txt" in line
         )
+        self.assertIn("-c requirements.txt", install)
         self.assertNotIn("--no-deps", install)
         self.assertLess(
             dockerfile.index("-r requirements-server.txt"),

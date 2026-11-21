@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-"""Generate server-only requirements from the full pinned requirements.
-
-- Drops desktop/GUI-specific packages to reduce image size.
+"""Filter desktop-only packages from the direct runtime dependencies.
 
 Usage:
-    python gen_server_requirements.py requirements.txt requirements-server.txt
+    python gen_server_requirements.py requirements.in requirements-server.txt
 """
 
 from __future__ import annotations
@@ -13,21 +11,7 @@ import sys
 from pathlib import Path
 from typing import Iterable, Tuple
 
-# Packages not needed in the headless server image
-EXCLUDE = {
-    "pywebview",
-    "pystray",
-    "pythonnet",
-    "pyautogui",
-    "mouseinfo",
-    "pygetwindow",
-    "pymsgbox",
-    "pyrect",
-    "pyscreeze",
-    "pytweening",
-    "pyperclip",
-    "proxy-tools",
-}
+EXCLUDE = {"pywebview", "pystray", "pyautogui"}
 
 
 def split_req(line: str) -> Tuple[str, str]:
