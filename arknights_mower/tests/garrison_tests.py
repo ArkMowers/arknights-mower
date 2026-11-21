@@ -539,15 +539,15 @@ def test_settlement_yields_before_starting_another_match(monkeypatch):
     s.device.tap.assert_called_once_with((125, 225))
 
 
-def test_packaged_garrison_files_load_without_cache_or_network(tmp_path, monkeypatch):
+def test_packaged_garrison_files_load_without_cache_or_network(monkeypatch):
     from arknights_mower.solvers.garrison import upstream
 
-    monkeypatch.setattr(upstream, "BUNDLED_DIR", tmp_path)
     monkeypatch.setattr(upstream, "get_path", Mock(side_effect=AssertionError))
     monkeypatch.setattr(upstream, "urlopen", Mock(side_effect=AssertionError))
-    for name in ("garrison_farm.py", "tiles.json"):
-        (tmp_path / name).write_bytes(name.encode())
-        assert upstream.read_resource(name, lambda: 3) == name.encode()
+    session = upstream.FarmSession(Mock(target_wins=3))
+    assert session.game.TARGET == 3
+    assert session.game.LAYOUT["safe"]
+    assert callable(session.game.set_profile)
 
 
 def test_garrison_download_uses_only_personal_fork_and_reuses_cache(

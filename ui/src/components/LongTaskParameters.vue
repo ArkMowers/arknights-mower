@@ -186,11 +186,14 @@ watch(
         </n-p>
       </details>
       <n-p
-        >个人极速模拟使用预设编队。优先使用包内的对局脚本和布局，缺失时从
-        <a href="https://github.com/ALEXsun0/GarrisonFarm" target="_blank" rel="noopener noreferrer"
+        >个人极速模拟使用预设编队。内置对局脚本和棋盘布局来自 UnknownGlyph 的 GarrisonFarm，由
+        <a
+          href="https://github.com/ALEXsun0/GarrisonFarm/tree/fd373c9b1ab1e8fbb52ad78b8da4c461ab325abb"
+          target="_blank"
+          rel="noopener noreferrer"
           >GarrisonFarm 个人 fork</a
         >
-        下载并缓存。新局需要至少 12 分钟空档。已保存的对局有 9
+        提供。新局需要至少 12 分钟空档。已保存的对局有 9
         分钟空档即可重连，基建任务到期时退出游戏。</n-p
       >
     </template>
