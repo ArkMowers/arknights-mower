@@ -249,6 +249,54 @@ class ScheduledStartTests(unittest.TestCase):
                 self.assertIsNone(self.server.scheduled_start_at)
                 self.assertFalse(self.server._scheduled_start_transfer(job).exists())
 
+    def test_native_restart_failure_preserves_timer_until_host_accepts(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(self.server, "shutdown", Shutdown()),
+        ):
+            transfer = Path(folder) / "reservation.json"
+            expected = self.server._schedule_start(600, start_type="0")
+            original = FakeTimer.instances[-1]
+
+            def reject(pending):
+                self.assertTrue(pending)
+                self.assertTrue(transfer.is_file())
+                raise OSError("host declined")
+
+            with self.assertRaises(OSError):
+                self.server.handoff_scheduled_start(transfer, before_shutdown=reject)
+            self.assertFalse(self.server.shutdown.closing)
+            self.assertFalse(transfer.exists())
+            self.assertFalse(original.cancelled)
+            self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
+            accept = Mock()
+            self.assertTrue(
+                self.server.handoff_scheduled_start(transfer, before_shutdown=accept)
+            )
+            accept.assert_called_once_with(True)
+            self.assertTrue(original.cancelled)
+            self.assertTrue(self.server.shutdown.closing)
+            with patch.object(self.server, "shutdown", Shutdown()):
+                self.assertTrue(self.server.restore_scheduled_start(transfer))
+                self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
+                self.assertEqual(self.server.scheduled_start_type, "0")
+
+    def test_failed_cancel_marker_keeps_reservation_for_retry(self):
+        self.server._schedule_start(60)
+        with patch(
+            "arknights_mower.utils.update_runtime.record_task_stop", side_effect=OSError
+        ):
+            response = self.client.delete("/scheduled-start", headers=self.headers)
+        self.assertEqual(response.status_code, 503)
+        self.assertFalse(FakeTimer.instances[-1].cancelled)
+        self.assertIsNotNone(self.server.scheduled_start_at)
+        self.assertEqual(
+            self.client.delete("/scheduled-start", headers=self.headers).status_code,
+            200,
+        )
+
     def test_failed_update_handoff_does_not_close_or_cancel_reservation(self):
         from arknights_mower.utils.lifecycle import Shutdown
 
