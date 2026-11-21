@@ -361,16 +361,9 @@ class depotREC(SceneGraphSolver):
             return False
         return True
 
-    def _wait_for_depot_page(self, before: np.ndarray, deadline: float) -> np.ndarray:
-        if not self.wait_for_scene_stable(Scene.DEPOT):
-            raise _DepotScanIncomplete
-        if not self._category_selected(self._category_x):
-            raise _DepotScanIncomplete
+    def _wait_for_depot_page(self, deadline: float) -> np.ndarray:
         deadline = min(deadline, monotonic() + 5)
-        held = self.recog.img
-        # 没有推进时，从抬手后的两张画面判断是否还停在原页。
-        previous = None if self._same_depot_view(before, held) else held
-        self.recog.update()
+        previous = None
         while monotonic() < deadline:
             scene = self.scene()
             if monotonic() >= deadline:
@@ -379,9 +372,16 @@ class depotREC(SceneGraphSolver):
                 previous = None
             elif scene == Scene.DEPOT and self._category_selected(self._category_x):
                 frame = self.recog.img
-                if previous is not None and self._same_depot_view(previous, frame):
+                current = self.recog.gray[_DEPOT_PAGE_ROWS]
+                if previous is not None and (
+                    np.array_equal(previous, current)
+                    or (
+                        _same_depot_icon_positions(previous, current)
+                        and _same_depot_labels(previous, current)
+                    )
+                ):
                     return frame.copy()
-                previous = frame
+                previous = current
             else:
                 raise _DepotScanIncomplete
             self.sleep(min(0.2, max(0, deadline - monotonic())))
@@ -592,8 +592,9 @@ class depotREC(SceneGraphSolver):
         def move(start, movement, *, retry):
             if monotonic() >= deadline:
                 raise _DepotScanIncomplete
-            self.swipe_noinertia(start, movement, retry=retry, capture=True)
-            return self._wait_for_depot_page(frame, deadline)
+            # 抬手后画面可能回弹，只用抬手后的截图确认位置。
+            self.swipe_noinertia(start, movement, retry=retry)
+            return self._wait_for_depot_page(deadline)
 
         frame = self.recog.img
         offset = 0

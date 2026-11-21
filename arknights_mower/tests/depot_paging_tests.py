@@ -70,17 +70,14 @@ def test_category_paging_uses_standard_drag_and_slower_boundary_checks(paged):
     solver = paged.solver
     original_swipe = solver.swipe_noinertia.side_effect
 
-    def send_swipe(points, *, durations, up_wait, capture):
+    def send_swipe(points, *, durations, up_wait):
         (x0, y0), *_, (x1, y1) = points
         movement = (x1 - x0, y1 - y0)
         assert durations == [200, {702: 140, 234: 400}[abs(movement[0])], 200]
         assert up_wait == 400
-        assert capture is True
         original_swipe(points[0], movement)
-        return solver.recog.img
 
     solver.device = SimpleNamespace(swipe_ext=Mock(side_effect=send_swipe))
-    solver.recog.set_frame = Mock()
     solver.sleep = Mock()
     solver.swipe_noinertia = module.SceneGraphSolver.swipe_noinertia.__get__(solver)
 
@@ -150,64 +147,63 @@ def test_category_timeout_stops_without_yielding_a_complete_scan(paged):
     assert paged.state.moves == [702]
 
 
-def observe_after_swipe(monkeypatch, before, held, updates):
+def observe_after_swipe(monkeypatch, before, updates):
     solver = module.depotREC.__new__(module.depotREC)
     solver._category_x = 1063
     current = SimpleNamespace(scene=module.Scene.DEPOT, category=1063, time=0)
-    solver.recog = SimpleNamespace(img=held)
+    solver.recog = SimpleNamespace(img=before)
     captures = iter(updates)
 
     def update():
         solver.recog.img, current.scene, current.category = next(captures)
+        solver.recog.gray = cv2.cvtColor(solver.recog.img, cv2.COLOR_RGB2GRAY)
         current.time += 0.5
 
     solver.recog.update = Mock(side_effect=update)
     solver.sleep = Mock(side_effect=lambda _: solver.recog.update())
     solver.scene = lambda: current.scene
     solver._category_selected = lambda x: current.category == x
-    solver.swipe_noinertia = Mock(
-        side_effect=lambda *a, **k: setattr(solver.recog, "img", held)
-    )
+    solver.swipe_noinertia = Mock(side_effect=lambda *a, **k: solver.recog.update())
     monkeypatch.setattr(module, "monotonic", lambda: current.time)
-    solver.recog.img = before
     return solver
 
 
-def test_paging_reuses_held_view_and_reads_only_the_confirming_fresh_view(
-    paged, monkeypatch
-):
+def test_paging_reads_the_second_matching_post_release_view(paged, monkeypatch):
     before = paged.state.render()
     paged.state.offset += 234
     held = paged.state.render()
     confirmed = held.copy()
     confirmed[0, 0] = 1
     solver = observe_after_swipe(
-        monkeypatch, before, held, [(confirmed, module.Scene.DEPOT, 1063)]
+        monkeypatch,
+        before,
+        [(held, module.Scene.DEPOT, 1063), (confirmed, module.Scene.DEPOT, 1063)],
     )
-    solver.recog.img = held
-    result = solver._wait_for_depot_page(before, 5)
+    solver.recog.update()
+    result = solver._wait_for_depot_page(5)
     assert np.array_equal(result, confirmed)
-    solver.recog.update.assert_called_once()
+    assert solver.recog.update.call_count == 2
 
 
-@pytest.mark.parametrize("moves_on_hold", [False, True])
-def test_delayed_movement_and_release_snap_use_the_confirmed_position(
-    paged, monkeypatch, moves_on_hold
+def test_first_fresh_view_at_held_position_does_not_hide_late_snapback(
+    paged, monkeypatch
 ):
     before = paged.state.render()
     paged.state.offset += 234
-    held = paged.state.render() if moves_on_hold else before
+    held = paged.state.render()
     paged.state.offset -= 18
     settled = paged.state.render()
     solver = observe_after_swipe(
-        monkeypatch, before, held, [(settled, module.Scene.DEPOT, 1063)] * 2
+        monkeypatch,
+        before,
+        [(held, module.Scene.DEPOT, 1063)] + [(settled, module.Scene.DEPOT, 1063)] * 2,
     )
-    solver.recog.img = held
+    solver.recog.update()
 
-    result = solver._wait_for_depot_page(before, 5)
+    result = solver._wait_for_depot_page(5)
 
     assert np.array_equal(result, settled)
-    assert solver.recog.update.call_count == 2
+    assert solver.recog.update.call_count == 3
 
 
 def test_one_fresh_old_view_does_not_confirm_a_boundary(paged, monkeypatch):
@@ -217,15 +213,29 @@ def test_one_fresh_old_view_does_not_confirm_a_boundary(paged, monkeypatch):
     solver = observe_after_swipe(
         monkeypatch,
         before,
-        before,
         [(before, module.Scene.DEPOT, 1063)]
         + [(settled, module.Scene.DEPOT, 1063)] * 2,
     )
 
-    result = solver._wait_for_depot_page(before, 5)
+    solver.recog.update()
+    result = solver._wait_for_depot_page(5)
 
     assert np.array_equal(result, settled)
     assert solver.recog.update.call_count == 3
+
+
+def test_waiting_scene_discards_previous_page_observation(paged, monkeypatch):
+    frame = paged.state.render()
+    solver = observe_after_swipe(
+        monkeypatch,
+        frame,
+        [(frame, module.Scene.DEPOT, 1063), (frame, module.Scene.CONNECTING, 1063)]
+        + [(frame, module.Scene.DEPOT, 1063)] * 2,
+    )
+    solver.recog.update()
+
+    assert np.array_equal(solver._wait_for_depot_page(5), frame)
+    assert solver.recog.update.call_count == 4
 
 
 @pytest.mark.parametrize(
@@ -236,7 +246,9 @@ def test_lost_depot_or_selected_category_interrupts_paging(
 ):
     before = paged.state.render()
     solver = observe_after_swipe(
-        monkeypatch, before, before, [(before, scene, category)]
+        monkeypatch,
+        before,
+        [(before, module.Scene.DEPOT, 1063), (before, scene, category)],
     )
 
     with pytest.raises(module._DepotScanIncomplete):
@@ -248,7 +260,7 @@ def test_lost_depot_or_selected_category_interrupts_paging(
 def test_category_deadline_bounds_fresh_page_confirmation(paged, monkeypatch):
     before = paged.state.render()
     solver = observe_after_swipe(
-        monkeypatch, before, before, [(before, module.Scene.DEPOT, 1063)]
+        monkeypatch, before, [(before, module.Scene.DEPOT, 1063)]
     )
     solver.CATEGORY_SCAN_TIMEOUT = 0.5
 
