@@ -106,6 +106,30 @@ def _refine_item_color(item, predicted, classes):
     return scores[0][1]
 
 
+def _same_depot_icon_positions(before, after):
+    search = 4
+    right = before.shape[1] - search
+    matched = False
+    for y in _DEPOT_ITEM_ROWS:
+        rows = slice(y - 74, y + 24)
+        for x in range(search, right, 234):
+            end = min(x + 234, right)
+            template = before[rows, x:end]
+            textured_before = cv2.meanStdDev(template)[1].item() >= 5
+            textured_after = cv2.meanStdDev(after[rows, x:end])[1].item() >= 5
+            if textured_before != textured_after:
+                return False
+            if not textured_before:
+                continue
+            region = after[rows, x - search : end + search]
+            scores = cv2.matchTemplate(region, template, cv2.TM_CCOEFF_NORMED)
+            _, score, _, position = cv2.minMaxLoc(scores)
+            if score < 0.97 or position != (search, 0):
+                return False
+            matched = True
+    return matched
+
+
 def _same_depot_labels(before, after, *, edge_margin=0, unwarped_before=None):
     def label_bands(frame):
         return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
@@ -521,14 +545,19 @@ class depotREC(SceneGraphSolver):
             return None
         width = after.shape[1]
 
-        def labels_match(candidate):
+        def confirms_offset(candidate):
+            # 确认零位移时，复核两帧同位置的图标，包括投票阶段没有匹配的区域。
+            if candidate == 0 and not _same_depot_icon_positions(before, after):
+                return False
             return _same_depot_labels(
                 before[:, candidate:],
                 after[:, : width - candidate],
                 edge_margin=_DEPOT_LABEL_EDGE_MARGIN if candidate else 0,
             )
 
-        matched = [candidate for candidate, _ in candidates if labels_match(candidate)]
+        matched = [
+            candidate for candidate, _ in candidates if confirms_offset(candidate)
+        ]
         if not matched:
             # 被投票筛掉的有效峰仍可在回退时否决歧义。
             local_maxima = cv2.dilate(
@@ -554,7 +583,7 @@ class depotREC(SceneGraphSolver):
             if len(candidates) + len(alternatives) > 8:
                 return None
             for candidate, correction in candidates + alternatives:
-                if candidate not in preferred and labels_match(candidate):
+                if candidate not in preferred and confirms_offset(candidate):
                     return None
                 if not candidate or not correction:
                     continue

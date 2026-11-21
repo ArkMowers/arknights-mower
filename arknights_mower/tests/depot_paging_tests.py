@@ -258,6 +258,19 @@ def replay_consumable_pages(frame, captures):
     return pages, swipes
 
 
+def test_partial_stationary_votes_do_not_confirm_right_boundary():
+    image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
+    source = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    frame = np.full_like(source, 255)
+    icon = source[165:316, 79:294]
+    for x in (781, 1015):
+        frame[165:316, x : x + icon.shape[1]] = icon
+    shifted = np.roll(frame, 234, axis=1)
+
+    with pytest.raises(module._DepotScanIncomplete):
+        replay_consumable_pages(frame, [frame, frame, shifted, shifted])
+
+
 def test_depot_paging_ignores_fixed_background_at_the_edge_of_the_overlap():
     image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
     frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
