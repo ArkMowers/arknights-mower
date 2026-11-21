@@ -252,6 +252,55 @@ def test_depot_paging_ignores_fixed_background_at_the_edge_of_the_overlap():
     assert swipes == [702, 234, -702, -702, -234]
 
 
+def shift_depot_frame(frame, distance):
+    shifted = frame.copy()
+    shifted[140:990] = cv2.warpAffine(
+        frame[140:990],
+        np.float32([[1, 0, -distance], [0, 1, 0]]),
+        (1920, 850),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    return shifted
+
+
+@pytest.mark.parametrize(
+    "filename,distance,fixed_edge",
+    [
+        ("depot_basic_lmd_20261031.jpg", 340.625, False),
+        ("depot/consume_left_20261117.webp", 340.5, True),
+    ],
+)
+def test_depot_paging_rechecks_labels_after_fractional_movement(
+    filename, distance, fixed_edge
+):
+    image = cv2.imread(str(FIXTURES / filename))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    shifted = shift_depot_frame(frame, distance)
+    if fixed_edge:
+        shifted[140:990, :32] = frame[140:990, :32]
+
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, pytest.approx(distance, abs=0.5)]
+    assert swipes == [702, 234, -702, -702, -234]
+
+
+def test_depot_paging_rejects_changed_thin_strokes_after_fractional_movement():
+    image = cv2.imread(str(FIXTURES / "depot_basic_lmd_20261031.jpg"))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    frame[603:648, 486:536] = 32
+    frame[609:639, [506, 509]] = 255
+    shifted = shift_depot_frame(frame, 340.625)
+    # Replace the resampled strokes with dim strokes at different positions.
+    shifted[609:639, 160:185] = 32
+    shifted[609:639, [176, 179]] = 171
+
+    with pytest.raises(module._DepotScanIncomplete):
+        replay_consumable_pages(frame, [frame, frame, shifted, shifted, shifted])
+
+
 @pytest.mark.parametrize("retry_distance", [0, 107])
 def test_stationary_consumables_with_background_change_still_check_the_next_page(
     retry_distance,
@@ -295,6 +344,7 @@ def repeated_stack_pages(
     *,
     template_change=False,
     edge_label=False,
+    distinct_digit=8,
 ):
     image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
     cell = np.full((1080, 234, 3), 255, dtype=np.uint8)
@@ -317,10 +367,10 @@ def repeated_stack_pages(
     templates = FIXTURES.parent.parent / "resources" / "depot_num"
     digits = {
         value: cv2.imread(str(templates / f"digit_{value}.png"), cv2.IMREAD_GRAYSCALE)
-        for value in (6, 8)
+        for value in (6, distinct_digit)
     }
     for column in range(10):
-        digit = digits[8 if column in distinct_columns else 6]
+        digit = digits[distinct_digit if column in distinct_columns else 6]
         height, width = digit.shape
         right = column * 234 + digit_right
         area = shelf[label_y - height : label_y, right - width : right]
@@ -373,6 +423,40 @@ def test_repeated_icons_without_a_unique_displacement_stop_the_scan(template_cha
 
     with pytest.raises(module._DepotScanIncomplete):
         replay_consumable_pages(frame, [frame, frame, frame, shifted, shifted, shifted])
+
+
+def test_depot_paging_rejects_multiple_valid_fractional_displacements(monkeypatch):
+    frame, _ = repeated_stack_pages(356, False, ())
+    shifted = shift_depot_frame(frame, 234.5)
+    compare_labels = module._same_depot_labels
+    integer_results = []
+    refined_results = []
+
+    def record_compare(before, after, **kwargs):
+        result = compare_labels(before, after, **kwargs)
+        if kwargs.get("unwarped_before") is None:
+            integer_results.append(result)
+        else:
+            refined_results.append(result)
+        return result
+
+    monkeypatch.setattr(module, "_same_depot_labels", record_compare)
+
+    with pytest.raises(module._DepotScanIncomplete):
+        module.depotREC._depot_scroll_distance(frame, shifted)
+
+    assert integer_results and not any(integer_results)
+    assert sum(refined_results) >= 2
+
+
+def test_fractional_retry_rejects_wrong_repeated_peak_after_near_best_filtering():
+    frame, _ = repeated_stack_pages(412, False, (1,), distinct_digit=5)
+    shifted = shift_depot_frame(frame, 421.875)
+    # The non-label change makes the 656-pixel peak outscore the real shift.
+    shifted[211:261, 880:965] = 145
+
+    with pytest.raises(module._DepotScanIncomplete):
+        module.depotREC._depot_scroll_distance(frame, shifted)
 
 
 @pytest.mark.parametrize("label_fragment", ["digit", "horizontal-stroke"])

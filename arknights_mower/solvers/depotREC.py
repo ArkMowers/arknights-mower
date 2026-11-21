@@ -128,7 +128,7 @@ def _same_depot_icon_positions(before, after):
     return matched
 
 
-def _same_depot_labels(before, after, *, edge_margin=0):
+def _same_depot_labels(before, after, *, edge_margin=0, unwarped_before=None):
     def label_bands(frame):
         return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
 
@@ -152,7 +152,11 @@ def _same_depot_labels(before, after, *, edge_margin=0):
     changed = cv2.inRange(cv2.absdiff(first, second), 50, 255)
     if not cv2.countNonZero(changed):
         return True
-    changed &= strokes(first) | strokes(second)
+    evidence = strokes(first) | strokes(second)
+    if unwarped_before is not None:
+        # 插值可能压暗细笔画，原帧中的笔画位置仍需参与差异检查。
+        evidence |= strokes(label_bands(unwarped_before))
+    changed &= evidence
     local_change = cv2.boxFilter(changed // 255, cv2.CV_16U, (16, 16), normalize=False)
     return local_change.max() < 24
 
@@ -491,14 +495,18 @@ class depotREC(SceneGraphSolver):
         search = after[:, 100:1400]
         scores = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)[0]
         best_score = float(scores.max())
-        if best_score < 0.9:
+        minimum_score = 0.9
+        if best_score < minimum_score:
             raise _DepotScanIncomplete
-        # 背景变化可能使正确位移略低于重复图标的最高分。
-        near_best = np.flatnonzero(scores >= max(0.9, best_score - 0.005))
-        peaks = np.split(near_best, np.flatnonzero(np.diff(near_best) > 8) + 1)
-        if len(peaks) > 8:
-            raise _DepotScanIncomplete
-        candidates = [800 - peak[scores[peak].argmax()] for peak in peaks]
+
+        def peak_offsets(eligible):
+            positions = np.flatnonzero(eligible)
+            peaks = np.split(positions, np.flatnonzero(np.diff(positions) > 8) + 1)
+            if len(peaks) > 8:
+                raise _DepotScanIncomplete
+            return [800 - peak[scores[peak].argmax()] for peak in peaks]
+
+        candidates = peak_offsets(scores >= max(minimum_score, best_score - 0.005))
         width = after.shape[1]
         matched = [
             candidate
@@ -509,6 +517,45 @@ class depotREC(SceneGraphSolver):
                 edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
             )
         ]
+        if not matched:
+            # 正确位移可能被近峰筛选排除。回退时让其他有效峰也能否决歧义。
+            local_maxima = cv2.dilate(scores[None, :], np.ones((1, 17), np.uint8))[0]
+            alternatives = peak_offsets(
+                (scores >= minimum_score) & (scores == local_maxima)
+            )
+            for candidate in alternatives:
+                original = before[:, candidate:]
+                target = after[:, : width - candidate]
+                if candidate not in candidates and _same_depot_labels(
+                    original, target, edge_margin=_DEPOT_LABEL_EDGE_MARGIN
+                ):
+                    raise _DepotScanIncomplete
+                position = 800 - candidate
+                if not 0 < position < scores.size - 1:
+                    continue
+                left, center, right = map(float, scores[position - 1 : position + 2])
+                curvature = left - 2 * center + right
+                if curvature >= 0:
+                    continue
+                # 用匹配峰估算亚像素位移，只调整标签校验的对齐位置。
+                correction = np.clip((left - right) / (2 * curvature), -0.5, 0.5)
+                displacement = candidate - correction
+                aligned = cv2.warpAffine(
+                    before,
+                    np.float32([[1, 0, displacement], [0, 1, 0]]),
+                    (width - candidate, before.shape[0]),
+                    flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                    borderMode=cv2.BORDER_REPLICATE,
+                )
+                if _same_depot_labels(
+                    aligned,
+                    target,
+                    edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
+                    unwarped_before=original,
+                ):
+                    if candidate not in candidates:
+                        raise _DepotScanIncomplete
+                    matched.append(candidate)
         if len(matched) != 1 or matched[0] == 0:
             raise _DepotScanIncomplete
         return int(matched[0])
