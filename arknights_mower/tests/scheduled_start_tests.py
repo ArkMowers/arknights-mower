@@ -318,6 +318,9 @@ class ScheduledStartTests(unittest.TestCase):
                 patch.object(self.server, "shutdown", Shutdown()),
                 patch.object(self.server, "mower_thread", None),
                 patch.object(self.server, "_request_mower_stop"),
+                patch.object(
+                    self.server, "_wait_mower_stop", return_value=True
+                ) as wait,
                 patch.object(record, "save_state_to_db"),
                 patch.object(update_runtime, "record_task_stop") as record_stop,
             ):
@@ -329,10 +332,12 @@ class ScheduledStartTests(unittest.TestCase):
                 if stop_first:
                     self.assertEqual(response.get_data(as_text=True), "true")
                     record_stop.assert_called_once_with()
+                    wait.assert_called_once_with()
                     self.server._shutdown_for_software_update(job)
                 else:
                     self.assertEqual(response.status_code, 409)
                     record_stop.assert_not_called()
+                    wait.assert_not_called()
                 self.assertEqual(
                     self.server._scheduled_start_transfer(job).exists(), not stop_first
                 )
@@ -362,7 +367,10 @@ class ScheduledStartTests(unittest.TestCase):
         with (
             patch.object(server, "mower_thread", None),
             patch.object(server.config, "stop_mower", Event()),
+            patch.object(server.round_stop, "_requested", False),
             patch.object(crash_recovery, "_cancelled", False),
+            patch.object(crash_recovery, "_progress", {}),
+            patch.object(crash_recovery, "notice_path", return_value=None),
             patch.object(instance_supervisor, "task_intent"),
             patch.object(record, "save_state_to_db"),
             patch.object(update_runtime, "record_task_stop"),
