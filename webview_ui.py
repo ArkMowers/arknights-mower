@@ -993,8 +993,12 @@ def _run_desktop():
     url = f"http://127.0.0.1:{port}"
     url += f"?token={quote(runtime_token, safe='')}"
     startup_ready = Event()
-    if not resume and (restart_job := os.environ.get("MOWER_RESTART_JOB")):
-        server._restore_scheduled_start(restart_job, startup_ready=startup_ready)
+    explicitly_stopped = os.environ.pop("MOWER_UPDATE_TASK_STOPPED", "") == "1"
+    if restart_job := os.environ.get("MOWER_RESTART_JOB"):
+        if explicitly_stopped or server._restore_scheduled_start(
+            restart_job, startup_ready=startup_ready
+        ):
+            resume = False
     start_http_server(server.app, host, port)
     instance_path = path.get_path("@app", space=path.global_space).resolve()
     identity = sha256(

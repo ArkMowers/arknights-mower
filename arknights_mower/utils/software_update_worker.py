@@ -1654,7 +1654,8 @@ class Worker:
         else:
             self.new_processes = processes
         for record in records:
-            if task_stop_requested(record, self.job["id"], self.state):
+            explicitly_stopped = task_stop_requested(record, self.job["id"], self.state)
+            if explicitly_stopped:
                 record = {**record, "running": False}
             if (
                 record["kind"] == "manager"
@@ -1663,6 +1664,8 @@ class Worker:
             ):
                 continue
             env = launch_environment(record, self.job["id"], self.job["background"])
+            if explicitly_stopped:
+                env["MOWER_UPDATE_TASK_STOPPED"] = "1"
             if record["kind"] == "instance" and record.get("running"):
                 env["MOWER_RESUME_MODE"] = "0"
                 env["MOWER_UPDATE_REPLAN"] = "1"

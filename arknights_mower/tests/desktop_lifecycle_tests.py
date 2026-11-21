@@ -1,9 +1,12 @@
 import importlib
 import os
+import subprocess
 import sys
 import threading
 import unittest
 from contextlib import ExitStack
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from time import monotonic
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -256,6 +259,8 @@ class DesktopStartupTests(unittest.TestCase):
         resource=False,
         background=False,
         restart=False,
+        restart_job="fixture",
+        update_task_stopped="",
         resume_run="0",
         resume_mode="",
         resource_result=None,
@@ -290,6 +295,7 @@ class DesktopStartupTests(unittest.TestCase):
             config.updates_enabled = updates_enabled
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
+            server._restore_scheduled_start.return_value = False
             server.maa_maintenance_lock = threading.RLock()
             server.maa_update_job = {"status": "idle", "thread": None}
             server.maa_resource_update_job = {"status": "idle", "thread": None}
@@ -311,6 +317,7 @@ class DesktopStartupTests(unittest.TestCase):
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = False
+            registration.software_update_shutdown_job.return_value = None
             registration.take_commands.side_effect = (
                 [[command] for command in commands] if managed else lambda: []
             )
@@ -379,7 +386,8 @@ class DesktopStartupTests(unittest.TestCase):
                     {
                         "MOWER_BACKGROUND": "1" if background else "0",
                         "MOWER_MANAGED": "1" if managed else "0",
-                        "MOWER_RESTART_JOB": "fixture" if restart else "",
+                        "MOWER_RESTART_JOB": restart_job if restart else "",
+                        "MOWER_UPDATE_TASK_STOPPED": update_task_stopped,
                         "MOWER_RESTART_PORT": restart_port,
                         "MOWER_MANAGER_PORT": manager_port,
                         "MOWER_RESUME_RUN": resume_run,
@@ -596,6 +604,81 @@ class DesktopStartupTests(unittest.TestCase):
             server._restore_scheduled_start.call_args.kwargs["startup_ready"].is_set()
         )
         server.start.assert_not_called()
+
+    def test_update_handoff_overrides_running_snapshot_but_not_explicit_stop(self):
+        import server as task_server
+        from arknights_mower.utils.software_update_worker import Worker
+
+        job_id = "a" * 32
+        record = {
+            "kind": "instance",
+            "id": "instance",
+            "space": "",
+            "name": "",
+            "running": True,
+        }
+        for explicitly_stopped in (False, True):
+            with (
+                self.subTest(explicitly_stopped=explicitly_stopped),
+                TemporaryDirectory() as folder,
+                patch.object(task_server, "state_dir", return_value=Path(folder)),
+                patch.object(task_server, "Timer"),
+                patch.object(task_server, "shutdown", Shutdown()),
+            ):
+                state = Path(folder)
+                expected = task_server._schedule_start(3600, start_type="0")
+                self.addCleanup(task_server._cancel_scheduled_start)
+                task_server._shutdown_for_software_update(job_id)
+                if explicitly_stopped:
+                    runtime.write_json(
+                        state / "active/task-stops/instance.json", {"job": job_id}
+                    )
+                job = state / "jobs" / job_id / "job.json"
+                runtime.write_json(
+                    job,
+                    {
+                        "id": job_id,
+                        "root": folder,
+                        "state_dir": folder,
+                        "deployment": "release",
+                        "version": "v4.2.0",
+                        "background": True,
+                    },
+                )
+                with patch.object(subprocess, "Popen") as process:
+                    Worker(job).restart([record], verify=False)
+                env = process.call_args.kwargs["env"]
+
+                def configure(stack, task_server, server, config, events):
+                    server._restore_scheduled_start.side_effect = (
+                        task_server._restore_scheduled_start
+                    )
+
+                try:
+                    _, server = self.launch(
+                        restart=True,
+                        restart_job=env["MOWER_RESTART_JOB"],
+                        resume_run=env["MOWER_RESUME_RUN"],
+                        resume_mode=env.get("MOWER_RESUME_MODE", ""),
+                        update_replan=env.get("MOWER_UPDATE_REPLAN", ""),
+                        update_task_stopped=env.get("MOWER_UPDATE_TASK_STOPPED", ""),
+                        configure_startup=configure,
+                    )
+                    server.start.assert_not_called()
+                    if explicitly_stopped:
+                        self.assertEqual(env["MOWER_UPDATE_TASK_STOPPED"], "1")
+                        server._restore_scheduled_start.assert_not_called()
+                        self.assertIsNone(task_server.scheduled_start_at)
+                    else:
+                        self.assertEqual(env["MOWER_RESUME_RUN"], "1")
+                        self.assertNotIn("MOWER_UPDATE_TASK_STOPPED", env)
+                        server._restore_scheduled_start.assert_called_once()
+                        self.assertEqual(
+                            task_server.scheduled_start_at.isoformat(), expected
+                        )
+                        self.assertEqual(task_server.scheduled_start_type, "0")
+                finally:
+                    task_server._cancel_scheduled_start()
 
     def test_update_reservation_precedes_http_and_waits_for_startup_resource_check(
         self,

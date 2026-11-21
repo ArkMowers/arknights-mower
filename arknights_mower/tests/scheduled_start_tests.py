@@ -337,6 +337,71 @@ class ScheduledStartTests(unittest.TestCase):
                     self.server._scheduled_start_transfer(job).exists(), not stop_first
                 )
 
+    def test_user_stop_signals_before_worker_can_schedule_maintenance_resume(self):
+        from arknights_mower import __main__ as main
+        from arknights_mower.solvers import record
+        from arknights_mower.utils import (
+            crash_recovery,
+            instance_supervisor,
+            update_runtime,
+        )
+        from arknights_mower.utils.news_checker import MaintenanceInfo
+
+        now = datetime.now()
+        info = MaintenanceInfo(
+            now, now + timedelta(minutes=10), "major", "停服更新", "", "fixture"
+        )
+        server = self.server
+        wait = server._wait_mower_stop
+
+        def finish_worker(*args, **kwargs):
+            self.assertFalse(server.scheduled_start_lock._is_owned())
+            server._run_mower_worker({})
+            return wait(*args, **kwargs)
+
+        with (
+            patch.object(server, "mower_thread", None),
+            patch.object(server.config, "stop_mower", Event()),
+            patch.object(crash_recovery, "_cancelled", False),
+            patch.object(instance_supervisor, "task_intent"),
+            patch.object(record, "save_state_to_db"),
+            patch.object(update_runtime, "record_task_stop"),
+            patch.object(main, "main", return_value=info) as run,
+            patch.object(server, "_wait_mower_stop", side_effect=finish_worker),
+        ):
+            server._schedule_start(120)
+            response = self.client.get("/stop", headers=self.headers)
+            self.assertEqual(response.get_data(as_text=True), "true")
+            run.assert_called_once()
+            self.assertEqual(len(FakeTimer.instances), 1)
+            self.assertIsNone(server.scheduled_start_at)
+
+    def test_start_exception_discards_restored_reservation(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        job = "a" * 32
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(self.server, "state_dir", return_value=Path(folder)),
+            patch.object(self.server, "shutdown", Shutdown()),
+            patch.object(self.server, "active_job", return_value=False),
+            patch.object(self.server, "_start_mower", side_effect=OSError) as start,
+        ):
+            self.server._schedule_start(60)
+            self.server._shutdown_for_software_update(job)
+            with patch.object(self.server, "shutdown", Shutdown()):
+                self.server._restore_scheduled_start(job)
+                timer = FakeTimer.instances[-1]
+                with self.assertLogs("arknights_mower.utils.log", level="ERROR"):
+                    timer.callback()
+                timer.callback()
+                start.assert_called_once_with("2")
+                self.assertTrue(timer.cancelled)
+                self.assertIsNone(self.server.scheduled_start_at)
+                self.assertFalse(self.server._scheduled_start_transfer(job).exists())
+                self.server._shutdown_for_software_update(job)
+            self.assertFalse(self.server._restore_scheduled_start(job))
+
     def test_cancel_with_undeletable_handoff_does_not_restore_same_reservation(self):
         from arknights_mower.utils.lifecycle import Shutdown
 

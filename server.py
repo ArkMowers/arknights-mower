@@ -247,7 +247,13 @@ def _run_scheduled_start(timer, generation, start_type="2", startup_ready=None):
                 scheduled_start_at, generation, start_type, 1, startup_ready
             )
             return
-        if _start_mower(start_type):
+        try:
+            started = _start_mower(start_type)
+        except Exception:
+            _cancel_scheduled_start()
+            logger.exception("预约时间已到，但启动 Mower 失败")
+            return
+        if started:
             _cancel_scheduled_start()
             logger.info("预约时间已到，Mower 开始执行")
         elif active_job():
@@ -338,7 +344,7 @@ def _restore_scheduled_start(job, *, startup_ready=None):
 
     transfer = _scheduled_start_transfer(job)
     if transfer is None:
-        return
+        return False
     with backup_lock, scheduled_start_lock:
         try:
             record = json.loads(transfer.read_text(encoding="utf-8"))
@@ -353,24 +359,24 @@ def _restore_scheduled_start(job, *, startup_ready=None):
                 pass
             else:
                 if cancelled["id"] == reservation_id:
-                    return
+                    return False
             at = datetime.datetime.fromisoformat(record["at"])
             generation, start_type = record["generation"], record["start_type"]
             if at.tzinfo is None or start_type not in ("0", "2"):
                 raise ValueError("预约时间或启动模式无效")
             check_generation(generation, allow_legacy=False)
         except FileNotFoundError:
-            return
+            return False
         except (LocalConfigError, ProfileConflict, KeyError, TypeError, ValueError):
             logger.warning("软件更新后未恢复预约启动：预约记录或配置档案已失效")
             try:
                 transfer.unlink(missing_ok=True)
             except OSError:
                 logger.exception("无法清理已失效的预约启动记录")
-            return
+            return False
         except OSError:
             logger.exception("软件更新后无法读取预约启动")
-            return
+            return False
         _arm_scheduled_start(
             at,
             generation,
@@ -380,6 +386,7 @@ def _restore_scheduled_start(job, *, startup_ready=None):
         )
         scheduled_start_handoff = (transfer, reservation_id)
         logger.info("软件更新后已恢复预约启动：%s", at.isoformat())
+        return True
 
 
 def _mower_busy_response():
@@ -2647,13 +2654,16 @@ def stop(*, user_requested=True, preserve_scheduled_start=False):
         with scheduled_start_lock:
             if shutdown.closing:
                 return {"error": "Mower 正在退出"}, 409
+            _request_mower_stop()
             reservation_cancelled = _cancel_scheduled_start()
             try:
                 record_task_stop()
             except Exception:
                 logger.exception("记录进程替换期间的停止选择失败，继续停止当前任务")
-    stopped = _stop_mower(
-        preserve_scheduled_start=user_requested or preserve_scheduled_start
+    stopped = (
+        _wait_mower_stop()
+        if user_requested
+        else _stop_mower(preserve_scheduled_start=preserve_scheduled_start)
     )
     if not reservation_cancelled:
         return {
@@ -2725,15 +2735,19 @@ def _stop_mower(
     timeout=10, *, preserve_run_intent=False, preserve_scheduled_start=False
 ):
     """Let the worker's run boundary restore preparation before it exits."""
+    with scheduled_start_lock:
+        _request_mower_stop(preserve_run_intent=preserve_run_intent)
+        if not preserve_run_intent and not preserve_scheduled_start:
+            _cancel_scheduled_start()
+    return _wait_mower_stop(timeout, preserve_run_intent=preserve_run_intent)
+
+
+def _wait_mower_stop(timeout=10, *, preserve_run_intent=False):
     global mower_thread
 
     from arknights_mower.utils import crash_recovery
     from arknights_mower.utils.instance_supervisor import task_intent
 
-    with scheduled_start_lock:
-        _request_mower_stop(preserve_run_intent=preserve_run_intent)
-        if not preserve_run_intent and not preserve_scheduled_start:
-            _cancel_scheduled_start()
     deadline = time.monotonic() + timeout
     if not maa_maintenance_lock.acquire(timeout=timeout):
         logger.error("等待任务状态锁超时，保留未完成的设备恢复记录")
