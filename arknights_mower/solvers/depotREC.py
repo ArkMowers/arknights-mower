@@ -128,7 +128,7 @@ def _same_depot_icon_positions(before, after):
     return matched
 
 
-def _same_depot_labels(before, after, *, edge_margin=0):
+def _same_depot_labels(before, after, *, edge_margin=0, unwarped_before=None):
     def label_bands(frame):
         return np.concatenate([frame[y + 39 : y + 134] for y in _DEPOT_ITEM_ROWS])
 
@@ -152,7 +152,11 @@ def _same_depot_labels(before, after, *, edge_margin=0):
     changed = cv2.inRange(cv2.absdiff(first, second), 50, 255)
     if not cv2.countNonZero(changed):
         return True
-    changed &= strokes(first) | strokes(second)
+    evidence = strokes(first) | strokes(second)
+    if unwarped_before is not None:
+        # 插值可能压暗细笔画，原帧中的笔画位置仍需参与差异检查。
+        evidence |= strokes(label_bands(unwarped_before))
+    changed &= evidence
     local_change = cv2.boxFilter(changed // 255, cv2.CV_16U, (16, 16), normalize=False)
     return local_change.max() < 24
 
@@ -532,6 +536,7 @@ class depotREC(SceneGraphSolver):
                     aligned,
                     after[:, : width - candidate],
                     edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
+                    unwarped_before=before[:, candidate:],
                 ):
                     matched.append(candidate)
         if len(matched) != 1 or matched[0] == 0:

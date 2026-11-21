@@ -252,6 +252,17 @@ def test_depot_paging_ignores_fixed_background_at_the_edge_of_the_overlap():
     assert swipes == [702, 234, -702, -702, -234]
 
 
+def shift_depot_frame(frame, distance):
+    shifted = frame.copy()
+    shifted[140:990] = cv2.warpAffine(
+        frame[140:990],
+        np.float32([[1, 0, -distance], [0, 1, 0]]),
+        (1920, 850),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    return shifted
+
+
 @pytest.mark.parametrize(
     "filename,distance,fixed_edge",
     [
@@ -264,13 +275,7 @@ def test_depot_paging_rechecks_labels_after_fractional_movement(
 ):
     image = cv2.imread(str(FIXTURES / filename))
     frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    shifted = frame.copy()
-    shifted[140:990] = cv2.warpAffine(
-        frame[140:990],
-        np.float32([[1, 0, -distance], [0, 1, 0]]),
-        (1920, 850),
-        borderMode=cv2.BORDER_REPLICATE,
-    )
+    shifted = shift_depot_frame(frame, distance)
     if fixed_edge:
         shifted[140:990, :32] = frame[140:990, :32]
 
@@ -280,6 +285,20 @@ def test_depot_paging_rechecks_labels_after_fractional_movement(
 
     assert [offset for offset, _ in pages] == [0, pytest.approx(distance, abs=0.5)]
     assert swipes == [702, 234, -702, -702, -234]
+
+
+def test_depot_paging_rejects_changed_thin_strokes_after_fractional_movement():
+    image = cv2.imread(str(FIXTURES / "depot_basic_lmd_20261031.jpg"))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    frame[603:648, 486:536] = 32
+    frame[609:639, [506, 509]] = 255
+    shifted = shift_depot_frame(frame, 340.625)
+    # Replace the resampled strokes with dim strokes at different positions.
+    shifted[609:639, 160:185] = 32
+    shifted[609:639, [176, 179]] = 171
+
+    with pytest.raises(module._DepotScanIncomplete):
+        replay_consumable_pages(frame, [frame, frame, shifted, shifted, shifted])
 
 
 @pytest.mark.parametrize("retry_distance", [0, 107])
