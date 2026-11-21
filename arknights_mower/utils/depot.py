@@ -324,7 +324,7 @@ def _读取快照行(path):
     key = os.path.abspath(path)
     with _快照行缓存锁:
         stat = os.stat(path)
-        version = (stat.st_mtime_ns, stat.st_size)
+        version = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
         cached = _快照行缓存.get(key)
         if cached is not None and cached[0] == version:
             return cached[1]

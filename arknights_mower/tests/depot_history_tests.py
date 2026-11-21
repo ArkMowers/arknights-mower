@@ -73,6 +73,23 @@ def test_history_reuses_each_csv_until_its_version_changes(depot_lines, monkeypa
     assert read.call_args_list == [call(scan), call(merged), call(scan), call(merged)]
 
 
+def test_history_reloads_replaced_csv_with_preserved_size_and_mtime(depot_lines):
+    scan = depot_lines["@app/tmp/depotresult.csv"]
+    merged = depot_lines["@app/tmp/depotmerged.csv"]
+    write_rows(scan, [snapshot(100, {"赤金": 1})])
+    write_rows(merged, [snapshot(100, {"糖": 2})])
+    assert module.读取仓库历史()[0]["items"] == {"赤金": 1, "糖": 2}
+
+    previous = scan.stat()
+    replacement = scan.with_suffix(".tmp")
+    write_rows(replacement, [snapshot(100, {"赤金": 3})])
+    os.utime(replacement, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    replacement.replace(scan)
+    assert scan.stat().st_size == previous.st_size
+    assert scan.stat().st_mtime_ns == previous.st_mtime_ns
+    assert module.读取仓库历史()[0]["items"] == {"赤金": 3, "糖": 2}
+
+
 def test_concurrent_history_reads_use_only_the_current_directory(tmp_path, monkeypatch):
     first, second = tmp_path / "first", tmp_path / "second"
     for directory, count in ((first, 1), (second, 2)):
