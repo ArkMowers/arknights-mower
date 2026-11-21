@@ -23,13 +23,16 @@ cd ..
 
 ### Windows
 
-在 PowerShell 中执行：
+在 Windows x64 的 PowerShell 中执行：
 
 ```powershell
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe scripts/install_windows_openssl.py --download --venv .\.venv
 .\.venv\Scripts\python.exe webview_ui.py
 ```
+
+已有的 Windows x64 源码实例也需要用自己的虚拟环境执行一次上述 OpenSSL 安装命令，重启实例后生效。后续源码更新若重建了虚拟环境，请在新环境中重新执行该命令。离线安装、版本检查和回退步骤见 [Windows 打包与运行库](docs/cookbook/packaging.md#2-windows)。
 
 ### Linux
 

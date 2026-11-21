@@ -10,13 +10,24 @@ macOS 和 Linux 虽提供独立包，仍建议优先使用 [源码部署](../../
 
 ## 2. Windows
 
-在 PowerShell 中安装打包工具并构建：
+Windows x64 独立包使用 CPython 提供的 OpenSSL 3.5.9。打包时会下载两个 DLL 和许可证并校验各自的 SHA-256。离线打包时，预先解压[固定版本的 Windows 二进制文件](https://github.com/python/cpython-bin-deps/archive/ddb46a415b4995440723183e644f8d2c346567a2.zip)，在 PowerShell 中将 `$env:MOWER_OPENSSL_SOURCE` 设为解压目录下 `amd64` 子目录的绝对路径。
+
+安装打包工具并构建程序：
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install pyinstaller==6.22.2
 .\.venv\Scripts\python.exe scripts/prune_opencv.py
 .\.venv\Scripts\python.exe -m PyInstaller webui_zip.spec
 ```
+
+从源码运行 Windows x64 实例时，按 README 安装运行库。已有离线文件时，使用同一个 `amd64` 路径安装，并检查实际加载的版本：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/install_windows_openssl.py --source "$env:MOWER_OPENSSL_SOURCE" --venv .\.venv
+.\.venv\Scripts\python.exe -c "import ssl; print(ssl.OPENSSL_VERSION)"
+```
+
+确认输出包含 `OpenSSL 3.5.9`，再按源码部署步骤启动实例。已经运行的实例需重启，才能用新的运行库重新连接中转。重新创建虚拟环境后需要再次安装。需要恢复原运行库时，关闭使用该虚拟环境的实例，删除 `.venv\Lib\site-packages\00_mower_openssl.pth`，再启动实例。
 
 检查 `dist/mower/mower.exe` 和 `dist/mower/多开管理器.exe`，并验证两者可以打开。分发时保留整个 `dist/mower` 目录，不能只复制可执行文件。
 
