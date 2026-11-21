@@ -155,15 +155,15 @@ watch(
       </n-p>
     </details>
     <n-p
-      >个人极速模拟使用预设编队。首次运行从
+      >个人极速模拟使用预设编队，内置的对局脚本和棋盘布局取自 UnknownGlyph 的
       <a
-        href="https://github.com/UnknownGlyph/GarrisonFarm"
+        href="https://github.com/ALEXsun0/GarrisonFarm/tree/fd373c9b1ab1e8fbb52ad78b8da4c461ab325abb"
         target="_blank"
         rel="noopener noreferrer"
-        >GarrisonFarm</a
+        >GarrisonFarm（个人 fork）</a
       >
-      下载对局脚本和布局。新局需要至少 12 分钟空档。已保存的对局有 9
-      分钟空档即可重连，基建任务到期时退出游戏。</n-p
+      。开始时按需切换至「卫戍协议终端」，结束后保留该主题。新局需要至少 12 分钟空档。已保存的对局有
+      9 分钟空档即可重连，基建任务到期时退出游戏。</n-p
     >
     <maa-task-status kind="garrison" :settings="garrison" />
     <n-button @click="garrison.run_id = String(Date.now())">{{

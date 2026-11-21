@@ -78,9 +78,7 @@ def status(conf, progress):
     )
     return {
         **({"mode": "matches"} if matches else {}),
-        "completed": total > 0
-        and count >= total
-        and not prepared.get("original_theme"),
+        "completed": total > 0 and count >= total,
         "count": count,
         "total": total,
         "failed": False,
@@ -99,7 +97,9 @@ def prepare_progress(conf, saved):
         }
     )
     progress.pop("failed", None)
+    progress.pop("original_theme", None)
     progress.pop("theme_restore_blocked", None)
+    progress.pop("maa_badge_target", None)
     if progress.get("key") != run_key(conf):
         if progress.get("key", [None, None, None])[-1] != conf.garrison.run_id:
             if conf.garrison.mode == "matches":

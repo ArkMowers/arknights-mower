@@ -4,7 +4,7 @@ The long-task editor offers personal quick simulation with three wins per strate
 
 ## Gameplay and device ownership
 
-On first use Mower retrieves the Python script and tile layout directly from [GarrisonFarm](https://github.com/UnknownGlyph/GarrisonFarm/tree/fd373c9b1ab1e8fbb52ad78b8da4c461ab325abb). The [adapter](../../arknights_mower/solvers/garrison/upstream.py) verifies both files against pinned SHA-256 digests and stores them under the shared instance-data root in `downloads/garrisonfarm/<revision>/`. A verified cache supports offline use. The Mower distribution contains the adapter. Each session initializes separate upstream gameplay state and uses the low-requirement preset team profile.
+The Mower engine reads the packaged Python script and tile layout from `arknights_mower/data/garrisonfarm/<revision>/`. Both files come from the [pinned GarrisonFarm fork](https://github.com/ALEXsun0/GarrisonFarm/tree/fd373c9b1ab1e8fbb52ad78b8da4c461ab325abb). An incomplete installation reports the missing file. Each session initializes separate upstream gameplay state and uses the low-requirement preset team profile.
 
 When a match screen is unconfirmed, Mower captures fresh frames for up to fifteen seconds. If the screen is recognized but a required button, tactical decision option or theme label is unreadable, Mower rechecks it for up to eight seconds where no step-specific limit applies. Mower requires the matching screen and its control before tapping, and confirms the quick simulation mode and start button before saving a pending start. The scheduling deadline and user stop can end the recheck early. If recognition remains incomplete at the end of the wait, Mower preserves unfinished progress and hands the device back to the scheduler.
 
@@ -12,11 +12,13 @@ The script reads 1920 × 1080 frames through Mower's recognizer and OCR engine. 
 
 ## Shop theme
 
-The shop reader uses the card layout of the default theme `卫戍协议终端`. At entry, Mower waits up to twelve seconds for the wrench icon in its lobby position before opening `更换主题` and reads the equipped theme from the panel title and `已设置` button. If a change is needed, it saves the original theme in the account and device progress record before applying the default. Gameplay starts after the panel confirms the selection. An already settled match can be recorded before the next visit to the lobby.
+The shop reader uses the card layout of the default theme `卫戍协议终端`. At entry, Mower waits up to twelve seconds for the wrench icon in its lobby position before opening `更换主题` and reads the equipped theme from the panel title and `已设置` button. If a change is needed, it applies the default theme. Gameplay starts after the panel confirms the selection. An already settled match can be recorded before the next visit to the lobby.
 
-When base work interrupts farming or the current window ends, Mower retains the default theme and the original theme record. The next eligible window resumes the unfinished goal. Unlimited level farming also keeps the default theme across windows. When the goal is reached, Mower restores the recorded theme and verifies the equipped label before clearing the record. If restoration is interrupted, the next eligible window can finish it even after reaching the goal. An unreadable theme leaves the original name in the progress record for the next eligible window.
+The selected theme stays equipped after settlement, interruption and completion. Reaching the goal ends dispatch, including for older progress records that still contain a previous theme.
 
 ## Strategy progress
+
+During one grid scan, Mower uses the observed scroll distance and column to skip panels already read as meeting the target, including on the return pass. Badge-only skips and unreadable panels remain eligible. Uncertain page alignment clears the position history.
 
 For medal farming, Mower checks the badges on one grid frame before opening cards. A gold or colored badge skips the card for a three-win goal. Only a colored badge skips it for a six-win goal. Mower scrolls past marked cards to look for a candidate. If that search finds none and at least one card was skipped for its badge, Mower scans back through all visible cards and reads their panels regardless of badge appearance. Level farming can select a marked card immediately.
 

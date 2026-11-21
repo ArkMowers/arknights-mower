@@ -245,6 +245,15 @@ class LongTaskPart(ConfModel):
         target_wins: Literal[3, 6] = 3
         run_id: str = Field(default="", max_length=128)
 
+        @field_validator("mode", mode="before")
+        @classmethod
+        def migrate_preview_engine(cls, value):
+            if value == "maa_medals":
+                return "medals"
+            if value == "maa_score":
+                return "matches"
+            return value
+
     garrison: GarrisonConf = Field(default_factory=GarrisonConf)
 
     class ParadoxQueueItem(ConfModel):

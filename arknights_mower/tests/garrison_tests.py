@@ -406,7 +406,8 @@ def test_stop_and_legacy_failed_match_resume_without_reset(
         assert runner.run_garrison(scheduler)
         resumed.assert_called_once()
         saved = record.load_garrison_progress()
-        for field in ("match", "wins", "matches_played", "original_theme"):
+        assert "original_theme" not in saved
+        for field in ("match", "wins", "matches_played"):
             assert saved[field] == progress[field]
         assert not saved.get("failed") and not saved.get("theme_restore_blocked")
         assert not saved["error"]
@@ -539,20 +540,28 @@ def test_settlement_yields_before_starting_another_match(monkeypatch):
     s.device.tap.assert_called_once_with((125, 225))
 
 
-def test_pinned_resources_reject_mismatch_before_execution(tmp_path, monkeypatch):
-    from io import BytesIO
-
+def test_packaged_garrison_files_initialize_gameplay():
     from arknights_mower.solvers.garrison import upstream
 
-    monkeypatch.setattr(upstream, "get_path", lambda *a, **kw: tmp_path)
-    path = tmp_path / "garrison_farm.py"
-    path.write_bytes(b"invalid local source")
-    monkeypatch.setattr(
-        upstream, "urlopen", lambda *a, **kw: BytesIO(b"invalid download")
-    )
-    with pytest.raises(model.GarrisonError, match="校验失败"):
-        upstream.read_resource(path.name, lambda: 3)
-    assert path.read_bytes() == b"invalid local source"
+    session = upstream.FarmSession(Mock(target_wins=3))
+    assert session.game.TARGET == 3
+    assert session.game.LAYOUT["safe"]
+    assert callable(session.game.set_profile)
+
+
+@pytest.mark.parametrize("missing", ["garrison_farm.py", "tiles.json"])
+def test_missing_bundled_file_reports_incomplete_installation(
+    tmp_path, monkeypatch, missing
+):
+    from arknights_mower.solvers.garrison import upstream
+
+    for name in ("garrison_farm.py", "tiles.json"):
+        if name != missing:
+            (tmp_path / name).write_bytes((upstream.BUNDLED_DIR / name).read_bytes())
+    monkeypatch.setattr(upstream, "BUNDLED_DIR", tmp_path)
+    with pytest.raises(model.GarrisonError, match=missing):
+        upstream.FarmSession(Mock(target_wins=3))
+    assert not (tmp_path / missing).exists()
 
 
 def test_interruption_releases_held_touch_before_closing_game(monkeypatch):
@@ -655,6 +664,75 @@ def test_marked_cards_do_not_cost_panel_reads(
     assert game.ocr.call_count == 1
     assert game.scroll_grid.call_count == int(scrolled)
     game.swipe.assert_not_called()
+
+
+@pytest.mark.parametrize("shift", [0, 419, -419])
+def test_strategy_grid_alignment_matches_overlapping_frames(shift):
+    from arknights_mower.solvers.garrison.upstream import strategy_grid_shift
+
+    texture = np.random.default_rng(42).integers(0, 256, (1900, 800, 3), dtype=np.uint8)
+
+    def viewport(offset):
+        image = np.zeros((1080, 1920, 3), np.uint8)
+        image[250:1050, 600:1400] = texture[offset : offset + 800]
+        return image
+
+    assert strategy_grid_shift(viewport(500), viewport(500 + shift)) == shift
+    assert strategy_grid_shift(viewport(0), viewport(1000)) is None
+
+
+@pytest.mark.parametrize("overlap_read", ["skip", None])
+def test_overlapping_pages_keep_unread_cards_eligible(monkeypatch, overlap_read):
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, frame("prep"))
+    worker.capture.return_value = Frame(
+        None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True
+    )
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    game = Mock(GRID_X=[680, 890], GRID_Y=[370, 580], GRID_TOP=250, GRID_BOTTOM=1050)
+    page = 0
+
+    def scroll():
+        nonlocal page
+        page = 1
+
+    game.scroll_grid.side_effect = scroll
+    game.shot.side_effect = lambda: page
+    game.grid_shift.side_effect = lambda before, after: (after - before) * 210
+    game.detect_rows.return_value = [390, 600]
+    game.has_color_badge.side_effect = lambda image, x, y: (
+        image == 0 and (x != 680 or y != 580)
+    )
+    game.has_badge.return_value = False
+    worker.read_strategy_action = Mock(side_effect=[overlap_read, "play"])
+    assert worker.choose_strategy(game).screen == "prep"
+    assert [c.args[:2] for c in game.tap.call_args_list] == [
+        (680, 580),
+        (890 if overlap_read == "skip" else 680, 390),
+    ]
+
+
+def test_reverse_scan_skips_read_panels_but_opens_badge_only_card(monkeypatch):
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock())
+    current = Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True)
+    replay_unchanged_lobby(monkeypatch, worker, current)
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    game = Mock(GRID_X=[680, 890], GRID_Y=[370], GRID_TOP=250, GRID_BOTTOM=1050)
+    pages = iter([(1, [600], 210), None, (0, [390], -210)])
+    worker.scroll_strategy_page = Mock(side_effect=pages)
+    game.shot.return_value = 0
+    game.has_color_badge.side_effect = lambda page, x, y: page == 0 and x == 890
+    game.has_badge.return_value = False
+    worker.read_strategy_action = Mock(side_effect=["skip", "skip", "skip", "play"])
+    assert worker.choose_strategy(game).screen == "prep"
+    assert [c.args[:2] for c in game.tap.call_args_list] == [
+        (680, 370),
+        (680, 600),
+        (890, 600),
+        (890, 390),
+    ]
 
 
 @pytest.mark.parametrize("first_card_wins", [0, 3])
@@ -1252,7 +1330,7 @@ def test_waits_for_personal_highlight_before_clicking_reconnect():
 @pytest.mark.parametrize(
     "original", ["卫戍协议终端", "乌萨斯齐心团", "“全能的”可露希尔"]
 )
-def test_theme_switch_and_restore_require_observed_equipped_label(original):
+def test_theme_switch_requires_observed_equipped_label(original):
     from arknights_mower.solvers.garrison import theme
 
     lobby = frame("left")
@@ -1268,8 +1346,6 @@ def test_theme_switch_and_restore_require_observed_equipped_label(original):
     if changed:
         frames += [theme_panel(default, False), theme_panel(default)]
     frames.append(lobby)
-    if changed:
-        frames += [theme_panel(default), theme_panel(original, False), before]
     events = []
     s = solver.GarrisonSolver(
         Mock(), Mock(), {}, lambda p: events.append(("saved", dict(p)))
@@ -1284,16 +1360,11 @@ def test_theme_switch_and_restore_require_observed_equipped_label(original):
 
     s.wait = wait
     assert s.prepare_theme(lobby) is lobby
-    s.capture = lambda: lobby
-    s.restore_theme()
     assert not frames
     assert s.progress == {}
     if changed:
-        assert events.index(("saved", {"original_theme": original})) < events.index(
-            ("tap", (1760, 257))
-        )
-        assert events.count(("tap", (1590, 999))) == 2
-        assert events[-1] == ("saved", {})
+        assert events.count(("tap", (1590, 999))) == 1
+        assert events[-1] == ("tap", (65, 58))
     else:
         assert events == [("tap", (523, 960)), ("tap", (65, 58))]
 
@@ -1338,103 +1409,34 @@ def test_theme_rechecks_equipped_title_and_missing_card(monkeypatch):
     ]
 
 
-def test_deferred_theme_restoration_after_final_settlement_does_not_play(
-    income_db, monkeypatch
-):
-    conf = Conf(
-        maa_rg_enable=1,
-        maa_long_task_type="garrison",
-        garrison={"mode": "matches", "match_limit": 1},
-    )
+def test_completed_goal_skips_device_with_legacy_theme_record(income_db):
+    conf = Conf(garrison={"mode": "matches", "match_limit": 1})
     progress = model.prepare_progress(conf, {})
     progress.update(matches_played=1, original_theme="乌萨斯齐心团")
     record.save_garrison_progress(progress)
-    assert not model.status(conf, progress)["completed"]
-    assert (
-        runner.eligible_progress(
-            conf, 540, SimpleNamespace(tasks=[], op_data=None), None
-        )
-        == progress
-    )
-    s = solver.GarrisonSolver(
-        Mock(),
-        Mock(),
-        progress,
-        record.save_garrison_progress,
-        match_limit=1,
-        vision=Mock(),
-    )
-    monkeypatch.setattr(
-        solver, "FarmSession", Mock(side_effect=AssertionError("恢复主题时不得开局"))
-    )
-    s.capture = Mock(side_effect=solver.GarrisonYield)
-    s.run()
-    assert record.load_garrison_progress() == progress
-    s.capture = Mock(return_value=theme_panel("乌萨斯齐心团"))
-    s.run()
-    assert "original_theme" not in record.load_garrison_progress()
-    assert model.status(conf, record.load_garrison_progress())["completed"]
+    assert model.status(conf, progress)["completed"]
     assert (
         runner.eligible_progress(
             conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
         )
         is None
     )
+    worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock(), match_limit=1)
+    worker.run()
+    assert not worker.device.mock_calls
+    assert not worker.recog.mock_calls
 
 
-def test_unreadable_original_theme_preserves_record_for_next_window(
-    income_db, monkeypatch
-):
-    conf = Conf()
-    progress = model.prepare_progress(conf, {})
-    progress["original_theme"] = "“全能的”可露希尔"
-    s = solver.GarrisonSolver(Mock(), Mock(), progress, record.save_garrison_progress)
-    record.save_garrison_progress(progress)
-    bad = theme_panel("卫戍协议终端")
-    bad.texts = [t for t in bad.texts if "可露希尔" not in t.text]
-    replay_unchanged_lobby(monkeypatch, s, bad)
-    with pytest.raises(model.GarrisonError, match="恢复卫戍协议主题"):
-        s.restore_theme()
-    s.device.tap.assert_not_called()
-    assert record.load_garrison_progress()["original_theme"] == "“全能的”可露希尔"
-    assert (
-        runner.eligible_progress(
-            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
-        )["original_theme"]
-        == "“全能的”可露希尔"
+@pytest.mark.parametrize(
+    "old, expected", [("maa_medals", "medals"), ("maa_score", "matches")]
+)
+def test_preview_settings_retain_target_and_match_limit_without_maa(old, expected):
+    settings = Conf(garrison={"mode": old, "target_wins": 6, "match_limit": 4}).garrison
+    assert (settings.mode, settings.target_wins, settings.match_limit) == (
+        expected,
+        6,
+        4,
     )
-
-
-@pytest.mark.parametrize("limit", [0, 4, None])
-def test_unfinished_goal_keeps_theme_across_two_windows(monkeypatch, limit):
-    events = []
-    progress = {"original_theme": "乌萨斯齐心团", "matches_played": 1}
-    farm = Mock()
-    monkeypatch.setattr(solver, "FarmSession", lambda owner: farm)
-    farm.release.side_effect = lambda: events.append("release")
-    for outcome in (solver.GarrisonYield(), None):
-        s = solver.GarrisonSolver(
-            Mock(), Mock(), progress, Mock(), match_limit=limit, vision=Mock()
-        )
-        s.enter = Mock(return_value=frame("prep"))
-        s.play = Mock(side_effect=outcome)
-        s.restore_theme = Mock()
-        s.device.exit_after_task_stop.side_effect = lambda: events.append("exit")
-        s.run()
-        s.play.assert_called_once()
-        s.restore_theme.assert_not_called()
-        assert progress["original_theme"] == "乌萨斯齐心团"
-    assert events == ["release", "exit", "release", "exit"]
-
-
-def test_worker_stop_during_theme_restoration_keeps_pending_without_blocking_recovery():
-    progress = {"original_theme": "乌萨斯齐心团"}
-    s = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
-    s.capture = Mock(side_effect=solver.MowerExit)
-    with pytest.raises(solver.MowerExit):
-        s.restore_theme()
-    assert progress == {"original_theme": "乌萨斯齐心团"}
-    s.device.tap.assert_not_called()
 
 
 def test_deployment_cost_marks_battle_without_round_text_and_preserves_dialog():

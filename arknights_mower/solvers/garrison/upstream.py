@@ -1,65 +1,22 @@
 """Load the pinned GarrisonFarm gameplay functions into an instance-local session."""
 
-import hashlib
 import json
-import os
 import re
-import tempfile
 import time
 import unicodedata
-from pathlib import Path
 from types import ModuleType, SimpleNamespace
-from urllib.request import urlopen
 
 import cv2
 import numpy as np
 
+from arknights_mower import __rootdir__
 from arknights_mower.utils.device.io_budget import touch_release_budget
 from arknights_mower.utils.log import logger, save_screenshot_frame
-from arknights_mower.utils.path import get_path
 
 from .model import GarrisonError
 
 REVISION = "fd373c9b1ab1e8fbb52ad78b8da4c461ab325abb"
-FILES = {
-    "garrison_farm.py": "f8f24ccea25f8b75825c25bfdc2dbdb3f83436f780d7288bed1f3bcd46ad6bf6",
-    "tiles.json": "f857148da331ebd0e6ecf9d8c90d9485067b533b49187d23b9c54e8046926768",
-}
-
-
-def read_resource(name, remaining):
-    directory = get_path(f"@app/downloads/garrisonfarm/{REVISION}", space="")
-    path = directory / name
-    digest = FILES[name]
-    if path.is_file():
-        data = path.read_bytes()
-        if hashlib.sha256(data).hexdigest() == digest:
-            return data
-    directory.mkdir(parents=True, exist_ok=True)
-    url = (
-        f"https://raw.githubusercontent.com/UnknownGlyph/GarrisonFarm/{REVISION}/{name}"
-    )
-    with urlopen(url, timeout=min(10, remaining())) as response:
-        buffer = bytearray()
-        while len(buffer) <= 512 * 1024:
-            remaining()
-            chunk = response.read1(64 * 1024)
-            if not chunk:
-                break
-            buffer.extend(chunk)
-        data = bytes(buffer)
-    remaining()
-    if hashlib.sha256(data).hexdigest() != digest:
-        raise GarrisonError(f"GarrisonFarm 文件校验失败：{name}")
-    with tempfile.NamedTemporaryFile(dir=directory, delete=False) as stream:
-        temporary = Path(stream.name)
-        try:
-            stream.write(data)
-            stream.close()
-            os.replace(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
-    return data
+BUNDLED_DIR = __rootdir__ / "data" / "garrisonfarm" / REVISION
 
 
 def panel_open(items):
@@ -80,12 +37,47 @@ def strategy_panel(items):
     return int(match[1]) if match else None
 
 
+def strategy_grid_shift(before, after):
+    """Measure signed grid travel using a textured strip still visible in both frames."""
+    top, bottom = 250, 1050
+    old, new = (
+        cv2.cvtColor(img[top:bottom, 600:1400:4], cv2.COLOR_BGR2GRAY)
+        for img in (before, after)
+    )
+    if np.array_equal(old, new):
+        return 0
+    # A two-row swipe can carry the middle strip entirely out of the viewport.
+    shifts = []
+    for y in (80, 300, 550):
+        strip = old[y : y + 128]
+        if strip.std() < 10:
+            continue
+        scores = cv2.matchTemplate(new, strip, cv2.TM_CCOEFF_NORMED).ravel()
+        best = int(scores.argmax())
+        score = scores[best]
+        if score < 0.85:
+            continue
+        scores[max(0, best - 8) : best + 9] = -1
+        if scores.max() < score - 0.05:
+            shifts.append(y - best)
+    if shifts and max(shifts) - min(shifts) <= 4:
+        return round(sum(shifts) / len(shifts))
+    return None
+
+
 class FarmSession:
     def __init__(self, owner):
         self.owner = owner
         self.held = None
-        script = read_resource("garrison_farm.py", owner.remaining).decode("utf-8-sig")
-        layout = json.loads(read_resource("tiles.json", owner.remaining))
+        try:
+            script = (BUNDLED_DIR / "garrison_farm.py").read_text(encoding="utf-8-sig")
+            layout = json.loads(
+                (BUNDLED_DIR / "tiles.json").read_text(encoding="utf-8")
+            )
+        except FileNotFoundError as exc:
+            raise GarrisonError(
+                f"缺少内置卫戍文件，请重新安装 Mower：{exc.filename}"
+            ) from exc
         # The pinned standalone script has no importable gameplay entry point. Its
         # OCR and gameplay section precedes main() and has no host startup steps.
         start = script.index("def ocr(img, box=None):")
@@ -93,6 +85,7 @@ class FarmSession:
         farm = ModuleType("garrison_farm")
         farm.cv2, farm.np = cv2, np
         exec(compile(script[start:end], "garrison_farm.py", "exec"), vars(farm))
+        farm.grid_shift = strategy_grid_shift
         farm.shot = self.shot
         farm.ocr_engine = owner.vision.engine
         farm.tap = self.tap

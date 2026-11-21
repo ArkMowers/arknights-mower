@@ -34,7 +34,7 @@ def eligible_progress(conf, window, scheduler, opening):
     ):
         return None
     if goal_reached(progress, settings.target_wins, match_limit):
-        return progress if progress.get("original_theme") else None
+        return None
     if not progress.get("match") and window < MATCH_SECONDS:
         return None
     return progress
