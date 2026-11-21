@@ -105,6 +105,158 @@ class ScheduledStartTests(unittest.TestCase):
                 ]
             )
 
+    def test_update_restarts_stopped_instance_with_original_reservation(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        job = "a" * 32
+        old_process = Shutdown()
+        new_process = Shutdown()
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(self.server, "state_dir", return_value=Path(folder)),
+            patch.object(self.server, "shutdown", old_process),
+            patch.object(self.server, "mower_thread", None),
+            patch.object(self.server, "active_job", return_value=True) as updating,
+            patch.object(self.server, "_start_mower", return_value=True) as start,
+        ):
+            response = self.client.put(
+                "/scheduled-start", json={"delay_seconds": 1800}, headers=self.headers
+            )
+            original = FakeTimer.instances[-1]
+            self.server._shutdown_for_software_update(job)
+            self.assertTrue(old_process.closing)
+            self.assertTrue(original.cancelled)
+            self.assertIsNone(self.server.scheduled_start_at)
+            with patch.object(self.server, "shutdown", new_process):
+                self.server._restore_scheduled_start(job)
+                self.assertEqual(
+                    self.client.get("/status", headers=self.headers).json[
+                        "scheduled_start_at"
+                    ],
+                    response.json["scheduled_start_at"],
+                )
+                current = FakeTimer.instances[-1]
+                self.assertAlmostEqual(current.delay, 1800, delta=3)
+                current.callback()
+                start.assert_not_called()
+                self.assertIsNotNone(self.server.scheduled_start_at)
+                updating.return_value = False
+                FakeTimer.instances[-1].callback()
+                current.callback()
+                start.assert_called_once_with("2")
+                self.assertFalse(self.server._scheduled_start_transfer(job).exists())
+
+    def test_overdue_update_reservation_keeps_saved_queue_mode(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        job = "b" * 32
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(self.server, "state_dir", return_value=Path(folder)),
+            patch.object(self.server, "shutdown", Shutdown()),
+            patch.object(self.server, "mower_thread", None),
+            patch.object(self.server, "active_job", return_value=False),
+            patch.object(self.server, "_start_mower", return_value=True) as start,
+        ):
+            self.server._schedule_start(30, start_type="0")
+            self.server._shutdown_for_software_update(job)
+            due = datetime.fromisoformat(
+                self.server.json.loads(
+                    self.server._scheduled_start_transfer(job).read_text(
+                        encoding="utf-8"
+                    )
+                )["at"]
+            )
+            with (
+                patch.object(self.server, "shutdown", Shutdown()),
+                patch.object(
+                    self.server.time, "time", return_value=due.timestamp() + 60
+                ),
+            ):
+                self.server._restore_scheduled_start(job)
+                self.assertEqual(FakeTimer.instances[-1].delay, 0)
+                FakeTimer.instances[-1].callback()
+            start.assert_called_once_with("0")
+
+    def test_update_handoff_is_scoped_to_job_instance_and_profile(self):
+        from arknights_mower.utils import config_profiles
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        job = "c" * 32
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(self.server, "state_dir", return_value=Path(folder)),
+            patch.object(self.server, "shutdown", Shutdown()),
+            patch.object(config_profiles, "current_generation", return_value="old"),
+        ):
+            self.server._schedule_start(60)
+            self.server._shutdown_for_software_update(job)
+            self.server._restore_scheduled_start("d" * 32)
+            with patch.object(self.server, "tmp_dir", Path(folder) / "other"):
+                self.server._restore_scheduled_start(job)
+            self.assertIsNone(self.server.scheduled_start_at)
+            with patch.object(
+                config_profiles, "current_generation", return_value="new"
+            ):
+                self.server._restore_scheduled_start(job)
+            self.assertIsNone(self.server.scheduled_start_at)
+            self.assertFalse(self.server._scheduled_start_transfer(job).exists())
+
+    def test_cancel_restored_reservation_requires_token_and_survives_relaunch(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        job = "e" * 32
+        with (
+            TemporaryDirectory() as folder,
+            patch.object(self.server, "state_dir", return_value=Path(folder)),
+            patch.object(self.server, "shutdown", Shutdown()),
+            patch.object(self.server.app, "token", "fixture-token", create=True),
+            patch.object(self.server, "mower_thread", None),
+        ):
+            self.server._schedule_start(60)
+            self.server._shutdown_for_software_update(job)
+            with patch.object(self.server, "shutdown", Shutdown()):
+                self.server._restore_scheduled_start(job)
+                for headers in ({}, {"token": "incorrect"}):
+                    self.assertEqual(
+                        self.client.delete(
+                            "/scheduled-start", headers=headers
+                        ).status_code,
+                        403,
+                    )
+                    self.assertEqual(
+                        self.client.put(
+                            "/scheduled-start",
+                            json={"delay_seconds": 120},
+                            headers=headers,
+                        ).status_code,
+                        403,
+                    )
+                    self.assertTrue(self.server._scheduled_start_transfer(job).exists())
+                    self.assertEqual(
+                        self.client.get("/stop", headers=headers).status_code, 403
+                    )
+                response = self.client.delete(
+                    "/scheduled-start", headers={"token": "fixture-token"}
+                )
+                self.assertEqual(response.status_code, 200)
+                self.server._restore_scheduled_start(job)
+                self.assertIsNone(self.server.scheduled_start_at)
+                self.assertFalse(self.server._scheduled_start_transfer(job).exists())
+
+    def test_failed_update_handoff_does_not_close_or_cancel_reservation(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        with (
+            patch.object(self.server, "shutdown", Shutdown()) as lifecycle,
+            patch.object(self.server, "write_json", side_effect=PermissionError),
+        ):
+            expected = self.server._schedule_start(120)
+            self.server._shutdown_for_software_update("f" * 32)
+            self.assertFalse(lifecycle.closing)
+            self.assertFalse(FakeTimer.instances[-1].cancelled)
+            self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
+
     def test_manual_start_cancels_reservation(self):
         with (
             TemporaryDirectory() as folder,

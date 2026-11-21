@@ -1012,6 +1012,8 @@ def _run_desktop():
         if shutdown.closing or monotonic() >= ready_deadline:
             raise TimeoutError("HTTP 服务未在启动预算内就绪")
         sleep(0.1)
+    if not resume and (restart_job := os.environ.get("MOWER_RESTART_JOB")):
+        server._restore_scheduled_start(restart_job)
     registration.record["ready"] = True
     registration.publish()
     from arknights_mower.utils import crash_recovery
@@ -1198,11 +1200,22 @@ def _run_desktop():
                 ):
                     sleep(0.5)
                     continue
+                update_job = registration.software_update_shutdown_job()
                 with server.app.test_request_context(headers={"token": runtime_token}):
-                    stopped = server.stop(user_requested=False) == "true"
+                    stopped = (
+                        server.stop(
+                            user_requested=False,
+                            preserve_scheduled_start=bool(update_job),
+                        )
+                        == "true"
+                    )
                 if stopped and registration.shutdown_requested():
-                    shutdown.request("runtime_request")
-                    break
+                    if update_job:
+                        server._shutdown_for_software_update(update_job)
+                    else:
+                        shutdown.request("runtime_request")
+                    if shutdown.closing:
+                        break
             if config.webview_process and not config.webview_process.is_alive():
                 close_child(config.webview_process)
                 config.webview_process = None

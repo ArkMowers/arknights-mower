@@ -73,6 +73,13 @@ Entering idle publishes the new observation and requests the existing coalesced 
 
 Automatic shutdown requests also require the receiving instance's current idle verdict. A running task worker handles the request inside its scheduler sleep and exits before waking the device or dispatching another task; the launcher waits for that exit instead of stopping active work. The installer first waits for every instance to exit, then requests manager and shared OCR shutdown. Existing OCR processes remain available to an instance that starts work after the final idle snapshot; an instance-exit timeout sends no OCR shutdown request. Both shutdown stages share the existing 90-second budget. An exhausted budget retains the existing failed-installation recovery behavior. Pending task state is saved through the existing shutdown path.
 
+<a id="scheduled-start-handoff"></a>
+### Scheduled Start Handoff
+
+Before the desktop instance exits for software installation, it saves any pending scheduled start in the update job directory, keyed by its configuration space. The replacement checks the job and configuration generation and restores the original timestamp and start mode. If the timestamp has passed, it waits for active installation and startup maintenance to finish before attempting the start once. Restoring a reservation leaves a stopped task worker stopped until the reservation is due. Cancelling or replacing the reservation, stopping tasks explicitly, or starting tasks successfully clears the restored record. Normal application closure and manager Stop do not create a handoff.
+
+If the handoff cannot be written, the old instance keeps the reservation and does not acknowledge shutdown. The installer retains its existing timeout and recovery behavior. [Scheduled start tests](../../arknights_mower/tests/scheduled_start_tests.py) verify the deadline, start mode, cancellation and isolation.
+
 Focused offline coverage is in [`software_auto_update_tests.py`](../../arknights_mower/tests/software_auto_update_tests.py), [`update_runtime_tests.py`](../../arknights_mower/tests/update_runtime_tests.py), [`idle_scene_watchdog_tests.py`](../../arknights_mower/tests/idle_scene_watchdog_tests.py) and [`desktop_lifecycle_tests.py`](../../arknights_mower/tests/desktop_lifecycle_tests.py).
 
 ## 4. Registration Scan Boundary

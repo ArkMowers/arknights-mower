@@ -588,6 +588,11 @@ class DesktopStartupTests(unittest.TestCase):
                 outcome["worker"].start.assert_called_once()
                 outcome["start"].assert_called_once_with("3", automatic=True)
 
+    def test_update_restart_restores_reservation_without_starting_stopped_worker(self):
+        _, server = self.launch(restart=True, automatic=True, resume_run="0")
+        server._restore_scheduled_start.assert_called_once_with("fixture")
+        server.start.assert_not_called()
+
     def test_update_restart_rechecks_maintenance_started_during_the_previous_update(
         self,
     ):

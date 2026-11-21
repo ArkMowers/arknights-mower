@@ -817,6 +817,19 @@ class RuntimeRegistration:
     def automatic_shutdown_requested(self):
         return read_json(self.request, {}).get("idle_only") is True
 
+    def software_update_shutdown_job(self):
+        request = read_json(self.request, {})
+        job = request.get("job")
+        if (
+            isinstance(job, str)
+            and len(job) == 32
+            and all(character in "0123456789abcdef" for character in job)
+            and read_json(self.directory / "active/owner.json", {}).get("id") == job
+            and (self.directory / "jobs" / job / "job.json").is_file()
+        ):
+            return job
+        return None
+
     def take_commands(self):
         actions = []
         for path in sorted((self.directory / "commands" / self.id).glob("*.json")):
