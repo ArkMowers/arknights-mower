@@ -284,19 +284,111 @@ class ScheduledStartTests(unittest.TestCase):
                 self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
                 self.assertEqual(self.server.scheduled_start_type, "0")
 
-    def test_unconfirmed_host_reply_preserves_transfer_and_local_cancellation(self):
-        with TemporaryDirectory() as folder:
-            transfer = Path(folder) / "reservation.json"
-            expected = self.server._schedule_start(600)
-            with self.assertRaises(TimeoutError):
-                self.server.handoff_scheduled_start(
-                    transfer, before_shutdown=Mock(side_effect=TimeoutError)
+    def test_unconfirmed_handoff_pauses_due_timer_until_decision(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        for decision in ("reject", "cancel", "accept", "replace_before_reply"):
+            with (
+                self.subTest(decision=decision),
+                TemporaryDirectory() as folder,
+                patch.object(self.server, "shutdown", Shutdown()),
+                patch.object(self.server, "_start_mower", return_value=True) as start,
+            ):
+                transfer = Path(folder) / "reservation.json"
+                expected = self.server._schedule_start(-1, start_type="0")
+                original = FakeTimer.instances[-1]
+                with self.assertRaises(TimeoutError):
+                    self.server.handoff_scheduled_start(
+                        transfer, before_shutdown=Mock(side_effect=TimeoutError)
+                    )
+                original.callback()
+                start.assert_not_called()
+                self.assertTrue(transfer.is_file())
+                self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
+                self.server.resolve_scheduled_start_handoff(
+                    transfer.with_name("other"), accepted=True
                 )
-            self.assertTrue(transfer.is_file())
-            self.assertFalse(FakeTimer.instances[-1].cancelled)
-            self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
-            self.assertTrue(self.server._cancel_scheduled_start())
-            self.assertFalse(transfer.exists())
+                self.assertFalse(self.server.shutdown.closing)
+                self.assertEqual(
+                    self.client.put(
+                        "/scheduled-start",
+                        json={"delay_seconds": 60},
+                        headers=self.headers,
+                    ).status_code,
+                    409,
+                )
+                if decision == "cancel":
+                    self.assertEqual(
+                        self.client.delete(
+                            "/scheduled-start", headers=self.headers
+                        ).status_code,
+                        200,
+                    )
+                if decision == "replace_before_reply":
+                    lifecycle = Mock()
+                    self.server.register_shutdown(lifecycle)
+                    cleanup = next(
+                        call.args[1]
+                        for call in lifecycle.own.call_args_list
+                        if call.args[0] == "scheduled starts"
+                    )
+                    self.server.shutdown.request("exit")
+                    cleanup()
+                else:
+                    self.server.resolve_scheduled_start_handoff(
+                        transfer, accepted=decision == "accept"
+                    )
+                original.callback()
+                start.assert_not_called()
+                if decision in ("accept", "replace_before_reply"):
+                    self.assertTrue(self.server.shutdown.closing)
+                    with patch.object(self.server, "shutdown", Shutdown()):
+                        self.assertTrue(self.server.restore_scheduled_start(transfer))
+                        FakeTimer.instances[-1].callback()
+                    start.assert_called_once_with("0")
+                elif decision == "reject":
+                    self.assertEqual(
+                        self.server.scheduled_start_at.isoformat(), expected
+                    )
+                    FakeTimer.instances[-1].callback()
+                    start.assert_called_once_with("0")
+                else:
+                    self.assertIsNone(self.server.scheduled_start_at)
+                self.assertFalse(transfer.exists())
+
+    def test_only_accepted_stop_or_reservation_cancellation_notifies_host(self):
+        from arknights_mower.utils.lifecycle import Shutdown
+
+        host_stop = Mock()
+        with (
+            patch.dict(self.server.app.extensions, update_host_task_stop=host_stop),
+            patch.object(self.server, "shutdown", Shutdown()) as lifecycle,
+            patch.object(self.server, "_request_mower_stop"),
+            patch.object(self.server, "_wait_mower_stop", return_value=True),
+        ):
+            self.server._schedule_start(60, start_type="0")
+            self.assertEqual(
+                self.client.delete(
+                    "/scheduled-start", headers=self.headers
+                ).status_code,
+                200,
+            )
+            self.assertEqual(
+                self.client.delete(
+                    "/scheduled-start", headers=self.headers
+                ).status_code,
+                200,
+            )
+            host_stop.assert_called_once()
+            self.assertEqual(
+                self.client.get("/stop", headers=self.headers).status_code, 200
+            )
+            self.assertEqual(host_stop.call_count, 2)
+            lifecycle.request("runtime_request")
+            self.assertEqual(
+                self.client.get("/stop", headers=self.headers).status_code, 409
+            )
+            self.assertEqual(host_stop.call_count, 2)
 
     def test_cancel_requires_readable_update_owner_before_disarming(self):
         from arknights_mower.utils import update_runtime as runtime
