@@ -252,6 +252,36 @@ def test_depot_paging_ignores_fixed_background_at_the_edge_of_the_overlap():
     assert swipes == [702, 234, -702, -702, -234]
 
 
+@pytest.mark.parametrize(
+    "filename,distance,fixed_edge",
+    [
+        ("depot_basic_lmd_20261031.jpg", 340.625, False),
+        ("depot/consume_left_20261117.webp", 340.5, True),
+    ],
+)
+def test_depot_paging_rechecks_labels_after_fractional_movement(
+    filename, distance, fixed_edge
+):
+    image = cv2.imread(str(FIXTURES / filename))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    shifted = frame.copy()
+    shifted[140:990] = cv2.warpAffine(
+        frame[140:990],
+        np.float32([[1, 0, -distance], [0, 1, 0]]),
+        (1920, 850),
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    if fixed_edge:
+        shifted[140:990, :32] = frame[140:990, :32]
+
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, pytest.approx(distance, abs=0.5)]
+    assert swipes == [702, 234, -702, -702, -234]
+
+
 @pytest.mark.parametrize("retry_distance", [0, 107])
 def test_stationary_consumables_with_background_change_still_check_the_next_page(
     retry_distance,

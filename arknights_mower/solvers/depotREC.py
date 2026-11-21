@@ -509,6 +509,31 @@ class depotREC(SceneGraphSolver):
                 edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
             )
         ]
+        if not matched:
+            for candidate in candidates:
+                position = 800 - candidate
+                if not 0 < position < scores.size - 1:
+                    continue
+                left, center, right = map(float, scores[position - 1 : position + 2])
+                curvature = left - 2 * center + right
+                if curvature >= 0:
+                    continue
+                # 用匹配峰估算亚像素位移，只调整标签校验的对齐位置。
+                correction = np.clip((left - right) / (2 * curvature), -0.5, 0.5)
+                displacement = candidate - correction
+                aligned = cv2.warpAffine(
+                    before,
+                    np.float32([[1, 0, displacement], [0, 1, 0]]),
+                    (width - candidate, before.shape[0]),
+                    flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+                    borderMode=cv2.BORDER_REPLICATE,
+                )
+                if _same_depot_labels(
+                    aligned,
+                    after[:, : width - candidate],
+                    edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
+                ):
+                    matched.append(candidate)
         if len(matched) != 1 or matched[0] == 0:
             raise _DepotScanIncomplete
         return int(matched[0])
