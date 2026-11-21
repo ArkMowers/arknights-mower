@@ -62,7 +62,7 @@ from arknights_mower.utils.operators import Operators, build_global_plan
 from arknights_mower.utils.path import get_path, resolve_config_path
 from arknights_mower.utils.resource_pkg import register_resource_reload
 from arknights_mower.utils.resource_update_job import ResourceUpdateJob
-from arknights_mower.utils.update_runtime import active_job
+from arknights_mower.utils.update_runtime import active_job, state_dir, write_json
 from arknights_mower.utils.web_auth import (
     check_request_origin,
     check_token,
@@ -123,6 +123,10 @@ log_stream = LogStream()
 scheduled_start_lock = RLock()
 scheduled_start_timer = None
 scheduled_start_at = None
+scheduled_start_generation = None
+scheduled_start_type = None
+scheduled_start_order = None
+scheduled_start_handoff = None
 performance_test_lock = RLock()
 performance_test_cancel = Event()
 performance_test_job = {"status": "idle", "id": None}
@@ -188,17 +192,37 @@ def _run_performance_test(configuration):
         )
 
 
+def _invalidate_scheduled_start_transfer(transfer, reservation_id):
+    try:
+        transfer.unlink(missing_ok=True)
+    except OSError:
+        try:
+            write_json(
+                transfer.with_suffix(".cancelled"), {"id": reservation_id}, sync=True
+            )
+        except OSError:
+            logger.exception("无法使预约启动的更新交接记录失效")
+            return False
+    return True
+
+
 def _cancel_scheduled_start():
-    global scheduled_start_timer, scheduled_start_at
+    global scheduled_start_timer, scheduled_start_at, scheduled_start_handoff
+    global scheduled_start_order
     with scheduled_start_lock:
         if scheduled_start_timer is not None:
             scheduled_start_timer.cancel()
         scheduled_start_timer = None
         scheduled_start_at = None
+        scheduled_start_order = None
+        if scheduled_start_handoff is not None:
+            if not _invalidate_scheduled_start_transfer(*scheduled_start_handoff):
+                return False
+            scheduled_start_handoff = None
+        return True
 
 
-def _run_scheduled_start(timer, generation, start_type="2"):
-    global scheduled_start_timer, scheduled_start_at
+def _run_scheduled_start(timer, generation, start_type="2", startup_ready=None):
     from arknights_mower.utils.config_backup import LocalConfigError
     from arknights_mower.utils.config_profiles import ProfileConflict, check_generation
 
@@ -207,41 +231,206 @@ def _run_scheduled_start(timer, generation, start_type="2"):
     worker = mower_thread
     if start_type == "0" and worker and config.stop_mower.is_set():
         worker.join(10)
-    with backup_lock:
-        with scheduled_start_lock:
-            if scheduled_start_timer is not timer:
-                return
-            scheduled_start_timer = None
-            scheduled_start_at = None
+    with backup_lock, maa_maintenance_lock, scheduled_start_lock:
+        if scheduled_start_timer is not timer or shutdown.closing:
+            return
         try:
             check_generation(generation, allow_legacy=False)
         except (ProfileConflict, LocalConfigError) as exc:
+            _cancel_scheduled_start()
             logger.warning("预约启动已取消：%s", exc)
             return
-        if _start_mower(start_type):
+        if (
+            (startup_ready is not None and not startup_ready.is_set())
+            or active_job()
+            or _job_running(maa_update_job)
+            or _job_running(maa_resource_update_job)
+            or resource_update.running()
+        ):
+            _arm_scheduled_start(
+                scheduled_start_at, generation, start_type, 1, startup_ready
+            )
+            return
+        try:
+            started = _start_mower(start_type)
+        except Exception:
+            _cancel_scheduled_start()
+            logger.exception("预约时间已到，但启动 Mower 失败")
+            return
+        if started:
+            _cancel_scheduled_start()
             logger.info("预约时间已到，Mower 开始执行")
+        elif active_job():
+            _arm_scheduled_start(
+                scheduled_start_at, generation, start_type, 1, startup_ready
+            )
         else:
+            _cancel_scheduled_start()
             logger.warning("预约时间已到，但 Mower 当前无法启动")
 
 
-def _schedule_start(delay_seconds, *, start_type="2"):
+def _arm_scheduled_start(at, generation, start_type, delay, startup_ready=None):
     global scheduled_start_timer, scheduled_start_at
+    global scheduled_start_generation, scheduled_start_type
+    if scheduled_start_timer is not None:
+        scheduled_start_timer.cancel()
+    timer = Timer(
+        delay,
+        lambda: _run_scheduled_start(timer, generation, start_type, startup_ready),
+    )
+    timer.daemon = True
+    scheduled_start_at = at
+    scheduled_start_generation = generation
+    scheduled_start_type = start_type
+    scheduled_start_timer = timer
+    timer.start()
+
+
+def _schedule_start(delay_seconds, *, start_type="2"):
+    global scheduled_start_order
     from arknights_mower.utils.config_profiles import current_generation
 
     with backup_lock, scheduled_start_lock:
         generation = current_generation()
-        if scheduled_start_timer is not None:
-            scheduled_start_timer.cancel()
-        scheduled_start_at = datetime.datetime.now().astimezone() + datetime.timedelta(
+        if not _cancel_scheduled_start():
+            return None
+        at = datetime.datetime.now().astimezone() + datetime.timedelta(
             seconds=delay_seconds
         )
-        timer = Timer(
-            delay_seconds, lambda: _run_scheduled_start(timer, generation, start_type)
+        scheduled_start_order = time.monotonic_ns()
+        _arm_scheduled_start(at, generation, start_type, delay_seconds)
+        return at.isoformat()
+
+
+def _scheduled_start_transfer(job):
+    if not job or re.fullmatch(r"[0-9a-f]{32}", job) is None:
+        return None
+    space = os.path.normcase(str(tmp_dir.resolve()))
+    key = hashlib.sha256(os.fsencode(space)).hexdigest()
+    return state_dir() / "jobs" / job / "scheduled-starts" / f"{key}.json"
+
+
+def _shutdown_for_software_update(job):
+    return handoff_scheduled_start(_scheduled_start_transfer(job))
+
+
+def handoff_scheduled_start(transfer, *, before_shutdown=None):
+    """Transfer the timer before its host commits the update restart."""
+    global scheduled_start_handoff
+    with scheduled_start_lock:
+        if shutdown.closing:
+            return False
+        pending = scheduled_start_at is not None
+        if (
+            not pending
+            and scheduled_start_handoff
+            and scheduled_start_handoff[0] == transfer
+            and not _cancel_scheduled_start()
+        ):
+            return False
+        if pending:
+            reservation_id = uuid4().hex
+            try:
+                write_json(
+                    transfer,
+                    {
+                        "id": reservation_id,
+                        "at": scheduled_start_at.isoformat(),
+                        "generation": scheduled_start_generation,
+                        "start_type": scheduled_start_type,
+                        "order": scheduled_start_order,
+                    },
+                    sync=True,
+                )
+            except OSError:
+                logger.exception("软件更新前无法交接预约启动，保留预约和当前实例")
+                return False
+        if before_shutdown is not None:
+            try:
+                before_shutdown(pending)
+            except Exception:
+                if pending:
+                    _invalidate_scheduled_start_transfer(transfer, reservation_id)
+                raise
+        if pending:
+            if scheduled_start_handoff and scheduled_start_handoff[0] == transfer:
+                scheduled_start_handoff = None
+            _cancel_scheduled_start()
+        shutdown.request("runtime_request")
+        return True
+
+
+def _restore_scheduled_start(job, *, startup_ready=None, stop_order=None):
+    return restore_scheduled_start(
+        _scheduled_start_transfer(job),
+        startup_ready=startup_ready,
+        stop_order=stop_order,
+    )
+
+
+def restore_scheduled_start(transfer, *, startup_ready=None, stop_order=None):
+    """Restore an update reservation from the owning host's handoff file."""
+    global scheduled_start_handoff, scheduled_start_order
+    from arknights_mower.utils.config_backup import LocalConfigError
+    from arknights_mower.utils.config_profiles import ProfileConflict, check_generation
+
+    if transfer is None:
+        return False
+    if stop_order is not None:
+        try:
+            stop_order = int(stop_order)
+        except ValueError:
+            return False
+        if stop_order <= 0:
+            return False
+    with backup_lock, scheduled_start_lock:
+        try:
+            record = json.loads(transfer.read_text(encoding="utf-8"))
+            reservation_id = record["id"]
+            if not isinstance(reservation_id, str) or not reservation_id:
+                raise ValueError("预约标识无效")
+            try:
+                cancelled = json.loads(
+                    transfer.with_suffix(".cancelled").read_text(encoding="utf-8")
+                )
+            except FileNotFoundError:
+                pass
+            else:
+                if cancelled["id"] == reservation_id:
+                    return False
+            at = datetime.datetime.fromisoformat(record["at"])
+            generation, start_type = record["generation"], record["start_type"]
+            if at.tzinfo is None or start_type not in ("0", "2"):
+                raise ValueError("预约时间或启动模式无效")
+            order = record.get("order")
+            if stop_order is not None and (
+                type(order) is not int or order <= stop_order
+            ):
+                return False
+            check_generation(generation, allow_legacy=False)
+        except FileNotFoundError:
+            return False
+        except (LocalConfigError, ProfileConflict, KeyError, TypeError, ValueError):
+            logger.warning("软件更新后未恢复预约启动：预约记录或配置档案已失效")
+            try:
+                transfer.unlink(missing_ok=True)
+            except OSError:
+                logger.exception("无法清理已失效的预约启动记录")
+            return False
+        except OSError:
+            logger.exception("软件更新后无法读取预约启动")
+            return False
+        scheduled_start_order = order if type(order) is int and order > 0 else None
+        _arm_scheduled_start(
+            at,
+            generation,
+            start_type,
+            max(0, at.timestamp() - time.time()),
+            startup_ready,
         )
-        timer.daemon = True
-        scheduled_start_timer = timer
-        timer.start()
-        return scheduled_start_at.isoformat()
+        scheduled_start_handoff = (transfer, reservation_id)
+        logger.info("软件更新后已恢复预约启动：%s", at.isoformat())
+        return True
 
 
 def _mower_busy_response():
@@ -2220,6 +2409,9 @@ def _run_mower_worker(saved_state, preparation_serial=None):
                     max(0, (result.end - datetime.datetime.now()).total_seconds()),
                     start_type="0",
                 )
+            if start_at is None:
+                logger.error("任务已停止，但旧预约无法失效，请检查后手动启动")
+                return
             logger.info(f"停服更新已停止 Mower，已预约在 {start_at} 继续运行")
     except MowerExit:
         return
@@ -2430,7 +2622,22 @@ def _retry_after_process_crash(*, preparation_serial=None):
 @require_token
 def scheduled_start():
     if request.method == "DELETE":
-        _cancel_scheduled_start()
+        with scheduled_start_lock:
+            if shutdown.closing:
+                return {"error": "Mower 正在退出"}, 409
+            if scheduled_start_at is not None:
+                from arknights_mower.utils.update_runtime import (
+                    InstanceScanError,
+                    record_task_stop,
+                )
+
+                try:
+                    record_task_stop()
+                except (InstanceScanError, OSError, ValueError):
+                    logger.exception("无法记录更新期间的预约取消操作，保留预约")
+                    return {"error": "无法记录取消操作，请重试"}, 503
+            if not _cancel_scheduled_start():
+                return {"error": "当前计时已取消，但无法清除更新交接记录"}, 503
         logger.info("已取消预约启动")
         return {"scheduled_start_at": None}
 
@@ -2442,12 +2649,14 @@ def scheduled_start():
         or not 0 < delay_seconds <= 30 * 24 * 3600
     ):
         return {"error": "预约时间必须在未来 30 天内"}, 400
-    with maa_maintenance_lock:
+    with backup_lock, maa_maintenance_lock, scheduled_start_lock:
         if shutdown.closing:
             return {"error": "Mower 正在退出"}, 409
         if mower_thread and mower_thread.is_alive():
             return {"error": "Mower 正在运行"}, 409
         start_at = _schedule_start(delay_seconds)
+        if start_at is None:
+            return {"error": "无法清除旧预约的更新交接记录，未设置新预约"}, 503
     logger.info(f"已预约在 {start_at} 启动 Mower")
     return {"scheduled_start_at": start_at}
 
@@ -2492,15 +2701,31 @@ def stop_after_round():
 @app.route("/stop")
 @require_token
 @save_state
-def stop(*, user_requested=True):
+def stop(*, user_requested=True, preserve_scheduled_start=False):
+    reservation_cancelled = True
     if user_requested:
         from arknights_mower.utils.update_runtime import record_task_stop
 
-        try:
-            record_task_stop()
-        except Exception:
-            logger.exception("记录进程替换期间的停止选择失败，继续停止当前任务")
-    return str(_stop_mower()).lower()
+        with scheduled_start_lock:
+            if shutdown.closing:
+                return {"error": "Mower 正在退出"}, 409
+            _request_mower_stop()
+            reservation_cancelled = _cancel_scheduled_start()
+            try:
+                record_task_stop()
+            except Exception:
+                logger.exception("记录进程替换期间的停止选择失败，继续停止当前任务")
+    stopped = (
+        _wait_mower_stop()
+        if user_requested
+        else _stop_mower(preserve_scheduled_start=preserve_scheduled_start)
+    )
+    if not reservation_cancelled:
+        return {
+            "error": "无法清除预约启动的更新交接记录",
+            "stopped": stopped,
+        }, 503
+    return str(stopped).lower()
 
 
 @app.post("/plan/apply")
@@ -2561,17 +2786,23 @@ def _request_mower_stop(*, preserve_run_intent=False):
                 logger.exception("记录自动恢复取消失败，当前进程已停止后台重试")
 
 
-def _stop_mower(timeout=10, *, preserve_run_intent=False):
+def _stop_mower(
+    timeout=10, *, preserve_run_intent=False, preserve_scheduled_start=False
+):
     """Let the worker's run boundary restore preparation before it exits."""
+    with scheduled_start_lock:
+        _request_mower_stop(preserve_run_intent=preserve_run_intent)
+        if not preserve_run_intent and not preserve_scheduled_start:
+            _cancel_scheduled_start()
+    return _wait_mower_stop(timeout, preserve_run_intent=preserve_run_intent)
+
+
+def _wait_mower_stop(timeout=10, *, preserve_run_intent=False):
     global mower_thread
 
     from arknights_mower.utils import crash_recovery
     from arknights_mower.utils.instance_supervisor import task_intent
 
-    with scheduled_start_lock:
-        _request_mower_stop(preserve_run_intent=preserve_run_intent)
-        if not preserve_run_intent:
-            _cancel_scheduled_start()
     deadline = time.monotonic() + timeout
     if not maa_maintenance_lock.acquire(timeout=timeout):
         logger.error("等待任务状态锁超时，保留未完成的设备恢复记录")

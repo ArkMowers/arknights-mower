@@ -721,7 +721,7 @@ def test_user_stop_after_job_admission_overrides_captured_running_state(
         "space": "owned-space",
         "name": "owned-instance",
         "port": 59998,
-        "executable": "owned-python",
+        "executable": sys.executable,
         "argv": ["owned-desktop.py"],
         "cwd": str(tmp_path),
     }
@@ -777,6 +777,15 @@ def test_user_stop_after_job_admission_overrides_captured_running_state(
         )
     environment = create.call_args.kwargs["env"]
     assert environment["MOWER_RESUME_RUN"] == ("0" if user_requested else "1")
+    marker = environment.get("MOWER_UPDATE_TASK_STOPPED")
+    order = environment.get("MOWER_UPDATE_TASK_STOP_ORDER")
+    if replacement == "update" and user_requested:
+        request = runtime.task_stop_request(record, job_id, state)
+        assert marker == "1"
+        assert order == str(request["order"])
+    else:
+        assert marker is None
+        assert order is None
     if user_requested:
         assert environment.get("MOWER_RESUME_MODE") not in ("0", "1")
     assert record["running"] is True
@@ -1218,10 +1227,10 @@ def test_stop_snapshot_captured_before_observation_cannot_save_partial_mutations
     assert offline.record.save_current_state()
     with offline.record._conn() as connection:
         original = connection.execute("SELECT state FROM saved_state").fetchone()[0]
-    stop = offline.server._stop_mower
+    wait = offline.server._wait_mower_stop
 
     def cancel_observation(*args, **kwargs):
-        assert stop()
+        assert wait()
         raise MowerExit
 
     solver._read_room_mood = cancel_observation
@@ -1231,7 +1240,7 @@ def test_stop_snapshot_captured_before_observation_cannot_save_partial_mutations
             crash_recovery.observe_scheduler(solver)
         return True
 
-    monkeypatch.setattr(offline.server, "_stop_mower", interleaved_stop)
+    monkeypatch.setattr(offline.server, "_wait_mower_stop", interleaved_stop)
     response = offline.server.app.test_client().get(
         "/stop", headers={"token": "crash-test"}
     )

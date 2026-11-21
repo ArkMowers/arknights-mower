@@ -50,8 +50,9 @@ def test_manager_does_not_reopen_unavailable_instance(manager, monkeypatch, stat
 
 
 @pytest.mark.parametrize("managed", [False, True])
+@pytest.mark.parametrize("updating", [False, True])
 def test_background_desktop_processes_show_requests_without_replacing_window(
-    tmp_path, monkeypatch, managed
+    tmp_path, monkeypatch, managed, updating
 ):
     import webview_ui
     from arknights_mower import utils
@@ -82,6 +83,20 @@ def test_background_desktop_processes_show_requests_without_replacing_window(
     server.stop.return_value = "true"
     monkeypatch.setitem(sys.modules, "server", server)
     registration = Mock(record={})
+    state = tmp_path / "runtime"
+    registration.directory = state
+    registration.request = state / "shutdown" / "instance.json"
+    job = "a" * 32
+    if updating:
+        runtime.write_json(registration.request, {"job": job})
+        runtime.write_json(state / "active/owner.json", {"id": job})
+        runtime.write_json(state / "jobs" / job / "job.json", {"id": job})
+    else:
+        runtime.write_json(registration.request, {"manager": True})
+    shutdown_job = runtime.RuntimeRegistration.software_update_shutdown_job
+    registration.software_update_shutdown_job.side_effect = lambda: shutdown_job(
+        registration
+    )
     messages = [["show"], ["show"]]
     registration.take_commands.side_effect = lambda: messages.pop(0)
     registration.shutdown_requested.side_effect = lambda: not messages
@@ -93,7 +108,11 @@ def test_background_desktop_processes_show_requests_without_replacing_window(
     monkeypatch.setattr(crash_recovery, "notice_path", lambda: None)
     monkeypatch.setattr(supervisor, "child_ready", Mock())
     monkeypatch.setattr(network, "is_port_in_use", Mock(side_effect=[False, True]))
-    monkeypatch.setattr(lifecycle, "shutdown", lifecycle.Shutdown())
+    shutdown = lifecycle.Shutdown()
+    monkeypatch.setattr(lifecycle, "shutdown", shutdown)
+    server._shutdown_for_software_update.side_effect = lambda _job: shutdown.request(
+        "runtime_request"
+    )
     monkeypatch.setattr(webview_ui, "start_http_server", Mock())
     monkeypatch.setattr(webview_ui, "start_hud_local_server", Mock())
     monkeypatch.setattr(webview_ui, "exit_if_webview_backend_missing", Mock())
@@ -118,6 +137,13 @@ def test_background_desktop_processes_show_requests_without_replacing_window(
     assert [call.args[0] for call in children.call_args_list].count("window") == 1
     connection.send.assert_called_once_with("show")
     server.start.assert_not_called()
+    server.stop.assert_called_once_with(
+        user_requested=False, preserve_scheduled_start=updating
+    )
+    if updating:
+        server._shutdown_for_software_update.assert_called_once_with(job)
+    else:
+        server._shutdown_for_software_update.assert_not_called()
 
 
 def test_windows_launcher_shows_existing_instance_before_ownership_lock(
