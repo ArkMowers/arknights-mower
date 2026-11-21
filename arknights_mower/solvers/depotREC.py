@@ -417,6 +417,32 @@ class depotREC(SceneGraphSolver):
             return False
         return True
 
+    def _wait_for_depot_page(self, deadline: float) -> np.ndarray:
+        deadline = min(deadline, monotonic() + 5)
+        previous = None
+        while monotonic() < deadline:
+            scene = self.scene()
+            if monotonic() >= deadline:
+                break
+            if scene in self.waiting_scene:
+                previous = None
+            elif scene == Scene.DEPOT and self._category_selected(self._category_x):
+                frame = self.recog.img
+                current = self.recog.gray[_DEPOT_PAGE_ROWS]
+                if previous is not None and (
+                    np.array_equal(previous, current)
+                    or (
+                        _same_depot_icon_positions(previous, current)
+                        and _same_depot_labels(previous, current)
+                    )
+                ):
+                    return frame.copy()
+                previous = current
+            else:
+                raise _DepotScanIncomplete
+            self.sleep(min(0.2, max(0, deadline - monotonic())))
+        raise _DepotScanIncomplete
+
     def transition(self, report_progress=None) -> bool:
         self.结果字典 = {}
         self._seen_names = set()
@@ -612,14 +638,9 @@ class depotREC(SceneGraphSolver):
         def move(start, movement, *, retry):
             if monotonic() >= deadline:
                 raise _DepotScanIncomplete
-            self.swipe_noinertia(start, movement, retry=retry, capture=True)
-            if (
-                not self._wait_for_depot_ready()
-                or not self._category_selected(self._category_x)
-                or monotonic() >= deadline
-            ):
-                raise _DepotScanIncomplete
-            return self.recog.img.copy()
+            # 抬手后画面可能回弹，只用抬手后的截图确认位置。
+            self.swipe_noinertia(start, movement, retry=retry)
+            return self._wait_for_depot_page(deadline)
 
         frame = self.recog.img
         offset = 0
