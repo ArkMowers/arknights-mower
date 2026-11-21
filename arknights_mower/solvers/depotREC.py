@@ -35,6 +35,9 @@ _DEPOT_ITEM_ROWS = (144, 430, 715)
 _DEPOT_PAGE_ROWS = slice(140, 990)
 _DEPOT_LABEL_EDGE_MARGIN = 32
 _DEPOT_EDGE_MAX_STROKE_AREA = 512
+_DEPOT_MAX_SCROLL = 800
+_DEPOT_SCROLL_PEAK_GAP = 8
+_DEPOT_MIN_SCROLL_SCORE = 0.9
 
 
 def 导入_数字模板():
@@ -159,6 +162,56 @@ def _same_depot_labels(before, after, *, edge_margin=0, unwarped_before=None):
     changed &= evidence
     local_change = cv2.boxFilter(changed // 255, cv2.CV_16U, (16, 16), normalize=False)
     return local_change.max() < 24
+
+
+def _depot_scroll_block_scores(before, after):
+    block_matches = []
+    for y in _DEPOT_ITEM_ROWS:
+        rows = slice(y - 56, y + 26)
+        for x in range(850, before.shape[1] - 110, 234):
+            # 用图标主体匹配位移，数量和有效期留到候选复核。
+            anchor = before[rows, x : x + 110]
+            if anchor.std() < 8:
+                continue
+            search = after[rows, x - _DEPOT_MAX_SCROLL : x + 110]
+            scores = cv2.matchTemplate(search, anchor, cv2.TM_CCOEFF_NORMED)[0]
+            if scores.max() >= _DEPOT_MIN_SCROLL_SCORE:
+                block_matches.append(scores)
+    if not block_matches:
+        raise _DepotScanIncomplete
+    return np.stack(block_matches)
+
+
+def _depot_scroll_candidates(scores, supported, *, strongest_only):
+    votes = np.count_nonzero(supported, axis=0)
+    minimum_votes = 1
+    if strongest_only:
+        best_votes = int(votes.max())
+        minimum_votes = best_votes if best_votes <= 2 else best_votes - 1
+    positions = np.flatnonzero(votes >= minimum_votes)
+    if not positions.size:
+        return []
+    peaks = np.split(
+        positions, np.flatnonzero(np.diff(positions) > _DEPOT_SCROLL_PEAK_GAP) + 1
+    )
+    if len(peaks) > 8:
+        raise _DepotScanIncomplete
+
+    # 先按支持块数选峰内位置，再用相关分数打破平局；不同峰交给标签校验。
+    rank = votes + (scores * supported).sum(axis=0) / (len(scores) + 1)
+    candidates = []
+    for peak in peaks:
+        position = int(peak[rank[peak].argmax()])
+        correction = 0.0
+        if 0 < position < _DEPOT_MAX_SCROLL:
+            left, center, right = scores[
+                supported[:, position], position - 1 : position + 2
+            ].mean(axis=0)
+            curvature = left - 2 * center + right
+            if curvature < 0:
+                correction = float(np.clip((left - right) / (2 * curvature), -0.5, 0.5))
+        candidates.append((_DEPOT_MAX_SCROLL - position, correction))
+    return candidates
 
 
 def 识别空物品(物品灰):
@@ -489,28 +542,15 @@ class depotREC(SceneGraphSolver):
     def _depot_scroll_distance(before, after):
         before = cv2.cvtColor(before[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
         after = cv2.cvtColor(after[_DEPOT_PAGE_ROWS], cv2.COLOR_RGB2GRAY)
-        template = before[:, 900:1400]
-        if np.std(template) < 5:
-            raise _DepotScanIncomplete
-        search = after[:, 100:1400]
-        scores = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)[0]
-        best_score = float(scores.max())
-        minimum_score = 0.9
-        if best_score < minimum_score:
-            raise _DepotScanIncomplete
-
-        def peak_offsets(eligible):
-            positions = np.flatnonzero(eligible)
-            peaks = np.split(positions, np.flatnonzero(np.diff(positions) > 8) + 1)
-            if len(peaks) > 8:
-                raise _DepotScanIncomplete
-            return [800 - peak[scores[peak].argmax()] for peak in peaks]
-
-        candidates = peak_offsets(scores >= max(minimum_score, best_score - 0.005))
+        scores = _depot_scroll_block_scores(before, after)
+        supported = scores >= np.maximum(
+            _DEPOT_MIN_SCROLL_SCORE, scores.max(axis=1, keepdims=True) - 0.03
+        )
+        candidates = _depot_scroll_candidates(scores, supported, strongest_only=True)
         width = after.shape[1]
         matched = [
             candidate
-            for candidate in candidates
+            for candidate, _ in candidates
             if _same_depot_labels(
                 before[:, candidate:],
                 after[:, : width - candidate],
@@ -518,27 +558,35 @@ class depotREC(SceneGraphSolver):
             )
         ]
         if not matched:
-            # 正确位移可能被近峰筛选排除。回退时让其他有效峰也能否决歧义。
-            local_maxima = cv2.dilate(scores[None, :], np.ones((1, 17), np.uint8))[0]
-            alternatives = peak_offsets(
-                (scores >= minimum_score) & (scores == local_maxima)
+            # 被投票筛掉的有效峰仍可在回退时否决歧义。
+            local_maxima = cv2.dilate(
+                scores, np.ones((1, 2 * _DEPOT_SCROLL_PEAK_GAP + 1), np.uint8)
             )
-            for candidate in alternatives:
+            peak_support = (scores >= _DEPOT_MIN_SCROLL_SCORE) & (
+                scores == local_maxima
+            )
+            preferred = {candidate for candidate, _ in candidates}
+            alternatives = [
+                (offset, correction)
+                for offset, correction in _depot_scroll_candidates(
+                    scores, peak_support, strongest_only=False
+                )
+                if all(
+                    abs(offset - candidate) > _DEPOT_SCROLL_PEAK_GAP
+                    for candidate in preferred
+                )
+            ]
+            if len(candidates) + len(alternatives) > 8:
+                raise _DepotScanIncomplete
+            for candidate, correction in candidates + alternatives:
                 original = before[:, candidate:]
                 target = after[:, : width - candidate]
-                if candidate not in candidates and _same_depot_labels(
+                if candidate not in preferred and _same_depot_labels(
                     original, target, edge_margin=_DEPOT_LABEL_EDGE_MARGIN
                 ):
                     raise _DepotScanIncomplete
-                position = 800 - candidate
-                if not 0 < position < scores.size - 1:
+                if not correction:
                     continue
-                left, center, right = map(float, scores[position - 1 : position + 2])
-                curvature = left - 2 * center + right
-                if curvature >= 0:
-                    continue
-                # 用匹配峰估算亚像素位移，只调整标签校验的对齐位置。
-                correction = np.clip((left - right) / (2 * curvature), -0.5, 0.5)
                 displacement = candidate - correction
                 aligned = cv2.warpAffine(
                     before,
@@ -553,7 +601,7 @@ class depotREC(SceneGraphSolver):
                     edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
                     unwarped_before=original,
                 ):
-                    if candidate not in candidates:
+                    if candidate not in preferred:
                         raise _DepotScanIncomplete
                     matched.append(candidate)
         if len(matched) != 1 or matched[0] == 0:

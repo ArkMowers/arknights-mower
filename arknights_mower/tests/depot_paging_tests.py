@@ -264,6 +264,31 @@ def shift_depot_frame(frame, distance):
 
 
 @pytest.mark.parametrize(
+    "filename,distance",
+    [
+        ("depot_consume_expiring_20261018.jpg", 341),
+        ("depot_basic_lmd_20261031.jpg", 340.625),
+    ],
+    ids=["whole-pixel", "fractional"],
+)
+def test_depot_paging_uses_other_icon_blocks_when_central_content_changes(
+    filename, distance
+):
+    image = cv2.imread(str(FIXTURES / filename))
+    frame = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    shifted = shift_depot_frame(frame, distance)
+    # Cover the central icons in the overlap while preserving their labels.
+    shifted[147:322, 559:1059] = 235
+
+    pages, swipes = replay_consumable_pages(
+        frame, [frame, frame, shifted, shifted, shifted]
+    )
+
+    assert [offset for offset, _ in pages] == [0, 341]
+    assert swipes == [702, 234, -702, -702, -234]
+
+
+@pytest.mark.parametrize(
     "filename,distance,fixed_edge",
     [
         ("depot_basic_lmd_20261031.jpg", 340.625, False),
@@ -449,12 +474,34 @@ def test_depot_paging_rejects_multiple_valid_fractional_displacements(monkeypatc
     assert sum(refined_results) >= 2
 
 
-def test_fractional_retry_rejects_wrong_repeated_peak_after_near_best_filtering():
+@pytest.mark.parametrize(
+    "exclude_true_peak", [False, True], ids=["retained", "filtered"]
+)
+def test_repeated_peak_cannot_override_the_true_displacement(
+    monkeypatch, exclude_true_peak
+):
     frame, _ = repeated_stack_pages(412, False, (1,), distinct_digit=5)
     shifted = shift_depot_frame(frame, 421.875)
     # The non-label change makes the 656-pixel peak outscore the real shift.
     shifted[211:261, 880:965] = 145
 
+    if not exclude_true_peak:
+        assert module.depotREC._depot_scroll_distance(frame, shifted) == 422
+        return
+
+    before, after = (
+        cv2.cvtColor(image[140:990], cv2.COLOR_RGB2GRAY) for image in (frame, shifted)
+    )
+    scores = cv2.matchTemplate(
+        after[:, 100:1400], before[:, 900:1400], cv2.TM_CCOEFF_NORMED
+    )[0]
+    # Keep the weaker peaks above the score floor but outside every block's vote.
+    for displacement in (188, 422):
+        position = 800 - displacement
+        scores[position - 8 : position + 9] -= 0.04
+    monkeypatch.setattr(
+        module, "_depot_scroll_block_scores", lambda *_: np.tile(scores, (3, 1))
+    )
     with pytest.raises(module._DepotScanIncomplete):
         module.depotREC._depot_scroll_distance(frame, shifted)
 
@@ -474,8 +521,9 @@ def test_repeated_icons_preserve_edge_label_evidence_against_wrong_displacement(
     # 真实位移为 234 像素，这块变化让 702 像素成为唯一的高分候选。
     shifted[440:520, 880:970] = 140
 
-    with pytest.raises(module._DepotScanIncomplete):
-        replay_consumable_pages(frame, [frame, frame, shifted, shifted, shifted])
+    pages, _ = replay_consumable_pages(frame, [frame, frame, shifted, shifted, shifted])
+
+    assert [offset for offset, _ in pages] == [0, 234]
 
 
 @pytest.mark.parametrize("appearing", [False, True])
