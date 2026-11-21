@@ -495,14 +495,18 @@ class depotREC(SceneGraphSolver):
         search = after[:, 100:1400]
         scores = cv2.matchTemplate(search, template, cv2.TM_CCOEFF_NORMED)[0]
         best_score = float(scores.max())
-        if best_score < 0.9:
+        minimum_score = 0.9
+        if best_score < minimum_score:
             raise _DepotScanIncomplete
-        # 背景变化可能使正确位移略低于重复图标的最高分。
-        near_best = np.flatnonzero(scores >= max(0.9, best_score - 0.005))
-        peaks = np.split(near_best, np.flatnonzero(np.diff(near_best) > 8) + 1)
-        if len(peaks) > 8:
-            raise _DepotScanIncomplete
-        candidates = [800 - peak[scores[peak].argmax()] for peak in peaks]
+
+        def peak_offsets(eligible):
+            positions = np.flatnonzero(eligible)
+            peaks = np.split(positions, np.flatnonzero(np.diff(positions) > 8) + 1)
+            if len(peaks) > 8:
+                raise _DepotScanIncomplete
+            return [800 - peak[scores[peak].argmax()] for peak in peaks]
+
+        candidates = peak_offsets(scores >= max(minimum_score, best_score - 0.005))
         width = after.shape[1]
         matched = [
             candidate
@@ -514,7 +518,18 @@ class depotREC(SceneGraphSolver):
             )
         ]
         if not matched:
-            for candidate in candidates:
+            # 正确位移可能被近峰筛选排除。回退时让其他有效峰也能否决歧义。
+            local_maxima = cv2.dilate(scores[None, :], np.ones((1, 17), np.uint8))[0]
+            alternatives = peak_offsets(
+                (scores >= minimum_score) & (scores == local_maxima)
+            )
+            for candidate in alternatives:
+                original = before[:, candidate:]
+                target = after[:, : width - candidate]
+                if candidate not in candidates and _same_depot_labels(
+                    original, target, edge_margin=_DEPOT_LABEL_EDGE_MARGIN
+                ):
+                    raise _DepotScanIncomplete
                 position = 800 - candidate
                 if not 0 < position < scores.size - 1:
                     continue
@@ -534,10 +549,12 @@ class depotREC(SceneGraphSolver):
                 )
                 if _same_depot_labels(
                     aligned,
-                    after[:, : width - candidate],
+                    target,
                     edge_margin=_DEPOT_LABEL_EDGE_MARGIN,
-                    unwarped_before=before[:, candidate:],
+                    unwarped_before=original,
                 ):
+                    if candidate not in candidates:
+                        raise _DepotScanIncomplete
                     matched.append(candidate)
         if len(matched) != 1 or matched[0] == 0:
             raise _DepotScanIncomplete

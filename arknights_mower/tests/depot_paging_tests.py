@@ -344,6 +344,7 @@ def repeated_stack_pages(
     *,
     template_change=False,
     edge_label=False,
+    distinct_digit=8,
 ):
     image = cv2.imread(str(FIXTURES / "depot_consume_expiring_20261018.jpg"))
     cell = np.full((1080, 234, 3), 255, dtype=np.uint8)
@@ -366,10 +367,10 @@ def repeated_stack_pages(
     templates = FIXTURES.parent.parent / "resources" / "depot_num"
     digits = {
         value: cv2.imread(str(templates / f"digit_{value}.png"), cv2.IMREAD_GRAYSCALE)
-        for value in (6, 8)
+        for value in (6, distinct_digit)
     }
     for column in range(10):
-        digit = digits[8 if column in distinct_columns else 6]
+        digit = digits[distinct_digit if column in distinct_columns else 6]
         height, width = digit.shape
         right = column * 234 + digit_right
         area = shelf[label_y - height : label_y, right - width : right]
@@ -446,6 +447,16 @@ def test_depot_paging_rejects_multiple_valid_fractional_displacements(monkeypatc
 
     assert integer_results and not any(integer_results)
     assert sum(refined_results) >= 2
+
+
+def test_fractional_retry_rejects_wrong_repeated_peak_after_near_best_filtering():
+    frame, _ = repeated_stack_pages(412, False, (1,), distinct_digit=5)
+    shifted = shift_depot_frame(frame, 421.875)
+    # The non-label change makes the 656-pixel peak outscore the real shift.
+    shifted[211:261, 880:965] = 145
+
+    with pytest.raises(module._DepotScanIncomplete):
+        module.depotREC._depot_scroll_distance(frame, shifted)
 
 
 @pytest.mark.parametrize("label_fragment", ["digit", "horizontal-stroke"])
