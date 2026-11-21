@@ -835,7 +835,7 @@ def start_http_server(app, host, port):
 
 def _run_desktop():
     from queue import Empty
-    from threading import Thread
+    from threading import Event, Thread
     from time import monotonic, sleep
 
     from arknights_mower.utils import path
@@ -992,6 +992,9 @@ def _run_desktop():
     )
     url = f"http://127.0.0.1:{port}"
     url += f"?token={quote(runtime_token, safe='')}"
+    startup_ready = Event()
+    if not resume and (restart_job := os.environ.get("MOWER_RESTART_JOB")):
+        server._restore_scheduled_start(restart_job, startup_ready=startup_ready)
     start_http_server(server.app, host, port)
     instance_path = path.get_path("@app", space=path.global_space).resolve()
     identity = sha256(
@@ -1012,8 +1015,6 @@ def _run_desktop():
         if shutdown.closing or monotonic() >= ready_deadline:
             raise TimeoutError("HTTP 服务未在启动预算内就绪")
         sleep(0.1)
-    if not resume and (restart_job := os.environ.get("MOWER_RESTART_JOB")):
-        server._restore_scheduled_start(restart_job)
     registration.record["ready"] = True
     registration.publish()
     from arknights_mower.utils import crash_recovery
@@ -1150,10 +1151,18 @@ def _run_desktop():
                         return
                     thread.join(timeout=0.5)
 
+    def complete_startup():
+        try:
+            resume_after_update()
+        finally:
+            startup_ready.set()
+
     startup_thread = None
     if resume and not crash_notice["active"] or auto_resource:
-        startup_thread = Thread(target=resume_after_update, daemon=True)
+        startup_thread = Thread(target=complete_startup, daemon=True)
         startup_thread.start()
+    else:
+        startup_ready.set()
     from arknights_mower.utils.software_update import instance_idle
 
     registration.idle = lambda: bool(

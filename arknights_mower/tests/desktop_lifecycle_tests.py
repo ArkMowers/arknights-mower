@@ -590,7 +590,43 @@ class DesktopStartupTests(unittest.TestCase):
 
     def test_update_restart_restores_reservation_without_starting_stopped_worker(self):
         _, server = self.launch(restart=True, automatic=True, resume_run="0")
-        server._restore_scheduled_start.assert_called_once_with("fixture")
+        server._restore_scheduled_start.assert_called_once()
+        self.assertEqual(server._restore_scheduled_start.call_args.args, ("fixture",))
+        self.assertTrue(
+            server._restore_scheduled_start.call_args.kwargs["startup_ready"].is_set()
+        )
+        server.start.assert_not_called()
+
+    def test_update_reservation_precedes_http_and_waits_for_startup_resource_check(
+        self,
+    ):
+        def configure(stack, task_server, server, config, events):
+            original = server.get_resource_version.side_effect
+
+            def assert_gate_closed():
+                server._restore_scheduled_start.assert_called_once()
+                ready = server._restore_scheduled_start.call_args.kwargs[
+                    "startup_ready"
+                ]
+                self.assertFalse(ready.is_set())
+
+            def http_started(*_args):
+                assert_gate_closed()
+
+            def check_resource():
+                assert_gate_closed()
+                return original()
+
+            server.http_start.side_effect = http_started
+            server.get_resource_version.side_effect = check_resource
+
+        events, server = self.launch(
+            restart=True, resume_run="0", resource=True, configure_startup=configure
+        )
+        self.assertIn("install resource", events)
+        self.assertTrue(
+            server._restore_scheduled_start.call_args.kwargs["startup_ready"].is_set()
+        )
         server.start.assert_not_called()
 
     def test_update_restart_rechecks_maintenance_started_during_the_previous_update(
