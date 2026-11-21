@@ -5,6 +5,9 @@ on:
     branches: [alpha]
     paths:
       - docker/Dockerfile
+      - docker/gen_server_requirements.py
+      - requirements.in
+      - requirements.txt
       - .github/workflows/docker-build-test.yml
   workflow_dispatch:
     inputs:

@@ -36,10 +36,10 @@ WORKDIR /app
 COPY requirements.txt requirements.in ./
 COPY docker/gen_server_requirements.py ./gen_server_requirements.py
 COPY scripts/prune_opencv.py ./scripts/prune_opencv.py
-RUN python gen_server_requirements.py requirements.txt requirements-server.txt \
+RUN python gen_server_requirements.py requirements.in requirements-server.txt \
     && uv venv /opt/venv --python /usr/local/bin/python3.12 \
     && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile setuptools wheel \
-    && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile -r requirements-server.txt \
+    && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile -r requirements-server.txt -c requirements.txt \
     && uv pip check --python /opt/venv/bin/python \
     && /opt/venv/bin/python scripts/prune_opencv.py \
     && find /opt/venv -type d -name '__pycache__' -prune -exec rm -rf {} + \
