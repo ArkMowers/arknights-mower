@@ -629,6 +629,8 @@ class DesktopStartupTests(unittest.TestCase):
             "newer_stop_marker",
             "stop_then_put",
             "put_then_stop",
+            "cancel_planned",
+            "cancel_then_put",
         ):
             with (
                 self.subTest(action=action),
@@ -663,6 +665,19 @@ class DesktopStartupTests(unittest.TestCase):
                     expected = task_server._schedule_start(3600, start_type="0")
                 if action == "put_then_stop":
                     self.assertEqual(client.get("/stop", headers=headers).data, b"true")
+                if action in ("cancel_planned", "cancel_then_put"):
+                    self.assertEqual(
+                        client.delete("/scheduled-start", headers=headers).status_code,
+                        200,
+                    )
+                    if action == "cancel_then_put":
+                        response = client.put(
+                            "/scheduled-start",
+                            json={"delay_seconds": 900},
+                            headers=headers,
+                        )
+                        self.assertEqual(response.status_code, 200)
+                        expected = response.json["scheduled_start_at"]
                 self.addCleanup(task_server._cancel_scheduled_start)
                 task_server._shutdown_for_software_update(job_id)
                 if action == "legacy_stop":
@@ -721,13 +736,17 @@ class DesktopStartupTests(unittest.TestCase):
                         env["MOWER_RESUME_RUN"],
                         "1" if action == "running_snapshot" else "0",
                     )
-                    if action in ("running_snapshot", "stop_then_put"):
+                    if action in (
+                        "running_snapshot",
+                        "stop_then_put",
+                        "cancel_then_put",
+                    ):
                         self.assertEqual(
                             task_server.scheduled_start_at.isoformat(), expected
                         )
                         self.assertEqual(
                             task_server.scheduled_start_type,
-                            "2" if action == "stop_then_put" else "0",
+                            "0" if action == "running_snapshot" else "2",
                         )
                     else:
                         self.assertIsNone(task_server.scheduled_start_at)
