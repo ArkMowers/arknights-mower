@@ -1252,6 +1252,87 @@ def test_timeout_replay_requires_exact_message_and_button_and_limits_repeat(
     s.click.assert_not_called()
 
 
+def terminated_team_lobby():
+    texts = [
+        Text("协议数据库", 175, 297, 163, 40),
+        Text("模拟", 1500, 824, 54, 40),
+        Text("联合模拟", 1692, 826, 120, 38),
+        Text("已终止", 1741, 934, 91, 40),
+        Text("断线重连", 1693, 982, 168, 51),
+    ]
+    image = np.zeros((1080, 1920, 3), np.uint8)
+    image[826:864, 1692:1812] = 205
+    image[826:864:5, 1692:1812] = 24
+    return Frame(image, texts, *classify(texts))
+
+
+@pytest.mark.parametrize("through_result", [False, True])
+def test_terminated_team_reconnect_returns_to_lobby_without_personal_settlement(
+    monkeypatch, through_result
+):
+    team = terminated_team_lobby()
+    assert team.screen == "lobby"
+    progress = {"match": {"round": 5}, "matches_played": 2}
+    worker = solver.GarrisonSolver(Mock(), Mock(), copy.deepcopy(progress), Mock())
+    replay_unchanged_lobby(monkeypatch, worker, team)
+    lobby = frame("lobby")
+    result = Frame(None, [Text("返回主页", 1650, 930, 140, 45)], "result", False)
+    worker.read_frame = Mock(
+        side_effect=[team, frame("prep"), *([result] if through_result else []), lobby]
+    )
+    worker.click = Mock()
+    assert worker.start_or_resume(team) is lobby
+    expected = [team.find("断线重连").center]
+    if through_result:
+        expected.append(result.find("返回主页").center)
+    assert [call.args[0] for call in worker.click.call_args_list] == expected
+    assert worker.progress == progress
+    worker.save.assert_not_called()
+
+
+def test_enter_leaves_terminated_team_before_checking_theme(monkeypatch):
+    from arknights_mower.solvers.garrison import theme
+
+    team, lobby = terminated_team_lobby(), frame("lobby")
+    worker = solver.GarrisonSolver(Mock(), Mock(), {}, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, team)
+    worker.capture.side_effect = [team, lobby]
+    worker.read_frame = Mock(return_value=lobby)
+    panel = Mock(return_value=theme_panel(theme.DEFAULT_THEME))
+    monkeypatch.setattr(theme, "open_equipped", panel)
+    worker.click = Mock()
+    assert worker.enter() is lobby
+    panel.assert_called_once_with(worker, lobby)
+    assert [call.args[0] for call in worker.click.call_args_list] == [
+        team.find("断线重连").center,
+        (65, 58),
+    ]
+    worker.save.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "alteration", ["active", "elsewhere", "unselected", "unchanged"]
+)
+def test_team_reconnect_requires_confirmed_termination_and_clicks_once(
+    monkeypatch, alteration
+):
+    team = terminated_team_lobby()
+    if alteration == "active":
+        team.texts[3] = replace(team.texts[3], text="当前回合1")
+    elif alteration == "elsewhere":
+        team.texts[3] = replace(team.texts[3], x=200)
+    elif alteration == "unselected":
+        team.image[:] = 30
+    worker = solver.GarrisonSolver(Mock(), Mock(), {}, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, team)
+    worker.read_frame = Mock(return_value=team)
+    worker.click = Mock()
+    with pytest.raises(model.GarrisonError):
+        worker.start_or_resume(team)
+    assert worker.click.call_count == int(alteration == "unchanged")
+    worker.save.assert_not_called()
+
+
 @pytest.mark.parametrize("saved", [False, True])
 def test_switches_team_lobby_before_choosing_quick_or_resuming(saved):
     # 取自联合模拟大厅截图的按钮文字及中心位置。
