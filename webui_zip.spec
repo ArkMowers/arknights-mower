@@ -189,4 +189,5 @@ subprocess.run(
         coll.name,
     ],
     check=True,
+    timeout=300,
 )

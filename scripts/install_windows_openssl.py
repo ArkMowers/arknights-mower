@@ -5,6 +5,7 @@ import hashlib
 import sys
 import sysconfig
 import tempfile
+from http.client import HTTPException
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -199,7 +200,7 @@ def main():
             install_venv(root, files)
         else:
             install_bundle(root, files)
-    except (ValueError, OSError) as exc:
+    except (ValueError, OSError, HTTPException) as exc:
         parser.exit(1, f"OpenSSL installation failed: {exc}\n")
     print(f"Mower OpenSSL {VERSION} ready in {root}")
 
