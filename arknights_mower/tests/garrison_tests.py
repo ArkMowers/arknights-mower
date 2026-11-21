@@ -850,6 +850,25 @@ def test_strategy_uses_first_readable_count_and_preserves_wins(
     assert p["wins"]["band_amiya"] == expected
 
 
+def test_ioleta_panel_records_zero_wins_with_observed_ocr_spelling(monkeypatch):
+    progress = {"wins": {}}
+    worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, frame("prep"))
+    game = Mock()
+    game.ocr.return_value = [
+        (1687.5, 497.5, "初始生命值 29"),
+        (1524.0, 535.0, "TERM ID"),
+        (1605.75, 576.0, "伊奧莱塔·罗素"),
+        (1523.5, 627.0, "NIERO"),
+    ]
+    strategies = {
+        model.normal_name(s["name"]): s["id"] for s in model.catalogue()["strategies"]
+    }
+    assert worker.read_strategy_action(game, strategies) == "play"
+    assert progress["wins"] == {"band_ioleta": 0}
+    worker.save.assert_called_once_with(progress)
+
+
 @pytest.mark.parametrize("deadline", [1, 30])
 def test_unreadable_strategy_releases_card_or_device(monkeypatch, deadline):
     worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {"band_amiya": 3}}, Mock())
