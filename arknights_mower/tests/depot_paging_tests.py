@@ -424,6 +424,30 @@ def test_repeated_icons_without_a_unique_displacement_stop_the_scan(template_cha
         replay_consumable_pages(frame, [frame, frame, frame, shifted, shifted, shifted])
 
 
+def test_depot_paging_rejects_multiple_valid_fractional_displacements(monkeypatch):
+    frame, _ = repeated_stack_pages(356, False, ())
+    shifted = shift_depot_frame(frame, 234.5)
+    compare_labels = module._same_depot_labels
+    integer_results = []
+    refined_results = []
+
+    def record_compare(before, after, **kwargs):
+        result = compare_labels(before, after, **kwargs)
+        if kwargs.get("unwarped_before") is None:
+            integer_results.append(result)
+        else:
+            refined_results.append(result)
+        return result
+
+    monkeypatch.setattr(module, "_same_depot_labels", record_compare)
+
+    with pytest.raises(module._DepotScanIncomplete):
+        module.depotREC._depot_scroll_distance(frame, shifted)
+
+    assert integer_results and not any(integer_results)
+    assert sum(refined_results) >= 2
+
+
 @pytest.mark.parametrize("label_fragment", ["digit", "horizontal-stroke"])
 def test_repeated_icons_preserve_edge_label_evidence_against_wrong_displacement(
     label_fragment,
