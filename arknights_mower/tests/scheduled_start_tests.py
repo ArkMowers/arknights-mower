@@ -1,3 +1,4 @@
+import os
 import unittest
 from contextlib import nullcontext
 from datetime import datetime, timedelta
@@ -263,9 +264,9 @@ class ScheduledStartTests(unittest.TestCase):
             def reject(pending):
                 self.assertTrue(pending)
                 self.assertTrue(transfer.is_file())
-                raise OSError("host declined")
+                raise self.server.RestartHandoffRejected("host declined")
 
-            with self.assertRaises(OSError):
+            with self.assertRaises(self.server.RestartHandoffRejected):
                 self.server.handoff_scheduled_start(transfer, before_shutdown=reject)
             self.assertFalse(self.server.shutdown.closing)
             self.assertFalse(transfer.exists())
@@ -282,6 +283,60 @@ class ScheduledStartTests(unittest.TestCase):
                 self.assertTrue(self.server.restore_scheduled_start(transfer))
                 self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
                 self.assertEqual(self.server.scheduled_start_type, "0")
+
+    def test_unconfirmed_host_reply_preserves_transfer_and_local_cancellation(self):
+        with TemporaryDirectory() as folder:
+            transfer = Path(folder) / "reservation.json"
+            expected = self.server._schedule_start(600)
+            with self.assertRaises(TimeoutError):
+                self.server.handoff_scheduled_start(
+                    transfer, before_shutdown=Mock(side_effect=TimeoutError)
+                )
+            self.assertTrue(transfer.is_file())
+            self.assertFalse(FakeTimer.instances[-1].cancelled)
+            self.assertEqual(self.server.scheduled_start_at.isoformat(), expected)
+            self.assertTrue(self.server._cancel_scheduled_start())
+            self.assertFalse(transfer.exists())
+
+    def test_cancel_requires_readable_update_owner_before_disarming(self):
+        from arknights_mower.utils import update_runtime as runtime
+
+        record = {"id": "instance", "kind": "instance", "pid": os.getpid()}
+        job = "a" * 32
+        for fault in ("permission", "invalid_json", "invalid_owner"):
+            with self.subTest(fault=fault), TemporaryDirectory() as folder:
+                directory = Path(folder)
+                owner = directory / "active/owner.json"
+                runtime.write_json(owner, {"pid": os.getpid(), "id": job})
+                runtime.write_json(directory / "instances/instance.json", record)
+                if fault == "invalid_json":
+                    owner.write_text("{", encoding="utf-8")
+                elif fault == "invalid_owner":
+                    runtime.write_json(owner, {"pid": os.getpid()})
+                read = Path.read_text
+
+                def read_owner(path, *args, **kwargs):
+                    if path == owner and fault == "permission":
+                        raise PermissionError(path)
+                    return read(path, *args, **kwargs)
+
+                with patch.object(runtime, "state_dir", return_value=directory):
+                    self.server._schedule_start(60)
+                    timer = FakeTimer.instances[-1]
+                    with patch.object(Path, "read_text", read_owner):
+                        response = self.client.delete(
+                            "/scheduled-start", headers=self.headers
+                        )
+                    self.assertEqual(response.status_code, 503)
+                    self.assertFalse(timer.cancelled)
+                    self.assertIsNotNone(self.server.scheduled_start_at)
+                    runtime.write_json(owner, {"pid": os.getpid(), "id": job})
+                    response = self.client.delete(
+                        "/scheduled-start", headers=self.headers
+                    )
+                    self.assertEqual(response.status_code, 200)
+                    self.assertTrue(timer.cancelled)
+                    self.assertTrue(runtime.task_stop_requested(record, job, directory))
 
     def test_failed_cancel_marker_keeps_reservation_for_retry(self):
         self.server._schedule_start(60)

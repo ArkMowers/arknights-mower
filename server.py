@@ -314,6 +314,10 @@ def _shutdown_for_software_update(job):
     return handoff_scheduled_start(_scheduled_start_transfer(job))
 
 
+class RestartHandoffRejected(RuntimeError):
+    """The host confirmed that this request cannot restart the instance."""
+
+
 def handoff_scheduled_start(transfer, *, before_shutdown=None):
     """Transfer the timer before its host commits the update restart."""
     global scheduled_start_handoff
@@ -348,9 +352,15 @@ def handoff_scheduled_start(transfer, *, before_shutdown=None):
         if before_shutdown is not None:
             try:
                 before_shutdown(pending)
-            except Exception:
+            except RestartHandoffRejected:
                 if pending:
                     _invalidate_scheduled_start_transfer(transfer, reservation_id)
+                raise
+            except Exception:
+                # The replacement may already be starting. Keep the saved timer
+                # available, and let a later local cancellation invalidate it.
+                if pending:
+                    scheduled_start_handoff = (transfer, reservation_id)
                 raise
         if pending:
             if scheduled_start_handoff and scheduled_start_handoff[0] == transfer:
