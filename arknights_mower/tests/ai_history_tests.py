@@ -117,7 +117,29 @@ def test_long_conversation_reads_attachment_metadata_in_one_query(history, monke
         query for query in queries if query.lstrip().upper().startswith("SELECT")
     ]
     assert len(selects) <= 3
-    assert sum("turn_attachments" in query for query in selects) == 1
+    [attachment_query] = [query for query in selects if "turn_attachments" in query]
+
+    def query_work(db):
+        ticks = []
+        db.set_progress_handler(lambda: ticks.append(None), 10)
+        try:
+            db.execute(attachment_query).fetchall()
+        finally:
+            db.set_progress_handler(None, 0)
+        return len(ticks)
+
+    other = complete(store)
+    with store._db() as db:
+        initial_work = query_work(db)
+        db.executemany(
+            "INSERT INTO turns(conversation,user) VALUES(?,?)",
+            [(other, str(index)) for index in range(1, 100)],
+        )
+        db.execute(
+            "INSERT INTO turn_attachments SELECT id, 'context', 0 FROM turns WHERE conversation=?",
+            (other,),
+        )
+        assert query_work(db) <= 2 * initial_work + 2
 
 
 def test_streamed_reply_survives_new_socket_and_store_without_replaying(

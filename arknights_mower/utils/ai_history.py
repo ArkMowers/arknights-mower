@@ -180,6 +180,7 @@ class HistoryStore:
                 "REFERENCES conversations(id) ON DELETE CASCADE,"
                 "user TEXT NOT NULL, assistant TEXT NOT NULL DEFAULT '',"
                 "status TEXT NOT NULL DEFAULT 'interrupted');"
+                "CREATE INDEX IF NOT EXISTS turns_conversation ON turns(conversation);"
             )
             for table, columns in {
                 "conversations": {
