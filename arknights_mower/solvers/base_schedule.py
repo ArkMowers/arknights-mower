@@ -78,7 +78,14 @@ from arknights_mower.solvers.report import ReportSolver
 from arknights_mower.solvers.secret_front import SecretFront
 from arknights_mower.solvers.shop import CreditShop, CreditShopIncomplete
 from arknights_mower.solvers.skland import SKLand
-from arknights_mower.utils import config, detector, rapidocr, round_stop, segment
+from arknights_mower.utils import (
+    config,
+    detector,
+    maa_control,
+    rapidocr,
+    round_stop,
+    segment,
+)
 from arknights_mower.utils import typealias as tp
 from arknights_mower.utils.activity_observations import (
     activity_observation,
@@ -20068,6 +20075,7 @@ class BaseSchedulerSolver(
         if msg == 3:
             tasks.clear()
 
+    @maa_control.execution()
     def run_maa_event_shop(self, deadline, *, manual=False):
         from time import monotonic
 
@@ -20173,6 +20181,10 @@ class BaseSchedulerSolver(
                 return
         try:
             self.initialize_maa()
+            if config.stop_mower.is_set():
+                raise MowerExit
+            if config.stop_maa.is_set():
+                return
             if defer_for_refresh():
                 return False
             task_id = self.MAA.append_task("Custom", shop_params(settings))
@@ -20181,6 +20193,10 @@ class BaseSchedulerSolver(
             progress = self.maa_event_shop_task = ShopTaskProgress(task_id)
             if defer_for_refresh():
                 return False
+            if config.stop_mower.is_set():
+                raise MowerExit
+            if config.stop_maa.is_set():
+                return
             if not self.MAA.start():
                 raise ValueError("MAA 活动商店任务启动失败")
             while self.MAA.running():
@@ -20618,7 +20634,6 @@ class BaseSchedulerSolver(
         if os.environ.get("MOWER_ANDROID") == "1":
             from mower_android.maa import Asst
 
-            config.stop_maa.clear()
             self.maa_callback = MaaCallbackLog()
             self.MAA = VerifiedAsst(Asst, config.conf.maa_path, callback)
             self.stages = []
@@ -20657,7 +20672,6 @@ class BaseSchedulerSolver(
             return
         from arknights_mower.utils.maa_runtime import load_maa_with_navigation
 
-        config.stop_maa.clear()
         conf = config.conf
         path = pathlib.Path(resolve_config_path(conf.maa_path))
         self.maa_callback = MaaCallbackLog()
@@ -20867,8 +20881,9 @@ class BaseSchedulerSolver(
             return None
 
     def maa_stop(self, stop=True):
+        stopped = None
         if stop:
-            self.MAA.stop()
+            stopped = self.MAA.stop()
             clear_maa_observations(self)
         battle_inventory_active.clear()
         logger.debug(stage_drop, extra={"log_group": "maa-runtime"})
@@ -20880,9 +20895,11 @@ class BaseSchedulerSolver(
                 body_is_html=True,
             )
             self.drop_send = True
+        return stopped
 
     def release_maa(self):
         """关闭本轮桌面工作进程，Android 核心继续由宿主管理。"""
+        released = True
         clear_maa_observations(self)
         if getattr(self, "MAA", None) is not None:
             try:
@@ -20890,6 +20907,7 @@ class BaseSchedulerSolver(
                 if close is not None:
                     close()
             except Exception:
+                released = False
                 logger.exception(
                     "关闭 MAA 工作进程失败", extra={"log_group": "maa-runtime"}
                 )
@@ -20899,6 +20917,38 @@ class BaseSchedulerSolver(
         self.maa_sss_task = None
         self.maa_blackflow_task = None
         self.maa_event_shop_task = None
+        return released
+
+    def _exit_game_after_maa_stop(self):
+        try:
+            self.device.exit_after_task_stop()
+        except Exception:
+            logger.exception(
+                "停止大型任务后关闭游戏失败", extra={"log_group": "maa-integration"}
+            )
+
+    def _stop_maa_for_game_handoff(self):
+        stopped = True
+        if getattr(self, "MAA", None) is not None:
+            try:
+                stopped = bool(self.maa_stop())
+            except Exception:
+                stopped = False
+                logger.exception(
+                    "停止 MAA 失败", extra={"log_group": "maa-integration"}
+                )
+        released = self.release_maa()
+        if not stopped or not released:
+            logger.warning(
+                "未能确认 MAA 已停止并释放资源，将尝试退出游戏",
+                extra={"log_group": "maa-integration"},
+            )
+            self._exit_game_after_maa_stop()
+        else:
+            logger.info(
+                "已停止 MAA 大型任务，保留当前游戏",
+                extra={"log_group": "maa-integration"},
+            )
 
     def append_maa_theme_task(self):
         """将主题恢复追加到当前队列，由调用者统一启动并处理停止。"""
@@ -21054,6 +21104,23 @@ class BaseSchedulerSolver(
         mall_action=None,
         outer_idle_loop=False,
     ):
+        with maa_control.execution():
+            result = self._run_maa_plan(
+                tasks,
+                one_time,
+                manual=manual,
+                long_task=long_task,
+                mall_action=mall_action,
+                outer_idle_loop=outer_idle_loop,
+            )
+        # 正常休息已经离开 MAA 执行范围，唤醒故障仍交回设备恢复。
+        if result is True and not manual and not outer_idle_loop:
+            self.rest_until_next_task()
+        return result
+
+    def _run_maa_plan(
+        self, tasks, one_time, *, manual, long_task, mall_action, outer_idle_loop
+    ):
         """清日常"""
         copilot_run = None
         copilot_conf = None
@@ -21098,6 +21165,8 @@ class BaseSchedulerSolver(
                     and (deadline() - datetime.now()).total_seconds() > 30
                 )
 
+            if config.stop_mower.is_set():
+                raise MowerExit
             if (refresh := self._maa_refresh_deadline()) is not None:
                 return defer_refresh(refresh)
 
@@ -21178,6 +21247,11 @@ class BaseSchedulerSolver(
                 if (refresh := self._maa_refresh_deadline()) is not None:
                     self.maa_stop()
                     return defer_refresh(refresh)
+                if config.stop_mower.is_set():
+                    raise MowerExit
+                if config.stop_maa.is_set():
+                    self.maa_stop()
+                    return not manual
                 self.MAA.start()
                 stop_time = None
                 if one_time:
@@ -21698,10 +21772,11 @@ class BaseSchedulerSolver(
                         self.report_maa_progress()
                         self.recog.update()
                         self.recog.save_screencap(None)
+                        if config.stop_mower.is_set():
+                            raise MowerExit
                         if (
                             deadline() - datetime.now() < timedelta(seconds=30)
                             or config.stop_maa.is_set()
-                            or config.stop_mower.is_set()
                         ):
                             self.maa_stop()
                             large_task_interrupted = True
@@ -21755,6 +21830,13 @@ class BaseSchedulerSolver(
                 defer_refresh(refresh)
             self.release_maa()
         except MowerExit:
+            if (
+                large_task_started
+                and config.stop_mower.is_set()
+                and config.keep_game_on_stop.is_set()
+            ):
+                self._stop_maa_for_game_handoff()
+                raise
             try:
                 try:
                     if getattr(self, "MAA", None) is not None:
@@ -21764,13 +21846,7 @@ class BaseSchedulerSolver(
                     if (
                         large_task_started or shop_started
                     ) and config.stop_mower.is_set():
-                        try:
-                            self.device.exit_after_task_stop()
-                        except Exception:
-                            logger.exception(
-                                "停止大型任务后关闭游戏失败",
-                                extra={"log_group": "maa-integration"},
-                            )
+                        self._exit_game_after_maa_stop()
             finally:
                 self.release_maa()
             raise
@@ -21827,16 +21903,11 @@ class BaseSchedulerSolver(
                 large_task_started = False
             running_long_task = False
             self.recog.last_scene = None
-            if not outer_idle_loop:
-                self.rest_until_next_task()
         else:
-            # 空闲唤醒故障交回设备恢复，不能作为 MAA 任务故障报告。
             battle_inventory_active.clear()
             if large_task_started:
                 resume_dorm_releases(self)
                 large_task_started = False
-            if not manual and not outer_idle_loop:
-                self.rest_until_next_task()
         finally:
             if large_task_started:
                 resume_dorm_releases(self)

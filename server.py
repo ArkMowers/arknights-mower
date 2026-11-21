@@ -32,7 +32,7 @@ from werkzeug.security import safe_join
 
 from arknights_mower import __system__
 from arknights_mower.solvers.record import clear_data, load_state, save_state
-from arknights_mower.utils import config, network_settings, round_stop
+from arknights_mower.utils import config, maa_control, network_settings, round_stop
 from arknights_mower.utils.config.plan_advanced import (
     apply_advanced_settings,
     export_advanced_settings,
@@ -2570,6 +2570,7 @@ def _start_mower(
         tmp_dir = get_path("@app/tmp")
         tmp_dir.mkdir(exist_ok=True)
 
+        config.keep_game_on_stop.clear()
         config.stop_mower.clear()
         round_stop.cancel()
         # Reset starts must not deserialize a snapshot from an older version.
@@ -2756,7 +2757,7 @@ def stop(*, user_requested=True, preserve_scheduled_start=False):
         with scheduled_start_lock:
             if shutdown.closing:
                 return {"error": "Mower 正在退出"}, 409
-            _request_mower_stop()
+            _request_mower_stop(keep_game=True)
             reservation_cancelled = _cancel_scheduled_start()
             try:
                 _notify_update_host_of_stop()
@@ -2818,7 +2819,7 @@ def apply_schedule():
     return {"ok": True, "message": "已按当前排班启动任务"}
 
 
-def _request_mower_stop(*, preserve_run_intent=False):
+def _request_mower_stop(*, preserve_run_intent=False, keep_game=False):
     """Signal a stop without joining the calling worker."""
     from arknights_mower.utils import crash_recovery
     from arknights_mower.utils.instance_supervisor import task_intent
@@ -2829,6 +2830,8 @@ def _request_mower_stop(*, preserve_run_intent=False):
     except Exception:
         logger.exception("记录任务停止意图失败，继续取消工作线程")
     finally:
+        if keep_game and not config.stop_mower.is_set():
+            config.keep_game_on_stop.set()
         config.stop_mower.set()
         round_stop.cancel()
         if not preserve_run_intent:
@@ -2872,17 +2875,17 @@ def _wait_mower_stop(timeout=10, *, preserve_run_intent=False):
                     crash_recovery.cancel()
                 except Exception:
                     logger.exception("再次记录自动恢复取消失败，当前进程已停止后台重试")
-        if mower_thread is None:
-            return True
-        mower_thread.join(max(0, deadline - time.monotonic()))
-        if mower_thread.is_alive():
-            logger.error(
-                "Mower 线程仍在退出；未完成的实体设备恢复记录将保留至重连补偿。"
-            )
-            return False
-        logger.info("成功停止mower线程")
-        mower_thread = None
-        set_mower_thread(None)
+        if mower_thread is not None:
+            mower_thread.join(max(0, deadline - time.monotonic()))
+            if mower_thread.is_alive():
+                logger.error(
+                    "Mower 线程仍在退出；未完成的实体设备恢复记录将保留至重连补偿。"
+                )
+                return False
+            logger.info("成功停止mower线程")
+            mower_thread = None
+            set_mower_thread(None)
+        config.keep_game_on_stop.clear()
         return True
     finally:
         maa_maintenance_lock.release()
@@ -2948,13 +2951,7 @@ def register_shutdown(lifecycle):
 @app.route("/stop-maa")
 @require_token
 def stop_maa():
-    global mower_thread
-
-    if mower_thread is None:
-        return "true"
-
-    config.stop_maa.set()
-    return "OK"
+    return "OK" if maa_control.request_stop() else "true"
 
 
 @sock.route("/log")

@@ -17,14 +17,30 @@ from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
 
 
 @pytest.mark.parametrize("kind", ["rogue", "sss", "rcl"])
-@pytest.mark.parametrize("stop_failure", [False, True])
-def test_mower_stop_cancels_large_task_closes_game_and_releases_without_wait(
-    monkeypatch, tmp_path, kind, stop_failure
+@pytest.mark.parametrize(
+    ("handoff", "failure"),
+    [
+        (False, None),
+        (False, "stop"),
+        (True, None),
+        (True, "stop"),
+        (True, "rejected"),
+        (True, "release"),
+    ],
+)
+def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
+    monkeypatch, tmp_path, kind, handoff, failure
 ):
     conf = Conf(maa_rg_enable=1, maa_long_task_type=kind)
     monkeypatch.setattr(base_schedule.config, "conf", conf)
     monkeypatch.setattr(base_schedule.config, "stop_mower", threading.Event())
     monkeypatch.setattr(base_schedule.config, "stop_maa", threading.Event())
+    keep_game = threading.Event()
+    if handoff:
+        keep_game.set()
+    monkeypatch.setattr(
+        base_schedule.config, "keep_game_on_stop", keep_game, raising=False
+    )
     solver = object.__new__(base_schedule.BaseSchedulerSolver)
     solver.MAA = MagicMock()
     solver.device = MagicMock()
@@ -64,15 +80,32 @@ def test_mower_stop_cancels_large_task_closes_game_and_releases_without_wait(
         csleep(0)
 
     monkeypatch.setattr(base_schedule, "csleep", stop)
-    if stop_failure:
+    solver.maa_stop.return_value = True
+    solver.release_maa.return_value = True
+    if failure == "stop":
         solver.maa_stop.side_effect = RuntimeError("stop failed")
+    if failure == "rejected":
+        solver.maa_stop.return_value = 0
+    if failure == "release":
+        solver.release_maa.return_value = False
     order = MagicMock()
     order.attach_mock(solver.maa_stop, "stop")
     order.attach_mock(solver.device.exit_after_task_stop, "close_game")
     order.attach_mock(solver.release_maa, "release")
-    with pytest.raises(RuntimeError if stop_failure else MowerExit):
+    with pytest.raises(
+        RuntimeError if not handoff and failure == "stop" else MowerExit
+    ):
         solver.maa_plan_solver([])
-    assert order.mock_calls[1:4] == [call.stop(), call.close_game(), call.release()]
+    if handoff:
+        expected = [call.stop(), call.release()]
+        if failure:
+            expected.append(call.close_game())
+            solver.device.exit_after_task_stop.assert_called_once_with()
+        else:
+            solver.device.exit_after_task_stop.assert_not_called()
+    else:
+        expected = [call.stop(), call.close_game(), call.release()]
+    assert order.mock_calls[1 : 1 + len(expected)] == expected
     solver.sleep.assert_not_called()
     solver.append_maa_theme_task.assert_not_called()
     solver.rest_until_next_task.assert_not_called()

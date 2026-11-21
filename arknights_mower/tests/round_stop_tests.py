@@ -16,6 +16,7 @@ from arknights_mower.utils import (
     config,
     crash_recovery,
     instance_supervisor,
+    maa_control,
     round_stop,
     update_runtime,
 )
@@ -32,6 +33,8 @@ production_idle_scheduler = idle_tests.production_idle_scheduler
 def stop_state(monkeypatch):
     monkeypatch.setattr(round_stop, "_requested", False)
     monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(config, "stop_maa", Event())
+    monkeypatch.setattr(config, "keep_game_on_stop", Event())
     monkeypatch.setattr(crash_recovery, "_cancelled", False)
     monkeypatch.setattr(crash_recovery, "_progress", {})
     monkeypatch.setattr(crash_recovery, "notice_path", lambda: None)
@@ -58,6 +61,54 @@ def route_server(monkeypatch):
 
 
 HEADERS = {"token": "round-stop-token"}
+
+
+@pytest.mark.parametrize("token", [None, "incorrect", HEADERS["token"]])
+def test_stop_maa_route_cannot_queue_a_stop_while_maa_is_idle(route_server, token):
+    response = route_server.app.test_client().get(
+        "/stop-maa", headers={} if token is None else {"token": token}
+    )
+    assert response.status_code == (200 if token == HEADERS["token"] else 403)
+    assert not config.stop_maa.is_set()
+
+
+@pytest.mark.parametrize("token", [None, "incorrect", HEADERS["token"]])
+def test_stop_maa_route_targets_only_the_active_run(route_server, token):
+    authorized = token == HEADERS["token"]
+    with maa_control.execution():
+        with maa_control.execution():
+            response = route_server.app.test_client().get(
+                "/stop-maa", headers={} if token is None else {"token": token}
+            )
+            assert response.status_code == (200 if authorized else 403)
+        assert config.stop_maa.is_set() == authorized
+        assert not config.stop_mower.is_set()
+    assert not config.stop_maa.is_set()
+
+
+@pytest.mark.parametrize("token", [None, "incorrect", HEADERS["token"]])
+def test_user_stop_route_signals_game_handoff_before_waiting(
+    route_server, monkeypatch, token
+):
+    authorized = token == HEADERS["token"]
+
+    def wait():
+        assert config.stop_mower.is_set()
+        assert config.keep_game_on_stop.is_set()
+        return True
+
+    wait_worker = Mock(side_effect=wait)
+    monkeypatch.setattr(route_server, "_wait_mower_stop", wait_worker)
+    monkeypatch.setattr(
+        route_server, "_cancel_scheduled_start", Mock(return_value=True)
+    )
+    response = route_server.app.test_client().get(
+        "/stop", headers={} if token is None else {"token": token}
+    )
+    assert response.status_code == (200 if authorized else 403)
+    assert wait_worker.call_count == authorized
+    assert config.keep_game_on_stop.is_set() == authorized
+    assert config.stop_mower.is_set() == authorized
 
 
 @pytest.mark.parametrize("method", ["PUT", "DELETE"])
@@ -361,6 +412,7 @@ def test_immediate_stop_clears_the_pending_request(route_server, stop_state):
     assert route_server._stop_mower()
     assert not round_stop.pending()
     assert config.stop_mower.is_set()
+    assert not config.keep_game_on_stop.is_set()
     assert crash_recovery.cancelled()
 
 
@@ -375,6 +427,7 @@ def test_worker_exit_clears_request(route_server, monkeypatch, failure):
 
 def test_new_start_clears_old_request(route_server, monkeypatch, tmp_path):
     round_stop.request_stop()
+    config.keep_game_on_stop.set()
     route_server.mower_thread = None
     monkeypatch.setattr(route_server, "get_path", lambda _: tmp_path)
     monkeypatch.setattr(route_server, "_job_running", lambda _: False)
@@ -385,6 +438,7 @@ def test_new_start_clears_old_request(route_server, monkeypatch, tmp_path):
     assert route_server._start_mower("2")
     assert not round_stop.pending()
     assert not config.stop_mower.is_set()
+    assert not config.keep_game_on_stop.is_set()
 
 
 def test_manual_downtime_keeps_its_restart_when_round_stop_is_pending(

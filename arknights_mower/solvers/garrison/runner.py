@@ -3,7 +3,7 @@
 from datetime import datetime
 
 from arknights_mower.solvers import record
-from arknights_mower.utils import config
+from arknights_mower.utils import config, maa_control
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.long_task_windows import long_task_schedule
@@ -40,6 +40,7 @@ def eligible_progress(conf, window, scheduler, opening):
     return progress
 
 
+@maa_control.execution()
 def run_garrison(scheduler):
     from arknights_mower.solvers.manual_tasks import (
         long_task_deadline,
@@ -66,7 +67,6 @@ def run_garrison(scheduler):
         return False
     progress["error"] = ""
     record.save_garrison_progress(progress)
-    config.stop_maa.clear()
     solver = GarrisonSolver(
         scheduler.device,
         scheduler.recog,

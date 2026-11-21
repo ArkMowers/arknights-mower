@@ -5,12 +5,43 @@ import pytest
 
 from arknights_mower.solvers import base_schedule, manual_tasks
 from arknights_mower.tests import maa_copilot_tests as helpers
+from arknights_mower.utils import maa_control
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 files = helpers.files
 scheduler = helpers.scheduler
+
+
+@pytest.mark.parametrize("phase", ["initialize", "running"])
+def test_stop_maa_cancels_only_the_current_dispatch(scheduler, monkeypatch, phase):
+    conf = base_schedule.config.conf
+    conf.maa_long_task_type = "rogue"
+    monkeypatch.setattr(
+        base_schedule,
+        "long_task_schedule",
+        lambda *_: ("rogue", datetime.now() + timedelta(hours=1), None),
+    )
+
+    def stop(*_):
+        assert maa_control.request_stop()
+
+    if phase == "initialize":
+        scheduler.initialize_maa.side_effect = stop
+    else:
+        scheduler.MAA.running.return_value = True
+        monkeypatch.setattr(base_schedule, "csleep", stop)
+
+    assert scheduler.maa_plan_solver([], outer_idle_loop=True)
+    assert scheduler.MAA.start.call_count == (phase == "running")
+    assert not base_schedule.config.stop_maa.is_set()
+
+    scheduler.initialize_maa.side_effect = None
+    scheduler.MAA.running.return_value = False
+    scheduler.MAA.start.reset_mock()
+    assert scheduler.maa_plan_solver([], outer_idle_loop=True)
+    scheduler.MAA.start.assert_called_once()
 
 
 @pytest.mark.parametrize(
