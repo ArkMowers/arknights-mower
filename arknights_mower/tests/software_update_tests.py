@@ -1899,6 +1899,7 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             config.conf.resource_update.enable = False
             config.stop_mower = threading.Event()
             server = Mock(app=Flask(__name__))
+            server._restore_scheduled_start.return_value = False
             server.maa_maintenance_lock = threading.RLock()
             server._job_running.return_value = False
             server.resource_update.running.side_effect = (
@@ -1907,12 +1908,13 @@ class ArchiveAndLauncherTests(unittest.TestCase):
             server.stop.return_value = "true"
             registration = Mock(record={})
             registration.shutdown_requested.return_value = True
+            registration.software_update_shutdown_job.return_value = None
             shutdown = Shutdown()
 
             def make_thread(*args, **kwargs):
                 thread = Mock()
                 target = kwargs.get("target")
-                if target is not None and target.__name__ == "resume_after_update":
+                if target is not None and target.__name__ == "complete_startup":
 
                     def resume():
                         registration.shutdown_requested.return_value = False
@@ -2038,7 +2040,7 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 resumes = [
                     call.kwargs["target"]
                     for call in threads.call_args_list
-                    if call.kwargs["target"].__name__ == "resume_after_update"
+                    if call.kwargs["target"].__name__ == "complete_startup"
                 ]
                 self.assertTrue(server.app.config["DESKTOP_STARTUP_HANDLED"])
                 self.assertEqual(len(resumes), int(restart or automatic))

@@ -271,6 +271,21 @@ class RegistrationIdentityTests(unittest.TestCase):
             "executable": r"C:\Mower\mower.exe",
         }
 
+    def test_software_update_shutdown_matches_only_the_active_installation_job(self):
+        registration = object.__new__(runtime.RuntimeRegistration)
+        registration.directory = self.state
+        registration.request = self.state / "shutdown" / "launch.json"
+        job = "a" * 32
+        runtime.write_json(self.state / "active/owner.json", {"id": job})
+        runtime.write_json(registration.request, {"manager": True})
+        self.assertIsNone(registration.software_update_shutdown_job())
+        runtime.write_json(registration.request, {"job": job})
+        self.assertIsNone(registration.software_update_shutdown_job())
+        runtime.write_json(self.state / "jobs" / job / "job.json", {"id": job})
+        self.assertEqual(registration.software_update_shutdown_job(), job)
+        runtime.write_json(self.state / "active/owner.json", {"id": "b" * 32})
+        self.assertIsNone(registration.software_update_shutdown_job())
+
     @unittest.skipUnless(sys.platform == "win32", "Windows manager registration")
     def test_manager_can_start_after_legacy_registration_pid_is_reused(self):
         from arknights_mower.utils.manager_instances import InstanceController

@@ -835,7 +835,7 @@ def start_http_server(app, host, port):
 
 def _run_desktop():
     from queue import Empty
-    from threading import Thread
+    from threading import Event, Thread
     from time import monotonic, sleep
 
     from arknights_mower.utils import path
@@ -992,6 +992,17 @@ def _run_desktop():
     )
     url = f"http://127.0.0.1:{port}"
     url += f"?token={quote(runtime_token, safe='')}"
+    startup_ready = Event()
+    explicitly_stopped = os.environ.pop("MOWER_UPDATE_TASK_STOPPED", "") == "1"
+    stop_order = os.environ.pop("MOWER_UPDATE_TASK_STOP_ORDER", "")
+    if restart_job := os.environ.get("MOWER_RESTART_JOB"):
+        restored = server._restore_scheduled_start(
+            restart_job,
+            startup_ready=startup_ready,
+            stop_order=stop_order if explicitly_stopped else None,
+        )
+        if explicitly_stopped or restored:
+            resume = False
     start_http_server(server.app, host, port)
     instance_path = path.get_path("@app", space=path.global_space).resolve()
     identity = sha256(
@@ -1148,10 +1159,18 @@ def _run_desktop():
                         return
                     thread.join(timeout=0.5)
 
+    def complete_startup():
+        try:
+            resume_after_update()
+        finally:
+            startup_ready.set()
+
     startup_thread = None
     if resume and not crash_notice["active"] or auto_resource:
-        startup_thread = Thread(target=resume_after_update, daemon=True)
+        startup_thread = Thread(target=complete_startup, daemon=True)
         startup_thread.start()
+    else:
+        startup_ready.set()
     from arknights_mower.utils.software_update import instance_idle
 
     registration.idle = lambda: bool(
@@ -1198,11 +1217,22 @@ def _run_desktop():
                 ):
                     sleep(0.5)
                     continue
+                update_job = registration.software_update_shutdown_job()
                 with server.app.test_request_context(headers={"token": runtime_token}):
-                    stopped = server.stop(user_requested=False) == "true"
+                    stopped = (
+                        server.stop(
+                            user_requested=False,
+                            preserve_scheduled_start=bool(update_job),
+                        )
+                        == "true"
+                    )
                 if stopped and registration.shutdown_requested():
-                    shutdown.request("runtime_request")
-                    break
+                    if update_job:
+                        server._shutdown_for_software_update(update_job)
+                    else:
+                        shutdown.request("runtime_request")
+                    if shutdown.closing:
+                        break
             if config.webview_process and not config.webview_process.is_alive():
                 close_child(config.webview_process)
                 config.webview_process = None
