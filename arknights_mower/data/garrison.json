@@ -1,0 +1,128 @@
+{
+  "strategies": [
+    {
+      "id": "band_amiya",
+      "name": "阿米娅"
+    },
+    {
+      "id": "band_sarkazb",
+      "name": "歌利亚"
+    },
+    {
+      "id": "band_emperor",
+      "name": "大帝"
+    },
+    {
+      "id": "band_qalaisa",
+      "name": "卡莱莎"
+    },
+    {
+      "id": "band_ioleta",
+      "name": "伊奥莱塔·罗素"
+    },
+    {
+      "id": "band_survive",
+      "name": "百炼嘉维尔"
+    },
+    {
+      "id": "band_price",
+      "name": "天空盒"
+    },
+    {
+      "id": "band_transfer",
+      "name": "风丸"
+    },
+    {
+      "id": "band_copy",
+      "name": "夕"
+    },
+    {
+      "id": "band_evolve",
+      "name": "大嘴莫布"
+    },
+    {
+      "id": "band_takecare",
+      "name": "华法琳"
+    },
+    {
+      "id": "band_shield",
+      "name": "桑葚"
+    },
+    {
+      "id": "band_weakness",
+      "name": "陈"
+    },
+    {
+      "id": "band_lmlee",
+      "name": "老鲤"
+    },
+    {
+      "id": "band_amedic",
+      "name": "Touch"
+    },
+    {
+      "id": "band_upgrade",
+      "name": "缪尔赛思"
+    },
+    {
+      "id": "band_fund",
+      "name": "小贾斯汀"
+    },
+    {
+      "id": "band_gain",
+      "name": "铃兰"
+    },
+    {
+      "id": "band_prepfin",
+      "name": "苏苏洛"
+    },
+    {
+      "id": "band_cannot",
+      "name": "坎诺特"
+    },
+    {
+      "id": "band_pith",
+      "name": "Pith"
+    },
+    {
+      "id": "band_yan",
+      "name": "杜遥夜"
+    },
+    {
+      "id": "band_pepe",
+      "name": "佩佩"
+    },
+    {
+      "id": "band_harold",
+      "name": "哈洛德"
+    },
+    {
+      "id": "band_clementia",
+      "name": "克莱门莎"
+    },
+    {
+      "id": "band_mlynar",
+      "name": "玛恩纳"
+    },
+    {
+      "id": "band_kjerag",
+      "name": "休露丝"
+    },
+    {
+      "id": "band_bond",
+      "name": "贾维"
+    },
+    {
+      "id": "band_lethania",
+      "name": "车尔尼"
+    },
+    {
+      "id": "band_ursus",
+      "name": "怒潮凛冬"
+    },
+    {
+      "id": "band_iberia",
+      "name": "引星棘刺"
+    }
+  ]
+}

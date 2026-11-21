@@ -1,0 +1,24 @@
+{
+  "title": "Stable Dormitory Recovery Order",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-20]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.prioritize_new_dorm_recovery",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_stable_priority_tests.py",
+    "arknights_mower/tests/dorm_recovery_tests.py",
+    "arknights_mower/tests/dorm_recovery_record_tests.py",
+    "arknights_mower/tests/backup_relocation_state_tests.py",
+    "arknights_mower/tests/backup_rest_schedule_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py"
+  ]
+}

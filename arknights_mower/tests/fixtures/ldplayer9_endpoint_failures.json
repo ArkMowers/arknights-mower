@@ -1,0 +1,5 @@
+[
+  {"state": "offline", "expected_code": "device_offline", "fields": []},
+  {"state": "unauthorized", "expected_code": "device_unauthorized", "fields": []},
+  {"state": "device", "boot_id": "59d349d4-68a1-4c9e-aa90-7b48ac0b7685", "expected_code": "endpoint_unresolved", "fields": ["last_serial"]}
+]

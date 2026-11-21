@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "ui",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "preview:mock"],
+      "cwd": "ui",
+      "port": 5179
+    },
+    {
+      "name": "ui-real",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["vite", "--port", "5179", "--strictPort", "--host", "127.0.0.1"],
+      "cwd": "ui",
+      "port": 5179,
+      "url": "http://127.0.0.1:5179"
+    }
+  ]
+}

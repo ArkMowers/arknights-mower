@@ -1,0 +1,22 @@
+{
+  "title": "Backup Operator List Removal",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-26]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.plan.PlanConfig.merge_config",
+    "arknights_mower.utils.config.plan.BackupPlanConf",
+    "ui/src/components/PlanOperatorSelect.vue"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/backup_operator_removal_tests.py",
+    "ui/src/components/PlanOperatorSelect.test.js",
+    "ui/src/stores/planOperatorRemoval.test.js"
+  ]
+}

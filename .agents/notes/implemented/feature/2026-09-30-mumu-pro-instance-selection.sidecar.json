@@ -1,0 +1,25 @@
+{
+  "title": "MuMu Pro Verified Instance Selection",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-DEV-10]",
+    "[INV-DEV-11]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.mumu_pro.MuMuProController",
+    "arknights_mower.utils.device.discovery.DiscoveryService.check_binding",
+    "arknights_mower.utils.device.session.DeviceSession.ensure_ready"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_mumu_pro_discovery_tests.py",
+    "arknights_mower/tests/device_mumu_pro_tests.py",
+    "arknights_mower/tests/device_mumu_pro_route_tests.py",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

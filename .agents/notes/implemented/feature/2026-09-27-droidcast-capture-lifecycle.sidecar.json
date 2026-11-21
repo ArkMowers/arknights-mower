@@ -1,0 +1,21 @@
+{
+  "title": "DroidCast 1.3.0 Capture Lifecycle & Forward Management",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-27",
+  "authors": [
+    "Antigravity"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]",
+    "[INV-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.droidcast"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_droidcast_tests.py"
+  ]
+}

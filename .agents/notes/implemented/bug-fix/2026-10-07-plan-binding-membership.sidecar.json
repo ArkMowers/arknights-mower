@@ -1,0 +1,34 @@
+{
+  "title": "Complete Plan Binding Membership",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-31]",
+    "[INV-SCHED-25]",
+    "[INV-UI-10]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.plan.all_replacements",
+    "arknights_mower.utils.plan.Plan.scheduled_names",
+    "arknights_mower.utils.mastery_support_data.schedule_context",
+    "arknights_mower.utils.workshop_data.scheduled_operators",
+    "arknights_mower.utils.resting_priority.resting_tier",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin",
+    "arknights_mower.utils.operators.Operators.run_order_replacements"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/plan_binding_coverage_tests.py",
+    "arknights_mower/tests/schedule_roster_tests.py",
+    "arknights_mower/tests/workshop_schedule_tests.py",
+    "arknights_mower/tests/emergency_plan_tests.py",
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "ui/src/utils/masterySupport.test.js",
+    "ui/src/utils/plan_bindings.test.js",
+    "ui/src/utils/plan_edit.test.js",
+    "ui/src/stores/rescuePlan.test.js"
+  ]
+}

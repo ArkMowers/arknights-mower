@@ -1,0 +1,20 @@
+{
+  "title": "MuMu Pro Manual Binding Repair",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": ["Codex"],
+  "invariants": ["[INV-03]", "[INV-DEV-02]", "[INV-DEV-10]"],
+  "code_symbols": [
+    "arknights_mower.utils.device.preflight.PreflightService.check",
+    "arknights_mower.utils.device.session.DeviceSession.observe",
+    "arknights_mower.utils.device.session_io.ProductionSimulator.inspect",
+    "arknights_mower.utils.simulator.restart_simulator"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_mumu_pro_tests.py",
+    "arknights_mower/tests/device_mumu_pro_route_tests.py",
+    "arknights_mower/tests/simulator_tests.py",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

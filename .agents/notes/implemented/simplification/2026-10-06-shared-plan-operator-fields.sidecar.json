@@ -1,0 +1,22 @@
+{
+  "title": "Shared Plan Operator Fields",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-26]"
+  ],
+  "code_symbols": [
+    "ui/src/stores/plan.js",
+    "ui/src/utils/plan_edit.js"
+  ],
+  "test_suites": [
+    "ui/src/stores/planOperatorRemoval.test.js",
+    "ui/src/stores/planStandby.test.js",
+    "ui/src/stores/planMoodLimits.test.js",
+    "ui/src/utils/plan_edit.test.js"
+  ]
+}

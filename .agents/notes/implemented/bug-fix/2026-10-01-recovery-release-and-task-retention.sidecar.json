@@ -1,0 +1,61 @@
+{
+  "title": "Recovery Release and Task Retention",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-19]",
+    "[INV-SCHED-39]",
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/application.py",
+    "arknights_mower/solvers/base_schedule.py",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._retain_failed_task",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._resume_failed_tasks",
+    "arknights_mower.utils.scheduler_task.find_next_task",
+    "arknights_mower.utils.scheduler_task.scheduling",
+    "arknights_mower.__main__.simulate",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_agent_from_room",
+    "arknights_mower.solvers.record.current_state",
+    "arknights_mower.utils.scheduler_task.plan_metadata",
+    "arknights_mower.utils.scheduler_task.plan_mood_limit_releases",
+    "arknights_mower.utils.scheduler_task.merge_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.run_order_solver",
+    "arknights_mower.utils.scheduler_task.add_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._read_room_mood",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._suppress_retained_arrangements",
+    "arknights_mower.utils.scheduler_task.TaskScope",
+    "arknights_mower.utils.scheduler_task.task_view",
+    "arknights_mower.utils.dorm_candidates.retained_task_reservations",
+    "arknights_mower.utils.scheduler_task.try_reorder",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._reconcile_room_observation",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._invalidate_order_estimates",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._queue_order_refresh",
+    "arknights_mower.utils.scheduler_task.protect_priority_tasks"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_control_shutdown_tests.py",
+    "arknights_mower/tests/device_adb_recovery_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
+    "arknights_mower/tests/task_failure_retention_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/backup_replacement_state_tests.py",
+    "arknights_mower/tests/room_retry_dispatch_tests.py",
+    "arknights_mower/tests/group_shift_confirmation_tests.py",
+    "arknights_mower/tests/manufacture_product_switch_tests.py",
+    "arknights_mower/tests/deferred_exhaust_dedup_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/dorm_group_restart_tests.py",
+    "arknights_mower/tests/dorm_group_tests.py",
+    "arknights_mower/tests/fixed_dorm_cover_admission_tests.py",
+    "arknights_mower/tests/resting_preemption_tests.py",
+    "arknights_mower/tests/task_lifecycle_scope_tests.py",
+    "arknights_mower/tests/emergency_group_beds_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py"
+  ]
+}

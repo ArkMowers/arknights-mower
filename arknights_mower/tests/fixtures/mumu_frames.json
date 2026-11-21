@@ -1,0 +1,30 @@
+[
+  {
+    "name": "native_error",
+    "code": -5,
+    "width": 1280,
+    "height": 720,
+    "pixels": []
+  },
+  {
+    "name": "wrong_dimensions",
+    "code": 0,
+    "width": 1280,
+    "height": 720,
+    "pixels": []
+  },
+  {
+    "name": "valid_black",
+    "code": 0,
+    "width": 1920,
+    "height": 1080,
+    "pixels": []
+  },
+  {
+    "name": "valid_color",
+    "code": 0,
+    "width": 1920,
+    "height": 1080,
+    "pixels": [[0, 255, 31, 17, 255], [8294396, 11, 22, 233, 255]]
+  }
+]

@@ -1,0 +1,3421 @@
+{
+  "sourceCommit": "c6bdbb292fe7fcd84c6dfb66154a12a1a9bc5b88",
+  "candidateSourceSha256": "2039bce927bf266aa84e6321fc3b34e082f1c18cf24a4a02c75926004509e2bd",
+  "actualFunctions": [
+    "active_recovery_position",
+    "recovery_managers",
+    "recovery_target",
+    "recovery_order_plan",
+    "get_current_room",
+    "get_current_operator",
+    "get_dorm_by_name",
+    "all_dorms",
+    "is_dynamic_dorm_position",
+    "is_auto_free_dorm_slot",
+    "is_auto_free_dorm_operator",
+    "is_recovery_dorm",
+    "is_dorm_replacement_for_slot",
+    "idle_rest_checked",
+    "is_planned_operator",
+    "has_rest_mood_limit",
+    "rest_mood_complete",
+    "RestingTier",
+    "_replacement_tier",
+    "resting_tier",
+    "has_resting_mood",
+    "resting_mood",
+    "resting_key",
+    "unregistered_idle_candidates",
+    "dorm_candidates",
+    "Operator constructor/current_room/current_index",
+    "ensure_dorm_recovery_order"
+  ],
+  "scope": "Default experiment=false actual recovery ordering and persistence rules. Single-manager flags are supplied input, resource matching is outside this matrix. UI selection/confirmation/observation apply exact concrete names at zero time; cached moods are supplied. Busy mastery disabled, all owned operators explicit. No game random-target claim or income fitting.",
+  "cases": [
+    {
+      "id": "default-establish",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": true,
+        "marker": {
+          "position": [
+            "dormitory_1",
+            2
+          ],
+          "fixed": [
+            [
+              "M0",
+              0,
+              2
+            ]
+          ],
+          "version": 2
+        },
+        "pending": [
+          "dormitory_1"
+        ],
+        "intermediate": [
+          {
+            "intermediate": [
+              "M0",
+              "M1",
+              "H",
+              "",
+              ""
+            ]
+          }
+        ],
+        "bedTimerCleared": true
+      }
+    },
+    {
+      "id": "same-position-and-manager-versions",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "dormitory_1",
+            "dorm_recovery_index": 2,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [
+              [
+                "M0",
+                0,
+                2
+              ]
+            ],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 6,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 6,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": [
+            "dormitory_1",
+            2
+          ],
+          "fixed": [
+            [
+              "M0",
+              0,
+              2
+            ]
+          ],
+          "version": 2
+        }
+      }
+    },
+    {
+      "id": "manager-away-and-back-same-slot",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 6,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "dormitory_1",
+            "dorm_recovery_index": 2,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [
+              [
+                "M0",
+                0,
+                2
+              ]
+            ],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 6,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 6,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": null
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": true,
+        "marker": {
+          "position": [
+            "dormitory_1",
+            2
+          ],
+          "fixed": [
+            [
+              "M0",
+              0,
+              6
+            ]
+          ],
+          "version": 2
+        }
+      }
+    },
+    {
+      "id": "no-manager",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": null,
+          "fixed": [],
+          "version": 2
+        },
+        "intermediate": []
+      }
+    },
+    {
+      "id": "manager-only-index3",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": null,
+          "fixed": [],
+          "version": 2
+        },
+        "intermediate": []
+      }
+    },
+    {
+      "id": "target-full-cached",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": null,
+          "fixed": [],
+          "version": 2
+        },
+        "intermediate": []
+      }
+    },
+    {
+      "id": "target-static-native-dorm",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": null,
+          "fixed": [],
+          "version": 2
+        },
+        "intermediate": []
+      }
+    },
+    {
+      "id": "upcoming-vip-overwrite",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "H",
+          "R",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "R": {
+            "name": "R",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              2
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "R",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "H",
+                "R",
+                "Q"
+              ]
+            }
+          },
+          {
+            "type": "NORMAL",
+            "time_micros": 500000,
+            "plan": {
+              "dormitory_1": [
+                "Current",
+                "Current",
+                "Other",
+                "Current",
+                "Current"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": null,
+          "fixed": [],
+          "version": 2
+        },
+        "intermediate": []
+      }
+    },
+    {
+      "id": "group-cover-hole-padding-known",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "Cover",
+          "H",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Resident",
+              "group": "g",
+              "replacement": [
+                "Cover"
+              ]
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Cover": {
+            "name": "Cover",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Resident": {
+            "name": "Resident",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 2,
+            "group": "g",
+            "replacement": [
+              "Cover"
+            ],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 1,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": -1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "",
+            "time_stamp_micros": null
+          },
+          "Padding": {
+            "name": "Padding",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": -1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 1,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": -1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "",
+            "time_stamp_micros": 0
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "Cover",
+                "H",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": true,
+        "marker": {
+          "position": [
+            "dormitory_1",
+            3
+          ],
+          "fixed": [
+            [
+              "M0",
+              0,
+              2
+            ]
+          ],
+          "version": 2
+        },
+        "intermediate": [
+          {
+            "intermediate": [
+              "M0",
+              "M1",
+              "Padding",
+              "H",
+              ""
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "group-cover-hole-padding-unknown",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "Cover",
+          "H",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Resident",
+              "group": "g",
+              "replacement": [
+                "Cover"
+              ]
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Cover": {
+            "name": "Cover",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Resident": {
+            "name": "Resident",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 2,
+            "group": "g",
+            "replacement": [
+              "Cover"
+            ],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 1,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": -1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "",
+            "time_stamp_micros": null
+          },
+          "Padding": {
+            "name": "Padding",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": -1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 1,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": -1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "",
+            "time_stamp_micros": null
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "Cover",
+                "H",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": null,
+          "fixed": [],
+          "version": 2
+        },
+        "intermediate": []
+      }
+    },
+    {
+      "id": "group-cover-hole-padding-absent",
+      "input": {
+        "room": "dormitory_1",
+        "agents": [
+          "M0",
+          "M1",
+          "Cover",
+          "H",
+          "Q"
+        ],
+        "plan": {
+          "dormitory_1": [
+            {
+              "agent": "M0",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "M1",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Resident",
+              "group": "g",
+              "replacement": [
+                "Cover"
+              ]
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            },
+            {
+              "agent": "Free",
+              "group": "",
+              "replacement": []
+            }
+          ]
+        },
+        "operators": {
+          "M0": {
+            "name": "M0",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": true,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 0,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "M1": {
+            "name": "M1",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 1,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": 1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Cover": {
+            "name": "Cover",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 2,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "H": {
+            "name": "H",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "room_work",
+            "operator_type": "high",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 8,
+            "current_index": 3,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Q": {
+            "name": "Q",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "",
+            "operator_type": "low",
+            "index": 0,
+            "group": "",
+            "replacement": [],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 2,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 3,
+            "current_index": 4,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "dormitory_1",
+            "time_stamp_micros": 0
+          },
+          "Resident": {
+            "name": "Resident",
+            "refresh_order_room": [
+              false,
+              []
+            ],
+            "refresh_drained": false,
+            "room": "dormitory_1",
+            "operator_type": "high",
+            "index": 2,
+            "group": "g",
+            "replacement": [
+              "Cover"
+            ],
+            "resting_priority": "low",
+            "standby_low_priority": false,
+            "dorm_recovery_room": "",
+            "dorm_recovery_index": -1,
+            "resting_from_train": false,
+            "dorm_recovery_fixed": [],
+            "single_recovery_manager": false,
+            "dorm_mood_fallback": "",
+            "dorm_mood_peers": {},
+            "idle_rest_check": null,
+            "dorm_position_version": 1,
+            "exhaust_require": false,
+            "upper_limit": 24,
+            "rest_in_full": false,
+            "mood": 24,
+            "current_index": -1,
+            "lower_limit": 0,
+            "depletion_rate": 0,
+            "workaholic": false,
+            "arrange_order": [
+              "技能",
+              "false"
+            ],
+            "current_room": "",
+            "time_stamp_micros": null
+          }
+        },
+        "beds": [
+          {
+            "position": [
+              "dormitory_1",
+              3
+            ],
+            "name": "H",
+            "time_micros": 10800000000
+          },
+          {
+            "position": [
+              "dormitory_1",
+              4
+            ],
+            "name": "Q",
+            "time_micros": 10800000000
+          }
+        ],
+        "tasks": [
+          {
+            "type": "NORMAL",
+            "time_micros": 0,
+            "plan": {
+              "dormitory_1": [
+                "M0",
+                "M1",
+                "Cover",
+                "H",
+                "Q"
+              ]
+            }
+          }
+        ]
+      },
+      "output": {
+        "ordered": false,
+        "marker": {
+          "position": null,
+          "fixed": [],
+          "version": 2
+        },
+        "intermediate": []
+      }
+    }
+  ]
+}

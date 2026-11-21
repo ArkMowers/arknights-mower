@@ -1,0 +1,684 @@
+"""共享替班的完整交接、首选恢复及保守召回检查。"""
+
+from copy import deepcopy
+from datetime import datetime, timedelta
+from math import isfinite
+
+from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
+
+
+def replacement_dependencies(data, names):
+    names = set(names)
+    while True:
+        before = set(names)
+        for op in data.operators.values():
+            peers = data.shift_group_members(op.group) if op.group else []
+            covers = replacements(data, op)
+            if op.name in names or names.intersection(peers + covers):
+                names.update([op.name, *peers, *(n for n in covers if n != "Free")])
+        if names == before:
+            return names
+
+
+def replacements(data, op, required=(), *, request_names=None):
+    sources = required if request_names is None else request_names
+    transitions = dict.fromkeys(data.shift_request_groups(sources), True)
+    return (
+        data.shared_replacements(op, data.resting_binding_groups(op, transitions))
+        if op.multi_group
+        else op.replacement
+    )
+
+
+def coordination_primary_replacement(data, owner, name, request_names=()):
+    transitions = dict.fromkeys(data.shift_request_groups(request_names), True)
+    groups = (
+        data.resting_binding_groups(owner, transitions)
+        if owner.multi_group
+        else [owner.group]
+    )
+    return any(
+        data.is_same_group_primary_replacement(owner, name, group) for group in groups
+    )
+
+
+def coordination_reservations(data, tasks, current=None):
+    from arknights_mower.utils.dorm_candidates import retained_task_reservations
+
+    tasks = list(tasks)
+    names = set(getattr(data, "reserved_product_replacements", ()))
+    slots = set(getattr(data, "reserved_product_beds", ()))
+    retained_names, retained_slots = retained_task_reservations(
+        data, tasks, current_task=current
+    )
+    names.update(retained_names)
+    slots.update(retained_slots)
+    for task in tasks:
+        if task is current:
+            continue
+        if getattr(task, "product_shift_locked", False):
+            names.update(getattr(task, "product_lock_names", ()))
+            slots.update(getattr(task, "product_lock_slots", ()))
+        if getattr(task, "backup_shift_active", False) or getattr(
+            task, "dorm_recovery_restore", ()
+        ):
+            names.update(getattr(task, "dorm_recovery_restore", ()))
+            for room, row in task.plan.items():
+                for index, name in enumerate(row):
+                    if name != "Current":
+                        slots.add((room, index))
+                        if name in data.operators:
+                            names.add(name)
+    return names, slots
+
+
+def occupied_recovery_owner(
+    data, name, *, protected=(), slots=(), is_busy=lambda name: False
+):
+    """沿实际且合法的主班工作换位找到可完整回班的阻塞主班。"""
+    seen = set()
+    while name not in seen:
+        seen.add(name)
+        cover = data.operators.get(name)
+        if (
+            cover is None
+            or not cover.is_working()
+            or cover.current_room == "train"
+            or name in protected
+            or is_busy(name)
+            or (cover.current_room, cover.current_index) in slots
+        ):
+            return None
+        row = data.plan.get(cover.current_room, [])
+        owner = (
+            data.operators.get(row[cover.current_index].agent)
+            if 0 <= cover.current_index < len(row)
+            else None
+        )
+        if (
+            owner is None
+            or owner.name == name
+            or owner.name in protected
+            or is_busy(owner.name)
+            or name not in replacements(data, owner)
+        ):
+            return None
+        if not owner.is_working():
+            return owner
+        row = data.plan.get(owner.current_room, [])
+        displaced = (
+            data.operators.get(row[owner.current_index].agent)
+            if 0 <= owner.current_index < len(row)
+            else None
+        )
+        if displaced is None or not data.is_same_group_primary_replacement(
+            displaced, owner.name
+        ):
+            return None
+        name = owner.name
+    return None
+
+
+def _eligible(
+    data, owner, name, protected, slots, is_busy, required=(), *, request_names=()
+):
+    from arknights_mower.utils.backup_group_tasks import forced_group_cover_reservations
+
+    op = data.operators.get(name)
+    forced, _ = forced_group_cover_reservations(data)
+    same_group = coordination_primary_replacement(data, owner, name, request_names)
+    return (
+        op is not None
+        and (
+            name not in forced
+            or (op.current_room, op.current_index) == (owner.room, owner.index)
+        )
+        and (not op.is_high() or same_group)
+        and (name not in required or same_group)
+        and name not in protected
+        and name not in TRADE_ORDER_AGENTS
+        and (op.current_room, op.current_index) not in slots
+        and not data.is_dorm_replacement(name)
+        and not data.replacement_exhausted(name, operator=owner)
+        and not is_busy(name)
+    )
+
+
+def plan_replacement_handoff(
+    data, candidates, is_busy, protected=(), slots=(), *, request_names=None
+):
+    from arknights_mower.utils.exhaust_replacement import match_replacements
+
+    required, protected, slots = set(candidates), set(protected), set(slots)
+    request_names = list(candidates if request_names is None else request_names)
+    owners, choices = {}, {}
+
+    def visit(name):
+        if name in owners:
+            return
+        owner = data.operators.get(name)
+        if (
+            owner is None
+            or owner.room not in data.plan
+            or name in protected
+            or (owner.room, owner.index) in slots
+        ):
+            return
+        owners[name] = owner
+        raw = replacements(data, owner, request_names=request_names)
+        choices[name] = []
+        if owner.room.startswith("dorm") and "Free" in raw:
+            return
+        for cover in raw:
+            if not _eligible(
+                data,
+                owner,
+                cover,
+                protected,
+                slots,
+                is_busy,
+                required,
+                request_names=request_names,
+            ):
+                continue
+            op = data.operators[cover]
+            if (
+                not op.current_room
+                or op.is_resting()
+                or cover in required
+                and coordination_primary_replacement(data, owner, cover, request_names)
+                and (op.current_room, op.current_index) == (op.room, op.index)
+            ):
+                choices[name].append(cover)
+                continue
+            if op.current_room == "train":
+                continue
+            row = data.plan.get(op.current_room, [])
+            occupied = (
+                data.operators.get(row[op.current_index].agent)
+                if 0 <= op.current_index < len(row)
+                else None
+            )
+            if (
+                occupied is None
+                or occupied.name == cover
+                or occupied.is_working()
+                or (occupied.room, occupied.index) in slots
+                or cover
+                not in replacements(data, occupied, request_names=request_names)
+            ):
+                continue
+            visit(occupied.name)
+            if occupied.name in owners:
+                choices[name].append(cover)
+
+    for name in candidates:
+        visit(name)
+    if any(name not in owners for name in candidates):
+        return None
+    ordered = {
+        name: choices[name]
+        for name in sorted(owners, key=lambda n: n in required)
+        if not (
+            owners[name].room.startswith("dorm")
+            and "Free" in replacements(data, owners[name], request_names=request_names)
+        )
+    }
+    matching = match_replacements(ordered)
+    if matching is None:
+        return None
+    plan = {}
+    for name, cover in matching.items():
+        if name in required:
+            continue
+        owner = owners[name]
+        current = data.get_current_operator(owner.room, owner.index)
+        if current is None or current.name != cover:
+            plan.setdefault(owner.room, ["Current"] * len(data.plan[owner.room]))[
+                owner.index
+            ] = cover
+    return plan
+
+
+def preferred_replacement_restore(data, is_busy, protected=(), slots=()):
+    from arknights_mower.utils.dorm_candidates import scheduling_mood_reaches
+
+    plan, protected, slots = {}, set(protected), set(slots)
+    shadow = data
+    while True:
+        changed = False
+        for owner in shadow.operators.values():
+            if (
+                not owner.is_high()
+                or owner.room.startswith("dorm")
+                or owner.is_working()
+                or owner.name in protected
+                or (owner.room, owner.index) in slots
+            ):
+                continue
+            current = shadow.get_current_operator(owner.room, owner.index)
+            ordered = replacements(shadow, owner)
+            if (
+                current is None
+                or current.name not in ordered
+                or current.name in protected
+            ):
+                continue
+            index = ordered.index(current.name)
+            if not _eligible(shadow, owner, current.name, protected, slots, is_busy):
+                continue
+            preferred = next(
+                (
+                    name
+                    for name in ordered[:index]
+                    if _eligible(shadow, owner, name, protected, slots, is_busy)
+                    and (
+                        not shadow.operators[name].current_room
+                        or shadow.operators[name].is_resting()
+                        and scheduling_mood_reaches(
+                            shadow,
+                            name,
+                            shadow.operators[name].upper_limit
+                            if shadow.operators[name].rest_in_full
+                            else shadow.rescue_mood_threshold(shadow.operators[name]),
+                        )
+                    )
+                ),
+                None,
+            )
+            if preferred is None:
+                continue
+            plan.setdefault(owner.room, ["Current"] * len(shadow.plan[owner.room]))[
+                owner.index
+            ] = preferred
+            shadow = data.project_arrangements([plan])
+            changed = True
+        if not changed:
+            return plan
+
+
+def ordinary_recall_mood_admissible(
+    data, recalled, candidates, *, now=None, request_names=None
+):
+    """普通请求到急救线后才评估召回，双方必须有有效心情读数。"""
+    now = now or getattr(data, "_projection_now", None) or datetime.now()
+    request_names = list(candidates if request_names is None else request_names)
+
+    def anchor(op):
+        return data.is_group_shift_anchor(op) or (
+            op.name in request_names
+            and op.is_high()
+            and op.independent_rest
+            and not op.workaholic
+            and not op.room.startswith("dorm")
+            and not data._can_standby(op)
+        )
+
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    def mood(op):
+        return dorm_candidate_mood(data, op.name, now)
+
+    request_groups = set(data.shift_request_groups(request_names))
+    request_moods = [
+        (op, value)
+        for name in dict.fromkeys(
+            [
+                *request_names,
+                *(
+                    name
+                    for group in request_groups
+                    for name in data.shift_group_members(group)
+                ),
+            ]
+        )
+        if (op := data.operators.get(name)) is not None
+        and anchor(op)
+        and (not op.group or op.group in request_groups)
+        and op.is_working()
+        and (value := mood(op)) is not None
+    ]
+    if not any(value <= data.rescue_mood_threshold(op) for op, value in request_moods):
+        return False
+    for name in recalled:
+        op = data.operators.get(name)
+        if op is None:
+            return False
+        if not anchor(op):
+            continue
+        value = mood(op)
+        if value is None:
+            return False
+    return True
+
+
+def ordinary_return_ready_time(forecast, task, *, now, recovery_rates=None):
+    """把回班节点推进到真实恢复准入时点，未知要求不能由任务存在代替。"""
+    from arknights_mower.utils.backup_group_tasks import forced_work_return
+    from arknights_mower.utils.group_recovery import (
+        group_recovery_deadline,
+        observed_recovery_deadline,
+    )
+    from arknights_mower.utils.operation_timing import estimate_dorm_minutes
+    from arknights_mower.utils.recovery_execution import (
+        arrangement_recovery_required_members,
+        recovery_ready_for_arrangement,
+    )
+
+    calculated = getattr(forecast, "mood_calculation_enabled", False)
+    at = max(now, task.time)
+    while True:
+        preview = deepcopy(forecast, {id(forecast.eval_model): forecast.eval_model})
+        if not calculated:
+            for name, rate in (recovery_rates or {}).items():
+                op = preview.operators.get(name)
+                if (
+                    op is not None
+                    and op.is_resting()
+                    and rate is not None
+                    and isfinite(rate)
+                    and rate >= 0
+                ):
+                    op.mood = min(
+                        op.upper_limit,
+                        op.mood + rate * (at - now).total_seconds() / 3600,
+                    )
+                    op.time_stamp = at
+        required = set()
+        for room, row in task.plan.items():
+            if room.startswith("dorm"):
+                continue
+            for index, name in enumerate(row):
+                op = preview.operators.get(name)
+                if op is None or (op.current_room, op.current_index) == (room, index):
+                    continue
+                if (op.room, op.index) == (room, index) and forced_work_return(
+                    preview, name
+                ):
+                    continue
+                required.update(
+                    arrangement_recovery_required_members(
+                        preview,
+                        name,
+                        now=at,
+                        require_mood_limit=getattr(task, "mood_limit_return_name", None)
+                        != name,
+                    )
+                )
+        next_times = []
+        for name in required:
+            op = preview.operators[name]
+            ready = (
+                (mood := preview.calculated_mood(name, at)) is not None
+                and mood >= op.upper_limit
+                if calculated
+                else recovery_ready_for_arrangement(
+                    preview, name, sampled_after=None, now=at
+                )
+            )
+            if ready:
+                continue
+            due = observed_recovery_deadline(forecast, name, now)
+            if due is not None and not calculated:
+                due -= timedelta(minutes=estimate_dorm_minutes(op.current_room, 1.5))
+            explicit = op.rest_in_full or preview.has_rest_mood_limit(name)
+            if not explicit and op.group:
+                _, group_due = group_recovery_deadline(preview, op.group, now=at)
+                if group_due is not None and group_due > at:
+                    due = min(due, group_due) if due is not None else group_due
+            if due is None or due <= at:
+                return None
+            next_times.append(due)
+        if not next_times:
+            return at
+        at = min(next_times)
+
+
+def ordinary_recall_return_task(
+    forecast,
+    requested,
+    targets,
+    *,
+    now,
+    reserved_names=(),
+    reserved_slots=(),
+    recovery_rates=None,
+):
+    """用真实回班规划验证本轮请求的完整交接，不借用无关离宿事件。"""
+    from arknights_mower.utils.scheduler_task import TaskTypes, plan_metadata
+
+    tasks = plan_metadata(
+        forecast,
+        [],
+        excluded_names=set(forecast.operators) - set(requested),
+        now=now,
+    )
+    complete = []
+    for task in tasks:
+        if task.type != TaskTypes.SHIFT_ON:
+            continue
+        returning = {
+            name
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+            if name in targets
+            and (room, index)
+            == (forecast.operators[name].room, forecast.operators[name].index)
+        }
+        if not returning:
+            continue
+        if any(
+            name != "Current"
+            and (name in reserved_names or (room, index) in reserved_slots)
+            for room, row in task.plan.items()
+            for index, name in enumerate(row)
+        ):
+            continue
+        units = [
+            {
+                member
+                for member in targets
+                if member == name
+                or not forecast.operators[name].independent_rest
+                and forecast.operators[name].group
+                and not forecast.operators[member].independent_rest
+                and forecast.operators[member].group == forecast.operators[name].group
+            }
+            for name in returning
+        ]
+        if all(unit <= returning for unit in units):
+            ready = ordinary_return_ready_time(
+                forecast, task, now=now, recovery_rates=recovery_rates
+            )
+            if ready is not None:
+                task.time = ready
+                complete.append((task, returning))
+    return min(complete, key=lambda item: item[0].time) if complete else None
+
+
+def recall_can_sustain(
+    original,
+    admitted,
+    recalled,
+    candidates,
+    *,
+    rates=None,
+    now=None,
+    urgent=False,
+    request_names=None,
+    reserved_names=(),
+    reserved_slots=(),
+):
+    """普通召回检查续航，用尽交接仅保留明确恢复要求。"""
+    from arknights_mower.utils.group_recovery import group_recovery_deadline
+    from arknights_mower.utils.recovery_execution import (
+        recovery_ready_for_arrangement,
+    )
+    from arknights_mower.utils.urgent_recovery import (
+        active_urgent_recovery,
+        urgent_support_blocked,
+    )
+
+    if set(recalled) & active_urgent_recovery(
+        original
+    ).keys() or urgent_support_blocked(original, candidates):
+        return False
+    from arknights_mower.utils.backup_group_tasks import held_rest_groups
+
+    if any(
+        original.operators[name].group in held_rest_groups(original, forced_only=True)
+        for name in recalled
+    ):
+        return False
+    now = now or datetime.now()
+    for name in recalled:
+        op = original.operators[name]
+        if (
+            op.rest_in_full or op.is_working() and original.has_rest_mood_limit(name)
+        ) and not recovery_ready_for_arrangement(
+            original, name, sampled_after=None, now=now
+        ):
+            return False
+        if op.group:
+            required, _ = group_recovery_deadline(original, op.group, now=now)
+            required = [
+                name for name in required if original.operators[name].rest_in_full
+            ]
+            if any(
+                not recovery_ready_for_arrangement(
+                    original, member, sampled_after=None, now=now
+                )
+                for member in required
+            ):
+                return False
+    if urgent:
+        # 用尽急救不能被普通回班等待和未来续航预测阻挡。
+        return True
+    if not ordinary_recall_mood_admissible(
+        original, recalled, candidates, now=now, request_names=request_names
+    ):
+        return False
+    from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
+
+    def mood_at_check(op):
+        return dorm_candidate_mood(original, op.name, now)
+
+    requested = set(candidates if request_names is None else request_names)
+    for group in admitted.shift_request_groups(requested):
+        requested.update(admitted.shift_group_members(group))
+    targets = {
+        name
+        for name in requested
+        if (op := admitted.operators.get(name)) is not None
+        and op.is_high()
+        and not op.room.startswith("dorm")
+        and not op.workaholic
+        and not admitted._can_standby(op)
+        and (not op.group or op.independent_rest or admitted.is_group_shift_anchor(op))
+    }
+    if not targets:
+        return False
+    connected = replacement_dependencies(original, [*candidates, *recalled])
+    forecast = deepcopy(admitted, {id(admitted.eval_model): admitted.eval_model})
+    calculated = getattr(original, "mood_calculation_enabled", False)
+    if not calculated:
+        if rates is None:
+            from arknights_mower.utils.recall_estimates import estimated_recall_rates
+
+            rates = estimated_recall_rates(original, admitted, now=now)
+        work, recovery = rates
+        for name in connected | requested:
+            op = forecast.operators.get(name)
+            observed = original.operators.get(name)
+            if op is None or not op.current_room:
+                continue
+            mood = mood_at_check(observed) if observed is not None else None
+            if mood is None:
+                return False
+            op.mood, op.time_stamp = mood, now
+            if op.is_working() and not op.workaholic:
+                rate = work.get(name)
+                if rate is None or not isfinite(rate) or rate < 0:
+                    return False
+                op.depletion_rate = rate
+    pending = set(targets)
+    at = now
+    while pending:
+        if not calculated:
+            for bed in forecast.all_dorms():
+                if bed.name not in requested:
+                    continue
+                op = forecast.operators[bed.name]
+                rate = recovery.get(bed.name)
+                if op.mood >= op.upper_limit:
+                    bed.time = at
+                elif op.workaholic or forecast._can_standby(op):
+                    bed.time = None
+                elif rate is None or not isfinite(rate) or rate < 0:
+                    return False
+                elif rate == 0:
+                    bed.time = None
+                else:
+                    bed.time = at + timedelta(
+                        hours=max(0, op.upper_limit - op.mood) / rate
+                    )
+        result = ordinary_recall_return_task(
+            forecast,
+            requested,
+            pending,
+            now=at,
+            reserved_names=reserved_names,
+            reserved_slots=reserved_slots,
+            recovery_rates=None if calculated else recovery,
+        )
+        if result is None:
+            return False
+        task, returning = result
+        horizon = max(at, task.time)
+        hours = (horizon - at).total_seconds() / 3600
+        for name in connected:
+            op = forecast.operators.get(name)
+            if op is None or not op.is_working() or op.workaholic:
+                continue
+            if calculated:
+                mood = forecast.calculated_mood(name, at)
+                rate = forecast.calculated_mood_rate(name, at)
+                if mood is None or rate is None or mood <= op.lower_limit:
+                    return False
+                exhausted = forecast.calculated_mood_deadline(
+                    name, op.lower_limit, at, max_hours=hours
+                )
+                if exhausted is not None and exhausted <= horizon:
+                    return False
+                mood = forecast.calculated_mood(name, horizon)
+            else:
+                rate = work.get(name)
+                if rate is None or not isfinite(rate) or rate < 0:
+                    return False
+                mood = op.mood - rate * hours
+            if mood is None or mood <= op.lower_limit:
+                return False
+        if not calculated:
+            for name in connected | requested:
+                op = forecast.operators.get(name)
+                if op is None or not op.current_room:
+                    continue
+                rate = recovery.get(name) if op.is_resting() else work.get(name)
+                if rate is not None and isfinite(rate):
+                    op.mood = min(
+                        op.upper_limit,
+                        op.mood + (rate if op.is_resting() else -rate) * hours,
+                    )
+                    op.time_stamp = horizon
+        # 到达真实完整回班节点后再改变驻员，后续单位按新驻员继续预演。
+        forecast = forecast.project_arrangements([task.plan], now=horizon)
+        for name in connected | requested:
+            op = forecast.operators.get(name)
+            if op is None or not op.is_working() or op.workaholic:
+                continue
+            mood = forecast.calculated_mood(name, horizon) if calculated else op.mood
+            if mood is None or mood <= op.lower_limit:
+                return False
+        pending.difference_update(returning)
+        at = horizon
+    return True

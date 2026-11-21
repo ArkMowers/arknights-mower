@@ -1,0 +1,16 @@
+{
+  "title": "Rescue Condition Help",
+  "status": "archived",
+  "category": "simplification",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [],
+  "code_symbols": [
+    "ui/src/components/TriggerDialog.vue",
+    "ui/src/components/TriggerString.vue",
+    "ui/src/components/HelpText.vue"
+  ],
+  "test_suites": []
+}

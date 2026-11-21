@@ -1,0 +1,18 @@
+{
+  "title": "ADB Lock Byte Test Portability",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-19]"
+  ],
+  "code_symbols": [
+    "arknights_mower/utils/device/adb_client/shared.py"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/adb_shared_server_tests.py"
+  ]
+}

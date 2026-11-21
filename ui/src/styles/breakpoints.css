@@ -1,0 +1,39 @@
+/* 统一的响应式断点系统 - Mobile First */
+
+:root {
+  /* 断点值 */
+  --bp-mobile: 0;
+  --bp-tablet: 640px;
+  --bp-desktop: 1024px;
+  --bp-wide: 1400px;
+
+  /* 内容宽度 */
+  --content-width-default: 1200px;
+  --content-width-form: 600px;
+  --content-width-wide: 1400px;
+
+  /* 标准间距 */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 12px;
+  --spacing-lg: 16px;
+  --spacing-xl: 24px;
+  --spacing-2xl: 32px;
+
+  /* 标准圆角 */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+
+  /* 页面内边距 */
+  --page-padding: 12px;
+  --page-padding-mobile: 8px;
+}
+
+/* 移动端优先的媒体查询帮助类 - 供文档参考 */
+/*
+  @media (min-width: 640px) { } // tablet+
+  @media (min-width: 1024px) { } // desktop+
+  @media (min-width: 1400px) { } // wide+
+*/

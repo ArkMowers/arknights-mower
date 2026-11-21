@@ -1,18 +1,20 @@
+import hashlib
 import lzma
 import pickle
+import struct
+from collections import OrderedDict
+from threading import Lock
 from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-import sklearn.pipeline  # noqa
-import sklearn.preprocessing
-import sklearn.svm  # noqa
-from skimage.metrics import structural_similarity as compare_ssim
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import typealias as tp
+from arknights_mower.utils import vision_np
 from arknights_mower.utils.image import cropimg
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.resource_pkg import register_resource_reload
 
 GOOD_DISTANCE_LIMIT = 0.7
 
@@ -28,8 +30,74 @@ def keypoints(img: tp.GrayImage):
     return ORB_no_pyramid.detectAndCompute(img, None)
 
 
+TEMPLATE_FEATURE_CAPACITY = 128
+TEMPLATE_FEATURE_BYTES = 4 * 1024**2
+_KEYPOINT = struct.Struct("=5f2i")
+_template_features = OrderedDict()
+_template_feature_bytes = 0
+_template_generation = 0
+_template_lock = Lock()
+
+
+@register_resource_reload
+def clear_template_feature_cache():
+    global _template_feature_bytes, _template_generation
+    with _template_lock:
+        _template_features.clear()
+        _template_feature_bytes = 0
+        _template_generation += 1
+
+
+def resource_template_features(resource, image, *, thres=None, dpi_aware=False):
+    """只复用资源模板；缓存不持有图像、可变 KeyPoint 或描述符数组。"""
+    global _template_feature_bytes
+    digest = hashlib.sha256(np.ascontiguousarray(image)).digest()
+    with _template_lock:
+        key = (_template_generation, resource, thres, dpi_aware, image.shape, digest)
+        value = _template_features.get(key)
+        if value is None:
+            points, descriptors = (
+                keypoints_scale_invariant(image) if dpi_aware else keypoints(image)
+            )
+            packed = b"".join(
+                _KEYPOINT.pack(
+                    *point.pt,
+                    point.size,
+                    point.angle,
+                    point.response,
+                    point.octave,
+                    point.class_id,
+                )
+                for point in points
+            )
+            value = (
+                packed,
+                None if descriptors is None else descriptors.shape,
+                b"" if descriptors is None else descriptors.tobytes(),
+            )
+            size = len(value[0]) + len(value[2])
+            if size <= TEMPLATE_FEATURE_BYTES:
+                while _template_features and (
+                    len(_template_features) >= TEMPLATE_FEATURE_CAPACITY
+                    or _template_feature_bytes + size > TEMPLATE_FEATURE_BYTES
+                ):
+                    _, retired = _template_features.popitem(last=False)
+                    _template_feature_bytes -= len(retired[0]) + len(retired[2])
+                _template_features[key] = value
+                _template_feature_bytes += size
+        else:
+            _template_features.move_to_end(key)
+    points = [cv2.KeyPoint(*fields) for fields in _KEYPOINT.iter_unpack(value[0])]
+    descriptors = (
+        None
+        if value[1] is None
+        else np.frombuffer(value[2], dtype=np.uint8).reshape(value[1])
+    )
+    return points, descriptors
+
+
 with lzma.open(f"{__rootdir__}/models/svm.model", "rb") as f:
-    SVC = pickle.loads(f.read())
+    SVC_MODEL: vision_np.LinearSvcModel = pickle.loads(f.read())
 
 
 # build FlannBasedMatcher
@@ -71,7 +139,6 @@ class Matcher:
     """image matching module"""
 
     def __init__(self, origin: tp.GrayImage) -> None:
-        logger.debug(f"Matcher init: shape ({origin.shape})")
         self.origin = origin
         self.kp, self.des = keypoints(self.origin)
 
@@ -83,6 +150,8 @@ class Matcher:
         dpi_aware: bool = False,
         prescore: float = 0.0,
         judge: bool = True,
+        *,
+        query_features=None,
     ) -> Optional[tp.Scope]:
         """check if the image can be matched"""
         rect_score = self.score(
@@ -91,6 +160,7 @@ class Matcher:
             scope,
             only_score=False,
             dpi_aware=dpi_aware,
+            query_features=query_features,
         )  # get matching score
         if rect_score is None:
             return None  # failed in matching
@@ -104,7 +174,9 @@ class Matcher:
             else:
                 logger.debug(f"score is not greater than {prescore}: {rect_score}")
                 return None
-        if judge and not SVC.predict([score])[0]:
+        if judge and not vision_np.linear_svc_predict(
+            score, SVC_MODEL["w"], SVC_MODEL["b"]
+        ):
             logger.debug(f"match fail: {rect_score}")
             return None
         logger.debug(f"match success: {rect_score}")
@@ -117,6 +189,8 @@ class Matcher:
         scope: tp.Scope = None,
         only_score: bool = False,
         dpi_aware: bool = False,
+        *,
+        query_features=None,
     ) -> Optional[Tuple[tp.Scope, tp.Score]]:
         """scoring of image matching"""
         try:
@@ -127,18 +201,16 @@ class Matcher:
 
             # specify the crop scope
             if scope is not None:
-                ori_kp, ori_des = [], []
-                for _kp, _des in zip(self.kp, self.des):
-                    if (
-                        scope[0][0] <= _kp.pt[0]
-                        and scope[0][1] <= _kp.pt[1]
-                        and _kp.pt[0] <= scope[1][0]
-                        and _kp.pt[1] <= scope[1][1]
-                    ):
-                        ori_kp.append(_kp)
-                        ori_des.append(_des)
-                logger.debug(f"match crop: {scope}, {len(self.kp)} -> {len(ori_kp)}")
-                ori_kp, ori_des = np.array(ori_kp), np.array(ori_des)
+                # 在原生层批量读取坐标；float64 保留原先 Python 浮点边界比较。
+                x, y = cv2.KeyPoint_convert(self.kp).astype(np.float64).T
+                selected = (
+                    (scope[0][0] <= x)
+                    & (scope[0][1] <= y)
+                    & (x <= scope[1][0])
+                    & (y <= scope[1][1])
+                )
+                ori_kp = [self.kp[index] for index in np.flatnonzero(selected)]
+                ori_des = self.des[selected]
             else:
                 ori_kp, ori_des = self.kp, self.des
 
@@ -151,7 +223,9 @@ class Matcher:
             h, w = query.shape
 
             # the feature point of query image
-            if dpi_aware:
+            if query_features is not None:
+                qry_kp, qry_des = query_features()
+            elif dpi_aware:
                 qry_kp, qry_des = keypoints_scale_invariant(query)
             else:
                 qry_kp, qry_des = keypoints(query)
@@ -195,8 +269,6 @@ class Matcher:
             if M is None:
                 logger.debug("calculated transformation matrix failed")
                 return None
-            else:
-                logger.debug(f"transform matrix: {M.tolist()}")
 
             M[0][1] = 0
             M[1][0] = 0
@@ -235,13 +307,11 @@ class Matcher:
                 rect[1][0] - rect[0][0] < min_width
                 or rect[1][1] - rect[0][1] < min_height
             ):
-                logger.debug(f"rectangle is too small: {rect}")
                 return None
 
             if not dpi_aware:
                 max_width = w * 1.25
                 if rect[1][0] - rect[0][0] > max_width:
-                    logger.debug(f"rectangle is too big: {rect}")
                     return None
 
             # measure the rate of good match within the rectangle (x-axis)
@@ -282,7 +352,7 @@ class Matcher:
             hash = 1 - (aHash(query, rect_img) / 16)
 
             # calc ssim between query image and rect_img
-            ssim = compare_ssim(query, rect_img, multichannel=True)
+            ssim = vision_np.ssim(query, rect_img)
 
             # return final rectangle and four dimensions of scoring
             if only_score:

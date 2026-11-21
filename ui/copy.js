@@ -2,11 +2,30 @@ import fs from 'fs'
 import path from 'path'
 import zlib from 'zlib'
 
+// A desktop user can open a nested history route directly.
+if (fs.existsSync('dist/index.html')) {
+  const index = fs.readFileSync('dist/index.html', 'utf8')
+  fs.writeFileSync(
+    'dist/index.html',
+    index.replaceAll('="./assets/', '="/assets/').replace('="./favicon.ico"', '="/favicon.ico"')
+  )
+}
+
 const sourceFile = 'Mower入门指北.html'
 const destDir = 'dist/docs'
 
 fs.mkdirSync(destDir, { recursive: true })
-fs.copyFileSync(sourceFile, path.join(destDir, path.basename(sourceFile)))
+const destFile = path.join(destDir, path.basename(sourceFile))
+fs.copyFileSync(sourceFile, destFile)
+fs.rmSync(destFile + '.gz', { force: true })
+
+// OTA reconstructs unchanged buffer data from its original bytes, not compiled JS.
+const bufferFile = 'src/pages/basement_skill/buffer.json'
+const bufferDest = 'dist/pages/basement_skill'
+fs.mkdirSync(bufferDest, { recursive: true })
+const bufferTarget = path.join(bufferDest, path.basename(bufferFile))
+fs.copyFileSync(bufferFile, bufferTarget)
+fs.rmSync(bufferTarget + '.gz', { force: true })
 
 // 预压缩静态资源，server.py 会按 Accept-Encoding 返回 .gz
 function precompress(dir) {

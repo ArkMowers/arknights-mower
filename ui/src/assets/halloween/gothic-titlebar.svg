@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 72" fill="none" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="vine-gold" x1="0" y1="0" x2="1440" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#c6a473" stop-opacity=".7"/>
+      <stop offset=".32" stop-color="#b79970" stop-opacity=".2"/>
+      <stop offset=".62" stop-color="#c6a473" stop-opacity=".4"/>
+      <stop offset="1" stop-color="#e0be84" stop-opacity=".9"/>
+    </linearGradient>
+    <g id="bat" fill="#73788b">
+      <path d="M-26-7C-17-8-10-4-7 0l3-8 4 5 4-5 3 8c3-4 10-8 19-7-4 5-5 9-5 14-7-4-12-2-15 2-3-1-4 1-6 5-2-4-3-6-6-5-3-4-8-6-15-2 0-5-1-9-5-14Z"/>
+    </g>
+    <g id="star" fill="#c9aa7b"><path d="m0-5 1.3 3.7L5 0 1.3 1.3 0 5l-1.3-3.7L-5 0l3.7-1.3Z"/></g>
+    <g id="leaf" fill="#a68e72"><path d="M0 0c4-9 9-14 19-14C16-5 9 0 0 0Z"/><path d="M1-1 16-11" stroke="#e4c99d" stroke-width=".8" opacity=".45"/></g>
+  </defs>
+
+  <g stroke="url(#vine-gold)" stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M0 4h1440M0 8h252m37 0h102m769 0h280" opacity=".55"/>
+    <path d="M0 53C60 1 113 13 165 3c50-10 101 8 150 0m-244 13C65 31 49 39 32 39m95-29c-7 12-16 19-29 23m85-31c-9 11-19 16-32 17m61-17c13 10 29 14 49 12"/>
+    <path d="M46 31c8 1 13 4 16 8m-5-24c-1-7-4-12-11-15m60 17c7 0 14 2 20 7m25-21c-2-5-6-8-12-10"/>
+    <path d="M1440 62c-51-38-101-43-157-53-47-8-102-2-153-6-68-5-126 8-194 0m423 24c1 13 9 26 23 35m-73-48c1 13 9 23 22 30m-66-35c-5 12-14 22-27 28m-39-30c-8 7-17 11-29 12m-32-13c-10 5-20 6-31 4m159 9c-5 10-4 18 2 26"/>
+    <path d="M1397 42c-8 0-16 3-22 8m-29-27c-1-9-5-16-12-22m-32 31c8 1 14 4 19 10m-45-28c-3-6-7-10-14-13m-23 29c7 0 12 2 17 6m-78-25c-1 8-6 14-13 18"/>
+    <path d="M376 4c12 6 23 7 35 1m-28 6c8 5 16 5 25 1m303-8c16 9 33 8 49 0m-37 10c8 3 15 3 23 0m106-10c13 5 25 5 38 0" opacity=".48"/>
+  </g>
+
+  <g opacity=".48">
+    <use href="#leaf" transform="translate(21 41) rotate(-18) scale(.8)"/>
+    <use href="#leaf" transform="translate(68 17) rotate(158) scale(.65)"/>
+    <use href="#leaf" transform="translate(105 18) rotate(-22) scale(.7)"/>
+    <use href="#leaf" transform="translate(165 11) rotate(150) scale(.7)"/>
+    <use href="#leaf" transform="translate(241 13) rotate(28) scale(.65)"/>
+    <use href="#leaf" transform="translate(1382 48) rotate(152) scale(.85)"/>
+    <use href="#leaf" transform="translate(1348 25) rotate(-15) scale(.8)"/>
+    <use href="#leaf" transform="translate(1317 36) rotate(153) scale(.75)"/>
+    <use href="#leaf" transform="translate(1260 17) rotate(-145) scale(.65)"/>
+    <use href="#leaf" transform="translate(1209 12) rotate(147) scale(.7)"/>
+    <use href="#leaf" transform="translate(1176 11) rotate(28) scale(.6)"/>
+  </g>
+
+  <g stroke="#c9a978" stroke-width=".85" opacity=".6">
+    <path d="M1440 0h-158m158 0v72m0-72-107 72m107-72-42 72m42-72-129 34m129-34-8 72"/>
+    <path d="M1419 0c0 9 6 16 21 19m-45-19c0 18 16 33 45 36m-75-36c1 29 27 52 75 57m-111-57c1 33 21 57 52 72"/>
+    <path d="M1421 15c-6 8-8 16-5 24m-17-13c-9 9-12 20-9 32m-25-17c-5 7-7 15-5 24M1405 0c1 10 6 20 15 28m-41-28c1 15 8 28 20 39m-50-39c1 19 9 36 25 49"/>
+  </g>
+
+  <g opacity=".75">
+    <use href="#bat" transform="translate(1068 34) rotate(-9) scale(.83)"/>
+    <use href="#bat" transform="translate(1150 52) rotate(12) scale(.48)" opacity=".7"/>
+    <use href="#bat" transform="translate(974 20) rotate(-18) scale(.46)" opacity=".6"/>
+    <use href="#star" transform="translate(1009 50) scale(.7)"/>
+    <use href="#star" transform="translate(1188 33) scale(.55)"/>
+    <use href="#star" transform="translate(932 39) scale(.45)"/>
+    <use href="#star" transform="translate(1277 54) scale(.4)"/>
+    <circle cx="1118" cy="22" r="1.2" fill="#c9aa7b"/>
+    <circle cx="1040" cy="14" r=".9" fill="#c9aa7b"/>
+    <circle cx="1221" cy="49" r="1.1" fill="#c9aa7b"/>
+  </g>
+
+  <g stroke="#c2a16f" stroke-width="1" opacity=".46">
+    <path d="M500 4v7m-5-7 5 7 5-7m315 0v7m-5-7 5 7 5-7M621 4v14m-6-7 6 7 6-7"/>
+    <path d="m621 21-3 4 3 4 3-4Z" fill="#d3b788" stroke="none"/>
+  </g>
+</svg>

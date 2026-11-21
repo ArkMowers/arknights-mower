@@ -1,30 +1,60 @@
 import lzma
 import pickle
 from itertools import combinations
+from uuid import uuid4
 
 import cv2
 import numpy as np
 
-from arknights_mower import __rootdir__
 from arknights_mower.data import (
     agent_with_tags,
     recruit_agent,
 )
 from arknights_mower.models import noto_sans, riic_base_digits
 from arknights_mower.utils import config
+from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.email import recruit_rarity, recruit_template, send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cmatch, cropimg, loadres, thres2
-from arknights_mower.utils.log import logger
+from arknights_mower.utils.log import log_parent_context, logger
+from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
 from arknights_mower.utils.recognize import Recognizer, Scene
+from arknights_mower.utils.resource_pkg import (
+    register_resource_reload,
+    resource_pkg_path,
+)
 from arknights_mower.utils.vector import va
 
 number = riic_base_digits
-with lzma.open(f"{__rootdir__}/models/recruit_result.pkl", "rb") as f:
-    recruit_res_template = pickle.load(f)
-with lzma.open(f"{__rootdir__}/models/recruit.pkl", "rb") as f:
-    tag_template = pickle.load(f)
+
+
+def _load_recruit_models():
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit_result.pkl")), "rb"
+    ) as f:
+        result = pickle.load(f)
+    with lzma.open(
+        str(resource_pkg_path("arknights_mower/models/recruit.pkl")), "rb"
+    ) as f:
+        tags = pickle.load(f)
+    if not isinstance(result, dict) or not isinstance(tags, dict):
+        raise ValueError("公开招募识别模型格式错误")
+    return result, tags
+
+
+recruit_res_template, tag_template = _load_recruit_models()
+
+
+@register_resource_reload
+def reload_resource_models() -> None:
+    result, tags = _load_recruit_models()
+    recruit_res_template.clear()
+    recruit_res_template.update(result)
+    tag_template.clear()
+    tag_template.update(tags)
+
+
 job_list = [
     "recruit/riic_res/CASTER",
     "recruit/riic_res/MEDIC",
@@ -61,6 +91,7 @@ class RecruitSolver(SceneGraphSolver):
         }
         self.agent_choose = {}
         self.recruit_index = 1
+        self._slot_log_parent = None
         # 默认要支援机械
         self.recruit_order_index = 2
         self.recruit_order = [6, 5, 1, 4, 3, 2]
@@ -74,26 +105,24 @@ class RecruitSolver(SceneGraphSolver):
 
     def run(self):
         self.add_recruit_param()
-        super().run()
-        logger.info(self.result_agent)
+        unfinished = "failed"
+        try:
+            super().run()
+        except MowerExit:
+            unfinished = "stopped"
+            raise
+        finally:
+            self._finish_slot_log(unfinished)
+        logger.debug("本轮公招领取结果：%s", self.result_agent)
         recruit_results = {}
         if self.agent_choose:
             for pos in self.agent_choose:
                 if self.agent_choose[pos]["choosed"] is False:
                     continue
-                agent = []
                 if self.agent_choose[pos]["result"]:
-                    for item in self.agent_choose[pos]["result"]:
-                        agent.append(item["name"])
                     recruit_results[pos] = self.agent_choose[pos]
-                    logger.info(
-                        "{}:[".format(pos)
-                        + ",".join(self.agent_choose[pos]["tags"])
-                        + "]:{}".format(",".join(agent))
-                    )
-        logger.info(recruit_results)
+        logger.debug("本轮公招已确认安排：%s", recruit_results)
         if self.agent_choose or self.result_agent:
-            logger.info("招募汇总如下")
             send_message(
                 recruit_template.render(
                     recruit_results=recruit_results,
@@ -103,10 +132,84 @@ class RecruitSolver(SceneGraphSolver):
                 ),
                 "公招汇总通知",
                 "INFO",
+                body_is_html=True,
             )
         return recruit_results, self.result_agent
 
+    def _confirm_recruitment(self):
+        choice = self.agent_choose[self.recruit_index]
+        if choice["choosed"]:
+            return
+        choice["choosed"] = True
+        tags = (
+            "选择标签：" + "、".join(choice["tags"]) if choice["tags"] else "不选标签"
+        )
+        duration = "3小时50分" if choice["level"] == 1 else "9小时"
+        extra = (
+            {
+                "log_recruitment": {
+                    "event": "start",
+                    "tags": list(choice["tags"]),
+                    "rarity": choice["level"],
+                }
+            }
+            if choice["tags"]
+            else {}
+        )
+        logger.info(
+            f"{self.recruit_index}号招募位：开始招募，{tags}，时长：{duration}",
+            extra=extra,
+        )
+
     def transition(self) -> bool:
+        slot = self.recruit_index
+        parent = getattr(self, "_slot_log_parent", None)
+        if parent is not None and parent["slot"] != slot:
+            self._finish_slot_log("stopped")
+            parent = None
+        with log_parent_context(parent):
+            finished = self._transition()
+        if self.recruit_index != slot:
+            self._finish_slot_log("completed")
+        return finished
+
+    def _begin_slot_log(self, action):
+        parent = getattr(self, "_slot_log_parent", None)
+        if parent is None:
+            parent = self._slot_log_parent = {
+                "type": "recruitment-slot",
+                "id": uuid4().hex,
+                "slot": self.recruit_index,
+            }
+            logger.info(
+                "%s号招募位：%s",
+                self.recruit_index,
+                action,
+                extra={
+                    "log_event": {**parent, "phase": "started"},
+                    "log_parent": parent,
+                },
+            )
+        return parent
+
+    def _finish_slot_log(self, phase):
+        parent = getattr(self, "_slot_log_parent", None)
+        if parent is None:
+            return
+        self._slot_log_parent = None
+        message = {
+            "completed": "检查完成",
+            "failed": "检查未完成",
+            "stopped": "已停止检查",
+        }[phase]
+        logger.info(
+            "%s号招募位：%s",
+            parent["slot"],
+            message,
+            extra={"log_event": {**parent, "phase": phase}, "log_parent": parent},
+        )
+
+    def _transition(self) -> bool:
         if (scene := self.scene()) == Scene.RECRUIT_MAIN:
             if self.recruit_index > 4:
                 logger.info("结束公招")
@@ -154,28 +257,33 @@ class RecruitSolver(SceneGraphSolver):
 
             if self.find("recruit/job_requirements", scope=job_requirements_scope):
                 if self.recruit_index in self.agent_choose.keys():
-                    self.agent_choose[self.recruit_index]["choosed"] = True
-                logger.debug(f"{self.recruit_index}正在招募")
+                    self._confirm_recruitment()
+                logger.debug("%s号招募位：正在招募", self.recruit_index)
                 self.recruit_index = self.recruit_index + 1
                 return
             elif pos := self.find("recruit/recruit_lock", scope=recruit_lock_scope):
-                logger.debug(f"{self.recruit_index}锁定")
+                logger.debug("%s号招募位：尚未解锁", self.recruit_index)
+                self._finish_slot_log("completed")
                 return True
             elif pos := self.find("recruit/recruit_done", scope=recruit_done_scope):
-                logger.debug(f"{self.recruit_index}结束招募 开包")
-                self.tap(pos)
+                logger.debug("%s号招募位：招募完成，领取干员", self.recruit_index)
+                with log_parent_context(self._begin_slot_log("准备领取干员")):
+                    self.tap(pos)
                 return
             elif pos := self.find("recruit/begin_recruit", scope=begin_recruit_scope):
                 self.ticket_number = self.get_ticket_number()
                 if self.ticket_number == 0:
-                    self.recruit_index = self.recruit_index + 1
-                    logger.debug(f"{self.recruit_index} 张招募券")
-                    return
-                self.tap(pos)
-                if not self.wait_for_scene_stable(Scene.RECRUIT_TAGS):
                     logger.debug(
-                        f"[begin recruit] scene not stable, keep index={self.recruit_index}"
+                        "%s号招募位：招募券0张，跳过空闲栏位", self.recruit_index
                     )
+                    self.recruit_index = self.recruit_index + 1
+                    return
+                with log_parent_context(self._begin_slot_log("检查招募标签")):
+                    self.tap(pos)
+                    if not self.wait_for_scene_stable(Scene.RECRUIT_TAGS):
+                        logger.debug(
+                            f"[begin recruit] scene not stable, keep index={self.recruit_index}"
+                        )
                 return
             else:
                 self.sleep()
@@ -190,8 +298,21 @@ class RecruitSolver(SceneGraphSolver):
                     return
                 self.tags[self.recruit_index] = tmp_tags
                 self.refresh = False
+                logger.debug(
+                    "%s号招募位：标签坐标：%s",
+                    self.recruit_index,
+                    self.tags[self.recruit_index],
+                )
                 logger.info(
-                    f"{self.recruit_index}号位置的tag识别结果{self.tags[self.recruit_index]}"
+                    f"{self.recruit_index}号招募位：识别标签："
+                    + "、".join(self.tags[self.recruit_index]),
+                    extra={
+                        "log_recruitment": {
+                            "event": "tags",
+                            "tags": list(self.tags[self.recruit_index]),
+                            "rarity": None,
+                        }
+                    },
                 )
 
             if self.recruit_index in self.agent_choose.keys():
@@ -205,7 +326,7 @@ class RecruitSolver(SceneGraphSolver):
 
                 choose = self.agent_choose[self.recruit_index]["tags"]
                 tags = self.tags[self.recruit_index]
-                logger.info(f"选择标签:{choose}")
+                logger.debug("%s号招募位：待选标签：%s", self.recruit_index, choose)
                 tag_all_choose = True
                 for x in choose:
                     h, w, _ = tag_template[x].shape
@@ -234,8 +355,11 @@ class RecruitSolver(SceneGraphSolver):
                     self.ticket_number < config.conf.recruitment_permit
                     and recruit_result_level == 3
                 ):
+                    logger.info(
+                        f"{self.recruit_index}号招募位：招募券{self.ticket_number}张，"
+                        f"低于三星招募阈值{config.conf.recruitment_permit}张，本次跳过"
+                    )
                     self.recruit_index = self.recruit_index + 1
-                    logger.info("没券 返回")
                     self.back()
                     return
 
@@ -250,6 +374,10 @@ class RecruitSolver(SceneGraphSolver):
                     self.get_recruit_time("minute"),
                 ]
 
+                if recruit_time[1] and now_time[0] != recruit_time[0]:
+                    self.choose_time(now_time[0], recruit_time[0], mode="hour")
+                    return
+
                 if now_time[1] != recruit_time[1]:
                     self.choose_time(now_time[1], recruit_time[1], mode="minute")
                     return
@@ -261,7 +389,7 @@ class RecruitSolver(SceneGraphSolver):
                 # # start recruit
                 self.tap_element("recruit/start_recruit")
                 if self.wait_for_scene_stable(Scene.RECRUIT_MAIN):
-                    self.agent_choose[self.recruit_index]["choosed"] = True
+                    self._confirm_recruitment()
                     self.ticket_number = self.ticket_number - 1
                     self.recruit_index = self.recruit_index + 1
                 else:
@@ -298,75 +426,144 @@ class RecruitSolver(SceneGraphSolver):
             self.scene_graph_navigation(Scene.RECRUIT_MAIN)
 
     def recruit_result(self):
-        try:
-            # 存在读完一次没退完再读一次
-            if str(self.recruit_index) in self.result_agent.keys():
-                self.tap((950, 150))
-                return
+        if self.recruit_index in self.result_agent:
+            self.tap((950, 150))
+            return
 
+        for attempt in range(5):
             job_pt = None
             for i in job_list:
                 if job_pt := self.find(i):
                     break
+            if job_pt is not None:
+                break
+            if attempt < 4:
+                self.sleep(1)
+        else:
+            logger.warning("公招干员职业图标连续5次未识别，结束本次公招")
+            self._finish_slot_log("failed")
+            self.recog.update()
+            return True
 
-            img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
-            img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
+        img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
+        img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
 
-            score = {}
-            for id in recruit_res_template:
-                res = recruit_res_template[id]
-                result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED, res)
-                _, max_val, _, _ = cv2.minMaxLoc(result)
-                score[id] = max_val
-            self.result_agent[self.recruit_index] = recruit_agent[
-                max(score, key=score.get)
-            ]["name"]
-
-        except Exception as e:
-            logger.exception(f"公招开包异常:{e}")
-        finally:
-            self.tap((500, 500))
+        # 统一姓名模板宽度，让短姓名的评分也包含右侧文字，避免只匹配长姓名的一部分。
+        width = max(res.shape[1] for res in recruit_res_template.values())
+        score = {}
+        for id in recruit_res_template:
+            res = recruit_res_template[id]
+            res = np.pad(res, ((0, 0), (0, width - res.shape[1])))
+            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED)
+            _, max_val, _, _ = cv2.minMaxLoc(result)
+            score[id] = max_val
+        self.result_agent[self.recruit_index] = recruit_agent[
+            max(score, key=score.get)
+        ]["name"]
+        name = self.result_agent[self.recruit_index]
+        logger.info(
+            f"{self.recruit_index}号招募位：招募获得：{name}",
+            extra={"log_agents": [name]},
+        )
+        self.tap((500, 500))
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
+        robot_choice = None
+        if (
+            config.conf.recruit_auto_robot
+            and "支援机械" in tags
+            and tem_res[3]
+            and not any(tem_res[level] for level in (4, 5, 6))
+        ):
+            robot_choice = self.unfinished_robot_choice(tem_res[1])
         recruit_cal_result = None
         recruit_result_level = -1
 
-        for index in self.recruit_order:
-            if tem_res[index]:
-                recruit_result_level = index
-                break
+        if robot_choice is not None:
+            recruit_result_level = 1
+            recruit_cal_result = [robot_choice]
+        else:
+            for index in self.recruit_order:
+                if tem_res[index]:
+                    recruit_result_level = index
+                    break
         if recruit_result_level == -1:
-            logger.error("筛选结果为 {}".format(tem_res))
+            logger.debug("筛选结果为 {}".format(tem_res))
+            logger.error(f"{self.recruit_index}号招募位：标签筛选失败")
             raise ValueError("筛选tag失败")
+        elif robot_choice is not None:
+            logger.info("支援机械候选均未满潜，自动招募")
         elif recruit_result_level != 3 and self.all_same_res(
             tem_res, recruit_result_level
         ):
             recruit_cal_result = [tem_res[recruit_result_level][-1]]
         else:
             recruit_cal_result = tem_res[recruit_result_level]
-        logger.debug(f"recruit_cal_result:{recruit_cal_result}")
+        logger.debug(
+            "%s号招募位：候选等级%s星，等价折叠后有%d组标签",
+            self.recruit_index,
+            recruit_result_level,
+            len(recruit_cal_result),
+        )
 
         if self.recruit_order.index(recruit_result_level) <= self.recruit_order_index:
-            logger.info("稀有tag,发送邮件")
+            tag_combinations = []
+            seen = set()
+            for candidate in tem_res[recruit_result_level]:
+                combination = tuple(candidate["tag"])
+                if combination not in seen:
+                    seen.add(combination)
+                    tag_combinations.append(
+                        {"tags": list(combination), "rarity": recruit_result_level}
+                    )
+            logger.info(
+                f"{self.recruit_index}号招募位：发现稀有标签："
+                + "；".join("＋".join(item["tags"]) for item in tag_combinations),
+                extra={
+                    "log_recruitment": {
+                        "event": "rare",
+                        "combinations": tag_combinations,
+                        "rarity": recruit_result_level,
+                    }
+                },
+            )
             send_message(
                 recruit_rarity.render(
                     recruit_results=recruit_cal_result,
                     title_text="稀有tag通知",
                 ),
-                "出稀有标签辣",
+                "公招出现稀有标签",
                 "WARNING",
+                body_is_html=True,
             )
-            if recruit_result_level == 6 or recruit_result_level == 1:
-                logger.debug(f"{recruit_result_level}星稀有tag  ,不选")
+            if recruit_result_level == 6 or (
+                recruit_result_level == 1 and robot_choice is None
+            ):
+                logger.debug(
+                    "%s号招募位：按当前设置保留%s星标签",
+                    self.recruit_index,
+                    recruit_result_level,
+                )
+                logger.info(f"{self.recruit_index}号招募位：保留标签，等待手动选择")
                 self.recruit_index = self.recruit_index + 1
                 self.back()
                 return
             elif recruit_result_level == 5:
                 if config.conf.recruit_auto_5 == 2:
-                    if config.conf.recruit_auto_only5 and len(recruit_cal_result) > 1:
+                    if (
+                        not config.conf.recruit_auto_only5
+                        or len(recruit_cal_result) > 1
+                    ):
                         logger.debug(
-                            f"{recruit_result_level}星稀有tag,但不止一个或纯手动选择"
+                            "%s号招募位：五星手动策略，唯一组合自动选择=%s，"
+                            "等价折叠后组合数=%d",
+                            self.recruit_index,
+                            config.conf.recruit_auto_only5,
+                            len(recruit_cal_result),
+                        )
+                        logger.info(
+                            f"{self.recruit_index}号招募位：保留标签，等待手动选择"
                         )
                         self.recruit_index = self.recruit_index + 1
                         self.back()
@@ -390,6 +587,50 @@ class RecruitSolver(SceneGraphSolver):
 
         return
 
+    def unfinished_robot_choice(self, choices):
+        snapshot = get_cultivate_snapshot()
+        if not snapshot:
+            return None
+        characters = {char["id"]: char for char in snapshot["data"]["characters"]}
+        items = snapshot["data"].get("items")
+        if not isinstance(items, list) or any(
+            not isinstance(item, dict)
+            or not isinstance(item.get("id"), str)
+            or not str(item.get("count", "")).isdigit()
+            for item in items
+        ):
+            return None
+        tokens = {item["id"]: int(item["count"]) for item in items}
+        if len(tokens) != len(items):
+            return None
+        reserved = {}
+        for choice in self.agent_choose.values():
+            if choice["level"] == 1 and choice["choosed"]:
+                for agent in choice["result"]:
+                    reserved[agent["id"]] = reserved.get(agent["id"], 0) + 1
+        unfinished = {
+            char_id
+            for char_id, char in characters.items()
+            if type(char.get("potentialRank")) is int
+            and 0 <= char["potentialRank"] < 5
+            and char["potentialRank"]
+            + tokens.get(f"p_{char_id}", 0)
+            + reserved.get(char_id, 0)
+            < 5
+        }
+        eligible = [
+            choice
+            for choice in choices
+            if "支援机械" in choice["tag"]
+            and choice["result"]
+            and all(agent["id"] in unfinished for agent in choice["result"])
+        ]
+        return min(
+            eligible,
+            key=lambda choice: (len(choice["result"]), len(choice["tag"])),
+            default=None,
+        )
+
     def all_same_res(self, recruit_cal_res, index):
         tmp_list = recruit_cal_res[index]
         last_res = tmp_list[-1]
@@ -399,7 +640,7 @@ class RecruitSolver(SceneGraphSolver):
         return True
 
     def recruit_cal(self, tags: list[str]):
-        logger.debug(f"选择标签{tags}")
+        logger.debug("公招候选计算：输入标签：%s", tags)
         index_dict = {k: i for i, k in enumerate(self.recruit_order)}
         combined_agent = {}
         if "新手" in tags:
@@ -483,7 +724,7 @@ class RecruitSolver(SceneGraphSolver):
             )
         for item in result:
             if result[item]:
-                logger.debug("{}:{}".format(item, result[item]))
+                logger.debug("公招%s星候选组合：%s", item, result[item])
         return result
 
     def get_recruit_tag(self) -> dict | bool:
@@ -564,8 +805,11 @@ class RecruitSolver(SceneGraphSolver):
                     continue
                 result = cv2.matchTemplate(digit, im, cv2.TM_SQDIFF_NORMED)
                 min_val, _, _, _ = cv2.minMaxLoc(result)
-                score.append(min_val)
-            value = value * 10 + score.index(min(score))
+                score.append((min_val, i))
+            # 阈值化可能把一个数字分成两块；无法匹配模板的碎片不是一位数字。
+            if not score:
+                continue
+            value = value * 10 + min(score)[1]
         return value
 
     def add_recruit_param(self):
@@ -619,35 +863,11 @@ class RecruitSolver(SceneGraphSolver):
 
         return value
 
-    def choose_time(self, now_time: int, to_time: int, mode="hour" or "minute"):
-        subtract_time = now_time - to_time
-
-        click_time = 0
-        max_click = 0
-        tap_pos = 0
+    def choose_time(self, now_time: int, to_time: int, mode="hour"):
         if mode == "minute":
-            click_time = int(abs(subtract_time) / 10)
-            tap_pos = 0.5
-            [self.tap_element("one_hour", tap_pos, 0.8, 0.1) for _ in range(click_time)]
-            return
-
-        if mode == "hour":
-            click_time = abs(subtract_time)
-            max_click = 9
-            tap_pos = 0.2
-
-        if abs(subtract_time) > (max_click / 2):
-            if subtract_time > 0:
-                [self.tap_element("one_hour", 0.2, 0.2, 0.1) for _ in range(click_time)]
-            else:
-                [
-                    self.tap_element("one_hour", 0.2, 0.8, 0.1)
-                    for _ in range(max_click - click_time)
-                ]
+            step, tap_pos = 10, 0.5
         else:
-            if subtract_time < 0:
-                [self.tap_element("one_hour", 0.2, 0.2, 0.1) for _ in range(click_time)]
-            else:
-                [self.tap_element("one_hour", 0.2, 0.8, 0.1) for _ in range(click_time)]
-
-        return
+            step, tap_pos = 1, 0.2
+        direction = 0.2 if to_time > now_time else 0.8
+        for _ in range(abs(to_time - now_time) // step):
+            self.tap_element("one_hour", tap_pos, direction, 0.1)

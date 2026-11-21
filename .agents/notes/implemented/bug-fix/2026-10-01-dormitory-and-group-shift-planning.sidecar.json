@@ -1,0 +1,43 @@
+{
+  "title": "Dormitory and Group Shift Planning",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-01",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-13]",
+    "[INV-SCHED-14]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.prepare_release_dorm",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.get_resting_plan",
+    "arknights_mower.utils.exhaust_replacement.match_replacements",
+    "arknights_mower.utils.workshop_limits.workshop_material_block_reason",
+    "arknights_mower.utils.workshop_limits.workshop_operator_block_reason",
+    "arknights_mower.utils.exhaust_replacement.plan_exhaust_support",
+    "arknights_mower.utils.operators.Operators.project_arrangements",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._plan_dorm_recovery",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.craft_material",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_release_dorm_member",
+    "arknights_mower.__main__.simulate"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_unknown_selection_tests.py",
+    "arknights_mower/tests/dorm_vacancy_planning_tests.py",
+    "arknights_mower/tests/group_replacement_matching_tests.py",
+    "arknights_mower/tests/workshop_dispatch_readiness_tests.py",
+    "arknights_mower/tests/workshop_dorm_dispatch_tests.py",
+    "arknights_mower/tests/rescue_dorm_fill_tests.py",
+    "arknights_mower/tests/scheduler_wakeup_tests.py",
+    "arknights_mower/tests/workshop_recovery_event_tests.py",
+    "arknights_mower/tests/dorm_release_tests.py",
+    "arknights_mower/tests/dorm_batch_release_tests.py",
+    "arknights_mower/tests/rescue_backup_condition_tests.py",
+    "arknights_mower/tests/shift_cycle_convergence_tests.py",
+    "arknights_mower/tests/rest_full_restart_tests.py",
+    "arknights_mower/tests/log_access_tests.py",
+    "arknights_mower/tests/local_backup_replay_tests.py"
+  ]
+}

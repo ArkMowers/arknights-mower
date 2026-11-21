@@ -1,0 +1,21 @@
+{
+  "title": "Linux Waydroid Session Discovery & D-Bus Binding",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-27",
+  "authors": [
+    "Antigravity"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]",
+    "[INV-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.discovery.waydroid"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_waydroid_tests.py"
+  ]
+}

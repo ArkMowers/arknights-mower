@@ -1,0 +1,20 @@
+{
+  "title": "Share Device Detection Startup",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-02]",
+    "[INV-DEV-12]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.application.DeviceControl._launch_and_verify"
+  ],
+  "test_suites": [
+    "ui/src/components/DeviceSettings.test.js",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

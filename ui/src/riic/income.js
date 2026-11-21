@@ -1,0 +1,357 @@
+import { publicAsset } from '@/utils/publicAsset'
+import receptionTemplate from '../../../arknights_mower/resources/room/meeting.png?url'
+import officeTemplate from '../../../arknights_mower/resources/room/contact.png?url'
+import recycleTemplate from '../../../arknights_mower/resources/room/recycle.png?url'
+import { DEFAULT_DRONE_CAPACITY } from './vendor/domain/droneCapacity'
+import { importMowerJson } from './vendor/workbench/compat/mowerJson'
+import { droneFacilities } from './vendor/workbench/droneTargets'
+import { mowerAdvancedAssumptions } from './vendor/scheduler/mowerAdvancedSettings'
+import { workspaceUsesInventoryConditions } from './vendor/scheduler/backupInventory'
+import {
+  normalizeSimulationInventory,
+  normalizeDailyExternalResources,
+  MOWER_RAW_MATERIALS
+} from './vendor/domain/simulationInventory'
+import { normalizeProductionWeights } from './vendor/domain/productionWeights'
+import { incomeInitialInventory } from './incomeCache'
+import { parseOperatorInventory, compileOperatorInventory } from './vendor/domain/operatorInventory'
+import { createIncomeSanityValuation, validateIncomeSanityValuation } from './incomeSanity'
+
+export const CALCULATOR_REVISION = '5529403'
+export const MOWER_REFERENCE = '80c97ee6'
+export function defaultIncomeSettings() {
+  return {
+    warmupDays: 3,
+    sampleDays: 28,
+    expectationMode: true,
+    fixedSeed: null,
+    finiteInventory: true,
+    inventorySource: 'cache',
+    cachedInventory: null,
+    cachedOperators: null,
+    cacheObservedAt: null,
+    allowMaterialDebt: true,
+    dailyExternalResources: Object.fromEntries(
+      MOWER_RAW_MATERIALS.map(({ resource }) => [resource, 0])
+    ),
+    weightMode: 'sanity',
+    mowerWeights: null,
+    mowerAlgorithm: null,
+    sanityValuation: null,
+    cachedRecruitment: null,
+    initialInventory: {},
+    jayeElite0: false,
+    operatorMode: 'cache',
+    operatorText: '',
+    productionWeights: normalizeProductionWeights()
+  }
+}
+const FIXED_FACILITY_NAMES = {
+  central: '中枢',
+  meeting: '会客室',
+  factory: '加工站',
+  contact: '人力办公室',
+  train: '训练室',
+  ...Object.fromEntries([1, 2, 3, 4].map((index) => [`dormitory_${index}`, '宿舍']))
+}
+export function incomeWorkspace(plan) {
+  const document = JSON.parse(JSON.stringify(plan))
+  const mainKey =
+    typeof document?.default === 'string' && document.default.trim()
+      ? document.default.trim()
+      : 'plan1'
+  const primary = document?.[mainKey]
+  // The pinned importer infers fixed room types only when their names are empty.
+  for (const [room, name] of Object.entries(FIXED_FACILITY_NAMES)) {
+    if (primary?.[room]?.name === name) primary[room].name = ''
+  }
+  const workspace = importMowerJson(JSON.stringify(document))
+  workspace.droneCapacity = DEFAULT_DRONE_CAPACITY
+  return workspace
+}
+export function incomeFacilities(plan) {
+  return droneFacilities(incomeWorkspace(plan))
+}
+export function inventoryRequired(plan) {
+  return workspaceUsesInventoryConditions(incomeWorkspace(plan))
+}
+export function incomeSeed(settings) {
+  const fixedSeed = Object.hasOwn(settings, 'fixedSeed') ? settings.fixedSeed : settings.tailorSeed
+  const seed =
+    settings.seed !== undefined
+      ? settings.seed
+      : fixedSeed == null
+        ? crypto.getRandomValues(new Uint32Array(1))[0]
+        : fixedSeed
+  if (!Number.isSafeInteger(seed) || seed < 0 || seed > 0xffffffff)
+    throw new Error('随机种子必须为 0–4294967295 的整数')
+  return seed
+}
+export function incomeRequest(plan, settings) {
+  for (const [key, minimum, maximum] of [
+    ['warmupDays', 0, 30],
+    ['sampleDays', 1, 90]
+  ]) {
+    const value = settings[key]
+    if (!Number.isInteger(value) || value < minimum || value > maximum) {
+      throw new Error(
+        `${key === 'warmupDays' ? '预热' : '统计'}天数必须为 ${minimum}–${maximum} 的整数`
+      )
+    }
+  }
+  const expectationMode = settings.expectationMode ?? settings.seed === undefined
+  if (typeof expectationMode !== 'boolean') throw new Error('理论期望模式必须为开启或关闭')
+  const workspace = incomeWorkspace(plan)
+  const droneRoom = plan.advanced_settings?.drone_room
+  const target = droneFacilities(workspace).find((f) => f.roomId === droneRoom)
+  if (droneRoom && !target) throw new Error('无人机目标不在本次排班中')
+  const inventory = normalizeSimulationInventory(
+    settings.finiteInventory || workspaceUsesInventoryConditions(workspace)
+      ? incomeInitialInventory(settings)
+      : undefined
+  )
+  let operators
+  if (settings.operatorMode === 'cache') {
+    if (!settings.cachedOperators)
+      throw new Error('没有可用的森空岛练度缓存，请先同步或选择其他练度来源')
+    const parsed = compileOperatorInventory(settings.cachedOperators)
+    if (!parsed.valid || !parsed.operators.length)
+      throw new Error(
+        parsed.diagnostics.map((d) => d.message).join('；') || '森空岛缓存中没有已拥有干员'
+      )
+    operators = settings.cachedOperators
+  } else if (settings.operatorMode === 'custom') {
+    const parsed = parseOperatorInventory(settings.operatorText)
+    if (!parsed.valid || !parsed.entries.length)
+      throw new Error(parsed.diagnostics.map((d) => d.message).join('；') || '请填写干员和练度')
+    operators = parsed.entries
+  } else if (settings.operatorMode !== 'maximum') throw new Error('干员练度选项无效')
+  const seed = expectationMode ? undefined : incomeSeed(settings)
+  return {
+    workspace,
+    options: {
+      engine: 'simulation',
+      jayeElite0: settings.jayeElite0,
+      simulationAssumptions: mowerAdvancedAssumptions(workspace),
+      simulationOptions: {
+        schedulingModel: 'mower-alpha',
+        warmupHours: settings.warmupDays * 24,
+        sampleHours: settings.sampleDays * 24,
+        maxStepHours: 0.25,
+        // Preserve the default 31-day allowance per simulated day, including warmup.
+        maxEvents: Math.max(
+          200000,
+          Math.ceil(((settings.warmupDays + settings.sampleDays) / 31) * 200000)
+        ),
+        warmupModel: 'hourly',
+        recordSegments: true,
+        operatorInventory: operators,
+        productionWeights: incomeWeights(settings),
+        production: {
+          ...(inventory === undefined
+            ? { outputMode: 'potential' }
+            : {
+                outputMode: 'settled',
+                inventoryMode: 'finite',
+                initialResources: inventory
+              }),
+          allowMaterialDebt: settings.allowMaterialDebt ?? settings.allowGoldDebt === undefined,
+          ...(typeof settings.allowGoldDebt === 'boolean'
+            ? { allowGoldDebt: settings.allowGoldDebt }
+            : {}),
+          dailyExternalResources: normalizeDailyExternalResources(settings.dailyExternalResources),
+          runOrderMode: 'ideal',
+          expectationMode,
+          theoreticalMode: expectationMode,
+          ...(expectationMode ? {} : { seed }),
+          droneTarget: target?.target ?? 'none',
+          droneRoomId: target?.roomId,
+          droneTradingRoomId: target?.target === 'trading' ? target.roomId : undefined
+        }
+      }
+    }
+  }
+}
+
+export function incomeWeights(settings) {
+  if (settings.weightMode === 'sanity') {
+    validateIncomeSanityValuation(settings.sanityValuation)
+    return normalizeProductionWeights()
+  }
+  if (settings.weightMode === 'mower') {
+    if (!settings.mowerWeights)
+      throw new Error('Mower 收益算法尚未读取，请重试或选择本次自定义权重')
+    return normalizeProductionWeights(settings.mowerWeights)
+  }
+  if (settings.weightMode !== 'custom') throw new Error('产出权重来源无效')
+  return normalizeProductionWeights(settings.productionWeights)
+}
+
+export function applyMowerIncomeSettings(settings, value) {
+  settings.sanityValuation = createIncomeSanityValuation(value, settings.cachedRecruitment)
+  settings.mowerAlgorithm = value.base_algorithm
+  settings.mowerWeights = normalizeProductionWeights({
+    exp: value.ratios.experience,
+    gold: value.ratios.gold,
+    orders: value.ratios.order,
+    fragments: 0,
+    orundum: 0
+  })
+}
+
+export function incomeGoldEquivalentLmd(summary) {
+  return (
+    (summary.goldValue ?? (summary.goldCount ?? 0) * 500) +
+    (summary.virtualGoldValue ?? (summary.virtualGoldCount ?? 0) * 500)
+  )
+}
+
+export function incomeMetrics(summary, days) {
+  return [
+    ['经验', summary.exp, '经验值'],
+    ['赤金等价龙门币', incomeGoldEquivalentLmd(summary), '龙门币'],
+    ['龙门币产出', summary.orderLmd, '龙门币'],
+    ['制造源石碎片消耗龙门币', summary.lmdConsumed, '龙门币'],
+    ...(summary.orirockConsumed == null ? [] : [['消耗固源岩', summary.orirockConsumed, '个']]),
+    ...(summary.deviceConsumed == null ? [] : [['消耗装置', summary.deviceConsumed, '个']]),
+    ['龙门币净增', summary.netLmd, '龙门币'],
+    ['源石碎片', summary.fragments, '个'],
+    ['合成玉', summary.orundum, '个'],
+    ['回收站产出', summary.recycleCount, '次'],
+    ['公招刷新', summary.recruitmentCount, '次'],
+    ...(summary.clueCount == null ? [] : [['会客室线索', summary.clueCount, '个']])
+  ].map(([label, daily, unit]) => ({ label, daily: daily ?? 0, total: (daily ?? 0) * days, unit }))
+}
+
+export function incomeImageMetrics(summary, days) {
+  const parts = summary.sanity?.parts
+  const part = (key) => parts?.find((item) => item.key === key)
+  const savedValue = (key) => {
+    const item = part(key)
+    return item?.quantity === 0 ? 0 : (item?.value ?? null)
+  }
+  const priced = (quantity, key) =>
+    quantity === 0
+      ? 0
+      : Number.isFinite(quantity) && Number.isFinite(part(key)?.unitValue)
+        ? quantity * part(key).unitValue
+        : null
+  const sum = (...values) =>
+    values.some(Number.isFinite) ? values.reduce((total, value) => total + (value ?? 0), 0) : null
+  const goldMade = priced(summary.goldCount, 'gold')
+  const goldUsed = part('gold') ? summary.goldCount - part('gold').quantity : undefined
+  const fragmentUsed = part('fragment') ? summary.fragments - part('fragment').quantity : undefined
+  const values = parts
+    ? {
+        exp: savedValue('exp'),
+        gold: goldMade,
+        lmd: sum(priced(summary.orderLmd, 'lmd'), priced(-goldUsed, 'gold')),
+        lmdCost: priced(-summary.lmdConsumed, 'lmd'),
+        orirockCost: savedValue('orirock'),
+        deviceCost: savedValue('device'),
+        fragment: priced(summary.fragments, 'fragment'),
+        orundum: sum(savedValue('orundum'), priced(-fragmentUsed, 'fragment')),
+        recycle: savedValue('recycle'),
+        recruitment: savedValue('recruitment'),
+        clue: sum(savedValue('clue'), savedValue('exchange'))
+      }
+    : null
+  const rows = [
+    { key: 'exp', icon: publicAsset('/product/exp3.png'), daily: summary.exp, unit: '经验值' },
+    {
+      key: 'gold',
+      icon: publicAsset('/product/gold.png'),
+      daily: parts ? summary.goldCount : incomeGoldEquivalentLmd(summary),
+      unit: parts ? '个' : '龙门币'
+    },
+    {
+      key: 'lmd',
+      icon: publicAsset('/product/lmd.png'),
+      daily: summary.orderLmd,
+      unit: '龙门币'
+    },
+    {
+      key: 'lmdCost',
+      icon: publicAsset('/product/lmd.png'),
+      daily: -summary.lmdConsumed,
+      unit: '龙门币'
+    },
+    {
+      key: 'orirockCost',
+      icon: publicAsset('/depot/固源岩.webp'),
+      daily: -summary.orirockConsumed,
+      unit: '个'
+    },
+    {
+      key: 'deviceCost',
+      icon: publicAsset('/depot/装置.webp'),
+      daily: -summary.deviceConsumed,
+      unit: '个'
+    },
+    {
+      key: 'fragment',
+      icon: publicAsset('/product/orirock.png'),
+      daily: summary.fragments,
+      unit: '个'
+    },
+    {
+      key: 'orundum',
+      icon: publicAsset('/product/orundum.png'),
+      daily: summary.orundum,
+      unit: '个'
+    },
+    { key: 'recycle', icon: recycleTemplate, daily: summary.recycleCount, unit: '次' },
+    { key: 'recruitment', icon: officeTemplate, daily: summary.recruitmentCount, unit: '次' },
+    { key: 'clue', icon: receptionTemplate, daily: summary.clueCount, unit: '个' }
+  ]
+    .filter(
+      (row) =>
+        Math.abs(row.daily ?? 0) > 1e-8 ||
+        (parts && row.key === 'clue' && part('exchange')?.quantity > 0) ||
+        (values && Math.abs(values[row.key] ?? 0) > 0)
+    )
+    .map((row) => ({
+      ...row,
+      daily: row.daily ?? 0,
+      total: (row.daily ?? 0) * days,
+      ...(values
+        ? {
+            sanityValue: values[row.key],
+            sanityPartial:
+              row.key === 'lmd'
+                ? [priced(summary.orderLmd, 'lmd'), priced(-goldUsed, 'gold')].includes(null)
+                : row.key === 'orundum'
+                  ? [savedValue('orundum'), priced(-fragmentUsed, 'fragment')].includes(null)
+                  : row.key === 'clue'
+                    ? [savedValue('clue'), savedValue('exchange')].includes(null)
+                    : values[row.key] === null
+          }
+        : {})
+    }))
+  if (values) {
+    // Allocate displayed cents so independently rounded badges still match the saved total.
+    const cents = (value) =>
+      Math.round(
+        Number(value.toLocaleString('en-US', { useGrouping: false, maximumFractionDigits: 2 })) *
+          100
+      )
+    const pricedRows = rows.filter((row) => Number.isFinite(row.sanityValue))
+    for (const row of pricedRows) row.sanityDisplayValue = cents(row.sanityValue) / 100
+    const difference =
+      cents(summary.sanity.total) -
+      pricedRows.reduce((total, row) => total + cents(row.sanityDisplayValue), 0)
+    const direction = Math.sign(difference)
+    const candidates = pricedRows
+      .filter((row) => row.sanityValue !== 0)
+      .sort(
+        (a, b) =>
+          direction *
+          (b.sanityValue - b.sanityDisplayValue - (a.sanityValue - a.sanityDisplayValue))
+      )
+    for (let index = 0; index < Math.abs(difference) && index < candidates.length; index++) {
+      const row = candidates[index]
+      row.sanityDisplayValue = (cents(row.sanityDisplayValue) + direction) / 100
+    }
+  }
+  return rows
+}

@@ -1,0 +1,21 @@
+{
+  "title": "AI Assistant Tool Instructions",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-AI-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.agent.agent._build_ai_intro",
+    "arknights_mower.agent.tools.call_db.call_db_tool_def",
+    "arknights_mower.agent.tools.mastery_plan.list_plans_tool_def",
+    "arknights_mower.agent.tools.submit_issue.submit_issue_tool_def"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/ai_prompt_contract_tests.py"
+  ]
+}

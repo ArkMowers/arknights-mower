@@ -1,4 +1,10 @@
 <script setup>
+defineOptions({ name: 'RecruitSettings' })
+defineProps({
+  showEnable: { type: Boolean, default: true },
+  showInterval: { type: Boolean, default: true }
+})
+
 import { useConfigStore } from '@/stores/config'
 const store = useConfigStore()
 import { storeToRefs } from 'pinia'
@@ -6,6 +12,7 @@ const {
   recruit_enable,
   recruitment_permit,
   recruit_robot,
+  recruit_auto_robot,
   recruit_gap,
   recruit_auto_5,
   recruit_auto_only5
@@ -17,8 +24,8 @@ const mobile = inject('mobile')
 
 <template>
   <n-card>
-    <template #header>
-      <n-checkbox v-model:checked="recruit_enable">
+    <template v-if="showEnable" #header>
+      <n-checkbox v-model:checked="recruit_enable" aria-label="启用公开招募">
         <div class="card-title">公开招募</div>
       </n-checkbox>
     </template>
@@ -28,23 +35,23 @@ const mobile = inject('mobile')
       label-width="140"
       label-align="left"
     >
-      <n-form-item>
+      <n-form-item v-if="showInterval">
         <template #label>
           <span>启动间隔</span>
           <help-text>可填小数</help-text>
         </template>
-        <n-input-number v-model:value="recruit_gap">
+        <mower-input-number v-model:value="recruit_gap">
           <template #suffix>小时</template>
-        </n-input-number>
+        </mower-input-number>
       </n-form-item>
       <n-form-item>
         <template #label>
           <span>三星招募阈值</span>
           <help-text>剩余公招券大于此阈值时招募三星干员</help-text>
         </template>
-        <n-input-number v-model:value="recruitment_permit">
+        <mower-input-number v-model:value="recruitment_permit">
           <template #suffix>张</template>
-        </n-input-number>
+        </mower-input-number>
       </n-form-item>
       <n-form-item label="五星招募策略">
         <n-radio-group v-model:value="recruit_auto_5">
@@ -56,6 +63,12 @@ const mobile = inject('mobile')
       </n-form-item>
       <n-form-item v-if="recruit_auto_5 === 2" :show-label="false">
         <n-checkbox v-model:checked="recruit_auto_only5">五星词条组合唯一时自动选择</n-checkbox>
+      </n-form-item>
+      <n-form-item :show-label="false">
+        <n-checkbox v-model:checked="recruit_auto_robot">自动招募未满潜支援机械</n-checkbox>
+        <help-text>
+          需要森空岛干员及库存缓存。当前词条最高仅三星，且组合内所有一星候选的潜能、对应信物及本轮已启动招募合计仍不足满潜时，自动招募3小时50分，不受三星招募阈值及保留支援机械标签的限制。跨轮次未同步的结果仍可能影响判断。
+        </help-text>
       </n-form-item>
       <n-form-item :show-label="false">
         <n-checkbox v-model:checked="recruit_robot">保留支援机械标签</n-checkbox>

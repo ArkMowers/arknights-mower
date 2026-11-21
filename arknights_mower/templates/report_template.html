@@ -1,21 +1,4 @@
-<!doctype html>
-<html lang="zh-CN">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
-    <title>基建报告</title>
-    <style>
-      table,
-      th,
-      td {
-        border: 1px solid black;
-        border-collapse: collapse;
-      }
-    </style>
-  </head>
-
-  <body>
-    <table>
+    <table border="1" cellpadding="6" cellspacing="0" style="width: 100%; border-collapse: collapse;">
       <tr>
         <td>赤金</td>
         <td>{{ report_data['赤金'] }}</td>
@@ -44,5 +27,3 @@
       </tr>
       {% endif %} {% endfor %}
     </table>
-  </body>
-</html>

@@ -1,0 +1,83 @@
+[
+  {
+    "path": ".agents/skills/mower-pr/evals/fixtures/governance-source.diff",
+    "kind": "historical-quotation",
+    "label": "Preserved evaluation input from committed writing rules or original diff; not current recommendations.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/fa0ad4014a5226fc30c9adffb0e0369164e3a664/.agents/skills/mower-pr/evals/fixtures/governance-source.diff",
+    "start_line": 1,
+    "end_line": 270,
+    "sha256": "42b46e3b596950b6ae23f0e7022cea5b353366f7944e8a260d22ef84d22de137"
+  },
+  {
+    "path": ".agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "kind": "historical-quotation",
+    "label": "Preserved evaluation input from committed writing rules or original diff; not current recommendations.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/fa0ad4014a5226fc30c9adffb0e0369164e3a664/.agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "start_line": 8,
+    "end_line": 41,
+    "sha256": "392096b5b94ac201962ec7b04e31b6dfa6811a3eb2c2265f06f165a05df07a29"
+  },
+  {
+    "path": ".agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "kind": "historical-quotation",
+    "label": "Preserved evaluation input from committed writing rules or original diff; not current recommendations.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/fa0ad4014a5226fc30c9adffb0e0369164e3a664/.agents/skills/mower-pr/evals/fixtures/pr-update-original-rules.md",
+    "start_line": 47,
+    "end_line": 63,
+    "sha256": "2afd2ba38a7274c074b516719fbc85dcb4481735bd17c06454d039197db553ac"
+  },
+  {
+    "path": ".agents/skills/mower-commit/evals/fixtures/yituliu-oauth-and-upload-deduplication.md",
+    "kind": "historical-quotation",
+    "label": "Preserved line from an original commit diff used for offline writing evaluation; not a current recommendation.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/a32ce1a3c12d0d8da178215d31e7c79ab9b5d15e/.agents/notes/implemented/simplification/2026-10-10-local-growth-sync-deduplication.zh.md",
+    "start_line": 80,
+    "end_line": 80,
+    "sha256": "abf0c66413c6bf529cd8e5b519e350ef358e0c2c4f8749c3f3b6b9ebf4b4dd0c"
+  },
+  {
+    "path": ".agents/skills/mower-commit/evals/fixtures/yituliu-oauth-and-upload-deduplication.md",
+    "kind": "historical-quotation",
+    "label": "Preserved line from an original commit diff used for offline writing evaluation; not a current recommendation.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/a32ce1a3c12d0d8da178215d31e7c79ab9b5d15e/.agents/notes/implemented/simplification/2026-10-11-yituliu-oauth-upload.zh.md",
+    "start_line": 151,
+    "end_line": 151,
+    "sha256": "bda5b63754061602a5b89162dc4331049229b16381ca8288b9493e2e319bc801"
+  },
+  {
+    "path": ".agents/skills/mower-commit/evals/fixtures/yituliu-oauth-and-upload-deduplication.md",
+    "kind": "historical-quotation",
+    "label": "Preserved line from an original commit diff used for offline writing evaluation; not a current recommendation.",
+    "source": "https://github.com/ArkMowers/arknights-mower/blob/a32ce1a3c12d0d8da178215d31e7c79ab9b5d15e/.agents/notes/implemented/simplification/2026-10-11-yituliu-oauth-upload.zh.md",
+    "start_line": 155,
+    "end_line": 155,
+    "sha256": "e59abe94f41b7bf405eee3fe1ae6d19d0a22a173589995d16ed9a61a2869e28d"
+  },
+  {
+    "path": "arknights_mower/data/key_mapping.json",
+    "kind": "historical-quotation",
+    "label": "Preserved game item name from the published resource package and original game item table; not project development terminology.",
+    "source": "https://github.com/Kengxxiao/ArknightsGameData/blob/63c7cec73c3858d0ae913f85cc89af3cef4d744f/zh_CN/gamedata/excel/item_table.json",
+    "start_line": 341,
+    "end_line": 341,
+    "sha256": "910c6c1ec6fcfeee7573bc0ca647fa0b8360f2a93ab5153726e6b6507cb1d0f8"
+  },
+  {
+    "path": "arknights_mower/data/key_mapping.json",
+    "kind": "historical-quotation",
+    "label": "Preserved game item name from the published resource package and original game item table; not project development terminology.",
+    "source": "https://github.com/Kengxxiao/ArknightsGameData/blob/63c7cec73c3858d0ae913f85cc89af3cef4d744f/zh_CN/gamedata/excel/item_table.json",
+    "start_line": 345,
+    "end_line": 345,
+    "sha256": "3c7b7d66dedd6e9259ecc0e50ccd1f40e975d28b086853c2abd2ca9acd5373bd"
+  },
+  {
+    "path": "arknights_mower/data/key_mapping.json",
+    "kind": "historical-quotation",
+    "label": "Preserved game item name from the published resource package and original game item table; not project development terminology.",
+    "source": "https://github.com/Kengxxiao/ArknightsGameData/blob/63c7cec73c3858d0ae913f85cc89af3cef4d744f/zh_CN/gamedata/excel/item_table.json",
+    "start_line": 348,
+    "end_line": 348,
+    "sha256": "910c6c1ec6fcfeee7573bc0ca647fa0b8360f2a93ab5153726e6b6507cb1d0f8"
+  }
+]

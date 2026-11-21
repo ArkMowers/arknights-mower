@@ -1,0 +1,1445 @@
+[
+  {
+    "id": "single-槐琥",
+    "title": "槐琥",
+    "facility": "通用",
+    "core": [
+      "槐琥"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "其他同站干员提供至少40%可复制生产力时达到40%；不计按设施数量提供的加成",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "槐琥"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-至简",
+    "title": "至简",
+    "facility": "通用",
+    "core": [
+      "至简"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "精二技能的固定配置参考；二电按宿舍等级选择，三电按40%参考",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "至简"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-玛露西尔",
+    "title": "玛露西尔",
+    "facility": "通用",
+    "core": [
+      "玛露西尔"
+    ],
+    "support": [
+      "森西"
+    ],
+    "accessory": [],
+    "note": "森西入住宿舍；加成按森西所在宿舍等级计算",
+    "memberNotes": {},
+    "placements": {
+      "森西": "宿舍"
+    },
+    "recommended": [
+      "玛露西尔",
+      "森西"
+    ],
+    "kind": "single",
+    "supportTitle": "宿舍支援"
+  },
+  {
+    "id": "single-机械师",
+    "title": "机械师",
+    "facility": "经验",
+    "core": [
+      "机械师"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "默认三人制造站、每小时0.65心情消耗，计算用尽平均",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "机械师"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-酒神",
+    "title": "酒神",
+    "facility": "经验",
+    "core": [
+      "酒神"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "酒神"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-断罪者",
+    "title": "断罪者",
+    "facility": "经验",
+    "core": [
+      "断罪者"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "断罪者"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-食铁兽",
+    "title": "食铁兽",
+    "facility": "经验",
+    "core": [
+      "食铁兽"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "食铁兽"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-弑君者",
+    "title": "弑君者",
+    "facility": "经验",
+    "core": [
+      "弑君者"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "弑君者"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-裂响",
+    "title": "裂响",
+    "facility": "经验",
+    "core": [
+      "裂响"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "裂响"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-阿罗玛",
+    "title": "阿罗玛",
+    "facility": "金属",
+    "core": [
+      "阿罗玛"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "默认三人制造站、自身额外消耗0.25心情，每小时合计0.9，计算用尽平均",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "阿罗玛"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-引星棘刺",
+    "title": "引星棘刺",
+    "facility": "金属",
+    "core": [
+      "引星棘刺"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "引星棘刺"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-砾",
+    "title": "砾",
+    "facility": "金属",
+    "core": [
+      "砾"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "砾"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-褐果",
+    "title": "褐果",
+    "facility": "源石",
+    "core": [
+      "褐果"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "褐果"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-炎熔",
+    "title": "炎熔",
+    "facility": "源石",
+    "core": [
+      "炎熔"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "炎熔"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-地灵",
+    "title": "地灵",
+    "facility": "源石",
+    "core": [
+      "地灵"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "地灵"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-艾雅法拉",
+    "title": "艾雅法拉",
+    "facility": "源石",
+    "core": [
+      "艾雅法拉"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "艾雅法拉"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-谬因",
+    "title": "谬因",
+    "facility": "源石",
+    "kind": "single",
+    "core": [
+      "谬因"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "谬因"
+    ]
+  },
+  {
+    "id": "single-锡兰",
+    "title": "锡兰",
+    "facility": "源石",
+    "core": [
+      "锡兰"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "锡兰"
+    ],
+    "kind": "single"
+  },
+  {
+    "id": "single-吉星",
+    "title": "吉星",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "吉星"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "三级贸易站",
+    "recommended": [
+      "吉星"
+    ]
+  },
+  {
+    "id": "single-冻河",
+    "title": "冻河",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "冻河"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "三级贸易站",
+    "recommended": [
+      "冻河"
+    ]
+  },
+  {
+    "id": "single-孑",
+    "title": "孑",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "孑"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "精零、三级贸易站，按空单估算",
+    "recommended": [
+      "孑"
+    ]
+  },
+  {
+    "id": "single-深巡",
+    "title": "深巡",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "深巡"
+    ],
+    "support": [],
+    "accessory": [
+      "乌尔比安"
+    ],
+    "memberNotes": {},
+    "note": "乌尔比安作为挂件",
+    "recommended": [
+      "深巡",
+      "乌尔比安"
+    ]
+  },
+  {
+    "id": "single-伺夜",
+    "title": "伺夜",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "伺夜"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "三级会客室；每低一级减少5%",
+    "recommended": [
+      "伺夜"
+    ]
+  },
+  {
+    "id": "single-贝洛内",
+    "title": "贝洛内",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "贝洛内"
+    ],
+    "support": [],
+    "accessory": [
+      "伺夜"
+    ],
+    "memberNotes": {},
+    "note": "伺夜在基建内",
+    "recommended": [
+      "贝洛内",
+      "伺夜"
+    ]
+  },
+  {
+    "id": "single-风絮",
+    "title": "风絮",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "风絮"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "5名岁干员分别位于不同设施",
+    "recommended": [
+      "风絮"
+    ]
+  },
+  {
+    "id": "single-空弦",
+    "title": "空弦",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "空弦"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "宿舍总等级20",
+    "recommended": [
+      "空弦"
+    ]
+  },
+  {
+    "id": "single-赫德雷",
+    "title": "赫德雷",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "赫德雷"
+    ],
+    "support": [],
+    "accessory": [
+      "伊内丝",
+      "W"
+    ],
+    "memberNotes": {},
+    "note": "伊内丝、W处于会客室、加工站或训练室等工作设施，分别提供5%",
+    "recommended": [
+      "赫德雷",
+      "伊内丝",
+      "W"
+    ]
+  },
+  {
+    "id": "single-石英",
+    "title": "石英",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "石英"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "制造站使用的不同配方种类影响效率",
+    "recommended": [
+      "石英"
+    ]
+  },
+  {
+    "id": "single-雷狼龙S空爆",
+    "title": "雷狼龙S空爆",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "雷狼龙S空爆"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "雷狼龙S空爆"
+    ]
+  },
+  {
+    "id": "single-雪雉",
+    "title": "雪雉",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "雪雉"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "其他同站干员提供至少35%可复制订单效率时达到35%",
+    "recommended": [
+      "雪雉"
+    ]
+  },
+  {
+    "id": "single-能天使",
+    "title": "能天使",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "能天使"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "能天使"
+    ]
+  },
+  {
+    "id": "single-海蒂",
+    "title": "海蒂",
+    "facility": "贸易",
+    "kind": "single",
+    "core": [
+      "海蒂"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "海蒂"
+    ]
+  },
+  {
+    "id": "single-承曦格雷伊",
+    "title": "承曦格雷伊",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "承曦格雷伊"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "无人机上限250时达到25%",
+    "recommended": [
+      "承曦格雷伊"
+    ]
+  },
+  {
+    "id": "single-缪尔赛思",
+    "title": "缪尔赛思",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "缪尔赛思"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "除自身外5名有心情的莱茵生命干员在基建内；挂件不可0心情",
+    "recommended": [
+      "缪尔赛思"
+    ]
+  },
+  {
+    "id": "single-烛煌",
+    "title": "烛煌",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "烛煌"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "烛煌"
+    ]
+  },
+  {
+    "id": "single-格雷伊",
+    "title": "格雷伊",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "格雷伊"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "格雷伊"
+    ]
+  },
+  {
+    "id": "single-炎狱炎熔",
+    "title": "炎狱炎熔",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "炎狱炎熔"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "炎狱炎熔"
+    ]
+  },
+  {
+    "id": "single-天空盒",
+    "title": "天空盒",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "天空盒"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "天空盒"
+    ]
+  },
+  {
+    "id": "single-雷蛇",
+    "title": "雷蛇",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "雷蛇"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "雷蛇"
+    ]
+  },
+  {
+    "id": "single-时隙",
+    "title": "时隙",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "时隙"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "时隙"
+    ]
+  },
+  {
+    "id": "single-海霓",
+    "title": "海霓",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "海霓"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "海霓"
+    ]
+  },
+  {
+    "id": "single-澄闪",
+    "title": "澄闪",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "澄闪"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "",
+    "recommended": [
+      "澄闪"
+    ]
+  },
+  {
+    "id": "single-空构",
+    "title": "空构",
+    "facility": "发电",
+    "kind": "single",
+    "core": [
+      "空构"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "note": "按中枢5人、每小时0.45心情消耗计算用尽平均；自身减耗0.3",
+    "recommended": [
+      "空构"
+    ]
+  },
+  {
+    "id": "single-八幡海铃-中枢",
+    "title": "八幡海铃",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "八幡海铃"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "办公联络速度+10%，同类效果取最高",
+    "recommended": [
+      "八幡海铃"
+    ],
+    "effect": "办公支援"
+  },
+  {
+    "id": "single-焰狐龙梓兰-中枢",
+    "title": "焰狐龙梓兰",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "焰狐龙梓兰"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "办公联络速度+10%，同类效果取最高",
+    "recommended": [
+      "焰狐龙梓兰"
+    ],
+    "effect": "办公支援"
+  },
+  {
+    "id": "single-Mon3tr-中枢",
+    "title": "Mon3tr",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "Mon3tr"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "所有制造站每站+2%；中枢全员心情每小时恢复+0.05",
+    "recommended": [
+      "Mon3tr"
+    ],
+    "effect": "制造支援"
+  },
+  {
+    "id": "single-凯尔希-中枢",
+    "title": "凯尔希",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "凯尔希"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "所有制造站每站+2%，同类效果取最高",
+    "recommended": [
+      "凯尔希"
+    ],
+    "effect": "制造支援"
+  },
+  {
+    "id": "single-结城理-中枢",
+    "title": "结城理",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "结城理"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "所有制造站每站+2%，同类效果取最高",
+    "recommended": [
+      "结城理"
+    ],
+    "effect": "制造支援"
+  },
+  {
+    "id": "single-布丁-中枢",
+    "title": "布丁",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "布丁"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "至少2台有心情的作业平台在发电站工作；0心情作业平台不计",
+    "recommended": [
+      "布丁"
+    ],
+    "effect": "制造支援"
+  },
+  {
+    "id": "single-阿米娅-中枢",
+    "title": "阿米娅",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "阿米娅"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "所有贸易站每站+7%，同类效果取最高",
+    "recommended": [
+      "阿米娅"
+    ],
+    "effect": "贸易支援"
+  },
+  {
+    "id": "single-明椒-中枢",
+    "title": "明椒",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "明椒"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "所有贸易站每站+7%，同类效果取最高",
+    "recommended": [
+      "明椒"
+    ],
+    "effect": "贸易支援"
+  },
+  {
+    "id": "single-阿斯卡纶-中枢",
+    "title": "阿斯卡纶",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "阿斯卡纶"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "所有贸易站每站+7%；训练室进行专精时训练速度+5%",
+    "recommended": [
+      "阿斯卡纶"
+    ],
+    "effect": "贸易支援"
+  },
+  {
+    "id": "single-望-中枢",
+    "title": "望",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "望"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "按贸易站、发电站及制造站数量选择加成；技能增加的发电站数也计入",
+    "recommended": [
+      "望"
+    ],
+    "effect": "制造 / 贸易切换"
+  },
+  {
+    "id": "single-老鲤-中枢",
+    "title": "老鲤",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "老鲤"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "会客室线索搜集速度+25%，同类效果取最高",
+    "recommended": [
+      "老鲤"
+    ],
+    "effect": "会客支援"
+  },
+  {
+    "id": "single-魔王-中枢",
+    "title": "魔王",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "魔王"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "会客室线索搜集速度+15%，同类效果取最高",
+    "recommended": [
+      "魔王"
+    ],
+    "effect": "会客支援"
+  },
+  {
+    "id": "single-摆渡人-中枢",
+    "title": "摆渡人",
+    "facility": "中枢",
+    "kind": "single",
+    "core": [
+      "摆渡人"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "米诺斯人数包含自身；4名米诺斯挂件达到上限。与萨尔贡干员同驻时自身额外消耗0.02心情",
+    "recommended": [
+      "摆渡人"
+    ],
+    "effect": "会客支援"
+  },
+  {
+    "id": "single-斥罪-办公",
+    "title": "斥罪",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "斥罪"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "心情每小时消耗+0.5",
+    "recommended": [
+      "斥罪"
+    ]
+  },
+  {
+    "id": "single-凯尔希·思衡托-办公",
+    "title": "凯尔希·思衡托",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "凯尔希·思衡托"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "按精英干员所在的不同设施计数；允许0心情成员",
+    "recommended": [
+      "凯尔希·思衡托"
+    ]
+  },
+  {
+    "id": "single-艾雅法拉-办公",
+    "title": "艾雅法拉",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "艾雅法拉"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "",
+    "recommended": [
+      "艾雅法拉"
+    ]
+  },
+  {
+    "id": "single-遥-办公",
+    "title": "遥",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "遥"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "",
+    "recommended": [
+      "遥"
+    ]
+  },
+  {
+    "id": "single-珊比-办公",
+    "title": "珊比",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "珊比"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "",
+    "recommended": [
+      "珊比"
+    ]
+  },
+  {
+    "id": "single-地灵-办公",
+    "title": "地灵",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "地灵"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "心情每小时消耗+2",
+    "recommended": [
+      "地灵"
+    ]
+  },
+  {
+    "id": "single-普罗旺斯-办公",
+    "title": "普罗旺斯",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "普罗旺斯"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "",
+    "recommended": [
+      "普罗旺斯"
+    ]
+  },
+  {
+    "id": "single-水灯心-办公",
+    "title": "水灯心",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "水灯心"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "心情每小时消耗+1",
+    "recommended": [
+      "水灯心"
+    ]
+  },
+  {
+    "id": "single-圣聆初雪-办公",
+    "title": "圣聆初雪",
+    "facility": "办公",
+    "kind": "single",
+    "core": [
+      "圣聆初雪"
+    ],
+    "support": [],
+    "accessory": [
+      "凛御银灰"
+    ],
+    "memberNotes": {},
+    "placements": {
+      "凛御银灰": "中枢"
+    },
+    "note": "凛御银灰在中枢时额外+10%；自身心情每小时消耗-0.25",
+    "recommended": [
+      "圣聆初雪",
+      "凛御银灰"
+    ]
+  },
+  {
+    "id": "single-跃跃-会客",
+    "title": "跃跃",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "跃跃"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "线索交流期间；按精二四星折算",
+    "recommended": [
+      "跃跃"
+    ]
+  },
+  {
+    "id": "single-克莱门莎-会客",
+    "title": "克莱门莎",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "克莱门莎"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "同室另有一名有心情干员时达到35%；自身心情额外消耗合计2",
+    "recommended": [
+      "克莱门莎"
+    ]
+  },
+  {
+    "id": "single-见行者-会客",
+    "title": "见行者",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "见行者"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "精二五星折算为34%；自身心情额外消耗2",
+    "recommended": [
+      "见行者"
+    ]
+  },
+  {
+    "id": "single-信仰搅拌机-会客",
+    "title": "信仰搅拌机",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "信仰搅拌机"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [
+      "菲亚梅塔"
+    ],
+    "memberNotes": {},
+    "placements": {
+      "菲亚梅塔": "宿舍"
+    },
+    "note": "菲亚梅塔在宿舍时额外+10%",
+    "recommended": [
+      "信仰搅拌机",
+      "菲亚梅塔"
+    ]
+  },
+  {
+    "id": "single-伊内丝-会客",
+    "title": "伊内丝",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "伊内丝"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "按每小时0.75心情消耗计算用尽暖机平均",
+    "recommended": [
+      "伊内丝"
+    ]
+  },
+  {
+    "id": "single-赤刃明霄陈-会客",
+    "title": "赤刃明霄陈",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "赤刃明霄陈"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "按人间烟火计加成；90点时达到29%",
+    "recommended": [
+      "赤刃明霄陈"
+    ]
+  },
+  {
+    "id": "single-莱欧斯-会客",
+    "title": "莱欧斯",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "莱欧斯"
+    ],
+    "support": [
+      "森西"
+    ],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {
+      "森西": "宿舍"
+    },
+    "note": "森西在5级宿舍时达到29%；按精二五星折算",
+    "recommended": [
+      "莱欧斯",
+      "森西"
+    ]
+  },
+  {
+    "id": "single-响石-会客",
+    "title": "响石",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "响石"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "仅线索交流期间；按精二五星折算",
+    "recommended": [
+      "响石"
+    ]
+  },
+  {
+    "id": "single-陈-会客",
+    "title": "陈",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "陈"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "",
+    "recommended": [
+      "陈"
+    ]
+  },
+  {
+    "id": "single-伺夜-会客",
+    "title": "伺夜",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "伺夜"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "",
+    "recommended": [
+      "伺夜"
+    ]
+  },
+  {
+    "id": "single-红-会客",
+    "title": "红",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "红"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "按精二五星折算",
+    "recommended": [
+      "红"
+    ]
+  },
+  {
+    "id": "single-星极-会客",
+    "title": "星极",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "星极"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "按精二五星折算",
+    "recommended": [
+      "星极"
+    ]
+  },
+  {
+    "id": "single-虎狼丸-会客",
+    "title": "虎狼丸",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "虎狼丸"
+    ],
+    "support": [],
+    "supportTitle": "宿舍支援",
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "仅线索交流期间；一星且无法精英化，折算为9%",
+    "recommended": [
+      "虎狼丸"
+    ]
+  },
+  {
+    "id": "single-国度-回收",
+    "title": "国度",
+    "facility": "回收",
+    "kind": "single",
+    "core": [
+      "国度"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "精二材料转化效率30%；自身心情消耗−0.1/小时",
+    "recommended": [
+      "国度"
+    ]
+  },
+  {
+    "id": "single-行铃-回收",
+    "title": "行铃",
+    "facility": "回收",
+    "kind": "single",
+    "core": [
+      "行铃"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "精二材料转化效率30%",
+    "recommended": [
+      "行铃"
+    ]
+  },
+  {
+    "id": "single-旅骨-回收",
+    "title": "旅骨",
+    "facility": "回收",
+    "kind": "single",
+    "core": [
+      "旅骨"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "精二材料转化效率30%",
+    "recommended": [
+      "旅骨"
+    ]
+  },
+  {
+    "id": "single-予愿安洁莉娜-会客",
+    "title": "予愿安洁莉娜",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "予愿安洁莉娜"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "搭配1名0心情挂件，效率按两人平均折半；挂件按精二六星基准。",
+    "recommended": [
+      "予愿安洁莉娜"
+    ]
+  },
+  {
+    "id": "single-风丸-会客",
+    "title": "风丸",
+    "facility": "会客",
+    "kind": "single",
+    "core": [
+      "风丸"
+    ],
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "placements": {},
+    "note": "搭配1名0心情挂件，效率按两人平均折半；挂件按精二六星基准。",
+    "recommended": [
+      "风丸"
+    ]
+  }
+]

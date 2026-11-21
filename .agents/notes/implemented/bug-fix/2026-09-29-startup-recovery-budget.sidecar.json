@@ -1,0 +1,21 @@
+{
+  "title": "Startup Recovery Budget Ownership",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-DEV-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.session.DeviceSession",
+    "arknights_mower.utils.device.application.DeviceControl"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_session_tests.py",
+    "arknights_mower/tests/device_preparation_lifecycle_tests.py"
+  ]
+}

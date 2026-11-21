@@ -1,0 +1,14 @@
+{
+  "title": "Update Test Clock Isolation",
+  "status": "implemented",
+  "category": "testing",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [],
+  "code_symbols": [],
+  "test_suites": [
+    "arknights_mower/tests/update_compat_tests.py"
+  ]
+}

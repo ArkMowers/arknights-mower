@@ -1,0 +1,25 @@
+{
+  "title": "Intelligent Rescue Admission and Dispatch",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]",
+    "[INV-SCHED-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.resting_correction.suppress_completed_dorm_returns",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_schedule_staffing",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_restore",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange",
+    "arknights_mower.utils.dorm_candidates.dorm_task_reservations"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/custom_mood_limits_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/emergency_compensation_tests.py"
+  ]
+}

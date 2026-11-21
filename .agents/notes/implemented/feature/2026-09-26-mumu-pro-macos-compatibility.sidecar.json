@@ -1,0 +1,20 @@
+{
+  "title": "macOS MuMu Pro Compatibility Entry & Evidence Matrix",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-09-26",
+  "authors": [
+    "Antigravity"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.discovery.mumu_pro"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_mumu_pro_tests.py"
+  ]
+}

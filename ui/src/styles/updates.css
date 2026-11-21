@@ -1,0 +1,233 @@
+.update-card {
+  container: update-card / inline-size;
+}
+
+.update-card .update-overview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px 24px;
+}
+
+.update-installed {
+  display: flex;
+  flex: 1 1 180px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.update-version {
+  max-width: 100%;
+  font-size: 23px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+}
+
+.update-version,
+.update-version-value {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.update-caption,
+.update-footnote {
+  color: var(--mower-text-muted);
+  font-size: 12px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.update-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-height: 24px;
+  margin-top: 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.update-card .update-preferences {
+  margin-top: 18px;
+  border-top: 1px solid var(--settings-card-border);
+}
+
+.settings-page .update-card .update-preferences > .n-form-item:has(> .n-form-item-label) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: 'label blank' 'feedback feedback';
+  column-gap: 24px;
+  align-items: center;
+  padding: 14px 0;
+}
+
+.settings-page .update-card .update-preferences > .n-form-item > .n-form-item-blank {
+  width: auto;
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+.settings-page .update-card .update-preferences > .update-channel > .n-form-item-blank {
+  width: 160px;
+}
+
+.settings-page .update-card .update-preferences .n-form-item-label {
+  min-height: 0;
+  padding: 0;
+}
+
+.update-card .update-footnote {
+  margin: 0 0 18px;
+}
+
+.update-card .update-details {
+  margin-top: 16px;
+}
+
+.update-card .update-details > .n-collapse-item,
+.update-card > .n-card-content > .n-collapse > .n-collapse-item {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.update-card .n-collapse-item__content-inner {
+  padding-bottom: 8px;
+}
+
+.update-manual {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+.update-manual > .n-upload,
+.update-manual > .n-progress {
+  width: 100%;
+}
+
+.update-card p {
+  margin: 8px 0;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.update-card .update-progress {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--mower-control-surface);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.update-progress p {
+  margin: 0;
+}
+
+.update-card .n-alert {
+  margin-top: 14px;
+}
+
+.update-rollback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.update-rollback > .n-select {
+  flex: 1 1 180px;
+  width: auto;
+  min-width: 0;
+}
+
+.update-notes {
+  max-height: 240px;
+  margin: 12px 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+@container update-card (max-width: 400px) {
+  .update-card .update-overview {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .update-installed {
+    flex-basis: auto;
+  }
+
+  .settings-page .update-card .update-preferences > .update-channel:has(> .n-form-item-label) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: 'label' 'blank' 'feedback';
+    row-gap: 10px;
+  }
+
+  .settings-page .update-card .update-preferences > .update-channel > .n-form-item-blank {
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .settings-page
+    .update-card
+    .update-preferences
+    > .update-channel
+    > .n-form-item-blank
+    > .n-select {
+    width: 100%;
+  }
+}
+
+.update-preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 18px;
+}
+
+.update-preview-notes {
+  padding: 16px;
+  border-radius: 10px;
+  background: var(--mower-control-surface);
+}
+
+.update-preview .update-notes {
+  max-height: min(32dvh, 280px);
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.update-restart-hint {
+  margin: 16px 0 0;
+}
+
+.update-dialog-error {
+  margin: 12px 0 0;
+  color: var(--mower-error);
+}

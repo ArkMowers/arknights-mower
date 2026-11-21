@@ -1,0 +1,19 @@
+{
+  "title": "MuMu 12 Runtime Layout Manager Resolution",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "DeepSeek"
+  ],
+  "invariants": [],
+  "code_symbols": [
+    "arknights_mower.utils.device.mumu_layout.installation_root",
+    "arknights_mower.utils.device.mumu_discovery.MuMuDiscoveryIO._manager_candidate",
+    "arknights_mower.utils.device.mumu12ipc.paths.resolve_mumu_paths"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_mumu_io_tests.py",
+    "arknights_mower/tests/device_mumu_capture_tests.py"
+  ]
+}

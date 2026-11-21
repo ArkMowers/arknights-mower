@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.19
 FROM python:3.12-slim AS base
 ENV DEBIAN_FRONTEND=noninteractive
 ENV LANG=C.UTF-8
@@ -11,11 +12,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # 构建 webui
-FROM node:20-bookworm-slim AS ui-builder
+FROM node:24-bookworm-slim AS ui-builder
 WORKDIR /app/ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci
 COPY ui/ .
+COPY CHANGELOG.md /app/
+COPY scripts/build_mood_runtime.mjs /app/scripts/
+COPY arknights_mower/data/ /app/arknights_mower/data/
+COPY arknights_mower/resources/room/ /app/arknights_mower/resources/room/
 RUN npm run build
 
 # 构建 Python 虚拟环境
@@ -30,23 +35,29 @@ RUN apt-get update && apt-get install -y --no-install-recommends build-essential
 WORKDIR /app
 COPY requirements.txt requirements.in ./
 COPY docker/gen_server_requirements.py ./gen_server_requirements.py
-RUN python gen_server_requirements.py requirements.txt requirements-server.txt \
+COPY scripts/prune_opencv.py ./scripts/prune_opencv.py
+RUN python gen_server_requirements.py requirements.in requirements-server.txt \
     && uv venv /opt/venv --python /usr/local/bin/python3.12 \
     && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile setuptools wheel \
-    && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile --no-deps -r requirements-server.txt \
+    && uv pip install --python /opt/venv/bin/python --no-cache-dir --no-compile -r requirements-server.txt -c requirements.txt \
+    && uv pip check --python /opt/venv/bin/python \
+    && /opt/venv/bin/python scripts/prune_opencv.py \
     && find /opt/venv -type d -name '__pycache__' -prune -exec rm -rf {} + \
     && find /opt/venv -type f \( -name '*.pyc' -o -name '*.pyo' \) -delete \
-    && find /opt/venv -type f -name '*.so' -exec strip --strip-unneeded {} + || true
+    && (find /opt/venv -type f -name '*.so' -exec strip --strip-unneeded {} + || true)
 
 # 构建运行时镜像
 FROM base AS runtime
 ENV PATH="/opt/venv/bin:${PATH}"
 WORKDIR /app
 
-COPY --from=python-deps /opt/venv /opt/venv
+COPY --from=python-deps \
+    --exclude=**/rapidocr/models/PP-OCRv6_det_small.onnx \
+    --exclude=**/rapidocr/models/PP-OCRv6_rec_small.onnx \
+    /opt/venv /opt/venv
 COPY --from=ui-builder /app/ui/dist ui/dist
 
-COPY arknights_mower ./arknights_mower
+COPY --exclude=**/tests --exclude=**/__pycache__ arknights_mower ./arknights_mower
 COPY server.py webview_ui.py manager.py ./
 COPY requirements.txt requirements.in ./
 COPY docker/entrypoint.sh /usr/local/bin/mower-entrypoint.sh
@@ -54,5 +65,6 @@ COPY docker/entrypoint.sh /usr/local/bin/mower-entrypoint.sh
 RUN chmod +x /usr/local/bin/mower-entrypoint.sh
 
 HEALTHCHECK --interval=10s --timeout=3s --retries=12 \
-    CMD curl -fs "http://127.0.0.1:${MOWER_PORT:-58000}/status" || exit 1
+    CMD http_status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 2 "http://127.0.0.1:${MOWER_PORT:-58000}/status") \
+    && { [ "$http_status" = 200 ] || [ "$http_status" = 403 ]; } || exit 1
 ENTRYPOINT ["mower-entrypoint.sh"]

@@ -1,0 +1,77 @@
+{
+  "elite-elite_0.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E7%B2%BE%E8%8B%B1_0.png",
+    "url": "https://media.prts.wiki/8/8b/%E7%B2%BE%E8%8B%B1_0.png",
+    "sha256": "548b85981e000b844dbf084e1e19844b82514a45108d7c9652b1d494ccd93f72"
+  },
+  "elite-elite_1.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E7%B2%BE%E8%8B%B1_1.png",
+    "url": "https://media.prts.wiki/f/fd/%E7%B2%BE%E8%8B%B1_1.png",
+    "sha256": "7eeca4dc93ee85431b7e34445422c53d82ea77609bcfc38b956fe75169ec91b3"
+  },
+  "elite-elite_2.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E7%B2%BE%E8%8B%B1_2.png",
+    "url": "https://media.prts.wiki/6/66/%E7%B2%BE%E8%8B%B1_2.png",
+    "sha256": "e197bb2f6b7ffba43122d9fcd354fd31a16dab73659149e5fe98d0c60599fe15"
+  },
+  "mastery-0.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E4%B8%93%E7%B2%BE_0.png",
+    "url": "https://media.prts.wiki/5/55/%E4%B8%93%E7%B2%BE_0.png",
+    "sha256": "9bd1b1ee15c98b3ea802a698470144dec426c5de2b7af2f3a8086fb5d0a67bea"
+  },
+  "mastery-1.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E4%B8%93%E7%B2%BE_1.png",
+    "url": "https://media.prts.wiki/5/57/%E4%B8%93%E7%B2%BE_1.png",
+    "sha256": "f5d4469780b2a5e2bb98bd3d3dea5dd5147e3d6b97fb3c5a4a8d9fc5e14f56b0"
+  },
+  "mastery-2.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E4%B8%93%E7%B2%BE_2.png",
+    "url": "https://media.prts.wiki/c/c2/%E4%B8%93%E7%B2%BE_2.png",
+    "sha256": "2c5153cc7c5b700ffd063d902c73f332936b64fdc6099dead64ef837aef7b3d4"
+  },
+  "mastery-3.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E4%B8%93%E7%B2%BE_3.png",
+    "url": "https://media.prts.wiki/4/48/%E4%B8%93%E7%B2%BE_3.png",
+    "sha256": "4fbf7c75cc887261bf345c38a35adcea3171150cb57ccbe741bb5f61a3a7a691"
+  },
+  "profession-caster.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E6%9C%AF%E5%B8%88_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/4/4d/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E6%9C%AF%E5%B8%88_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "5c4dc2f6f8e0564a44a83c15c885482c54dc328107fd6ea2c56645bfaa9b05e4"
+  },
+  "profession-medic.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E5%8C%BB%E7%96%97_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/b/b8/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E5%8C%BB%E7%96%97_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "98e70addd92d9929bff84bed0769cb32a1c83f87796fd675f5b70cc491d43162"
+  },
+  "profession-pioneer.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E5%85%88%E9%94%8B_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/8/82/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E5%85%88%E9%94%8B_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "88faf71a29758546c304631dc7ba08ccc085c5aac6cfa79ae3a31aad415a7d9a"
+  },
+  "profession-sniper.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E7%8B%99%E5%87%BB_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/d/d1/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E7%8B%99%E5%87%BB_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "a005001da7d8b096733d2b6877d32aade1eb9dd39c8412e96ae5d970553553d6"
+  },
+  "profession-special.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E7%89%B9%E7%A7%8D_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/2/2a/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E7%89%B9%E7%A7%8D_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "297830a9610b64eddd52df5f19063cf1c816ef3947b0871bdf01a9ca73486f65"
+  },
+  "profession-support.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E8%BE%85%E5%8A%A9_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/f/f0/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E8%BE%85%E5%8A%A9_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "3c3693164f7c9004d47ecdd72d61fdb9a62f609db8301870dd53bc9e55bfb21f"
+  },
+  "profession-tank.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E9%87%8D%E8%A3%85_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/6/6f/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E9%87%8D%E8%A3%85_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "06f188272229390acd5a040c1c124f6fc7bb6150b92701ea828ab701d5c56f1c"
+  },
+  "profession-warrior.png": {
+    "page": "https://prts.wiki/w/%E6%96%87%E4%BB%B6%3A%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E8%BF%91%E5%8D%AB_%E5%A4%A7%E5%9B%BE.png",
+    "url": "https://media.prts.wiki/a/a9/%E5%9B%BE%E6%A0%87_%E8%81%8C%E4%B8%9A_%E8%BF%91%E5%8D%AB_%E5%A4%A7%E5%9B%BE.png",
+    "sha256": "2c94c9f373b877cf4146abf0d38167642ab55ab73bd9685714135cf2a0be4c7c"
+  }
+}

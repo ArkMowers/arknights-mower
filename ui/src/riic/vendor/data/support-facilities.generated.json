@@ -1,0 +1,557 @@
+{
+  "sourceCommit": "17759cc8cdf37388414145d16262a3a06f3ab25e",
+  "sourceVersion": "Stream://torappu-data/v078/rel78.0\nChange:124981 on 2026/10/08\nVersionControl:78.0.0",
+  "buildingSha256": "b98657bc691224a01d3cd044bf68698e9664e7f26c5d24ae104352be7954049b",
+  "recycle": {
+    "phases": [
+      {
+        "level": 1,
+        "capacity": 5,
+        "operatorCapacity": 1,
+        "electricity": 0,
+        "baseSpeed": 1
+      },
+      {
+        "level": 2,
+        "capacity": 10,
+        "operatorCapacity": 2,
+        "electricity": 0,
+        "baseSpeed": 1
+      },
+      {
+        "level": 3,
+        "capacity": 10,
+        "operatorCapacity": 2,
+        "electricity": 0,
+        "baseSpeed": 1.2
+      }
+    ],
+    "staffedSpeed": 0.01,
+    "recycleTimeRequirement": 172800,
+    "recycleBaseCapacity": 5,
+    "recycleBoostSpeed": 0.5,
+    "recycleBoostLimit": 345600,
+    "recycleBoostLimitProtect": 691200,
+    "recycleSpeedUpUnlockLevel": 3,
+    "recycleTwoPersonUnlockLevel": 2,
+    "inputItems": [
+      {
+        "itemId": "30013",
+        "addedTime": 7200,
+        "name": "固源岩组"
+      },
+      {
+        "itemId": "30023",
+        "addedTime": 9000,
+        "name": "糖组"
+      },
+      {
+        "itemId": "30033",
+        "addedTime": 9000,
+        "name": "聚酸酯组"
+      },
+      {
+        "itemId": "30043",
+        "addedTime": 10800,
+        "name": "异铁组"
+      },
+      {
+        "itemId": "30053",
+        "addedTime": 10800,
+        "name": "酮凝集组"
+      },
+      {
+        "itemId": "30063",
+        "addedTime": 16200,
+        "name": "全新装置"
+      },
+      {
+        "itemId": "30073",
+        "addedTime": 9000,
+        "name": "扭转醇"
+      },
+      {
+        "itemId": "30083",
+        "addedTime": 10800,
+        "name": "轻锰矿"
+      },
+      {
+        "itemId": "30093",
+        "addedTime": 12600,
+        "name": "研磨石"
+      },
+      {
+        "itemId": "30103",
+        "addedTime": 16200,
+        "name": "RMA70-12"
+      },
+      {
+        "itemId": "31013",
+        "addedTime": 12600,
+        "name": "凝胶"
+      },
+      {
+        "itemId": "31023",
+        "addedTime": 10800,
+        "name": "炽合金"
+      },
+      {
+        "itemId": "31033",
+        "addedTime": 10800,
+        "name": "晶体元件"
+      },
+      {
+        "itemId": "31043",
+        "addedTime": 12600,
+        "name": "半自然溶剂"
+      },
+      {
+        "itemId": "31053",
+        "addedTime": 12600,
+        "name": "化合切削液"
+      },
+      {
+        "itemId": "31063",
+        "addedTime": 14400,
+        "name": "转质盐组"
+      },
+      {
+        "itemId": "31073",
+        "addedTime": 14400,
+        "name": "褐素纤维"
+      },
+      {
+        "itemId": "31083",
+        "addedTime": 16200,
+        "name": "环烃聚质"
+      },
+      {
+        "itemId": "31093",
+        "addedTime": 12600,
+        "name": "类凝结核"
+      },
+      {
+        "itemId": "31103",
+        "addedTime": 16200,
+        "name": "液化高能气体"
+      },
+      {
+        "itemId": "31113",
+        "addedTime": 16200,
+        "name": "电极单元"
+      }
+    ]
+  },
+  "workshop": {
+    "formulas": [
+      {
+        "formulaId": "1",
+        "itemId": "3131",
+        "name": "基础加固建材",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "2",
+        "itemId": "3132",
+        "name": "进阶加固建材",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "3",
+        "itemId": "3133",
+        "name": "高级加固建材",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "4",
+        "itemId": "3113",
+        "name": "碳素",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "5",
+        "itemId": "3114",
+        "name": "碳素组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "6",
+        "itemId": "3401",
+        "name": "家具零件",
+        "baseByproductRate": 0.05
+      },
+      {
+        "formulaId": "7",
+        "itemId": "3401",
+        "name": "家具零件",
+        "baseByproductRate": 0.05
+      },
+      {
+        "formulaId": "8",
+        "itemId": "3401",
+        "name": "家具零件",
+        "baseByproductRate": 0.05
+      },
+      {
+        "formulaId": "9",
+        "itemId": "3401",
+        "name": "家具零件",
+        "baseByproductRate": 0.05
+      },
+      {
+        "formulaId": "10",
+        "itemId": "3401",
+        "name": "家具零件",
+        "baseByproductRate": 0.05
+      },
+      {
+        "formulaId": "11",
+        "itemId": "3401",
+        "name": "家具零件",
+        "baseByproductRate": 0.05
+      },
+      {
+        "formulaId": "12",
+        "itemId": "30135",
+        "name": "D32钢",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "13",
+        "itemId": "30125",
+        "name": "双极纳米片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "14",
+        "itemId": "30115",
+        "name": "聚合剂",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "15",
+        "itemId": "30104",
+        "name": "RMA70-24",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "16",
+        "itemId": "30094",
+        "name": "五水研磨石",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "17",
+        "itemId": "30084",
+        "name": "三水锰矿",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "18",
+        "itemId": "30074",
+        "name": "白马醇",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "19",
+        "itemId": "30062",
+        "name": "装置",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "20",
+        "itemId": "30063",
+        "name": "全新装置",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "21",
+        "itemId": "30064",
+        "name": "改量装置",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "22",
+        "itemId": "30052",
+        "name": "酮凝集",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "23",
+        "itemId": "30053",
+        "name": "酮凝集组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "24",
+        "itemId": "30054",
+        "name": "酮阵列",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "25",
+        "itemId": "30042",
+        "name": "异铁",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "26",
+        "itemId": "30043",
+        "name": "异铁组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "27",
+        "itemId": "30044",
+        "name": "异铁块",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "28",
+        "itemId": "30032",
+        "name": "聚酸酯",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "29",
+        "itemId": "30033",
+        "name": "聚酸酯组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "30",
+        "itemId": "30034",
+        "name": "聚酸酯块",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "31",
+        "itemId": "30022",
+        "name": "糖",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "32",
+        "itemId": "30023",
+        "name": "糖组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "33",
+        "itemId": "30024",
+        "name": "糖聚块",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "34",
+        "itemId": "30012",
+        "name": "固源岩",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "35",
+        "itemId": "30013",
+        "name": "固源岩组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "36",
+        "itemId": "30014",
+        "name": "提纯源岩",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "37",
+        "itemId": "3302",
+        "name": "技巧概要·卷2",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "38",
+        "itemId": "3303",
+        "name": "技巧概要·卷3",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "39",
+        "itemId": "3231",
+        "name": "重装芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "40",
+        "itemId": "3261",
+        "name": "医疗芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "41",
+        "itemId": "3241",
+        "name": "狙击芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "42",
+        "itemId": "3251",
+        "name": "术师芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "43",
+        "itemId": "3211",
+        "name": "先锋芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "44",
+        "itemId": "3271",
+        "name": "辅助芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "45",
+        "itemId": "3221",
+        "name": "近卫芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "46",
+        "itemId": "3281",
+        "name": "特种芯片",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "47",
+        "itemId": "3232",
+        "name": "重装芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "48",
+        "itemId": "3262",
+        "name": "医疗芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "49",
+        "itemId": "3242",
+        "name": "狙击芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "50",
+        "itemId": "3252",
+        "name": "术师芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "51",
+        "itemId": "3212",
+        "name": "先锋芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "52",
+        "itemId": "3272",
+        "name": "辅助芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "53",
+        "itemId": "3222",
+        "name": "近卫芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "54",
+        "itemId": "3282",
+        "name": "特种芯片组",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "55",
+        "itemId": "31024",
+        "name": "炽合金块",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "56",
+        "itemId": "31014",
+        "name": "聚合凝胶",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "57",
+        "itemId": "30145",
+        "name": "晶体电子单元",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "58",
+        "itemId": "31034",
+        "name": "晶体电路",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "59",
+        "itemId": "31044",
+        "name": "精炼溶剂",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "60",
+        "itemId": "31054",
+        "name": "切削原液",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "61",
+        "itemId": "31064",
+        "name": "转质盐聚块",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "62",
+        "itemId": "30155",
+        "name": "烧结核凝晶",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "63",
+        "itemId": "31074",
+        "name": "固化纤维板",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "64",
+        "itemId": "31084",
+        "name": "环烃预制体",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "65",
+        "itemId": "31094",
+        "name": "手性屈光体",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "66",
+        "itemId": "30165",
+        "name": "重相位对映体",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "67",
+        "itemId": "31104",
+        "name": "液化醚吸聚体",
+        "baseByproductRate": 0.1
+      },
+      {
+        "formulaId": "68",
+        "itemId": "31114",
+        "name": "聚能动力单元",
+        "baseByproductRate": 0.1
+      }
+    ]
+  }
+}

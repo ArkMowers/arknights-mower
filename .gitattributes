@@ -1,0 +1,6 @@
+arknights_mower/data/mood/runtime.js text eol=lf
+arknights_mower/data/mood/source.json text eol=lf
+arknights_mower/data/mood/THIRD_PARTY_MOWER_LICENSE text eol=lf
+arknights_mower/data/riic/operators.json text eol=lf
+arknights_mower/data/garrisonfarm/*/garrison_farm.py -text whitespace=cr-at-eol
+arknights_mower/data/garrisonfarm/*/tiles.json -text whitespace=cr-at-eol

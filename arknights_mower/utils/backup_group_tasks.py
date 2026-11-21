@@ -1,0 +1,232 @@
+"""副表按绑组请求换班，并按执行方式约束上下班。"""
+
+from datetime import datetime
+
+
+def validate_group_task_names(global_plan):
+    """Reject unresolved group references when validating executable schedules."""
+    plans = [global_plan["default_plan"], *global_plan["backup_plans"]]
+    known = {
+        binding["group"]
+        for plan in plans
+        for slots in plan.plan.values()
+        for slot in slots
+        for binding in slot.bindings
+        if binding["group"]
+    }
+    for backup in plans[1:]:
+        for task in backup.group_tasks:
+            if task["group"] not in known:
+                raise ValueError(
+                    f"副表 {backup.name} 的绑组任务组名不存在：{task['group']}"
+                )
+
+
+def active_group_tasks(data):
+    result = {}
+    for index, (active, backup) in enumerate(
+        zip(getattr(data, "plan_condition", ()), getattr(data, "backup_plans", ()))
+    ):
+        if not active:
+            continue
+        for task in getattr(backup, "group_tasks", ()):
+            result[(index, task["group"], task["action"], task.get("mode", "once"))] = (
+                task
+            )
+    directions = {}
+    for task in result.values():
+        group, action = task["group"], task["action"]
+        if group in directions and directions[group] != action:
+            raise ValueError(f"生效副表对同一绑组安排了相反的上下班任务：{group}")
+        directions[group] = action
+    return result
+
+
+def held_rest_groups(data, *, forced_only=False):
+    return {
+        task["group"]
+        for task in active_group_tasks(data).values()
+        if task["action"] == "off"
+        and task.get("mode")
+        in (("forced",) if forced_only else ("while_active", "forced"))
+    }
+
+
+def forced_work_groups(data):
+    return {
+        task["group"]
+        for task in active_group_tasks(data).values()
+        if task["action"] == "on" and task.get("mode") == "forced"
+    }
+
+
+def forced_work_return(data, name):
+    """强制上班仅免除本组恢复要求，共享成员仍遵守其他在休绑组。"""
+    op = data.operators.get(name)
+    groups = forced_work_groups(data)
+    return bool(
+        op is not None
+        and not op.room.startswith("dorm")
+        and any(name in data.shift_group_members(group) for group in groups)
+        and (not op.multi_group or not set(data.resting_binding_groups(op)) - groups)
+    )
+
+
+def validate_group_tasks(data):
+    for task in active_group_tasks(data).values():
+        if not any(
+            data.is_group_shift_anchor(data.operators[name], task["group"])
+            for name in data.shift_group_members(task["group"])
+        ):
+            raise ValueError(f"绑组任务找不到工作主班：{task['group']}")
+
+
+def forced_group_cover_reservations(data):
+    groups = {
+        group
+        for group in held_rest_groups(data, forced_only=True)
+        if data.group_is_resting(group)
+    }
+    names, slots = set(), set()
+    for group in groups:
+        for name in data.shift_group_members(group):
+            owner = data.operators[name]
+            cover = data.get_current_operator(owner.room, owner.index)
+            if cover is not None and cover.name != name:
+                names.add(cover.name)
+                slots.add((owner.room, owner.index))
+    return names, slots
+
+
+def sync_group_tasks(solver, *, now=None):
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+    from arknights_mower.utils.urgent_recovery import urgent_support_blocked
+
+    data = solver.op_data
+    if getattr(solver, "_emergency_frozen", lambda: False)() or getattr(
+        solver, "_coordination_projection", False
+    ):
+        return
+    active = active_group_tasks(data)
+    working = forced_work_groups(data)
+    solver.tasks[:] = [
+        task
+        for task in solver.tasks
+        if not (
+            task.type == TaskTypes.EXHAUST_OFF
+            and not task.plan
+            and not task.retains_execution
+            and not getattr(task, "backup_group_request", None)
+            and not getattr(task, "mood_physical_started", False)
+            and any(
+                data.operators[name].group in working
+                for name in task.meta_data.split(",")
+                if name in data.operators
+            )
+        )
+    ]
+    state = getattr(solver, "backup_group_task_issued", set())
+    solver.backup_group_task_issued = state = set(state).intersection(active)
+    queues = [solver.tasks, getattr(solver, "waiting_group_shifts", [])]
+    for queue in queues:
+        queue[:] = [
+            task
+            for task in queue
+            if not (request := getattr(task, "backup_group_request", None))
+            or tuple(request) in active
+            or getattr(task, "mood_physical_started", False)
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "group_shift_expected", {})
+        ]
+    for token in active:
+        group, action, mode = token[1:]
+        members = data.shift_group_members(group)
+        anchors = [
+            name
+            for name in members
+            if data.is_group_shift_anchor(data.operators[name], group)
+        ]
+        if not anchors:
+            raise ValueError(f"绑组任务找不到工作主班：{group}")
+        if mode == "once" and token in state:
+            continue
+        if any(
+            tuple(getattr(task, "backup_group_request", ()))[1:3] == token[1:3]
+            for queue in queues
+            for task in queue
+        ):
+            continue
+        if data.group_is_resting(group) == (action == "off"):
+            state.add(token)
+            continue
+        if action == "off" and urgent_support_blocked(data, members, solver.tasks):
+            continue
+        task = SchedulerTask(
+            time=now or datetime.now(),
+            task_plan={},
+            task_type=TaskTypes.EXHAUST_OFF if action == "off" else TaskTypes.SHIFT_ON,
+            meta_data=anchors[0],
+        )
+        task.backup_group_request = token
+        if action == "on":
+            task.meta_data = ""
+            for name in members:
+                op = data.operators[name]
+                if op.room in data.plan:
+                    task.plan.setdefault(
+                        op.room, ["Current"] * len(data.plan[op.room])
+                    )[op.index] = name
+        solver.tasks.append(task)
+        state.add(token)
+
+
+def filter_held_returns(data, tasks):
+    """只裁剪未开始的派生回班；协调回班及已开始的交接保持原责任。"""
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    held = held_rest_groups(data)
+    if not held:
+        return
+    for task in tasks[:]:
+        if (
+            task.type != TaskTypes.SHIFT_ON
+            or task.retains_execution
+            or getattr(task, "backup_group_request", None)
+            or getattr(task, "exhaust_support", False)
+            or getattr(task, "backup_shift_active", False)
+            or getattr(task, "mood_physical_started", False)
+            or getattr(task, "product_shift_locked", False)
+            or getattr(task, "dorm_recovery_restore", ())
+        ):
+            continue
+        blocked = {
+            group
+            for group, resting in data.arrangement_group_transitions(task.plan).items()
+            if not resting and group in held
+        }
+        members = {
+            name for group in blocked for name in data.shift_group_members(group)
+        }
+        if not members:
+            continue
+        for room, row in list(task.plan.items()):
+            for index, name in enumerate(row):
+                resident = data.get_current_operator(room, index)
+                if (
+                    name in members
+                    or room.startswith("dorm")
+                    and resident
+                    and resident.name in members
+                ):
+                    row[index] = "Current"
+            if all(name == "Current" for name in row):
+                del task.plan[room]
+        if not task.plan:
+            tasks.remove(task)
+        else:
+            for field in (
+                "backup_shift_intent",
+                "backup_shift_conditions",
+                "group_shift_transitions",
+            ):
+                task.__dict__.pop(field, None)

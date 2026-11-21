@@ -1,0 +1,14 @@
+{
+  "title": "Reuse Manual ADB Gate for MuMu Pro",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-30",
+  "authors": ["Codex"],
+  "invariants": ["[INV-03]", "[INV-DEV-10]"],
+  "code_symbols": [
+    "arknights_mower.utils.device.preflight.PreflightService.check",
+    "arknights_mower.utils.device.session.DeviceSession.observe",
+    "arknights_mower.utils.device.session_io.ProductionSimulator.inspect"
+  ],
+  "test_suites": ["arknights_mower/tests/device_mumu_pro_tests.py"]
+}

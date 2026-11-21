@@ -1,0 +1,45 @@
+[
+  {
+    "activity": "时间啊，向前！",
+    "activity_id": "act55side",
+    "start_ts": 1793487600,
+    "end_ts": 1795291199,
+    "reward_end_ts": 1795895999,
+    "entry_names": [
+      "世纪之春",
+      "残照终尽",
+      "长冬初青"
+    ],
+    "chapters": {
+      "normal": "残照终尽",
+      "ex": "长冬初青",
+      "s": "世纪之春"
+    },
+    "token_ids": [
+      "act55side_token_record"
+    ]
+  },
+  {
+    "activity": "雪山降临1101",
+    "activity_id": "act46sre",
+    "start_ts": 1795291200,
+    "end_ts": 1796155199,
+    "reward_end_ts": 1796500799,
+    "entry_names": [
+      "变革之路",
+      "喀兰之心",
+      "圣巡之旅"
+    ],
+    "chapters": {
+      "normal": "圣巡之旅",
+      "ex": "变革之路",
+      "s": "喀兰之心"
+    },
+    "token_ids": [
+      "act46side_token_detector_rep_1"
+    ],
+    "token_icon_ids": [
+      "act46side_token_detector"
+    ]
+  }
+]

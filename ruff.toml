@@ -27,6 +27,7 @@ exclude = [
     "site-packages",
     "venv",
     "ArknightsGameResource",
+    "arknights_mower/data/garrisonfarm/*/garrison_farm.py",
 ]
 
 # Same as Black.

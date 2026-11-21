@@ -1,0 +1,20 @@
+{
+  "title": "Single Backup Validation Path",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-16]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.validate_backup_plans",
+    "arknights_mower.utils.backup_validation.possible_backup_conditions"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/backup_validation_tests.py",
+    "arknights_mower/tests/backup_condition_coverage_tests.py"
+  ]
+}

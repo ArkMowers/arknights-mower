@@ -1,0 +1,130 @@
+[
+  {
+    "text": "G",
+    "x": 35,
+    "y": 26,
+    "width": 78,
+    "height": 75,
+    "score": 0.8672
+  },
+  {
+    "text": "3/3 确定自选编队",
+    "x": 822,
+    "y": 32,
+    "width": 330,
+    "height": 65,
+    "score": 0.96394
+  },
+  {
+    "text": "极速模拟",
+    "x": 191,
+    "y": 46,
+    "width": 141,
+    "height": 44,
+    "score": 0.99996
+  },
+  {
+    "text": "本局信息",
+    "x": 388,
+    "y": 48,
+    "width": 118,
+    "height": 40,
+    "score": 0.99998
+  },
+  {
+    "text": "IIIII",
+    "x": 1797,
+    "y": 66,
+    "width": 38,
+    "height": 57,
+    "score": 0.57116
+  },
+  {
+    "text": "COUNTDOWN",
+    "x": 1690,
+    "y": 109,
+    "width": 93,
+    "height": 21,
+    "score": 0.98816
+  },
+  {
+    "text": "67ms",
+    "x": 38,
+    "y": 120,
+    "width": 72,
+    "height": 33,
+    "score": 0.99965
+  },
+  {
+    "text": "8",
+    "x": 38,
+    "y": 207,
+    "width": 88,
+    "height": 53,
+    "score": 0.8987
+  },
+  {
+    "text": "STRT EHCLD FROTOCOL",
+    "x": 128,
+    "y": 211,
+    "width": 159,
+    "height": 23,
+    "score": 0.80275
+  },
+  {
+    "text": "COLLABORATIUE SYSTEY",
+    "x": 128,
+    "y": 232,
+    "width": 117,
+    "height": 17,
+    "score": 0.84965
+  },
+  {
+    "text": "/2",
+    "x": 1831,
+    "y": 333,
+    "width": 50,
+    "height": 43,
+    "score": 0.86796
+  },
+  {
+    "text": "尚不存在5阶自选编队",
+    "x": 1108,
+    "y": 404,
+    "width": 290,
+    "height": 37,
+    "score": 0.98867
+  },
+  {
+    "text": "0/2",
+    "x": 1808,
+    "y": 716,
+    "width": 72,
+    "height": 43,
+    "score": 0.92045
+  },
+  {
+    "text": "尚不存在6阶自选编队",
+    "x": 1108,
+    "y": 787,
+    "width": 290,
+    "height": 37,
+    "score": 0.99618
+  },
+  {
+    "text": "*阵容不完整的盟约难以在模拟中激活",
+    "x": 583,
+    "y": 936,
+    "width": 471,
+    "height": 36,
+    "score": 0.99447
+  },
+  {
+    "text": "准备就绪",
+    "x": 1567,
+    "y": 957,
+    "width": 163,
+    "height": 51,
+    "score": 0.88337
+  }
+]

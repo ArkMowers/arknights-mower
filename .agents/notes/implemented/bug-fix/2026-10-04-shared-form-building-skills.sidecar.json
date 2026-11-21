@@ -1,0 +1,21 @@
+{
+  "title": "Shared Form Building Skills",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]",
+    "[INV-SCHED-15]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.building_skills.load_skill_snapshot",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_scan_workers"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/building_skills_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py"
+  ]
+}

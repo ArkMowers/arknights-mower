@@ -1,0 +1,26 @@
+{
+  "title": "Training protection before shift projection",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_backup",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._suppress_train_correction",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._suppress_train_arrangement"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/shift_training_projection_tests.py",
+    "arknights_mower/tests/shift_cycle_convergence_tests.py",
+    "arknights_mower/tests/shift_backup_convergence_tests.py",
+    "arknights_mower/tests/group_shift_training_protection_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/backup_relocation_state_tests.py"
+  ]
+}

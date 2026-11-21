@@ -2,16 +2,22 @@ import json
 import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 
 from arknights_mower.agent.tools.pick_activity_entry import pick_activity_entry
 from arknights_mower.utils import config
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.log import logger
 
-model_name_map = {
-    "deepseek-v4-flash": ["deepseek-v4-flash", "https://api.deepseek.com"],
-    "deepseek-v4-pro": ["deepseek-v4-pro", "https://api.deepseek.com"],
-}
+
+def _invoke_with_budget(api_key, messages):
+    from arknights_mower.agent.navigation_process import invoke_navigation_model
+
+    payload = [
+        {"role": "user" if msg.type == "human" else msg.type, "content": msg.content}
+        for msg in messages
+    ]
+    return invoke_navigation_model(api_key, payload)
 
 
 def _normalize_indices(indices, max_len):
@@ -43,24 +49,13 @@ def rank_activity_entries_with_agent(
     """
     if api_key is None:
         api_key = config.conf.resolved_ai_key
-    if not api_key or not api_key.strip():
+    if config.conf.ai_type != "custom-local" and (not api_key or not api_key.strip()):
         logger.info("rank_activity_entries_with_agent: missing api_key")
-        return []
-    if config.conf.ai_type not in model_name_map:
-        logger.info(
-            f"rank_activity_entries_with_agent: unsupported ai_type={config.conf.ai_type}"
-        )
         return []
 
     start = time.perf_counter()
     logger.info(
         f"rank_activity_entries_with_agent: start stage={target_stage} ocr_count={len(ocr_items or [])}"
-    )
-    llm = ChatOpenAI(
-        model=model_name_map[config.conf.ai_type][0],
-        base_url=model_name_map[config.conf.ai_type][1],
-        api_key=api_key,
-        temperature=0,
     )
     # 本地工具先给出一版稳定排序，作为 LLM 失败时兜底
     fallback_indices = []
@@ -74,7 +69,7 @@ def rank_activity_entries_with_agent(
         fallback_indices = _normalize_indices(
             [x.get("index") for x in tool_obj.get("ranked", [])], len(ocr_items or [])
         )
-        logger.info(
+        logger.debug(
             f"rank_activity_entries_with_agent: fallback indices={fallback_indices[:5]}"
         )
     except Exception as e:
@@ -108,13 +103,13 @@ def rank_activity_entries_with_agent(
     ]
     logger.info("rank_activity_entries_with_agent: invoke single-shot")
     try:
-        response = llm.invoke(messages)
+        response = _invoke_with_budget(api_key, messages)
         text = response.content if isinstance(response.content, str) else ""
         parsed = json.loads(text)
         indices = parsed.get("indices", [])
         parsed_indices = _normalize_indices(indices, len(ocr_items or []))
         if parsed_indices:
-            logger.info(
+            logger.debug(
                 f"rank_activity_entries_with_agent: parsed indices={parsed_indices[:5]}, elapsed={time.perf_counter() - start:.2f}s"
             )
             return parsed_indices
@@ -122,7 +117,12 @@ def rank_activity_entries_with_agent(
             f"rank_activity_entries_with_agent: empty indices, use fallback, elapsed={time.perf_counter() - start:.2f}s"
         )
         return fallback_indices
+    except (MowerExit, InterruptedError):
+        raise
     except Exception:
+        if config.stop_mower.is_set():
+            raise MowerExit
+        io_timeout(0)
         logger.info(
             f"rank_activity_entries_with_agent: response is not strict JSON, use fallback, elapsed={time.perf_counter() - start:.2f}s"
         )

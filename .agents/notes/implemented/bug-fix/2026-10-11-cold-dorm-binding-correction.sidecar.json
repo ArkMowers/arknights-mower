@@ -1,0 +1,19 @@
+{
+  "title": "Cold Dormitory Binding Correction",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-11",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]",
+    "[INV-SCHED-22]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.resting_correction.correct_group_dorms"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_group_restart_tests.py"
+  ]
+}
