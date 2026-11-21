@@ -17,6 +17,10 @@ WORKDIR /app/ui
 COPY ui/package.json ui/package-lock.json ./
 RUN npm ci
 COPY ui/ .
+COPY CHANGELOG.md /app/
+COPY scripts/build_mood_runtime.mjs /app/scripts/
+COPY arknights_mower/data/ /app/arknights_mower/data/
+COPY arknights_mower/resources/room/ /app/arknights_mower/resources/room/
 RUN npm run build
 
 # 构建 Python 虚拟环境
