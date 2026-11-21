@@ -2,40 +2,66 @@ name: Test Docker Build and Runtime
 
 on:
   workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Optional Git ref to build and compare image sizes
+        type: string
+        required: false
 
 jobs:
   build:
-    name: Build without Publish
-    runs-on: ubuntu-latest
+    name: Test Linux ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build image for testing
+      - name: Build and load the native image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/${{ matrix.arch }}
           push: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Load native image for runtime smoke test
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./docker/Dockerfile
-          platforms: linux/amd64
           load: true
           tags: mower:runtime-smoke
-          cache-from: type=gha
+          cache-from: type=gha,scope=mower-server-${{ matrix.arch }}
+          cache-to: type=gha,scope=mower-server-${{ matrix.arch }},mode=max
+
+      - name: Check packaged files and run Tiny OCR offline
+        shell: bash
+        run: |
+          docker run --rm -i --network none --entrypoint python \
+            --env PYTHONDONTWRITEBYTECODE=1 \
+            --mount "type=bind,src=$PWD/arknights_mower/tests/fixtures/mastery_panel_carnelian.png,dst=/fixture.png,readonly" \
+            mower:runtime-smoke - <<'PY'
+          from importlib.util import find_spec
+          from pathlib import Path
+
+          import cv2
+          from arknights_mower.utils.rapidocr import create_engine
+
+          assert not Path("/app/arknights_mower/tests").exists()
+          model_dir = Path(find_spec("rapidocr").origin).parent / "models"
+          for filename in ("PP-OCRv6_det_small.onnx", "PP-OCRv6_rec_small.onnx"):
+              assert not (model_dir / filename).exists(), filename
+          image = cv2.cvtColor(cv2.imread("/fixture.png"), cv2.COLOR_BGR2RGB)
+          rows, _ = create_engine(threads=2)(image)
+          assert rows and rows[0][1] == "[卡涅利安]沙缚镣锁", rows
+          assert len(rows[0][0]) == 4, rows[0][0]
+          PY
 
       - name: Start image and verify health endpoint
         shell: bash
@@ -81,3 +107,35 @@ jobs:
 
           echo "Container did not become healthy within 120 seconds" >&2
           exit 1
+
+      - name: Check out the comparison revision
+        if: inputs.baseline_ref != ''
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.baseline_ref }}
+          path: baseline
+
+      - name: Build the comparison image on the same runner
+        if: inputs.baseline_ref != ''
+        uses: docker/build-push-action@v5
+        with:
+          context: ./baseline
+          file: ./baseline/docker/Dockerfile
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          load: true
+          tags: mower:baseline
+
+      - name: Compare image sizes in bytes
+        if: inputs.baseline_ref != ''
+        shell: bash
+        run: |
+          {
+            echo '| Revision | Image size (bytes) | gzip -1 docker save (bytes) |'
+            echo '| --- | ---: | ---: |'
+            for tag in baseline runtime-smoke; do
+              image_bytes=$(docker image inspect --format '{{.Size}}' "mower:$tag")
+              gzip_bytes=$(docker image save "mower:$tag" | gzip -n -1 | wc -c)
+              printf '| %s | %s | %s |\n' "$tag" "$image_bytes" "$gzip_bytes"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
