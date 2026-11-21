@@ -361,6 +361,32 @@ class depotREC(SceneGraphSolver):
             return False
         return True
 
+    def _wait_for_depot_page(self, before: np.ndarray, deadline: float) -> np.ndarray:
+        if not self.wait_for_scene_stable(Scene.DEPOT):
+            raise _DepotScanIncomplete
+        if not self._category_selected(self._category_x):
+            raise _DepotScanIncomplete
+        deadline = min(deadline, monotonic() + 5)
+        held = self.recog.img
+        # 没有推进时，从抬手后的两张画面判断是否还停在原页。
+        previous = None if self._same_depot_view(before, held) else held
+        self.recog.update()
+        while monotonic() < deadline:
+            scene = self.scene()
+            if monotonic() >= deadline:
+                break
+            if scene in self.waiting_scene:
+                previous = None
+            elif scene == Scene.DEPOT and self._category_selected(self._category_x):
+                frame = self.recog.img
+                if previous is not None and self._same_depot_view(previous, frame):
+                    return frame.copy()
+                previous = frame
+            else:
+                raise _DepotScanIncomplete
+            self.sleep(min(0.2, max(0, deadline - monotonic())))
+        raise _DepotScanIncomplete
+
     def transition(self, report_progress=None) -> bool:
         self.结果字典 = {}
         self._seen_names = set()
@@ -567,13 +593,7 @@ class depotREC(SceneGraphSolver):
             if monotonic() >= deadline:
                 raise _DepotScanIncomplete
             self.swipe_noinertia(start, movement, retry=retry, capture=True)
-            if (
-                not self._wait_for_depot_ready()
-                or not self._category_selected(self._category_x)
-                or monotonic() >= deadline
-            ):
-                raise _DepotScanIncomplete
-            return self.recog.img.copy()
+            return self._wait_for_depot_page(frame, deadline)
 
         frame = self.recog.img
         offset = 0
