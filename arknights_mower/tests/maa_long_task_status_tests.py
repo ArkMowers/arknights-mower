@@ -47,6 +47,38 @@ def status(client, monkeypatch, tmp_path):
     return server, read
 
 
+def test_status_reads_all_six_tasks_with_one_connection_and_query(status, monkeypatch):
+    _, read = status
+    with record._conn():
+        pass
+    statements = []
+    connect = record.sqlite3.connect
+
+    def traced_connect(*args, **kwargs):
+        connection = connect(*args, **kwargs)
+        connection.set_trace_callback(statements.append)
+        return connection
+
+    counted = MagicMock(side_effect=traced_connect)
+    monkeypatch.setattr(record.sqlite3, "connect", counted)
+    result = read()
+
+    assert set(result) == {
+        "copilot",
+        "paradox",
+        "sss",
+        "blackflow",
+        "blackflow_boss",
+        "garrison",
+    }
+    assert all(not item["completed"] for item in result.values())
+    counted.assert_called_once()
+    assert (
+        len([sql for sql in statements if sql.lstrip().upper().startswith("SELECT")])
+        == 1
+    )
+
+
 @pytest.mark.parametrize(
     "kind", ["copilot", "paradox", "sss", "blackflow", "blackflow_boss"]
 )
@@ -101,6 +133,12 @@ def test_opening_and_boss_statuses_are_independent(status):
     )
     assert read()["blackflow"]["completed"] is True
     assert read()["blackflow_boss"]["completed"] is True
+    difficulty = settings.difficulty
+    settings.difficulty = difficulty + 1
+    changed = read()
+    assert not changed["blackflow"]["completed"]
+    assert not changed["blackflow_boss"]["completed"]
+    settings.difficulty = difficulty
     settings.blackflow_start_run_id = "new-opening"
     assert read()["blackflow"]["completed"] is False
     assert read()["blackflow_boss"]["completed"] is True
@@ -132,11 +170,10 @@ def test_partial_sss_repetitions_still_wait_for_execution(status):
     assert read()["sss"]["completed"] is False
 
 
-def test_status_read_failure_is_not_reported_as_pending(client, monkeypatch):
-    monkeypatch.setattr(
-        "arknights_mower.utils.maa_long_task.completion_status",
-        MagicMock(side_effect=OSError("offline test")),
-    )
+def test_status_read_failure_is_not_reported_as_pending(client, status):
+    with record._conn() as connection:
+        connection.execute("INSERT INTO maa_paradox_progress VALUES (1, 'invalid')")
+        connection.commit()
     response = client.get(
         "/maa-long-task-status", headers={"token": "copilot-test-token"}
     )

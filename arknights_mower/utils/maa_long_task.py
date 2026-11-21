@@ -62,30 +62,31 @@ def blackflow_start_run_key(conf):
 def completion_status(conf):
     from arknights_mower.solvers import record
 
+    saved = record.load_long_task_progress()
     result = {}
-    for kind, settings, load in (
-        ("copilot", conf.copilot, record.load_maa_copilot_progress),
-        ("paradox", conf.paradox, record.load_maa_paradox_progress),
-        ("sss", conf.sss, record.load_maa_sss_progress),
+    for kind, settings in (
+        ("copilot", conf.copilot),
+        ("paradox", conf.paradox),
+        ("sss", conf.sss),
     ):
-        progress = load()
+        progress = saved.get(kind, {})
         result[kind] = {
             "completed": bool(settings.scripts)
             and progress.get("key") == queue_key(settings)
             and progress.get("next") == len(settings.scripts)
             and not progress.get("failed", False)
         }
-    progress = record.load_maa_blackflow_progress()
+    progress = saved.get("blackflow", {})
     result["blackflow"] = {
         "completed": progress.get("key") == blackflow_start_run_key(conf.rogue)
         and progress.get("completed") is True
     }
-    progress = record.load_maa_blackflow_progress(boss=True)
+    progress = saved.get("blackflow_boss", {})
     result["blackflow_boss"] = {
         "completed": progress.get("key") == blackflow_boss_run_key(conf.rogue)
         and progress.get("completed") is True
     }
     from arknights_mower.solvers.garrison.model import status
 
-    result["garrison"] = status(conf, record.load_garrison_progress())
+    result["garrison"] = status(conf, saved.get("garrison", {}))
     return result
