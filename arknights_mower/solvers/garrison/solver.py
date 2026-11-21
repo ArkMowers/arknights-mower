@@ -29,7 +29,7 @@ class GarrisonNavigation(SceneGraphSolver):
     def transition(self):
         return True
 
-    def run(self, capture, click, wait):
+    def run(self, capture, click, wait, *, team_exit_pending=False):
         frame = capture()
         if frame.screen == "tutorial":
             raise GarrisonError("请先手动完成卫戍协议教程")
@@ -42,7 +42,12 @@ class GarrisonNavigation(SceneGraphSolver):
             click((1780, 1005))
             frame = wait(lambda f: f.screen == "terminal-garrison", 10)
         click(frame.find("^(?:模拟开放中|模拟中)$").center)
-        return wait(lambda f: f.screen == "lobby", MATCH_TRANSITION_SECONDS)
+        return wait(
+            lambda f: (
+                f.screen == "lobby" or (team_exit_pending and f.screen == "result")
+            ),
+            MATCH_TRANSITION_SECONDS,
+        )
 
 
 class GarrisonSolver:
@@ -90,12 +95,18 @@ class GarrisonSolver:
         while time.monotonic() < end:
             csleep(min(0.2, max(0, end - time.monotonic()), self.remaining()))
 
-    def capture(self):
+    def read_frame(self):
         self.remaining()
         self.recog.update()
         frame = self.vision.frame(self.recog.img.copy())
         self.remaining()
         self.last_frame = frame
+        return frame
+
+    def capture(self):
+        frame = self.read_frame()
+        if self.progress.get("team_exit_pending"):
+            return frame
         if frame.quick and frame.screen in {
             "mode",
             "info",
@@ -136,9 +147,14 @@ class GarrisonSolver:
         return self.wait(predicate, timeout, error=error)
 
     def wait(
-        self, predicate, timeout=8, *, error="操作后没有观察到预期画面，保留当前对局"
+        self,
+        predicate,
+        timeout=8,
+        *,
+        read=None,
+        error="操作后没有观察到预期画面，保留当前对局",
     ):
-        frame = self.wait_for_observation(self.capture, predicate, timeout)
+        frame = self.wait_for_observation(read or self.capture, predicate, timeout)
         if frame is None:
             raise GarrisonError(error)
         return frame
@@ -165,9 +181,48 @@ class GarrisonSolver:
         nav = GarrisonNavigation(self.device, self.recog)
         if frame.screen not in {"terminal-garrison", "unknown"}:
             nav.restart_game()
-        return nav.run(self.capture, self.click, self.wait)
+        return nav.run(
+            self.capture,
+            self.click,
+            self.wait,
+            team_exit_pending=self.progress.get("team_exit_pending", False),
+        )
+
+    def leave_terminated_team(self, frame):
+        def lobby_ready(f):
+            return f.screen == "lobby" and (
+                f.personal_simulation_selected()
+                or f.find("^搜寻队友$", (1150, 900, 1920, 1040))
+            )
+
+        def can_leave(f):
+            return lobby_ready(f) or (f.screen == "result" and f.find("^返回主页$"))
+
+        if not can_leave(frame) and not frame.terminated_team_reconnect():
+            frame = self.wait(
+                lambda f: can_leave(f) or f.terminated_team_reconnect(),
+                MATCH_TRANSITION_SECONDS,
+                read=self.read_frame,
+            )
+        if button := frame.terminated_team_reconnect():
+            self.progress["team_exit_pending"] = True
+            self.persist()
+            self.click(button.center)
+            frame = self.wait(can_leave, MATCH_TRANSITION_SECONDS, read=self.read_frame)
+        if frame.screen == "result":
+            self.text_click(frame, "^返回主页$")
+            frame = self.wait(
+                lobby_ready, MATCH_TRANSITION_SECONDS, read=self.read_frame
+            )
+        self.progress.pop("team_exit_pending")
+        self.persist()
+        return frame
 
     def prepare_theme(self, frame):
+        if frame.terminated_team_reconnect() or (
+            self.progress.get("team_exit_pending") and frame.screen != "theme"
+        ):
+            frame = self.leave_terminated_team(frame)
         panel = theme.open_equipped(self, frame)
         if theme.equipped(panel) != theme.DEFAULT_THEME:
             theme.apply(self, panel, theme.DEFAULT_THEME)
@@ -180,11 +235,15 @@ class GarrisonSolver:
         frame = self.capture()
         if frame.screen == "tutorial":
             raise GarrisonError("请先手动完成卫戍协议教程")
-        if frame.screen == "result":
+        if frame.screen != "result":
+            frame = self.theme_lobby(frame)
+        if frame.screen == "result" and not self.progress.get("team_exit_pending"):
             return frame
-        return self.prepare_theme(self.theme_lobby(frame))
+        return self.prepare_theme(frame)
 
     def start_or_resume(self, frame):
+        if self.progress.get("team_exit_pending"):
+            return self.leave_terminated_team(frame)
         reconnect = "断线重连|继续模拟|返回模拟|继续作战"
         controls = (1150, 900, 1920, 1040)
         visible = (0, 0, 1920, 1040)
@@ -194,6 +253,8 @@ class GarrisonSolver:
             if f.screen != "lobby":
                 return None
             if f.find(reconnect, visible):
+                if f.terminated_team_reconnect():
+                    return "terminated_team"
                 if f.find(reconnect, controls) and f.personal_simulation_selected():
                     return "resume"
                 return None
@@ -237,6 +298,8 @@ class GarrisonSolver:
                     error="复核后仍未确认大厅模式或对局入口，已保留对局",
                 )
                 action = lobby_action(frame)
+            if action == "terminated_team":
+                return self.leave_terminated_team(frame)
             if action == "switch":
                 self.text_click(frame, "^个人模拟$", personal)
                 frame = self.wait(

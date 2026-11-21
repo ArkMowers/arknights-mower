@@ -51,22 +51,39 @@ class Frame:
         )
 
     def personal_simulation_selected(self):
+        return self._simulation_selected("^个人模拟$", (1050, 730, 1810, 925), 1)
+
+    def terminated_team_reconnect(self):
+        button = self.find("^断线重连$", (1470, 975, 1920, 1050))
+        if (
+            button
+            and self.find("^已终止$", (1470, 900, 1920, 975))
+            and self._simulation_selected("^联合模拟$", (1590, 730, 1880, 925), -1)
+        ):
+            return button
+        return None
+
+    def _simulation_selected(self, pattern, region, neighbor_direction):
         if self.screen != "lobby":
             return False
-        label = self.find("^个人模拟$", (1050, 730, 1810, 925))
+        label = self.find(pattern, region)
         if label is None or label.width <= 0 or label.height <= 0:
             return False
-        # 两个标签一直可见。以文字框定位左侧选项及其右侧相邻选项的底色。
+        # 两个标签一直可见。比较目标文字框及相邻选项的底色。
         x, y, w, h = label.x, label.y, label.width, label.height
-        other_x = x + 2 * w
-        if other_x + w > self.image.shape[1] or y + h > self.image.shape[0]:
+        other_x = x + neighbor_direction * 2 * w
+        if (
+            other_x < 0
+            or other_x + w > self.image.shape[1]
+            or y + h > self.image.shape[0]
+        ):
             return False
-        personal = self.image[y : y + h, x : x + w]
+        selected = self.image[y : y + h, x : x + w]
         other = self.image[y : y + h, other_x : other_x + w]
-        # 选中的个人模拟为浅底深字。右侧也为浅色时，无法确认选中态。
+        # 选中项为浅底深字，相邻项为深底。
         return bool(
-            np.mean(personal.min(axis=2) >= 155) > 0.50
-            and np.mean(personal.max(axis=2) <= 100) > 0.05
+            np.mean(selected.min(axis=2) >= 155) > 0.50
+            and np.mean(selected.max(axis=2) <= 100) > 0.05
             and np.mean(other.max(axis=2) <= 100) > 0.50
         )
 
@@ -114,7 +131,9 @@ def classify(texts):
         return "prep", quick
     if has("开始模拟") and (quick or has("请选择模拟难度")):
         return "mode", quick
-    if has("个人模拟") and has("协议数据库|联合模拟|同盟模拟"):
+    if (has("个人模拟") and has("协议数据库|联合模拟|同盟模拟")) or (
+        has("^协议数据库$") and has("^联合模拟$")
+    ):
         return "lobby", quick
     if has("回合") and not has("[准淮]备就绪"):
         return "battle", quick
