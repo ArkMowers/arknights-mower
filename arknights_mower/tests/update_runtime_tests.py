@@ -808,6 +808,24 @@ class RuntimeRegistrationTests(unittest.TestCase):
         runtime.atexit.unregister(self.registration.close)
         self.addCleanup(self.registration.close)
 
+    def test_relay_heartbeat_clears_link_on_disconnect(self):
+        status = {
+            "state": "connected",
+            "message": "中转已连接",
+            "url": "https://trial.free.mower.work:58000",
+        }
+        self.registration.relay_status = status.copy
+        self.registration.publish()
+        self.assertEqual(
+            runtime.read_json(self.registration.path)["relay_subdomain"], "trial"
+        )
+        status.update(state="reconnecting", message="连接已断开，稍后重新连接", url="")
+        self.registration.publish()
+        record = runtime.read_json(self.registration.path)
+        self.assertEqual(record["relay_subdomain"], "")
+        self.assertEqual(record["relay_state"], "reconnecting")
+        self.assertEqual(record["relay_message"], status["message"])
+
     def test_automatic_shutdown_waits_for_current_idle_state(self):
         registration = self.registration
         idle = False

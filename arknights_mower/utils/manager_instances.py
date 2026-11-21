@@ -310,19 +310,26 @@ class InstanceController(ManagerTools):
                             and len(matches) == 1
                             and item["relay"]["enabled"]
                             and item["token"]
+                            and matches[0].get("token_hash")
+                            == hashlib.sha256(item["token"].encode()).hexdigest()
                         ):
                             peer = matches[0]
                             subdomain = peer.get("relay_subdomain")
-                            if (
-                                valid_subdomain(subdomain)
-                                and peer.get("token_hash")
-                                == hashlib.sha256(item["token"].encode()).hexdigest()
-                            ):
+                            if peer.get(
+                                "relay_state", "connected"
+                            ) == "connected" and valid_subdomain(subdomain):
                                 item["relay_url"] = (
                                     public_origin(subdomain)
                                     + "/#"
                                     + urlencode({"token": item["token"]})
                                 )
+                            elif peer.get("relay_state") in {
+                                "connecting",
+                                "reconnecting",
+                                "stopped",
+                                "error",
+                            }:
+                                item["relay_message"] = peer.get("relay_message", "")
                     self._start_settings(instance, records)
                     item["can_start"] = True
                 except (OSError, ValueError, yaml.YAMLError) as error:

@@ -250,6 +250,14 @@ let refreshVersion = 0
 const api = () => window.pywebview?.api
 const statuses = { stopped: '已停止', starting: '启动中', running: '运行中', stopping: '停止中' }
 
+function relayNotice(instance) {
+  if (!instance.token) return '启用中转需要实例 Token'
+  if (instance.state === 'stopped') return '实例未连接中转，启动实例后会自动连接'
+  if (instance.state === 'starting') return '实例启动中，等待中转连接'
+  if (instance.state === 'stopping') return '实例正在停止，中转即将关闭'
+  return instance.relay_message || '尚未收到实例的中转连接状态'
+}
+
 async function refresh() {
   const version = ++refreshVersion
   const loaded = await managerCall(() => api().get_instances())
@@ -442,6 +450,7 @@ async function execute(action, { waitForUser = false } = {}) {
 
 function edit(idx, kind) {
   if (unavailable.value || !instances.value[idx]?.editable) return
+  savedNotice.value = ''
   draft.value = {
     name: instances.value[idx].name,
     path: instances.value[idx].path,
@@ -616,7 +625,13 @@ async function save() {
   if (draft.value.extra_settings_visible !== originalExtraSettings)
     settings.extra_settings_visible = draft.value.extra_settings_visible
   const succeeded = await execute(() => api().update_settings(idx, settings, target))
-  if (succeeded) editing.value = null
+  if (succeeded) {
+    if (settings.relay)
+      savedNotice.value = settings.relay.enabled
+        ? `已保存「${target.name}」的中转设置。启动实例后，可在实例卡片查看连接状态和链接。`
+        : `已关闭「${target.name}」的中转。`
+    editing.value = null
+  }
 }
 
 async function changeAssistant(enabled) {
@@ -1012,6 +1027,16 @@ function addInstance() {
           <span class="folder-content" :title="instance.path">{{
             instance.path || '未选择保存目录'
           }}</span>
+          <n-a
+            v-if="instance.relay_url"
+            :href="instance.relay_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            >中转已连接 · 打开链接</n-a
+          >
+          <span v-else-if="instance.relay?.enabled" class="relay-notice">{{
+            relayNotice(instance)
+          }}</span>
           <div v-if="needsAttention(instance) && instance.reason" class="reason">
             {{ instance.reason }}
           </div>
@@ -1041,13 +1066,6 @@ function addInstance() {
             :aria-label="`${instance.name} 打开实例页面`"
             @click="openInstancePage(idx)"
             >打开页面</n-button
-          >
-          <n-a
-            v-if="instance.relay_url"
-            :href="instance.relay_url"
-            target="_blank"
-            rel="noopener noreferrer"
-            >中转链接</n-a
           >
           <n-button
             :type="instance.state === 'stopped' ? 'primary' : 'default'"
@@ -1756,6 +1774,10 @@ function addInstance() {
 }
 .instance-name {
   font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.relay-notice {
+  font-size: 12px;
   overflow-wrap: anywhere;
 }
 .folder-content {

@@ -775,6 +775,17 @@ describe('manager instance controls', () => {
       },
       { name: 'first', path: '/first' }
     )
+    expect(component.savedNotice.value).toContain('启动实例后')
+  })
+
+  it('shows when to start a relay instance and reports its current connection attempt', async () => {
+    await mount()
+    const instance = { ...stopped(), token: 'local', relay: { enabled: true } }
+    expect(component.relayNotice(instance)).toContain('启动实例后会自动连接')
+    instance.state = 'running'
+    expect(component.relayNotice(instance)).toContain('尚未收到')
+    instance.relay_message = '请核对中转凭据，并确认没有其他实例占用连接'
+    expect(component.relayNotice(instance)).toBe(instance.relay_message)
   })
 
   it('disables without a reading dialog and persists only on Save', async () => {
