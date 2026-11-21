@@ -104,6 +104,16 @@ def test_manager_saves_relay_for_one_instance_and_reports_verified_link(
     )
     live["relay_subdomain"] = "untrusted.example"
     assert "relay_url" not in manager.get_instances()[0]
+    live.update(
+        relay_state="reconnecting",
+        relay_subdomain="trial",
+        relay_message="连接已断开，稍后重新连接",
+    )
+    first, second = manager.get_instances()
+    assert first["relay_message"] == live["relay_message"]
+    assert "relay_url" not in first and "relay_message" not in second
+    live["token_hash"] = ""
+    assert "relay_message" not in manager.get_instances()[0]
     with pytest.raises(ValueError, match="运行期间"):
         manager.update_settings(0, {"token": "", "port": None})
     monkeypatch.setattr(runtime, "instances", lambda **kwargs: [])
