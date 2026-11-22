@@ -1,5 +1,6 @@
 """Raw-frame acceptance and bounded capture at the screenshot adapter seam."""
 
+import struct
 import unittest
 from unittest.mock import patch
 
@@ -44,6 +45,22 @@ class ADBFrameTests(unittest.TestCase):
                 self.assertTrue(frame.flags.owndata)
                 self.assertEqual(frame[0, 0].tolist(), expected)
                 self.assertEqual(frame[-1, -1].tolist(), [0, 0, 0])
+
+    def test_four_channel_formats_ignore_fourth_byte_across_row_boundary(self):
+        rgba = bytes.fromhex("0b 39 ce 00  e7 64 15 8a  0b 39 ce ff")
+        bgra = bytes.fromhex("ce 39 0b 00  15 64 e7 8a  ce 39 0b ff")
+        for pixel_format, samples in ((1, rgba), (2, rgba), (5, bgra)):
+            with self.subTest(pixel_format=pixel_format):
+                pixels = bytearray(1920 * 1080 * 4)
+                offset = (1920 - 1) * 4
+                pixels[offset : offset + len(samples)] = samples
+                header = struct.pack("<IIII", 1920, 1080, pixel_format, 1)
+                frame = decode_adb_frame(gzip_frame(header + pixels), header_size=16)
+                self.assertEqual(frame[0, -1].tolist(), [11, 57, 206])
+                self.assertEqual(frame[1, :2].tolist(), [[231, 100, 21], [11, 57, 206]])
+                self.assertTrue(frame.flags.owndata)
+                self.assertTrue(frame.flags.c_contiguous)
+                self.assertTrue(frame.flags.writeable)
 
     def test_rgb565_preserves_bit_replication_for_every_packed_value(self):
         words = np.arange(65536, dtype="<u2")
