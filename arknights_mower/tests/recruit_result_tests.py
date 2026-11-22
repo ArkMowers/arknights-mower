@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import pytest
 
+from arknights_mower.data import agent_profession
 from arknights_mower.solvers import recruit
 from arknights_mower.utils import solver as base_solver
 from arknights_mower.utils.csleep import MowerExit
@@ -30,6 +31,16 @@ def make_solver(state="animation"):
     solver.scene = Mock(return_value=Scene.RECRUIT_AGENT)
     solver.tap = Mock()
     return solver
+
+
+def profession_icon(expected):
+    return Mock(
+        side_effect=lambda resource: (
+            ((790, 749), (890, 849))
+            if resource == f"recruit/riic_res/{agent_profession[expected]}"
+            else None
+        )
+    )
 
 
 def test_result_without_profession_keeps_display_open():
@@ -60,6 +71,75 @@ def test_ready_result_is_recorded_before_one_dismissal():
     solver.sleep.assert_not_called()
 
 
+def test_visible_caster_matches_only_eligible_names_at_global_width(monkeypatch):
+    solver = make_solver("ready")
+    match = cv2.matchTemplate
+    widths = []
+
+    def track_match(image, template, method):
+        if method == cv2.TM_CCORR_NORMED:
+            widths.append(template.shape[1])
+        return match(image, template, method)
+
+    monkeypatch.setattr(cv2, "matchTemplate", track_match)
+    solver.transition()
+
+    eligible = sum(
+        agent_profession[recruit.recruit_agent[key]["name"]] == "CASTER"
+        for key in recruit.recruit_res_template
+    )
+    global_width = max(t.shape[1] for t in recruit.recruit_res_template.values())
+    assert widths == [global_width] * eligible
+    assert solver.result_agent == {1: "炎熔"}
+
+
+def test_blank_name_retries_same_slot_until_clear():
+    solver = make_solver("ready")
+    ready = solver.recog.gray.copy()
+    solver.recog._gray[730:860, 900:1800] = 0
+    solver.sleep = Mock(side_effect=lambda _: setattr(solver.recog, "_gray", ready))
+    solver.transition()
+    solver.sleep.assert_called_once_with(1)
+    assert solver.result_agent == {1: "炎熔"}
+    solver.tap.assert_called_once_with((500, 500))
+
+
+@pytest.mark.parametrize(
+    ("sigma", "matched_profession"), [(4, "PIONEER"), (10, "TANK")]
+)
+def test_weak_profession_icon_requires_agreement_with_full_name_pool(
+    sigma, matched_profession
+):
+    solver = make_solver()
+    frame = np.zeros((1080, 1920), dtype=np.uint8)
+    icon = recruit.loadres("recruit/riic_res/PIONEER", True)
+    frame[749:849, 790:890] = icon
+    name = recruit.recruit_res_template["char_222_bpipe"]
+    h, w = name.shape
+    frame[853 - h : 853, 902 : 902 + w] = name
+    blurred = frame.copy()
+    blurred[749:849, 790:890] = cv2.GaussianBlur(icon, (0, 0), sigma)
+    solver.recog._gray = blurred
+    assert [job for job in recruit.job_list if solver.find(job)] == [
+        f"recruit/riic_res/{matched_profession}"
+    ]
+
+    def reveal_icon(_):
+        assert solver.result_agent == {}
+        solver.tap.assert_not_called()
+        solver.recog._gray = frame
+
+    solver.sleep = Mock(side_effect=reveal_icon)
+    solver.transition()
+
+    assert solver.result_agent == {1: "风笛"}
+    if matched_profession == "PIONEER":
+        solver.sleep.assert_not_called()
+    else:
+        solver.sleep.assert_called_once_with(1)
+    solver.tap.assert_called_once_with((500, 500))
+
+
 @pytest.mark.parametrize(
     ("fixture", "expected", "date", "left"),
     [
@@ -79,7 +159,7 @@ def test_screenshot_results_are_recorded_before_dismissal(
     solver.recog._gray = result_frame(f"{fixture}_{date}", left)
     if left == 890:
         # 旧样本仅保留姓名区域，职业图标位置由外部替身提供。
-        solver.find = Mock(return_value=((790, 749), (890, 849)))
+        solver.find = profession_icon(expected)
     solver.sleep = Mock()
     records_at_tap = []
     solver.tap.side_effect = lambda *_: records_at_tap.append(dict(solver.result_agent))
@@ -124,7 +204,7 @@ def test_complete_name_wins_over_contained_name(expected):
     frame[853 - height : 853, 902 : 902 + width] = template
     solver.recog._gray = frame
     # 职业图标位置固定，姓名仍由生产模板匹配。
-    solver.find = Mock(return_value=((790, 749), (890, 849)))
+    solver.find = profession_icon(expected)
 
     solver.transition()
 
@@ -140,6 +220,55 @@ def test_recorded_integer_slot_is_not_recognized_again():
     solver.transition()
 
     solver.find.assert_not_called()
+    assert solver.result_agent == {1: "炎熔"}
+    solver.tap.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "fault", ["blank", "ambiguous_icon", "wrong_icon", "no_candidate", "tied_names"]
+)
+def test_unreadable_result_keeps_previous_slots_and_display(monkeypatch, fault):
+    solver = make_solver("ready")
+    solver.result_agent = {2: "梅尔"}
+    solver.sleep = Mock()
+    if fault == "blank":
+        solver.recog._gray[730:860, 900:1800] = 0
+    elif fault == "ambiguous_icon":
+        # 职业图标识别同时接受术师和狙击。
+        find = solver.find
+        solver.find = lambda resource: (
+            ((800, 755), (900, 855)) if resource.endswith("/SNIPER") else find(resource)
+        )
+    elif fault == "wrong_icon":
+        solver.find = profession_icon("松果")
+    elif fault == "no_candidate":
+        monkeypatch.setattr(recruit, "recruit_res_template", {})
+    else:
+        lava = next(
+            key for key, data in recruit.recruit_agent.items() if data["name"] == "炎熔"
+        )
+        monkeypatch.setitem(recruit.recruit_agent, "second", {"name": "同形姓名"})
+        monkeypatch.setitem(
+            recruit.recruit_res_template, "second", recruit.recruit_res_template[lava]
+        )
+
+    assert solver.transition() is True
+
+    assert solver.result_agent == {2: "梅尔"}
+    assert solver.sleep.call_args_list == [call(1)] * 4
+    solver.tap.assert_not_called()
+
+
+@pytest.mark.parametrize("unknown_profession", [None, "NEW_PROFESSION"])
+def test_result_keeps_names_with_missing_or_new_profession(
+    monkeypatch, unknown_profession
+):
+    solver = make_solver("ready")
+    if unknown_profession is None:
+        monkeypatch.delitem(agent_profession, "炎熔")
+    else:
+        monkeypatch.setitem(agent_profession, "炎熔", unknown_profession)
+    solver.transition()
     assert solver.result_agent == {1: "炎熔"}
     solver.tap.assert_called_once()
 

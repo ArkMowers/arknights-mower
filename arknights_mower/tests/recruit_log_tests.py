@@ -213,7 +213,8 @@ def test_recognized_slot_scopes_scenes_before_the_result_and_across_same_slot_ac
         cv2.IMREAD_GRAYSCALE,
     )
     assert crop is not None
-    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.recog = Recognizer(Mock())
+    solver.recog._gray = np.zeros((1080, 1920), dtype=np.uint8)
     solver.recog.gray[730:860, 750:1920] = crop
     solver.get_recruit_tag = Mock(return_value={"治疗": (560, 550)})
     solver.recruit_tags = Mock()
@@ -290,7 +291,7 @@ def test_unreadable_result_closes_the_slot_without_reporting_a_recruitment(
     started, warning, failed = recruit_records(caplog)
     assert started.getMessage() == "1号招募位：准备领取干员"
     assert started.log_event == {**started.log_parent, "phase": "started"}
-    assert warning.getMessage() == "公招干员职业图标连续5次未识别，结束本次公招"
+    assert warning.getMessage() == "连续5次未能确认公招干员的职业和姓名，结束本次公招"
     assert warning.levelno == logging.WARNING
     assert warning.log_parent == started.log_parent
     assert failed.getMessage() == "1号招募位：检查未完成"
