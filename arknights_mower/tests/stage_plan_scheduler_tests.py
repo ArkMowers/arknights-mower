@@ -9,6 +9,7 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
+from arknights_mower.solvers import local_operation_execution  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
 
@@ -460,7 +461,7 @@ def test_mower_plan_solver_does_not_rest_until_next_task(scheduler, monkeypatch)
             }
         ),
     )
-    monkeypatch.setattr(base_schedule, "MissionSolver", MagicMock())
+    monkeypatch.setattr(local_operation_execution, "MissionSolver", MagicMock())
     scheduler.rest_until_next_task = MagicMock()
     monkeypatch.setattr(
         base_schedule.config,

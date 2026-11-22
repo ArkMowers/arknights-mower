@@ -125,8 +125,11 @@ def test_maa_daily_interval_and_admission_log_under_maa_without_starting_it(
 
 
 def test_local_operation_interval_keeps_its_task_and_execution_time(
-    base, solver, caplog
+    solver, caplog, monkeypatch
 ):
+    from arknights_mower.solvers import local_operation_execution
+
+    monkeypatch.setattr(local_operation_execution, "datetime", Clock)
     task = solver.tasks[0]
     deadline = task.time
 

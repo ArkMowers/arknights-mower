@@ -40,6 +40,7 @@ class GroupForPathnameTest(unittest.TestCase):
             (PACKAGE + r"\solvers\operation.py", "local-operation"),
             (PACKAGE + r"\solvers\player_info.py", "local-operation"),
             (PACKAGE + r"\solvers\local_operation.py", "local-operation"),
+            (PACKAGE + r"\solvers\local_operation_execution.py", "local-operation"),
             (PACKAGE + r"\solvers\mail.py", "local-operation"),
             (PACKAGE + r"\solvers\event_sign_in.py", "local-operation"),
             (PACKAGE + r"\solvers\credit.py", "local-operation"),

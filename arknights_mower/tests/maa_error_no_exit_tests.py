@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
+from arknights_mower.solvers import local_operation_execution  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.tests.maa_process_helpers import fake_sdk_worker  # noqa: E402
 from arknights_mower.utils.config.device_profile import DeviceProfile  # noqa: E402
@@ -121,8 +122,10 @@ class TestSchedulerTerminalDeviceFailures(unittest.TestCase):
                 solver = self.make_solver()
                 solver.mower_stage_plan = MagicMock(side_effect=failure)
                 with (
-                    patch.object(base_schedule, "send_message") as notify,
-                    patch.object(base_schedule, "save_exception") as archive,
+                    patch.object(local_operation_execution, "send_message") as notify,
+                    patch.object(
+                        local_operation_execution, "save_exception"
+                    ) as archive,
                 ):
                     with self.assertRaises(type(failure)) as raised:
                         solver.mower_plan_solver(one_time=True)

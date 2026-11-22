@@ -101,6 +101,7 @@ class ErrorArchivePolicyTest(MultiProcessLogTestBase):
         for source, expected in (
             ("solvers/base_schedule.py", True),
             ("solvers/captcha_solver.py", True),
+            ("solvers/local_operation_execution.py", True),
             ("utils/device/device.py", True),
             ("utils/solver.py", True),
             ("solvers/report.py", False),
