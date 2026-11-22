@@ -22,7 +22,9 @@ MATCH_SECONDS = 12 * 60
 
 
 class GarrisonYield(BaseException):
-    """基建任务即将到期，需要归还设备。"""
+    """本轮需要交还设备。"""
+
+    DEADLINE = "排班截止"
 
 
 class GarrisonNavigation(SceneGraphSolver):
@@ -76,18 +78,22 @@ class GarrisonSolver:
         self._quick_confirmed = False
         self._theme_checked = False
         self._entered = False
+        self.yield_reason: str | None = None
 
     def remaining(self):
         if config.stop_mower.is_set():
             raise MowerExit
         seconds = self._end - time.monotonic()
+        reason = "24 小时运行上限"
         if self.deadline is not None:
-            seconds = min(
-                seconds,
-                (self.deadline() - datetime.now()).total_seconds(),
-            )
-        if seconds <= 0 or config.stop_maa.is_set():
-            raise GarrisonYield
+            until_deadline = (self.deadline() - datetime.now()).total_seconds()
+            if until_deadline <= seconds:
+                reason = GarrisonYield.DEADLINE
+            seconds = min(seconds, until_deadline)
+        if seconds <= 0:
+            raise GarrisonYield(reason)
+        if config.stop_maa.is_set():
+            raise GarrisonYield("用户停止 MAA")
         return seconds
 
     def sleep(self, seconds):
@@ -336,7 +342,7 @@ class GarrisonSolver:
                 return frame
         if action == "start":
             if self.remaining() < MATCH_SECONDS:
-                raise GarrisonYield
+                raise GarrisonYield("剩余时间不足以开新局")
             self.text_click(frame, "^极速模拟$", controls)
             frame = self.wait(lambda f: f.screen in {"mode", "info", "strategy"}, 20)
         if frame.screen == "mode":
@@ -346,7 +352,7 @@ class GarrisonSolver:
                 error="复核后仍未确认个人极速模拟的开局按钮，已保留对局",
             )
             if self.remaining() < MATCH_SECONDS:
-                raise GarrisonYield
+                raise GarrisonYield("剩余时间不足以开新局")
             # 点击前写入正在开局，避免取消发生在点击与截图之间时误开第二局。
             self.progress.pop("settlement_counted", None)
             self.progress["match"] = {"phase": "starting"}
@@ -540,7 +546,8 @@ class GarrisonSolver:
                     self.play(session.game, frame)
                 finally:
                     session.release()
-        except GarrisonYield:
+        except GarrisonYield as exc:
+            self.yield_reason = str(exc) or None
             logger.info("卫戍协议交还设备，本次空档结束")
         finally:
             self.leave_match()
