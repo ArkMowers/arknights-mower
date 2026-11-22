@@ -225,3 +225,63 @@ def test_unmatched_color_does_not_override_the_model():
         )
         == "中坚寻访凭证"
     )
+
+
+@pytest.mark.parametrize(
+    "item_rgb,original_rgb,expected,near_threshold",
+    [
+        ((69, 14, 0), (0, 255, 0), "candidate", True),  # 0.980031
+        ((64, 13, 0), (0, 255, 0), "original", True),  # 0.979987
+        ((255, 0, 0), (57, 13, 0), "candidate", True),  # gap 0.025035
+        ((255, 0, 0), (79, 18, 0), "original", True),  # gap 0.024989
+        ((255, 0, 0), (0, 255, 0), "candidate", False),
+    ],
+)
+def test_color_decision_at_both_thresholds(
+    tmp_path, monkeypatch, item_rgb, original_rgb, expected, near_threshold
+):
+    for name, color in (("candidate", (255, 0, 0)), ("original", original_rgb)):
+        image = np.full((213, 213, 3), color[::-1], dtype=np.uint8)
+        cv2.imencode(".webp", image, [cv2.IMWRITE_WEBP_QUALITY, 101])[1].tofile(
+            tmp_path / f"{name}.webp"
+        )
+    monkeypatch.setattr(module, "resource_ui_path", lambda _: tmp_path)
+    match = Mock(wraps=cv2.matchTemplate)
+    monkeypatch.setattr(cv2, "matchTemplate", match)
+    item = np.full((213, 213, 3), item_rgb, dtype=np.uint8)
+
+    assert (
+        module._refine_item_color(item, "original", ("original", "candidate"))
+        == expected
+    )
+    masked_calls = [call for call in match.call_args_list if "mask" in call.kwargs]
+    assert len(masked_calls) == (2 if near_threshold else 0)
+
+
+def test_partly_black_search_retains_masked_opencv_scores(monkeypatch):
+    names = ("寻访凭证", "中坚寻访凭证")
+    item = np.zeros((213, 213, 3), dtype=np.uint8)
+    item[32:181, 32] = 255
+    region = item[32:181, 32:181]
+    scores = []
+    for name in names:
+        template = icon(name, 0)[40:173, 40:173]
+        result = cv2.matchTemplate(
+            region, template, cv2.TM_CCORR_NORMED, mask=module._COLOR_ICON_MASK
+        )
+        score = cv2.minMaxLoc(result)[1]
+        if np.isfinite(score):
+            scores.append((score, name))
+    scores.sort(reverse=True)
+    expected = names[0]
+    if (
+        len(scores) == 2
+        and scores[0][0] >= 0.98
+        and scores[0][0] - scores[1][0] >= 0.025
+    ):
+        expected = scores[0][1]
+
+    match = Mock(wraps=cv2.matchTemplate)
+    monkeypatch.setattr(cv2, "matchTemplate", match)
+    assert module._refine_item_color(item, names[0], names) == expected
+    assert sum("mask" in call.kwargs for call in match.call_args_list) == len(names)

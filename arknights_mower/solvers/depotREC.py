@@ -72,8 +72,25 @@ def _color_templates(directory, classes):
             continue
         if icon is not None:
             icon = cv2.resize(icon, (213, 213))
-            templates.append((name, icon[40:173, 40:173]))
+            template = icon[40:173, 40:173] * _COLOR_ICON_MASK[:, :, None]
+            templates.append((name, template, cv2.norm(template)))
     return templates
+
+
+def _color_scores(region, templates, window_norms=None):
+    scores = []
+    for name, template, norm in templates:
+        if window_norms is None or norm == 0:
+            result = cv2.matchTemplate(
+                region, template, cv2.TM_CCORR_NORMED, mask=_COLOR_ICON_MASK
+            )
+            score = cv2.minMaxLoc(result)[1]
+        else:
+            dots = cv2.matchTemplate(region, template, cv2.TM_CCORR)
+            score = (dots / window_norms).max() / norm
+        if np.isfinite(score):
+            scores.append((score, name))
+    return sorted(scores, reverse=True)
 
 
 def _refine_item_color(item, predicted, classes):
@@ -86,18 +103,22 @@ def _refine_item_color(item, predicted, classes):
             root / ("public" if (root / "public/depot").is_dir() else "dist") / "depot"
         )
     templates = _color_templates(directory, tuple(classes))
-    if not any(name == predicted for name, _ in templates):
+    if not any(name == predicted for name, _, _ in templates):
         return predicted
     region = item[32:181, 32:181]
-    scores = []
-    for name, template in templates:
-        result = cv2.matchTemplate(
-            region, template, cv2.TM_CCORR_NORMED, mask=_COLOR_ICON_MASK
-        )
-        score = cv2.minMaxLoc(result)[1]
-        if np.isfinite(score):
-            scores.append((score, name))
-    scores.sort(reverse=True)
+    # 每个位移只计算一次遮罩内的 RGB 平方和，供所有模板归一化。
+    power = np.einsum("ijk,ijk->ij", region, region, dtype=np.float32)
+    energy = cv2.matchTemplate(power, _COLOR_ICON_MASK.astype(np.float32), cv2.TM_CCORR)
+    # 某个位移近乎全黑时，平方和对浮点舍入敏感，沿用带遮罩的匹配。
+    window_norms = None
+    if energy.min() > 0.01 * power.sum():
+        window_norms = np.sqrt(energy.astype(np.float64))
+    scores = _color_scores(region, templates, window_norms)
+    if window_norms is not None and len(scores) >= 2:
+        best, second = scores[0][0], scores[1][0]
+        # 分数或领先差值接近判定门槛时，由原有匹配结果决定物品名称。
+        if abs(best - 0.98) <= 1e-4 or abs(best - second - 0.025) <= 1e-4:
+            scores = _color_scores(region, templates)
     if len(scores) < 2 or scores[0][0] < 0.98:
         return predicted
     # 同图标的周年与感谢庆典凭证保留原模型结果，不用名称排序打破并列。
