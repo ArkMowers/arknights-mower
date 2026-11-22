@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from itertools import pairwise
 from threading import RLock
 from typing import Union
 
@@ -197,13 +198,13 @@ class Client:
                 builder.down(0, x, y, pressure)
                 builder.publish(conn)
 
-            for idx, point in enumerate(points[1:]):
+            for point, wait_ms in zip(points[1:], duration, strict=True):
                 x, y = self.convert_coordinate(
                     point, display_frames, int(conn.max_x), int(conn.max_y)
                 )
                 builder.move(0, x, y, pressure)
-                if duration[idx - 1]:
-                    builder.wait(duration[idx - 1])
+                if wait_ms:
+                    builder.wait(wait_ms)
                 builder.commit()
             builder.publish(conn)
 
@@ -252,23 +253,23 @@ class Client:
             duration = [duration] * (len(points) - 1)
         assert len(duration) + 1 == len(points)
 
+        if part < 1:
+            raise ValueError("滑动分段数必须大于零")
         new_points = [points[0]]
         new_duration = []
-        for id in range(1, len(points)):
-            pre_point = points[id - 1]
-            cur_point = points[id]
-            offset = (
-                (cur_point[0] - pre_point[0]) // part,
-                (cur_point[1] - pre_point[1]) // part,
-            )
-            new_points += [
-                (pre_point[0] + i * offset[0], pre_point[1] + i * offset[1])
-                for i in range(1, part + 1)
-            ]
-            if duration[id - 1] is None:
-                new_duration += [None] * part
-            else:
-                new_duration += [duration[id - 1] // part] * part
+        for (start, end), segment_ms in zip(pairwise(points), duration, strict=True):
+            dx, dy = end[0] - start[0], end[1] - start[1]
+            elapsed_ms = 0
+            for step in range(1, part + 1):
+                new_points.append(
+                    (start[0] + dx * step // part, start[1] + dy * step // part)
+                )
+                if segment_ms is None:
+                    new_duration.append(None)
+                else:
+                    next_ms = segment_ms * step // part
+                    new_duration.append(next_ms - elapsed_ms)
+                    elapsed_ms = next_ms
         self.__swipe(
             new_points,
             display_frames,
