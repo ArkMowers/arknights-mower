@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from arknights_mower.utils import scheduler_task
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 NOW = datetime(2026, 10, 18, 2, 37, 34)
@@ -219,6 +220,7 @@ def test_simulate_restoration_coalesces_waiting_before_dispatch(
     instance = object.__new__(BaseSchedulerSolver)
     instance.tasks = []
     instance.op_data = operators
+    instance.scene = MagicMock(return_value=Scene.INFRA_MAIN)
     instance.initialize_operators = lambda: None
     instance._pending_group_transitions = lambda: {}
     monkeypatch.setattr(config, "conf", config.Conf())

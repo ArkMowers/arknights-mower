@@ -21,6 +21,7 @@ from arknights_mower.utils.device.preparation import PreparationSession
 from arknights_mower.utils.device.preparation_store import RecoveryStore
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.device.session import DeviceSession, RecoveryPolicy
+from arknights_mower.utils.scene import Scene
 
 
 class PreparationLifecycleTests(unittest.TestCase):
@@ -101,6 +102,7 @@ class PreparationLifecycleTests(unittest.TestCase):
     def scheduler(self, *, device):
         scheduler = SimpleNamespace(
             device=device,
+            scene=lambda: Scene.INFRA_MAIN,
             initialize_operators=lambda: self.validation_message,
             op_data=SimpleNamespace(
                 validate_backup_plans=lambda *, max_seconds=None: {"success": True},

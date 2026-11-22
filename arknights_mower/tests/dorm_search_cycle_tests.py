@@ -17,6 +17,7 @@ from arknights_mower.tests.dorm_unregistered_idle_tests import (
     screen_only,
 )
 from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
     TaskTypes,
@@ -305,6 +306,7 @@ def test_restart_preserves_search_deadline_and_full_resident_protection(
     restarted = object.__new__(BaseSchedulerSolver)
     restarted.tasks = []
     restarted.op_data = fresh
+    restarted.scene = MagicMock(return_value=Scene.INFRA_MAIN)
     restarted.initialize_operators = MagicMock(return_value=None)
     fresh.validate_backup_plans = MagicMock(return_value={"success": True})
     monkeypatch.setattr(main, "initialize", MagicMock(return_value=restarted))

@@ -355,8 +355,11 @@ def test_real_worker_resumes_same_scheduler_and_replans_after_capture_refresh(
     )
 
     def scene():
+        if not events:
+            events.append("startup-scene")
+            return scheduler.module.Scene.INFRA_MAIN
         events.append("scene")
-        if len(events) == 1:
+        if len(events) == 2:
             raise recovery.DeviceRecoveryError("runtime")
         assert "capture" in events
         return scheduler.module.Scene.INFRA_MAIN
@@ -396,7 +399,7 @@ def test_real_worker_resumes_same_scheduler_and_replans_after_capture_refresh(
     assert solver.device is ready_device
     assert solver.recog.device is ready_device
     assert control.recover.call_count == 2
-    assert events[:3] == ["scene", "capture", "scene"]
+    assert events[:4] == ["startup-scene", "scene", "capture", "scene"]
     assert any(task is manual for task in solver.tasks)
     assert any(task is gate for task in solver.tasks)
     assert all(task is not stale for task in solver.tasks)

@@ -8,6 +8,7 @@ import pytest
 
 from arknights_mower.tests.exhaust_replacement_tests import solver as solver
 from arknights_mower.utils.dorm_candidates import retained_task_reservations
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 from arknights_mower.utils.urgent_recovery import active_urgent_recovery
 
@@ -310,6 +311,7 @@ def test_recovery_dependencies_survive_snapshot_but_new_initialization_clears_th
     saved = pickle.loads(pickle.dumps(record.current_state()))
     assert solver.initialize_operators() is None
     assert solver.op_data.urgent_recovery_supporters == {}
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
     monkeypatch.setattr(mower, "initialize", lambda *a, **kw: solver)
     monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)

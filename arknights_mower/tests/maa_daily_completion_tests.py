@@ -210,6 +210,7 @@ def test_completion_persists_through_real_snapshot_and_startup_restore(
     scheduler.daily_visit_friend = date.min
     scheduler.credit_fight = None
     scheduler.op_data.validate_backup_plans.return_value = {"success": True}
+    scheduler.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     scheduler.initialize_operators = MagicMock(return_value=None)
     scheduler.run = MagicMock(side_effect=base_schedule.MowerExit)
     scheduler._request_run_order_restoration_observations = MagicMock()
