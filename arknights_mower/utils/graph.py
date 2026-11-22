@@ -15,6 +15,10 @@ from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene, SceneComment
+from arknights_mower.utils.scene_recovery import (
+    SceneRecoveryExhausted,
+    claim_scene_restart,
+)
 from arknights_mower.utils.solver import BaseSolver
 
 
@@ -524,7 +528,7 @@ def network_check_cancel(solver: BaseSolver):
 
 
 class SceneGraphSolver(BaseSolver):
-    def scene_graph_navigation(self, scene: int):
+    def scene_graph_navigation(self, scene: int, *, restart_on_unknown=False):
         if scene not in DG:
             logger.error(f"{SceneComment[scene]}不在场景图中")
             return
@@ -569,6 +573,16 @@ class SceneGraphSolver(BaseSolver):
                     )
                     self.back()
                     self.sleep(0.5)
+                elif (
+                    restart_on_unknown
+                    and current == Scene.UNKNOWN
+                    and not game_restarted
+                ):
+                    claim_scene_restart()
+                    logger.warning("启动导航无法识别当前场景，退出游戏重进")
+                    self.restart_game()
+                    game_restarted = True
+                    unknown_count = 0
                 else:
                     logger.warning(
                         f"scene_graph_navigation abort: unknown scene persists current={current} target={scene}"
@@ -613,7 +627,12 @@ class SceneGraphSolver(BaseSolver):
                     resume_navigation, retry_errors=RECOVERABLE_DEVICE_ERRORS
                 )
                 continue
-            except (MowerExit, DeviceRecoveryError, SharedADBError):
+            except (
+                MowerExit,
+                DeviceRecoveryError,
+                SharedADBError,
+                SceneRecoveryExhausted,
+            ):
                 raise
             except Exception as e:
                 logger.exception(f"场景转移异常：{e}")
@@ -621,6 +640,7 @@ class SceneGraphSolver(BaseSolver):
                     self.sleep()
                     error_count += 1
                     continue
+                claim_scene_restart()
                 if game_restarted:
                     raise RecognizeError("场景转移在游戏重启后仍持续失败") from e
                 self.device.reconnect()

@@ -23,6 +23,7 @@ from arknights_mower.utils.log import logger, save_screenshot_frame
 from arknights_mower.utils.matcher import Matcher, resource_template_features
 from arknights_mower.utils.operation_timing import timed_step
 from arknights_mower.utils.scene import Scene, SceneComment
+from arknights_mower.utils.scene_recovery import claim_scene_restart
 from arknights_mower.utils.vector import va
 
 
@@ -231,6 +232,7 @@ class Recognizer:
                 probe = getattr(self.device, "check_ui_responsive", None)
                 if probe is not None:
                     probe()
+                claim_scene_restart()
                 self.last_scene = None
                 self.last_scene_time = current_time
                 self.device.exit()

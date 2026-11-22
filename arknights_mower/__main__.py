@@ -28,6 +28,12 @@ from arknights_mower.utils.resource_pkg import (
     refresh_resource_at_boundary,
     resource_task_session,
 )
+from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scene_recovery import (
+    SceneRecoveryExhausted,
+    SceneRestartBudget,
+    scene_restart_scope,
+)
 from arknights_mower.utils.scheduler_task import (
     MAINTENANCE_TASK_TYPES,
     find_next_task,
@@ -642,6 +648,32 @@ def _next_scheduler_task():
     return find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
 
 
+def _recover_startup_scene(scheduler, budget):
+    try:
+        with scene_restart_scope(budget):
+            if scheduler.scene() != Scene.UNKNOWN:
+                return True
+            scheduler.scene_graph_navigation(Scene.INDEX, restart_on_unknown=True)
+            if scheduler.scene() == Scene.INDEX:
+                return True
+    except SceneRecoveryExhausted:
+        pass
+    from arknights_mower.utils.email import send_message
+
+    try:
+        send_message(
+            "启动导航未能确认游戏首页，本次自动化未启动，待执行任务已保留。\n"
+            "请手动回到游戏首页后再点击「开始」。",
+            subject="Mower 启动失败",
+            level="ERROR",
+            archive_screenshots=True,
+            screenshot_source=scheduler.device,
+        )
+    except Exception:
+        logger.exception("准备启动失败邮件通知时出错")
+    return False
+
+
 def simulate(saved):
     """
     具体调用方法可见各个函数的参数说明
@@ -660,6 +692,7 @@ def simulate(saved):
     global base_scheduler
     if config.stop_mower.is_set():
         return
+    startup_scene_budget = SceneRestartBudget()
     success = False
     while not success:
         try:
@@ -669,6 +702,10 @@ def simulate(saved):
             if saved and saved.get("_restart_game"):
                 base_scheduler.restart_game()
                 saved["_restart_game"] = False
+            elif not (
+                saved and saved.get("_process_crash_recovery")
+            ) and not _recover_startup_scene(base_scheduler, startup_scene_budget):
+                return
             base_scheduler._process_recovery_occurred_at = (
                 saved.get("_process_crash_occurred_at") if saved else None
             )
