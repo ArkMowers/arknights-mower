@@ -1,6 +1,7 @@
 """Offline ownership, skill-stage and read-only AI planning contracts."""
 
 import copy
+import hashlib
 import json
 
 import pytest
@@ -536,6 +537,73 @@ def test_code_locations_follow_source_lines_and_keep_missing_code_explicit(
     assert missing["sources"][0]["missing_symbols"] == [
         "export function calculateIncome("
     ]
+
+
+def test_code_diagnosis_indexes_and_reads_a_source_larger_than_one_mib(
+    state, monkeypatch, tmp_path
+):
+    from arknights_mower.agent.tools import get_source_snippet as source_tool
+
+    monkeypatch.setattr(source_tool, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(source_tool, "_PACKAGE_ROOT", tmp_path / "arknights_mower")
+    source = tmp_path / "ui" / "src" / "riic" / "incomeWorker.js"
+    source.parent.mkdir(parents=True)
+    padding = b"// " + b"x" * 1020 + b"\r\n"
+    marker = b"export function calculateIncome(plan) {}"
+    raw = b"\xef\xbb\xbf" + padding * 1024 + marker + b"\r// final"
+    assert len(raw) > 1024**2
+    source.write_bytes(raw)
+
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")
+    indexed = response["code_locations"]["sources"][0]
+
+    assert indexed["available"]
+    assert indexed["line_count"] == 1026
+    assert indexed["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert indexed["locations"][0]["line_number"] == 1025
+    snippet = result(
+        source_tool.get_source_snippet,
+        file_path=indexed["file_path"],
+        line_number=1025,
+        context=0,
+    )
+    assert snippet["source_code"] == marker.decode() + "\n"
+
+
+def test_source_fragment_stops_at_requested_lines_and_applies_its_budgets(
+    state, monkeypatch, tmp_path
+):
+    from arknights_mower.agent.tools import get_source_snippet as source_tool
+
+    monkeypatch.setattr(source_tool, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(source_tool, "_PACKAGE_ROOT", tmp_path / "arknights_mower")
+    monkeypatch.setattr(source_tool, "_MAX_SOURCE_SCAN_BYTES", 32)
+    monkeypatch.setattr(source_tool, "_MAX_SNIPPET_BYTES", 12)
+    source = tmp_path / "ui" / "src" / "riic" / "incomeWorker.js"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"first\nsecond\n" + b"padding\n" * 8)
+
+    def fragment(line, context=0):
+        return result(
+            source_tool.get_source_snippet,
+            file_path=str(source),
+            line_number=line,
+            context=context,
+        )["source_code"]
+
+    assert fragment(1) == "first\n"
+    assert "返回字节上限" in fragment(1, context=1)
+    assert "扫描字节上限" in fragment(10)
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")
+    indexed = response["code_locations"]["sources"][0]
+    assert not indexed["available"]
+    assert "超出读取范围" in indexed["reason"]
+    assert "sha256" not in indexed
+
+    monkeypatch.setattr(source_tool, "_MAX_SOURCE_LINE_BYTES", 8)
+    source.write_bytes(b"first\n" + b"x" * 9 + b"\n")
+    assert fragment(1) == "first\n"
+    assert "源码行超过" in fragment(2)
 
 
 def test_knowledge_schema_covers_every_supported_topic():

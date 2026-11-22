@@ -20,6 +20,7 @@ MAX_RECORD_TEXT_BYTES = 1024
 MAX_TEXT_BYTES = 48 * 1024
 MAX_LINE_BYTES = 16 * 1024
 MAX_SOURCE_FILES = 4
+MAX_SOURCE_FILE_BYTES = 1024**2
 MAX_SOURCE_SCAN_BYTES = 2 * 1024**2
 MAX_SOURCE_TEXT_BYTES = 24 * 1024
 MAX_INDEX_BYTES = 96 * 1024
@@ -214,7 +215,10 @@ def _source_path(supplied):
         normalized = "arknights_mower/" + normalized.rsplit(marker, 1)[1]
     elif re.match(r"^[A-Za-z]:/", normalized):
         raise ValueError("不允许读取此文件")
-    return _allowed_source_path(normalized)
+    path = _allowed_source_path(normalized)
+    if path.stat().st_size > MAX_SOURCE_FILE_BYTES:
+        raise ValueError("不允许读取此文件")
+    return path
 
 
 def _source_context(records):

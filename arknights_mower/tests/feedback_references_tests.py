@@ -272,6 +272,23 @@ def test_source_scan_budget_is_reported(tmp_path, source_tree, monkeypatch):
     assert index["coverage"]["source_scanned_bytes"] == 0
 
 
+def test_feedback_retains_its_per_file_source_budget(tmp_path, source_tree):
+    _, source = source_tree
+    source.write_bytes(b"# x\n" * (1024**2 // 4 + 1))
+    index = references.build_feedback_references(
+        make_bundle(
+            tmp_path,
+            {
+                "runtime.log": log(
+                    "failure", "ERROR", "arknights_mower/solvers/example.py:1"
+                )
+            },
+        )
+    )
+    assert not index["sources"]
+    assert index["coverage"]["source_scanned_bytes"] == 0
+
+
 def test_serialized_index_has_hard_limit_and_reports_omission(tmp_path, monkeypatch):
     monkeypatch.setattr(references, "MAX_INDEX_BYTES", 10000)
     monkeypatch.setattr(references, "MAX_ESCAPED_INDEX_BYTES", 20000)
