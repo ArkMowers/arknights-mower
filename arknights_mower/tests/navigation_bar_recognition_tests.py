@@ -159,10 +159,9 @@ class TestNavigationBarRecognition(unittest.TestCase):
         recognizer = Recognizer.__new__(Recognizer)
         recognizer.scene = Scene.UNDEFINED
         recognizer.find = MagicMock(
-            side_effect=lambda resource, **_: (
-                resource in {"ope_elimi_agency_panel", "terminal_main"}
-            )
+            side_effect=lambda resource, **_: resource == "ope_elimi_agency_panel"
         )
+        recognizer._is_terminal_main = MagicMock(return_value=True)
         recognizer.check_freeze = MagicMock()
 
         self.assertEqual(recognizer.get_scene(), Scene.TERMINAL_MAIN)

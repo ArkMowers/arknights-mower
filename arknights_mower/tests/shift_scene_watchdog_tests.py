@@ -50,6 +50,7 @@ def shift_observation(solver, monkeypatch):
     monkeypatch.setattr(config, "stop_mower", Event())
     config.conf.run_order_delay = 3
     solver.device = MagicMock()
+    solver.device.check_current_focus.return_value = False
     solver.recog = Recognizer(solver.device)
     solver.recog.scene = solver.recog.last_scene = Scene.INFRA_DETAILS
     solver.recog.last_scene_time = Clock.now()
