@@ -330,16 +330,18 @@ class BaseSolver:
             "contract",
         ],
     ):
-        y = 1005
-        pos = {
-            "main": (165, y),  # 首页
-            "main_theme": (485, y),  # 曲谱
-            "collection": (800, y),  # 资源收集
-            "regular": (1125, y),  # 常态事务
-            "longterm": (1445, y),  # 长期探索
-            "contract": (1760, y),  # 危机合约
+        icons = {
+            "main": "terminal_tab/main",
+            "main_theme": "terminal_tab/main_theme",
+            "collection": "collection_small",
+            "regular": "terminal_tab/regular",
+            "longterm": "terminal_tab/longterm",
+            "contract": "terminal_tab/contract",
         }
-        self.ctap(pos[name])
+        score, position = self.template_match(icons[name], ((0, 960), (1920, 1050)))
+        if score < 0.9:
+            raise RecognizeError(f"未识别到终端分页图标：{name}")
+        self.ctap(position)
 
     def template_match(
         self,
@@ -870,6 +872,7 @@ class BaseSolver:
                 raise
             except Exception as e:
                 logger.exception(f"保全导航出错：{e}")
+                self.sleep()
         logger.info(
             f"保全导航成功，用时{(datetime.now() - start_time).total_seconds():.0f}秒"
         )
