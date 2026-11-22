@@ -11,7 +11,7 @@ from pathlib import Path, PurePosixPath
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from scripts.android_runtime_archive import RUNTIME_FILE, runtime_metadata  # noqa: E402
-from scripts.package_android import REQUIRED, RUNTIME_API  # noqa: E402
+from scripts.package_android import MIN_APK_VERSION_CODE, REQUIRED, RUNTIME_API  # noqa: E402
 
 
 def check(package: Path, version: str, revision: str) -> None:
@@ -40,7 +40,7 @@ def check(package: Path, version: str, revision: str) -> None:
         expected = {
             "kind": "mower-android",
             "format": 2,
-            "min_apk": 29,
+            "min_apk": MIN_APK_VERSION_CODE,
             "version": version,
             "revision": revision,
             "runtime_api": RUNTIME_API,

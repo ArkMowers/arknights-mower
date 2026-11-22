@@ -26,6 +26,7 @@ class ServerStatusTests(unittest.TestCase):
         self.enterContext(patch.object(crash_recovery, "_progress", {}))
         self.enterContext(patch.object(self.main, "base_scheduler", None))
         self.enterContext(patch.object(config, "stop_mower", Event()))
+        self.enterContext(patch.object(config, "keep_game_on_stop", Event()))
         self.enterContext(patch.object(self.server, "scheduled_start_at", None))
         self.enterContext(patch.dict(os.environ, {"MOWER_RESTART_JOB": ""}))
         self.worker = Mock()
@@ -322,6 +323,7 @@ class ServerStatusTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.get_data(as_text=True), "false")
                 self.assertTrue(config.stop_mower.is_set())
+                self.assertTrue(config.keep_game_on_stop.is_set())
                 self.assertIs(self.server.mower_thread, self.worker)
                 self.assertNotEqual(
                     self.client.get("/status", headers=self.headers).json["status"],
@@ -342,6 +344,7 @@ class ServerStatusTests(unittest.TestCase):
         with patch.object(self.server, "set_mower_thread") as set_thread:
             response = self.client.get("/stop", headers=self.headers)
             self.assertEqual(response.get_data(as_text=True), "true")
+            self.assertFalse(config.keep_game_on_stop.is_set())
             set_thread.assert_called_once_with(None)
         self.assertEqual(
             self.client.get("/status", headers=self.headers).json["status"], "stopped"

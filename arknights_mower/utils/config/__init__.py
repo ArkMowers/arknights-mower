@@ -334,6 +334,7 @@ load_plan()
 
 stop_mower = Event()
 stop_maa = Event()
+keep_game_on_stop = Event()
 
 
 def software_update_shutdown_requested():

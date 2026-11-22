@@ -6,7 +6,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 
 from arknights_mower.solvers import record
-from arknights_mower.utils import config
+from arknights_mower.utils import config, maa_control
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.growth_execution import (
@@ -280,6 +280,8 @@ def _run_maa(solver, action, deadline):
             ]
         }
         task_id = solver.MAA.append_task("OperProgress", params)
+        if config.stop_mower.is_set() or config.stop_maa.is_set():
+            return False
         run = {
             "action": action,
             "task_id": task_id,
@@ -367,6 +369,9 @@ def purchase_catalyst(solver, action, deadline):
         task_id = solver.MAA.append_task(
             "Custom", {"task_names": [entry_for_count(count)]}
         )
+        if config.stop_mower.is_set() or config.stop_maa.is_set():
+            attempted = False
+            return False
         run.update(task_id=task_id, generation=solver._maa_activity_generation)
         solver.maa_catalyst_run = run
         accepted = True
@@ -414,6 +419,7 @@ def purchase_catalyst(solver, action, deadline):
                 solver.recog.reset_after_external_control()
 
 
+@maa_control.execution()
 def run_growth(solver):
     """Consume existing idle windows without adding retries, waits or task timestamps."""
     if getattr(solver, "MAA", None) is not None or config.stop_mower.is_set():
@@ -444,6 +450,7 @@ def run_growth(solver):
             if (
                 solver.find_next_task(datetime.now() + timedelta(minutes=5)) is not None
                 or config.stop_mower.is_set()
+                or config.stop_maa.is_set()
                 or not config.conf.maa_growth_enabled
             ):
                 break
