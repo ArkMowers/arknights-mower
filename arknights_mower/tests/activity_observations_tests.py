@@ -19,7 +19,7 @@ callback = daily_checks.callback
 def test_mission_observation_is_a_round_check_for_both_real_entries(
     local, monkeypatch, entry
 ):
-    from arknights_mower.solvers import base_schedule, manual_tasks, mission
+    from arknights_mower.solvers import local_operation_execution, manual_tasks, mission
     from arknights_mower.utils.scheduler_task import TaskTypes
 
     solver = local.solver
@@ -33,7 +33,7 @@ def test_mission_observation_is_a_round_check_for_both_real_entries(
     def factory(*args):
         return SimpleNamespace(run=run)
 
-    monkeypatch.setattr(base_schedule, "MissionSolver", factory)
+    monkeypatch.setattr(local_operation_execution, "MissionSolver", factory)
     monkeypatch.setattr(mission, "MissionSolver", factory)
     if entry == "automatic":
         local.plan("1-7")

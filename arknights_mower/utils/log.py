@@ -864,6 +864,7 @@ _VISUAL_SOLVER_FILES = {
     "base_mixin.py",
     "base_schedule.py",
     "captcha_solver.py",
+    "local_operation_execution.py",
     "operation.py",
     "player_info.py",
     "recruit.py",

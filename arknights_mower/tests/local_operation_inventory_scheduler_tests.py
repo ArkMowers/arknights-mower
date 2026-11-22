@@ -9,7 +9,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
-from arknights_mower.solvers import base_schedule  # noqa: E402
+from arknights_mower.solvers import base_schedule, local_operation_execution  # noqa: E402
 from arknights_mower.utils import maa_stage_inventory  # noqa: E402
 
 
@@ -27,9 +27,10 @@ def scheduler(monkeypatch):
     solver.maybe_switch_expired_activity_plan = MagicMock()
     solver.check_current_focus = MagicMock()
     monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: 0)
-    monkeypatch.setattr(base_schedule, "scheduling", MagicMock())
-    monkeypatch.setattr(base_schedule, "send_message", MagicMock())
-    monkeypatch.setattr(base_schedule, "save_exception", MagicMock())
+    monkeypatch.setattr(local_operation_execution, "get_server_weekday", lambda: 0)
+    monkeypatch.setattr(local_operation_execution, "scheduling", MagicMock())
+    monkeypatch.setattr(local_operation_execution, "send_message", MagicMock())
+    monkeypatch.setattr(local_operation_execution, "save_exception", MagicMock())
     return solver
 
 
@@ -93,11 +94,11 @@ def test_local_plan_reselects_after_drops_and_continues_daily_tasks(
     player.return_value.get_first_available_snapshot.return_value = SimpleNamespace(
         current_ap=120
     )
-    monkeypatch.setattr(base_schedule, "PlayerInfoClient", player)
+    monkeypatch.setattr(local_operation_execution, "PlayerInfoClient", player)
     refresh = MagicMock()
     monkeypatch.setattr(base_schedule, "cultivateDepotSolver", refresh)
     mission = MagicMock()
-    monkeypatch.setattr(base_schedule, "MissionSolver", mission)
+    monkeypatch.setattr(local_operation_execution, "MissionSolver", mission)
     scheduler.mower_stage_ap_cost = MagicMock(
         side_effect=lambda stage: fallback_cost if stage == "CE-6" else 6
     )
@@ -174,9 +175,9 @@ def test_initially_full_plan_clears_old_followup_and_continues_daily_tasks(
     scheduler.mower_stage_plan = MagicMock(return_value=([], None))
     monkeypatch.setattr(base_schedule.config, "conf", SimpleNamespace(maa_gap=4))
     player = MagicMock()
-    monkeypatch.setattr(base_schedule, "PlayerInfoClient", player)
+    monkeypatch.setattr(local_operation_execution, "PlayerInfoClient", player)
     mission = MagicMock()
-    monkeypatch.setattr(base_schedule, "MissionSolver", mission)
+    monkeypatch.setattr(local_operation_execution, "MissionSolver", mission)
 
     scheduler.mower_plan_solver()
 

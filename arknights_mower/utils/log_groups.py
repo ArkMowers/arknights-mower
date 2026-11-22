@@ -36,6 +36,7 @@ LOG_GROUP_PREFIXES: tuple[tuple[str, str], ...] = (
     ("solvers/operation.py", "local-operation"),
     ("solvers/player_info.py", "local-operation"),
     ("solvers/local_operation.py", "local-operation"),
+    ("solvers/local_operation_execution.py", "local-operation"),
     ("solvers/mail.py", "local-operation"),
     ("solvers/event_sign_in.py", "local-operation"),
     ("solvers/credit.py", "local-operation"),

@@ -10,7 +10,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
-from arknights_mower.solvers import base_schedule  # noqa: E402
+from arknights_mower.solvers import base_schedule, local_operation_execution  # noqa: E402
 from arknights_mower.utils import maa_stage_inventory  # noqa: E402
 
 
@@ -51,14 +51,18 @@ def local(monkeypatch, request):
     solver.mower_stage_ap_cost = MagicMock(return_value=25)
     solver.report_annihilation_agency_locked = MagicMock()
     monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: 0)
+    monkeypatch.setattr(local_operation_execution, "get_server_weekday", lambda: 0)
     for name in (
         "scheduling",
         "send_message",
         "save_exception",
         "MissionSolver",
-        "cultivateDepotSolver",
     ):
-        monkeypatch.setattr(base_schedule, name, MagicMock())
+        monkeypatch.setattr(local_operation_execution, name, MagicMock())
+    monkeypatch.setattr(
+        base_schedule, "send_message", local_operation_execution.send_message
+    )
+    monkeypatch.setattr(base_schedule, "cultivateDepotSolver", MagicMock())
     monkeypatch.setattr(
         maa_stage_inventory, "load_inventory_snapshot", lambda: ({}, None)
     )
@@ -66,7 +70,7 @@ def local(monkeypatch, request):
     player.return_value.get_first_available_snapshot.return_value = SimpleNamespace(
         current_ap=120
     )
-    monkeypatch.setattr(base_schedule, "PlayerInfoClient", player)
+    monkeypatch.setattr(local_operation_execution, "PlayerInfoClient", player)
     navigation = MagicMock()
     navigation.return_value.run.return_value = True
     monkeypatch.setattr(base_schedule, "NavigationSolver", navigation)
@@ -144,7 +148,7 @@ def test_only_skipped_annihilation_waits_for_maa_gap_without_followup(local):
 
 def test_skipped_annihilation_waits_for_maa_gap_after_mission_failure(local):
     local.plan("Annihilation")
-    base_schedule.MissionSolver.return_value.run.side_effect = RuntimeError(
+    local_operation_execution.MissionSolver.return_value.run.side_effect = RuntimeError(
         "mission failure"
     )
 
@@ -172,7 +176,7 @@ def test_failed_reminder_snapshot_propagates_memory_error(local, monkeypatch):
 
     save.assert_called_once_with()
     solver.device.exit.assert_not_called()
-    base_schedule.save_exception.assert_not_called()
+    local_operation_execution.save_exception.assert_not_called()
 
 
 def test_locked_proxy_command_mails_once_per_game_day(monkeypatch):

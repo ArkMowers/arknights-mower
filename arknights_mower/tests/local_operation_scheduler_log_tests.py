@@ -10,7 +10,11 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
-from arknights_mower.solvers import base_schedule, local_operation  # noqa: E402
+from arknights_mower.solvers import (  # noqa: E402
+    base_schedule,
+    local_operation,
+    local_operation_execution,
+)
 
 LOGGER = "arknights_mower.utils.log"
 STAGE_COST = {"1-7": 6, "CE-6": 36}
@@ -74,14 +78,15 @@ def local(monkeypatch):
     solver.check_current_focus = MagicMock()
     solver.mower_stage_ap_cost = MagicMock(side_effect=STAGE_COST.get)
     monkeypatch.setattr(base_schedule, "get_server_weekday", lambda: 0)
+    monkeypatch.setattr(local_operation_execution, "get_server_weekday", lambda: 0)
     for name in (
         "scheduling",
         "send_message",
         "save_exception",
         "MissionSolver",
-        "cultivateDepotSolver",
     ):
-        monkeypatch.setattr(base_schedule, name, MagicMock())
+        monkeypatch.setattr(local_operation_execution, name, MagicMock())
+    monkeypatch.setattr(base_schedule, "cultivateDepotSolver", MagicMock())
     # 离下个游戏日还有 10 小时，理智推算只受日常任务间隔（4 小时）限制。
     monkeypatch.setattr(
         local_operation,
@@ -89,7 +94,7 @@ def local(monkeypatch):
         lambda: (600, datetime.now() + timedelta(hours=10)),
     )
     player = MagicMock()
-    monkeypatch.setattr(base_schedule, "PlayerInfoClient", player)
+    monkeypatch.setattr(local_operation_execution, "PlayerInfoClient", player)
     navigation = MagicMock()
     navigation.return_value.run.return_value = True
     monkeypatch.setattr(base_schedule, "NavigationSolver", navigation)
@@ -166,7 +171,7 @@ def test_selected_date_does_not_limit_runs_by_sanity_snapshot(
 
     dispatch(local, caplog)
 
-    base_schedule.PlayerInfoClient.assert_not_called()
+    local_operation_execution.PlayerInfoClient.assert_not_called()
     kwargs = local.operation.return_value.run.call_args.kwargs
     assert kwargs["simulated_current_ap"] is None
     assert kwargs["target_total_runs"] is None
