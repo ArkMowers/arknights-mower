@@ -2,6 +2,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 from arknights_mower.utils import character_recognize as recognition
 
@@ -65,8 +66,18 @@ def test_cache_keeps_original_matching_threshold(monkeypatch):
     recognition._match_name_template.cache_clear()
 
 
-def test_full_name_field_cache_is_invalidated_by_resource_reload(monkeypatch):
+@pytest.fixture
+def field_model():
+    recognition._name_field_templates.cache_clear()
     recognition._match_name_field_template.cache_clear()
+    yield
+    recognition._name_field_templates.cache_clear()
+    recognition._match_name_field_template.cache_clear()
+
+
+def test_full_name_field_cache_is_invalidated_by_resource_reload(
+    monkeypatch, field_model
+):
     image = cv2.imread(str(Path(__file__).parent / "fixtures/trust_name_clemensa.png"))
     image = cv2.cvtColor(image[5:50], cv2.COLOR_BGR2RGB)
     template = recognition.OP_SELECT["克莱门莎"]
@@ -78,14 +89,58 @@ def test_full_name_field_cache_is_invalidated_by_resource_reload(monkeypatch):
     )
     recognition.reload_resource_models()
     assert recognition.match_operator_name(image, dark_text=True) == "资源更新"
-    recognition._match_name_field_template.cache_clear()
 
 
-def test_ambiguous_full_name_field_remains_unknown(monkeypatch):
-    recognition._match_name_field_template.cache_clear()
+def test_ambiguous_full_name_field_remains_unknown(monkeypatch, field_model):
     image = cv2.imread(str(Path(__file__).parent / "fixtures/trust_name_clemensa.png"))
     image = cv2.cvtColor(image[5:50], cv2.COLOR_BGR2RGB)
     template = recognition.OP_SELECT["克莱门莎"]
     monkeypatch.setattr(recognition, "OP_SELECT", {"甲": template, "乙": template})
     assert recognition.match_operator_name(image, dark_text=True) == ""
-    recognition._match_name_field_template.cache_clear()
+
+
+@pytest.mark.parametrize(
+    "overlaps",
+    [(599,), (600,), (601,), (749, 700), (750, 700), (751, 700)],
+)
+def test_name_field_preserves_opencv_decisions_at_cutoffs(
+    monkeypatch, field_model, overlaps
+):
+    rng = np.random.default_rng(802)
+    positions = rng.permutation(42 * 200)
+    sample = np.zeros((42, 200), np.uint8)
+    sample.flat[positions[:1000]] = 255
+    padded = np.pad(sample, 2)
+    templates = {}
+    scores = []
+    for overlap in overlaps:
+        template = np.zeros_like(sample)
+        template.flat[positions[:overlap]] = 255
+        template.flat[positions[1000 : 2000 - overlap]] = 255
+        name = str(overlap)
+        templates[name] = template
+        score = float(cv2.matchTemplate(padded, template, cv2.TM_CCORR_NORMED).max())
+        assert score == pytest.approx(overlap / 1000, abs=0.00001)
+        scores.append((score, name))
+    scores.sort(reverse=True)
+    expected = scores[0][1] if scores[0][0] > 0.6 else ""
+    if len(scores) > 1 and scores[0][0] - scores[1][0] < 0.05:
+        expected = ""
+    monkeypatch.setattr(recognition, "OP_SELECT", templates)
+    monkeypatch.setattr(recognition, "_normalize_name_field", lambda *_: padded)
+    image = cv2.cvtColor(padded, cv2.COLOR_GRAY2RGB)
+    assert recognition.match_operator_name(image) == expected
+
+
+@pytest.mark.parametrize("intensity,crop", [(180, False), (255, True)])
+def test_name_field_accepts_other_resource_template_formats(
+    monkeypatch, field_model, intensity, crop
+):
+    image = cv2.imread(str(Path(__file__).parent / "fixtures/trust_name_clemensa.png"))
+    image = cv2.cvtColor(image[5:50], cv2.COLOR_BGR2RGB)
+    template = recognition.OP_SELECT["克莱门莎"].copy()
+    if crop:
+        template = template[:, :-1]
+    template[template > 0] = intensity
+    monkeypatch.setattr(recognition, "OP_SELECT", {"克莱门莎": template})
+    assert recognition.match_operator_name(image, dark_text=True) == "克莱门莎"

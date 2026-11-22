@@ -1,7 +1,8 @@
 import lzma
 import pickle
 from concurrent.futures import ThreadPoolExecutor
-from functools import lru_cache
+from functools import cache, lru_cache
+from math import sqrt
 
 import cv2
 import numpy as np
@@ -15,6 +16,8 @@ from arknights_mower.utils.resource_pkg import (
 )
 
 kernel = np.ones((10, 10), np.uint8)
+_NAME_FIELD_SHAPE = (42, 200)
+_NAME_FIELD_MIN_MARGIN = 0.05
 
 
 def estimate_agent_mood(img, scope):
@@ -97,6 +100,7 @@ def reload_resource_models() -> None:
     OP_TRAIN.clear()
     OP_TRAIN.update(train)
     _match_name_template.cache_clear()
+    _name_field_templates.cache_clear()
     _match_name_field_template.cache_clear()
 
 
@@ -128,6 +132,29 @@ def match_operator_name(image, *, dark_text=False):
     return _match_name_field_template(gray.shape, gray.tobytes(), dark_text)
 
 
+def _foreground_bits(image):
+    return int.from_bytes(np.packbits(image).tobytes(), "little")
+
+
+@lru_cache(maxsize=1)
+def _name_field_templates():
+    templates = {}
+    for name, template in OP_SELECT.items():
+        height = cv2.boundingRect(cv2.findNonZero(template))[3]
+        if not height:
+            continue
+        packed = None
+        if template.shape == _NAME_FIELD_SHAPE and np.all(
+            (template == 0) | (template == 255)
+        ):
+            bits = _foreground_bits(template)
+            packed = bits, 1 / sqrt(bits.bit_count())
+        # Long names use smaller fonts. Allow one pixel of height variation.
+        heights = tuple(height + offset for offset in (-1, -0.5, 0, 0.5, 1))
+        templates[name] = template, heights, packed
+    return templates
+
+
 @lru_cache(maxsize=256)
 def _match_name_field_template(shape, pixels, dark_text):
     gray = np.frombuffer(pixels, dtype=np.uint8).reshape(shape)
@@ -142,31 +169,59 @@ def _match_name_field_template(shape, pixels, dark_text):
     _, _, _, height = cv2.boundingRect(points)
     if height < 15:
         return ""
-    scaled = {}
-    scores = []
-    for name, template in OP_SELECT.items():
-        points = cv2.findNonZero(template)
-        if points is None:
+
+    @cache
+    def scaled(target_height):
+        return _normalize_name_field(gray, target_height / height, mode)
+
+    @cache
+    def windows(target_height):
+        sample = scaled(target_height)
+        result = []
+        if sample is not None:
+            # The two-pixel border permits five positions on each axis.
+            h, w = _NAME_FIELD_SHAPE
+            for y in range(sample.shape[0] - h + 1):
+                for x in range(sample.shape[1] - w + 1):
+                    bits = _foreground_bits(sample[y : y + h, x : x + w])
+                    if bits:
+                        result.append((bits, 1 / sqrt(bits.bit_count())))
+        return result
+
+    templates = _name_field_templates()
+    estimates = {}
+    for name, (_, heights, packed) in templates.items():
+        if packed is None:
             continue
-        _, _, _, template_height = cv2.boundingRect(points)
+        bits, norm = packed
+        # Binary normalized correlation divides the foreground intersection
+        # by the geometric mean of the two foreground counts.
+        estimates[name] = norm * max(
+            (
+                (bits & window).bit_count() * scale
+                for target_height in heights
+                for window, scale in windows(target_height)
+            ),
+            default=0,
+        )
+
+    # Keep OpenCV's floating-point decisions at both cutoffs. A runner-up
+    # outside the 0.05 margin plus rounding tolerance cannot change the result.
+    lowest = max(estimates.values(), default=0) - _NAME_FIELD_MIN_MARGIN - 0.00001
+    scores = []
+    for name, (template, heights, _) in templates.items():
+        if name in estimates and estimates[name] < lowest:
+            continue
         best = 0
-        # Long names have smaller template fonts. Preserve aspect ratio and
-        # allow one pixel of antialiasing variation in the target text height.
-        for offset in (-1, -0.5, 0, 0.5, 1):
-            target_height = template_height + offset
-            if target_height not in scaled:
-                scaled[target_height] = _normalize_name_field(
-                    gray, target_height / height, mode
-                )
-            sample = scaled[target_height]
-            if sample is not None:
+        for target_height in heights:
+            if (sample := scaled(target_height)) is not None:
                 score = cv2.matchTemplate(sample, template, cv2.TM_CCORR_NORMED).max()
                 best = max(best, float(score))
         scores.append((best, name))
     scores.sort(reverse=True)
     if not scores or scores[0][0] <= 0.6:
         return ""
-    if len(scores) > 1 and scores[0][0] - scores[1][0] < 0.05:
+    if len(scores) > 1 and scores[0][0] - scores[1][0] < _NAME_FIELD_MIN_MARGIN:
         return ""
     return scores[0][1]
 
@@ -182,9 +237,9 @@ def _normalize_name_field(gray, scale, mode):
         return None
     # Preserve separated punctuation as part of the full name.
     x, y, w, h = cv2.boundingRect(np.vstack(contours))
-    if h > 42 or w > 200:
+    if h > _NAME_FIELD_SHAPE[0] or w > _NAME_FIELD_SHAPE[1]:
         return None
-    template = np.zeros((42, 200), dtype=np.uint8)
+    template = np.zeros(_NAME_FIELD_SHAPE, dtype=np.uint8)
     template[:h, :w] = binary[y : y + h, x : x + w]
     template = cv2.copyMakeBorder(template, 2, 2, 2, 2, cv2.BORDER_CONSTANT, value=0)
     return template
