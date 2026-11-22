@@ -326,7 +326,7 @@
           <div class="exp-training-aside">
             <span class="exp-training-total">{{ targetCostText }}</span>
             <button type="button" class="exp-training-toggle" @click="toggleTrainingMode">
-              {{ trainingMode === 'max' ? '拉满练度' : '卫戍练度' }}
+              {{ trainingMode === 'max' ? '拉满练度' : '模组练度' }}
             </button>
           </div>
         </div>
@@ -1110,7 +1110,7 @@ import {
   formatRelative,
   formatTimestamp,
   groupItemsByTier,
-  GARRISON_TARGETS,
+  MODULE_TRAINING_TARGETS,
   parseDepotResponse,
   resolveCopyText,
   sortItems,
@@ -1183,11 +1183,11 @@ const detailItem = ref(null)
 const detailOpen = ref(false)
 const trainingMode = ref('max')
 const trainingTargets = computed(() =>
-  trainingMode.value === 'garrison' ? GARRISON_TARGETS : TRAINING_TARGETS
+  trainingMode.value === 'module' ? MODULE_TRAINING_TARGETS : TRAINING_TARGETS
 )
 
 function toggleTrainingMode() {
-  trainingMode.value = trainingMode.value === 'max' ? 'garrison' : 'max'
+  trainingMode.value = trainingMode.value === 'max' ? 'module' : 'max'
 }
 
 // 关注物品管理

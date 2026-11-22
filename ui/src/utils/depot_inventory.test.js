@@ -30,7 +30,6 @@ import {
   formatRelative,
   formatTimestamp,
   groupItemsByTier,
-  GARRISON_TARGETS,
   isDerivedItem,
   isTokenItem,
   isValidBaselineRange,
@@ -40,6 +39,7 @@ import {
   loadViewPrefs,
   matchesNumericQuery,
   matchesPinyin,
+  MODULE_TRAINING_TARGETS,
   normalizeBaselineConfig,
   normalizeFavorites,
   normalizeViewPrefs,
@@ -1321,8 +1321,8 @@ describe('training forecast', () => {
     expect(forecast.rows.map((row) => row.expCount)).toEqual([2, 3, 5])
   })
 
-  it('uses the garrison targets when they are supplied', () => {
-    const forecast = buildTrainingForecast(2811086, 3000000, GARRISON_TARGETS)
+  it('uses the module training targets when they are supplied', () => {
+    const forecast = buildTrainingForecast(2811086, 3000000, MODULE_TRAINING_TARGETS)
     expect(
       forecast.rows.map((row) => [row.label, row.target, row.expCount, row.lmdCount, row.joint])
     ).toEqual([
