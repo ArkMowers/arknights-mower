@@ -144,7 +144,8 @@ def test_maatouch_interpolates_small_and_reversed_segments(
     attach_helper(monkeypatch, device, "maatouch", events, wait)
     points = [(100, 200), (102, 199), (99, 202), (99, 202), (117, 183), (116, 184)]
     device.control.maatouch.swipe(points, None, duration=duration, part=part)
-    assert_maatouch_segments(events, points, expected, part)
+    lines = assert_maatouch_segments(events, points, expected, part)
+    assert all(int(line[2:]) > 0 for line in lines if line.startswith("w "))
 
 
 @pytest.mark.parametrize("part", [0, -2])
@@ -188,6 +189,8 @@ def test_capture_precedes_release_on_all_backends(
     kinds = [event[0] for event in events]
     assert kinds.count("capture") == kinds.count("up") == 1
     assert kinds.index("capture") < kinds.index("up")
+    if backend == "maatouch":
+        assert events.index(("command", "m 0 800 970 100")) < kinds.index("capture")
     if failure is None:
         assert clock.now >= 0.4
 
