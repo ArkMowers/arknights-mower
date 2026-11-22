@@ -2078,10 +2078,20 @@ def test_idle_rescue_ticks_do_not_repeat_planning_or_workshop_checks(
     assert not solver.tasks
 
 
-@pytest.mark.parametrize("pending", ["empty", "blocked", "independent"])
-def test_rescue_round_uses_ordinary_idle_boundary(solver, pending):
+@pytest.mark.parametrize(
+    "pending, read_in, wake_in",
+    [
+        ("empty", 30, 30),
+        ("empty", 180, 150),
+        ("blocked", 30, 150),
+        ("blocked", 0, 150),
+        ("blocked", -10, 150),
+        ("independent", 30, 10),
+    ],
+)
+def test_rescue_round_uses_ordinary_idle_boundary(solver, pending, read_in, wake_in):
     state = make_episode(solver)
-    next_read = state["next_read"]
+    next_read = state["next_read"] = NOW + timedelta(minutes=read_in)
     solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
     solver.find = MagicMock(return_value=(1, 1))
     solver.error = False
@@ -2097,13 +2107,13 @@ def test_rescue_round_uses_ordinary_idle_boundary(solver, pending):
 
     assert solver.infra_main() is True
     next_task = solver.find_next_task()
+    assert next_task is not None
+    assert next_task.time == NOW + timedelta(minutes=wake_in)
     if pending == "independent":
         assert next_task is independent
         assert solver.tasks == [independent]
     else:
-        assert next_task is not None
         assert next_task.type == TaskTypes.NOT_SPECIFIC
-        assert next_task.time == NOW + timedelta(hours=2.5)
         assert not next_task.plan and not next_task.meta_data
         if pending == "blocked":
             assert next_task is not continuation

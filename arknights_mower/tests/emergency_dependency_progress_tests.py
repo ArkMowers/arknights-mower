@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from arknights_mower.solvers import base_schedule
+from arknights_mower.solvers import base_schedule, growth
 from arknights_mower.solvers.emergency import RESUME_META
 from arknights_mower.tests import mass_mood_recovery_tests
 from arknights_mower.tests.automatic_rescue_tests import offline as offline
@@ -92,6 +92,63 @@ def test_pending_staffing_does_not_push_read_deadline(observation_solver):
     assert case.state["next_read"] == original
     assert task in task_view(solver.tasks, TaskScope.DISPATCH, solver.op_data)
     assert case.reads == []
+
+
+def test_rescue_round_wakes_for_one_observation_at_next_read(
+    observation_solver, monkeypatch
+):
+    case, solver = observation_solver, observation_solver.solver
+    next_read = case.clock["now"] + timedelta(minutes=30)
+    room = case.rooms[0]
+    case.state.update(
+        phase="recovering",
+        staffing_complete=True,
+        next_read=next_read,
+        pending_read_rooms=[room],
+        read_collection_pending=False,
+    )
+    solver._emergency_schedule_staffing.return_value = True
+    solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.error = False
+    solver.planned = solver.todo_task = solver.collect_notification = False
+    solver.task_count = 0
+    solver.recog = SimpleNamespace(
+        release_frame=MagicMock(), reset_after_external_control=MagicMock()
+    )
+    solver._refresh_workshop_inventory = MagicMock()
+    solver.handle_idle_action = MagicMock()
+    solver.check_current_focus = MagicMock()
+    monkeypatch.setattr(growth, "run_growth", MagicMock())
+    monkeypatch.setattr(base_schedule, "task_template", MagicMock())
+    monkeypatch.setattr(base_schedule, "refresh_resource_at_boundary", MagicMock())
+    monkeypatch.setattr(base_schedule.rapidocr, "release_idle_local_model", MagicMock())
+
+    def advance(seconds):
+        case.clock["now"] += timedelta(seconds=seconds)
+
+    monkeypatch.setattr(base_schedule, "csleep", advance)
+    original_read = solver.get_agent_from_room.side_effect
+
+    def read_at_deadline(*args, **kwargs):
+        assert case.clock["now"] == next_read
+        return original_read(*args, **kwargs)
+
+    solver.get_agent_from_room.side_effect = read_at_deadline
+    assert solver.infra_main() is True
+    assert case.reads == []
+    solver.rest_until_next_task()
+    assert case.clock["now"] == next_read
+    assert case.reads == []
+
+    solver.task = solver.find_next_task()
+    solver.planned = False
+    solver.infra_main()
+    assert case.reads == [room]
+    assert case.state["next_read"] > case.clock["now"]
+    solver.infra_main()
+    assert case.reads == [room]
+    solver.get_agent_from_room.assert_called_once()
 
 
 def test_normal_wakeup_observes_only_the_existing_failure_once(observation_solver):

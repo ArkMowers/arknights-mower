@@ -2721,7 +2721,7 @@ class BaseSchedulerSolver(
             task.preferred_replacement_restore = True
             self.tasks.append(task)
 
-    def handle_error(self, force=False):
+    def handle_error(self, force=False, *, idle_deadline: datetime | None = None):
         if config.stop_mower.is_set():
             raise MowerExit
         if self.scene() == Scene.UNKNOWN:
@@ -2823,9 +2823,14 @@ class BaseSchedulerSolver(
                 # run() 走正常 planned 分支重读心情/换班/跑单，而不是睡到远期任务开始
                 logger.debug("清队后补立即空任务，下一轮走正常流程重读心情/换班/跑单")
                 self.tasks.append(SchedulerTask())
-        elif self.find_next_task(datetime.now() + timedelta(hours=2.5)) is None:
-            logger.debug("2.5小时内没有其他任务，生成一个空任务")
-            self.tasks.append(SchedulerTask(time=datetime.now() + timedelta(hours=2.5)))
+        else:
+            now = datetime.now()
+            wake_at = now + timedelta(hours=2.5)
+            if idle_deadline is not None and now < idle_deadline:
+                wake_at = min(wake_at, idle_deadline)
+            if self.find_next_task(wake_at) is None:
+                logger.debug("%s 前没有其他可派发任务，生成空任务", wake_at)
+                self.tasks.append(SchedulerTask(time=wake_at))
         return True
 
     def plan_fia(self):
@@ -4444,9 +4449,15 @@ class BaseSchedulerSolver(
             if self._emergency_active():
                 self._emergency_tick()
                 self.planned = True
-                # 救急跳过普通规划，队列无可派发任务时仍沿用轮末空闲唤醒。
+                # 队列无可派发任务时沿用轮末空闲唤醒，按可执行的复查时间提前。
                 if self.find_next_task() is None:
-                    return self.handle_error()
+                    next_read = None
+                    if (
+                        self._emergency_active()
+                        and self._emergency_continuation_checkpoint() is None
+                    ):
+                        next_read = self.emergency_state.get("next_read")
+                    return self.handle_error(idle_deadline=next_read)
                 return True
             try:
                 # 如果有任何type 则会最后修正
