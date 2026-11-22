@@ -23,11 +23,13 @@ Time adjustment uses the real increase or decrease controls according to the num
 
 ### Result recognition before dismissal
 
-The token icon identifies `RECRUIT_AGENT`, but the profession icon can still be obscured by the entrance animation. [`RecruitSolver.recruit_result`](../../arknights_mower/solvers/recruit.py) requires a recognized profession icon before cropping and matching the operator name. It checks the current frame immediately and makes at most five attempts for an unrecorded slot. A missing icon leaves the result unrecorded and the display untouched; before each remaining attempt, the handler waits one second and refreshes the observation. The fifth failed attempt clears the observation and ends the recruitment run without another wait or entering the shared recognition-failure retry path. This adds at most four seconds of deliberate waiting, excluding capture and recognition time. Other recognition failures retain [`BaseSolver.run`](../../arknights_mower/utils/solver.py)'s existing retry behavior.
+The token icon identifies `RECRUIT_AGENT` while the entrance animation can still obscure the profession or name. [`RecruitSolver.recruit_result`](../../arknights_mower/solvers/recruit.py) requires exactly one matching profession icon in the current frame. It compares the name with recruitment templates for that profession and includes operators whose profession is missing or unknown in the active resources. All name templates use the same padded width so that a short name's score accounts for any lettering to its right. The best name must score at least 0.65 and lead any other name by at least 0.03.
+
+The handler checks the current frame immediately. An unreadable result leaves the slot and display untouched. Before each remaining attempt it waits one second and refreshes the observation. A fifth failed attempt clears the observation, closes the slot check as failed and ends the run with previously recorded results. The four waits total at most four seconds, excluding capture and recognition. Other recognition failures retain [`BaseSolver.run`](../../arknights_mower/utils/solver.py)'s existing retry behavior.
 
 The result handler taps only after recording the name, or when that integer slot already has a recorded result. An already recorded result is not recognized again, and each call sends at most one tap. Cancellation and other recognition or device exceptions propagate to the caller without an extra dismissal tap.
 
-Repeatedly unreadable profession icons exhaust the five result attempts and return partial results under the existing solver behavior. This does not establish that the slot was recognized: the daily scheduler can still record the recruitment run time, and subsequent scene navigation can leave the display. Name-template confidence rules and daily scheduling completion semantics are outside this repair.
+The daily scheduler can still record the recruitment run time after a partial result, and subsequent scene navigation can leave the display.
 
 ### Recruitment progress logs
 

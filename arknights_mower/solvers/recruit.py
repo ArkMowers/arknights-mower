@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 
 from arknights_mower.data import (
+    agent_profession,
     agent_with_tags,
     recruit_agent,
 )
@@ -65,6 +66,7 @@ job_list = [
     "recruit/riic_res/TANK",
     "recruit/riic_res/WARRIOR",
 ]
+result_professions = {resource.rsplit("/", 1)[1] for resource in job_list}
 
 
 class RecruitSolver(SceneGraphSolver):
@@ -431,41 +433,61 @@ class RecruitSolver(SceneGraphSolver):
             return
 
         for attempt in range(5):
-            job_pt = None
-            for i in job_list:
-                if job_pt := self.find(i):
-                    break
-            if job_pt is not None:
+            name = self._read_result_name()
+            if name is not None:
                 break
             if attempt < 4:
                 self.sleep(1)
         else:
-            logger.warning("公招干员职业图标连续5次未识别，结束本次公招")
+            logger.warning("连续5次未能确认公招干员的职业和姓名，结束本次公招")
             self._finish_slot_log("failed")
             self.recog.update()
             return True
 
-        img = cropimg(self.recog.gray, ((job_pt[1][0], 730), (1800, 860)))
-        img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
-
-        # 统一姓名模板宽度，让短姓名的评分也包含右侧文字，避免只匹配长姓名的一部分。
-        width = max(res.shape[1] for res in recruit_res_template.values())
-        score = {}
-        for id in recruit_res_template:
-            res = recruit_res_template[id]
-            res = np.pad(res, ((0, 0), (0, width - res.shape[1])))
-            result = cv2.matchTemplate(img, res, cv2.TM_CCORR_NORMED)
-            _, max_val, _, _ = cv2.minMaxLoc(result)
-            score[id] = max_val
-        self.result_agent[self.recruit_index] = recruit_agent[
-            max(score, key=score.get)
-        ]["name"]
-        name = self.result_agent[self.recruit_index]
+        self.result_agent[self.recruit_index] = name
         logger.info(
             f"{self.recruit_index}号招募位：招募获得：{name}",
             extra={"log_agents": [name]},
         )
         self.tap((500, 500))
+
+    def _read_result_name(self) -> str | None:
+        icons = [
+            (resource, pos) for resource in job_list if (pos := self.find(resource))
+        ]
+        if len(icons) != 1:
+            return None
+        resource, pos = icons[0]
+        profession = resource.rsplit("/", 1)[1]
+        img = cropimg(self.recog.gray, ((pos[1][0], 730), (1800, 860)))
+        if not img.size:
+            return None
+        img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
+        if not cv2.countNonZero(img):
+            return None
+
+        # 所有职业共用模板宽度，短姓名的评分仍包含右侧文字。
+        width = max((res.shape[1] for res in recruit_res_template.values()), default=0)
+        if width > img.shape[1]:
+            return None
+        scores = {}
+        for operator_id, res in recruit_res_template.items():
+            name = recruit_agent.get(operator_id, {}).get("name")
+            if not name or res.shape[0] > img.shape[0]:
+                continue
+            known = agent_profession.get(name)
+            if known in result_professions and known != profession:
+                continue
+            template = np.pad(res, ((0, 0), (0, width - res.shape[1])))
+            result = cv2.matchTemplate(img, template, cv2.TM_CCORR_NORMED)
+            score = cv2.minMaxLoc(result)[1]
+            scores[name] = max(score, scores.get(name, 0))
+        ranked = sorted(scores, key=scores.get, reverse=True)
+        if not ranked or scores[ranked[0]] < 0.65:
+            return None
+        if len(ranked) > 1 and scores[ranked[0]] - scores[ranked[1]] < 0.03:
+            return None
+        return ranked[0]
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
