@@ -4,11 +4,11 @@ import pickle
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
-from arknights_mower.solvers import base_schedule
+from arknights_mower.solvers import base_schedule, clue_credit
 from arknights_mower.solvers.shop import CreditShop, CreditShopIncomplete
 from arknights_mower.tests.clue_credit_tests import (
     prepare_clue_dispatch,
@@ -16,6 +16,7 @@ from arknights_mower.tests.clue_credit_tests import (
 )
 from arknights_mower.tests.clue_credit_tests import shopping as shopping
 from arknights_mower.utils import config
+from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.recognize import Recognizer
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
@@ -73,7 +74,7 @@ def test_dispatch_retains_original_clue_work_and_releases_only_for_readable_shop
     scheduler, _, state, clock = dispatch
     task = SchedulerTask(time=clock.now() - timedelta(minutes=20), task_type=kind)
     original_time = task.time
-    previous_check = scheduler.last_clue
+    checked_at = clock.now()
     scheduler.task = task
     scheduler.tasks = [task]
     scheduler.clue_new = MagicMock(side_effect=incomplete())
@@ -85,7 +86,7 @@ def test_dispatch_retains_original_clue_work_and_releases_only_for_readable_shop
     assert scheduler.tasks == [task]
     assert scheduler.tasks[0] is task
     assert task.time == original_time
-    assert scheduler.last_clue == previous_check
+    assert scheduler.last_clue == checked_at
     assert task.execution_failure["dependency"] is True
     assert not getattr(task, "clue_access_record_pending", False)
     assert task.credit_shop_continuation["reward"] is task.credit_shop_pending["reward"]
@@ -97,7 +98,7 @@ def test_dispatch_retains_original_clue_work_and_releases_only_for_readable_shop
         scheduler.infra_main()
         assert task.execution_failure
         assert task.time == original_time
-        assert scheduler.last_clue == previous_check
+        assert scheduler.last_clue == checked_at
         assert scheduler.tasks == [task]
     scheduler.clue_new.assert_called_once_with()
     run_shop.assert_not_called()
@@ -121,7 +122,7 @@ def test_dispatch_retains_original_clue_work_and_releases_only_for_readable_shop
     run_shop.assert_called_once_with(resume=reward)
     scheduler.clue_new.assert_called_once_with()
     assert scheduler.tasks == []
-    assert scheduler.last_clue == clock.now()
+    assert scheduler.last_clue == checked_at
     assert not hasattr(task, "credit_shop_pending")
     assert not hasattr(task, "credit_shop_continuation")
     assert not config.stop_mower.is_set()
@@ -178,7 +179,6 @@ def test_periodic_clue_keeps_one_original_shopping_continuation(
     scheduler.clue_new = MagicMock(side_effect=incomplete())
     run_shop = MagicMock(side_effect=incomplete())
     monkeypatch.setattr(CreditShop, "run", run_shop)
-    previous_check = scheduler.last_clue
     started_at = clock.now()
 
     scheduler.infra_main()
@@ -189,7 +189,7 @@ def test_periodic_clue_keeps_one_original_shopping_continuation(
     assert task.time == started_at
     assert task.credit_shop_continuation["on_demand"] is False
     assert task.execution_failure
-    assert scheduler.last_clue == previous_check
+    assert scheduler.last_clue == started_at
 
     for _ in range(2):
         state.now += timedelta(minutes=5)
@@ -200,7 +200,7 @@ def test_periodic_clue_keeps_one_original_shopping_continuation(
     assert run_shop.call_count == int(not clues_enabled)
     assert scheduler.tasks == [task]
     assert task.time == started_at
-    assert scheduler.last_clue == previous_check
+    assert scheduler.last_clue == started_at
 
     independent = SchedulerTask(time=clock.now(), task_type=TaskTypes.NOT_SPECIFIC)
     scheduler.tasks.append(independent)
@@ -222,7 +222,101 @@ def test_periodic_clue_keeps_one_original_shopping_continuation(
     assert scheduler.clue_new.call_count == int(clues_enabled)
     assert task.time == started_at
     assert scheduler.tasks == []
+    assert scheduler.last_clue == started_at
+
+
+@pytest.mark.parametrize("on_demand", [False, True])
+def test_periodic_clue_observes_and_resumes_restored_shopping(
+    dispatch, monkeypatch, on_demand
+):
+    scheduler, _, state, clock = dispatch
+    task = SchedulerTask(time=clock.now() - timedelta(days=4), task_type=TaskTypes.CLUE)
+    error = incomplete()
+    if on_demand:
+        error.continuation = {"on_demand": True, "stage": 2, "settlement_checked": True}
+        config.conf.clue_credit_on_demand = True
+        monkeypatch.setattr(clue_credit, "CreditShop", CreditShop)
+    scheduler._retain_credit_shop_failure(task, error)
+    restored = pickle.loads(pickle.dumps(task))
+    scheduler.tasks = [restored]
+    scheduler.enable_party = True
+    scheduler.drone_room = None
+    scheduler.drone_time = None
+    frame_name = "shop_particles_20261031_071524.jpg"
+
+    def navigate(scene):
+        if scene == Scene.SHOP_CREDIT:
+            scheduler.recog = shop_frame(frame_name)
+
+    scheduler.scene_graph_navigation.side_effect = navigate
+
+    def run_shop(*, resume, on_demand=False):
+        assert scheduler.recog.get_scene() == Scene.SHOP_CREDIT
+        assert resume is restored.credit_shop_continuation["reward"]
+        assert resume["dismissed"]
+        assert on_demand is config.conf.clue_credit_on_demand
+        return True
+
+    shop_run = MagicMock(side_effect=run_shop)
+    monkeypatch.setattr(CreditShop, "run", shop_run)
+
+    def check():
+        queued = scheduler.tasks
+        prepare_empty_clue_workflow(scheduler)
+        scheduler.tasks = queued
+        scheduler.op_data.run_order_rooms = {}
+        scheduler.find = lambda name, **_: True if name == "control_central" else None
+        room_scene = scheduler.scene
+
+        def scene():
+            try:
+                return room_scene()
+            except StopIteration:
+                return scheduler.recog.get_scene()
+
+        scheduler.scene = scene
+        scheduler.recog = shop_frame(frame_name, scene=Scene.INFRA_MAIN)
+        scheduler.daily_visit_friend_attempt = get_server_time().date()
+        scheduler.todo_task = False
+        scheduler.reload_time = clock.now()
+        scheduler.infra_main()
+
+    check()
+
+    scheduler.read_party_time.assert_called_once_with()
     assert scheduler.last_clue == clock.now()
+    assert scheduler.tasks[0] is restored
+    assert restored.time == task.time
+    assert restored.execution_failure == task.execution_failure
+    shop_run.assert_not_called()
+    assert (
+        scheduler.scene_graph_navigation.call_args_list.count(call(Scene.SHOP_CREDIT))
+        == 1
+    )
+
+    state.now += timedelta(minutes=5)
+    check()
+
+    scheduler.enter_room.assert_not_called()
+    shop_run.assert_not_called()
+    assert len(scheduler.tasks) == 1
+    assert scheduler.tasks[0] is restored
+    assert restored.execution_failure == task.execution_failure
+    assert (
+        scheduler.scene_graph_navigation.call_args_list.count(call(Scene.SHOP_CREDIT))
+        == 1
+    )
+
+    state.now += timedelta(hours=1)
+    frame_name = "shop_ready_20261031_071521.jpg"
+    check()
+
+    scheduler.read_party_time.assert_called_once_with()
+    assert scheduler.last_clue == clock.now()
+    shop_run.assert_called_once()
+    assert restored.time == task.time
+    assert scheduler.tasks == []
+    assert state.visits == []
 
 
 def test_started_shop_continuation_keeps_time_during_new_flow_exclusion(

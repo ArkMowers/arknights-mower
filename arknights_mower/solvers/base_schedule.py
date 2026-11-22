@@ -1052,19 +1052,6 @@ class BaseSchedulerSolver(
             task, str(error), (), dependency=True, log_group="credit-shop"
         )
 
-    def _clear_credit_shop_pending(self, task=None):
-        task = task if task is not None else getattr(self, "task", None)
-        if task is not None:
-            task.__dict__.pop("credit_shop_pending", None)
-            task.__dict__.pop("credit_shop_continuation", None)
-
-    def _has_pending_clue_shop(self):
-        return any(
-            task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY)
-            and getattr(task, "credit_shop_continuation", None) is not None
-            for task in self.tasks
-        )
-
     def _observe_failed_arrangement_confirmation(self):
         """确认失败后只补一次完整实读，任务阶段仍由原执行流程处理。"""
         ordinary = {
@@ -4522,7 +4509,6 @@ class BaseSchedulerSolver(
                 )
                 and self.no_pending_task(3)
                 and self._clue_flow_resume_time() is None
-                and not self._has_pending_clue_shop()
             ):
                 clue_started_at = datetime.now()
                 try:
@@ -4533,6 +4519,7 @@ class BaseSchedulerSolver(
                     task = SchedulerTask(time=clue_started_at, task_type=TaskTypes.CLUE)
                     self.tasks.append(task)
                     self._retain_credit_shop_failure(task, e)
+                    self.last_clue = datetime.now()
                 else:
                     if clue_result is not False:
                         self.last_clue = datetime.now()
@@ -12709,32 +12696,78 @@ class BaseSchedulerSolver(
             self.todo_task = True
 
     def _run_clue_flow(self):
-        """跑一次完整会客室流程。
-
-        定时趴体（线索交流结束后触发）和手动「线索任务」共用这一条路径。
-        clue_new() 根据界面更新线索交流结束时间；未读到新结果时保留已有观测。
-        完成后刷新 last_clue，失败时保留原任务和检查时间。
-        """
         task = getattr(self, "task", None)
-        continuation = getattr(task, "credit_shop_continuation", None)
-        if continuation is not None:
-            result = self._run_clue_shop(resume=continuation)
+        if getattr(task, "credit_shop_continuation", None) is not None:
+            result = self._continue_clue_shop(task)
         else:
-            result = self.clue_new()
+            try:
+                result = self.clue_new()
+            except CreditShopIncomplete:
+                self.last_clue = datetime.now()
+                raise
+            if result is False:
+                self._retain_clue_access_record_failure(task)
+            else:
+                self.last_clue = datetime.now()
         if result is False:
-            if task is not None and task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY):
-                task.__dict__.pop("credit_shop_pending", None)
-                task.clue_access_record_pending = True
-                self._retain_failed_task(
-                    task,
-                    "访问记录关闭未确认",
-                    ("meeting",),
-                    dependency=True,
-                    log_group="clue",
-                )
             return False
-        self.last_clue = datetime.now()
         self.skip(["collect_notification"])
+
+    def _retain_clue_access_record_failure(self, task):
+        if task is not None and task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY):
+            task.__dict__.pop("credit_shop_pending", None)
+            task.clue_access_record_pending = True
+            self._retain_failed_task(
+                task,
+                "访问记录关闭未确认",
+                ("meeting",),
+                dependency=True,
+                log_group="clue",
+            )
+
+    def _continue_clue_shop(self, task):
+        result = self._run_clue_shop(resume=task.credit_shop_continuation)
+        if result is False:
+            self._retain_clue_access_record_failure(task)
+        else:
+            task.__dict__.pop("credit_shop_pending", None)
+            task.__dict__.pop("credit_shop_continuation", None)
+        return result
+
+    def _resume_queued_clue_shop(self):
+        task = next(
+            (
+                task
+                for task in getattr(self, "tasks", ())
+                if task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY)
+                and getattr(task, "credit_shop_continuation", None) is not None
+            ),
+            None,
+        )
+        if task is None:
+            return False
+        if task.time > datetime.now():
+            return True
+        if pending := getattr(task, "credit_shop_pending", None):
+            if self.scene() not in (
+                Scene.SHOP_CREDIT,
+                Scene.SHOP_CREDIT_CONFIRM,
+                Scene.MATERIEL,
+            ):
+                self.scene_graph_navigation(Scene.SHOP_CREDIT)
+            if not CreditShop.can_resume(self.recog, pending):
+                return True
+            task.__dict__.pop("execution_failure", None)
+        elif getattr(task, "execution_failure", None):
+            return True
+        try:
+            result = self._continue_clue_shop(task)
+        except CreditShopIncomplete as error:
+            self._retain_credit_shop_failure(task, error)
+        else:
+            if result is not False:
+                self.tasks[:] = [queued for queued in self.tasks if queued is not task]
+        return True
 
     def _run_clue_shop(self, *, settlement_checked=None, resume=None):
         on_demand = (
@@ -12742,12 +12775,11 @@ class BaseSchedulerSolver(
         )
         if on_demand:
             kwargs = {"settlement_checked": settlement_checked}
-            if resume is not None:
+            if resume is None:
+                kwargs["resume_queued"] = self._resume_queued_clue_shop
+            else:
                 kwargs["resume"] = resume
-            result = self._run_on_demand_clue_shop(**kwargs)
-            if result is not False:
-                self._clear_credit_shop_pending()
-            return result
+            return self._run_on_demand_clue_shop(**kwargs)
         conf = config.conf
         if getattr(
             conf,
@@ -12755,6 +12787,8 @@ class BaseSchedulerSolver(
             getattr(conf, "maa_mall_enable", True)
             and getattr(conf, "maa_mall_mode", "maa") == "mower",
         ):
+            if resume is None and self._resume_queued_clue_shop():
+                return
             shop_solver = CreditShop(self.device, self.recog)
             try:
                 if resume is None:
@@ -12765,7 +12799,6 @@ class BaseSchedulerSolver(
                 e.continuation = {"on_demand": False, "reward": e.pending_reward}
                 raise
             self.scene_graph_navigation(Scene.INFRA_MAIN)
-        self._clear_credit_shop_pending()
 
     def _clue_receive_credit_capped(self):
         """确认接收页底部显示今日接受信用已达上限。"""
