@@ -384,7 +384,7 @@ def get_riic_knowledge(operators=None, topic="overview", roster_overrides=None):
             )
         )
     terms, missing, seen = [], [], set()
-    catalog = term_index()
+    catalog = term_index() if pending else {}
     while pending:
         key = pending.pop()
         if key in seen:

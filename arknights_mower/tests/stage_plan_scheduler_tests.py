@@ -11,6 +11,7 @@ sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 import arknights_mower.solvers.base_schedule as base_schedule  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer, Scene  # noqa: E402
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes  # noqa: E402
 
 
 @pytest.fixture
@@ -26,7 +27,11 @@ def scheduler(monkeypatch):
     instance.credit_fight = None
     instance.stages = []
     instance.tasks = [
-        SimpleNamespace(time=datetime.now() + timedelta(hours=1), plan={})
+        SchedulerTask(
+            time=datetime.now() + timedelta(hours=1),
+            task_plan={},
+            task_type=TaskTypes.NOT_SPECIFIC,
+        )
     ]
     instance.back_to_index = MagicMock()
     instance.initialize_maa = MagicMock()

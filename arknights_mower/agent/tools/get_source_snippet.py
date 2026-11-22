@@ -1,5 +1,6 @@
 import json
 from dataclasses import asdict
+from itertools import islice
 from pathlib import Path
 
 from arknights_mower.agent.tools.debuginfo import DebugInfo
@@ -7,7 +8,9 @@ from arknights_mower.agent.tools.debuginfo import DebugInfo
 _PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 _PROJECT_ROOT = _PACKAGE_ROOT.parent
 _SOURCE_SUFFIXES = {".py", ".js", ".ts", ".vue", ".java", ".cs"}
-_MAX_SOURCE_BYTES = 1024 * 1024
+_MAX_SOURCE_SCAN_BYTES = 8 * 1024**2
+_MAX_SOURCE_LINE_BYTES = 64 * 1024
+_MAX_SNIPPET_BYTES = 24 * 1024
 _MAX_CONTEXT = 50
 
 
@@ -38,11 +41,20 @@ def _allowed_source_path(file_path: str) -> Path:
             _PROJECT_ROOT / "server.py",
             _PROJECT_ROOT / "webview_ui.py",
         }
-        if (
-            in_package or in_ui or root_source
-        ) and resolved.stat().st_size <= _MAX_SOURCE_BYTES:
+        if in_package or in_ui or root_source:
             return resolved
     raise ValueError("不允许读取此文件")
+
+
+def _bounded_source_lines(stream):
+    remaining = _MAX_SOURCE_SCAN_BYTES
+    while raw := stream.readline(min(remaining, _MAX_SOURCE_LINE_BYTES) + 1):
+        if len(raw) > remaining:
+            raise ValueError("源码超过扫描字节上限")
+        if len(raw) > _MAX_SOURCE_LINE_BYTES:
+            raise ValueError("源码行超过扫描字节上限")
+        remaining -= len(raw)
+        yield from raw.splitlines(keepends=True)
 
 
 def get_source_snippet(file_path: str, line_number: int, context: int = 10) -> str:
@@ -55,15 +67,23 @@ def get_source_snippet(file_path: str, line_number: int, context: int = 10) -> s
         if type(context) is not int or not 0 <= context <= _MAX_CONTEXT:
             raise ValueError("上下文行数无效")
         source_path = _allowed_source_path(file_path)
-        with source_path.open("r", encoding="utf-8") as f:
-            lines = f.readlines()
-
         start = max(0, line_number - context - 1)
-        end = min(len(lines), line_number + context)
-        snippet = "".join(lines[start:end])
+        end = line_number + context
+        remaining = _MAX_SNIPPET_BYTES
+        lines = []
+        with source_path.open("rb") as source:
+            for raw in islice(_bounded_source_lines(source), start, end):
+                remaining -= len(raw)
+                if remaining < 0:
+                    raise ValueError("源码片段超过返回字节上限")
+                lines.append(
+                    raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+                )
 
         info = DebugInfo(
-            file_path=str(source_path), line_number=line_number, source_code=snippet
+            file_path=str(source_path),
+            line_number=line_number,
+            source_code="".join(lines),
         )
         return json.dumps(asdict(info))
 

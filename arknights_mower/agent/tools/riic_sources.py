@@ -3,8 +3,8 @@
 import hashlib
 
 from arknights_mower.agent.tools.get_source_snippet import (
-    _MAX_SOURCE_BYTES,
     _allowed_source_path,
+    _bounded_source_lines,
 )
 
 SOURCE_ENTRIES = (
@@ -58,36 +58,31 @@ def riic_code_locations():
     for relative, purpose, markers in SOURCE_ENTRIES:
         item = {"file_path": relative, "purpose": purpose, "available": False}
         sources.append(item)
+        digest = hashlib.sha256()
+        locations = {}
+        line_count = 0
         try:
             path = _allowed_source_path(relative)
             with path.open("rb") as source:
-                raw = source.read(_MAX_SOURCE_BYTES + 1)
-            if len(raw) > _MAX_SOURCE_BYTES:
-                raise ValueError("source size")
-            lines = raw.decode("utf-8-sig").splitlines()
+                for line_count, raw in enumerate(_bounded_source_lines(source), 1):
+                    digest.update(raw)
+                    line = raw.decode("utf-8-sig" if line_count == 1 else "utf-8")
+                    for marker in markers:
+                        if marker not in locations and marker in line:
+                            locations[marker] = {
+                                "symbol": marker,
+                                "line_number": line_count,
+                                "line_preview": line.strip()[:240],
+                            }
         except (OSError, UnicodeError, ValueError):
             item["reason"] = "当前安装未提供可读取源码或文件超出读取范围"
             continue
-        locations = []
-        missing = []
-        for marker in markers:
-            index = next((i for i, line in enumerate(lines) if marker in line), None)
-            if index is None:
-                missing.append(marker)
-            else:
-                locations.append(
-                    {
-                        "symbol": marker,
-                        "line_number": index + 1,
-                        "line_preview": lines[index].strip()[:240],
-                    }
-                )
         item.update(
             available=True,
-            sha256=hashlib.sha256(raw).hexdigest(),
-            line_count=len(lines),
-            locations=locations,
-            missing_symbols=missing,
+            sha256=digest.hexdigest(),
+            line_count=line_count,
+            locations=[locations[marker] for marker in markers if marker in locations],
+            missing_symbols=[marker for marker in markers if marker not in locations],
         )
     return {
         "scope": "当前安装源码位置，不是故障时版本，也不证明这些位置有缺陷",

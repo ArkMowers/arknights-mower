@@ -1,6 +1,7 @@
 """Offline ownership, skill-stage and read-only AI planning contracts."""
 
 import copy
+import hashlib
 import json
 
 import pytest
@@ -111,6 +112,70 @@ def test_skills_select_current_slot_and_explicit_growth_wins(state):
     ]
     assert manual["operators"][0]["source"] == "user"
     assert state[0]["operators"][0]["phase"] == 0
+
+
+@pytest.mark.parametrize("external_selected", [False, True])
+def test_knowledge_reads_packaged_terms_only_with_bundled_resources(
+    state, monkeypatch, tmp_path, external_selected
+):
+    package = tmp_path / "arknights_mower"
+    relative = "pages/basement_skill/buffer.json"
+    bundled = tmp_path / "ui" / "dist" / relative
+    bundled.parent.mkdir(parents=True)
+    bundled.write_text(
+        json.dumps(
+            {
+                "linked": {
+                    "termId": "cc.test.linked",
+                    "termName": "联动",
+                    "description": "依赖<$cc.test.nested>进驻</>",
+                },
+                "nested": {
+                    "termId": "cc.test.nested",
+                    "termName": "进驻",
+                    "description": "进驻对应设施",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    selected = tmp_path / "external" / "ui" / "src" / relative
+    monkeypatch.setattr(building_skills, "__rootdir__", package)
+    monkeypatch.setattr(
+        building_skills,
+        "resource_ui_path",
+        lambda _relative, *, source: selected if external_selected else None,
+    )
+    monkeypatch.setattr(riic, "term_index", building_skills.term_index.__wrapped__)
+    riic.skill_index()["赫默"][0]["des"] = "生产力+15%，需要<$cc.test.linked>联动</>"
+
+    response = result(riic.get_riic_knowledge, operators=["赫默"])
+
+    if external_selected:
+        assert response["error"]["code"] == "resource_unavailable"
+    else:
+        assert [
+            skill["skillname"] for skill in response["operators"][0]["active_skills"]
+        ] == ["制造α"]
+        assert {term["id"] for term in response["terms"]} == {
+            "cc.test.linked",
+            "cc.test.nested",
+        }
+        assert response["missing_terms"] == []
+
+
+def test_knowledge_without_term_references_reads_independent_topics(state, monkeypatch):
+    def missing_terms():
+        raise FileNotFoundError("buffer.json")
+
+    monkeypatch.setattr(riic, "term_index", missing_terms)
+
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")
+    assert response["code_locations"]["sources"]
+    response = result(riic.get_riic_knowledge, operators=["赫默"])
+    assert response["operators"][0]["active_skills"]
+    assert response["terms"] == []
 
 
 def test_draft_rejects_unowned_and_locked_skills_without_mutation(state):
@@ -536,6 +601,73 @@ def test_code_locations_follow_source_lines_and_keep_missing_code_explicit(
     assert missing["sources"][0]["missing_symbols"] == [
         "export function calculateIncome("
     ]
+
+
+def test_code_diagnosis_indexes_and_reads_a_source_larger_than_one_mib(
+    state, monkeypatch, tmp_path
+):
+    from arknights_mower.agent.tools import get_source_snippet as source_tool
+
+    monkeypatch.setattr(source_tool, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(source_tool, "_PACKAGE_ROOT", tmp_path / "arknights_mower")
+    source = tmp_path / "ui" / "src" / "riic" / "incomeWorker.js"
+    source.parent.mkdir(parents=True)
+    padding = b"// " + b"x" * 1020 + b"\r\n"
+    marker = b"export function calculateIncome(plan) {}"
+    raw = b"\xef\xbb\xbf" + padding * 1024 + marker + b"\r// final"
+    assert len(raw) > 1024**2
+    source.write_bytes(raw)
+
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")
+    indexed = response["code_locations"]["sources"][0]
+
+    assert indexed["available"]
+    assert indexed["line_count"] == 1026
+    assert indexed["sha256"] == hashlib.sha256(raw).hexdigest()
+    assert indexed["locations"][0]["line_number"] == 1025
+    snippet = result(
+        source_tool.get_source_snippet,
+        file_path=indexed["file_path"],
+        line_number=1025,
+        context=0,
+    )
+    assert snippet["source_code"] == marker.decode() + "\n"
+
+
+def test_source_fragment_stops_at_requested_lines_and_applies_its_budgets(
+    state, monkeypatch, tmp_path
+):
+    from arknights_mower.agent.tools import get_source_snippet as source_tool
+
+    monkeypatch.setattr(source_tool, "_PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(source_tool, "_PACKAGE_ROOT", tmp_path / "arknights_mower")
+    monkeypatch.setattr(source_tool, "_MAX_SOURCE_SCAN_BYTES", 32)
+    monkeypatch.setattr(source_tool, "_MAX_SNIPPET_BYTES", 12)
+    source = tmp_path / "ui" / "src" / "riic" / "incomeWorker.js"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"first\nsecond\n" + b"padding\n" * 8)
+
+    def fragment(line, context=0):
+        return result(
+            source_tool.get_source_snippet,
+            file_path=str(source),
+            line_number=line,
+            context=context,
+        )["source_code"]
+
+    assert fragment(1) == "first\n"
+    assert "返回字节上限" in fragment(1, context=1)
+    assert "扫描字节上限" in fragment(10)
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")
+    indexed = response["code_locations"]["sources"][0]
+    assert not indexed["available"]
+    assert "超出读取范围" in indexed["reason"]
+    assert "sha256" not in indexed
+
+    monkeypatch.setattr(source_tool, "_MAX_SOURCE_LINE_BYTES", 8)
+    source.write_bytes(b"first\n" + b"x" * 9 + b"\n")
+    assert fragment(1) == "first\n"
+    assert "源码行超过" in fragment(2)
 
 
 def test_knowledge_schema_covers_every_supported_topic():

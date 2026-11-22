@@ -272,6 +272,41 @@ def test_source_scan_budget_is_reported(tmp_path, source_tree, monkeypatch):
     assert index["coverage"]["source_scanned_bytes"] == 0
 
 
+def test_feedback_keeps_context_for_multiple_lines_in_a_source_over_one_mib(
+    tmp_path, source_tree
+):
+    _, source = source_tree
+    padding = b"# source padding\n" * 65_000
+    first_line = padding.count(b"\n") + 1
+    second_line = first_line + 41
+    raw = (
+        padding
+        + b"first_failure = True\n"
+        + b"# source context\n" * 40
+        + b"second_failure = True\n"
+    )
+    assert 1024**2 < len(raw) < 2 * 1024**2
+    source.write_bytes(raw)
+    relative = "arknights_mower/solvers/example.py"
+    runtime = log("first failure", "ERROR", f"{relative}:{first_line}") + log(
+        "second failure", "ERROR", f"{relative}:{second_line}"
+    )
+
+    index = references.build_feedback_references(
+        make_bundle(tmp_path, {"runtime.log": runtime})
+    )
+
+    by_line = {item["requested_line"]: item for item in index["sources"]}
+    assert by_line.keys() == {first_line, second_line}
+    assert "first_failure = True" in by_line[first_line]["text"]
+    assert "second_failure = True" in by_line[second_line]["text"]
+    assert {item["source_sha256"] for item in by_line.values()} == {
+        hashlib.sha256(raw).hexdigest()
+    }
+    assert index["coverage"]["source_omissions"] == []
+    assert index["coverage"]["source_scanned_bytes"] == len(raw)
+
+
 def test_serialized_index_has_hard_limit_and_reports_omission(tmp_path, monkeypatch):
     monkeypatch.setattr(references, "MAX_INDEX_BYTES", 10000)
     monkeypatch.setattr(references, "MAX_ESCAPED_INDEX_BYTES", 20000)

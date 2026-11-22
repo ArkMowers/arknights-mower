@@ -30,7 +30,9 @@ class ClueCreditMixin:
             return reset_time.astimezone().replace(tzinfo=None)
         return None
 
-    def _run_on_demand_clue_shop(self, *, settlement_checked=None, resume=None):
+    def _run_on_demand_clue_shop(
+        self, *, settlement_checked=None, resume=None, resume_queued=None
+    ):
         """按需购物；不发起访友，也不安排额外定时购物任务。"""
         if config.stop_mower.is_set():
             raise MowerExit
@@ -44,6 +46,8 @@ class ClueCreditMixin:
             getattr(self, "daily_visit_friend_attempt", None),
         ):
             logger.info("本游戏日尚未尝试访友，等待后续线索流程购物")
+            return
+        if resume_queued is not None and resume_queued():
             return
         stage = resume.get("stage", 0) if resume else 0
         reward = resume.get("reward") if resume else None
