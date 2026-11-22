@@ -22,6 +22,7 @@ from arknights_mower.utils.config.device_profile import capture_compatibility_er
 from arknights_mower.utils.csleep import MowerExit, cancellation_scope, csleep
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
 from arknights_mower.utils.device.adb_client.server import guard_adb
+from arknights_mower.utils.device.capture_time import CaptureRequest, with_capture_time
 from arknights_mower.utils.device.droidcast import DroidCastSession
 from arknights_mower.utils.device.io_budget import (
     budget_sleep,
@@ -761,8 +762,10 @@ class Device:
             timeout = io_timeout(10)
             if argv[0] == self.client.adb_bin:
                 timeout = guard_adb(argv[0], timeout=timeout, run=run_command)
+            request = CaptureRequest()
             data = run_command(
                 argv,
+                before_spawn=request.start,
                 stdout=subprocess.PIPE,
                 check=True,
                 timeout=timeout,
@@ -771,7 +774,7 @@ class Device:
                 if __system__ == "windows"
                 else 0,
             ).stdout
-            return bytes2img(data)
+            return request.received(bytes2img(data))
         raise ValueError(f"不支持的截图后端：{backend}")
 
     def standard_frame(self):
@@ -824,6 +827,7 @@ class Device:
         # ADB and custom captures own only the bounded per-call connection or
         # process. A new acquisition naturally creates their next resource.
 
+    @with_capture_time
     def screencap(self, *, recover=True):
         """Return current RGB/gray frames; persistence owns JPEG encoding."""
         from arknights_mower.utils.performance import effective_performance_profile

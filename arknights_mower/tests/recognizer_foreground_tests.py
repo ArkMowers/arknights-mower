@@ -173,8 +173,25 @@ def test_held_frame_is_installed_without_focus_recovery_or_recapture(observation
     assert recog.img is frame[1]
     assert recog.gray is frame[2]
     assert recog.screencap is frame[0]
+    assert recog.capture_started_at is None
     device.check_current_focus.assert_not_called()
     device.screencap.assert_not_called()
+
+
+def test_release_frame_discards_request_time_but_keeps_scene_timing(observation):
+    recog, _, _ = observation
+    recog.start()
+    assert recog.capture_started_at is not None
+    previous_time = recog.last_scene_time
+    recog.scene = recog.last_scene = Scene.INDEX
+    recog.loading_time = 3
+
+    recog.release_frame()
+
+    assert recog.capture_started_at is None
+    assert recog._img is None and recog._gray is None
+    assert recog.scene == recog.last_scene == Scene.INDEX
+    assert recog.last_scene_time == previous_time and recog.loading_time == 3
 
 
 @pytest.mark.parametrize(

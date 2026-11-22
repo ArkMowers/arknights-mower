@@ -754,6 +754,7 @@ def test_staffing_change_resumes_original_paused_order_refresh(paused_empty_orde
         assert refresh.time == original_time
         assert not any(task.type == TaskTypes.RUN_ORDER for task in solver.tasks)
         remaining_at_read.append(set(correction.plan))
+        solver.recog.capture_started_at = clock.now()
         return 3600 if correction.plan else 1800
 
     solver.read_time.side_effect = read_after_staffing

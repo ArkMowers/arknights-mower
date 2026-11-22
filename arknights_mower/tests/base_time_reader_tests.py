@@ -60,7 +60,7 @@ class BaseTimeReaderTests(unittest.TestCase):
             "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
         )
 
-    def test_slow_capture_and_recognition_do_not_extend_order_deadline(self):
+    def test_order_deadline_uses_the_frame_with_a_readable_countdown(self):
         class Clock(datetime):
             @classmethod
             def now(cls):
@@ -69,8 +69,10 @@ class BaseTimeReaderTests(unittest.TestCase):
         Clock.current = Clock(2026, 10, 15, 9, 20)
         solver = self.solver()
         device = MagicMock()
+        device.check_current_focus.return_value = False
         solver.recog = Recognizer(device)
         frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+        readings = iter(("invalid", "00:02:01"))
 
         def capture():
             Clock.current += timedelta(seconds=2)
@@ -78,7 +80,7 @@ class BaseTimeReaderTests(unittest.TestCase):
 
         def read(*_args):
             Clock.current += timedelta(seconds=3)
-            return "00:02:01"
+            return next(readings)
 
         device.screencap.side_effect = capture
         solver.digit_reader.get_time.side_effect = read
@@ -88,7 +90,7 @@ class BaseTimeReaderTests(unittest.TestCase):
         ):
             deadline = solver.double_read_time(None, use_digit_reader=True)
 
-        self.assertEqual(deadline, datetime(2026, 10, 15, 9, 22, 1))
-        self.assertEqual(Clock.current, datetime(2026, 10, 15, 9, 20, 5))
+        self.assertEqual(deadline, datetime(2026, 10, 15, 9, 22, 6))
+        self.assertEqual(Clock.current, datetime(2026, 10, 15, 9, 20, 10))
         solver.recog.clear()
         self.assertIsNone(solver.recog.capture_started_at)

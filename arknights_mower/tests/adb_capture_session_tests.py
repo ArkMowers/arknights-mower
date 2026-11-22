@@ -58,9 +58,11 @@ def transport(monkeypatch):
         on_frame=None,
     )
 
-    def output(serial, command, limit, remaining):
+    def output(serial, command, limit, remaining, *, on_request=None):
         timeout = remaining()
         state.calls.append((serial, command, timeout))
+        if on_request is not None:
+            on_request()
         if state.failure is not None:
             failure, state.failure = state.failure, None
             raise failure

@@ -775,6 +775,32 @@ def test_unreadable_countdown_is_not_inactivity_or_an_immediate_order(solver, st
     solver.double_read_time.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "collect_only,remaining,expected",
+    [
+        (False, 120, datetime(2026, 10, 14, 23, 58, 30, 250000)),
+        (True, 120, datetime(2026, 10, 15, 0, 1, 30, 250000)),
+        (True, 0, datetime(2026, 10, 14, 23, 59, 30, 250000)),
+    ],
+)
+def test_order_task_time_uses_the_observed_countdown(
+    solver, monkeypatch, collect_only, remaining, expected
+):
+    room = "room_1_1"
+    if collect_only:
+        place_jaye(solver, monkeypatch)
+    use_order_pages(solver, {room: "active"})
+    config.conf.run_order_delay = 3
+    solver.recog.capture_started_at = datetime(2026, 10, 14, 23, 59, 30, 250000)
+    solver.read_time.return_value = remaining
+
+    solver.plan_run_order(room)
+
+    (task,) = solver.tasks
+    assert task.run_order_collect_only is collect_only
+    assert task.time == expected
+
+
 def test_confirmed_zero_countdown_can_still_create_a_due_order(solver):
     use_order_pages(solver, {"room_1_1": "active_without_button"})
     solver.read_time.return_value = 0

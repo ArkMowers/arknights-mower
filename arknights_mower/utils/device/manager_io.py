@@ -63,6 +63,7 @@ def run_command(
     encoding=None,
     errors=None,
     max_output=MAX_COMMAND_OUTPUT,
+    before_spawn=None,
     **kwargs,
 ):
     """Wait only for the owned command; capture bounded regular-file output.
@@ -110,6 +111,8 @@ def run_command(
             _capture_stream(stack) if stderr == subprocess.PIPE else (None, None)
         )
         streams = [stream for stream in (output, error) if stream is not None]
+        if before_spawn is not None:
+            before_spawn()
         process = subprocess.Popen(
             argv,
             stdout=output if output is not None else stdout,

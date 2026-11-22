@@ -19,6 +19,7 @@ from arknights_mower.utils.device.adb_client.server import (
     guard_adb,
     run_adb,
 )
+from arknights_mower.utils.device.capture_time import CaptureRequest
 from arknights_mower.utils.device.io_budget import budget_sleep, io_timeout
 from arknights_mower.utils.device.manager_io import run_command
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
@@ -354,6 +355,7 @@ class DroidCastSession:
                 # frame stays equivalent for recognition: gray SSIM 0.9996 and
                 # 3.4% of pixels differing by more than 8/255. The default is
                 # also the request the pre-refactor capture path made.
+                request = CaptureRequest().start()
                 response = self.http.get(
                     f"http://127.0.0.1:{self.port}/screenshot",
                     timeout=(min(2, remaining), min(3, remaining)),
@@ -386,7 +388,7 @@ class DroidCastSession:
                 self.starting = False
                 if self.rotate:
                     cv2.flip(frame, -1, dst=frame)
-                return frame
+                return request.received(frame)
             except (requests.Timeout, ReadTimeoutError, TimeoutError) as exc:
                 raise DroidCastError(
                     "http_timeout",

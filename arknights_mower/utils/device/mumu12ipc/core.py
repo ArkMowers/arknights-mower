@@ -13,6 +13,7 @@ from typing import Any, Callable, Optional
 import numpy as np
 
 from arknights_mower.utils import config
+from arknights_mower.utils.device.capture_time import CaptureRequest
 from arknights_mower.utils.device.mumu12ipc.paths import (
     renderer_candidates,
     resolve_mumu_paths,
@@ -390,9 +391,11 @@ class MuMu12IPC:
         """
         self._ensure_ready()
         self._ensure_buffer()
-        return capture_native_frame(
+        request = CaptureRequest().start()
+        frame = capture_native_frame(
             self._dll, self._conn, self._display_id, self._buffer
         )
+        return request.received(frame)
 
     def _map_xy(self, x: int, y: int) -> tuple[int, int]:
         """
