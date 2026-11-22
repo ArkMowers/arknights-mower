@@ -177,6 +177,18 @@ class Recognizer:
         logger.debug(result)
         return result < 0.31
 
+    def _is_terminal_main(self) -> bool:
+        """七页签终端主页优先在左下角确认，其他布局继续全屏查找。"""
+        template = loadres("terminal_main", True)
+        height, width = template.shape
+        x, y = 90, 959
+        tab = self.gray[y : y + height, x : x + width]
+        if tab.shape == template.shape:
+            score = cv2.matchTemplate(tab, template, cv2.TM_CCOEFF_NORMED)[0, 0]
+            if score >= 0.98:
+                return True
+        return bool(self.find("terminal_main"))
+
     def check_current_focus(self) -> bool:
         if self.device.check_current_focus():
             probe = getattr(self.device, "check_ui_responsive", None)
@@ -341,7 +353,7 @@ class Recognizer:
             self.scene = Scene.INFRA_ARRANGE
         elif self.find("arrange_confirm"):
             self.scene = Scene.INFRA_ARRANGE_CONFIRM
-        elif self.find("terminal_main"):
+        elif self._is_terminal_main():
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("open_recruitment"):
             self.scene = Scene.RECRUIT_MAIN
@@ -619,7 +631,7 @@ class Recognizer:
             self.scene = Scene.RA_MAIN
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_main"):
+        elif self._is_terminal_main():
             self.scene = Scene.TERMINAL_MAIN
         else:
             self.scene = Scene.UNKNOWN
@@ -666,7 +678,7 @@ class Recognizer:
         # 从首页进入隐秘战线
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_main"):
+        elif self._is_terminal_main():
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("main_theme"):
             self.scene = Scene.TERMINAL_MAIN_THEME
@@ -710,7 +722,7 @@ class Recognizer:
 
         elif self.detect_index_scene():
             self.scene = Scene.INDEX
-        elif self.find("terminal_main") is not None:
+        elif self._is_terminal_main():
             self.scene = Scene.TERMINAL_MAIN
         elif self.find("terminal_regular"):
             self.scene = Scene.TERMINAL_REGULAR

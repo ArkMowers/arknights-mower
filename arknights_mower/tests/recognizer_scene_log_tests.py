@@ -21,6 +21,7 @@ def recognizer(visible):
     result = Recognizer.__new__(Recognizer)
     result.scene = Scene.UNDEFINED
     result.find = MagicMock(side_effect=lambda name, **_: name in visible)
+    result._is_terminal_main = MagicMock(side_effect=lambda: "terminal_main" in visible)
     result.detect_index_scene = MagicMock(return_value=False)
     result.detect_ra_adventure = MagicMock(return_value=False)
     result.find_ra_battle_exit = MagicMock(return_value=False)
