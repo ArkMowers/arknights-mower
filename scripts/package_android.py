@@ -15,6 +15,7 @@ from scripts.android_runtime_archive import RUNTIME_FILE, runtime_metadata  # no
 
 # The native bridge API is independent of the bundled Python environment.
 RUNTIME_API = 1
+MIN_APK_VERSION_CODE = 43
 ROOTS = (
     "arknights_mower",
     "ui/dist",
@@ -64,7 +65,7 @@ def package(
     manifest = {
         "kind": "mower-android",
         "format": 2,
-        "min_apk": 29,
+        "min_apk": MIN_APK_VERSION_CODE,
         "version": version,
         "revision": revision,
         "runtime_api": RUNTIME_API,

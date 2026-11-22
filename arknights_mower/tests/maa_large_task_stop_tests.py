@@ -107,16 +107,23 @@ def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
 
         monkeypatch.setattr(maa_control, "monotonic", lambda: now, raising=False)
         monkeypatch.setattr(maa_control, "sleep", sleep, raising=False)
-        bridge = SimpleNamespace(call=order.query_running)
+
+        class Bridge:
+            def call(self, method, *, socket_timeout=None, **params):
+                return order.query_running(
+                    method, socket_timeout=socket_timeout, **params
+                )
+
+        bridge = order.query_running
         monkeypatch.setitem(
-            sys.modules, "mower_android.bridge", SimpleNamespace(Bridge=lambda: bridge)
+            sys.modules, "mower_android.bridge", SimpleNamespace(Bridge=Bridge)
         )
         if failure == "android_stopped":
-            bridge.call.side_effect = [True, False]
+            bridge.side_effect = [True, False]
         elif failure == "android_query_error":
-            bridge.call.side_effect = TimeoutError("bridge did not answer")
+            bridge.side_effect = TimeoutError("bridge did not answer")
         else:
-            bridge.call.return_value = True
+            bridge.return_value = True
     with pytest.raises(
         RuntimeError if not handoff and failure == "stop" else MowerExit
     ):
@@ -124,7 +131,7 @@ def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
     if handoff:
         expected = [call.stop()]
         if android:
-            queries = bridge.call.call_args_list
+            queries = bridge.call_args_list
             assert queries
             budget = queries[0].kwargs["socket_timeout"]
             assert 0 < budget <= 5
@@ -155,6 +162,57 @@ def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
     solver.device.check_current_focus.assert_not_called()
     assert len(solver.tasks) == 1
     assert base_schedule.config.stop_mower.is_set()
+
+
+@pytest.mark.parametrize(
+    ("bounded_query", "bounded_exit"), [(False, False), (False, True), (True, False)]
+)
+def test_android_handoff_requires_both_host_capabilities(
+    monkeypatch, caplog, bounded_query, bounded_exit
+):
+    query = MagicMock(
+        side_effect=AssertionError("unsupported host must not be queried")
+    )
+
+    class LegacyBridge:
+        def call(self, method, **params):
+            return query(method, **params)
+
+    class CurrentBridge:
+        def call(self, method, *, socket_timeout=None, **params):
+            return query(method, socket_timeout=socket_timeout, **params)
+
+    stop = threading.Event()
+    stop.set()
+    monkeypatch.setenv("MOWER_ANDROID", "1")
+    monkeypatch.setattr(base_schedule.config, "stop_mower", stop)
+    monkeypatch.setattr(base_schedule.config, "keep_game_on_stop", stop)
+    monkeypatch.setitem(
+        sys.modules,
+        "mower_android.bridge",
+        SimpleNamespace(Bridge=CurrentBridge if bounded_query else LegacyBridge),
+    )
+    exit_game = MagicMock()
+    device = (
+        SimpleNamespace(exit_after_task_stop=exit_game)
+        if bounded_exit
+        else SimpleNamespace()
+    )
+    solver = SimpleNamespace(
+        MAA=object(),
+        device=device,
+        maa_stop=MagicMock(return_value=True),
+        release_maa=MagicMock(return_value=True),
+    )
+
+    maa_control.stop_for_mower_exit(solver, True, False)
+
+    solver.maa_stop.assert_called_once_with()
+    solver.release_maa.assert_called_once_with()
+    query.assert_not_called()
+    exit_game.assert_not_called()
+    assert "更新 APK" in caplog.text
+    assert "保留当前游戏" not in caplog.text
 
 
 def test_stop_cleanup_uses_bound_client_once_without_clearing_task_stop(monkeypatch):

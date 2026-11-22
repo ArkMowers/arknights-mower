@@ -76,7 +76,7 @@ class AndroidPackageTests(unittest.TestCase):
                 meta = json.loads(z.read("mower-android.json"))
                 self.assertEqual(meta["runtime_api"], 1)
                 self.assertEqual(meta["format"], 2)
-                self.assertEqual(meta["min_apk"], 29)
+                self.assertEqual(meta["min_apk"], 43)
                 self.assertGreater(meta["runtime"]["unpacked_size"], 0)
                 self.assertIn("python-runtime.zip.xz", z.namelist())
                 self.assertEqual(meta["version"], "4.2.0")

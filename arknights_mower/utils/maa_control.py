@@ -1,5 +1,6 @@
 import os
 from contextlib import contextmanager
+from inspect import Parameter, signature
 from threading import Lock
 from time import monotonic, sleep
 
@@ -57,6 +58,21 @@ def release(solver):
     return released
 
 
+def _supports_android_game_handoff(device):
+    if not callable(getattr(device, "exit_after_task_stop", None)):
+        return False
+    try:
+        from mower_android.bridge import Bridge
+
+        timeout = signature(Bridge.call).parameters.get("socket_timeout")
+    except (ImportError, AttributeError, TypeError, ValueError):
+        return False
+    return timeout is not None and timeout.kind in (
+        Parameter.KEYWORD_ONLY,
+        Parameter.POSITIONAL_OR_KEYWORD,
+    )
+
+
 def _confirm_android_stop():
     from mower_android.bridge import Bridge
 
@@ -82,11 +98,18 @@ def _exit_game(solver):
 
 
 def _stop_for_game_handoff(solver):
+    android = os.environ.get("MOWER_ANDROID") == "1"
+    can_handoff = not android or _supports_android_game_handoff(solver.device)
+    if not can_handoff:
+        logger.warning(
+            "当前 Android APK 不支持停止后保留游戏。请手动关闭游戏，并更新 APK 后使用手动接管。",
+            extra={"log_group": "maa-integration"},
+        )
     stopped = True
     if getattr(solver, "MAA", None) is not None:
         try:
             stopped = bool(solver.maa_stop())
-            if stopped and os.environ.get("MOWER_ANDROID") == "1":
+            if stopped and android and can_handoff:
                 _confirm_android_stop()
         except Exception:
             stopped = False
@@ -94,6 +117,8 @@ def _stop_for_game_handoff(solver):
                 "未能确认 MAA 已停止", extra={"log_group": "maa-integration"}
             )
     released = solver.release_maa()
+    if not can_handoff:
+        return
     if stopped and released:
         logger.info(
             "已停止 MAA 大型任务，保留当前游戏", extra={"log_group": "maa-integration"}

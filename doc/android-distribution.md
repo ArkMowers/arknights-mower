@@ -12,7 +12,7 @@ Windows、macOS、Linux 沿用现有实现。Android 宿主设置 `MOWER_ANDROID
 
 Android 暂时禁用 Mirror酱：不显示源选项和 CDK，已有 CDK 不影响官方默认源，后端拒绝 Mirror 的核心、资源和 CDK 查询。其他三端保持原有 Mirror 功能。缺少官方 Android 核心时明确失败，不回退 Linux 包。
 
-APK 与 Mower 版本独立。日常 Mower/MAA 代码、WebUI、资源及兼容接口更新不要求用户更新 APK；只有 Android 系统能力或原生桥接变化时才需要新版 APK。首次使用完整环境热更新需安装 versionCode ≥ 29 的宿主。
+APK 与 Mower 分别更新。当前 Mower 更新包要求 [Android APK v0.2.23](https://github.com/ALEXsun0/arknights-mower-android/releases/tag/v0.2.23) 或更新版本（versionCode ≥ 43）。从旧 APK 更新时，宿主会拒绝安装 Mower 更新包并提示先更新 APK。该版本提供 MAA 停止确认所需的限时桥接查询和限时退出游戏接口。
 
 ## Mower 更新包协议
 
@@ -20,7 +20,7 @@ APK 与 Mower 版本独立。日常 Mower/MAA 代码、WebUI、资源及兼容�
 
 根目录包含 `mower-android.json`、`mower/` 应用内容和 `python-runtime.zip.xz`。内层为 XZ 压缩的 ZIP，包含 Python 解释器、标准库、第三方依赖、Linux 共享库、证书及许可证，不含 `mower_android` 宿主、MAA 核心/接口、Mower 本体或用户配置。符号链接保存在 `.symlinks.json`，宿主在解压普通文件后恢复；绝对链接目标按 rootfs 内路径解释。`runtime.unpacked_size` 是内层 ZIP 全部文件解压后的总字节数（含 symlink 清单，不含最终恢复的链接）。
 
-清单字段为 `kind="mower-android"`、`format=2`、`min_apk=29`、`version`、`revision`、`runtime_api=1`、`python="3.12"`、`platform="android"`、`arch="arm64"`，以及 `runtime={"file":"python-runtime.zip.xz","sha256":"…","unpacked_size":…}`。Python 小版本由实际归档的解释器名称取得。`runtime_api` 仅表示原生桥接协议，Python 依赖升级不再要求改变宿主 API。`requirements.txt` 供审查，手机不执行 pip 安装。
+清单字段为 `kind="mower-android"`、`format=2`、`min_apk=43`、`version`、`revision`、`runtime_api=1`、`python="3.12"`、`platform="android"`、`arch="arm64"`，以及 `runtime={"file":"python-runtime.zip.xz","sha256":"…","unpacked_size":…}`。Python 小版本由实际归档的解释器名称取得。`runtime_api` 仅表示原生桥接协议，Python 依赖升级不再要求改变宿主 API。`requirements.txt` 供审查，手机不执行 pip 安装。
 
 ARM64 PR CI 与正式发布都真实构建 Python 环境、运行原生依赖导入冒烟测试，并校验内外层 ZIP、解释器 ELF 架构、运行环境 digest、版本及必备文件；本仓库不构建 APK。
 
