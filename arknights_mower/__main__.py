@@ -655,6 +655,9 @@ class _StartupSceneRecovery:
 
 
 def _recover_startup_scene(scheduler, recovery):
+    from arknights_mower.utils.recognize import RecognizeError
+    from arknights_mower.utils.solver import StrategyError
+
     try:
         with scene_restart_scope(recovery.restart_budget):
             if (
@@ -668,6 +671,10 @@ def _recover_startup_scene(scheduler, recovery):
                 return True
     except SceneRecoveryExhausted:
         pass
+    except (RecognizeError, StrategyError) as exc:
+        if not recovery.requires_home_confirmation:
+            raise
+        logger.debug("启动导航未完成：%s", exc)
     from arknights_mower.utils.email import send_message
 
     try:

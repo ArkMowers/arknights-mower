@@ -31,12 +31,17 @@ def scene_restart_scope(budget=None):
         _restart_budget.reset(token)
 
 
-def claim_scene_restart():
+def check_scene_restart_available():
     budget = _restart_budget.get()
     if budget is not None:
         check_cancelled()
         if budget.used:
             raise SceneRecoveryExhausted("本次场景恢复已尝试重进游戏")
+
+
+def claim_scene_restart():
+    check_scene_restart_available()
+    if (budget := _restart_budget.get()) is not None:
         budget.used = True
 
 

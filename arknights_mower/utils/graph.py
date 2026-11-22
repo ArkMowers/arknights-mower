@@ -17,6 +17,7 @@ from arknights_mower.utils.recognize import RecognizeError
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.scene_recovery import (
     SceneRecoveryExhausted,
+    check_scene_restart_available,
     claim_scene_restart,
 )
 from arknights_mower.utils.solver import BaseSolver
@@ -640,10 +641,11 @@ class SceneGraphSolver(BaseSolver):
                     self.sleep()
                     error_count += 1
                     continue
-                claim_scene_restart()
+                check_scene_restart_available()
                 if game_restarted:
                     raise RecognizeError("场景转移在游戏重启后仍持续失败") from e
                 self.device.reconnect()
+                claim_scene_restart()
                 self.restart_game()
                 game_restarted = True
                 error_count = 0

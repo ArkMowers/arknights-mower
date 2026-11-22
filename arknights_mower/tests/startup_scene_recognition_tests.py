@@ -16,7 +16,7 @@ from arknights_mower.utils.device.device import DeviceRecoveryError
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import bytes2img, loadres
 from arknights_mower.utils.log import should_archive_record
-from arknights_mower.utils.recognize import Recognizer
+from arknights_mower.utils.recognize import RecognizeError, Recognizer
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scene_recovery import (
     SceneRecoveryExhausted,
@@ -258,6 +258,64 @@ def test_startup_device_recovery_still_requires_home_confirmation(
     assert saved == {"tasks": [pending]}
     assert solver.initialize_operators.call_count == finds_home
     assert ("未能确认游戏首页" in caplog.text) is not finds_home
+
+
+@pytest.mark.parametrize("retry_button_visible", [False, True])
+def test_startup_login_cancellation_failure_issues_notification(
+    startup_solver, monkeypatch, retry_button_visible
+):
+    solver = startup_solver
+    solver.back.side_effect = lambda: setattr(
+        solver.scene, "return_value", Scene.LOGIN_CANCELLED
+    )
+    solver.find = Mock(return_value=(0, 0) if retry_button_visible else None)
+    solver.tap = Mock()
+    notify = Mock(wraps=email.send_message)
+    monkeypatch.setattr(email, "send_message", notify)
+    pending = object()
+    saved = {"tasks": [pending]}
+
+    main.simulate(saved)
+
+    assert solver.tap.call_count == (
+        config.MAX_RETRYTIME if retry_button_visible else 0
+    )
+    notify.assert_called_once()
+    assert notify.call_args.kwargs["subject"] == "Mower 启动失败"
+    assert notify.call_args.kwargs["level"] == "ERROR"
+    assert notify.call_args.kwargs["archive_screenshots"] is True
+    solver.restart_game.assert_not_called()
+    solver.initialize_operators.assert_not_called()
+    assert saved == {"tasks": [pending]}
+
+
+def test_transition_reconnect_failure_does_not_spend_startup_game_restart(
+    startup_solver, monkeypatch
+):
+    solver = startup_solver
+    failure = DeviceRecoveryError("lost device before relaunching the game")
+
+    def back():
+        if solver.back.call_count == 1:
+            solver.scene.return_value = Scene.INFRA_MAIN
+        else:
+            raise RecognizeError("could not leave the base")
+
+    solver.back.side_effect = back
+    solver.device.reconnect.side_effect = [failure, None]
+    solver.restart_game.side_effect = lambda: setattr(
+        solver.scene, "return_value", Scene.INDEX
+    )
+    resume = Mock()
+    monkeypatch.setattr(main, "_resume_device_dispatch", resume)
+
+    main.simulate(None)
+
+    resume.assert_called_once_with(failure=failure)
+    assert solver.device.reconnect.call_count == 2
+    assert solver.back.call_count == 15
+    solver.restart_game.assert_called_once_with()
+    solver.initialize_operators.assert_called_once_with()
 
 
 def test_normal_scene_navigation_keeps_original_unknown_retry_limit(startup_solver):
