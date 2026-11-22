@@ -2,16 +2,18 @@
 
 import copy
 import json
+import logging
 from dataclasses import replace
 from datetime import datetime, timedelta
 from pathlib import Path
+from threading import Event
 from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
 import pytest
 
-from arknights_mower.solvers import record
+from arknights_mower.solvers import manual_tasks, record
 from arknights_mower.solvers.garrison import model, runner, solver
 from arknights_mower.solvers.garrison.vision import (
     Frame,
@@ -354,6 +356,62 @@ def test_failure_yields_until_a_new_window_and_retains_other_work(
         )
     else:
         conf.garrison.run_id = "retry"
+    assert runner.run_garrison(scheduler)
+    assert run.call_count == 2
+
+
+@pytest.mark.parametrize("change", ["ordinary_release", "after_window"])
+def test_repeat_dispatch_tracks_only_tasks_that_limit_the_window(
+    income_db, monkeypatch, change
+):
+    now = datetime(2026, 11, 22, 22)
+    cutoff = (now + timedelta(days=1)).replace(hour=7)
+    conf = Conf(
+        maa_long_task_type="garrison",
+        maa_rg_enable=1,
+        maa_long_task_weekly_windows=[
+            {"start": "21:50", "end": "7:00", "weekdays": list(range(7))}
+        ],
+    )
+    monkeypatch.setattr(runner.config, "conf", conf)
+    for module in (runner, manual_tasks):
+        monkeypatch.setattr(module, "datetime", Mock(now=lambda: now))
+    order = SchedulerTask(
+        now + timedelta(hours=1)
+        if change == "ordinary_release"
+        else cutoff + timedelta(hours=1),
+        task_type=TaskTypes.RUN_ORDER,
+    )
+    release = SchedulerTask(
+        now + timedelta(minutes=15), task_type=TaskTypes.RELEASE_DORM
+    )
+    tasks = [release, order] if change == "ordinary_release" else [order]
+    queue_reads = Mock()
+    scheduler = SimpleNamespace(
+        device=Mock(),
+        recog=Mock(),
+        tasks=tasks,
+        task=None,
+        op_data=None,
+        find_next_task=Mock(return_value=release),
+        _queue_missing_run_order_reads=queue_reads,
+    )
+    run = Mock(side_effect=model.GarrisonError("未识别棋子"))
+    monkeypatch.setattr(runner.GarrisonSolver, "run", run)
+    effective_end = manual_tasks.long_task_deadline(scheduler, cutoff)
+
+    assert runner.run_garrison(scheduler)
+    assert not runner.run_garrison(scheduler)
+    (release if change == "ordinary_release" else order).time += timedelta(minutes=5)
+
+    assert manual_tasks.long_task_deadline(scheduler, cutoff) == effective_end
+    assert not runner.run_garrison(scheduler)
+    if change == "ordinary_release":
+        assert not manual_tasks.run_long_task_if_dorm_pending(scheduler)
+        queue_reads.assert_not_called()
+    assert run.call_count == 1
+
+    order.time = now + timedelta(hours=2)
     assert runner.run_garrison(scheduler)
     assert run.call_count == 2
 
@@ -970,6 +1028,97 @@ def test_dispatch_reserves_a_full_new_match(
     assert worker.called is admitted
 
 
+@pytest.mark.parametrize(
+    ("source", "end_reason"),
+    [
+        ("周计划", "执行时段结束"),
+        ("旧每日时段", "下一项基建任务到期"),
+        ("周计划", "用户停止 MAA"),
+        ("周计划", "Mower 停止"),
+        ("周计划", "剩余时间不足以开新局"),
+        ("周计划", None),
+    ],
+)
+def test_dispatch_records_window_and_handoff_reason_at_debug(
+    income_db, monkeypatch, caplog, source, end_reason
+):
+    now = datetime(2026, 11, 22, 6, 30)
+    window_end = now.replace(hour=7, minute=0)
+    task_end = now + timedelta(minutes=20)
+    legacy = source == "旧每日时段"
+    settles_match = end_reason in {None, "剩余时间不足以开新局"}
+    conf = Conf(
+        maa_rg_enable=1,
+        maa_long_task_type="garrison",
+        garrison={"mode": "matches", "match_limit": 1 if end_reason is None else 2},
+        maa_long_task_weekly_windows=None
+        if legacy
+        else [{"start": "21:50", "end": "7:00", "weekdays": list(range(7))}],
+    )
+    stop_maa, stop_mower = Event(), Event()
+    monkeypatch.setattr(runner.config, "conf", conf)
+    monkeypatch.setattr(runner.config, "stop_maa", stop_maa)
+    monkeypatch.setattr(runner.config, "stop_mower", stop_mower)
+    for module in (runner, solver):
+        monkeypatch.setattr(module, "datetime", Mock(now=lambda: now))
+    monkeypatch.setattr(solver.rapidocr, "initialize_ocr", Mock())
+    monkeypatch.setattr(solver, "Vision", Mock())
+    monkeypatch.setattr(solver, "FarmSession", Mock())
+    monkeypatch.setattr(solver, "save_screenshot_frame", Mock())
+    next_task = SchedulerTask(task_end if legacy else window_end + timedelta(hours=1))
+    scheduler = SimpleNamespace(
+        device=Mock(), recog=Mock(), tasks=[next_task], task=None, op_data=None
+    )
+
+    def enter(worker):
+        nonlocal now
+        if settles_match:
+            now = window_end - timedelta(minutes=10)
+            worker.capture = Mock(return_value=frame("lobby"))
+            worker._quick_confirmed = True
+            return Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", False)
+        if end_reason == "用户停止 MAA":
+            stop_maa.set()
+        elif end_reason == "Mower 停止":
+            stop_mower.set()
+        else:
+            now = task_end if legacy else window_end
+        worker.remaining()
+        pytest.fail("expected Garrison to hand over the device")
+
+    monkeypatch.setattr(solver.GarrisonSolver, "enter", enter)
+    with caplog.at_level(logging.DEBUG):
+        if end_reason == "Mower 停止":
+            with pytest.raises(solver.MowerExit):
+                runner.run_garrison(scheduler)
+        else:
+            assert runner.run_garrison(scheduler)
+
+    dispatch = [
+        record for record in caplog.records if "卫戍协议派发诊断" in record.getMessage()
+    ]
+    handoff = [
+        record
+        for record in caplog.records
+        if "卫戍协议交还设备原因" in record.getMessage()
+    ]
+    assert len(dispatch) == 1
+    assert dispatch[0].levelno == logging.DEBUG
+    assert source in dispatch[0].getMessage()
+    assert str(task_end if legacy else window_end) in dispatch[0].getMessage()
+    if end_reason is None:
+        assert handoff == []
+    else:
+        assert len(handoff) == 1
+        assert handoff[0].levelno == logging.DEBUG
+        assert end_reason in handoff[0].getMessage()
+    if settles_match:
+        progress = record.load_garrison_progress()
+        assert progress["matches_played"] == progress["attempts"] == 1
+        assert progress["match"] is None
+    scheduler.device.exit_after_task_stop.assert_called_once_with()
+
+
 @pytest.mark.parametrize("progress", [{}, {"match": {"phase": "starting"}}])
 def test_match_budget_rechecked_after_navigation_before_saving_new_match(progress):
     before = copy.deepcopy(progress)
@@ -1052,14 +1201,14 @@ def test_match_limit_counts_each_settlement_once_after_restart(
     screenshot.assert_called_once_with(result.image, "garrison_result")
     assert (
         runner.eligible_progress(
-            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None
+            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None, datetime.max
         )
         is None
     )
     conf.garrison.match_limit = 3
     assert (
         runner.eligible_progress(
-            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None
+            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None, datetime.max
         )["matches_played"]
         == 2
     )
@@ -1605,7 +1754,7 @@ def test_completed_goal_skips_device_with_legacy_theme_record(income_db):
     assert model.status(conf, progress)["completed"]
     assert (
         runner.eligible_progress(
-            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
+            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None, datetime.max
         )
         is None
     )

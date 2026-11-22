@@ -42,7 +42,7 @@ def resume_dorm_releases(scheduler):
             task.time = ended_at
 
 
-def long_task_deadline(scheduler, limit):
+def long_task_deadline_task(scheduler, limit):
     current = getattr(scheduler, "task", None)
     if getattr(current, "type", None) not in LONG_TASKS:
         current = None
@@ -61,7 +61,12 @@ def long_task_deadline(scheduler, limit):
         key=lambda task: task.time,
         default=None,
     )
-    return min(pending.time, limit) if pending else limit
+    return pending if pending is not None and pending.time < limit else None
+
+
+def long_task_deadline(scheduler, limit):
+    pending = long_task_deadline_task(scheduler, limit)
+    return pending.time if pending is not None else limit
 
 
 def run_long_task_if_dorm_pending(scheduler):
@@ -81,7 +86,10 @@ def run_long_task_if_dorm_pending(scheduler):
             run_garrison,
         )
 
-        if eligible_progress(conf, window.total_seconds(), scheduler, opening) is None:
+        if (
+            eligible_progress(conf, window.total_seconds(), scheduler, opening, cutoff)
+            is None
+        ):
             return False
     elif window < timedelta(minutes=9):
         return False
