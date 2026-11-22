@@ -171,8 +171,8 @@ export const TRAINING_TARGETS = [
   { key: 'four', label: '四星', target: '精二 70', exp: 484000, lmd: 482003 }
 ]
 
-/** 卫戍练度：六/五/四星模组各自要求等级。 */
-export const GARRISON_TARGETS = [
+/** 模组练度以六星、五星和四星干员解锁模组所需的等级为培养目标。 */
+export const MODULE_TRAINING_TARGETS = [
   { key: 'six', label: '六星', target: '精二 60', exp: 588286, lmd: 761409 },
   { key: 'five', label: '五星', target: '精二 50', exp: 390161, lmd: 476260 },
   { key: 'four', label: '四星', target: '精二 40', exp: 242936, lmd: 264506 }

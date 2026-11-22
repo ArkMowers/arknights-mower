@@ -379,7 +379,7 @@ describe('depot derived item trends', () => {
     )
   })
 
-  it('switches the overview between max training and garrison levels', async () => {
+  it('switches the overview between max and module training levels', async () => {
     prepareDerivedItems()
     state.depot.report.depot[0]['B 作战记录']['全部经验（计算）'] = { number: 2811086, sort: 100 }
     state.depot.report.depot[0]['A 常用资源']['龙门币'] = { number: 3000000, sort: 1 }
@@ -397,7 +397,7 @@ describe('depot derived item trends', () => {
     toggle.props.onClick()
     await settle()
 
-    expect(content(toggle)).toBe('卫戍练度')
+    expect(content(toggle)).toBe('模组练度')
     expect(content(overview)).toContain('精二 60')
     expect(content(overview)).toContain('精二 50')
     expect(content(overview)).toContain('精二 40')
