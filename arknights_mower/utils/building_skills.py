@@ -38,7 +38,10 @@ def term_index():
     relative = "pages/basement_skill/buffer.json"
     path = resource_ui_path(relative, source=True)
     if path is None:
-        path = Path(__rootdir__).parent / "ui" / "src" / relative
+        ui_root = Path(__rootdir__).parent / "ui"
+        path = ui_root / "src" / relative
+        if not path.is_file():
+            path = ui_root / "dist" / relative
     return {
         term["termId"]: term for term in json.loads(path.read_text("utf-8")).values()
     }

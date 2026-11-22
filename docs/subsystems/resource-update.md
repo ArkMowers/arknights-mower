@@ -10,7 +10,7 @@ Full-package and OTA installation discard files not registered by the running cl
 
 [Verified resource OTA](../../.agents/notes/implemented/architecture/2026-10-09-resource-ota.md) records scope and verification.
 
-Bundled reconstruction reads the historical skill entry from `arknights_mower/data/building_skill.json`. The WebUI build retains the unchanged bytes of `ui/src/pages/basement_skill/buffer.json` under `ui/dist/pages/basement_skill/buffer.json`, alongside the copied public images. A source checkout can use its UI source files; desktop and Android packages require no `ui/src` directory. Selected external generations use their archive paths exclusively; a missing or corrupt base file never borrows bundled data.
+Bundled reconstruction reads the historical skill entry from `arknights_mower/data/building_skill.json`. The WebUI build retains the unchanged bytes of `ui/src/pages/basement_skill/buffer.json` under `ui/dist/pages/basement_skill/buffer.json`, alongside the copied public images. The Mower AI term reader uses the UI source entry when present and the built entry in desktop and Android packages, which can omit `ui/src`. Selected external generations use their archive paths exclusively; a missing or corrupt base file never borrows bundled data.
 
 Android application packaging requires the built buffer artifact and rejects missing, empty or whitespace-only input before creating an update archive. Release validation also rejects an empty buffer entry in an existing archive.
 

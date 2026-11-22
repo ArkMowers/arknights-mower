@@ -114,6 +114,70 @@ def test_skills_select_current_slot_and_explicit_growth_wins(state):
     assert state[0]["operators"][0]["phase"] == 0
 
 
+@pytest.mark.parametrize("external_selected", [False, True])
+def test_knowledge_reads_packaged_terms_only_with_bundled_resources(
+    state, monkeypatch, tmp_path, external_selected
+):
+    package = tmp_path / "arknights_mower"
+    relative = "pages/basement_skill/buffer.json"
+    bundled = tmp_path / "ui" / "dist" / relative
+    bundled.parent.mkdir(parents=True)
+    bundled.write_text(
+        json.dumps(
+            {
+                "linked": {
+                    "termId": "cc.test.linked",
+                    "termName": "联动",
+                    "description": "依赖<$cc.test.nested>进驻</>",
+                },
+                "nested": {
+                    "termId": "cc.test.nested",
+                    "termName": "进驻",
+                    "description": "进驻对应设施",
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    selected = tmp_path / "external" / "ui" / "src" / relative
+    monkeypatch.setattr(building_skills, "__rootdir__", package)
+    monkeypatch.setattr(
+        building_skills,
+        "resource_ui_path",
+        lambda _relative, *, source: selected if external_selected else None,
+    )
+    monkeypatch.setattr(riic, "term_index", building_skills.term_index.__wrapped__)
+    riic.skill_index()["赫默"][0]["des"] = "生产力+15%，需要<$cc.test.linked>联动</>"
+
+    response = result(riic.get_riic_knowledge, operators=["赫默"])
+
+    if external_selected:
+        assert response["error"]["code"] == "resource_unavailable"
+    else:
+        assert [
+            skill["skillname"] for skill in response["operators"][0]["active_skills"]
+        ] == ["制造α"]
+        assert {term["id"] for term in response["terms"]} == {
+            "cc.test.linked",
+            "cc.test.nested",
+        }
+        assert response["missing_terms"] == []
+
+
+def test_knowledge_without_term_references_reads_independent_topics(state, monkeypatch):
+    def missing_terms():
+        raise FileNotFoundError("buffer.json")
+
+    monkeypatch.setattr(riic, "term_index", missing_terms)
+
+    response = result(riic.get_riic_knowledge, topic="code_diagnosis")
+    assert response["code_locations"]["sources"]
+    response = result(riic.get_riic_knowledge, operators=["赫默"])
+    assert response["operators"][0]["active_skills"]
+    assert response["terms"] == []
+
+
 def test_draft_rejects_unowned_and_locked_skills_without_mutation(state):
     before = state[1].model_dump()
     response = result(
