@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import partial
+from functools import lru_cache, partial
 from typing import List, Optional, Tuple
 
 import cv2
@@ -29,6 +29,18 @@ from arknights_mower.utils.vector import va
 
 class RecognizeError(Exception):
     pass
+
+
+@lru_cache(maxsize=1)
+def _access_record_video_title(shape, pixels):
+    """视频画面归一化后的标题比标准截图中的标题小。"""
+    height, width = shape
+    template = np.frombuffer(pixels, dtype=np.uint8).reshape(shape)
+    return cv2.resize(
+        template,
+        (round(width * 0.85), round(height * 0.95)),
+        interpolation=cv2.INTER_NEAREST,
+    )
 
 
 def captcha_panel_scope(gray: tp.GrayImage) -> tp.Scope | None:
@@ -833,27 +845,25 @@ class Recognizer:
 
     def find_clue_access_record(self):
         """在固定区域比较完整标题字形，不读取文字或比较背景纹理。"""
-        title = self.img[250:365, 800:1120].astype(np.int16)
-        foreground = (
-            (title.min(axis=2) >= 190) & (title.max(axis=2) - title.min(axis=2) <= 40)
-        ).astype(np.uint8) * 255
+        red, green, blue = cv2.split(self.img[250:365, 800:1120])
+        darkest = cv2.min(cv2.min(red, green), blue)
+        brightest = cv2.max(cv2.max(red, green), blue)
+        foreground = cv2.bitwise_and(
+            cv2.inRange(darkest, 190, 255),
+            cv2.inRange(cv2.subtract(brightest, darkest), 0, 40),
+        )
+        if cv2.countNonZero(foreground) == 0:
+            return None
+
         template = loadres("clue/access_record_title", True)
-        # 两种标题尺寸分别来自标准截图和已有视频素材的标准化画面。
-        for scale_x, scale_y in ((1, 1), (0.85, 0.95)):
-            shape = cv2.resize(
-                template,
-                (
-                    round(template.shape[1] * scale_x),
-                    round(template.shape[0] * scale_y),
-                ),
-                interpolation=cv2.INTER_NEAREST,
-            )
-            result = cv2.matchTemplate(foreground, shape, cv2.TM_CCOEFF_NORMED)
+        video_title = _access_record_video_title(template.shape, template.tobytes())
+        for reference in (template, video_title):
+            result = cv2.matchTemplate(foreground, reference, cv2.TM_CCOEFF_NORMED)
             _, score, _, (x, y) = cv2.minMaxLoc(result)
             if score >= 0.68:
                 return (
                     (800 + x, 250 + y),
-                    (800 + x + shape.shape[1], 250 + y + shape.shape[0]),
+                    (800 + x + reference.shape[1], 250 + y + reference.shape[0]),
                 )
         return None
 
