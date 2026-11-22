@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import numpy as np
 import pytest
 
-from arknights_mower.solvers import record
+from arknights_mower.solvers import manual_tasks, record
 from arknights_mower.solvers.garrison import model, runner, solver
 from arknights_mower.solvers.garrison.vision import (
     Frame,
@@ -356,6 +356,62 @@ def test_failure_yields_until_a_new_window_and_retains_other_work(
         )
     else:
         conf.garrison.run_id = "retry"
+    assert runner.run_garrison(scheduler)
+    assert run.call_count == 2
+
+
+@pytest.mark.parametrize("change", ["ordinary_release", "after_window"])
+def test_repeat_dispatch_tracks_only_tasks_that_limit_the_window(
+    income_db, monkeypatch, change
+):
+    now = datetime(2026, 11, 22, 22)
+    cutoff = (now + timedelta(days=1)).replace(hour=7)
+    conf = Conf(
+        maa_long_task_type="garrison",
+        maa_rg_enable=1,
+        maa_long_task_weekly_windows=[
+            {"start": "21:50", "end": "7:00", "weekdays": list(range(7))}
+        ],
+    )
+    monkeypatch.setattr(runner.config, "conf", conf)
+    for module in (runner, manual_tasks):
+        monkeypatch.setattr(module, "datetime", Mock(now=lambda: now))
+    order = SchedulerTask(
+        now + timedelta(hours=1)
+        if change == "ordinary_release"
+        else cutoff + timedelta(hours=1),
+        task_type=TaskTypes.RUN_ORDER,
+    )
+    release = SchedulerTask(
+        now + timedelta(minutes=15), task_type=TaskTypes.RELEASE_DORM
+    )
+    tasks = [release, order] if change == "ordinary_release" else [order]
+    queue_reads = Mock()
+    scheduler = SimpleNamespace(
+        device=Mock(),
+        recog=Mock(),
+        tasks=tasks,
+        task=None,
+        op_data=None,
+        find_next_task=Mock(return_value=release),
+        _queue_missing_run_order_reads=queue_reads,
+    )
+    run = Mock(side_effect=model.GarrisonError("未识别棋子"))
+    monkeypatch.setattr(runner.GarrisonSolver, "run", run)
+    effective_end = manual_tasks.long_task_deadline(scheduler, cutoff)
+
+    assert runner.run_garrison(scheduler)
+    assert not runner.run_garrison(scheduler)
+    (release if change == "ordinary_release" else order).time += timedelta(minutes=5)
+
+    assert manual_tasks.long_task_deadline(scheduler, cutoff) == effective_end
+    assert not runner.run_garrison(scheduler)
+    if change == "ordinary_release":
+        assert not manual_tasks.run_long_task_if_dorm_pending(scheduler)
+        queue_reads.assert_not_called()
+    assert run.call_count == 1
+
+    order.time = now + timedelta(hours=2)
     assert runner.run_garrison(scheduler)
     assert run.call_count == 2
 
@@ -1126,14 +1182,14 @@ def test_match_limit_counts_each_settlement_once_after_restart(
     screenshot.assert_called_once_with(result.image, "garrison_result")
     assert (
         runner.eligible_progress(
-            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None
+            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None, datetime.max
         )
         is None
     )
     conf.garrison.match_limit = 3
     assert (
         runner.eligible_progress(
-            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None
+            conf, 3600, SimpleNamespace(tasks=[], op_data=None), None, datetime.max
         )["matches_played"]
         == 2
     )
@@ -1679,7 +1735,7 @@ def test_completed_goal_skips_device_with_legacy_theme_record(income_db):
     assert model.status(conf, progress)["completed"]
     assert (
         runner.eligible_progress(
-            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None
+            conf, 1000, SimpleNamespace(tasks=[], op_data=None), None, datetime.max
         )
         is None
     )

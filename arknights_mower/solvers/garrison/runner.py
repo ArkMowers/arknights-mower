@@ -3,18 +3,18 @@
 from datetime import datetime
 
 from arknights_mower.solvers import record
+from arknights_mower.solvers.manual_tasks import long_task_deadline_task
 from arknights_mower.utils import config, maa_control
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.long_task_windows import ONE_DAY, long_task_schedule
-from arknights_mower.utils.scheduler_task import find_next_task
 
 from .model import goal_reached, prepare_progress
 from .solver import MATCH_SECONDS, GarrisonSolver, GarrisonYield
 
 
-def dispatch_window(scheduler, run_key, match_limit, opening):
-    pending = find_next_task(scheduler.tasks, op_data=scheduler.op_data)
+def dispatch_window(scheduler, run_key, match_limit, opening, cutoff):
+    pending = long_task_deadline_task(scheduler, cutoff)
     return (
         run_key,
         match_limit,
@@ -23,14 +23,14 @@ def dispatch_window(scheduler, run_key, match_limit, opening):
     )
 
 
-def eligible_progress(conf, window, scheduler, opening):
+def eligible_progress(conf, window, scheduler, opening, cutoff):
     if window < 9 * 60:
         return None
     progress = prepare_progress(conf, record.load_garrison_progress())
     settings = conf.garrison
     match_limit = settings.match_limit if settings.mode == "matches" else None
     if getattr(scheduler, "garrison_last_window", None) == dispatch_window(
-        scheduler, progress["key"], match_limit, opening
+        scheduler, progress["key"], match_limit, opening, cutoff
     ):
         return None
     if goal_reached(progress, settings.target_wins, match_limit):
@@ -78,7 +78,7 @@ def run_garrison(scheduler):
 
     actual_end = deadline()
     window = (actual_end - datetime.now()).total_seconds()
-    progress = eligible_progress(conf, window, scheduler, opening)
+    progress = eligible_progress(conf, window, scheduler, opening, limit)
     if progress is None:
         return False
     progress["error"] = ""
@@ -120,6 +120,6 @@ def run_garrison(scheduler):
     finally:
         resume_dorm_releases(scheduler)
         scheduler.garrison_last_window = dispatch_window(
-            scheduler, progress["key"], solver.match_limit, opening
+            scheduler, progress["key"], solver.match_limit, opening, limit
         )
     return True
