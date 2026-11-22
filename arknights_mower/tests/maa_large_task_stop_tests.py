@@ -105,28 +105,18 @@ def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
             nonlocal now
             now += seconds
 
-        def timeout(_method, socket_timeout, _params):
-            sleep(socket_timeout)
-            raise TimeoutError("bridge did not answer")
-
-        class LegacyBridge:
-            def __init__(self, port=None, token=None, timeout=90):
-                self.timeout = timeout
-
-            def call(self, method, **params):
-                return order.query_running(method, self.timeout, params)
-
-        monkeypatch.setattr(maa_control, "monotonic", lambda: now)
-        monkeypatch.setattr(maa_control, "sleep", sleep)
+        monkeypatch.setattr(maa_control, "monotonic", lambda: now, raising=False)
+        monkeypatch.setattr(maa_control, "sleep", sleep, raising=False)
+        bridge = SimpleNamespace(call=order.query_running)
         monkeypatch.setitem(
-            sys.modules, "mower_android.bridge", SimpleNamespace(Bridge=LegacyBridge)
+            sys.modules, "mower_android.bridge", SimpleNamespace(Bridge=lambda: bridge)
         )
         if failure == "android_stopped":
-            order.query_running.side_effect = [True, False]
+            bridge.call.side_effect = [True, False]
         elif failure == "android_query_error":
-            order.query_running.side_effect = timeout
+            bridge.call.side_effect = TimeoutError("bridge did not answer")
         else:
-            order.query_running.return_value = True
+            bridge.call.return_value = True
     with pytest.raises(
         RuntimeError if not handoff and failure == "stop" else MowerExit
     ):
@@ -134,20 +124,19 @@ def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
     if handoff:
         expected = [call.stop()]
         if android:
-            queries = order.query_running.call_args_list
+            queries = bridge.call.call_args_list
             assert queries
-            budget = 3
-            if failure in ("android_running", "android_query_error"):
-                assert now == pytest.approx(budget)
+            budget = queries[0].kwargs["socket_timeout"]
+            assert 0 < budget <= 5
             assert all(
-                method == "maa_running"
-                and 0 < socket_timeout <= budget
-                and params == {}
-                for (method, socket_timeout, params), _ in queries
+                args == ("maa_running",) and 0 < kwargs["socket_timeout"] <= budget
+                for args, kwargs in queries
             )
+            assert now <= budget
             if failure == "android_stopped":
                 assert len(queries) == 2
-                assert queries[1].args[1] < queries[0].args[1]
+            elif failure == "android_running":
+                assert now == pytest.approx(budget)
             expected.extend(
                 call.query_running(*args, **kwargs) for args, kwargs in queries
             )

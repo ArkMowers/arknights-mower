@@ -60,10 +60,10 @@ def release(solver):
 def _confirm_android_stop():
     from mower_android.bridge import Bridge
 
+    bridge = Bridge()
     deadline = monotonic() + 3
     while (remaining := deadline - monotonic()) > 0:
-        # 旧 APK 通过构造参数设置 socket 超时。
-        running = Bridge(timeout=remaining).call("maa_running")
+        running = bridge.call("maa_running", socket_timeout=remaining)
         if running is False and monotonic() < deadline:
             return
         if running is not True:
