@@ -1,6 +1,7 @@
 """按住终点时截图，验证三种输入后端的释放与单帧复用。"""
 
 from contextlib import contextmanager, nullcontext
+from itertools import pairwise
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -92,6 +93,69 @@ def attach_helper(monkeypatch, device, backend, events, wait):
 
         helper._operation = operation
         device.control.maatouch = helper
+
+
+def assert_maatouch_segments(events, points, durations, part):
+    lines = [line for _, line in events]
+    assert lines[0] == f"d 0 {points[0][0]} {points[0][1]} 100"
+    assert lines[-2:] == ["u 0", "c"] and lines.count("u 0") == 1
+    moves = []
+    for command, following in pairwise(lines):
+        if command.startswith("m "):
+            _, _, x, y, _ = command.split()
+            wait = int(following[2:]) if following.startswith("w ") else 0
+            moves.append((int(x), int(y), wait))
+
+    segments = np.asarray(moves).reshape(len(durations), part, 3)
+    assert [(tuple(s[-1, :2]), s[:, 2].sum()) for s in segments] == list(
+        zip(points[1:], durations)
+    )
+    for origin, segment in zip(points, segments):
+        steps = np.diff(np.vstack((origin, segment[:, :2])), axis=0)
+        assert np.all(np.ptp(steps, axis=0) <= 1)
+        assert np.ptp(segment[:, 2]) <= 1
+    return lines
+
+
+def test_depot_noinertia_swipe_reaches_each_maatouch_endpoint(monkeypatch, gesture):
+    device, events, _, wait, _, _ = gesture
+    attach_helper(monkeypatch, device, "maatouch", events, wait)
+    solver = object.__new__(BaseSolver)
+    solver.device, solver.recog = device, MagicMock()
+    solver.swipe_noinertia((1600, 900), (-702, 0), interval=0)
+
+    lines = assert_maatouch_segments(
+        events,
+        [(1600, 900), (1600, 1000), (898, 1000), (898, 900)],
+        [200, 140, 200],
+        10,
+    )
+    assert lines[-4:] == ["w 400", "c", "u 0", "c"]
+
+
+@pytest.mark.parametrize(
+    "duration, expected, part",
+    [([9, 0, 7, None, 3], [9, 0, 7, 0, 3], 4), (7, [7] * 5, 3), (None, [0] * 5, 1)],
+)
+def test_maatouch_interpolates_small_and_reversed_segments(
+    gesture, monkeypatch, duration, expected, part
+):
+    device, events, _, wait, _, _ = gesture
+    attach_helper(monkeypatch, device, "maatouch", events, wait)
+    points = [(100, 200), (102, 199), (99, 202), (99, 202), (117, 183), (116, 184)]
+    device.control.maatouch.swipe(points, None, duration=duration, part=part)
+    assert_maatouch_segments(events, points, expected, part)
+
+
+@pytest.mark.parametrize("part", [0, -2])
+def test_invalid_maatouch_part_never_opens_a_session(part):
+    helper = object.__new__(MaaTouch)
+    helper._operation = MagicMock(
+        side_effect=AssertionError("unexpected touch session")
+    )
+    with pytest.raises(ValueError):
+        helper.swipe([(20, 30), (25, 35)], None, duration=7, part=part)
+    helper._operation.assert_not_called()
 
 
 @pytest.mark.parametrize("backend", ["scrcpy", "mumu_ipc", "maatouch"])
