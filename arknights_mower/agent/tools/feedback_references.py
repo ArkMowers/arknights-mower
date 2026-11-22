@@ -20,7 +20,6 @@ MAX_RECORD_TEXT_BYTES = 1024
 MAX_TEXT_BYTES = 48 * 1024
 MAX_LINE_BYTES = 16 * 1024
 MAX_SOURCE_FILES = 4
-MAX_SOURCE_FILE_BYTES = 1024**2
 MAX_SOURCE_SCAN_BYTES = 2 * 1024**2
 MAX_SOURCE_TEXT_BYTES = 24 * 1024
 MAX_INDEX_BYTES = 96 * 1024
@@ -215,14 +214,12 @@ def _source_path(supplied):
         normalized = "arknights_mower/" + normalized.rsplit(marker, 1)[1]
     elif re.match(r"^[A-Za-z]:/", normalized):
         raise ValueError("不允许读取此文件")
-    path = _allowed_source_path(normalized)
-    if path.stat().st_size > MAX_SOURCE_FILE_BYTES:
-        raise ValueError("不允许读取此文件")
-    return path
+    return _allowed_source_path(normalized)
 
 
 def _source_context(records):
     sources, omissions, seen = [], [], set()
+    source_snapshots = {}
     scanned = 0
     text_bytes = 0
     # 异常位置优先，最终日志记录仍按附件中的原始顺序输出。
@@ -250,18 +247,26 @@ def _source_context(records):
                         {"reason": "source_count_limit", "record_id": record["id"]}
                     )
                     continue
-                remaining = MAX_SOURCE_SCAN_BYTES - scanned
-                if path.stat().st_size > remaining:
-                    omissions.append(
-                        {"reason": "source_scan_byte_limit", "record_id": record["id"]}
+                if path not in source_snapshots:
+                    remaining = MAX_SOURCE_SCAN_BYTES - scanned
+                    if path.stat().st_size > remaining:
+                        omissions.append(
+                            {
+                                "reason": "source_scan_byte_limit",
+                                "record_id": record["id"],
+                            }
+                        )
+                        continue
+                    with path.open("rb") as stream:
+                        raw = stream.read(remaining + 1)
+                    scanned += len(raw)
+                    if len(raw) > remaining:
+                        raise ValueError("源码超过读取上限")
+                    source_snapshots[path] = (
+                        raw.decode("utf-8").splitlines(keepends=True),
+                        _digest(raw),
                     )
-                    continue
-                with path.open("rb") as stream:
-                    raw = stream.read(remaining + 1)
-                scanned += len(raw)
-                if len(raw) > remaining:
-                    raise ValueError("源码超过读取上限")
-                lines = raw.decode("utf-8").splitlines(keepends=True)
+                lines, source_hash = source_snapshots[path]
                 if line > len(lines):
                     omissions.append(
                         {
@@ -284,7 +289,6 @@ def _source_context(records):
                 text_bytes += size
                 # 仅显示安装目录内的可定位路径，不携带本机绝对路径。
                 relative = path.relative_to(_PROJECT_ROOT).as_posix()
-                source_hash = _digest(raw)
                 sources.append(
                     {
                         "id": "source-"
