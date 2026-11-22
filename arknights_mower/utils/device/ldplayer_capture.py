@@ -17,7 +17,10 @@ from arknights_mower.utils.device.ldplayer_discovery import (
 )
 from arknights_mower.utils.device.ldplayer_endpoint import LDPlayerEndpointResolver
 from arknights_mower.utils.device.manager_io import run_manager_command
-from arknights_mower.utils.device.native_capture import NativeCaptureSession
+from arknights_mower.utils.device.native_capture import (
+    NativeCaptureSession,
+    bottom_up_to_rgb,
+)
 from arknights_mower.utils.device.screenshot_backend import FrameSizeMismatch
 
 
@@ -46,7 +49,7 @@ class _LDRenderer:
         self._release = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(table[2])
         self._cap = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p)(table[1])
 
-    def capture_frame(self):
+    def capture_frame(self, *, output=None, repeated_capture=False):
         pixels = self._cap(self._instance)
         if not pixels:
             raise LDCaptureError("LD 截图增强未返回画面，请检查所选实例。")
@@ -54,7 +57,7 @@ class _LDRenderer:
             ctypes.cast(pixels, ctypes.POINTER(ctypes.c_ubyte)),
             shape=(1080 * 1920 * 3,),
         ).reshape(1080, 1920, 3)
-        return raw[::-1, :, ::-1].copy()
+        return bottom_up_to_rgb(raw, output, repeated_capture=repeated_capture)
 
     def close(self):
         instance, self._instance = self._instance, None
@@ -67,9 +70,11 @@ def _capture_worker(library, index, pid, frame_buffer, channel):
     try:
         renderer = _LDRenderer(library, index, pid)
         output = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3)
+        repeated_capture = False
         while channel.recv() == "capture":
-            np.copyto(output, renderer.capture_frame())
+            renderer.capture_frame(output=output, repeated_capture=repeated_capture)
             channel.send(("ok", "", None, None))
+            repeated_capture = True
     except (EOFError, BrokenPipeError):
         pass
     except Exception as exc:

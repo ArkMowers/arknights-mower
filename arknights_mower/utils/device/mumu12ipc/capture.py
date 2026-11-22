@@ -32,10 +32,18 @@ def _capture_worker(root, instance, package, frame_buffer, channel):
         display = bind_display(ipc._dll, connection, package)
         buffer = (ctypes.c_ubyte * (1920 * 1080 * 4))()
         output = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3)
+        repeated_capture = False
         while channel.recv() == "capture":
-            frame = capture_native_frame(ipc._dll, connection, display, buffer)
-            np.copyto(output, frame)
+            capture_native_frame(
+                ipc._dll,
+                connection,
+                display,
+                buffer,
+                output=output,
+                repeated_capture=repeated_capture,
+            )
             channel.send(("ok", "", None, None))
+            repeated_capture = True
     except (EOFError, BrokenPipeError):
         pass
     except Exception as exc:

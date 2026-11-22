@@ -109,9 +109,10 @@ def _capture_mumu_worker(
 
         size = 1920 * 1080 * 4
         buffer = (ctypes.c_ubyte * size)()
-        frame = capture_native_frame(ipc._dll, ipc._conn, display_id, buffer)
         shared_frame = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3)
-        np.copyto(shared_frame, frame)
+        capture_native_frame(
+            ipc._dll, ipc._conn, display_id, buffer, output=shared_frame
+        )
         succeeded.value = True
     except Exception as exc:
         error.value = str(exc).encode("utf-8")[:1023]
