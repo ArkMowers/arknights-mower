@@ -2079,6 +2079,58 @@ def test_idle_rescue_ticks_do_not_repeat_planning_or_workshop_checks(
 
 
 @pytest.mark.parametrize(
+    "pending, read_in, wake_in",
+    [
+        ("empty", 30, 30),
+        ("empty", 180, 150),
+        ("blocked", 30, 150),
+        ("blocked", 0, 150),
+        ("blocked", -10, 150),
+        ("independent", 30, 10),
+    ],
+)
+def test_rescue_round_uses_ordinary_idle_boundary(solver, pending, read_in, wake_in):
+    state = make_episode(solver)
+    next_read = state["next_read"] = NOW + timedelta(minutes=read_in)
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.error = False
+    solver.planned = solver.todo_task = solver.collect_notification = False
+    solver._emergency_read_rooms = MagicMock()
+    independent = SchedulerTask(NOW + timedelta(minutes=10), task_type=TaskTypes.CLUE)
+    if pending == "blocked":
+        solver._emergency_defer_read()
+        continuation = solver.tasks[0]
+        continued_at = continuation.time
+    elif pending == "independent":
+        solver.tasks.append(independent)
+
+    assert solver.infra_main() is True
+    next_task = solver.find_next_task()
+    assert next_task is not None
+    assert next_task.time == NOW + timedelta(minutes=wake_in)
+    if pending == "independent":
+        assert next_task is independent
+        assert solver.tasks == [independent]
+    else:
+        assert next_task.type == TaskTypes.NOT_SPECIFIC
+        assert not next_task.plan and not next_task.meta_data
+        if pending == "blocked":
+            assert next_task is not continuation
+            assert any(task is continuation for task in solver.tasks)
+            assert continuation.time == continued_at
+            assert continuation.execution_failure["dependency"]
+    queued_tasks = sorted(id(task) for task in solver.tasks)
+    for _ in range(3):
+        solver.planned = False
+        assert solver.infra_main() is True
+        assert solver.find_next_task() is next_task
+        assert sorted(id(task) for task in solver.tasks) == queued_tasks
+    assert state["next_read"] == next_read
+    solver._emergency_read_rooms.assert_not_called()
+
+
+@pytest.mark.parametrize(
     "task_type", [TaskTypes.WORKSHOP, TaskTypes.FIAMMETTA, TaskTypes.SWAP_SUPPORT]
 )
 def test_completed_specialized_task_replans_from_local_readback(
