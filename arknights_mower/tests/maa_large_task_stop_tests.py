@@ -9,6 +9,7 @@ import pytest
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule  # noqa: E402
+from arknights_mower.utils import maa_control  # noqa: E402
 from arknights_mower.utils.config.conf import Conf  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit, csleep  # noqa: E402
 from arknights_mower.utils.device.device import Device  # noqa: E402
@@ -26,6 +27,9 @@ from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
         (True, "stop"),
         (True, "rejected"),
         (True, "release"),
+        (True, "android_stopped"),
+        (True, "android_running"),
+        (True, "android_query_error"),
     ],
 )
 def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
@@ -88,17 +92,56 @@ def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
         solver.maa_stop.return_value = 0
     if failure == "release":
         solver.release_maa.return_value = False
+    android = bool(failure and failure.startswith("android_"))
+    monkeypatch.setenv("MOWER_ANDROID", "1" if android else "0")
     order = MagicMock()
     order.attach_mock(solver.maa_stop, "stop")
     order.attach_mock(solver.device.exit_after_task_stop, "close_game")
     order.attach_mock(solver.release_maa, "release")
+    if android:
+        now = 0.0
+
+        def sleep(seconds):
+            nonlocal now
+            now += seconds
+
+        monkeypatch.setattr(maa_control, "monotonic", lambda: now, raising=False)
+        monkeypatch.setattr(maa_control, "sleep", sleep, raising=False)
+        bridge = SimpleNamespace(call=order.query_running)
+        monkeypatch.setitem(
+            sys.modules, "mower_android.bridge", SimpleNamespace(Bridge=lambda: bridge)
+        )
+        if failure == "android_stopped":
+            bridge.call.side_effect = [True, False]
+        elif failure == "android_query_error":
+            bridge.call.side_effect = TimeoutError("bridge did not answer")
+        else:
+            bridge.call.return_value = True
     with pytest.raises(
         RuntimeError if not handoff and failure == "stop" else MowerExit
     ):
         solver.maa_plan_solver([])
     if handoff:
-        expected = [call.stop(), call.release()]
-        if failure:
+        expected = [call.stop()]
+        if android:
+            queries = bridge.call.call_args_list
+            assert queries
+            budget = queries[0].kwargs["socket_timeout"]
+            assert 0 < budget <= 5
+            assert all(
+                args == ("maa_running",) and 0 < kwargs["socket_timeout"] <= budget
+                for args, kwargs in queries
+            )
+            assert now <= budget
+            if failure == "android_stopped":
+                assert len(queries) == 2
+            elif failure == "android_running":
+                assert now == pytest.approx(budget)
+            expected.extend(
+                call.query_running(*args, **kwargs) for args, kwargs in queries
+            )
+        expected.append(call.release())
+        if failure and failure != "android_stopped":
             expected.append(call.close_game())
             solver.device.exit_after_task_stop.assert_called_once_with()
         else:

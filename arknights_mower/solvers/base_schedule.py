@@ -20898,57 +20898,7 @@ class BaseSchedulerSolver(
         return stopped
 
     def release_maa(self):
-        """关闭本轮桌面工作进程，Android 核心继续由宿主管理。"""
-        released = True
-        clear_maa_observations(self)
-        if getattr(self, "MAA", None) is not None:
-            try:
-                close = getattr(self.MAA, "close", None)
-                if close is not None:
-                    close()
-            except Exception:
-                released = False
-                logger.exception(
-                    "关闭 MAA 工作进程失败", extra={"log_group": "maa-runtime"}
-                )
-        self.MAA = None
-        self.maa_copilot_task = None
-        self.maa_paradox_task = None
-        self.maa_sss_task = None
-        self.maa_blackflow_task = None
-        self.maa_event_shop_task = None
-        return released
-
-    def _exit_game_after_maa_stop(self):
-        try:
-            self.device.exit_after_task_stop()
-        except Exception:
-            logger.exception(
-                "停止大型任务后关闭游戏失败", extra={"log_group": "maa-integration"}
-            )
-
-    def _stop_maa_for_game_handoff(self):
-        stopped = True
-        if getattr(self, "MAA", None) is not None:
-            try:
-                stopped = bool(self.maa_stop())
-            except Exception:
-                stopped = False
-                logger.exception(
-                    "停止 MAA 失败", extra={"log_group": "maa-integration"}
-                )
-        released = self.release_maa()
-        if not stopped or not released:
-            logger.warning(
-                "未能确认 MAA 已停止并释放资源，将尝试退出游戏",
-                extra={"log_group": "maa-integration"},
-            )
-            self._exit_game_after_maa_stop()
-        else:
-            logger.info(
-                "已停止 MAA 大型任务，保留当前游戏",
-                extra={"log_group": "maa-integration"},
-            )
+        return maa_control.release(self)
 
     def append_maa_theme_task(self):
         """将主题恢复追加到当前队列，由调用者统一启动并处理停止。"""
@@ -21830,25 +21780,7 @@ class BaseSchedulerSolver(
                 defer_refresh(refresh)
             self.release_maa()
         except MowerExit:
-            if (
-                large_task_started
-                and config.stop_mower.is_set()
-                and config.keep_game_on_stop.is_set()
-            ):
-                self._stop_maa_for_game_handoff()
-                raise
-            try:
-                try:
-                    if getattr(self, "MAA", None) is not None:
-                        self.maa_stop()
-                        logger.info("停止MAA", extra={"log_group": "maa-integration"})
-                finally:
-                    if (
-                        large_task_started or shop_started
-                    ) and config.stop_mower.is_set():
-                        self._exit_game_after_maa_stop()
-            finally:
-                self.release_maa()
+            maa_control.stop_for_mower_exit(self, large_task_started, shop_started)
             raise
         except (DeviceRecoveryError, SharedADBError):
             try:
