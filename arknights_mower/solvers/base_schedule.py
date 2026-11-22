@@ -489,8 +489,8 @@ class RunOrderMissed(Exception):
         self.room = room
 
 
-class ClueRoomIncomplete(Exception):
-    """会客室流程中断，尚未到达后续的信用商店。"""
+class FriendClueReceiptIncomplete(Exception):
+    """接收好友线索时出错，原任务等待新的领取页或会客室观测。"""
 
 
 class RunOrderConfirmationUnresolved(RecognizeError):
@@ -779,8 +779,8 @@ class BaseSchedulerSolver(
             return copy.deepcopy(pending["observation"])
         if getattr(task, "clue_access_record_pending", False):
             return {"access_record_visible": self._clue_access_record_visible()}
-        if getattr(task, "clue_room_pending", False):
-            return self._clue_room_observation()
+        if getattr(task, "clue_receipt_pending", False):
+            return self._clue_receipt_observation()
         if task.type in MANUAL_TASK_TYPES:
             from arknights_mower.solvers.manual_tasks import manual_task_snapshot
 
@@ -1411,16 +1411,16 @@ class BaseSchedulerSolver(
                     del task.execution_failure
                     del task.clue_access_record_pending
                 continue
-            if failure and getattr(task, "clue_room_pending", False):
+            if failure and getattr(task, "clue_receipt_pending", False):
                 previous = failure["snapshot"]
-                current = self._clue_room_observation()
+                current = self._clue_receipt_observation()
                 if (
                     current["room"] > previous["room"]
                     or current["scene"] not in (None, previous["scene"])
                     or current["card"] not in (None, previous["card"])
                 ):
                     del task.execution_failure
-                    del task.clue_room_pending
+                    del task.clue_receipt_pending
                     task.execution_retained = True
                 continue
             predecessors = getattr(task, "product_shift_predecessors", ())
@@ -4379,8 +4379,8 @@ class BaseSchedulerSolver(
             except CreditShopIncomplete as e:
                 self._retain_credit_shop_failure(self.task, e)
                 self.skip()
-            except ClueRoomIncomplete as e:
-                self._retain_clue_room_failure(self.task, e)
+            except FriendClueReceiptIncomplete as e:
+                self._retain_clue_receipt_failure(self.task, e)
                 self.skip()
             except (MowerExit, DeviceRecoveryError, SharedADBError) as error:
                 self._fail_rescue_staffing_log(self.task, str(error))
@@ -4531,7 +4531,8 @@ class BaseSchedulerSolver(
                 and not (
                     self.enable_party
                     and any(
-                        getattr(task, "clue_room_pending", False) for task in self.tasks
+                        getattr(task, "clue_receipt_pending", False)
+                        for task in self.tasks
                     )
                 )
             ):
@@ -4545,10 +4546,10 @@ class BaseSchedulerSolver(
                     self.tasks.append(task)
                     self._retain_credit_shop_failure(task, e)
                     self.last_clue = datetime.now()
-                except ClueRoomIncomplete as e:
+                except FriendClueReceiptIncomplete as e:
                     task = SchedulerTask(time=clue_started_at, task_type=TaskTypes.CLUE)
                     self.tasks.append(task)
-                    self._retain_clue_room_failure(task, e)
+                    self._retain_clue_receipt_failure(task, e)
                 else:
                     if clue_result is not False:
                         self.last_clue = datetime.now()
@@ -12742,7 +12743,7 @@ class BaseSchedulerSolver(
             return False
         self.skip(["collect_notification"])
 
-    def _clue_room_observation(self):
+    def _clue_receipt_observation(self):
         revision = getattr(self.op_data, "room_observations", {}).get("meeting", 0)
         scene = getattr(self.recog, "scene", None)
         frame = getattr(self.recog, "_img", None)
@@ -12757,15 +12758,17 @@ class BaseSchedulerSolver(
             Scene.CLUE_ACCESS_RECORD,
         ):
             scene = None
-        card = (
-            clue_card_number(frame[122:338, 1305:1467])
-            if scene == Scene.CLUE_RECEIVE
-            else None
-        )
+        card = None
+        if scene == Scene.CLUE_RECEIVE:
+            try:
+                card = clue_card_number(frame[122:338, 1305:1467])
+            except (OSError, cv2.error):
+                # 原异常可能正是模板无法读取，保留失败任务时只记未知编号。
+                pass
         return {"room": revision, "scene": scene, "card": card}
 
-    def _retain_clue_room_failure(self, task, error):
-        task.clue_room_pending = True
+    def _retain_clue_receipt_failure(self, task, error):
+        task.clue_receipt_pending = True
         self._retain_failed_task(
             task, str(error), ("meeting",), dependency=True, log_group="clue"
         )
@@ -12880,6 +12883,7 @@ class BaseSchedulerSolver(
             if not self._clue_access_record_cleared():
                 return False
             self._clue_access_record_exhausted = False
+        receiving_friend_clue = False
         try:
             settlement_checked = None
             logger.info("基建：线索", extra={"log_group": "clue"})
@@ -12987,6 +12991,7 @@ class BaseSchedulerSolver(
                 return None
 
             while ctm.task:
+                receiving_friend_clue = False
                 scene = self.scene()
 
                 if scene == Scene.INFRA_DETAILS:
@@ -13175,6 +13180,7 @@ class BaseSchedulerSolver(
                     if ctm.task != "receive":
                         self.ctap(exit_pos)
                         continue
+                    receiving_friend_clue = True
                     self.wait_product_complete(log_group="clue")
                     if self.scene() != Scene.CLUE_RECEIVE:
                         continue
@@ -13370,6 +13376,12 @@ class BaseSchedulerSolver(
                     ):
                         return False
                     self.enter_room("meeting", log_group="clue")
+            if self._clue_credit_enabled():
+                shop_result = self._run_clue_shop(settlement_checked=settlement_checked)
+            else:
+                shop_result = self._run_clue_shop()
+            if shop_result is False:
+                return False
         except CreditShopIncomplete:
             raise
         except (MowerExit, DeviceRecoveryError, SharedADBError):
@@ -13377,14 +13389,9 @@ class BaseSchedulerSolver(
         except Exception as e:
             save_exception(e)
             logger.exception(e, extra={"log_group": "clue"})
-            raise ClueRoomIncomplete(f"会客室线索流程中断：{e}") from e
-
-        if self._clue_credit_enabled():
-            shop_result = self._run_clue_shop(settlement_checked=settlement_checked)
-        else:
-            shop_result = self._run_clue_shop()
-        if shop_result is False:
-            return False
+            if receiving_friend_clue:
+                raise FriendClueReceiptIncomplete(f"接收好友线索中断：{e}") from e
+            return
 
     def adjust_order_time(self, accelerate, room, *, order_tasks=None):
         order_tasks = self.tasks if order_tasks is None else order_tasks

@@ -391,6 +391,46 @@ def test_real_clue_workflow_runs_extra_gift_after_fast_gift(
     solver._run_clue_shop.assert_called_once()
 
 
+@pytest.mark.parametrize("stage", ["give_away", "party_time", "shopping"])
+def test_later_failure_does_not_repeat_delivered_gift(clue_workflow, stage):
+    solver, state = clue_workflow
+    solver.leifeng_mode = True
+    solver.planned = True
+    solver.collect_notification = True
+    solver.enable_party = True
+    solver.drone_time = solver.reload_time = datetime.now()
+    solver.drone_room = None
+    previous_check = solver.last_clue = datetime.now() - timedelta(hours=2)
+    solver.op_data = SimpleNamespace(operators={}, run_order_rooms={})
+    task = SchedulerTask(previous_check, task_type=TaskTypes.CLUE)
+    solver.task, solver.tasks = task, [task]
+    error = RuntimeError("后续步骤失败")
+    if stage == "give_away":
+        tap = solver.tap.side_effect
+
+        def fail_gift_exit(point, **kwargs):
+            if point == (1868, 54):
+                raise error
+            return tap(point, **kwargs)
+
+        solver.tap.side_effect = fail_gift_exit
+    elif stage == "party_time":
+        solver.read_party_time.side_effect = error
+    else:
+        solver._run_clue_shop.side_effect = error
+
+    solver.infra_main()
+    assert state.sent == [(1, True, 0)]
+    assert solver.tasks == []
+    assert solver.last_clue > previous_check
+
+    solver.todo_task = False
+    solver.infra_main()
+    assert state.sent == [(1, True, 0)]
+    assert solver.tasks == []
+    solver.enter_room.assert_called_once()
+
+
 @pytest.mark.parametrize("delayed", [False, True])
 @pytest.mark.parametrize("leifeng,count", [(True, 1), (False, 10)])
 def test_received_board_clue_allows_own_duplicate_gift_during_page_transition(

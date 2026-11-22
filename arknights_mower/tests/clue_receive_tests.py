@@ -9,7 +9,7 @@ from arknights_mower.tests.clue_gift_tests import clue_workflow as clue_workflow
 from arknights_mower.tests.clue_gift_tests import frame
 from arknights_mower.tests.clue_gift_tests import gift_ui as gift_ui
 from arknights_mower.utils import rapidocr
-from arknights_mower.utils.image import loadres
+from arknights_mower.utils.image import loadimg, loadres
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -235,6 +235,38 @@ def test_receipt_failure_keeps_work_until_room_observation(receive_workflow, kin
     assert state.received == 2
     assert solver.last_clue > previous_check
     solver._run_clue_shop.assert_called_once()
+
+
+@pytest.mark.parametrize("missing", [True, False], ids=["missing", "corrupt"])
+def test_unreadable_card_template_keeps_original_failure(
+    receive_workflow, tmp_path, monkeypatch, missing
+):
+    from arknights_mower.solvers import base_schedule, clue_gift
+
+    solver, state = receive_workflow
+    previous_check = solver.last_clue = datetime.now() - timedelta(hours=2)
+    task = SchedulerTask(previous_check, task_type=TaskTypes.CLUE)
+    solver.task, solver.tasks = task, [task]
+    template = tmp_path / "clue.png"
+    if not missing:
+        template.write_bytes(b"invalid image")
+
+    with monkeypatch.context() as broken:
+        broken.setattr(clue_gift, "loadres", lambda _: loadimg(str(template)))
+        solver.infra_main()
+        (original_error,) = base_schedule.save_exception.call_args.args
+        assert isinstance(original_error, FileNotFoundError if missing else cv2.error)
+        assert str(original_error) in task.execution_failure["reason"]
+        assert task.execution_failure["snapshot"]["card"] is None
+        solver._resume_failed_tasks()
+        assert task.execution_failure
+        assert solver.tasks == [task]
+        assert task.time == solver.last_clue == previous_check
+        assert state.received == 0
+        solver._run_clue_shop.assert_not_called()
+
+    solver._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
 
 
 @pytest.mark.parametrize(
