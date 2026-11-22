@@ -31,6 +31,7 @@ from arknights_mower.utils.recognize import (
     Scene,
     captcha_panel_scope,
 )
+from arknights_mower.utils.scene_recovery import claim_scene_restart
 from arknights_mower.utils.swipe import noinertia_path
 from arknights_mower.utils.traceback import caller_info
 
@@ -1055,6 +1056,7 @@ class BaseSolver:
         logger.warning("相同场景等待超时")
         if not restart_on_timeout:
             return False
+        claim_scene_restart()
         self.recog.__dict__.pop("_network_wait_episode", None)
         self.device.exit()
         csleep(3)

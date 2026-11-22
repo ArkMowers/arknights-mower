@@ -197,6 +197,7 @@ from arknights_mower.utils.run_order_network import (
     run_order_network_scope,
     with_run_order_network,
 )
+from arknights_mower.utils.scene_recovery import recover_base_scene
 from arknights_mower.utils.scheduler_task import (
     MAINTENANCE_TASK_TYPES,
     MANUAL_TASK_TYPES,
@@ -2713,19 +2714,7 @@ class BaseSchedulerSolver(
     def handle_error(self, force=False, *, idle_deadline: datetime | None = None):
         if config.stop_mower.is_set():
             raise MowerExit
-        if self.scene() == Scene.UNKNOWN:
-            for retry in range(5):
-                logger.warning(f"当前场景无法识别，尝试返回纠正，第{retry + 1}次")
-                self.back()
-                if self.scene() != Scene.UNKNOWN:
-                    break
-            else:
-                logger.warning(
-                    "连续返回 5 次后仍无法识别场景，退出游戏重进",
-                    extra={"archive_screenshots": True},
-                )
-                self.device.exit()
-                self.check_current_focus()
+        recover_base_scene(self)
         if self.error or force:
             now = datetime.now()
             mastery_predecessors = retain_mastery_backup_tasks(

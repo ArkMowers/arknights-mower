@@ -75,6 +75,7 @@ def test_conflict_restart_retains_completed_room_recovery(
     resumed.tasks, resumed.task = [], None
     resumed.emergency_state = None
     config.stop_mower.clear()
+    resumed.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     monkeypatch.setattr(mower, "initialize", lambda *a, **kw: resumed)
     monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)
@@ -180,6 +181,7 @@ def test_conflict_saves_remaining_task_before_worker_cleanup_and_resumes(
     resumed.tasks, resumed.task = [], None
     resumed.emergency_state = None
     config.stop_mower.clear()
+    resumed.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     monkeypatch.setattr(mower, "initialize", lambda *a, **kw: resumed)
     monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)
@@ -227,6 +229,7 @@ def test_restart_does_not_open_beds_from_ineligible_or_overridden_shifts(
     saved = copy.deepcopy(record.current_state())
     if case == "retired":
         saved["backup_plan_names"] = ["retired"]
+    solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     monkeypatch.setattr(mower, "initialize", lambda *a, **kw: solver)
     monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)
@@ -286,6 +289,7 @@ def test_group_task_request_and_activation_survive_real_snapshot(solver, monkeyp
     monkeypatch.setattr(mower, "base_scheduler", solver)
     saved = copy.deepcopy(record.current_state())
     assert saved["backup_group_task_issued"] == {token}
+    solver.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     monkeypatch.setattr(mower, "initialize", lambda *a, **kw: solver)
     monkeypatch.setattr(mower.NewsChecker, "get_maintenance", lambda: None)
     monkeypatch.setattr(mower, "refresh_resource_at_boundary", lambda: None)

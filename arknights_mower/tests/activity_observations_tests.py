@@ -93,6 +93,7 @@ def test_display_observations_survive_real_save_restore_without_running(
     saved = record.load_state()
     assert saved["display_observations"] == maa_scheduler.display_observations
     maa_scheduler.display_observations = {}
+    maa_scheduler.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     maa_scheduler.initialize_operators = MagicMock(return_value=None)
     maa_scheduler.run = MagicMock(side_effect=base_schedule.MowerExit)
     maa_scheduler._request_run_order_restoration_observations = MagicMock()
@@ -129,6 +130,7 @@ def test_locked_annihilation_notification_is_not_repeated_after_resume(
     assert saved["annihilation_lock_mail_day"] == game_time.date()
 
     maa_scheduler.annihilation_lock_mail_day = None
+    maa_scheduler.scene = MagicMock(return_value=base_schedule.Scene.INFRA_MAIN)
     maa_scheduler.initialize_operators = MagicMock(return_value=None)
     maa_scheduler.run = MagicMock(side_effect=base_schedule.MowerExit)
     maa_scheduler._request_run_order_restoration_observations = MagicMock()

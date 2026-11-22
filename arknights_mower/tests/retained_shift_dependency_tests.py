@@ -241,6 +241,7 @@ def test_real_startup_rebinds_predecessors_to_restored_task(
     operators.validate_backup_plans.return_value = {"success": True}
     restored = object.__new__(case.base.BaseSchedulerSolver)
     restored.tasks, restored.op_data = [], operators
+    restored.scene = MagicMock(return_value=case.base.Scene.INFRA_MAIN)
     restored.initialize_operators = lambda: None
     restored._pending_group_transitions = lambda: {}
     monkeypatch.setattr(crash_recovery, "notice_path", lambda: None)
