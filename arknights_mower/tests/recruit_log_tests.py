@@ -213,7 +213,8 @@ def test_recognized_slot_scopes_scenes_before_the_result_and_across_same_slot_ac
         cv2.IMREAD_GRAYSCALE,
     )
     assert crop is not None
-    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.recog = Recognizer(Mock())
+    solver.recog._gray = np.zeros((1080, 1920), dtype=np.uint8)
     solver.recog.gray[730:860, 750:1920] = crop
     solver.get_recruit_tag = Mock(return_value={"治疗": (560, 550)})
     solver.recruit_tags = Mock()

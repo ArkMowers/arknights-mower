@@ -105,6 +105,42 @@ def test_blank_name_retries_same_slot_until_clear():
 
 
 @pytest.mark.parametrize(
+    ("sigma", "matched_profession"), [(4, "PIONEER"), (10, "TANK")]
+)
+def test_weak_profession_icon_requires_agreement_with_full_name_pool(
+    sigma, matched_profession
+):
+    solver = make_solver()
+    frame = np.zeros((1080, 1920), dtype=np.uint8)
+    icon = recruit.loadres("recruit/riic_res/PIONEER", True)
+    frame[749:849, 790:890] = icon
+    name = recruit.recruit_res_template["char_222_bpipe"]
+    h, w = name.shape
+    frame[853 - h : 853, 902 : 902 + w] = name
+    blurred = frame.copy()
+    blurred[749:849, 790:890] = cv2.GaussianBlur(icon, (0, 0), sigma)
+    solver.recog._gray = blurred
+    assert [job for job in recruit.job_list if solver.find(job)] == [
+        f"recruit/riic_res/{matched_profession}"
+    ]
+
+    def reveal_icon(_):
+        assert solver.result_agent == {}
+        solver.tap.assert_not_called()
+        solver.recog._gray = frame
+
+    solver.sleep = Mock(side_effect=reveal_icon)
+    solver.transition()
+
+    assert solver.result_agent == {1: "风笛"}
+    if matched_profession == "PIONEER":
+        solver.sleep.assert_not_called()
+    else:
+        solver.sleep.assert_called_once_with(1)
+    solver.tap.assert_called_once_with((500, 500))
+
+
+@pytest.mark.parametrize(
     ("fixture", "expected", "date", "left"),
     [
         ("mayer", "梅尔", "20261104", 750),

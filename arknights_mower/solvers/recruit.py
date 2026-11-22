@@ -465,6 +465,8 @@ class RecruitSolver(SceneGraphSolver):
         img = cv2.threshold(img, 220, 255, cv2.THRESH_BINARY)[1]
         if not cv2.countNonZero(img):
             return None
+        # 只在已定位的图标框内复核。模糊图标仍可用于定位姓名，但不能排除其他职业。
+        icon_score, _ = self.template_match(resource, pos)
 
         # 所有职业共用模板宽度，短姓名的评分仍包含右侧文字。
         width = max((res.shape[1] for res in recruit_res_template.values()), default=0)
@@ -476,7 +478,11 @@ class RecruitSolver(SceneGraphSolver):
             if not name or res.shape[0] > img.shape[0]:
                 continue
             known = agent_profession.get(name)
-            if known in result_professions and known != profession:
+            if (
+                icon_score >= 0.9
+                and known in result_professions
+                and known != profession
+            ):
                 continue
             template = np.pad(res, ((0, 0), (0, width - res.shape[1])))
             result = cv2.matchTemplate(img, template, cv2.TM_CCORR_NORMED)
@@ -487,7 +493,11 @@ class RecruitSolver(SceneGraphSolver):
             return None
         if len(ranked) > 1 and scores[ranked[0]] - scores[ranked[1]] < 0.03:
             return None
-        return ranked[0]
+        name = ranked[0]
+        winner_profession = agent_profession.get(name)
+        if winner_profession in result_professions and winner_profession != profession:
+            return None
+        return name
 
     def recruit_tags(self, tags):
         tem_res = self.recruit_cal(sorted(tags))
