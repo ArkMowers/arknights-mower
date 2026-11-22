@@ -2078,6 +2078,48 @@ def test_idle_rescue_ticks_do_not_repeat_planning_or_workshop_checks(
     assert not solver.tasks
 
 
+@pytest.mark.parametrize("pending", ["empty", "blocked", "independent"])
+def test_rescue_round_uses_ordinary_idle_boundary(solver, pending):
+    state = make_episode(solver)
+    next_read = state["next_read"]
+    solver.scene = MagicMock(return_value=Scene.INFRA_MAIN)
+    solver.find = MagicMock(return_value=(1, 1))
+    solver.error = False
+    solver.planned = solver.todo_task = solver.collect_notification = False
+    solver._emergency_read_rooms = MagicMock()
+    independent = SchedulerTask(NOW + timedelta(minutes=10), task_type=TaskTypes.CLUE)
+    if pending == "blocked":
+        solver._emergency_defer_read()
+        continuation = solver.tasks[0]
+        continued_at = continuation.time
+    elif pending == "independent":
+        solver.tasks.append(independent)
+
+    assert solver.infra_main() is True
+    next_task = solver.find_next_task()
+    if pending == "independent":
+        assert next_task is independent
+        assert solver.tasks == [independent]
+    else:
+        assert next_task is not None
+        assert next_task.type == TaskTypes.NOT_SPECIFIC
+        assert next_task.time == NOW + timedelta(hours=2.5)
+        assert not next_task.plan and not next_task.meta_data
+        if pending == "blocked":
+            assert next_task is not continuation
+            assert any(task is continuation for task in solver.tasks)
+            assert continuation.time == continued_at
+            assert continuation.execution_failure["dependency"]
+    queued_tasks = sorted(id(task) for task in solver.tasks)
+    for _ in range(3):
+        solver.planned = False
+        assert solver.infra_main() is True
+        assert solver.find_next_task() is next_task
+        assert sorted(id(task) for task in solver.tasks) == queued_tasks
+    assert state["next_read"] == next_read
+    solver._emergency_read_rooms.assert_not_called()
+
+
 @pytest.mark.parametrize(
     "task_type", [TaskTypes.WORKSHOP, TaskTypes.FIAMMETTA, TaskTypes.SWAP_SUPPORT]
 )

@@ -4444,6 +4444,9 @@ class BaseSchedulerSolver(
             if self._emergency_active():
                 self._emergency_tick()
                 self.planned = True
+                # 救急跳过普通规划，队列无可派发任务时仍沿用轮末空闲唤醒。
+                if self.find_next_task() is None:
+                    return self.handle_error()
                 return True
             try:
                 # 如果有任何type 则会最后修正
