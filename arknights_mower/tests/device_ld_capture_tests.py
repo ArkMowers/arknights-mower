@@ -4,6 +4,7 @@ import ctypes
 import os
 import tempfile
 import unittest
+from datetime import datetime
 from pathlib import Path
 from threading import Event, RLock
 from types import SimpleNamespace
@@ -79,12 +80,17 @@ class LDRendererTests(unittest.TestCase):
         channel.send.side_effect = lambda message: published.append(
             (message, shared[0])
         )
-        with patch.object(ld, "_LDRenderer", return_value=renderer) as factory:
+        requests = [datetime(2026, 11, 23, 9, 0, n) for n in (1, 2)]
+        with (
+            patch.object(ld, "_LDRenderer", return_value=renderer) as factory,
+            patch.object(ld, "datetime") as clock,
+        ):
+            clock.now.side_effect = requests
             ld._capture_worker("dll", 3, 42, shared, channel)
         factory.assert_called_once_with("dll", 3, 42)
         self.assertEqual(renderer.capture_frame.call_count, 2)
         self.assertEqual(
-            published, [(("ok", "", None, None), count) for count in (1, 2)]
+            published, [(("ok", at), count) for count, at in enumerate(requests, 1)]
         )
         renderer.close.assert_called_once()
         channel.close.assert_called_once()

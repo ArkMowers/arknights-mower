@@ -1,6 +1,7 @@
 """A persistent owned process bounds native MuMu screenshot calls."""
 
 import ctypes
+from datetime import datetime
 
 import numpy as np
 
@@ -34,6 +35,7 @@ def _capture_worker(root, instance, package, frame_buffer, channel):
         output = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3)
         repeated_capture = False
         while channel.recv() == "capture":
+            requested_at = datetime.now()
             capture_native_frame(
                 ipc._dll,
                 connection,
@@ -42,7 +44,7 @@ def _capture_worker(root, instance, package, frame_buffer, channel):
                 output=output,
                 repeated_capture=repeated_capture,
             )
-            channel.send(("ok", "", None, None))
+            channel.send(("ok", requested_at))
             repeated_capture = True
     except (EOFError, BrokenPipeError):
         pass

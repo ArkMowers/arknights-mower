@@ -5,14 +5,17 @@ import os
 import sys
 import tempfile
 import unittest
+from contextvars import Context
+from datetime import datetime
 from pathlib import Path
 from threading import Event, Thread
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import numpy as np
 
 from arknights_mower.tests.device_mumu_frame_tests import NativeRenderer
+from arknights_mower.utils.device import capture_time
 from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.mumu12ipc.capture import (
     MuMuCaptureSession,
@@ -74,7 +77,7 @@ class MuMuCaptureSessionTests(unittest.TestCase):
 
     def test_successive_frames_reuse_worker_and_preserve_previous_pixels(self):
         self.connection.poll.return_value = True
-        self.connection.recv.return_value = ("ok", "", None, None)
+        self.connection.recv.return_value = ("ok", datetime(2026, 11, 23, 9))
 
         def write_frame(command):
             if command == "capture":
@@ -82,8 +85,10 @@ class MuMuCaptureSessionTests(unittest.TestCase):
                 buffer[0] = self.connection.send.call_count * 20
 
         self.connection.send.side_effect = write_frame
-        first = self.session.capture_frame()
-        second = self.session.capture_frame()
+        context = Context()
+        first = context.run(self.session.capture_frame)
+        second = context.run(self.session.capture_frame)
+        self.assertNotIn(capture_time._received, context)
         self.assertEqual(first.shape, (1080, 1920, 3))
         self.assertEqual(first.dtype, np.uint8)
         self.assertEqual(first[0, 0, 0], 20)
@@ -128,7 +133,7 @@ class MuMuCaptureSessionTests(unittest.TestCase):
 
     def test_close_is_idempotent_and_does_not_terminate_finished_worker(self):
         self.connection.poll.return_value = True
-        self.connection.recv.return_value = ("ok", "", None, None)
+        self.connection.recv.return_value = ("ok", datetime(2026, 11, 23, 9))
         self.session.capture_frame()
         self.session.close()
         self.session.close()
@@ -143,7 +148,7 @@ class MuMuCaptureSessionTests(unittest.TestCase):
 
     def test_owner_mismatch_preserves_worker_pipe_and_native_session(self):
         self.connection.poll.return_value = True
-        self.connection.recv.return_value = ("ok", "", None, None)
+        self.connection.recv.return_value = ("ok", datetime(2026, 11, 23, 9))
         self.session.capture_frame()
         self.session.owner_pid = os.getpid() + 1
         self.session.close()
@@ -344,7 +349,9 @@ class MuMuCaptureWorkerTests(unittest.TestCase):
         channel.recv.side_effect = ["capture", "capture", "close"]
 
         def sent(message):
-            self.assertEqual(message, ("ok", "", None, None))
+            status, requested_at = message
+            self.assertEqual(status, "ok")
+            self.assertIsInstance(requested_at, datetime)
             if channel.send.call_count == 1:
                 sys.modules["cv2"] = cv2
                 renderer.pixels = ((0, 255, 31, 17, 255),)
@@ -365,7 +372,7 @@ class MuMuCaptureWorkerTests(unittest.TestCase):
         channel.recv.side_effect = ["capture", "close"]
         shared, _ = self.run_worker(renderer, channel)
         self.assertFalse(np.any(np.frombuffer(shared, np.uint8)))
-        channel.send.assert_called_once_with(("ok", "", None, None))
+        channel.send.assert_called_once_with(("ok", ANY))
 
     def test_native_worker_reports_capture_error_without_successful_frame(self):
         channel = MagicMock()

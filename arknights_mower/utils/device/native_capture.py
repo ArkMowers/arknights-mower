@@ -94,21 +94,22 @@ class NativeCaptureSession:
                     if self._process is None:
                         self._start()
                 self._remaining(deadline)
-                request = CaptureRequest().start()
                 self._channel.send("capture")
                 while not self._channel.poll(min(0.05, self._remaining(deadline))):
                     pass
-                status, message, code, size = self._channel.recv()
-                if status != "ok":
+                response = self._channel.recv()
+                if response[0] != "ok":
+                    _, message, code, size = response
                     failure = self._error_type(message)
                     failure.return_code = code
                     failure.actual_size = size
                     raise failure
+                _, requested_at = response
                 self._remaining(deadline)
                 frame = (
                     np.frombuffer(self._buffer, np.uint8).reshape(1080, 1920, 3).copy()
                 )
-                return request.received(frame)
+                return CaptureRequest(requested_at).received(frame)
             except Exception as exc:
                 if isinstance(exc, (EOFError, BrokenPipeError)):
                     self._failure = self._error_type(

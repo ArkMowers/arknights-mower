@@ -8,8 +8,8 @@ _received = ContextVar("received_capture_time", default=None)
 
 
 class CaptureRequest:
-    def __init__(self):
-        self.requested_at = None
+    def __init__(self, requested_at: datetime | None = None):
+        self.requested_at = requested_at
 
     def start(self):
         if _received.get() is not None:
@@ -17,7 +17,7 @@ class CaptureRequest:
         return self
 
     def received(self, frame):
-        if self.requested_at is not None:
+        if self.requested_at is not None and _received.get() is not None:
             _received.set((ref(frame), self.requested_at))
         return frame
 

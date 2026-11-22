@@ -5,6 +5,7 @@ import os
 import platform
 import subprocess
 import time
+from datetime import datetime
 from threading import Event, Lock, RLock
 
 import numpy as np
@@ -72,8 +73,9 @@ def _capture_worker(library, index, pid, frame_buffer, channel):
         output = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3)
         repeated_capture = False
         while channel.recv() == "capture":
+            requested_at = datetime.now()
             renderer.capture_frame(output=output, repeated_capture=repeated_capture)
-            channel.send(("ok", "", None, None))
+            channel.send(("ok", requested_at))
             repeated_capture = True
     except (EOFError, BrokenPipeError):
         pass

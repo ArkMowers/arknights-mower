@@ -762,9 +762,10 @@ class Device:
             timeout = io_timeout(10)
             if argv[0] == self.client.adb_bin:
                 timeout = guard_adb(argv[0], timeout=timeout, run=run_command)
-            request = CaptureRequest().start()
+            request = CaptureRequest()
             data = run_command(
                 argv,
+                before_spawn=request.start,
                 stdout=subprocess.PIPE,
                 check=True,
                 timeout=timeout,
