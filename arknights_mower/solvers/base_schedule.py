@@ -489,6 +489,20 @@ class RunOrderMissed(Exception):
         self.room = room
 
 
+CLUE_RECEIPT_SCENES = frozenset(
+    (
+        Scene.INFRA_CONFIDENTIAL,
+        Scene.CLUE_DAILY,
+        Scene.CLUE_RECEIVE,
+        Scene.CLUE_PLACE,
+        Scene.CLUE_GIVE_AWAY,
+        Scene.CLUE_SUMMARY,
+        Scene.CLUE_MESSAGE_BOARD,
+        Scene.CLUE_ACCESS_RECORD,
+    )
+)
+
+
 class FriendClueReceiptIncomplete(Exception):
     """接收好友线索时出错，原任务等待新的领取页或会客室观测。"""
 
@@ -1412,16 +1426,7 @@ class BaseSchedulerSolver(
                     del task.clue_access_record_pending
                 continue
             if failure and getattr(task, "clue_receipt_pending", False):
-                previous = failure["snapshot"]
-                current = self._clue_receipt_observation()
-                if (
-                    current["room"] > previous["room"]
-                    or current["scene"] not in (None, previous["scene"])
-                    or current["card"] not in (None, previous["card"])
-                ):
-                    del task.execution_failure
-                    del task.clue_receipt_pending
-                    task.execution_retained = True
+                self._resume_clue_receipt(task, self._clue_receipt_observation())
                 continue
             predecessors = getattr(task, "product_shift_predecessors", ())
             if failure and predecessors:
@@ -1805,6 +1810,17 @@ class BaseSchedulerSolver(
         elif scene in self.waiting_scene:
             self.waiting_solver()
         else:
+            if scene in CLUE_RECEIPT_SCENES:
+                pending = [
+                    task
+                    for task in self.tasks
+                    if getattr(task, "clue_receipt_pending", False)
+                    and getattr(task, "execution_failure", None)
+                ]
+                if pending:
+                    observation = self._clue_receipt_observation()
+                    for task in pending:
+                        self._resume_clue_receipt(task, observation)
             self.scene_graph_navigation(Scene.INFRA_MAIN)
             self.last_room = ""
             logger.debug("重设上次房间为空")
@@ -12747,16 +12763,7 @@ class BaseSchedulerSolver(
         revision = getattr(self.op_data, "room_observations", {}).get("meeting", 0)
         scene = getattr(self.recog, "scene", None)
         frame = getattr(self.recog, "_img", None)
-        if frame is None or scene not in (
-            Scene.INFRA_CONFIDENTIAL,
-            Scene.CLUE_DAILY,
-            Scene.CLUE_RECEIVE,
-            Scene.CLUE_PLACE,
-            Scene.CLUE_GIVE_AWAY,
-            Scene.CLUE_SUMMARY,
-            Scene.CLUE_MESSAGE_BOARD,
-            Scene.CLUE_ACCESS_RECORD,
-        ):
+        if frame is None or scene not in CLUE_RECEIPT_SCENES:
             scene = None
         card = None
         if scene == Scene.CLUE_RECEIVE:
@@ -12766,6 +12773,18 @@ class BaseSchedulerSolver(
                 # 原异常可能正是模板无法读取，保留失败任务时只记未知编号。
                 pass
         return {"room": revision, "scene": scene, "card": card}
+
+    @staticmethod
+    def _resume_clue_receipt(task, current):
+        previous = task.execution_failure["snapshot"]
+        if (
+            current["room"] > previous["room"]
+            or current["scene"] not in (None, previous["scene"])
+            or current["card"] not in (None, previous["card"])
+        ):
+            del task.execution_failure
+            del task.clue_receipt_pending
+            task.execution_retained = True
 
     def _retain_clue_receipt_failure(self, task, error):
         task.clue_receipt_pending = True

@@ -10,6 +10,7 @@ from arknights_mower.tests.clue_gift_tests import frame
 from arknights_mower.tests.clue_gift_tests import gift_ui as gift_ui
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.image import loadimg, loadres
+from arknights_mower.utils.recognize import Recognizer
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -267,6 +268,49 @@ def test_unreadable_card_template_keeps_original_failure(
 
     solver._resume_failed_tasks()
     assert not getattr(task, "execution_failure", None)
+
+
+@pytest.mark.parametrize("next_card", [3, 5])
+def test_transition_observes_pending_receipt_before_navigation(
+    receive_workflow, next_card
+):
+    solver, state = receive_workflow
+    device = MagicMock()
+    device.check_current_focus.return_value = False
+    solver.recog = Recognizer(device)
+    solver.scene = solver.recog.get_scene
+    current = state.snapshots[Scene.CLUE_RECEIVE]
+    solver.recog.set_frame((None, current, cv2.cvtColor(current, cv2.COLOR_RGB2GRAY)))
+    assert solver.scene() == Scene.CLUE_RECEIVE
+    task = SchedulerTask(datetime.now(), task_type=TaskTypes.CLUE)
+    solver.tasks = [task]
+    solver._retain_clue_receipt_failure(task, RuntimeError("领取线索失败"))
+    assert task.execution_failure["snapshot"]["card"] == 3
+
+    solver.recog.update()
+    solver._resume_failed_tasks()
+    assert task.execution_failure
+    device.screencap.assert_not_called()
+    updated = current.copy()
+    if next_card != 3:
+        template = loadres("clue/5")
+        updated[122 : 122 + template.shape[0], 1305 : 1305 + template.shape[1]] = (
+            template
+        )
+    device.screencap.return_value = (
+        None,
+        updated,
+        cv2.cvtColor(updated, cv2.COLOR_RGB2GRAY),
+    )
+    solver.scene_graph_navigation.side_effect = lambda _: solver.recog.update()
+
+    solver.transition()
+
+    solver.scene_graph_navigation.assert_called_once_with(Scene.INFRA_MAIN)
+    assert solver.recog.scene == Scene.UNDEFINED
+    device.screencap.assert_called_once_with()
+    assert bool(getattr(task, "execution_failure", None)) is (next_card == 3)
+    assert solver.tasks == [task]
 
 
 @pytest.mark.parametrize(
