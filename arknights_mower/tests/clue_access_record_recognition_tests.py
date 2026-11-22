@@ -8,8 +8,8 @@ import cv2
 import numpy as np
 import pytest
 
-from arknights_mower.utils import config, graph, rapidocr
-from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils import config, graph, rapidocr, recognize
+from arknights_mower.utils.image import bytes2img, loadres
 from arknights_mower.utils.recognize import Recognizer
 from arknights_mower.utils.scene import Scene, SceneComment
 from arknights_mower.utils.solver import BaseSolver, StrategyError
@@ -57,12 +57,45 @@ def observation(image):
     return recognizer
 
 
-@pytest.mark.parametrize("filename", [ORIGINAL, "clue_access_record_video.png"])
-def test_access_record_has_its_own_global_scene_without_ocr(filename):
+@pytest.mark.parametrize(
+    "filename,scope",
+    [
+        (ORIGINAL, ((845, 281), (1062, 333))),
+        ("clue_access_record_video.png", ((867, 278), (1051, 327))),
+    ],
+)
+def test_access_record_has_its_own_global_scene_without_ocr(filename, scope):
     recognizer = observation(frame(filename))
 
-    assert recognizer.find("clue/access_record") is not None
+    assert recognizer.find("clue/access_record") == scope
     assert recognizer.get_scene() == Scene.CLUE_ACCESS_RECORD
+
+
+@pytest.mark.parametrize(
+    "rgb,found",
+    [
+        ((190, 210, 230), True),
+        ((230, 190, 210), True),
+        ((210, 230, 190), True),
+        ((230, 189, 210), False),
+        ((189, 205, 220), False),
+        ((191, 232, 211), False),
+    ],
+)
+def test_title_foreground_color_limits(rgb, found):
+    image = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    title = loadres("clue/access_record_title", True)
+    image[281:333, 845:1062][title != 0] = rgb
+    expected = ((845, 281), (1062, 333)) if found else None
+    assert observation(image).find("clue/access_record") == expected
+
+
+def test_video_title_uses_updated_template_of_the_same_size(monkeypatch):
+    recognizer = observation(frame("clue_access_record_video.png"))
+    assert recognizer.find("clue/access_record") == ((867, 278), (1051, 327))
+    changed = np.fliplr(loadres("clue/access_record_title", True)).copy()
+    monkeypatch.setattr(recognize, "loadres", lambda *_: changed)
+    assert recognizer.find("clue/access_record") is None
 
 
 @pytest.mark.parametrize("background", ["black", "blue", "noise", "room"])
