@@ -1045,7 +1045,7 @@ class Recognizer:
             "arrange_check_in_on": ((30, 300), (175, 700)),
             "biography": (768, 934),
             "business_card": (55, 165),
-            "collection": (1005, 943),
+            "collection": ((560, 940), (1200, 1080)),
             "collection_small": (1053, 982),
             "connecting": (1087, 978),
             "episode": (535, 937),
@@ -1065,7 +1065,7 @@ class Recognizer:
             "loading4": (828, 429),
             # 启动画面的健康提示随 Logo 淡入淡出，按固定位置匹配文字形状。
             "loading7": (106, 635),
-            "main_theme": (283, 945),
+            "main_theme": ((250, 940), (570, 1080)),
             "main_theme_small": (321, 973),
             "materiel_ico": (892, 61),
             "skill_collect_confirm": (1160, 835),
