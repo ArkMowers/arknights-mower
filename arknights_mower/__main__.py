@@ -1,6 +1,6 @@
 import copy
 import os
-from dataclasses import replace
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from threading import Event, Lock, Timer
 from typing import TYPE_CHECKING
@@ -648,11 +648,21 @@ def _next_scheduler_task():
     return find_next_task(base_scheduler.tasks, op_data=base_scheduler.op_data)
 
 
-def _recover_startup_scene(scheduler, budget):
+@dataclass
+class _StartupSceneRecovery:
+    restart_budget: SceneRestartBudget = field(default_factory=SceneRestartBudget)
+    requires_home_confirmation: bool = False
+
+
+def _recover_startup_scene(scheduler, recovery):
     try:
-        with scene_restart_scope(budget):
-            if scheduler.scene() != Scene.UNKNOWN:
+        with scene_restart_scope(recovery.restart_budget):
+            if (
+                not recovery.requires_home_confirmation
+                and scheduler.scene() != Scene.UNKNOWN
+            ):
                 return True
+            recovery.requires_home_confirmation = True
             scheduler.scene_graph_navigation(Scene.INDEX, restart_on_unknown=True)
             if scheduler.scene() == Scene.INDEX:
                 return True
@@ -692,7 +702,7 @@ def simulate(saved):
     global base_scheduler
     if config.stop_mower.is_set():
         return
-    startup_scene_budget = SceneRestartBudget()
+    startup_scene_recovery = _StartupSceneRecovery()
     success = False
     while not success:
         try:
@@ -704,7 +714,7 @@ def simulate(saved):
                 saved["_restart_game"] = False
             elif not (
                 saved and saved.get("_process_crash_recovery")
-            ) and not _recover_startup_scene(base_scheduler, startup_scene_budget):
+            ) and not _recover_startup_scene(base_scheduler, startup_scene_recovery):
                 return
             base_scheduler._process_recovery_occurred_at = (
                 saved.get("_process_crash_occurred_at") if saved else None

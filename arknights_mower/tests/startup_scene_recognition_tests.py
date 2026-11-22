@@ -208,12 +208,17 @@ def test_startup_mail_preparation_failure_does_not_restart_again(
     resume.assert_not_called()
 
 
+@pytest.mark.parametrize("reconnected_scene", [Scene.UNKNOWN, Scene.CONNECTING])
 def test_startup_device_recovery_retains_spent_game_restart_budget(
-    startup_solver, monkeypatch
+    startup_solver, monkeypatch, caplog, reconnected_scene
 ):
     failure = DeviceRecoveryError("lost device while relaunching the game")
     startup_solver.restart_game.side_effect = failure
-    resume = Mock()
+    resume = Mock(
+        side_effect=lambda **_: setattr(
+            startup_solver.scene, "return_value", reconnected_scene
+        )
+    )
     monkeypatch.setattr(main, "_resume_device_dispatch", resume)
 
     main.simulate(None)
@@ -221,6 +226,38 @@ def test_startup_device_recovery_retains_spent_game_restart_budget(
     resume.assert_called_once_with(failure=failure)
     startup_solver.restart_game.assert_called_once_with()
     startup_solver.initialize_operators.assert_not_called()
+    assert "未能确认游戏首页" in caplog.text
+
+
+@pytest.mark.parametrize("finds_home", [False, True])
+def test_startup_device_recovery_still_requires_home_confirmation(
+    startup_solver, monkeypatch, caplog, finds_home
+):
+    solver = startup_solver
+    failure = DeviceRecoveryError("lost device while leaving the base")
+
+    def back():
+        if solver.back.call_count == 1:
+            solver.scene.return_value = Scene.INFRA_MAIN
+        elif solver.back.call_count == 2:
+            raise failure
+        else:
+            solver.scene.return_value = Scene.INDEX if finds_home else Scene.SSS_DEPLOY
+
+    solver.back.side_effect = back
+    resume = Mock()
+    monkeypatch.setattr(main, "_resume_device_dispatch", resume)
+    pending = object()
+    saved = {"tasks": [pending]}
+
+    main.simulate(saved)
+
+    resume.assert_called_once_with(failure=failure)
+    assert solver.back.call_count >= 3
+    solver.restart_game.assert_not_called()
+    assert saved == {"tasks": [pending]}
+    assert solver.initialize_operators.call_count == finds_home
+    assert ("未能确认游戏首页" in caplog.text) is not finds_home
 
 
 def test_normal_scene_navigation_keeps_original_unknown_retry_limit(startup_solver):
