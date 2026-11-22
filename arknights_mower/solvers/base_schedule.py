@@ -12566,7 +12566,7 @@ class BaseSchedulerSolver(
                     return None
                 # 读取失败不能回退为当前时间，否则会误创建立即执行的跑单任务。
                 raise RecognizeError("无法读取贸易站订单倒计时，未确认订单暂停")
-            execute_time = datetime.now() + timedelta(seconds=remaining)
+            execute_time = self._order_completion_time(remaining)
             if not self.op_data.is_order_collection_room(room):
                 execute_time -= timedelta(minutes=config.conf.run_order_delay)
             logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))

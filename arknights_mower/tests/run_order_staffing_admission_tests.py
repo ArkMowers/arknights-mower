@@ -94,6 +94,7 @@ def staffed_order(monkeypatch):
 
     def read_time(*args, **kwargs):
         room = solver._page["room"]
+        solver.recog.capture_started_at = Clock.now()
         events.append(("read", room, Clock.now()))
         if states[room] in ("empty", "paused"):
             return None

@@ -1698,12 +1698,13 @@ class BaseMixin:
                 "贸易站订单倒计时识别失败，回退为当前时间；不能据此确认实际订单完成时间"
             )
             return datetime.now()
-        # 倒计时属于该帧，不能把截图传输与识别耗时加到生产截止时间。
+        return self._order_completion_time(time_in_seconds)
+
+    def _order_completion_time(self, remaining):
         observed_at = getattr(self.recog, "capture_started_at", None)
         if not isinstance(observed_at, datetime):
             observed_at = datetime.now()
-        execute_time = observed_at + timedelta(seconds=time_in_seconds)
-        return execute_time
+        return observed_at + timedelta(seconds=remaining)
 
     def read_accurate_mood(self, img):
         try:

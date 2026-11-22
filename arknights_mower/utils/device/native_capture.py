@@ -8,6 +8,7 @@ from threading import Event, Lock, RLock
 
 import numpy as np
 
+from arknights_mower.utils.device.capture_time import CaptureRequest
 from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.device.owned import close_process
 
@@ -93,6 +94,7 @@ class NativeCaptureSession:
                     if self._process is None:
                         self._start()
                 self._remaining(deadline)
+                request = CaptureRequest().start()
                 self._channel.send("capture")
                 while not self._channel.poll(min(0.05, self._remaining(deadline))):
                     pass
@@ -103,9 +105,10 @@ class NativeCaptureSession:
                     failure.actual_size = size
                     raise failure
                 self._remaining(deadline)
-                return (
+                frame = (
                     np.frombuffer(self._buffer, np.uint8).reshape(1080, 1920, 3).copy()
                 )
+                return request.received(frame)
             except Exception as exc:
                 if isinstance(exc, (EOFError, BrokenPipeError)):
                     self._failure = self._error_type(

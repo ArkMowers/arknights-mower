@@ -10,6 +10,7 @@ import zlib
 import numpy as np
 
 from arknights_mower.utils.device.adb_client.server import ADB_SERVER_ADDRESS, guard_adb
+from arknights_mower.utils.device.capture_time import CaptureRequest
 from arknights_mower.utils.device.io_budget import io_timeout
 
 WIDTH, HEIGHT = 1920, 1080
@@ -95,7 +96,7 @@ def decode_adb_frame(compressed: bytes, *, header_size: int) -> np.ndarray:
     return rgb
 
 
-def _adb_output(serial, command, limit, remaining):
+def _adb_output(serial, command, limit, remaining, *, on_request=None):
     """One selected transport, one command, capped reads and no socket retries."""
     with socket.create_connection(
         ADB_SERVER_ADDRESS, timeout=remaining()
@@ -112,11 +113,13 @@ def _adb_output(serial, command, limit, remaining):
                 output.extend(data)
             return bytes(output)
 
-        def request(service):
+        def request(service, before_send=None):
             payload = service.encode("utf-8")
             if len(payload) > 65535:
                 raise ValueError("ADB 截图请求长度超过协议上限")
             connection.settimeout(remaining())
+            if before_send is not None:
+                before_send()
             connection.sendall(f"{len(payload):04x}".encode() + payload)
             status = receive(4)
             if status == b"FAIL":
@@ -132,7 +135,7 @@ def _adb_output(serial, command, limit, remaining):
                 raise ConnectionError("ADB 截图协议响应状态无效")
 
         request(f"host:transport:{serial}")
-        request(f"exec:{command}")
+        request(f"exec:{command}", on_request)
         output = bytearray()
         while True:
             connection.settimeout(remaining())
@@ -174,10 +177,15 @@ def _capture_adb_frame(adb_path, serial, *, header_size=None):
         if re.fullmatch(rb"[1-9][0-9]{0,3}\s*", sdk_output) is None:
             raise ValueError("ADB 无法确认 Android SDK 版本，不能验证截图帧头")
         header_size = 16 if int(sdk_output) >= 27 else 12
+    capture = CaptureRequest()
     compressed = _adb_output(
-        serial, "screencap 2>/dev/null | gzip -1", MAX_COMPRESSED_BYTES, remaining
+        serial,
+        "screencap 2>/dev/null | gzip -1",
+        MAX_COMPRESSED_BYTES,
+        remaining,
+        on_request=capture.start,
     )
     remaining()
     frame = decode_adb_frame(compressed, header_size=header_size)
     remaining()
-    return frame, header_size
+    return capture.received(frame), header_size

@@ -132,9 +132,8 @@ def test_final_order_read_reserves_mastery_handoff_before_another_read(
     read_time = solver.read_time.side_effect
 
     def read_with_navigation_cost(*args, **kwargs):
-        remaining = read_time(*args, **kwargs)
         ui.clock.current += timedelta(seconds=50)
-        return max(0, remaining - 50) if remaining is not None else None
+        return read_time(*args, **kwargs)
 
     solver.read_time.side_effect = read_with_navigation_cost
 
@@ -196,9 +195,8 @@ def test_final_reads_respect_priority_after_refresh_operator_moves(
     read_time = solver.read_time.side_effect
 
     def read_with_navigation_cost(*args, **kwargs):
-        remaining = read_time(*args, **kwargs)
         ui.clock.current += timedelta(seconds=50)
-        return max(0, remaining - 50) if remaining is not None else None
+        return read_time(*args, **kwargs)
 
     solver.read_time.side_effect = read_with_navigation_cost
 

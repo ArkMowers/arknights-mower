@@ -79,12 +79,12 @@ class Recognizer:
         self.last_scene_time = datetime.now()
 
     def clear(self):
-        self.capture_started_at = None
         self.release_frame()
         self.scene = Scene.UNDEFINED
 
     def release_frame(self):
-        """释放当前标准画面帧和匹配结果，保留场景及观测计时。"""
+        """释放标准画面帧、采集时间和匹配结果，保留场景停留计时。"""
+        self.capture_started_at = None
         self._screencap = None
         self._img = None
         self._gray = None
@@ -123,16 +123,14 @@ class Recognizer:
         retry_times = config.MAX_RETRYTIME
         while retry_times > 0:
             try:
-                capture_started_at = None
                 if screencap is not None:
-                    self._screencap = screencap
-                    self._img = bytes2img(screencap)
-                    self._gray = bytes2img(screencap, True)
+                    self._install_frame(
+                        (screencap, bytes2img(screencap), bytes2img(screencap, True))
+                    )
                 else:
                     self.check_current_focus()
-                    capture_started_at = datetime.now()
-                    self._screencap, self._img, self._gray = self.device.screencap()
-                self.capture_started_at = capture_started_at
+                    legacy_requested_at = datetime.now()
+                    self._install_frame(self.device.screencap(), legacy_requested_at)
                 return
             except cv2.error as e:
                 logger.warning(e)
@@ -149,7 +147,11 @@ class Recognizer:
     def set_frame(self, frame) -> None:
         """安装本次手势按住期间的截图，后续输入仍照常清空缓存。"""
         self.update()
+        self._install_frame(frame)
+
+    def _install_frame(self, frame, legacy_requested_at=None):
         self._screencap, self._img, self._gray = frame
+        self.capture_started_at = getattr(frame, "requested_at", legacy_requested_at)
 
     def reset_after_external_control(self) -> None:
         """重新开始连续观测时，丢弃旧标准画面帧及场景停留计时。"""

@@ -186,11 +186,13 @@ class StandardADB:
         assert 0 < timeout <= 10
         self.guards.append((adb_path, timeout))
 
-    def output(self, serial, command, limit, remaining):
+    def output(self, serial, command, limit, remaining, *, on_request=None):
         assert serial == "USB-A"
         timeout = remaining()
         assert 0 < timeout <= 10
         self.commands.append((serial, command, timeout))
+        if on_request is not None:
+            on_request()
         if self.failure is not None:
             raise self.failure
         if command == "getprop ro.build.version.sdk":
