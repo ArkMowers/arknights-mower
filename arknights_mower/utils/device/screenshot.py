@@ -75,11 +75,15 @@ def decode_adb_frame(compressed: bytes, *, header_size: int) -> np.ndarray:
     pixels = np.frombuffer(raw, np.uint8, offset=header_size).reshape(
         height, width, channels
     )
-    if pixel_format != 4:
-        rgb = pixels[:, :, :3]
-        return (rgb[:, :, ::-1] if pixel_format == 5 else rgb).copy()
+    if pixel_format == 3:
+        return pixels.copy()
 
     import cv2
+
+    if pixel_format in (1, 2):
+        return cv2.cvtColor(pixels, cv2.COLOR_RGBA2RGB)
+    if pixel_format == 5:
+        return cv2.cvtColor(pixels, cv2.COLOR_BGRA2RGB)
 
     # OpenCV reads native-endian words from the little-endian RGB565 payload.
     if sys.byteorder == "big":
