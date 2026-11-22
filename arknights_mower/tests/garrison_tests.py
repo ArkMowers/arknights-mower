@@ -1035,6 +1035,8 @@ def test_dispatch_reserves_a_full_new_match(
         ("旧每日时段", "下一项基建任务到期"),
         ("周计划", "用户停止 MAA"),
         ("周计划", "Mower 停止"),
+        ("周计划", "剩余时间不足以开新局"),
+        ("周计划", None),
     ],
 )
 def test_dispatch_records_window_and_handoff_reason_at_debug(
@@ -1044,9 +1046,11 @@ def test_dispatch_records_window_and_handoff_reason_at_debug(
     window_end = now.replace(hour=7, minute=0)
     task_end = now + timedelta(minutes=20)
     legacy = source == "旧每日时段"
+    settles_match = end_reason in {None, "剩余时间不足以开新局"}
     conf = Conf(
         maa_rg_enable=1,
         maa_long_task_type="garrison",
+        garrison={"mode": "matches", "match_limit": 1 if end_reason is None else 2},
         maa_long_task_weekly_windows=None
         if legacy
         else [{"start": "21:50", "end": "7:00", "weekdays": list(range(7))}],
@@ -1060,6 +1064,7 @@ def test_dispatch_records_window_and_handoff_reason_at_debug(
     monkeypatch.setattr(solver.rapidocr, "initialize_ocr", Mock())
     monkeypatch.setattr(solver, "Vision", Mock())
     monkeypatch.setattr(solver, "FarmSession", Mock())
+    monkeypatch.setattr(solver, "save_screenshot_frame", Mock())
     next_task = SchedulerTask(task_end if legacy else window_end + timedelta(hours=1))
     scheduler = SimpleNamespace(
         device=Mock(), recog=Mock(), tasks=[next_task], task=None, op_data=None
@@ -1067,6 +1072,11 @@ def test_dispatch_records_window_and_handoff_reason_at_debug(
 
     def enter(worker):
         nonlocal now
+        if settles_match:
+            now = window_end - timedelta(minutes=10)
+            worker.capture = Mock(return_value=frame("lobby"))
+            worker._quick_confirmed = True
+            return Frame(None, [Text("返回主页", 100, 200, 50, 50)], "result", False)
         if end_reason == "用户停止 MAA":
             stop_maa.set()
         elif end_reason == "Mower 停止":
@@ -1092,11 +1102,20 @@ def test_dispatch_records_window_and_handoff_reason_at_debug(
         for record in caplog.records
         if "卫戍协议交还设备原因" in record.getMessage()
     ]
-    assert len(dispatch) == len(handoff) == 1
-    assert dispatch[0].levelno == handoff[0].levelno == logging.DEBUG
+    assert len(dispatch) == 1
+    assert dispatch[0].levelno == logging.DEBUG
     assert source in dispatch[0].getMessage()
     assert str(task_end if legacy else window_end) in dispatch[0].getMessage()
-    assert end_reason in handoff[0].getMessage()
+    if end_reason is None:
+        assert handoff == []
+    else:
+        assert len(handoff) == 1
+        assert handoff[0].levelno == logging.DEBUG
+        assert end_reason in handoff[0].getMessage()
+    if settles_match:
+        progress = record.load_garrison_progress()
+        assert progress["matches_played"] == progress["attempts"] == 1
+        assert progress["match"] is None
     scheduler.device.exit_after_task_stop.assert_called_once_with()
 
 

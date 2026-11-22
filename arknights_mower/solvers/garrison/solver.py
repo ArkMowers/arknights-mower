@@ -25,6 +25,7 @@ class GarrisonYield(BaseException):
     """本轮需要交还设备。"""
 
     DEADLINE = "排班截止"
+    INSUFFICIENT_MATCH_TIME = "剩余时间不足以开新局"
 
 
 class GarrisonNavigation(SceneGraphSolver):
@@ -342,7 +343,7 @@ class GarrisonSolver:
                 return frame
         if action == "start":
             if self.remaining() < MATCH_SECONDS:
-                raise GarrisonYield("剩余时间不足以开新局")
+                raise GarrisonYield(GarrisonYield.INSUFFICIENT_MATCH_TIME)
             self.text_click(frame, "^极速模拟$", controls)
             frame = self.wait(lambda f: f.screen in {"mode", "info", "strategy"}, 20)
         if frame.screen == "mode":
@@ -352,7 +353,7 @@ class GarrisonSolver:
                 error="复核后仍未确认个人极速模拟的开局按钮，已保留对局",
             )
             if self.remaining() < MATCH_SECONDS:
-                raise GarrisonYield("剩余时间不足以开新局")
+                raise GarrisonYield(GarrisonYield.INSUFFICIENT_MATCH_TIME)
             # 点击前写入正在开局，避免取消发生在点击与截图之间时误开第二局。
             self.progress.pop("settlement_counted", None)
             self.progress["match"] = {"phase": "starting"}
@@ -681,6 +682,7 @@ class GarrisonSolver:
                     lambda f: f.screen == "lobby", MATCH_TRANSITION_SECONDS
                 )
                 if self.remaining() < MATCH_SECONDS:
+                    self.yield_reason = GarrisonYield.INSUFFICIENT_MATCH_TIME
                     return
                 if self.match_limit is None and self.progress["attempts"] >= 200:
                     raise GarrisonError("已尝试两百局，请核对策略进度")
