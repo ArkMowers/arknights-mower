@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import cv2
@@ -9,6 +11,7 @@ from arknights_mower.tests.clue_gift_tests import gift_ui as gift_ui
 from arknights_mower.utils import rapidocr
 from arknights_mower.utils.image import loadres
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 
 @pytest.fixture
@@ -24,6 +27,7 @@ def receive_workflow(clue_workflow, monkeypatch):
     state.credit_capped = True
     state.cap_after = None
     state.cap_score = 0.99
+    state.sender_rows = [[[], "测试好友", 0.99]]
     state.receive_opened = False
     state.receive_exits = 0
     state.exit_delayed = False
@@ -44,6 +48,8 @@ def receive_workflow(clue_workflow, monkeypatch):
     def scene():
         current = previous_scene()
         solver.recog.gray = cv2.cvtColor(solver.recog.img, cv2.COLOR_RGB2GRAY)
+        solver.recog.scene = current
+        solver.recog._img = solver.recog.img
         return current
 
     solver.scene = scene
@@ -79,7 +85,7 @@ def receive_workflow(clue_workflow, monkeypatch):
                 "今日接受信用已达上限" if state.credit_capped else "接受线索可获得信用"
             )
             return [[[], message, state.cap_score]], None
-        return [[[], "测试好友", 0.99]], None
+        return state.sender_rows, None
 
     monkeypatch.setattr(rapidocr, "engine", MagicMock(side_effect=ocr))
     return solver, state
@@ -118,6 +124,116 @@ def test_delayed_close_does_not_resume_receiving_after_credit_cap(receive_workfl
     assert state.received == 0
     assert state.receive_exits == 2
     solver._give_one_placed_clue.assert_called_once()
+    solver._run_clue_shop.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "rows,display_name",
+    [
+        (None, "好友"),
+        ([], "好友"),
+        ([[[], "  ", 0.9]], "好友"),
+        ([[[], "  测试好友  ", 0.9]], "测试好友"),
+    ],
+)
+def test_sender_name_only_affects_receipt_log(
+    receive_workflow, caplog, rows, display_name
+):
+    solver, state = receive_workflow
+    state.credit_capped = False
+    state.sender_rows = rows
+    previous_check = solver.last_clue = datetime.now() - timedelta(hours=2)
+
+    solver._run_clue_flow()
+
+    assert state.received == 2
+    assert f"接收{display_name}的" in caplog.text
+    solver._give_one_placed_clue.assert_called_once()
+    solver._run_clue_shop.assert_called_once()
+    assert solver.last_clue > previous_check
+
+
+@pytest.mark.parametrize("kind", [TaskTypes.CLUE, TaskTypes.CLUE_PARTY, None])
+def test_receipt_failure_keeps_work_until_room_observation(receive_workflow, kind):
+    solver, state = receive_workflow
+    state.credit_capped = False
+    previous_check = solver.last_clue = datetime.now() - timedelta(hours=2)
+    solver.task = None
+    solver.op_data = SimpleNamespace(
+        operators={}, plan={}, dorm=[], room_observations={}, run_order_rooms={}
+    )
+    solver.enable_party = True
+    solver.planned = True
+    solver.todo_task = False
+    solver.collect_notification = True
+    solver.drone_room = None
+    solver.drone_time = None
+    solver.reload_time = datetime.now()
+    solver.handle_error = MagicMock()
+    scheduled = SchedulerTask(previous_check, task_type=kind) if kind else None
+    if scheduled:
+        solver.task = scheduled
+        solver.tasks.append(scheduled)
+    failure = RuntimeError("领取线索失败")
+    tap = solver.tap.side_effect
+
+    def fail_receipt(point, **kwargs):
+        if point == ((1580, 220), (1880, 255)):
+            raise failure
+        return tap(point, **kwargs)
+
+    solver.tap.side_effect = fail_receipt
+    solver.infra_main()
+
+    (retained,) = solver.tasks
+    assert retained.type == (kind or TaskTypes.CLUE)
+    if scheduled:
+        assert retained is scheduled
+        assert retained.time == previous_check
+    original_time = retained.time
+    assert str(failure) in retained.execution_failure["reason"]
+    assert not getattr(retained, "clue_access_record_pending", False)
+    assert state.received == 0
+    assert solver.last_clue == previous_check
+    solver._run_clue_shop.assert_not_called()
+
+    for other_page in (Scene.CLUE_RECEIVE, Scene.INFRA_MAIN):
+        solver.recog.scene = other_page
+        solver.op_data.room_observations["contact"] = 1
+        solver.task = retained
+        solver.todo_task = False
+        solver.infra_main()
+        assert solver.todo_task
+        assert solver.tasks == [retained]
+        assert retained.time == original_time
+        assert retained.execution_failure
+        assert solver.last_clue == previous_check
+    solver.enter_room.assert_called_once()
+
+    independent = SchedulerTask(datetime.now(), task_type=TaskTypes.NOT_SPECIFIC)
+    solver.tasks.append(independent)
+    solver.task = independent
+    solver.infra_main()
+    assert solver.tasks == [retained]
+
+    if kind is None:
+        solver.op_data.room_observations["meeting"] = 1
+    elif kind == TaskTypes.CLUE:
+        solver.recog.scene = Scene.CLUE_RECEIVE
+        card = loadres("clue/5")
+        frame = state.snapshots[Scene.CLUE_RECEIVE]
+        frame[122 : 122 + card.shape[0], 1305 : 1305 + card.shape[1]] = card
+    else:
+        solver.recog.scene = Scene.INFRA_CONFIDENTIAL
+    solver.tap.side_effect = tap
+    state.receive_opened = False
+    state.scene = Scene.INFRA_DETAILS
+    solver.task = retained
+    solver.infra_main()
+
+    assert solver.tasks == []
+    assert state.received == 2
+    assert solver.last_clue > previous_check
     solver._run_clue_shop.assert_called_once()
 
 
