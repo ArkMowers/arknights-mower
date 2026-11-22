@@ -38,7 +38,9 @@ class LDRendererTests(unittest.TestCase):
         dll.CreateScreenShotInstance.return_value = address
         with patch.object(ld.ctypes, "CDLL", return_value=dll):
             renderer = ld._LDRenderer("ldopengl64.dll", 3, 42)
-        frame = renderer.capture_frame()
+        output = np.empty_like(pixels)
+        frame = renderer.capture_frame(output=output)
+        self.assertIs(frame, output)
         self.assertEqual(frame[0, 0].tolist(), [255, 31, 17])
         self.assertEqual(frame[-1, 0].tolist(), [7, 8, 9])
         pixels[:] = 0
@@ -61,12 +63,22 @@ class LDRendererTests(unittest.TestCase):
         channel.recv.side_effect = ["capture", "capture", EOFError()]
         shared = (ctypes.c_ubyte * (1080 * 1920 * 3))()
         renderer = MagicMock()
-        renderer.capture_frame.return_value = np.zeros((1080, 1920, 3), np.uint8)
+
+        def capture_frame(*, output):
+            output[0, 0, 0] = renderer.capture_frame.call_count
+
+        renderer.capture_frame.side_effect = capture_frame
+        published = []
+        channel.send.side_effect = lambda message: published.append(
+            (message, shared[0])
+        )
         with patch.object(ld, "_LDRenderer", return_value=renderer) as factory:
             ld._capture_worker("dll", 3, 42, shared, channel)
         factory.assert_called_once_with("dll", 3, 42)
         self.assertEqual(renderer.capture_frame.call_count, 2)
-        self.assertEqual(channel.send.call_count, 2)
+        self.assertEqual(
+            published, [(("ok", "", None, None), count) for count in (1, 2)]
+        )
         renderer.close.assert_called_once()
         channel.close.assert_called_once()
 

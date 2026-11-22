@@ -33,8 +33,7 @@ def _capture_worker(root, instance, package, frame_buffer, channel):
         buffer = (ctypes.c_ubyte * (1920 * 1080 * 4))()
         output = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3)
         while channel.recv() == "capture":
-            frame = capture_native_frame(ipc._dll, connection, display, buffer)
-            np.copyto(output, frame)
+            capture_native_frame(ipc._dll, connection, display, buffer, output=output)
             channel.send(("ok", "", None, None))
     except (EOFError, BrokenPipeError):
         pass

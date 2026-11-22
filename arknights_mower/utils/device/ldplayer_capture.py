@@ -46,7 +46,9 @@ class _LDRenderer:
         self._release = ctypes.CFUNCTYPE(None, ctypes.c_void_p)(table[2])
         self._cap = ctypes.CFUNCTYPE(ctypes.c_void_p, ctypes.c_void_p)(table[1])
 
-    def capture_frame(self):
+    def capture_frame(self, *, output=None):
+        import cv2
+
         pixels = self._cap(self._instance)
         if not pixels:
             raise LDCaptureError("LD 截图增强未返回画面，请检查所选实例。")
@@ -54,7 +56,8 @@ class _LDRenderer:
             ctypes.cast(pixels, ctypes.POINTER(ctypes.c_ubyte)),
             shape=(1080 * 1920 * 3,),
         ).reshape(1080, 1920, 3)
-        return raw[::-1, :, ::-1].copy()
+        rgb = cv2.cvtColor(raw, cv2.COLOR_BGR2RGB, dst=output)
+        return cv2.flip(rgb, 0, dst=rgb)
 
     def close(self):
         instance, self._instance = self._instance, None
@@ -68,7 +71,7 @@ def _capture_worker(library, index, pid, frame_buffer, channel):
         renderer = _LDRenderer(library, index, pid)
         output = np.frombuffer(frame_buffer, np.uint8).reshape(1080, 1920, 3)
         while channel.recv() == "capture":
-            np.copyto(output, renderer.capture_frame())
+            renderer.capture_frame(output=output)
             channel.send(("ok", "", None, None))
     except (EOFError, BrokenPipeError):
         pass

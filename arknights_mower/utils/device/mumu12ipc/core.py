@@ -51,8 +51,12 @@ def bind_display(dll, connection: int, package: str = "") -> int:
     )
 
 
-def capture_native_frame(dll, connection, display_id, buffer) -> np.ndarray:
+def capture_native_frame(
+    dll, connection, display_id, buffer, *, output=None
+) -> np.ndarray:
     """Capture one native RGBA frame and preserve failure diagnostics."""
+    import cv2
+
     width = ctypes.c_int(0)
     height = ctypes.c_int(0)
     result = dll.nemu_capture_display(
@@ -87,8 +91,8 @@ def capture_native_frame(dll, connection, display_id, buffer) -> np.ndarray:
             actual_size=actual_size,
         )
     frame = pixels.reshape((1080, 1920, 4))
-    # The native buffer is reused on the next capture; callers own this frame.
-    return np.flipud(frame[:, :, :3]).copy()
+    rgb = cv2.cvtColor(frame, cv2.COLOR_RGBA2RGB, dst=output)
+    return cv2.flip(rgb, 0, dst=rgb)
 
 
 class MuMu12IPC:
