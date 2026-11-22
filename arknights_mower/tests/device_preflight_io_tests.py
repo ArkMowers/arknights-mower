@@ -609,8 +609,11 @@ class MumuFrameWorkerTests(unittest.TestCase):
             return 0
 
         dll.nemu_capture_display.side_effect = capture
-        with patch.object(
-            MuMu12IPC, "_load_renderer", lambda ipc: setattr(ipc, "_dll", dll)
+        with (
+            patch.dict("sys.modules", cv2=None),
+            patch.object(
+                MuMu12IPC, "_load_renderer", lambda ipc: setattr(ipc, "_dll", dll)
+            ),
         ):
             _capture_mumu_worker("root", "0", "game", frame, succeeded, error)
         self.assertTrue(succeeded.value)

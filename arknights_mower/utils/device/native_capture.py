@@ -15,6 +15,24 @@ CAPTURE_TIMEOUT = 10
 JOIN_TIMEOUT = 1
 
 
+def bottom_up_to_rgb(pixels, output, *, repeated_capture):
+    """将 MuMu 的倒序 RGBA 行或雷电的倒序 BGR 行写入正向 RGB 画面。"""
+    if repeated_capture:
+        import cv2
+
+        conversion = cv2.COLOR_RGBA2RGB if pixels.shape[2] == 4 else cv2.COLOR_BGR2RGB
+        rgb = cv2.cvtColor(pixels, conversion, dst=output)
+        return cv2.flip(rgb, 0, dst=rgb)
+
+    # 单帧连接测试在首次采集后结束，首次转换仅使用已载入的 NumPy。
+    rgb = pixels[::-1, :, :3] if pixels.shape[2] == 4 else pixels[::-1, :, ::-1]
+    if output is None:
+        return rgb.copy()
+    for channel in range(3):
+        output[:, :, channel] = rgb[:, :, channel]
+    return output
+
+
 class NativeCaptureSession:
     """Reuse native capture state; the caller alone may rebuild after failure."""
 

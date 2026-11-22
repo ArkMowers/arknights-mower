@@ -17,6 +17,7 @@ from arknights_mower.utils.device.mumu12ipc.paths import (
     renderer_candidates,
     resolve_mumu_paths,
 )
+from arknights_mower.utils.device.native_capture import bottom_up_to_rgb
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.update_runtime import hidden_console_options
 
@@ -52,11 +53,9 @@ def bind_display(dll, connection: int, package: str = "") -> int:
 
 
 def capture_native_frame(
-    dll, connection, display_id, buffer, *, output=None
+    dll, connection, display_id, buffer, *, output=None, repeated_capture=False
 ) -> np.ndarray:
     """Capture one native RGBA frame and preserve failure diagnostics."""
-    import cv2
-
     width = ctypes.c_int(0)
     height = ctypes.c_int(0)
     result = dll.nemu_capture_display(
@@ -91,8 +90,7 @@ def capture_native_frame(
             actual_size=actual_size,
         )
     frame = pixels.reshape((1080, 1920, 4))
-    rgb = cv2.cvtColor(frame, cv2.COLOR_RGBA2RGB, dst=output)
-    return cv2.flip(rgb, 0, dst=rgb)
+    return bottom_up_to_rgb(frame, output, repeated_capture=repeated_capture)
 
 
 class MuMu12IPC:

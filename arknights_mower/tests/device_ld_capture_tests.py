@@ -39,13 +39,19 @@ class LDRendererTests(unittest.TestCase):
         with patch.object(ld.ctypes, "CDLL", return_value=dll):
             renderer = ld._LDRenderer("ldopengl64.dll", 3, 42)
         output = np.empty_like(pixels)
-        frame = renderer.capture_frame(output=output)
+        with patch.dict("sys.modules", cv2=None):
+            frame = renderer.capture_frame(output=output)
         self.assertIs(frame, output)
         self.assertEqual(frame[0, 0].tolist(), [255, 31, 17])
         self.assertEqual(frame[-1, 0].tolist(), [7, 8, 9])
         pixels[:] = 0
         self.assertEqual(frame[0, 0].tolist(), [255, 31, 17])
-        self.assertEqual(captured, [address])
+        pixels[-1, 0] = [1, 2, 3]
+        self.assertIs(
+            renderer.capture_frame(output=output, repeated_capture=True), output
+        )
+        self.assertEqual(output[0, 0].tolist(), [3, 2, 1])
+        self.assertEqual(captured, [address, address])
         dll.CreateScreenShotInstance.assert_called_once_with(3, 42)
         renderer.close()
         renderer.close()
@@ -64,7 +70,8 @@ class LDRendererTests(unittest.TestCase):
         shared = (ctypes.c_ubyte * (1080 * 1920 * 3))()
         renderer = MagicMock()
 
-        def capture_frame(*, output):
+        def capture_frame(*, output, repeated_capture):
+            self.assertEqual(repeated_capture, renderer.capture_frame.call_count > 1)
             output[0, 0, 0] = renderer.capture_frame.call_count
 
         renderer.capture_frame.side_effect = capture_frame

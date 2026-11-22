@@ -2,6 +2,7 @@
 
 import ctypes
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -336,6 +337,8 @@ class MuMuCaptureWorkerTests(unittest.TestCase):
         self.assertEqual(dll.nemu_get_display_id.call_args_list[0].args[1], b"")
 
     def test_native_worker_reuses_connection_for_black_and_color_frames(self):
+        import cv2
+
         renderer = NativeRenderer()
         channel = MagicMock()
         channel.recv.side_effect = ["capture", "capture", "close"]
@@ -343,10 +346,12 @@ class MuMuCaptureWorkerTests(unittest.TestCase):
         def sent(message):
             self.assertEqual(message, ("ok", "", None, None))
             if channel.send.call_count == 1:
+                sys.modules["cv2"] = cv2
                 renderer.pixels = ((0, 255, 31, 17, 255),)
 
         channel.send.side_effect = sent
-        shared, dll = self.run_worker(renderer, channel)
+        with patch.dict(sys.modules, cv2=None):
+            shared, dll = self.run_worker(renderer, channel)
         frame = np.frombuffer(shared, np.uint8).reshape(1080, 1920, 3)
         self.assertEqual(frame[1079, 0].tolist(), [255, 31, 17])
         self.assertEqual(dll.nemu_capture_display.call_count, 2)
@@ -366,7 +371,8 @@ class MuMuCaptureWorkerTests(unittest.TestCase):
         channel = MagicMock()
         channel.recv.return_value = "capture"
         renderer = NativeRenderer(code=-5, width=1280, height=720)
-        _, dll = self.run_worker(renderer, channel)
+        with patch.dict(sys.modules, cv2=None):
+            _, dll = self.run_worker(renderer, channel)
         status, message, code, size = channel.send.call_args.args[0]
         self.assertEqual((status, code, size), ("error", -5, (1280, 720)))
         self.assertIn("-5", message)
