@@ -116,7 +116,11 @@ def _stop_for_game_handoff(solver):
             logger.exception(
                 "未能确认 MAA 已停止", extra={"log_group": "maa-integration"}
             )
-    released = solver.release_maa()
+    try:
+        released = solver.release_maa()
+    except Exception:
+        released = False
+        logger.exception("释放 MAA 资源失败", extra={"log_group": "maa-integration"})
     if not can_handoff:
         return
     if stopped and released:

@@ -27,6 +27,7 @@ from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
         (True, "stop"),
         (True, "rejected"),
         (True, "release"),
+        (True, "release_error"),
         (True, "android_stopped"),
         (True, "android_running"),
         (True, "android_query_error"),
@@ -92,6 +93,8 @@ def test_mower_stop_cancels_large_task_and_hands_off_only_after_cleanup(
         solver.maa_stop.return_value = 0
     if failure == "release":
         solver.release_maa.return_value = False
+    if failure == "release_error":
+        solver.release_maa.side_effect = [True, RuntimeError("release failed"), True]
     android = bool(failure and failure.startswith("android_"))
     monkeypatch.setenv("MOWER_ANDROID", "1" if android else "0")
     order = MagicMock()
