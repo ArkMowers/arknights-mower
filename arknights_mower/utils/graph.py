@@ -112,6 +112,7 @@ SCENE_RECONCILABLE_TRANSITIONS = frozenset(
         "friend_list",
         "business_card",
         "infra_back",
+        "trade_view_back",
         "riic_back",
         "riic",
         "control_central",
@@ -449,7 +450,6 @@ def todo_complete(solver: BaseSolver):
 @edge(Scene.CLUE_PLACE, Scene.INFRA_CONFIDENTIAL)
 @edge(Scene.CLUE_MESSAGE_BOARD, Scene.INFRA_DETAILS)
 @edge(Scene.INFRA_ARRANGE_ORDER, Scene.INFRA_DETAILS)
-@edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
 @edge(Scene.FACTORY_ROOMS, Scene.INFRA_DETAILS)
 @edge(Scene.MANUFACTURE_PRODUCT_SELECT, Scene.FACTORY_ROOMS)
 @edge(Scene.MANUFACTURE_PRODUCT_CHANGE_CONFIRM, Scene.FACTORY_ROOMS)
@@ -460,6 +460,14 @@ def todo_complete(solver: BaseSolver):
 @edge(Scene.FACTORY_ROOM, Scene.INFRA_MAIN)
 def infra_back(solver: BaseSolver):
     solver.back()
+
+
+@edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
+def trade_view_back(solver: BaseSolver):
+    if arrow_bar := solver.find("nav_button"):
+        solver.tap(arrow_bar, x_rate=0.08)
+    else:
+        solver.sleep(0.3)
 
 
 @edge(Scene.INFRA_ARRANGE_CONFIRM, Scene.INFRA_DETAILS)
@@ -528,6 +536,10 @@ def network_check_cancel(solver: BaseSolver):
     solver.tap_element("confirm")
 
 
+class TradeNavigationError(RecognizeError):
+    pass
+
+
 class SceneGraphSolver(BaseSolver):
     def scene_graph_navigation(self, scene: int, *, restart_on_unknown=False):
         if scene not in DG:
@@ -540,7 +552,64 @@ class SceneGraphSolver(BaseSolver):
         unknown_count = 0
         cancelled_login_attempts = 0
         access_record_dismissed = False
-        while (current := self.scene()) != scene:
+        trade_return_checks = 0
+        trade_return_actions = {}
+        trade_detail_seen = False
+        returning_from_trade = False
+        detect_room_type = getattr(self, "detect_room_type", None)
+        while True:
+            current = self.scene()
+            if current == scene and not (
+                returning_from_trade and scene == Scene.INFRA_DETAILS
+            ):
+                return
+            if current == Scene.INFRA_MAIN and scene != Scene.INFRA_DETAILS:
+                returning_from_trade = False
+                trade_detail_seen = False
+            if (
+                scene in (Scene.INFRA_DETAILS, Scene.INFRA_MAIN, Scene.INDEX)
+                and not returning_from_trade
+                and (
+                    current == Scene.ORDER_LIST
+                    or (
+                        current == Scene.INFRA_DETAILS
+                        and scene != Scene.INFRA_DETAILS
+                        and detect_room_type is not None
+                        and detect_room_type() == "贸易站"
+                    )
+                )
+            ):
+                returning_from_trade = True
+
+            if returning_from_trade:
+                if current == Scene.INFRA_DETAILS:
+                    confirmed = (
+                        self.find("nav_button")
+                        and not self.find("order_label")
+                        and (detect_room_type is None or detect_room_type() == "贸易站")
+                    )
+                    if confirmed and trade_detail_seen and scene == current:
+                        return
+                    ready = confirmed and trade_detail_seen
+                    trade_detail_seen = bool(confirmed)
+                else:
+                    trade_detail_seen = False
+                    ready = current == Scene.ORDER_LIST
+                if (
+                    trade_return_checks >= 12
+                    or trade_return_actions.get(current, 0) >= 3
+                ):
+                    message = f"贸易站返回未确认，当前场景 {current}，目标场景 {scene}"
+                    logger.warning(message, extra={"archive_screenshots": True})
+                    raise TradeNavigationError(message)
+                trade_return_checks += 1
+                if not ready:
+                    # 转场帧可能被识别为其它场景，先等新截图再决定是否输入。
+                    self.sleep(0.3)
+                    continue
+                trade_return_actions[current] = trade_return_actions.get(current, 0) + 1
+                trade_detail_seen = False
+
             if (
                 current != Scene.CLUE_ACCESS_RECORD
                 and current not in self.waiting_scene
@@ -592,7 +661,12 @@ class SceneGraphSolver(BaseSolver):
                 continue
 
             try:
-                sp = DG.shortest_path(current, scene)
+                route_target = (
+                    Scene.INFRA_MAIN
+                    if returning_from_trade and scene == Scene.INDEX
+                    else scene
+                )
+                sp = DG.shortest_path(current, route_target)
             except Exception as e:
                 # 纯图计算错误（如无路径），与设备无关：不重启模拟器，放弃本次导航
                 logger.exception(f"场景图路径计算异常：{e}")
@@ -602,6 +676,11 @@ class SceneGraphSolver(BaseSolver):
 
             next_scene = sp[1]
             transition = DG.transition(current, next_scene)
+            if returning_from_trade and (current, next_scene) == (
+                Scene.INFRA_DETAILS,
+                Scene.INFRA_MAIN,
+            ):
+                transition = trade_view_back
 
             try:
                 mode = (

@@ -108,6 +108,35 @@ def test_incomplete_startup_order_does_not_create_refresh_or_block_other_station
     ) == 1
 
 
+@pytest.mark.parametrize("failure_at", ["second_room", "return_to_map"])
+def test_startup_navigation_exhaustion_keeps_confirmed_near_order(
+    staffed_order, failure_at
+):
+    from arknights_mower.utils.graph import TradeNavigationError
+
+    ui = staffed_order
+    solver = prepare(ui)
+    due = ui.clock.now() + timedelta(minutes=5)
+    solver.get_run_order_time = MagicMock(
+        side_effect=[due, TradeNavigationError("返回未确认")]
+        if failure_at == "second_room"
+        else [due, None]
+    )
+    solver.scene_graph_navigation = MagicMock(
+        side_effect=TradeNavigationError("返回未确认")
+    )
+    solver._adjust_run_orders = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+
+    solver._check_startup_run_orders()
+    solver._check_startup_run_orders()
+
+    assert [(task.meta_data, task.time) for task in orders(ui)] == [("room_1_1", due)]
+    assert solver.get_run_order_time.call_count == 2
+    assert solver._adjust_run_orders.call_count == (failure_at == "return_to_map")
+    solver.back_to_infrastructure.assert_not_called()
+
+
 @pytest.mark.parametrize("shortage", [False, True])
 def test_shared_drone_adjustment_uses_temporary_tasks_and_returns_to_main(
     staffed_order, shortage

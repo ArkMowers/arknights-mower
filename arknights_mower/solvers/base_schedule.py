@@ -126,7 +126,7 @@ from arknights_mower.utils.dorm_candidates import (
 )
 from arknights_mower.utils.dorm_recovery import DormRecoveryPaddingUnavailable
 from arknights_mower.utils.email import maa_template, send_message, task_template
-from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.graph import SceneGraphSolver, TradeNavigationError
 from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import log_parent_context, logger
 from arknights_mower.utils.long_task_windows import (
@@ -6832,6 +6832,7 @@ class BaseSchedulerSolver(
             return
         self._sync_run_order_tasks()
         provisional = []
+        navigation_exhausted = False
         for room in list(self.op_data.run_order_rooms):
             if not self._startup_order_check_fits():
                 break
@@ -6850,21 +6851,35 @@ class BaseSchedulerSolver(
                 if execute_time is None or room not in self.op_data.run_order_rooms:
                     continue
                 provisional.append(self._new_run_order_task(room, execute_time))
+            except TradeNavigationError:
+                navigation_exhausted = True
+                break
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
             except Exception as e:
                 logger.warning("启动检查 %s 订单失败，继续初始化：%s", room, e)
-                self.back_to_infrastructure()
-        # scheduling 会改写任务，启动的远期读数不能进入持久化任务队列。
-        temporary_tasks = copy.deepcopy(self.tasks) + provisional
-        try:
-            self._adjust_run_orders(temporary_tasks, startup=True)
-            self.scene_graph_navigation(Scene.INFRA_MAIN)
-        except (MowerExit, DeviceRecoveryError, SharedADBError):
-            raise
-        except Exception as e:
-            logger.warning("启动调整订单失败，继续初始化：%s", e)
-            self.back_to_infrastructure()
+                try:
+                    self.back_to_infrastructure()
+                except TradeNavigationError:
+                    navigation_exhausted = True
+                    break
+        if not navigation_exhausted:
+            # scheduling 会改写任务，启动的远期读数不能进入持久化任务队列。
+            temporary_tasks = copy.deepcopy(self.tasks) + provisional
+            try:
+                self._adjust_run_orders(temporary_tasks, startup=True)
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
+            except TradeNavigationError:
+                pass
+            except (MowerExit, DeviceRecoveryError, SharedADBError):
+                raise
+            except Exception as e:
+                logger.warning("启动调整订单失败，继续初始化：%s", e)
+                try:
+                    self.back_to_infrastructure()
+                except TradeNavigationError:
+                    pass
+        # 巡检中断时仍发布已确认的临近订单，未确认的房间交回正常调度。
         deadline = datetime.now() + timedelta(
             minutes=max(10, config.conf.run_order_delay * 2)
         )
@@ -17068,23 +17083,50 @@ class BaseSchedulerSolver(
 
     @timed_step("room_detail")
     def turn_on_room_detail(self, room):
+        trade_return_attempted = False
+        trade_room = False
         for enter_times in range(3):
             pending = False
             for retry_times in range(19):
                 if self.find("connecting"):
                     self.sleep()
+                elif room.startswith("room_") and self.find("order_label"):
+                    if trade_return_attempted:
+                        message = (
+                            f"打开{self.translate_room(room)}进驻信息时再次回到订单页"
+                        )
+                        logger.warning(message, extra={"archive_screenshots": True})
+                        raise TradeNavigationError(message)
+                    self.scene_graph_navigation(Scene.INFRA_DETAILS)
+                    trade_return_attempted = True
+                    trade_room = True
+                    pending = False
                 elif room == "recycle" and self.find("recycle/dashboard"):
                     # 材料转化页没有进驻信息按钮，先回到房间视图。
                     self.back()
-                elif pos := self.find("room_detail"):
+                elif self.find("room_detail"):
                     # 取面板内部的白色，避开左边缘；标题出现后仍可能处于展开动画中。
-                    if all(self.get_color((1250, 1)) > [252] * 3):
+                    trade_room = trade_room or (
+                        room.startswith("room_") and self.detect_room_type() == "贸易站"
+                    )
+                    if all(self.get_color((1250, 1)) > [252] * 3) and (
+                        not trade_room or self.detect_room() == room
+                    ):
                         return
                     logger.debug("等待进驻详情面板展开")
                     self.sleep(interval=0.5)
                 elif (pos := self.find("arrange_check_in")) or (
                     pos := self.find("arrange_check_in_small")
                 ):
+                    trade_room = trade_room or (
+                        room.startswith("room_") and self.detect_room_type() == "贸易站"
+                    )
+                    if trade_room and (
+                        self.scene() != Scene.INFRA_DETAILS
+                        or self.detect_room() != room
+                    ):
+                        self.sleep(0.3)
+                        continue
                     if pending:
                         pending = False
                         self.sleep(0.2)
@@ -17095,10 +17137,16 @@ class BaseSchedulerSolver(
                     self.sleep()
             if (
                 not self.find("connecting")
+                and not (trade_room and self.find("order_label"))
                 and self.find("room_detail")
                 and all(self.get_color((1250, 1)) > [252] * 3)
+                and (not trade_room or self.detect_room() == room)
             ):
                 return
+            if trade_room:
+                message = f"未确认{self.translate_room(room)}进驻信息已打开"
+                logger.warning(message, extra={"archive_screenshots": True})
+                raise TradeNavigationError(message)
             for back_time in range(3):
                 if pos := self.find("control_central"):
                     break
