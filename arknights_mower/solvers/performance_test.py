@@ -217,23 +217,25 @@ class SelectionPerformanceTest(BaseMixin, SceneGraphSolver):
         )
         if actual is None:
             raise AgentSelectionNotReady("检测到干员选择错误")
-        self.reorder_selected_agents(
-            list(reversed(targets)) if len(targets) == 5 else targets, actual
-        )
+        reordered = list(reversed(targets)) if len(targets) == 5 else targets
+        self.reorder_selected_agents(reordered, actual)
         self.switch_arrange_order("技能", self.room)
-        if self.wait_for_arranged_agents(targets, ordered=False) is None:
-            raise AgentSelectionNotReady("重排后检测到干员选择错误")
+        if self.verify_agent(reordered, self.room, ordered=False) is not True:
+            raise AgentSelectionNotReady("重排后未能确认干员的床位顺序")
         # 单回暂留会把完整宿舍名单缩减；清空前的蓝框不能作为已选证据。
         if len(targets) == 5:
             retained = targets[:3]
             self.clear_agent_selection()
-            pending = retained.copy()
-            self.scan_agent(pending)
+            pending = retained[:2]
+            self.scan_agent(
+                pending, target_slots={name: i for i, name in enumerate(pending, 1)}
+            )
             if pending:
-                raise AgentSelectionNotReady("缩减名单后未选中全部目标干员")
-            self.switch_arrange_order("技能", self.room)
-            if self.wait_for_arranged_agents(retained, ordered=False) is None:
-                raise AgentSelectionNotReady("五人缩减为三人后检测到干员选择错误")
+                raise AgentSelectionNotReady("缩减名单后未选中前两名干员")
+            if not self.fill_visible_selection_suffix(
+                retained, 2, wait_for_feedback=True
+            ):
+                raise AgentSelectionNotReady("五人缩减为三人后未能确认干员的床位顺序")
 
     def cancel_selection(self):
         if not self.entered_room:

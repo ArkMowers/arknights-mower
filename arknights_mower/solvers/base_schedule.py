@@ -14,10 +14,12 @@ from typing import Literal, Optional
 from uuid import uuid4
 
 import cv2
+import numpy as np
 import requests
 from packaging.version import InvalidVersion, Version
 
 from arknights_mower.data import (
+    agent_branch,
     agent_list,
     agent_profession,
     base_room_list,
@@ -25,11 +27,15 @@ from arknights_mower.data import (
     workshop_formula,
 )
 from arknights_mower.solvers.base_mixin import (
+    AgentCardObservationNotReady,
+    AgentPageNotAdvanced,
     AgentSelectionNotReady,
     AgentSelectionPageChanged,
     BaseMixin,
     agent_card_selected,
     fixed_selection_profile,
+    selection_shows_power_plant,
+    selection_title_matches,
 )
 from arknights_mower.solvers.clue_credit import ClueCreditMixin
 from arknights_mower.solvers.clue_gift import ClueGiftMixin, clue_card_number
@@ -109,9 +115,15 @@ from arknights_mower.utils.device.adb_client.server import (
     SharedADBError,
     guard_adb,
 )
+from arknights_mower.utils.device.application import RECOVERABLE_DEVICE_ERRORS
 from arknights_mower.utils.device.device import Device
 from arknights_mower.utils.device.io_budget import io_timeout
-from arknights_mower.utils.device.recovery import DeviceRecoveryError
+from arknights_mower.utils.device.recovery import (
+    DeviceRecoveryError,
+    input_reconciliation_scope,
+    wait_for_recovery,
+)
+from arknights_mower.utils.device.touch_backend import TouchFailure
 from arknights_mower.utils.digit_reader import DigitReader
 from arknights_mower.utils.dorm_candidates import (
     dorm_candidate_mood,
@@ -224,6 +236,11 @@ from arknights_mower.utils.scheduler_task import (
     try_reorder,
     try_workshop_tasks,
 )
+from arknights_mower.utils.selection_branch import (
+    branch_filter_state,
+    select_visible_branch,
+)
+from arknights_mower.utils.selection_order import room_shows_two_slots
 from arknights_mower.utils.simulator import restart_simulator
 from arknights_mower.utils.skland_log import redact_signing_text
 from arknights_mower.utils.solver import ObservationTimeout
@@ -515,12 +532,55 @@ class RunOrderConfirmationUnresolved(RecognizeError):
         self.room = room
 
 
+ORDER_RETURN_LOGIN_SCENES = (
+    Scene.LOGIN_START,
+    Scene.LOGIN_MAIN,
+    Scene.LOGIN_QUICKLY,
+    Scene.LOGIN_INPUT,
+    Scene.LOGIN_BILIBILI,
+    Scene.LOGIN_CAPTCHA,
+    Scene.LOGIN_CANCELLED,
+)
+
+
+class OrderReturnUnresolved(RecognizeError):
+    """订单已读，返回地图的画面仍未确认。"""
+
+
+class TrainingSubmissionUnconfirmed(AgentSelectionNotReady):
+    messages = (
+        "训练室协助位提交后未确认目标驻员，返回房间重试",
+        "训练室训练位提交后未确认目标驻员，返回房间重试",
+    )
+
+    def __init__(self, index, target):
+        super().__init__(self.messages[index])
+        self.slot = (index, target)
+
+    @classmethod
+    def retained_slot(cls, task):
+        failure = task.execution_failure
+        if "submitted_training_slot" in failure:
+            return failure["submitted_training_slot"]
+        # 旧存档只有提交后失败的岗位名称，目标取自原任务的该岗位。
+        if (
+            "train" in failure.get("rooms", ())
+            and failure.get("reason") in cls.messages
+        ):
+            index = cls.messages.index(failure["reason"])
+            targets = task.plan.get("train", ())
+            if index < len(targets):
+                return index, targets[index]
+        return None
+
+
 class RoomArrangementDeferred(RuntimeError):
     """房间重试暂未成功，保留剩余任务并把调度权交回队列。"""
 
-    def __init__(self, room, error):
+    def __init__(self, room, error, *, submitted_training_slot=None):
         super().__init__(str(error))
         self.room = room
+        self.submitted_training_slot = submitted_training_slot
 
 
 class MoodArrangementChanged(RuntimeError):
@@ -770,7 +830,7 @@ class BaseSchedulerSolver(
         return datetime.now() + timedelta(seconds=remaining)
 
     def read_operator_time(self, room, index, cord):
-        """读取干员倒计时；空值按非工作状态或心情耗尽处理。"""
+        """从采集时刻计算干员倒计时的终点。空值按非工作状态或心情耗尽处理。"""
         remaining = self.read_time(cord, None)
         if remaining is None:
             logger.info(
@@ -785,7 +845,10 @@ class BaseSchedulerSolver(
             or remaining < 0
         ):
             raise RecognizeError(f"房间 {room} 第 {index + 1} 槽位倒计时未核实")
-        return datetime.now() + timedelta(seconds=remaining)
+        sampled_at = getattr(getattr(self, "recog", None), "capture_started_at", None)
+        if not isinstance(sampled_at, datetime):
+            sampled_at = datetime.now()
+        return sampled_at + timedelta(seconds=remaining)
 
     def _task_failure_snapshot(self, task, rooms):
         """失败任务仅由新观测或相关安排变化重新准入，不使用时钟计时。"""
@@ -1081,7 +1144,7 @@ class BaseSchedulerSolver(
             TaskTypes.NOT_SPECIFIC,
         }
         pending = [
-            (task, failure)
+            (task, failure, training_slot)
             for task in self.tasks
             if (
                 task.type in ordinary
@@ -1090,11 +1153,15 @@ class BaseSchedulerSolver(
                 and not task.meta_data
             )
             and (failure := getattr(task, "execution_failure", None))
-            and failure.get("reason", "").startswith("干员确认")
+            and (
+                (training_slot := TrainingSubmissionUnconfirmed.retained_slot(task))
+                is not None
+                or failure.get("reason", "").startswith("干员确认")
+            )
         ]
         if not pending or self.scene() != Scene.INFRA_MAIN:
             return False
-        for task, failure in pending:
+        for task, failure, training_slot in pending:
             recovery = getattr(task, "confirmation_recovery_rooms", {})
             for room in failure.get("rooms", ()):
                 if room not in task.plan or recovery.get(room) == "consumed":
@@ -1155,13 +1222,18 @@ class BaseSchedulerSolver(
                         and getattr(self.op_data, "room_observations", {}).get(room, 0)
                         > revision
                     )
+                    if complete and room == "train" and training_slot is not None:
+                        index, target = training_slot
+                        complete = self._training_slot_matches(
+                            index, target, rows[index]["agent"]
+                        )
                 except (MowerExit, DeviceRecoveryError, SharedADBError):
                     raise
                 except Exception as exc:
                     logger.warning("确认结果补充实读未完成，保留原任务：%s", exc)
                 finally:
                     if not complete:
-                        # 部分岗位的时间戳更新不能被当作完整成功实读来解除失败。
+                        # 补读不完整或提交的岗位仍不符时，本次读数不解除失败。
                         failure["snapshot"] = self._task_failure_snapshot(
                             task, failure["rooms"]
                         )
@@ -1793,6 +1865,9 @@ class BaseSchedulerSolver(
         return len(self.tasks) > had_tasks
 
     def transition(self) -> None:
+        if "_order_return_unresolved" in self.__dict__:
+            self._return_after_order_countdown()
+            return
         if getattr(self, "_recycling_pending", None):
             if (
                 self._recycling_pending.get("recorded")
@@ -4288,6 +4363,8 @@ class BaseSchedulerSolver(
                 self._queue_order_refresh(e.room)
                 self.skip()
                 self.back_to_infrastructure()
+            except OrderReturnUnresolved:
+                self.skip()
             except RunOrderConfirmationUnresolved as e:
                 self._retain_run_order_restoration(failure=str(e))
                 self.skip()
@@ -4318,6 +4395,10 @@ class BaseSchedulerSolver(
                     and getattr(task, "run_order_restore_pending", False)
                 ):
                     self._retain_failed_task(task, str(e), [e.room])
+                    if e.submitted_training_slot is not None:
+                        task.execution_failure["submitted_training_slot"] = (
+                            e.submitted_training_slot
+                        )
                 self.skip()
                 self.back_to_infrastructure()
             except ProductSwitchFailed as e:
@@ -4518,6 +4599,8 @@ class BaseSchedulerSolver(
                         return True
                     self.run_order_solver()
                     self.plan_solver()
+            except OrderReturnUnresolved:
+                return
             except (MowerExit, DeviceRecoveryError):
                 raise
             except Exception as e:
@@ -4964,16 +5047,26 @@ class BaseSchedulerSolver(
         self.back_to_infrastructure()
         return True
 
-    def _read_room_mood(self, room, *, force_mood=False, strict_observation=False):
+    def _read_room_mood(
+        self, room, *, force_mood=False, strict_observation=False, pending_order=None
+    ):
         """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
         if room == "recycle" and getattr(self, "_recycle_unavailable", False) is True:
             return
-        observation = {}
+        observation = {} if pending_order is None else pending_order
         capture = room.startswith("room_") and (
             self._product_switching_enabled()
             or getattr(self.op_data, "mood_calculation_enabled", False)
         )
         with ExitStack() as observation_scope:
+            observation_args = {}
+            if capture:
+                observation_args = {
+                    "facility_observation": observation,
+                    "facility_observation_scope": observation_scope,
+                }
+                if pending_order is not None:
+                    observation_args["defer_trade_order"] = True
             try:
                 mood_data = self.get_agent_from_room(
                     room,
@@ -4982,23 +5075,35 @@ class BaseSchedulerSolver(
                     else None,
                     **({"force_mood": True} if force_mood else {}),
                     **({"strict_observation": True} if strict_observation else {}),
-                    **(
-                        {
-                            "facility_observation": observation,
-                            "facility_observation_scope": observation_scope,
-                        }
-                        if capture
-                        else {}
-                    ),
+                    **observation_args,
                 )
             except BaseException:
                 if observation:
                     self._log_facility_observation(
-                        room, observation, "failed", "干员心情读取未完成"
+                        room,
+                        observation,
+                        "failed",
+                        observation.get("failure_detail", "干员心情读取未完成"),
                     )
                 raise
-            self._log_room_mood(room, mood_data, observation=observation or None)
+            if pending_order is None or not observation.get("order_pending"):
+                self._log_room_mood(room, mood_data, observation=observation or None)
         return mood_data
+
+    def _start_facility_observation(self, room, observation, scope, state_summary):
+        observation.update(
+            id=uuid4().hex,
+            label=facility_label(room, self.op_data),
+            state_summary=state_summary,
+            moods={},
+        )
+        if scope is not None:
+            scope.enter_context(
+                log_parent_context(
+                    {"type": "facility-observation", "id": observation["id"]}
+                )
+            )
+        self._log_facility_observation(room, observation, "started", "正在读取干员心情")
 
     def _log_facility_observation(self, room, observation, phase, detail, agents=()):
         label = observation["label"]
@@ -5325,7 +5430,7 @@ class BaseSchedulerSolver(
             self.swipe_left(1, "ALL")
             station_filter = self.agent_station_filter()
             self.agent_station_filter("未进驻" if idle_only else "全部")
-            self.switch_arrange_order("心情", room, True)
+            self.switch_arrange_order("心情", room, True, refresh=False)
             previous = None
             observation = None
             observed_names = set()
@@ -6832,6 +6937,7 @@ class BaseSchedulerSolver(
             return
         self._sync_run_order_tasks()
         provisional = []
+        return_error = None
         for room in list(self.op_data.run_order_rooms):
             if not self._startup_order_check_fits():
                 break
@@ -6852,14 +6958,18 @@ class BaseSchedulerSolver(
                 provisional.append(self._new_run_order_task(room, execute_time))
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
+            except OrderReturnUnresolved as e:
+                return_error = e
+                break
             except Exception as e:
                 logger.warning("启动检查 %s 订单失败，继续初始化：%s", room, e)
                 self.back_to_infrastructure()
         # scheduling 会改写任务，启动的远期读数不能进入持久化任务队列。
         temporary_tasks = copy.deepcopy(self.tasks) + provisional
         try:
-            self._adjust_run_orders(temporary_tasks, startup=True)
-            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            if return_error is None:
+                self._adjust_run_orders(temporary_tasks, startup=True)
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
         except (MowerExit, DeviceRecoveryError, SharedADBError):
             raise
         except Exception as e:
@@ -6882,6 +6992,9 @@ class BaseSchedulerSolver(
                         and not getattr(pending, "execution_failure", None)
                     )
                 ]
+
+        if return_error is not None:
+            raise return_error
 
     def _new_run_order_task(self, room, execute_time):
         task = SchedulerTask(
@@ -7013,6 +7126,8 @@ class BaseSchedulerSolver(
                 observed = self.plan_run_order(refresh.meta_data)
             except (MowerExit, DeviceRecoveryError, SharedADBError):
                 raise
+            except OrderReturnUnresolved:
+                break
             except Exception as e:
                 logger.warning("读取订单失败，保留独立刷新任务：%s", e)
                 self._retain_failed_task(refresh, str(e), [refresh.meta_data])
@@ -12274,7 +12389,12 @@ class BaseSchedulerSolver(
 
     @timed_step("order_navigation")
     def _wait_drone_interface(
-        self, interval=0.2, accelerate_template=None, page_template=None
+        self,
+        interval=0.2,
+        accelerate_template=None,
+        page_template=None,
+        *,
+        retry_after=0,
     ):
         """#85：等待进入订单或制造详情界面。
 
@@ -12289,8 +12409,11 @@ class BaseSchedulerSolver(
         )
         pending = None
         retry_ready = False
-        for _ in range(10):
+        retry_at = 0
+        attempts_left = 10
+        while attempts_left:
             if self.find("connecting"):
+                attempts_left -= 1
                 retry_ready = False
                 self.sleep()
                 continue
@@ -12304,11 +12427,17 @@ class BaseSchedulerSolver(
                 and self.find(page_template) is not None
             ):
                 return
+            if pending == action and (remaining := retry_at - monotonic()) > 0:
+                retry_ready = True
+                self.sleep(min(0.2, remaining))
+                continue
+            attempts_left -= 1
             if pending == action and not retry_ready:
                 # 等上次点击的反馈；旧面板仍在时先换帧，不连续戳同一入口。
                 retry_ready = True
                 self.sleep(0.2)
                 continue
+            retry_at = monotonic() + retry_after
             self.tap(
                 close
                 if close is not None
@@ -12509,6 +12638,10 @@ class BaseSchedulerSolver(
         except BaseException as error:
             self._publish_order_read_log(cohort, "failed", str(error))
             self._reset_order_read_log_attempt(cohort)
+            if isinstance(error, OrderReturnUnresolved):
+                refresh = self._queue_order_refresh(room)
+                if refresh is not None:
+                    self._retain_failed_task(refresh, str(error), [room])
             raise
         finally:
             if previous is None:
@@ -12521,20 +12654,29 @@ class BaseSchedulerSolver(
         finish_mood_calculation()
         # 点击进入该房间
         self.enter_room(room)
+        pending_order = {}
         if read_mood:
-            self._read_room_mood(room, force_mood=True, strict_observation=True)
+            mood_data = self._read_room_mood(
+                room,
+                force_mood=True,
+                strict_observation=True,
+                pending_order=pending_order,
+            )
             if not hasattr(self, "_startup_mood_observations"):
                 self._startup_mood_observations = {}
             self._startup_mood_observations[room] = self._room_mood_signature(room)
         # 进入房间详情
-        self._wait_drone_interface(
-            interval=1,
-            accelerate_template="bill_accelerate",
-            page_template="order_label",
-        )
-        observed_product = self._cache_facility_state_from_current_page(
-            room, "trade", defer_log=True
-        )
+        observed_product = None
+        try:
+            observed_product = self._observe_trade_strategy(room, interval=1)
+        finally:
+            if pending_order.get("order_pending"):
+                pending_order["state_summary"] = (
+                    f"订单类型为{observed_product[0]}"
+                    if observed_product
+                    else "订单类型未确认"
+                )
+                self._log_room_mood(room, mood_data, observation=pending_order)
         cohort = self._active_order_read_log
         if cohort["id"] is None:
             for item in cohort["rooms"]:
@@ -12570,9 +12712,149 @@ class BaseSchedulerSolver(
             if not self.op_data.is_order_collection_room(room):
                 execute_time -= timedelta(minutes=config.conf.run_order_delay)
             logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
-            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            self._return_after_order_countdown(room)
             self._resolve_order_read_log(cohort, room, "read")
             return execute_time
+
+    def _recover_trade_room_return(self, room):
+        """在两张新画面确认原贸易站的放大页后，点一次游戏内返回箭头。"""
+        profile = self.performance_profile
+        deadline = monotonic() + profile.transition_timeout
+        self.recog.update()
+        previous_detail = False
+        tapped = False
+        waited = set()
+        for _ in range(profile.transition_attempts):
+            scene = self.scene()
+            if (
+                scene in (Scene.INFRA_MAIN, Scene.ORDER_LIST, Scene.INDEX)
+                or scene in ORDER_RETURN_LOGIN_SCENES
+            ):
+                return scene
+            if scene in self.waiting_scene and scene != Scene.UNKNOWN:
+                if scene in waited or not self.waiting_solver():
+                    break
+                waited.add(scene)
+                previous_detail = False
+                continue
+            if scene != Scene.INFRA_DETAILS:
+                break
+            if not tapped:
+                arrow = self.find("nav_button")
+                detail = (
+                    bool(arrow)
+                    and not self.find("order_label")
+                    and (
+                        self.detect_room_type() == "贸易站"
+                        and self.detect_room() == room
+                    )
+                )
+                if detail and previous_detail:
+                    with input_reconciliation_scope("scene"):
+                        self.tap(arrow, x_rate=0.08, interval=profile.poll_interval)
+                    tapped = True
+                    continue
+                previous_detail = detail
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            self.sleep(min(profile.poll_interval, remaining))
+        raise OrderReturnUnresolved("读单后未确认退出原贸易站，保留订单刷新任务")
+
+    def _return_after_order_countdown(self, room=None):
+        """读到订单倒计时后逐页返回，每次按键都以新场景确认结果。"""
+        profile = self.performance_profile
+        previous = self.__dict__.get("_order_return_unresolved")
+        if room is None:
+            room = self.__dict__.get("_order_return_room")
+        attempts = {previous: 2} if previous is not None else {}
+        if previous == Scene.ORDER_LIST:
+            # 上一轮已等过按键反馈，本轮重新取帧确认订单页后只补一次返回。
+            self.recog.update()
+            attempts[Scene.ORDER_LIST] = 1
+            previous = None
+        if previous == Scene.INFRA_DETAILS and room is not None:
+            scene = self._recover_trade_room_return(room)
+        else:
+            scene = self.scene()
+        deadline = monotonic() + profile.transition_timeout
+        waited = set()
+        failure = "读单后未确认返回基建地图，保留订单刷新任务"
+        while scene != Scene.INFRA_MAIN:
+            if scene in self.waiting_scene and scene != Scene.UNKNOWN:
+                if scene in waited or not self.waiting_solver():
+                    failure = "读单后返回基建时联网等待超时"
+                    break
+                waited.add(scene)
+                scene = self.scene()
+                continue
+            if scene in (Scene.UNKNOWN, Scene.UNDEFINED) or scene == previous:
+                remaining = deadline - monotonic()
+                if remaining > 0:
+                    self.sleep(min(profile.poll_interval, remaining))
+                    scene = self.scene()
+                    continue
+                if scene in (Scene.UNKNOWN, Scene.UNDEFINED):
+                    break
+            if attempts.get(scene, 0) >= 2:
+                failure = "读单后返回键未生效，保留订单刷新任务"
+                break
+            attempts[scene] = attempts.get(scene, 0) + 1
+            previous = scene
+            deadline = monotonic() + profile.transition_timeout
+            if scene in ORDER_RETURN_LOGIN_SCENES:
+                self.login()
+                scene = self.scene()
+                continue
+            try:
+                with input_reconciliation_scope("scene"):
+                    if scene == Scene.INFRA_ARRANGE_CONFIRM:
+                        # 订单读取没有提交排班的责任，只能点左侧取消。
+                        self.tap(
+                            (self.recog.w // 3, self.recog.h - 10),
+                            interval=profile.poll_interval,
+                        )
+                    elif scene in (
+                        Scene.ORDER_LIST,
+                        Scene.INFRA_DETAILS,
+                        Scene.INFRA_ARRANGE_ORDER,
+                        Scene.RIIC_OPERATOR_SELECT,
+                    ):
+                        self.back(interval=profile.poll_interval)
+                    elif scene == Scene.INDEX:
+                        self.tap_index_element("infrastructure")
+                    else:
+                        break
+            except TouchFailure as exc:
+                if exc.reconciliation != "scene" or exc.cleanup_failed:
+                    raise
+
+                def resume_navigation():
+                    self.device.reconnect()
+                    self.recog.update()
+
+                csleep(io_timeout(30))
+                wait_for_recovery(
+                    resume_navigation, retry_errors=RECOVERABLE_DEVICE_ERRORS
+                )
+                deadline = monotonic() + profile.transition_timeout
+            scene = self.scene()
+        if scene != Scene.INFRA_MAIN:
+            self._order_return_unresolved = scene
+            self._order_return_room = room
+            raise OrderReturnUnresolved(failure)
+        self.__dict__.pop("_order_return_unresolved", None)
+        self.__dict__.pop("_order_return_room", None)
+
+    def scene_graph_navigation(self, scene, *, restart_on_unknown=False):
+        # 上层恢复仍须先取消读单后迟到的暂选，才能交回通用场景图。
+        if "_order_return_unresolved" in self.__dict__:
+            self._return_after_order_countdown()
+            if scene == Scene.INFRA_MAIN:
+                return
+        return super().scene_graph_navigation(
+            scene, restart_on_unknown=restart_on_unknown
+        )
 
     def collect_recycling(self):
         """Collect only a visible ready marker in the recycling facility."""
@@ -13599,6 +13881,56 @@ class BaseSchedulerSolver(
             )
         raise RecognizeError(f"无法识别当前制造产物：{text or 'OCR 无结果'}")
 
+    def _work_room_panel(self, room):
+        recog = getattr(self, "recog", None)
+        frame = getattr(recog, "_img", None)
+        if frame is None:
+            frame = getattr(recog, "img", None)
+        if getattr(frame, "shape", None) != (1080, 1920, 3):
+            return None
+        interval, attempts = self.selection_transition_timing()
+        for attempt in range(attempts):
+            if self.find("arrange_check_in_on"):
+                state = "open"
+            elif self.find("arrange_check_in"):
+                state = "closed"
+            else:
+                state = None
+            actual = self.detect_room()
+            if actual == room and state:
+                return state
+            if actual != room:
+                if attempt:
+                    break
+                self.recog.update()
+            elif attempt + 1 < attempts:
+                # 入房动画可能先显示房号，再显示可点击的进驻按钮。
+                self.sleep(interval)
+        raise RecognizeError(f"未确认{self.translate_room(room)}的房号与进驻按钮")
+
+    def _visible_manufacture_product(self):
+        label = self.recog.gray[925:975, 225:478]
+        if not label.size:
+            return None
+        try:
+            if rapidocr.engine is None:
+                rapidocr.initialize_ocr()
+            normalized = cv2.normalize(label, None, 0, 255, cv2.NORM_MINMAX)
+            lines = rapidocr.engine(
+                normalized, use_det=False, use_cls=False, use_rec=True
+            )[0]
+            if lines and len(lines) == 1:
+                text, confidence = lines[0]
+                if confidence >= 0.98:
+                    for product in ("gold", "exp3"):
+                        if text == MANUFACTURE_PRODUCTS[product].name:
+                            return product
+        except MowerExit:
+            raise
+        except Exception as error:
+            logger.debug(f"房间产物名称读取失败，进入制造详情：{error}")
+        return None
+
     def _manufacture_is_idle(self) -> bool:
         """识别制造站因缺少材料且未补货而没有正在制造的状态。"""
         status_scope = (
@@ -13619,14 +13951,17 @@ class BaseSchedulerSolver(
         *,
         facility_observation=None,
         facility_observation_scope: ExitStack | None = None,
-    ) -> None:
+        defer_trade_order=False,
+        after_roster=None,
+    ) -> bool:
         """进入房间读取心情时，按标题栏刷新实际设施类型、产物或订单。"""
         if not self._product_switching_enabled() and not getattr(
             self.op_data, "mood_calculation_enabled", False
         ):
-            return
+            return False
         if not room.startswith("room_"):
-            return
+            return False
+        panel = self._work_room_panel(room)
         facility_by_name = {
             "制造站": "manufacture",
             "贸易站": "trade",
@@ -13638,67 +13973,143 @@ class BaseSchedulerSolver(
             raise
         except Exception as e:
             logger.warning(f"刷新{self.translate_room(room)}设施类型失败：{e}")
-            return
+            return False
         if facility is None:
-            return
+            return False
         self.op_data.update_facility_state(room, facility)
         if facility == "power":
-            return
+            return True
         if (
             facility == "trade"
             and getattr(getattr(self, "task", None), "type", None)
             == TaskTypes.RUN_ORDER
         ):
             logger.debug("跑单换人后跳过贸易站订单类型刷新")
-            return
+            return False
 
-        combined = facility_observation is not None
-        product_label = None
-        try:
-            if facility == "manufacture":
-                self._wait_drone_interface(
-                    interval=3, accelerate_template="manufacture_accelerate"
-                )
+        room_product = (
+            self._visible_manufacture_product()
+            if facility == "manufacture" and panel
+            else None
+        )
+        read_with_countdown = (
+            facility == "trade"
+            and defer_trade_order
+            and facility_observation is not None
+        )
+        if read_with_countdown or (
+            after_roster is not None and panel == "open" and not room_product
+        ):
+            if read_with_countdown:
+                facility_observation["order_pending"] = True
             else:
-                self._wait_drone_interface(
-                    interval=3,
-                    accelerate_template="bill_accelerate",
-                    page_template="order_label",
+                after_roster.update(
+                    facility=facility,
+                    captured_at=getattr(self.recog, "capture_started_at", None),
+                    frame=getattr(self.recog, "_img", None),
                 )
-            observed_product = self._cache_facility_state_from_current_page(
-                room, facility, **({"defer_log": True} if combined else {})
+            if facility_observation is not None:
+                state_name = "产物" if facility == "manufacture" else "订单类型"
+                self._start_facility_observation(
+                    room,
+                    facility_observation,
+                    facility_observation_scope,
+                    f"{state_name}待确认",
+                )
+            return False
+        return self._read_room_facility_product(
+            room,
+            facility,
+            room_product,
+            facility_observation,
+            facility_observation_scope,
+        )
+
+    def _check_room_roster_frame(self, room, observation, *, sampled=False):
+        frame = getattr(self.recog, "_img", None)
+        captured_at = getattr(self.recog, "capture_started_at", None)
+        if observation["frame"] is frame and observation["captured_at"] == captured_at:
+            return
+        if self._work_room_panel(room) != "open":
+            raise RecognizeError(f"未确认{self.translate_room(room)}已展开的进驻面板")
+        verified_frame = getattr(self.recog, "_img", None)
+        verified_at = getattr(self.recog, "capture_started_at", None)
+        if sampled and (verified_frame is not frame or verified_at != captured_at):
+            raise RecognizeError(
+                f"{self.translate_room(room)}的岗位读数与已确认画面不一致"
             )
-            if combined and observed_product is not None:
-                product_label = observed_product[0]
+        observation.update(frame=verified_frame, captured_at=verified_at)
+
+    def _read_room_facility_product(
+        self, room, facility, room_product, observation, observation_scope
+    ):
+        observed_product = None
+        try:
+            if facility == "trade":
+                observed_product = self._observe_trade_strategy(room, retry_after=3)
+            else:
+                if not room_product:
+                    self._wait_drone_interface(
+                        accelerate_template="manufacture_accelerate", retry_after=3
+                    )
+                observed_product = self._cache_facility_state_from_current_page(
+                    room,
+                    facility,
+                    defer_log=True,
+                    **({"room_product": room_product} if room_product else {}),
+                )
+            if observed_product and observation is None:
+                logger.info(observed_product[1], extra={"log_room": room})
         except MowerExit:
             raise
         except Exception as e:
             logger.warning(f"刷新{self.translate_room(room)}设施状态失败：{e}")
-        if combined:
+        if observation is not None:
             state_name = "产物" if facility == "manufacture" else "订单类型"
-            facility_observation.update(
-                id=uuid4().hex,
-                label=facility_label(room, self.op_data),
-                state_summary=(
-                    f"{state_name}为{product_label}"
-                    if product_label is not None
-                    else f"{state_name}未确认"
-                ),
-                moods={},
+            summary = (
+                f"{state_name}为{observed_product[0]}"
+                if observed_product
+                else f"{state_name}未确认"
             )
-            if facility_observation_scope is not None:
-                facility_observation_scope.enter_context(
-                    log_parent_context(
-                        {
-                            "type": "facility-observation",
-                            "id": facility_observation["id"],
-                        }
-                    )
+            if observation:
+                observation["state_summary"] = summary
+            else:
+                self._start_facility_observation(
+                    room, observation, observation_scope, summary
                 )
-            self._log_facility_observation(
-                room, facility_observation, "started", "正在读取干员心情"
-            )
+        if room_product:
+            return observed_product is not None
+        if facility == "manufacture" and observed_product:
+            # 产物和加速按钮已确认。制造页淡入时场景识别可能仍读到加工站标题。
+            interval, attempts = self.selection_transition_timing()
+            for _ in range(2):
+                self.back(interval=interval)
+                deadline = monotonic() + interval * (attempts - 1)
+                for sample in range(attempts):
+                    if sample:
+                        self.sleep(interval)
+                    if (
+                        not self.find("connecting")
+                        and (
+                            self.find("arrange_check_in")
+                            or self.find("arrange_check_in_on")
+                        )
+                        and not self.find("manufacture_accelerate")
+                        and self.detect_room() == room
+                    ):
+                        return True
+                    if monotonic() >= deadline:
+                        break
+                # 仅在原房间仍显示制造加速按钮时补发返回，未知画面交由房间恢复。
+                if (
+                    self.find("connecting")
+                    or not self.find("manufacture_accelerate")
+                    or self.detect_room() != room
+                ):
+                    break
+            raise RecognizeError(f"未确认从制造产物页返回{self.translate_room(room)}")
         self.scene_graph_navigation(Scene.INFRA_DETAILS)
+        return observed_product is not None
 
     def _confirm_drone_count(self, count: int):
         """在已打开的加速面板中精确选择无人机数量并确认。"""
@@ -14313,6 +14724,16 @@ class BaseSchedulerSolver(
             page_template="order_label",
         )
 
+    def _observe_trade_strategy(self, room, **navigation):
+        self._wait_drone_interface(
+            accelerate_template="bill_accelerate",
+            page_template="order_label",
+            **navigation,
+        )
+        return self._cache_facility_state_from_current_page(
+            room, "trade", defer_log=True
+        )
+
     def _read_trade_product_card(self) -> tuple[str, bool]:
         """从订单列表右下角卡片读取订单类型及是否允许切换。"""
         scope = (
@@ -14340,6 +14761,7 @@ class BaseSchedulerSolver(
         facility: Literal["manufacture", "trade"],
         *,
         defer_log: bool = False,
+        room_product: str | None = None,
     ) -> tuple[str, str] | None:
         """在当前生产页面顺带更新设施状态，不进入或退出任何页面。"""
         if not self._product_switching_enabled() and not getattr(
@@ -14350,7 +14772,7 @@ class BaseSchedulerSolver(
             raise ValueError(f"未知设施类型：{facility}")
         try:
             if facility == "manufacture":
-                product = self.read_manufacture_product()
+                product = room_product or self.read_manufacture_product()
                 label = MANUFACTURE_PRODUCTS[product].name
             else:
                 product, _ = self._read_trade_product_card()
@@ -15314,10 +15736,10 @@ class BaseSchedulerSolver(
             yield
 
     @timed_step("confirm")
-    def tap_confirm(self, room, new_plan=None):
+    def tap_confirm(self, room, new_plan=None, *, training_slot=None):
         try:
             with ExitStack() as observation:
-                return self._tap_confirm(room, new_plan, observation)
+                return self._tap_confirm(room, new_plan, observation, training_slot)
         except RunOrderConfirmationUnresolved:
             # 追加观察已结束，沿用一次正常退页实读；不再获得额外等待。
             if self.find("room_detail"):
@@ -15327,7 +15749,7 @@ class BaseSchedulerSolver(
                 return
             raise
 
-    def _tap_confirm(self, room, new_plan, observation):
+    def _tap_confirm(self, room, new_plan, observation, training_slot=None):
         if new_plan is None:
             new_plan = {}
         self.recog.update()
@@ -15358,7 +15780,11 @@ class BaseSchedulerSolver(
             if wait_confirm > 0:
                 logger.info(f"等待跑单 {str(wait_confirm)} 秒")
                 self.sleep(wait_confirm)
-        for template in ("confirm_blue", "confirm_train", "arrange_confirm"):
+        templates = ("confirm_blue", "confirm_train", "arrange_confirm")
+        if training_slot is not None:
+            templates = (templates[training_slot], "arrange_confirm")
+        for template in templates:
+            verify_slot = training_slot is not None and template != "arrange_confirm"
             clicks = 0
             retry_ready = False
             submission_observed = False
@@ -15366,35 +15792,50 @@ class BaseSchedulerSolver(
                 if self.find("connecting"):
                     retry_ready = False
                     submission_observed = clicks > 0
-                    if not self.waiting_solver():
+                    wait_options = {}
+                    if clicks and self.task.type != TaskTypes.RUN_ORDER:
+                        profile = self.performance_profile
+                        wait_options["first_check"] = max(
+                            profile.poll_interval, profile.screenshot_interval / 1000
+                        )
+                    if not self.waiting_solver(**wait_options):
                         # 联网超时已重启游戏；先完成登录，调用方再实读驻员。
                         self.back_to_infrastructure()
                         raise RecognizeError("干员确认联网等待超时，返回房间重试")
                 # 已点击后提高按钮清晰度要求，避免再次点击淡出动画里的残影。
                 # 初次按钮沿用原识别规则，兼容不同背景和训练室。
-                pos = self.find(template, score=0.9) if clicks else self.find(template)
-                if pos is None:
-                    if not clicks:
-                        break
-                    if (
+                if verify_slot and not clicks:
+                    pos = self._require_training_selection(training_slot)
+                else:
+                    pos = (
                         self.find(template, score=0.9)
                         if clicks
                         else self.find(template)
-                    ) is None and any(
+                    )
+                if pos is None:
+                    if not clicks:
+                        break
+                    if any(
                         self.find(destination)
                         for destination in (
                             "confirm_blue",
                             "confirm_train",
                             "arrange_confirm",
+                        )
+                        if destination != template
+                    ):
+                        break
+                    if any(
+                        self.find(destination)
+                        for destination in (
                             "room_detail",
                             "arrange_check_in",
                             "arrange_check_in_small",
                             "arrange_check_in_on",
                             "recycle/dashboard",
                         )
-                        if destination != template
                     ):
-                        break
+                        return
                     # 按钮消失但目标页尚未出现也是过渡帧，不能漏掉迟到的二次确认。
                     retry_ready = False
                     self.sleep(0.2)
@@ -15414,6 +15855,8 @@ class BaseSchedulerSolver(
                     ):
                         break
                     raise RecognizeError("干员确认点击未生效，返回房间重试")
+                if verify_slot and clicks:
+                    pos = self._require_training_selection(training_slot)
                 target = (
                     (self.recog.w // 3 * 2, self.recog.h - 10)
                     if template == "arrange_confirm"
@@ -15469,150 +15912,165 @@ class BaseSchedulerSolver(
         else:
             self.sleep()
 
+    @staticmethod
+    def _training_slot_matches(index, target, occupant):
+        return (
+            occupant == target
+            or target == "Current"
+            or target == "Free"
+            and (index == 0 or bool(occupant))
+        )
+
+    def _require_training_selection(self, index):
+        expected = "confirm_train" if index == 1 else "confirm_blue"
+        interval, attempts = self.selection_transition_timing()
+        deadline = monotonic() + (attempts - 1) * interval
+        for attempt in range(attempts):
+            if attempt:
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    break
+                self.sleep(min(interval, remaining))
+            if self.recog.img.shape != (1080, 1920, 3):
+                continue
+            self.require_agent_selection_page()
+            buttons = self._profession_filter_buttons(stationary_only=True)
+            if len(buttons) == 1:
+                resource, x, y = buttons[0]
+                if resource != expected:
+                    raise AgentSelectionPageChanged(
+                        "训练室选人页与所点岗位不符，返回房间重试"
+                    )
+                h, w = loadres(resource).shape[:2]
+                return ((x, y), (x + w, y + h))
+        raise AgentSelectionNotReady("训练室选人页的确认按钮未稳定，返回房间重试")
+
     def choose_train(self, agents: list[str], fast_mode=True, choose_error=0):
-        tasks = ["scan"]
-        select_targets = []
+        target = None
+        submitted = None
+        clicks = 0
+        retry_at = 0.0
         unknown_cnt = 0
-        start_time = datetime.now()
-        while tasks:
-            if datetime.now() - start_time > timedelta(minutes=2):
-                raise Exception("选人流程超时，自动退出")
+        deadline = monotonic() + 120
+        while monotonic() < deadline:
             scene = self.scene()
             if scene == Scene.UNKNOWN:
                 unknown_cnt += 1
                 if unknown_cnt > 5:
                     unknown_cnt = 0
+                    target = None
                     self.back_to_infrastructure()
                     self.enter_room("train")
                 else:
                     self.sleep()
-                continue
             elif scene == Scene.CONNECTING:
                 self.sleep(1)
-                continue
-            elif scene == Scene.INFRA_DETAILS and not self.find("room_detail"):
-                self._open_check_in_detail()
-                continue
             elif scene == Scene.INFRA_MAIN:
+                target = None
                 self.enter_room("train")
-                continue
-            elif scene == Scene.INFRA_DETAILS and self.find("room_detail"):
-                if tasks[0] == "scan":
-                    scan_result = self.get_agent_from_room(
-                        "train", departing_plan=agents
-                    )
-                    logger.debug(f"需要选择的干员：{scan_result}")
-                    if len(scan_result) < len(agents):
-                        scan_result.extend([""] * (len(agents) - len(scan_result)))
-                    desired = list(agents)
-                    logger.debug(f"需要选择的desired干员：{desired}")
-                    for idx, name in enumerate(desired):
-                        if name == "Current":
-                            # #53：替换为实际干员名（scan_result[idx] 是 dict，不能直接当名字）
-                            desired[idx] = scan_result[idx]["agent"]
-                    select_targets = [
-                        (idx, desired_name)
-                        for idx, desired_name in enumerate(desired)
-                        if scan_result[idx]["agent"] != desired_name
-                    ]
-                    if not select_targets:
-                        tasks = []
-                        return
-                    # #211：训练位锁定判断已归调用方（gate 冻结 idx1 / 坐错人纠正
-                    # 用三态判空闲），choose_train 不再自查锁定，只执行换人。
-                    tasks[0] = "select"
-                    logger.debug(f"需要选择的干员：{select_targets}")
-                else:
-                    if not select_targets:
-                        tasks = []
-                        return
-                    idx = select_targets[0][0]
-                    self.ctap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)))
-                continue
+            elif scene == Scene.INFRA_DETAILS:
+                if not (self.find("room_detail") or self.find("arrange_check_in_on")):
+                    self._open_check_in_detail()
+                    continue
+                remaining = retry_at - monotonic()
+                if target is not None and remaining > 0:
+                    self.sleep(min(remaining, 1))
+                    continue
+                observed = self.get_agent_from_room(
+                    "train", departing_plan=agents, submitted_training_slot=submitted
+                )
+                occupants = BaseSchedulerSolver._observed_room_names(
+                    "train", observed, RIGHT_SIDE_ROOM_CAPACITY["train"]
+                )
+                logger.debug("训练室两槽实际驻员：%s", occupants)
+                missing = next(
+                    (
+                        (index, name)
+                        for index, name in enumerate(agents)
+                        if not BaseSchedulerSolver._training_slot_matches(
+                            index, name, occupants[index]
+                        )
+                    ),
+                    None,
+                )
+                if missing is None:
+                    return
+                if missing != target:
+                    clicks = 0
+                target, submitted = missing, None
+                if clicks >= 2:
+                    raise AgentSelectionNotReady("未能打开训练室选人页，返回房间重试")
+                idx, _ = target
+                retry_at = monotonic() + 10
+                clicks += 1
+                self.tap((self.recog.w * 0.82, self.recog.h * 0.18 * (idx + 1)))
             elif scene == Scene.TRAIN_FINISH:
                 self.tap((self.recog.w * 0.05, self.recog.h * 0.95), interval=0.5)
-                continue
             elif scene == Scene.TRAIN_MAIN:
                 self._open_check_in_detail()
-                continue
             elif scene == Scene.INFRA_ARRANGE_ORDER:
-                logger.debug(tasks)
-                if tasks[0] == "scan":
+                if target is None:
                     self.back()
-                else:
-                    if not select_targets:
-                        tasks = []
-                        return
-                    logger.info(
-                        "正在安排 %s",
-                        "、".join(
-                            (
-                                name
-                                if name in ("", "Current", "Free")
-                                else f"[[operator:{name}]]"
-                            )
-                            + " 进驻训练室"
-                            + ("协助位" if index == 0 else "训练位")
-                            for index, name in select_targets
-                        ),
-                        extra={
-                            "log_room": "train",
-                            "log_agents": [
-                                name
-                                for _, name in select_targets
-                                if name not in ("", "Current", "Free")
-                            ],
-                            "log_event": {
-                                "type": "training-selection",
-                                "positions": [
-                                    {"agent": name, "index": index}
-                                    for index, name in select_targets
-                                    if name
-                                ],
-                            },
+                    continue
+                idx, name = target
+                self._require_training_selection(idx)
+                label = name if name in ("", "Free") else f"[[operator:{name}]]"
+                logger.info(
+                    "正在安排 %s 进驻训练室%s",
+                    label,
+                    "协助位" if idx == 0 else "训练位",
+                    extra={
+                        "log_room": "train",
+                        "log_agents": [name] if name not in ("", "Free") else [],
+                        "log_event": {
+                            "type": "training-selection",
+                            "positions": [{"agent": name, "index": idx}]
+                            if name
+                            else [],
                         },
-                    )
-                    idx = select_targets[0][0]
-                    if idx == 0:
-                        if agents[idx] == "Free":
-                            select_targets.pop(0)
-                            if select_targets:
-                                continue
-                            tasks[0] = "scan"
-                            continue
-                        # #53：选人用 desired[idx]（Current 已替换为实际干员名），
-                        # 不能用 agents[idx]——否则 Current 会被当干员名选人、必然失败
-                        if choose_error:
-                            self.choose_agent(
-                                [desired[idx]],
-                                "train",
-                                fast_mode,
-                                choose_error=choose_error,
-                            )
-                        else:
-                            self.choose_agent([desired[idx]], "train", fast_mode)
-                    else:
-                        if choose_error:
-                            self.choose_train_ope(
-                                desired[idx], choose_error=choose_error
-                            )
-                        else:
-                            self.choose_train_ope(desired[idx])
-                    self.tap_confirm("train")
-                    select_targets.pop(0)
-                    if select_targets:
-                        continue
-                    tasks[0] = "scan"
+                    },
+                )
+                options = {"choose_error": choose_error} if choose_error else {}
+                if idx == 0:
+                    self.choose_agent([name], "train", fast_mode, **options)
+                else:
+                    self.choose_train_ope(name, **options)
+                self.tap_confirm("train", training_slot=idx)
+                submitted, target = target, None
             else:
+                target = None
                 self.back_to_infrastructure()
+        raise AgentSelectionNotReady("训练室选人超时，返回房间重试")
 
     @fixed_selection_profile
     def choose_train_ope(self, ope: str, choose_error=0):
-        found = False
+        from arknights_mower.utils.selection_branch import branch_filter_state
+
+        order = self.detect_arrange_order("train_trainee")
+        if (
+            not choose_error
+            and ope not in ("Free", "Current", "阿米娅")
+            and order is not None
+            and order[0] in ("等级", "稀有度")
+            and self._select_visible_trainee(ope)
+        ):
+            self.last_room = "train"
+            return
+        if order is None or order[0] == "信赖值":
+            self.switch_arrange_order("等级", "train_trainee", refresh=False)
         profession = "ALL"
+        branch = None
         if ope != "阿米娅" and ope not in ["Current", "Free"]:
             profession = agent_profession[ope]
             self.profession_filter(profession)
+            if not choose_error and branch_filter_state(
+                getattr(self.recog, "img", None), profession
+            ) == (False, False):
+                if self._select_visible_trainee(ope, sidebar_open=True):
+                    self.last_room = "train"
+                    return
+                if self.op_data.profession_filter:
+                    branch = agent_branch.get(ope)
         if ope in ("Free", "阿米娅"):
             self.profession_filter("ALL")
         # 训练卡片延伸到屏幕右侧，职业栏会遮住末列姓名。
@@ -15621,41 +16079,90 @@ class BaseSchedulerSolver(
         max_swipe = 50
         observation = None
         previous_page = None
-        while not found:
-            sel, ret = self.scan_agent(
-                [ope] if ope != "Free" else self.get_free_list([]),
-                max_agent_count=1,
-                train=True,
-                observation=observation,
-                respect_train_selection=ope != "Free",
-            )
-            observation = None
-            if sel and (sel == [ope] or ope == "Free"):
-                ope = sel[0]
-                found = True
-                break
-            if right_swipe >= max_swipe:
-                raise AgentSelectionNotReady("训练干员搜索达到上限，返回房间重试")
-            if (
-                not self.low_frame_rate_mode
-                and right_swipe >= 3
-                and ret == previous_page
-            ):
-                if choose_error >= 2:
-                    logger.warning(
-                        f"训练位干员列表中未找到 ['{ope}']，请检查是否为 ['{ope}'] 设置了特别关注"
+        narrowed = False
+        named_target = ope != "Free"
+        profession_pages = []
+        while True:
+            try:
+                sel, ret = self.scan_agent(
+                    [ope] if ope != "Free" else self.get_free_list([]),
+                    max_agent_count=1,
+                    train=True,
+                    observation=observation,
+                    respect_train_selection=ope != "Free",
+                )
+                observation = None
+                if sel and (sel == [ope] or ope == "Free"):
+                    ope = sel[0]
+                    break
+                if (
+                    branch
+                    and any(name and scope for name, scope in ret)
+                    and not any(
+                        self.same_agent_page(ret, page, allow_unknown=True)
+                        for page in profession_pages
                     )
-                if hasattr(self, "choose_error") and self.choose_error is not None:
-                    self.choose_error.add(ope)
-                raise AgentSelectionNotReady("训练干员列表已到末尾，返回房间重试")
-            previous_page = ret
-            moved, observation = self.swipe_agent_page(
-                ret, [ope], train=True, return_page=True
-            )
-            right_swipe += moved
-        right_swipe = self.swipe_left(
-            right_swipe, special_filter=profession, train=True
-        )
+                ):
+                    # 首屏和之后的两个不同页面；同一手势重试、尾页回弹均不算新页。
+                    profession_pages.append(tuple(ret))
+                if branch and len(profession_pages) == 3:
+                    self._set_profession_filter_open(True)
+                    narrowed = select_visible_branch(self, profession, branch)
+                    branch = None
+                    if not narrowed:
+                        self.profession_filter("ALL")
+                        self.profession_filter(profession)
+                    self._close_profession_filter()
+                    right_swipe = 0
+                    previous_page = observation = None
+                    continue
+                if right_swipe >= max_swipe:
+                    raise AgentPageNotAdvanced("训练干员搜索达到上限，返回房间重试")
+                if (
+                    not self.low_frame_rate_mode
+                    and right_swipe >= 3
+                    and ret == previous_page
+                ):
+                    if choose_error >= 2:
+                        logger.warning(
+                            f"训练位干员列表中未找到 ['{ope}']，请检查是否为 ['{ope}'] 设置了特别关注"
+                        )
+                    if not narrowed and getattr(self, "choose_error", None) is not None:
+                        self.choose_error.add(ope)
+                    raise AgentPageNotAdvanced("训练干员列表已到末尾，返回房间重试")
+                previous_page = ret
+                moved, observation = self.swipe_agent_page(
+                    ret, [ope], train=True, return_page=True
+                )
+                right_swipe += moved
+            except (AgentPageNotAdvanced, AgentCardObservationNotReady):
+                if not narrowed:
+                    raise
+                self.require_agent_selection_page()
+                self.profession_filter(profession)
+                self._close_profession_filter()
+                narrowed = False
+                right_swipe = 0
+                previous_page = observation = None
+        if named_target:
+            # 训练位一次只选一人；在当前列表的新帧核对姓名与蓝框即可结束。
+            try:
+                verified = self.verify_agent([ope], "train", train=True)
+            except AgentSelectionPageChanged:
+                raise
+            except AgentSelectionNotReady:
+                verified = False
+            if verified:
+                self.last_room = "train"
+                return
+            self.require_agent_selection_page()
+            if not self.find("confirm_train"):
+                raise AgentSelectionNotReady("训练选人页尚未确认，返回房间重试")
+        if narrowed:
+            self.profession_filter(profession)
+            self._close_profession_filter()
+        else:
+            self.swipe_left(right_swipe, special_filter=profession, train=True)
         self.ctap((1280, 60), 0.3)
         self.ctap((1280, 60), 0.3)
         logger.debug("验证训练位干员选择")
@@ -15663,6 +16170,51 @@ class BaseSchedulerSolver(
             logger.debug([ope])
             raise Exception("检测到干员选择错误，重新选择")
         self.last_room = "train"
+
+    def _select_visible_trainee(self, name, *, sidebar_open=False):
+        img = getattr(self.recog, "_img", None)
+        if not isinstance(img, np.ndarray):
+            return False
+        button_x = 1554 if sidebar_open else 1669
+        if self._profession_filter_buttons(stationary_only=True) != (
+            ("confirm_train", button_x, 997),
+        ):
+            return False
+        try:
+            page = self.agent_page_reader(train=True)(img)
+        except (cv2.error, ValueError):
+            self.require_agent_selection_page()
+            return False
+        target = [card for card in page if card[0] == name]
+        if len(target) != 1 or (
+            sidebar_open and not self._cards_before_profession_sidebar(target)
+        ):
+            return False
+        self.require_agent_selection_page()
+        if self.find("connecting"):
+            raise AgentSelectionNotReady("训练选人页仍在连接，返回房间重试")
+        try:
+            selected, _ = self.scan_agent(
+                [name],
+                max_agent_count=1,
+                train=True,
+                observation=self.observe_agent_page(page, train=True),
+                respect_train_selection=True,
+                exclude_sidebar=sidebar_open,
+            )
+            if selected and self.wait_for_arranged_agents(
+                [name], train=True, quick_check=True
+            ):
+                self.require_agent_selection_page()
+                return True
+        except AgentSelectionPageChanged:
+            raise
+        except AgentSelectionNotReady:
+            pass
+        self.require_agent_selection_page()
+        if not self.find("confirm_train"):
+            raise AgentSelectionNotReady("训练选人页尚未确认，返回房间重试")
+        return False
 
     def get_free_list(
         self,
@@ -16332,8 +16884,7 @@ class BaseSchedulerSolver(
         if not snapshot.recovering and not takeovers:
             return None
         candidates = snapshot.filling
-        self.profession_filter("ALL")
-        self.switch_arrange_order("心情", room, "true")
+        self.switch_arrange_order("心情", room, True, refresh=False)
         self.swipe_left(1, "ALL")
         _, page = self.scan_agent([], full_scan=True)
         self.observe_agent_moods(
@@ -16412,6 +16963,299 @@ class BaseSchedulerSolver(
         if mood < 1 or reason:
             raise WorkshopSelectionBlocked(reason or "心情不足1点")
 
+    def _select_sorted_dorm_targets(self, targets, *, mood_check, mood_estimates):
+        if not isinstance(getattr(self.recog, "_img", None), np.ndarray):
+            return []
+        chosen = []
+        visible = set(targets)
+        for name in targets:
+            if name not in visible:
+                continue
+            if chosen:
+                self.recog.update()
+            if self.find("connecting"):
+                break
+            if self._profession_filter_buttons(stationary_only=True) != (
+                ("confirm_blue", 1724, 990),
+            ):
+                break
+            self.require_agent_selection_page()
+            page = self.current_search_page(full_scan=True)
+            if page is None:
+                break
+            visible = {candidate for candidate, _ in page.page}
+            matches = [scope for candidate, scope in page.page if candidate == name]
+            if (
+                len(matches) != 1
+                or matches[0][1][0] > 1790
+                or agent_card_selected(page.image, matches[0]) is None
+            ):
+                break
+            hits, _ = self.scan_agent(
+                [name],
+                observation=page,
+                mood_check=mood_check,
+                mood_estimates=mood_estimates,
+            )
+            if not hits:
+                break
+            chosen.extend(hits)
+        return chosen
+
+    def _ranked_first_page_order(
+        self,
+        room,
+        profession,
+        target,
+        selected,
+        page,
+        order,
+        *,
+        profession_page,
+        product,
+    ):
+        """从已确认的排序页选择能容纳目标完整名次区间的排序。"""
+        criterion, ascending = order
+        if criterion != "技能" and (criterion != "效率" or not product):
+            return None
+        img = getattr(self.recog, "_img", None)
+        if not isinstance(img, np.ndarray) or img.shape != (1080, 1920, 3):
+            return None
+        visible = self._cards_before_profession_sidebar(page)
+        if not visible or not all(
+            name
+            and abs(scope[0][0] - (630 + i // 2 * 216)) < 30
+            and abs(scope[0][1] - (488 + i % 2 * 421)) < 10
+            for i, (name, scope) in enumerate(visible)
+        ):
+            return None
+        names = [name for name, _ in visible]
+        if len(set(names)) != len(names):
+            return None
+        available = len(names) - len(selected)
+        if available < 1 or set(names[: len(selected)]) != selected:
+            return None
+        facility = {
+            "meeting": "MEETING",
+            "contact": "HIRE",
+            "recycle": "RECYCLE",
+            "factory": "WORKSHOP",
+        }.get(room)
+        if not facility and room.startswith("room_"):
+            facility = next(
+                (
+                    game_type
+                    for title, game_type in (
+                        ("manufacture", "MANUFACTURE"),
+                        ("trade", "TRADING"),
+                        ("power", "POWER"),
+                    )
+                    if selection_title_matches(img, title)
+                ),
+                None,
+            )
+        if not facility:
+            return None
+        from arknights_mower.utils.selection_skill_rank import (
+            selection_efficiency_rank,
+            selection_skill_rank,
+        )
+
+        def lookup(name, by):
+            if by == "技能":
+                return selection_skill_rank(facility, profession, name, selected)
+            return selection_efficiency_rank(
+                facility, profession, name, selected, product=product
+            )
+
+        rank = lookup(target, criterion)
+        if not rank:
+            return None
+        choice = order
+        if profession_page:
+            if rank[ascending][0] <= available:
+                return None
+            if rank[not ascending][1] <= available:
+                choice = (criterion, not ascending)
+            elif criterion == "技能" and product:
+                efficiency = lookup(target, "效率")
+                if not efficiency:
+                    return None
+                choice = next(
+                    (
+                        ("效率", direction)
+                        for direction in (False, True)
+                        if efficiency[direction][1] <= available
+                    ),
+                    None,
+                )
+                if choice is None:
+                    return None
+            else:
+                return None
+            if branch_filter_state(img, profession) != (False, False) or any(
+                agent_profession.get(name) != profession
+                for name in names[len(selected) :]
+            ):
+                return None
+            # 已经亮起同一职业时，旧的滚动位置可能保留，需实证列表起点。
+            unselected = names[len(selected) :]
+            first = lookup(unselected[0], criterion)
+            if not first:
+                return None
+            start, end = first[ascending]
+            if start != 1 or end > available:
+                return None
+            for name in unselected[1:end]:
+                member = lookup(name, criterion)
+                if not member or member[ascending] != (start, end):
+                    return None
+        elif rank[ascending][1] > available:
+            return None
+        if any(
+            agent_card_selected(img, scope) is not (name in selected)
+            for name, scope in visible
+        ):
+            return None
+        if self.detect_arrange_order(room) != order:
+            return None
+        self.require_agent_selection_page()
+        if (
+            self.read_screen(img, type="text", cord=((1600, 35), (1715, 82)))
+            == "进驻状态"
+        ):
+            return choice
+        return None
+
+    def _skill_profession_page(self, room, profession, order, selected, page, *, first):
+        img = getattr(self.recog, "_img", None)
+        if (
+            not room.startswith("room_")
+            or profession == "ALL"
+            or order[0] != "技能"
+            or not isinstance(img, np.ndarray)
+            or img.shape != (1080, 1920, 3)
+            or self.detect_arrange_order(room) != order
+            or branch_filter_state(img, profession) != (False, False)
+            or self._profession_filter_buttons(stationary_only=True)
+            != (("confirm_blue", 1609, 990),)
+        ):
+            return None
+        visible = self._cards_before_profession_sidebar(page)
+        names = tuple(name for name, _ in visible)
+        if (
+            len(names) < 5
+            or not all(names)
+            or len(set(names)) != len(names)
+            or (first and set(names[: len(selected)]) != set(selected))
+            or any(
+                abs(scope[0][0] - (630 + i // 2 * 216)) > 30
+                or abs(scope[0][1] - (488 + i % 2 * 421)) > 10
+                or agent_card_selected(img, scope) is not (name in selected)
+                or (name not in selected and agent_profession.get(name) != profession)
+                for i, (name, scope) in enumerate(visible)
+            )
+        ):
+            return None
+        facility = next(
+            (
+                name
+                for name in ("manufacture", "trade", "power")
+                if selection_title_matches(img, name)
+            ),
+            None,
+        )
+        if not facility:
+            return None
+        self.require_agent_selection_page()
+        # 相同的已识别进驻标题才可复用，名称和坐标不跨选人输入保存。
+        label = np.packbits(np.min(img[35:82, 1600:1715], axis=2) > 180).tobytes()
+        prefix = names[: len(selected)] if first else tuple(selected)
+        return (facility, profession, order, prefix, label), names
+
+    def _remember_skill_successor(self, first, room, page):
+        pairs = self.__dict__.get("_profession_search_pages")
+        if pairs is None or not first:
+            return
+        key, left = first
+        _, profession, order, selected, _ = key
+        second = self._skill_profession_page(
+            room, profession, order, selected, page, first=False
+        )
+        if not second or second[0] != key:
+            return
+        right = second[1]
+        overlap = next(
+            (
+                n
+                for n in range(min(len(left), len(right)) - 1, 1, -1)
+                if left[-n:] == right[:n]
+            ),
+            0,
+        )
+        if not overlap or not set(left).isdisjoint(right[overlap:]):
+            return
+        key = (*key, left[-3:])
+        if (
+            key not in pairs
+            and self.read_screen(
+                self.recog.img, type="text", cord=((1600, 35), (1715, 82))
+            )
+            != "进驻状态"
+        ):
+            return
+        if key not in pairs and len(pairs) >= 24:
+            pairs.pop(next(iter(pairs)))
+        pairs[key] = left + right[overlap:]
+
+    def _select_visible_profession_target(
+        self, room, order, profession, target, selected, observation
+    ):
+        if observation is None or observation.image is not getattr(
+            self.recog, "_img", None
+        ):
+            return False
+        candidate = observation.page
+        if self.low_frame_rate_mode:
+            page = self.wait_for_agent_page(
+                full_scan=False, observation=observation, exclude_sidebar=True
+            )
+            if not self.same_agent_page(page, candidate):
+                return False
+        else:
+            page = observation.consume(self.recog, full_scan=False, train=False)
+            if not page:
+                return False
+        img = self.recog.img
+        self.require_agent_selection_page()
+        if (
+            self.find("connecting")
+            or self.detect_arrange_order(room) != order
+            or self._profession_filter_buttons(stationary_only=True)
+            != (("confirm_blue", 1609, 990),)
+            or branch_filter_state(img, profession) != (False, False)
+        ):
+            return False
+        names = [name for name, _ in page]
+        if (
+            target not in names
+            or len(set(names)) != len(names)
+            or set(names[: len(selected)]) != selected
+            or any(
+                agent_card_selected(img, scope) is not (name in selected)
+                or (name not in selected and agent_profession.get(name) != profession)
+                for name, scope in page
+            )
+            or self.recog.img is not img
+        ):
+            return False
+        self._select_named_card(
+            target,
+            page[names.index(target)][1],
+            interval=0.2 if self.low_frame_rate_mode else 0,
+        )
+        return True
+
     @timed_step("selection")
     @fixed_selection_profile
     def choose_agent(
@@ -16424,10 +17268,27 @@ class BaseSchedulerSolver(
         choose_error=0,
         dorm_mood_candidates=None,
         recovery_padding=False,
+        fresh_room_entry=False,
+        two_slot_room=False,
+        selection_product=None,
     ) -> bool | None:
         """选择并校验目标名单；无需换人且已放弃暂选时返回 False。"""
         max_swipe = 50
-        if getattr(getattr(self, "task", None), "emergency_staffing", False):
+        task = getattr(self, "task", None)
+        named_dorm_entry = (
+            fresh_room_entry
+            and room.startswith("dorm")
+            and fast_mode
+            and not choose_error
+            and not preserve_dorm_occupants
+            and not recovery_padding
+            and bool(agents)
+            and all(name not in ("", "Free", "Current") for name in agents)
+            and self._is_ordinary_facility_arrangement(task)
+            and getattr(task, "type", None)
+            not in (TaskTypes.RE_ORDER, TaskTypes.FILL_DORM, TaskTypes.RELEASE_DORM)
+        )
+        if getattr(task, "emergency_staffing", False):
             fast_mode = False
         observed_candidates = (
             self.refresh_dorm_selection_candidates(agents, room)
@@ -16448,7 +17309,6 @@ class BaseSchedulerSolver(
             self._check_group_shift_targets(agents, room, reason="选人前恢复原任务目标")
         fallback_selected = []
         padding_selected = []
-        task = getattr(self, "task", None)
         selection_mood_check = (
             self._check_workshop_selection_mood
             if room == "factory"
@@ -16467,25 +17327,140 @@ class BaseSchedulerSolver(
         ):
             selection_mood_check = self._dorm_entry_mood_check(agents, room)
         # Free 已尝试满心情和未登记空闲者兜底，明确留空的位置不参与选人。
+        room_targets = agents
+        occupied_slots = [index for index, name in enumerate(agents) if name]
         if "" in agents:
             fast_mode = False
             agents = [item for item in agents if item != ""]
+
+        def fill_free(name):
+            index = agents.index("Free")
+            agents[index] = name
+            room_targets[occupied_slots[index]] = name
+
         agent = copy.deepcopy(agents)
         exists = []
         if fast_mode:
             current_room = self.op_data.get_current_room(room, True)
-            if room.startswith("dorm"):
+        is_dorm = room.startswith("dorm")
+        default_order = ("心情", True) if is_dorm else ("工作状态", False)
+
+        def name_search_order(name):
+            if not name or name in ("Current", "Free"):
+                return default_order
+            _, (criterion, ascending) = self.get_order(name)
+            if is_dorm and not (
+                name in self.op_data.operators
+                and self.op_data.operators[name].room.startswith("dormitory")
+            ):
+                return "心情", True
+            if criterion == "信赖值":
+                return default_order
+            if isinstance(ascending, str):
+                ascending = ascending == "true"
+            return criterion, ascending
+
+        entry_order = search_order = self.detect_arrange_order(room)
+        assistant_page = None
+        if (
+            room == "train"
+            and train_index == 0
+            and fast_mode
+            and not choose_error
+            and len(agents) == 1
+            and agents[0] not in ("", "Current", "Free")
+            and current_room
+            and not current_room[0]
+            and agents[0] not in current_room
+            and search_order is not None
+            and search_order[0] != "信赖值"
+            and isinstance(getattr(self.recog, "_img", None), np.ndarray)
+        ):
+            buttons = self._profession_filter_buttons(stationary_only=True)
+            if len(buttons) == 1 and buttons[0][0] == "confirm_blue":
+                page = self.current_search_page(full_scan=buttons[0][1] > 1650)
+                if page and sum(name == agents[0] for name, _ in page.page) == 1:
+                    self.require_agent_selection_page()
+                    assistant_page = page
+        entry_frame = getattr(self.recog, "_img", None) if fresh_room_entry else None
+        if search_order is None or search_order[0] == "信赖值":
+            entry_frame = None
+            # 信赖排序用百分比覆盖姓名。差量撤人、识别卡片及读序号前先恢复姓名。
+            wanted = next(
+                (name for name in agents if name not in ("", "Current", "Free")), None
+            )
+            search_order = default_order if is_dorm else name_search_order(wanted)
+            self.switch_arrange_order(
+                search_order[0], room, search_order[1], refresh=False
+            )
+        sidebar_covers_cards = False
+        dorm_scopes = {}
+        if assistant_page is not None:
+            sidebar_covers_cards = not assistant_page.full_scan
+        elif (
+            named_dorm_entry
+            and fast_mode
+            and not mood_fallback
+            and "Free" not in agents
+            and isinstance(entry_frame, np.ndarray)
+            and self._profession_filter_buttons(stationary_only=True)
+            == (("confirm_blue", 1609, 990),)
+            and [
+                label
+                for i, label in enumerate(self.profession_labels)
+                if self._profession_highlighted((1918, 135 + 110 * i))
+            ]
+            == ["ALL"]
+        ):
+            self.require_agent_selection_page()
+            sidebar_covers_cards = True
+        elif fresh_room_entry and not is_dorm and agents and "Free" not in agents:
+            confirm = self.find("confirm_blue")
+            if not confirm:
+                entry_frame = None
+            sidebar_covers_cards = not confirm or confirm[0][0] <= 1650
+            if not room.startswith("room") and not (
+                confirm
+                and sidebar_covers_cards
+                and self._profession_highlighted((1918, 135))
+            ):
                 self.profession_filter()
+                sidebar_covers_cards = False
+        else:
+            self.profession_filter()
+        if fast_mode:
+            if room.startswith("dorm"):
                 # 缓存只提供名单，差量取消必须使用页面实际卡片顺序。
                 # 意外入住或缺人时完整重选，不能把错人当作原宿管保留。
-                try:
-                    current_room = self.wait_for_arranged_agents(
-                        [n for n in current_room if n], ordered=False
-                    )
-                except AgentSelectionPageChanged:
-                    raise
-                except AgentSelectionNotReady:
-                    current_room = None
+                residents = [n for n in current_room if n]
+                if sidebar_covers_cards:
+                    try:
+                        current_room = self.wait_for_arranged_agents(
+                            residents,
+                            ordered=False,
+                            full_scan=False,
+                            visible_only=True,
+                            card_scopes=dorm_scopes,
+                        )
+                    except AgentSelectionPageChanged:
+                        raise
+                    except AgentSelectionNotReady:
+                        current_room = None
+                    if current_room is None or any(
+                        not (scope := dorm_scopes.get(name)) or scope[1][0] > 1790
+                        for name in residents
+                    ):
+                        self.profession_filter()
+                        sidebar_covers_cards = False
+                if not sidebar_covers_cards:
+                    try:
+                        current_room = self.wait_for_arranged_agents(
+                            residents, ordered=False
+                        )
+                    except AgentSelectionPageChanged:
+                        raise
+                    except AgentSelectionNotReady:
+                        current_room = None
                 if current_room is None:
                     logger.info(f"{room} 实际已选名单与缓存不一致，改为完整选人")
                     fast_mode = False
@@ -16502,15 +17477,38 @@ class BaseSchedulerSolver(
                     exists.append(current_room[i])
             if room == "train":
                 differences = [x for x in differences if x == train_index]
-            for pos in differences:
-                if current_room[pos] != "":
-                    self.tap(
-                        (
-                            self.recog.w * self.agent_selection_positions[pos][0],
-                            self.recog.h * self.agent_selection_positions[pos][1],
-                        ),
-                        interval=0.2 if self.low_frame_rate_mode else 0,
+            differences = [pos for pos in differences if current_room[pos]]
+            if differences and is_dorm and sidebar_covers_cards:
+                points = [dorm_scopes[current_room[pos]] for pos in differences]
+            elif differences and fresh_room_entry and room.startswith("room"):
+                scopes = {}
+                residents = [name for name in current_room if name]
+                actual = self.wait_for_arranged_agents(
+                    residents,
+                    ordered=False,
+                    full_scan=not sidebar_covers_cards,
+                    visible_only=True,
+                    card_scopes=scopes,
+                )
+                points = [scopes.get(current_room[pos]) for pos in differences]
+                if actual is None or any(
+                    scope is None or (sidebar_covers_cards and scope[1][0] > 1790)
+                    for scope in points
+                ):
+                    fast_mode = False
+                    exists.clear()
+                    points = []
+            else:
+                points = [
+                    (
+                        self.recog.w * self.agent_selection_positions[pos][0],
+                        self.recog.h * self.agent_selection_positions[pos][1],
                     )
+                    for pos in differences
+                ]
+            for point in points:
+                entry_frame = None
+                self.tap(point, interval=0.2 if self.low_frame_rate_mode else 0)
             agent = [x for x in agents if x not in exists]
         room_name = self.translate_room(room)
         if agent:
@@ -16520,211 +17518,572 @@ class BaseSchedulerSolver(
             )
         else:
             logger.debug(f"{room_name} 没有需要新安排的干员")
-        # 若不是空房间，则清空工作中的干员
-        is_dorm = room.startswith("dorm")
-        not_production = not room.startswith("room")
+        production = room.startswith("room")
+        search_branches = bool(self.op_data.profession_filter)
         first_time = True
-        # 在 agent 中 'Free' 表示任意空闲干员
         free_num = agent.count("Free")
-        for i in range(agent.count("Free")):
-            agent.remove("Free")
-        single_visible_target = (
-            room.startswith("room") and free_num == 0 and len(agent) == 1
-        )
-        index_change = False
-        pre_order = ["技能", False]
+        agent = [name for name in agent if name != "Free"]
         right_swipe = 0
-        retry_count = 0
-        selected = []
         logger.debug(f"上次进入房间为：{self.last_room},本次房间为：{room}")
-        self.profession_filter()
-        if (not agents) and not fast_mode:
+        if not agents and not fast_mode:
             self.clear_agent_selection(room)
-        if self.detect_arrange_order(room)[0] == "信赖值":
-            self.switch_arrange_order("工作状态", room)
-        siege = False  # 推进之王
         last_special_filter = "ALL"
-        start_time, finish_time = datetime.now(), datetime.now()
-        observation = None
+        observation = assistant_page
         previous_page = None
+        last_scanned_page = ()
+        profession_pages = (
+            self.__dict__.get("_profession_search_pages") if production else None
+        )
+        pending_skill_page = None
+        exhausted_filters = set()
+        tried_branches = set()
+        probed_pages = set()
+        ranked_targets = set()
+        active_branch = None
+        station_filter_recovered = False
+
+        def target_profession(name):
+            profession = agent_profession.get(name)
+            if (
+                name == "阿米娅"
+                or (production and not search_branches)
+                or profession not in self.profession_labels
+                or profession in exhausted_filters
+            ):
+                return "ALL"
+            return profession
 
         def uses_tail_search(name):
             return (
                 not self.low_frame_rate_mode
                 and fast_mode
                 and is_dorm
-                and name != "阿米娅"
+                and target_profession(name) != "ALL"
                 and name in self.op_data.operators
                 and self.op_data.operators[name].is_resting()
                 and name not in self.choose_error
             )
 
-        while len(agent) > 0:
-            if retry_count > 1:
-                raise Exception("到达最大尝试次数 1次")
-            if right_swipe > max_swipe:
-                # 到底了则返回再来一次
-                self.choose_error.add(agent[0])
-                raise Exception("重试一次")
-            if first_time:
-                # 清空
-                if is_dorm:
-                    self.switch_arrange_order("心情", room, "true")
-                    pre_order = [3, "true"]
-                if not fast_mode:
-                    self.clear_agent_selection(room)
-                changed, ret = self.scan_agent(
-                    agent,
-                    full_scan=last_special_filter == "ALL",
-                    mood_check=selection_mood_check,
-                    mood_estimates=self.op_data.dorm_mood_estimates
-                    if is_dorm and preserve_dorm_occupants
-                    else None,
+        def set_search_profession(
+            profession, *, clear_branch=False, visible_target=None
+        ):
+            nonlocal last_special_filter, sidebar_covers_cards, active_branch
+            nonlocal right_swipe, observation, previous_page, pending_skill_page
+            pending_skill_page = None
+            if clear_branch and profession != "ALL":
+                self.profession_filter("ALL")
+            self.profession_filter(profession)
+            last_special_filter = profession
+            sidebar_covers_cards = True
+            active_branch = None
+            right_swipe = 0
+            previous_page = observation = None
+            if profession != "ALL":
+                observation = self.current_search_page(
+                    full_scan=False,
+                    before=last_scanned_page,
+                    profession=profession,
+                    visible_target=visible_target,
                 )
-                if changed:
-                    selected.extend(changed)
-                    if len(agent) == 0:
-                        break
-                    index_change = True
 
-            if uses_tail_search(agent[0]):
-                # 同职业先顺路找普通目标，再跳末页；原名单仍用于最终槽位重排。
-                profession = agent_profession.get(agent[0])
-                for index, name in enumerate(agent[1:], 1):
-                    if agent_profession.get(
-                        name
-                    ) == profession and not uses_tail_search(name):
-                        agent.insert(0, agent.pop(index))
-                        break
+        def broaden_search(target):
+            profession = last_special_filter
+            if active_branch:
+                logger.debug(f"{active_branch}分支未找到{target}，返回职业列表继续查找")
+                set_search_profession(profession, clear_branch=True)
+            else:
+                logger.debug(f"{profession}筛选未找到{target}，改用全部职业继续查找")
+                exhausted_filters.add(profession)
+                set_search_profession("ALL")
 
-            # 如果选中了人，则可能需要重新排序
-            if index_change or first_time:
-                # 第一次则调整
-                is_custom, arrange_type = self.get_order(agent[0])
-                if is_dorm and not (
-                    agent[0] in self.op_data.operators.keys()
-                    and self.op_data.operators[agent[0]].room.startswith("dormitory")
-                ):
-                    arrange_type = ("心情", "true")
-                # 如果重新排序则复位到列表起点
-                if pre_order[0] != arrange_type[0] or pre_order[1] != arrange_type[1]:
-                    self.switch_arrange_order(arrange_type[0], room, arrange_type[1])
-                    if not siege:
-                        if single_visible_target and len(agent) == 1:
-                            # 单个生产房目标已经可见时先选择，最终刷新排序并校验完整名单。
-                            changed, ret = self.scan_agent(
-                                agent,
-                                full_scan=last_special_filter == "ALL",
-                                mood_check=selection_mood_check,
-                            )
-                            if changed:
-                                selected.extend(changed)
-                                logger.debug(
-                                    f"排序后已在当前页选中目标{changed}，继续最终名单校验"
-                                )
-                                break
-                        right_swipe, observation = self.swipe_left(
-                            right_swipe, last_special_filter, return_page=True
-                        )
-                    pre_order = arrange_type
-            first_time = False
-            tail_search_target = None
-            if (
-                not siege
-                and not is_dorm
-                and agent
-                and all(element in self.op_data.profession_filter for element in agent)
+        def recover_unreadable_filter(target):
+            if not search_branches or last_special_filter == "ALL":
+                return False
+            self.require_agent_selection_page()
+            if not self.find("confirm_blue") and not (
+                room == "train" and self.find("confirm_train")
             ):
-                siege = True
-                if agent[0] in self.op_data.profession_filter:
-                    profession = agent_profession[agent[0]]
-                    if last_special_filter != profession:
-                        self.profession_filter(profession)
-                        right_swipe = 0
-                    last_special_filter = profession
-            elif agent and agent[0] in agent_list:
-                if (is_dorm or not_production) and agent[0] != "阿米娅":
-                    # 在宿舍并且不是阿米娅则打开职介筛选
-                    profession = agent_profession[agent[0]]
-                    if last_special_filter != profession:
-                        self.profession_filter(profession)
-                        right_swipe = 0
-                        if index_change:
-                            self.switch_arrange_order("心情", room, "true")
-                    last_special_filter = profession
-                elif (
-                    (is_dorm or not_production)
-                    and agent[0] == "阿米娅"
-                    and last_special_filter != "ALL"
-                ):
-                    # 如果是阿米娅且filter 不是all
-                    self.profession_filter("ALL")
-                    right_swipe = 0
-                    last_special_filter = "ALL"
-                if uses_tail_search(agent[0]):
-                    # 普通设备保留休息干员的末页快路；低帧率设备逐页确认。
-                    tail_search_target = agent[0]
-                    swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
-                    right_swipe = swipe_map[
-                        self.profession_labels.index(last_special_filter)
-                    ]
-                    for _ in range(right_swipe):
-                        self.swipe_noinertia(
-                            (0.8 * self.recog.w, 0.5 * self.recog.h),
-                            (-1900, 0),
-                            interval=0,
-                        )
-                    self.sleep(0.5 if self.performance_profile.mode == "high" else 1)
-            changed, ret = self.scan_agent(
+                return False
+            broaden_search(target)
+            return True
+
+        def recover_station_filter(restrictions):
+            nonlocal station_filter_recovered, right_swipe, observation, previous_page
+            if station_filter_recovered:
+                return False
+            self.recog.update()
+            self.require_agent_selection_page()
+            if not self.find("confirm_blue"):
+                return False
+            try:
+                current = self.agent_station_filter()
+            except AgentSelectionPageChanged:
+                raise
+            except AgentSelectionNotReady:
+                return False
+            if current not in restrictions:
+                return False
+            self.agent_station_filter("全部")
+            station_filter_recovered = True
+            previous_page = observation = None
+            if right_swipe or not fresh_room_entry:
+                right_swipe, observation = self.swipe_left(1, "ALL", return_page=True)
+            logger.debug(f"已解除进驻筛选“{current}”，继续查找{agent}")
+            return True
+
+        named_slots = (
+            {name: slot for slot, name in enumerate(agents)}
+            if production and len(agent) > 1
+            else None
+        )
+
+        def scan_named():
+            nonlocal last_scanned_page, pending_skill_page
+            first, pending_skill_page = pending_skill_page, None
+            chosen, last_scanned_page = self.scan_agent(
                 agent,
-                full_scan=last_special_filter == "ALL",
+                full_scan=not sidebar_covers_cards,
+                exclude_sidebar=sidebar_covers_cards,
+                target_slots=named_slots,
                 observation=observation,
                 mood_check=selection_mood_check,
                 mood_estimates=self.op_data.dorm_mood_estimates
                 if is_dorm and preserve_dorm_occupants
                 else None,
             )
+            if first:
+                self._remember_skill_successor(first, room, last_scanned_page)
+            return chosen, last_scanned_page
+
+        def swipe_search_page(page, *, full_scan, first=None):
+            nonlocal pending_skill_page
+            pending_skill_page = None
+            if (
+                first is None
+                and profession_pages is not None
+                and not active_branch
+                and last_special_filter != "ALL"
+                and right_swipe == 0
+                and search_order[0] == "技能"
+                and self._is_ordinary_facility_arrangement(task)
+            ):
+                selected = set(agents) - set(agent) - {"", "Free", "Current"}
+                first = self._skill_profession_page(
+                    room, last_special_filter, search_order, selected, page, first=True
+                )
+            moved, after = self.swipe_agent_page(
+                page, agent, full_scan=full_scan, return_page=True
+            )
+            if first and moved == 1:
+                if after and after.page:
+                    self._remember_skill_successor(first, room, after.page)
+                else:
+                    pending_skill_page = first
+            return moved, after
+
+        if agent:
+            if not fast_mode:
+                self.clear_agent_selection(room)
+            elif (
+                production
+                and entry_frame is not None
+                and entry_frame is getattr(self.recog, "_img", None)
+            ):
+                observation = self.current_search_page(
+                    full_scan=not sidebar_covers_cards
+                )
+            try:
+                scan_named()
+            except AgentCardObservationNotReady:
+                if not (is_dorm and sidebar_covers_cards):
+                    raise
+                self.require_agent_selection_page()
             observation = None
-            if tail_search_target in agent:
-                # 休息缓存不能确定当前排序位置；末页未命中后从头查找。
-                self.choose_error.add(tail_search_target)
-                selected.extend(changed)
-                index_change = bool(changed)
+            if is_dorm and sidebar_covers_cards and agent:
+                # 右栏外仍可能有目标；按原有全宽名单重新定位后再切职业。
+                self.profession_filter()
+                sidebar_covers_cards = False
+                scan_named()
+                observation = None
+            if assistant_page is not None and agent:
+                self.profession_filter()
+                sidebar_covers_cards = False
+                assistant_page = None
+            if (
+                production
+                and any(
+                    (op := self.op_data.operators.get(name)) is not None
+                    and getattr(op, "current_room", "") not in ("", room)
+                    and getattr(op, "current_index", -1) >= 0
+                    for name in agent
+                )
+                and recover_station_filter(("未进驻",))
+            ):
+                scan_named()
+                observation = None
+        while agent:
+            if uses_tail_search(agent[0]):
+                # 同职业先顺路找普通目标，再跳末页。
+                profession = target_profession(agent[0])
+                for index, name in enumerate(agent[1:], 1):
+                    if target_profession(name) == profession and not uses_tail_search(
+                        name
+                    ):
+                        agent.insert(0, agent.pop(index))
+                        break
+
+            target = agent[0]
+            profession = target_profession(target)
+            tail_search = uses_tail_search(target)
+            branch = (
+                agent_branch.get(target)
+                if search_branches and profession != "ALL" and not tail_search
+                else None
+            )
+            if active_branch and (
+                branch != active_branch or profession != last_special_filter
+            ):
+                set_search_profession(
+                    profession, clear_branch=profession == last_special_filter
+                )
+            order = name_search_order(target)
+            use_rank = (
+                (production or room in ("meeting", "contact", "recycle", "factory"))
+                and search_branches
+                and profession != "ALL"
+                and not active_branch
+                and not choose_error
+                and not getattr(task, "emergency_staffing", False)
+                and target not in ranked_targets
+                and (fresh_room_entry or fast_mode)
+                and right_swipe == 0
+            )
+            selected = set(agents) - set(agent) - {"", "Free", "Current"}
+            if (
+                use_rank
+                and order != search_order
+                and profession != last_special_filter
+                and self._ranked_first_page_order(
+                    room,
+                    profession,
+                    target,
+                    selected,
+                    last_scanned_page,
+                    search_order,
+                    profession_page=False,
+                    product=selection_product,
+                )
+            ):
+                ranked_targets.add(target)
+                previous_filter = last_special_filter
+                try:
+                    set_search_profession(profession)
+                except AgentSelectionPageChanged:
+                    raise
+                except AgentSelectionNotReady:
+                    self.require_agent_selection_page()
+                    set_search_profession(previous_filter)
+                else:
+                    try:
+                        changed, _ = scan_named()
+                    except AgentCardObservationNotReady:
+                        self.require_agent_selection_page()
+                        changed = target not in agent
+                    observation = None
+                    if changed:
+                        continue
+            if not active_branch and search_order != order:
+                prefiltered = (
+                    production
+                    and fresh_room_entry
+                    and fast_mode
+                    and first_time
+                    and not choose_error
+                    and self._is_ordinary_facility_arrangement(task)
+                    and last_special_filter == "ALL"
+                    and profession != "ALL"
+                    and target in self.op_data.profession_filter
+                    and search_order == entry_order
+                    and search_order[0] in ("工作状态", "心情")
+                    and isinstance(getattr(self.recog, "_img", None), np.ndarray)
+                )
+                if prefiltered:
+                    # 配置要求切到此职业。先看原排序同一页的实名卡，再决定是否改排序。
+                    try:
+                        set_search_profession(profession, visible_target=target)
+                        visible = (
+                            {name for name, _ in observation.page}
+                            if observation
+                            else set()
+                        )
+                        found = self._select_visible_profession_target(
+                            room,
+                            search_order,
+                            profession,
+                            target,
+                            selected,
+                            observation,
+                        )
+                    except AgentSelectionPageChanged:
+                        raise
+                    except AgentSelectionNotReady:
+                        self.require_agent_selection_page()
+                        if last_special_filter != profession:
+                            set_search_profession("ALL")
+                            prefiltered = False
+                    else:
+                        if found:
+                            agent.remove(target)
+                            first_time = False
+                            observation = None
+                            if visible.intersection(agent):
+                                try:
+                                    scan_named()
+                                except AgentCardObservationNotReady:
+                                    self.require_agent_selection_page()
+                            continue
+                    if prefiltered and branch_filter_state(
+                        getattr(self.recog, "_img", None), profession
+                    ) != (False, False):
+                        last_special_filter = None
+                self.switch_arrange_order(order[0], room, order[1], refresh=False)
+                search_order = order
+                previous_page = observation = None
+                if production and target not in self.op_data.profession_filter:
+                    # 切换排序后先选可见目标，配置了职业筛选的干员直接进入对应职业。
+                    changed, _ = scan_named()
+                    if changed:
+                        first_time = False
+                        continue
+                elif (
+                    is_dorm
+                    and fast_mode
+                    and not choose_error
+                    and target not in self.choose_error
+                    and not self.low_frame_rate_mode
+                    and last_special_filter == "ALL"
+                    and profession != "ALL"
+                    and not sidebar_covers_cards
+                ):
+                    chosen = self._select_sorted_dorm_targets(
+                        [
+                            name
+                            for name in agent
+                            if name not in self.choose_error
+                            and target_profession(name) == profession
+                        ],
+                        mood_check=selection_mood_check,
+                        mood_estimates=self.op_data.dorm_mood_estimates
+                        if preserve_dorm_occupants
+                        else None,
+                    )
+                    if chosen:
+                        for name in chosen:
+                            agent.remove(name)
+                        first_time = False
+                        continue
+                if profession == last_special_filter and not prefiltered:
+                    right_swipe, observation = self.swipe_left(
+                        right_swipe, last_special_filter, return_page=True
+                    )
+            first_time = False
+            if profession != last_special_filter:
+                set_search_profession(profession)
+
+            if tail_search:
+                # 低帧率设备逐页确认，普通设备保留休息干员的末页快路。
+                swipe_map = [20, 3, 5, 3, 3, 3, 3, 3, 3]
+                right_swipe = swipe_map[self.profession_labels.index(profession)]
+                for _ in range(right_swipe):
+                    self.swipe_noinertia(
+                        (0.8 * self.recog.w, 0.5 * self.recog.h), (-1900, 0), interval=0
+                    )
+                observation = None
+                self.sleep(0.5 if self.performance_profile.mode == "high" else 1)
+            try:
+                changed, ret = scan_named()
+            except AgentCardObservationNotReady:
+                if recover_unreadable_filter(target):
+                    continue
+                raise
+            observation = None
+            if tail_search and target in agent:
+                self.choose_error.add(target)
                 right_swipe, observation = self.swipe_left(
                     right_swipe, last_special_filter, return_page=True
                 )
                 previous_page = None
                 continue
             if changed:
-                selected.extend(changed)
-                # 如果找到了
-                index_change = True
-                siege = False
-            else:
-                index_change = False
+                if production and profession != "ALL":
+                    agent.sort(
+                        key=lambda name: (
+                            target_profession(name) != profession,
+                            bool(active_branch)
+                            and agent_branch.get(name) != active_branch,
+                        )
+                    )
+                continue
+            if (
+                use_rank
+                and target not in ranked_targets
+                and (
+                    ranked_order := self._ranked_first_page_order(
+                        room,
+                        profession,
+                        target,
+                        selected,
+                        ret,
+                        search_order,
+                        profession_page=True,
+                        product=selection_product,
+                    )
+                )
+            ):
+                ranked_targets.add(target)
+                criterion, ascending = ranked_order
+                logger.debug(
+                    f"{room} {profession} 按{criterion}{'升序' if ascending else '降序'}首屏查找{target}"
+                )
+                try:
+                    self.switch_arrange_order(criterion, room, ascending, refresh=False)
+                    page = self.wait_for_agent_page(
+                        full_scan=False, before=ret, exclude_sidebar=True
+                    )
+                except AgentSelectionPageChanged:
+                    raise
+                except AgentSelectionNotReady:
+                    page = ()
+                stable_image = self.recog.img if page else None
+                target_scopes = [scope for name, scope in page if name == target]
+                self.require_agent_selection_page()
                 if (
+                    len(target_scopes) == 1
+                    and self.detect_arrange_order(room) == ranked_order
+                    and branch_filter_state(self.recog.img, profession)
+                    == (False, False)
+                    and target
+                    in self.observe_agent_moods(
+                        page, [target], None, False, mood_check=selection_mood_check
+                    )
+                    and self.recog.img is stable_image
+                ):
+                    try:
+                        self._select_named_card(
+                            target,
+                            target_scopes[0],
+                            interval=0.2 if self.low_frame_rate_mode else 0,
+                        )
+                    except AgentCardObservationNotReady:
+                        self.require_agent_selection_page()
+                    else:
+                        search_order = ranked_order
+                        agent.remove(target)
+                        continue
+                self.switch_arrange_order(
+                    search_order[0], room, search_order[1], refresh=False
+                )
+                observation = previous_page = None
+                continue
+            if (
+                isinstance(branch, str)
+                and branch
+                and not active_branch
+                and not choose_error
+                and (right_swipe == 0 or (profession, branch) in probed_pages)
+                and (profession, branch) not in tried_branches
+            ):
+                first = None
+                probe = False
+                if (
+                    (profession, branch) not in probed_pages
+                    and right_swipe == 0
+                    and search_order[0] == "技能"
+                    and profession_pages
+                    and self._is_ordinary_facility_arrangement(task)
+                ):
+                    tail = tuple(name for name, _ in ret[-3:])
+                    if any(
+                        key[1] == profession
+                        and key[2] == search_order
+                        and set(key[3]) == selected
+                        and key[-1] == tail
+                        and self.next_page_may_contain(ret, history, target)
+                        for key, history in profession_pages.items()
+                    ):
+                        first = self._skill_profession_page(
+                            room, profession, search_order, selected, ret, first=True
+                        )
+                        probe = first is not None and self.next_page_may_contain(
+                            ret, profession_pages.get((*first[0], tail), ()), target
+                        )
+                if probe:
+                    probed_pages.add((profession, branch))
+                    try:
+                        moved, observation = swipe_search_page(
+                            ret, full_scan=False, first=first
+                        )
+                    except (AgentPageNotAdvanced, AgentCardObservationNotReady):
+                        self.require_agent_selection_page()
+                    else:
+                        right_swipe += moved
+                        continue
+                tried_branches.add((profession, branch))
+                if select_visible_branch(self, profession, branch):
+                    active_branch = branch
+                    right_swipe = 0
+                    sidebar_covers_cards = True
+                    previous_page = None
+                    observation = self.current_search_page(
+                        full_scan=False,
+                        before=ret,
+                        profession=profession,
+                        branch=branch,
+                    )
+                else:
+                    set_search_profession(profession, clear_branch=True)
+                continue
+            try:
+                if right_swipe >= max_swipe or (
                     not self.low_frame_rate_mode
                     and right_swipe >= 3
                     and ret == previous_page
                 ):
-                    if choose_error >= 2:
-                        if room == "train":
-                            logger.warning(
-                                f"训练位干员列表中未找到 ['{agent[0]}']，请检查是否为 ['{agent[0]}'] 设置了特别关注"
-                            )
-                    if hasattr(self, "choose_error") and self.choose_error is not None:
-                        self.choose_error.add(agent[0])
-                    raise AgentSelectionNotReady("干员列表已到末尾，返回房间重试")
+                    raise AgentPageNotAdvanced("干员列表已到末尾，返回房间重试")
                 previous_page = ret
-                moved, observation = self.swipe_agent_page(
-                    ret, agent, full_scan=last_special_filter == "ALL", return_page=True
+                moved, observation = swipe_search_page(
+                    ret, full_scan=not sidebar_covers_cards
                 )
                 right_swipe += moved
-            if len(agent) == 0:
-                if siege:
-                    if last_special_filter != "ALL":
-                        right_swipe = 0
-                break
+            except AgentCardObservationNotReady:
+                if recover_unreadable_filter(target):
+                    continue
+                raise
+            except AgentPageNotAdvanced:
+                if sidebar_covers_cards or (search_branches and profession != "ALL"):
+                    self.require_agent_selection_page()
+                if sidebar_covers_cards:
+                    self._close_profession_filter()
+                    sidebar_covers_cards = False
+                    try:
+                        changed, _ = scan_named()
+                    except AgentCardObservationNotReady:
+                        if recover_unreadable_filter(target):
+                            continue
+                        raise
+                    if changed:
+                        continue
+                if search_branches and profession != "ALL":
+                    broaden_search(target)
+                    continue
+                if production and recover_station_filter(("未进驻", "宿舍锁定")):
+                    continue
+                self.choose_error.add(target)
+                if choose_error >= 2 and room == "train":
+                    logger.warning(
+                        f"训练位干员列表中未找到{target}，请检查特别关注设置"
+                    )
+                raise
 
         if free_num and recovery_padding:
             from arknights_mower.utils.dorm_skills import is_single_recovery_manager
@@ -16753,9 +18112,8 @@ class BaseSchedulerSolver(
                     mood_check=self._allow_dorm_filler_mood,
                 )
                 padding_selected.extend(chosen)
-                selected.extend(chosen)
                 for name in chosen:
-                    agents[agents.index("Free")] = name
+                    fill_free(name)
                     candidates.remove(name)
                 free_num -= len(chosen)
                 if not free_num:
@@ -16834,8 +18192,8 @@ class BaseSchedulerSolver(
             while free_num:
                 if room.startswith("dorm"):
                     capacity_plan = dict(getattr(self.task, "plan", {}) or {})
-                    capacity_plan[room] = agents
-                    bed_position = (room, agents.index("Free"))
+                    capacity_plan[room] = room_targets
+                    bed_position = (room, occupied_slots[agents.index("Free")])
                     free_list = [
                         name
                         for name in free_list
@@ -16907,7 +18265,9 @@ class BaseSchedulerSolver(
                         self.op_data.stop_idle_dorm_search()
                         resolved = agents.copy()
                         for index, name in enumerate(resolved):
-                            current = self.op_data.get_current_operator(room, index)
+                            current = self.op_data.get_current_operator(
+                                room, occupied_slots[index]
+                            )
                             if (
                                 name == "Free"
                                 and current is not None
@@ -16916,8 +18276,13 @@ class BaseSchedulerSolver(
                                 and current.name not in resolved
                             ):
                                 resolved[index] = current.name
-                        if resolved == self.op_data.get_current_room(room, True):
+                        actual_room = self.op_data.get_current_room(room, True)
+                        retained = room_targets.copy()
+                        for slot, name in zip(occupied_slots, resolved):
+                            retained[slot] = name
+                        if retained == actual_room:
                             agents[:] = resolved
+                            room_targets[:] = retained
                             self._cancel_unchanged_dorm_selection()
                             pending = getattr(self.task, "idle_dorm_search_names", {})
                             pending.setdefault(room, set()).update(retainable)
@@ -16927,13 +18292,12 @@ class BaseSchedulerSolver(
                         # 同房仍需换人时直接选当前页的合格候选，不再找回原住者。
                         screening = False
                         continue
-                selected.extend(selected_name)
                 if mood_fallback or idle_fallback:
                     fallback_selected.extend(selected_name)
                 free_num -= len(selected_name)
                 changed = bool(selected_name)
                 while len(selected_name) > 0:
-                    agents[agents.index("Free")] = selected_name[0]
+                    fill_free(selected_name[0])
                     free_list.remove(selected_name[0])
                     selected_name.remove(selected_name[0])
                 if free_num == 0:
@@ -16962,11 +18326,11 @@ class BaseSchedulerSolver(
                     )
                     right_swipe += moved
         if not preserve_dorm_occupants and self._check_group_shift_targets(
-            agents, room, reason="选人页最终名单与 Free 解析"
+            room_targets, room, reason="选人页最终名单与 Free 解析"
         ):
             # 页面已经选择过兜底人员，恢复名单后必须实际清空重选再校验。
             return self.choose_agent(
-                agents,
+                room_targets,
                 room,
                 fast_mode=False,
                 train_index=train_index,
@@ -16977,39 +18341,133 @@ class BaseSchedulerSolver(
         if room != "train" and not recovery_padding:
             # 单个训练岗位和单回临时阵容不替换房间的完整目标。
             self._update_facility_arrangement_log(room, agents)
+        verified = False
+        if len(agents) == 1 and (
+            room in ("factory", "contact")
+            or (room == "train" and train_index == 0)
+            or (production and selection_shows_power_plant(self.recog.img))
+        ):
+            # 发电站须在蓝框校验的同一帧仍能读出标题，房间配置不能证明实际容量。
+            verified = (
+                self.wait_for_arranged_agents(
+                    agents, full_scan=False, visible_only=True
+                )
+                == agents
+            ) and (not production or selection_shows_power_plant(self.recog.img))
         # 重排按完整已选名单的位置点击，不能保留最后一名干员的职业筛选。
         # 单回暂留名单没有 Free，也必须在重排和校验前恢复全部职业。
-        if last_special_filter != "ALL":
+        if not verified and assistant_page is not None:
+            self.profession_filter()
+        elif not verified and last_special_filter != "ALL":
             self.profession_filter("ALL")
             last_special_filter = "ALL"
             right_swipe = 0
         # 排序
-        verified = False
         reordered = False
-        if len(agents) != 1:
+        slot_numbers = {}
+        target_slots = {name: slot for slot, name in enumerate(agents, 1)}
+        full_room = (
+            (production and (len(agents) == 3 or (two_slot_room and len(agents) == 2)))
+            or ((is_dorm or room == "central") and len(agents) == 5)
+            or (room in ("meeting", "recycle") and len(agents) == 2)
+        )
+        if fresh_room_entry and full_room and not right_swipe:
+            card_scopes = {}
+            self.wait_for_arranged_agents(
+                agents,
+                ordered=False,
+                full_scan=False,
+                slot_numbers=slot_numbers,
+                visible_only=True,
+                card_scopes=card_scopes,
+            )
+            verified = slot_numbers == target_slots
+            if (
+                not verified
+                and slot_numbers.keys() == target_slots.keys()
+                and set(slot_numbers.values()) == set(target_slots.values())
+            ):
+                ordered = sorted(slot_numbers, key=slot_numbers.get)
+                retained = 0
+                for name in ordered:
+                    if name == agents[retained]:
+                        retained += 1
+                suffix = [card_scopes.get(name) for name in agents[retained:]]
+                if all(scope is not None and scope[1][0] <= 1790 for scope in suffix):
+                    if len(suffix) * 2 < len(agents) + 1:
+                        for scope in suffix:
+                            self.tap_reorder_card(scope)
+                        verified = self.fill_visible_selection_suffix(
+                            agents, retained, wait_for_feedback=True
+                        )
+                    else:
+                        self.reorder_selected_agents(agents, ordered)
+                        numbers = {}
+                        self.wait_for_arranged_agents(
+                            agents,
+                            ordered=False,
+                            full_scan=False,
+                            slot_numbers=numbers,
+                            visible_only=True,
+                            quick_check=False,
+                        )
+                        verified = numbers == target_slots
+                    if not verified:
+                        self.require_agent_selection_page()
+                        return self.choose_agent(
+                            room_targets,
+                            room,
+                            fast_mode=False,
+                            train_index=train_index,
+                            preserve_dorm_occupants=preserve_dorm_occupants,
+                            choose_error=choose_error,
+                            dorm_mood_candidates=mood_fallback,
+                            recovery_padding=recovery_padding,
+                            two_slot_room=two_slot_room,
+                        )
+        if len(agents) != 1 and not verified:
             self.switch_arrange_order("技能", room)
             # 未翻页时先定位目标卡片，名字匹配后无需再切筛选复位。
             exists = None
+            slot_numbers.clear()
             if right_swipe == 0:
+                can_fill_last = (
+                    fresh_room_entry and fast_mode and production and full_room
+                )
                 try:
-                    exists = self.wait_for_arranged_agents(agents, ordered=False)
+                    exists = self.wait_for_arranged_agents(
+                        agents,
+                        ordered=False,
+                        slot_numbers=slot_numbers,
+                        quick_check=can_fill_last,
+                    )
                 except AgentSelectionPageChanged:
                     raise
                 except AgentSelectionNotReady:
                     logger.debug("当前已选名单尚不能确认，筛选复位后再校验")
+                if (
+                    exists is None
+                    and can_fill_last
+                    and self.fill_visible_selection_suffix(agents, len(agents) - 1)
+                ):
+                    exists = agents.copy()
+                    slot_numbers.update(target_slots)
             if exists is None:
                 right_swipe, observation = self.swipe_left(
                     right_swipe, last_special_filter, return_page=True
                 )
                 exists = self.wait_for_arranged_agents(
-                    agents, ordered=False, observation=observation
+                    agents,
+                    ordered=False,
+                    observation=observation,
+                    slot_numbers=slot_numbers,
                 )
             if exists is None:
                 if fast_mode and room.startswith("room") and agents:
                     self.require_agent_selection_page()
                     logger.info("生产房差量选人名单不符，在当前选人页完整重选一次")
                     return self.choose_agent(
-                        agents,
+                        room_targets,
                         room,
                         fast_mode=False,
                         train_index=train_index,
@@ -17022,22 +18480,17 @@ class BaseSchedulerSolver(
             selected_names = (
                 "、".join(f"[[operator:{name}]]" for name in exists) or "无干员"
             )
-            pending = "，待排序核对" if agents else ""
+            # 未坐满时，排序过渡帧可能尚有已选卡片留在屏外。
+            verified = not agents or (full_room and slot_numbers == target_slots)
+            pending = "" if verified else "，待排序核对"
             logger.info(
                 f"{facility_label(room, self.op_data)}：选人页当前选中：{selected_names}{pending}",
                 extra={"log_room": room, "log_agents": list(exists)},
             )
-            # 蓝框只说明卡片被选中；返回名单按页面位置排序，不能由此推断
-            # 卡片上的选择编号。即使页面顺序恰好等于目标也须重新按目标点击。
-            if any(a not in exists for a in agents):
-                raise Exception("检测到干员选择错误，重新选择")
-            if agents:
-                # 按目标顺序完成点击后统一校验完整名单。
+            # 只有每张已选卡片的序号都符合目标，才能直接确认岗位顺序。
+            if not verified:
                 self.reorder_selected_agents(agents, exists)
                 reordered = True
-            else:
-                # 空目标没有需要重排和校验的卡片。
-                verified = True
         if not verified:
             logger.debug("验证干员选择..")
             self.switch_arrange_order("技能", room)
@@ -17049,20 +18502,16 @@ class BaseSchedulerSolver(
                     raise
                 except AgentSelectionNotReady:
                     logger.debug("当前已选顺序尚不能确认，筛选复位后再校验")
-            if not verified:
+            if verified is False:
                 _, observation = self.swipe_left(
                     right_swipe, last_special_filter, return_page=True
                 )
                 verified = self.verify_agent(
                     agents, room, observation=observation, **verify_options
                 )
-        finish_time = datetime.now()
-        if finish_time - start_time > timedelta(seconds=15) * len(agents):
-            # 如果超过5分钟，则所有里面的干员自动用职介筛选
-            for agent in agents:
-                if agent != "阿米娅" and agent:
-                    logger.debug(f"检测到{agent}选择时间过长，自动使用职介筛选")
-                    self.op_data.profession_filter.add(agent)
+            if verified is None and reordered:
+                self.reorder_selected_agents(agents, exists, confirm_each=True)
+                verified = True
         if not verified:
             logger.debug(agents)
             logger.debug(room)
@@ -17152,27 +18601,97 @@ class BaseSchedulerSolver(
         self.reset_room_time(room)
         raise Exception("未成功进入房间")
 
-    def scroll_room_operators(self, *, bottom):
-        """滚动房间详情名单；弹窗或滚动不生效时交回原有房间重试。"""
-        # 空槽底边在 JPEG 中会变亮；取卡片内部，避免已到边界后继续滑动。
+    def _room_list_at_end(self, bottom):
         point = (1800, 925 if bottom else 138)
-        direction = -1 if bottom else 1
-        self.recog.update()
-        for attempt in range(7):
-            if self.find("confirm") or self.find("double_confirm/main"):
-                raise RecognizeError("读取房间名单时出现确认弹窗，返回场景导航处理")
-            if not self.find("room_detail"):
-                raise RecognizeError("读取房间名单时已离开房间详情，重新定位")
-            if self.get_color(point)[0] <= 51:
-                return
-            if attempt == 6:
+        card_top = 532 if bottom else 344
+        return (
+            self.get_color(point)[0] <= 51
+            and self.get_color((1800, card_top - 1))[0] >= 140
+            and self.get_color((1800, card_top))[0] <= 70
+        )
+
+    def _require_room_list(self):
+        if config.stop_mower.is_set():
+            raise MowerExit
+        if self.find("confirm") or self.find("double_confirm/main"):
+            raise RecognizeError("读取房间名单时出现确认弹窗，返回场景导航处理")
+        if not self.find("room_detail"):
+            raise RecognizeError("读取房间名单时已离开房间详情，重新定位")
+
+    def scroll_room_operators(self, *, bottom, room=None, read_near_bottom=None):
+        """定位名单端点。未指定方向时接受当前端点，中段先定位到上端。"""
+        requested = bottom
+        rechecked_room = False
+        previous_near = None
+        swipes = 0
+        retry_at = 0
+        while True:
+            self._require_room_list()
+            if bottom is None and self._room_list_at_end(True):
+                end = True
+            else:
+                bottom = bool(bottom)
+                end = bottom if self._room_list_at_end(bottom) else None
+            if end is not None:
+                if room is not None and self.detect_room() != room:
+                    if not rechecked_room:
+                        rechecked_room = True
+                        previous_near = None
+                        bottom = requested
+                        self.recog.update()
+                        continue
+                    raise RecognizeError(f"读取名单端点时未确认房间 {room}")
+                return end
+            if swipes and read_near_bottom is not None:
+                frame = self.recog.img
+                column = frame[:, 1800, 0]
+                offset = next(
+                    (
+                        dy
+                        for dy in range(1, 7)
+                        if all(
+                            column[top + dy - 1] >= 140 and column[top + dy] <= 70
+                            for top in (323, 532, 741)
+                        )
+                    ),
+                    None,
+                )
+                stamp = getattr(self.recog, "capture_started_at", None)
+                if (
+                    offset is not None
+                    and isinstance(stamp, datetime)
+                    and all(self.get_color((1250, 1)) > [252] * 3)
+                    and self.detect_room() == room
+                ):
+                    if (
+                        previous_near is not None
+                        and previous_near[0] == offset
+                        and previous_near[1] < stamp
+                        and previous_near[2] is not frame
+                        and read_near_bottom(offset)
+                    ):
+                        return True
+                    previous_near = (offset, stamp, frame)
+                else:
+                    previous_near = None
+            remaining = retry_at - monotonic()
+            if remaining > 0:
+                self.sleep(min(remaining, self.performance_profile.poll_interval))
+                continue
+            if swipes == 6:
                 break
+            previous_near = None
+            # 在驻员卡片范围内完成整段手势，避开上方标题和底部进驻人数栏。
+            start_y = 746 if bottom else 260
             self.swipe(
-                (self.recog.w * 0.8, self.recog.h * 0.5),
-                (0, direction * self.recog.h * 0.45),
+                (self.recog.w * 0.8, self.recog.h * start_y / 1080),
+                (0, (-1 if bottom else 1) * self.recog.h * 0.45),
                 duration=500,
-                interval=1,
+                interval=0,
             )
+            self.recog.update()
+            swipes += 1
+            retry_at = monotonic() + 1
         raise RecognizeError("房间名单滚动六次仍未到达边界，返回房间重试")
 
     def _require_training_detail(self):
@@ -17195,29 +18714,41 @@ class BaseSchedulerSolver(
         else:
             raise RecognizeError("训练室进驻详情未在有限重试内打开")
         self.wait_product_complete()
-        observed = []
-        names = set()
-        for index in range(RIGHT_SIDE_ROOM_CAPACITY["train"]):
-            top = 135 + 209 * index
-            slot_scope = ((1288, top), (1869, top + 191))
-            name_scope = ((1460, top + 25), (1785, top + 80))
-            for attempt in range(3):
-                BaseSchedulerSolver._require_training_detail(self)
+
+        def read_names():
+            BaseSchedulerSolver._require_training_detail(self)
+            names = []
+            for index in range(RIGHT_SIDE_ROOM_CAPACITY["train"]):
+                top = 135 + 209 * index
+                slot_scope = ((1288, top), (1869, top + 191))
                 if self.find("infra_no_operator", scope=slot_scope):
                     name = ""
-                    break
-                name = self.read_screen(
-                    cropimg(self.recog.gray, name_scope), type="name"
-                )
-                if name in agent_list:
-                    break
-                if attempt < 2:
-                    self.sleep(0.25)
-            else:
-                raise RecognizeError(f"训练室第 {index + 1} 槽位姓名未识别，保留原驻员")
-            if name and name in names:
-                raise RecognizeError("训练室两槽读到重复姓名，保留原驻员")
-            names.add(name)
+                else:
+                    name_scope = ((1460, top + 25), (1785, top + 80))
+                    name = self.read_screen(
+                        cropimg(self.recog.gray, name_scope), type="name"
+                    )
+                    if name not in agent_list:
+                        break
+                    if name in names:
+                        raise RecognizeError("训练室两槽读到重复姓名，保留原驻员")
+                names.append(name)
+            return names
+
+        for attempt in range(3):
+            names = read_names()
+            if len(names) == RIGHT_SIDE_ROOM_CAPACITY["train"]:
+                break
+            if attempt < 2:
+                self.sleep(0.25)
+        else:
+            raise RecognizeError(
+                f"训练室第 {len(names) + 1} 槽位姓名未识别，保留原驻员"
+            )
+
+        observed = []
+        roster_frame = self.recog.gray
+        for index, name in enumerate(names):
             data = {"agent": name, "mood": -1, "update_time": False}
             if name:
                 agent = self.op_data.operators.get(name)
@@ -17239,7 +18770,7 @@ class BaseSchedulerSolver(
                 mood = (
                     self.read_accurate_mood(
                         cropimg(
-                            self.recog.gray,
+                            roster_frame,
                             ((1470, 219 + 209 * index), (1780, 220 + 209 * index)),
                         )
                     )
@@ -17258,18 +18789,31 @@ class BaseSchedulerSolver(
                     sample_mood=mood if update_time else agent.mood,
                 )
                 if index in read_time_index:
-                    data["time"] = (
-                        datetime.now()
-                        if mood == 24
-                        else self.read_operator_time(
+                    if mood == 24:
+                        data["time"] = datetime.now()
+                    else:
+                        data["time"] = self.read_operator_time(
                             "train",
                             index,
                             ((1650, 270 + 210 * index), (1780, 305 + 210 * index)),
                         )
-                    )
+                        if (
+                            self.recog.gray is not roster_frame
+                            and read_names() != names
+                        ):
+                            raise RecognizeError(
+                                "训练室倒计时与驻员名单不符，保留原驻员"
+                            )
             observed.append(data)
         BaseSchedulerSolver._require_training_detail(self)
         return observed
+
+    def _ordinary_work_room(self, room):
+        return room.startswith("room_") and getattr(self.task, "type", None) in (
+            TaskTypes.SELF_CORRECTION,
+            TaskTypes.SHIFT_ON,
+            TaskTypes.SHIFT_OFF,
+        )
 
     def get_agent_from_room(
         self,
@@ -17281,8 +18825,11 @@ class BaseSchedulerSolver(
         force_mood=False,
         strict_observation=False,
         expected_agents=None,
+        submitted_training_slot=None,
+        observed_facilities: set[str] | None = None,
         facility_observation=None,
         facility_observation_scope: ExitStack | None = None,
+        defer_trade_order=False,
     ):
         """读取实际驻员；姓名未决槽位标记 observed=False，不据此确认离岗。
 
@@ -17298,6 +18845,22 @@ class BaseSchedulerSolver(
             training_observation = BaseSchedulerSolver._observe_training_room(
                 self, read_time_index or [], departing_plan, force_mood
             )
+            if submitted_training_slot is not None:
+                index, target = submitted_training_slot
+                interval, attempts = self.selection_transition_timing()
+                deadline = monotonic() + (attempts - 1) * interval
+                for attempt in range(attempts):
+                    if BaseSchedulerSolver._training_slot_matches(
+                        index, target, training_observation[index]["agent"]
+                    ):
+                        break
+                    remaining = deadline - monotonic()
+                    if attempt + 1 == attempts or remaining <= 0:
+                        raise TrainingSubmissionUnconfirmed(index, target)
+                    self.sleep(min(interval, remaining))
+                    training_observation = BaseSchedulerSolver._observe_training_room(
+                        self, read_time_index or [], departing_plan, force_mood
+                    )
         # 只观察真实读房；初始化试住和肥鸭临时换位不产生新的休息周期。
         released_support = None
         if self._can_refresh_idle_dorm_search():
@@ -17346,14 +18909,26 @@ class BaseSchedulerSolver(
                 logger.info(
                     f"当前拥有线索数量为{self.clue_count}", extra={"log_group": "clue"}
                 )
-        if facility_observation is None:
-            self.refresh_facility_state(room)
-        else:
-            self.refresh_facility_state(
-                room,
-                facility_observation=facility_observation,
-                facility_observation_scope=facility_observation_scope,
-            )
+        after_roster = {}
+        if (
+            facility_observation is not None
+            or observed_facilities is None
+            or room not in observed_facilities
+        ):
+            observation_args = {}
+            if facility_observation is not None:
+                observation_args.update(
+                    facility_observation=facility_observation,
+                    facility_observation_scope=facility_observation_scope,
+                    after_roster=after_roster,
+                )
+                if defer_trade_order:
+                    observation_args["defer_trade_order"] = True
+            elif observed_facilities is not None and self._ordinary_work_room(room):
+                observation_args["after_roster"] = after_roster
+            observed = self.refresh_facility_state(room, **observation_args)
+            if observed and observed_facilities is not None:
+                observed_facilities.add(room)
         if training_observation is None:
             self.turn_on_room_detail(room)
         # 如果是宿舍则全读取
@@ -17385,8 +18960,6 @@ class BaseSchedulerSolver(
             length = len(self.op_data.plan.get(room, [])) or (
                 5 if room.startswith("dorm") or room == "central" else 3
             )
-        if length > 3:
-            self.scroll_room_operators(bottom=False)
         slot_x = (1288, 1869)
         slot_y = [(135, 326), (344, 535), (553, 744), (532, 723), (741, 932)]
         slot_p = [tuple(zip(slot_x, y)) for y in slot_y]
@@ -17401,13 +18974,108 @@ class BaseSchedulerSolver(
         mood_y = (219, 428, 637, 615, 823)
         mood_y = [(y, y + 1) for y in mood_y]
         mood_p = [tuple(zip(mood_x, y)) for y in mood_y]
+        first_end = None
+        lower_frame = None
+        lower_gray = lower_captured_at = None
+        lower_empty = {}
+        at_bottom = False
+
+        def save_lower_frame(offset=0):
+            nonlocal lower_frame, lower_gray, lower_captured_at, lower_empty
+            # 保留校准后的名单像素，后续仍使用各岗位原有的姓名、心情和计时坐标。
+            lower_frame = self.recog.img[offset:]
+            lower_gray = self.recog.gray[offset:]
+            lower_captured_at = getattr(self.recog, "capture_started_at", None)
+            lower_empty = {
+                i: bool(
+                    self.find(
+                        "infra_no_operator",
+                        scope=tuple((x, y + offset) for x, y in slot_p[i]),
+                    )
+                )
+                for i in (3, 4)
+            }
+
+        if length == 5:
+            first_end = self.scroll_room_operators(bottom=None, room=room)
+            if first_end is True:
+                # 先保存下端原图。岗位写入和前一岗触发的读时请求仍按 1 至 5 处理。
+                save_lower_frame()
+                self.scroll_room_operators(bottom=False, room=room)
+        elif length > 3:
+            self.scroll_room_operators(bottom=False)
+
+        def open_lower_slots(anchor=None):
+            nonlocal at_bottom, lower_frame
+            lower_frame = None
+            if anchor:
+
+                def read_near_bottom(offset):
+                    # 第三岗在下端上移到 y323，必须与上端已经实读的同一人对应。
+                    name_scope = ((1460, 348 + offset), (1785, 403 + offset))
+                    if (
+                        self.read_screen(
+                            cropimg(self.recog.gray, name_scope), type="name"
+                        )
+                        != anchor
+                    ):
+                        return False
+                    save_lower_frame(offset)
+                    return True
+
+                self.scroll_room_operators(
+                    bottom=True, room=room, read_near_bottom=read_near_bottom
+                )
+            else:
+                self.scroll_room_operators(
+                    bottom=True, room=room if length == 5 else None
+                )
+            at_bottom = True
+
+        def read_slot_time(i, name):
+            if not isinstance(first_end, bool):
+                return self.read_operator_time(room, i, time_p[i])
+            saved = i >= 3 and lower_frame is not None
+            frame = lower_frame if saved else self.recog.img
+            captured_at = (
+                lower_captured_at
+                if saved
+                else getattr(self.recog, "capture_started_at", None)
+            )
+            if isinstance(captured_at, datetime):
+                time_str = self.read_screen(frame, type="time", cord=time_p[i])
+                try:
+                    seconds = BaseMixin._time_seconds(time_str)
+                    if seconds >= 0:
+                        return captured_at + timedelta(seconds=seconds)
+                except (ValueError, OverflowError):
+                    pass
+            if saved:
+                open_lower_slots()
+            deadline = self.read_operator_time(room, i, time_p[i])
+            # 重试会重新截图；只接受仍属于原房间、原端点、同一干员的倒计时。
+            self._require_room_list()
+            if (
+                not self._room_list_at_end(i >= 3)
+                or self.detect_room() != room
+                or self.find("infra_no_operator", scope=slot_p[i])
+                or self.read_screen(cropimg(self.recog.gray, name_p[i]), type="name")
+                != name
+            ):
+                raise RecognizeError(
+                    f"计时重读后未确认房间 {room} 第 {i + 1} 岗的{name}"
+                )
+            return deadline
+
         result = []
-        swiped = False
         observation_complete = True
         for i in range(0, length):
-            if i >= 3 and not swiped:
-                self.scroll_room_operators(bottom=True)
-                swiped = True
+            if length == 5 and config.stop_mower.is_set():
+                raise MowerExit
+            if i >= 3 and not at_bottom and lower_frame is None:
+                open_lower_slots(
+                    result[2]["agent"] if i == 3 and first_end is False else None
+                )
             data = {}
             _name = ""
             slot_observed = False
@@ -17416,13 +19084,20 @@ class BaseSchedulerSolver(
                 slot_observed = True
             else:
                 for read_try in range(3):
-                    if self.find("infra_no_operator", scope=slot_p[i]):
+                    if after_roster:
+                        self._check_room_roster_frame(room, after_roster)
+                    saved = i >= 3 and lower_frame is not None
+                    empty = (
+                        lower_empty[i]
+                        if saved
+                        else self.find("infra_no_operator", scope=slot_p[i])
+                    )
+                    if empty:
                         _name = ""
                         slot_observed = True
                         break
-                    _name = self.read_screen(
-                        cropimg(self.recog.gray, name_p[i]), type="name"
-                    )
+                    gray = lower_gray if saved else self.recog.gray
+                    _name = self.read_screen(cropimg(gray, name_p[i]), type="name")
                     if _name != "":
                         slot_observed = True
                         break
@@ -17430,8 +19105,14 @@ class BaseSchedulerSolver(
                         logger.debug(
                             f"房间 {room} 第 {i + 1} 槽位干员未识别或置信度过低，等待 0.25s 原地重试 ({read_try + 1}/2)"
                         )
-                        self.sleep(0.25)
-                        self.recog.update()
+                        if saved:
+                            open_lower_slots()
+                        else:
+                            self.sleep(0.25)
+                            if isinstance(first_end, bool):
+                                self.scroll_room_operators(bottom=i >= 3, room=room)
+                if after_roster:
+                    self._check_room_roster_frame(room, after_roster, sampled=True)
             if room == "recycle" and i == 1 and not slot_observed:
                 self.op_data.recycle_capacity = 1
                 if len(self.op_data.plan.get(room, ())) > 1:
@@ -17448,6 +19129,7 @@ class BaseSchedulerSolver(
             # 如果房间不为空
             update_time = False
             working_time = None
+            slot_deadline = None
             if _name != "":
                 if _name not in self.op_data.operators.keys() and _name in agent_list:
                     self.op_data.add(Operator(_name, ""))
@@ -17489,7 +19171,7 @@ class BaseSchedulerSolver(
                     _mood = training_observation[i]["mood"]
                     update_time = training_observation[i]["update_time"]
                 elif should_read_mood:
-                    _mood = self.read_accurate_mood(cropimg(self.recog.gray, mood_p[i]))
+                    _mood = self.read_accurate_mood(cropimg(gray, mood_p[i]))
                     if strict_observation and (
                         not isinstance(_mood, (int, float))
                         or not math.isfinite(_mood)
@@ -17506,14 +19188,6 @@ class BaseSchedulerSolver(
                 else:
                     _mood = self.op_data.operators[_name].current_mood()
                 if (
-                    facility_observation
-                    and update_time
-                    and isinstance(_mood, (int, float))
-                    and math.isfinite(_mood)
-                    and 0 <= _mood <= 24
-                ):
-                    facility_observation["moods"][i + 1] = _mood
-                if (
                     training_observation is None
                     and update_time
                     and _mood == 0
@@ -17523,7 +19197,43 @@ class BaseSchedulerSolver(
                         or room.startswith("room_")
                     )
                 ):
-                    working_time = self.read_operator_time(room, i, time_p[i])
+                    working_time = read_slot_time(i, _name)
+                    if after_roster:
+                        self._check_room_roster_frame(room, after_roster, sampled=True)
+                elif isinstance(first_end, bool) and _mood >= 0 and _mood != 24:
+                    # 读时可能换帧。先核实本岗所需的倒计时，再写心情、驻员和床位。
+                    needs_time = i in read_time_index or (
+                        update_time and _name == "菲亚梅塔"
+                    )
+                    if retain_dorm_time and _name != "菲亚梅塔":
+                        bed = next(
+                            (
+                                bed
+                                for bed in self.op_data.all_dorms()
+                                if bed.position == (room, i)
+                                and self.op_data.is_recovery_dorm(
+                                    bed, _name, **recovery_context
+                                )
+                            ),
+                            None,
+                        )
+                        if bed is not None:
+                            retained = (
+                                previous_position == (room, i)
+                                and bed.name == _name
+                                and bed.time is not None
+                            )
+                            needs_time = not retained and (needs_time or update_time)
+                    if needs_time:
+                        slot_deadline = read_slot_time(i, _name)
+                if (
+                    facility_observation
+                    and update_time
+                    and isinstance(_mood, (int, float))
+                    and math.isfinite(_mood)
+                    and 0 <= _mood <= 24
+                ):
+                    facility_observation["moods"][i + 1] = _mood
                 # 估算值只用于本次读数，保留与原采样时间配对的心情，避免重复扣减。
                 sample_mood = _mood if update_time else agent.mood
                 if training_observation is not None:
@@ -17633,11 +19343,15 @@ class BaseSchedulerSolver(
                     data["time"] = training_observation[i]["time"]
                 elif working_time is not None:
                     data["time"] = working_time
+                elif slot_deadline is not None:
+                    data["time"] = slot_deadline
                 elif _mood == 24 or room in ["meeting", "factory"] and not update_time:
                     data["time"] = datetime.now()
                 else:
                     logger.debug(f"开始记录时间:{room},{i}")
-                    data["time"] = self.read_operator_time(room, i, time_p[i])
+                    data["time"] = read_slot_time(i, _name)
+                    if after_roster:
+                        self._check_room_roster_frame(room, after_roster, sampled=True)
                 self.op_data.refresh_dorm_time(room, i, data, **recovery_context)
                 if _name == "菲亚梅塔" and update_time and room.startswith("dorm"):
                     self._refresh_fiammetta_task(data["time"])
@@ -17675,6 +19389,20 @@ class BaseSchedulerSolver(
                 mood_event="fiammetta_charge",
                 current_time=swap_recorded_at,
             )
+        if after_roster:
+            facility = after_roster["facility"]
+            if facility_observation is not None:
+                facility_observation["failure_detail"] = (
+                    "订单详情读取未完成"
+                    if facility == "trade"
+                    else "产物详情读取未完成"
+                )
+            self._check_room_roster_frame(room, after_roster)
+            observed = self._read_room_facility_product(
+                room, facility, None, facility_observation, facility_observation_scope
+            )
+            if observed and observed_facilities is not None:
+                observed_facilities.add(room)
         self._reconcile_room_observation(
             room, result, expected_agents=expected_agents, **recovery_context
         )
@@ -17992,11 +19720,14 @@ class BaseSchedulerSolver(
             logger.info("实际驻员变化，重新读取 %s 的跑单时间", room)
             return
 
-    def ensure_dorm_recovery_order(self, room, agents, fast_mode=True):
+    def ensure_dorm_recovery_order(
+        self, room, agents, fast_mode=True
+    ) -> bool | list[dict]:
         """先确认单回目标的入驻顺序，再由原任务恢复完整阵容。
 
         中间名单只用于这次点击，不能覆盖持久化任务中的完整恢复名单。
-        目标及垫位结果均识别成功后才记录；床位未变时不重复确认。
+        完整读回的临时阵容可供随后补位复用。没有可复用的读数时，
+        返回本房是否仍需恢复最终阵容。
         """
         from arknights_mower.utils.dorm_candidates import full_dorm_candidate
         from arknights_mower.utils.dorm_recovery import (
@@ -18050,12 +19781,13 @@ class BaseSchedulerSolver(
         if room not in pending:
             pending.append(room)
         self.task.dorm_recovery_restore = pending
-        current = self.op_data.get_current_room(room, True)
         expected = retained + [""] * (len(agents) - len(retained))
+        observed = self.get_agent_from_room(room, departing_plan=expected)
+        self._remember_facility_idle_origin(room, observed)
+        current = [
+            item["agent"] if item.get("observed", True) else None for item in observed
+        ]
         if current != expected:
-            # 临时清房前先实读离开者，不能让预计回满代替离宿实测。
-            before = self.get_agent_from_room(room, departing_plan=expected)
-            self._remember_facility_idle_origin(room, before)
             for attempt in range(5):
                 if self.find("confirm_blue") is not None:
                     break
@@ -18121,10 +19853,8 @@ class BaseSchedulerSolver(
                 padding_estimates = self.op_data.dorm_mood_estimates.copy()
                 self.tap_confirm(room, {})
                 # 临时名单确认也属于计划内离宿，不覆盖原任务的最终阵容。
-                current = [
-                    item["agent"]
-                    for item in self.get_agent_from_room(room, expected_agents=expected)
-                ]
+                observed = self.get_agent_from_room(room, expected_agents=expected)
+                current = self._observed_room_names(room, observed, len(expected))
                 if current != expected:
                     raise Exception("宿舍单回排序确认失败，保留原任务重试")
             except MowerExit:
@@ -18163,7 +19893,7 @@ class BaseSchedulerSolver(
         ):
             target.clear_dorm_recovery()
             logger.info(f"{room} 单回垫位者未确认满心情，恢复阵容后重新确认")
-            return True
+            return observed
         target_mood = (
             self.op_data.calculated_mood(target.name)
             if getattr(self.op_data, "mood_calculation_enabled", False)
@@ -18180,7 +19910,72 @@ class BaseSchedulerSolver(
             "继续按最终名单补齐其余位置",
             extra={"log_room": room, "log_agents": [target.name]},
         )
-        return True
+        return observed
+
+    @staticmethod
+    def _observed_room_names(room, observed, minimum_slots):
+        required = observed[:minimum_slots]
+        if len(observed) < minimum_slots or any(
+            not item.get("observed", True) for item in required
+        ):
+            raise RecognizeError(f"房间 {room} 的驻员名单未读全，重新核对岗位")
+        occupants = [item["agent"] for item in required if item["agent"]]
+        if len(set(occupants)) != len(occupants):
+            raise RecognizeError(f"房间 {room} 的驻员姓名重复，重新核对岗位")
+        return [
+            item["agent"] if item.get("observed", True) else None for item in observed
+        ]
+
+    def _room_matches_arrangement(self, room, targets, observed):
+        charging = (
+            room.startswith("dorm")
+            and self.task.type == TaskTypes.FIAMMETTA
+            and len(targets) == 2
+            and "菲亚梅塔" in targets
+        )
+        slots = len(targets)
+        if room != "train" and not charging:
+            slots = max(
+                slots, len(observed), len(self.op_data.get_current_room(room, True))
+            )
+        names = self._observed_room_names(room, observed, slots)
+        if room == "train":
+            return all(
+                BaseSchedulerSolver._training_slot_matches(index, target, name)
+                for index, (target, name) in enumerate(zip(targets, names))
+            )
+        return "Free" not in targets and names[:slots] == targets + [""] * (
+            slots - len(targets)
+        )
+
+    def _open_room_selection(self, room):
+        profile = self.performance_profile
+        for _ in range(2):
+            self._require_room_list()
+            if self.find("connecting") or self.detect_room() != room:
+                raise RecognizeError("打开选人页前未确认目标房间，返回房间重试")
+            deadline = monotonic() + profile.transition_timeout
+            self.tap((self.recog.w * 0.82, self.recog.h * 0.2), interval=0)
+            if profile.low_frame_rate:
+                self.sleep(min(1.0, profile.screenshot_interval / 1000))
+            else:
+                self.recog.update()
+            while True:
+                if self.find("double_confirm/main") or self.find("arrange_confirm"):
+                    raise RecognizeError("打开选人页时出现确认弹窗，返回房间重试")
+                if (
+                    not self.find("connecting")
+                    and self.find("confirm_blue")
+                    and self.scene()
+                    in (Scene.INFRA_ARRANGE_ORDER, Scene.RIIC_OPERATOR_SELECT)
+                ):
+                    self.require_agent_selection_page()
+                    return
+                remaining = deadline - monotonic()
+                if remaining <= 0:
+                    break
+                self.sleep(min(profile.poll_interval, remaining))
+        raise RecognizeError("未确认进入干员选人页，返回房间重试")
 
     def _wait_for_run_order_selection_page(self):
         """跑单入口未就绪时只观察，保留原按钮匹配和房间恢复。"""
@@ -18543,15 +20338,17 @@ class BaseSchedulerSolver(
         finished = False
         # 延期重试也先读实际驻员，避免确认已成功却重复选人／充能。
         choose_error = int(getattr(self.task, "arrangement_retry_room", None) == room)
+        retry_limit = 1 if room == "train" else 3
         checked = False
         reconcile_after_confirmation = False
         reconcile_after_selection = False
+        submitted_training_slot = None
         while not finished:
             confirmation_pending = False
             selection_attempted = False
             selection_changed = True
             final_observation = None
-            room_revision = getattr(self.op_data, "room_observations", {}).get(room, 0)
+            departure_observed = False
             try:
                 error_count = 0
                 if not skip_enter:
@@ -18662,7 +20459,9 @@ class BaseSchedulerSolver(
                             self.back()
                             return new_plan
                 skip_enter = False
-                self.turn_on_room_detail(room)
+                ordinary_work_room = self._ordinary_work_room(room)
+                if not ordinary_work_room:
+                    self.turn_on_room_detail(room)
                 self._start_facility_arrangement_log(room, plan[room])
                 if room == "recycle":
                     final_observation = self.get_agent_from_room(room)
@@ -18674,6 +20473,8 @@ class BaseSchedulerSolver(
                 observation_context = (
                     {"expected_agents": plan[room]} if room.startswith("dorm") else {}
                 )
+                if room.startswith("room_") and self.task.type != TaskTypes.RUN_ORDER:
+                    observation_context["observed_facilities"] = set()
                 if restoring_order and getattr(
                     self.task, "run_order_confirmation_pending", None
                 ):
@@ -18695,13 +20496,14 @@ class BaseSchedulerSolver(
                     observed = self.get_agent_from_room(
                         room, refresh_indexes, **observation_context
                     )
-                    actual = [item["agent"] for item in observed]
+                    final_observation = observed
                     reconcile_after_confirmation = False
                     selection_was_attempted = reconcile_after_selection
                     reconcile_after_selection = False
-                    if len(actual) == len(plan[room]) and all(
-                        current == target or target == "Free"
-                        for current, target in zip(actual, plan[room])
+                    if (
+                        room not in getattr(self.task, "dorm_recovery_restore", ())
+                        and self.task.type != TaskTypes.FIAMMETTA
+                        and self._room_matches_arrangement(room, plan[room], observed)
                     ):
                         logger.info(f"{room} 确认后实际驻员已符合目标，结束排班")
                         self._complete_room_arrangement(
@@ -18735,8 +20537,10 @@ class BaseSchedulerSolver(
                     if normal_order or getattr(
                         self.task, "run_order_restore_pending", False
                     ):
+                        final_observation = self.get_agent_from_room(room)
                         actual = [
-                            item["agent"] for item in self.get_agent_from_room(room)
+                            item["agent"] if item.get("observed", True) else ""
+                            for item in final_observation
                         ]
                         if (
                             normal_order
@@ -18756,7 +20560,9 @@ class BaseSchedulerSolver(
                         ):
                             self.task.__dict__.pop("run_order_staffing_wait", None)
                             logger.info("%s 实际驻员已符合跑单目标，直接处理订单", room)
-                            self._confirm_facility_arrangement_log(room, actual)
+                            self._confirm_facility_arrangement_log(
+                                room, actual, final_observation
+                            )
                             return new_plan
                         if normal_order and (
                             len(actual) != len(roster)
@@ -18814,15 +20620,22 @@ class BaseSchedulerSolver(
                     if room != "train" and (
                         "Current" in plan[room] or "" in plan[room]
                     ):
-                        self.refresh_current_room(
-                            room,
-                            [
-                                index
-                                for index, value in enumerate(plan[room])
-                                if value == "Current"
-                            ],
-                        )
-                        _current_room = self.op_data.get_current_room(room, True)
+                        if "Current" in plan[room]:
+                            if final_observation is None:
+                                if room.startswith("dorm") and get_time:
+                                    self.op_data.invalidate_dorm_time(room)
+                                final_observation = self.get_agent_from_room(
+                                    room,
+                                    departing_plan=plan[room],
+                                    **observation_context,
+                                )
+                                departure_observed = not room.startswith("dorm")
+                                self._remember_facility_idle_origin(
+                                    room, final_observation
+                                )
+                            _current_room = self._observed_room_names(
+                                room, final_observation, len(plan[room])
+                            )
                         for current_idx, _name in enumerate(plan[room]):
                             if _name == "Current":
                                 plan[room][current_idx] = (
@@ -18857,9 +20670,12 @@ class BaseSchedulerSolver(
                 dorm_mood_candidates = None
                 if room.startswith("dorm"):
                     dorm_mood_candidates = self.prepare_dorm_selection(plan[room], room)
-                recovery_ordered = self.ensure_dorm_recovery_order(
+                recovery = self.ensure_dorm_recovery_order(
                     room, plan[room], fast_mode=choose_error <= 0
                 )
+                recovery_ordered = bool(recovery)
+                if isinstance(recovery, list):
+                    final_observation = recovery
                 read_time_index = []
                 related_operators = {}
                 fia_arrangement = (
@@ -18911,64 +20727,70 @@ class BaseSchedulerSolver(
                         dict.fromkeys([*read_time_index, *refresh_indexes])
                     )
 
-                if choose_error > 0:
-                    if room.startswith("dorm") and not fia_arrangement:
+                current_room = self.op_data.get_current_room(room, True)
+                if choose_error and len(new_plan) > 1:
+                    self.op_data.operators["菲亚梅塔"].time_stamp = None
+                    self.op_data.operators[plan[room][0]].time_stamp = None
+                if choose_error and related_operators:
+                    final_observation = self.get_agent_from_room(
+                        room, read_time_index, related_operators, **observation_context
+                    )
+                elif final_observation is None and (
+                    choose_error
+                    or current_room == plan[room]
+                    or not fia_arrangement
+                    and current_room
+                    == plan[room] + [""] * (len(current_room) - len(plan[room]))
+                ):
+                    if (
+                        room.startswith("dorm")
+                        and not fia_arrangement
+                        and (choose_error or get_time)
+                    ):
                         self.op_data.invalidate_dorm_time(room)
                         read_time_index = self.op_data.get_refresh_index(
                             room,
                             plan[room],
                             group_transitions=self._execution_group_transitions(plan),
                         )
-                    if len(new_plan) > 1:
-                        self.op_data.operators["菲亚梅塔"].time_stamp = None
-                        self.op_data.operators[plan[room][0]].time_stamp = None
-                    if related_operators:
-                        current = self.get_agent_from_room(
-                            room,
-                            read_time_index,
-                            related_operators,
-                            **observation_context,
-                        )
-                    else:
-                        current = self.get_agent_from_room(
-                            room, read_time_index, **observation_context
-                        )
-                    same = True
-                    for idx, name in enumerate(plan[room]):
-                        if current[idx]["agent"] != name and name not in (
-                            "Free",
-                            "Current",
-                        ):
-                            same = False
-                            break
-                    if same:
-                        final_observation = current
-                        confirmed_names = [
-                            name
-                            for name in plan[room]
-                            if name not in ("Free", "Current", "")
-                        ]
-                        label = facility_label(room, self.op_data)
-                        logger.debug("%s重试复核计划：%s", label, plan[room])
-                        result = (
-                            f"{'、'.join(f'[[operator:{name}]]' for name in confirmed_names)}"
-                            "已在计划位置，跳过重复选人"
-                            if confirmed_names
-                            else "按当前计划无需重复选人"
-                        )
-                        logger.info(
-                            f"重试时重新读取{label}：{result}",
-                            extra={"log_room": room, "log_agents": confirmed_names},
-                        )
-                else:
-                    current_room = self.op_data.get_current_room(room, True)
-                    same = len(plan[room]) == len(current_room)
-                    if same:
-                        for item1, item2 in zip(plan[room], current_room):
-                            if item1 != item2:
-                                same = False
-                if not same:
+                    final_observation = self.get_agent_from_room(
+                        room, read_time_index, **observation_context
+                    )
+                if submitted_training_slot is not None:
+                    index, target = submitted_training_slot
                     if (
+                        index < len(plan[room])
+                        and plan[room][index] == target
+                        and not self._training_slot_matches(
+                            index, target, final_observation[index]["agent"]
+                        )
+                    ):
+                        raise TrainingSubmissionUnconfirmed(index, target)
+                    submitted_training_slot = None
+                same = final_observation is not None and self._room_matches_arrangement(
+                    room, plan[room], final_observation
+                )
+                if choose_error and same:
+                    confirmed_names = [
+                        name
+                        for name in plan[room]
+                        if name not in ("Free", "Current", "")
+                    ]
+                    label = facility_label(room, self.op_data)
+                    logger.debug("%s重试复核计划：%s", label, plan[room])
+                    result = (
+                        f"{'、'.join(f'[[operator:{name}]]' for name in confirmed_names)}"
+                        "已在计划位置，跳过重复选人"
+                        if confirmed_names
+                        else "按当前计划无需重复选人"
+                    )
+                    logger.info(
+                        f"重试时重新读取{label}：{result}",
+                        extra={"log_room": room, "log_agents": confirmed_names},
+                    )
+                if (
+                    not same
+                    and (
                         self._emergency_active()
                         and room.startswith("dorm")
                         and self.task.type == TaskTypes.RELEASE_DORM
@@ -18977,12 +20799,42 @@ class BaseSchedulerSolver(
                         and self.task.type != TaskTypes.RUN_ORDER
                         and room != "train"
                         or fia_arrangement
-                    ):
-                        # 换人前顺路读取离开者，不额外读取其工作／恢复倒计时。
-                        before = self.get_agent_from_room(
-                            room, departing_plan=plan[room]
+                    )
+                    and (
+                        fia_arrangement
+                        or not departure_observed
+                        and (
+                            final_observation is None
+                            or any(
+                                not item.get("observed", True)
+                                or item["agent"]
+                                and item["agent"] not in plan[room]
+                                for item in final_observation
+                            )
                         )
-                        self._remember_facility_idle_origin(room, before)
+                    )
+                ):
+                    before = self.get_agent_from_room(
+                        room, departing_plan=plan[room], **observation_context
+                    )
+                    self._remember_facility_idle_origin(room, before)
+                    if (
+                        not fia_arrangement
+                        and len(before) >= len(current_room)
+                        and all(item.get("observed", True) for item in before)
+                        and self._room_matches_arrangement(room, plan[room], before)
+                    ):
+                        same = True
+                        if room.startswith("dorm") and get_time:
+                            self.op_data.invalidate_dorm_time(room)
+                            before = self.get_agent_from_room(
+                                room, read_time_index, **observation_context
+                            )
+                            same = self._room_matches_arrangement(
+                                room, plan[room], before
+                            )
+                        final_observation = before
+                if not same:
                     # 换入前校准确认时刻；窗口失败后的新实测仍须重新校准。
                     if (
                         self.task.type == TaskTypes.RUN_ORDER
@@ -19031,11 +20883,26 @@ class BaseSchedulerSolver(
                             choose_error=choose_error,
                         )
                     else:
+                        fresh_room_entry = False
+                        two_slot_room = False
                         while self.find("confirm_blue") is None:
                             if error_count > 3:
                                 raise Exception("未成功进入干员选择界面")
-                            self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
+                            if ordinary_work_room and error_count == 0:
+                                self.turn_on_room_detail(room)
+                            if room.startswith("room") and len(plan[room]) == 2:
+                                two_slot_room = (
+                                    room_shows_two_slots(
+                                        getattr(self.recog, "_img", None)
+                                    )
+                                    and self.detect_room() == room
+                                )
+                            if self._is_ordinary_facility_arrangement(self.task):
+                                self._open_room_selection(room)
+                            else:
+                                self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
                             error_count += 1
+                            fresh_room_entry = True
                         # 跑单及原班恢复等待未知／联网画面结束，再开始选人。
                         if self.task.type == TaskTypes.RUN_ORDER:
                             self._wait_for_run_order_selection_page()
@@ -19049,6 +20916,16 @@ class BaseSchedulerSolver(
                             )
                             self.task.run_order_restore_pending = True
                         selection_attempted = True
+                        selection_product = None
+                        if (
+                            ordinary_work_room
+                            and fresh_room_entry
+                            and room
+                            in observation_context.get("observed_facilities", ())
+                        ):
+                            selection_product = self.op_data.facility_states.get(
+                                room, {}
+                            ).get("product")
                         selection_changed = (
                             self.choose_agent(
                                 plan[room],
@@ -19057,6 +20934,9 @@ class BaseSchedulerSolver(
                                 preserve_dorm_occupants=recovery_ordered,
                                 choose_error=choose_error,
                                 dorm_mood_candidates=dorm_mood_candidates,
+                                fresh_room_entry=fresh_room_entry,
+                                two_slot_room=two_slot_room,
+                                selection_product=selection_product,
                             )
                             is not False
                         )
@@ -19091,36 +20971,16 @@ class BaseSchedulerSolver(
                     current = self._verify_run_order_confirmation(
                         room, current, plan[room]
                     )
-                    for idx, name in enumerate(plan[room]):
-                        if current[idx]["agent"] != name and name not in (
-                            "Free",
-                            "Current",
-                        ):
-                            logger.error(
-                                f"检测到的干员{current[idx]['agent']},需要安排的干员{name}"
-                            )
-                            raise Exception("检测到安排干员未成功")
+                    if not self._room_matches_arrangement(room, plan[room], current):
+                        logger.error(
+                            "房间 %s 实读驻员 %s，目标 %s",
+                            room,
+                            [item["agent"] for item in current],
+                            plan[room],
+                        )
+                        raise Exception("检测到安排干员未成功")
                     final_observation = current
                 elif choose_error == 0:
-                    if fia_arrangement:
-                        # 失败重试或回岗名单恰好一致，也必须刷新充能后的计时。
-                        self.get_agent_from_room(
-                            room, read_time_index, **observation_context
-                        )
-                    elif room.startswith("dorm") and get_time:
-                        # 跨房换人可能已从本房拉走住客，即使剩余名单相同也须复读。
-                        self.op_data.invalidate_dorm_time(room)
-                        final_observation = self.get_agent_from_room(
-                            room,
-                            self.op_data.get_refresh_index(
-                                room,
-                                plan[room],
-                                group_transitions=self._execution_group_transitions(
-                                    plan
-                                ),
-                            ),
-                            **observation_context,
-                        )
                     logger.info(f"任务与当前房间相同，跳过安排{room}人员")
                 if self.scene() in self.waiting_scene:
                     if not self.waiting_solver():
@@ -19131,9 +20991,6 @@ class BaseSchedulerSolver(
                     plan,
                     settle_entry=choose_error == 0 and not selection_attempted,
                     observed=final_observation,
-                    cache_only=final_observation is None
-                    and getattr(self.op_data, "room_observations", {}).get(room, 0)
-                    == room_revision,
                 )
                 if selection_attempted or choose_error > 0:
                     self.record_selection_success()
@@ -19151,6 +21008,8 @@ class BaseSchedulerSolver(
             ):
                 raise
             except Exception as e:
+                if isinstance(e, TrainingSubmissionUnconfirmed):
+                    submitted_training_slot = e.slot
                 pending = getattr(self.task, "run_order_confirmation_pending", None)
                 if pending and not pending["submitted"]:
                     self.task.__dict__.pop("run_order_confirmation_pending", None)
@@ -19208,9 +21067,13 @@ class BaseSchedulerSolver(
                         for task in self.tasks
                     )
                 )
-                if queued and (choose_error > 3 or urgent):
-                    raise RoomArrangementDeferred(room, e) from e
-                if choose_error > 3:
+                if queued:
+                    deferred = RoomArrangementDeferred(
+                        room, e, submitted_training_slot=submitted_training_slot
+                    )
+                    if choose_error > retry_limit or urgent:
+                        raise deferred from e
+                if choose_error > retry_limit:
                     raise e
                 # 确认后的失败统一返回再读实际驻员，由下一轮决定是否重选。
                 back_count = 0
@@ -19220,7 +21083,7 @@ class BaseSchedulerSolver(
                             self.back_to_infrastructure()
                             if self.scene() != Scene.INFRA_MAIN:
                                 if queued:
-                                    raise RoomArrangementDeferred(room, e) from e
+                                    raise deferred from e
                                 raise e
                             break
                     else:
@@ -19228,7 +21091,7 @@ class BaseSchedulerSolver(
                     back_count += 1
                     if back_count > 3:
                         if queued:
-                            raise RoomArrangementDeferred(room, e) from e
+                            raise deferred from e
                         raise e
                 continue
         return new_plan
@@ -19241,7 +21104,6 @@ class BaseSchedulerSolver(
         *,
         settle_entry=False,
         observed=None,
-        cache_only=False,
     ):
         # 收尾返回仍属本轮安排；超时交回房间恢复，实读复核后再提交完成。
         keep_workshop = room == "factory" and (
@@ -19250,41 +21112,34 @@ class BaseSchedulerSolver(
         if not keep_workshop and (
             len(new_plan) != 1 or config.conf.run_order_buffer_time <= 0
         ):
+            early_feedback = room != "train" and self._is_ordinary_facility_arrangement(
+                self.task
+            )
+            deadline = None
+            should_exit = True
             if settle_entry and (room == "central" or room.startswith("room_")):
                 # 返回前复核当前房间，和退出确认共用一次预算。
                 deadline = monotonic() + self.performance_profile.transition_timeout
-                if self._wait_for_room_entry_before_exit(room, deadline=deadline):
-                    self.back(0.5)
-                    self._wait_for_room_exit(deadline=deadline)
-            else:
-                self.back(0.5)
-                self._wait_for_room_exit()
+                should_exit = self._wait_for_room_entry_before_exit(
+                    room, deadline=deadline
+                )
+            if should_exit:
+                interval = 0.5
+                if early_feedback:
+                    profile = self.performance_profile
+                    if deadline is None:
+                        deadline = monotonic() + profile.transition_timeout + interval
+                    interval = min(interval, 0.75 * profile.screenshot_interval / 1000)
+                self.back(interval)
+                self._wait_for_room_exit(
+                    deadline=deadline, early_feedback=early_feedback
+                )
         if room in getattr(self.task, "dorm_recovery_restore", []):
             self.task.dorm_recovery_restore.remove(room)
         if getattr(self.task, "arrangement_retry_room", None) == room:
             del self.task.arrangement_retry_room
             del self.task.arrangement_retry_count
-        targets = plan[room]
-        unconfirmed = None
-        if cache_only:
-            unconfirmed = "缓存名单与安排一致，跳过选人"
-        elif settle_entry and observed is not None:
-            if (
-                not observed
-                or len(observed) < len(targets)
-                or any(
-                    not item.get("observed", True) for item in observed[: len(targets)]
-                )
-            ):
-                unconfirmed = "驻员名单未读全，尚未确认安排"
-            elif any(
-                name not in ("Current", "Free") and item["agent"] != name
-                for name, item in zip(targets, observed)
-            ):
-                unconfirmed = "实际驻员与安排不同，尚未确认安排"
-        self._confirm_facility_arrangement_log(
-            room, targets, observed, unconfirmed=unconfirmed
-        )
+        self._confirm_facility_arrangement_log(room, plan[room], observed)
         if (
             room.startswith("dorm")
             and getattr(self.op_data, "idle_dorm_release_suspended", False)
@@ -19315,12 +21170,11 @@ class BaseSchedulerSolver(
                 return True
             self.sleep(min(poll_interval, remaining))
 
-    def _wait_for_room_exit(self, *, deadline=None):
+    def _wait_for_room_exit(self, *, deadline=None, early_feedback=False):
         """确认已发送的返回键生效，再把地图交给下一次房间操作。"""
         profile = self.performance_profile
         if deadline is None:
             deadline = monotonic() + profile.transition_timeout
-        poll_interval = profile.screenshot_interval / 1000
         while True:
             self.recog.update()
             if self.scene() == Scene.INFRA_MAIN:
@@ -19328,6 +21182,11 @@ class BaseSchedulerSolver(
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise RecognizeError("换人后未确认返回基建全局视角")
+            poll_interval = (
+                profile.poll_interval
+                if early_feedback
+                else profile.screenshot_interval / 1000
+            )
             self.sleep(min(poll_interval, remaining))
 
     def accept_order(self, *, room=None):
@@ -19660,6 +21519,7 @@ class BaseSchedulerSolver(
 
     @with_run_order_network
     def agent_arrange(self, plan: tp.BasePlan, get_time=False):
+        self._profession_search_pages = {}
         if (
             self.task.type == TaskTypes.FIAMMETTA
             and self.task.meta_data

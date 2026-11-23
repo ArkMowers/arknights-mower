@@ -171,7 +171,10 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver.tasks = []
     solver.waiting_scene = []
     solver.performance_profile = SimpleNamespace(
-        transition_timeout=1, screenshot_interval=100
+        transition_timeout=1,
+        screenshot_interval=100,
+        low_frame_rate=False,
+        poll_interval=0.1,
     )
     solver._arrange_room.side_effect = MethodType(
         BaseSchedulerSolver._arrange_room, solver
@@ -184,6 +187,22 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     )
     solver._verify_run_order_confirmation.side_effect = MethodType(
         BaseSchedulerSolver._verify_run_order_confirmation, solver
+    )
+    solver._ordinary_work_room.side_effect = MethodType(
+        BaseSchedulerSolver._ordinary_work_room, solver
+    )
+    solver._is_ordinary_facility_arrangement.side_effect = (
+        BaseSchedulerSolver._is_ordinary_facility_arrangement
+    )
+    solver._room_matches_arrangement.side_effect = MethodType(
+        BaseSchedulerSolver._room_matches_arrangement, solver
+    )
+    solver._observed_room_names.side_effect = BaseSchedulerSolver._observed_room_names
+    solver._open_room_selection.side_effect = MethodType(
+        BaseSchedulerSolver._open_room_selection, solver
+    )
+    solver._require_room_list.side_effect = MethodType(
+        BaseSchedulerSolver._require_room_list, solver
     )
     solver.ensure_dorm_recovery_order.return_value = False
     solver._can_refresh_idle_dorm_search.return_value = False
@@ -209,9 +228,11 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     solver.recog.w, solver.recog.h = 1920, 1080
     solver.get_color.return_value = np.array([255, 255, 255])
     state = [initial]
-    solver.scene.side_effect = lambda: (
-        Scene.INFRA_MAIN if state[0] == "map" else Scene.INFRA_DETAILS
-    )
+    solver.scene.side_effect = lambda: {
+        "map": Scene.INFRA_MAIN,
+        "selection": Scene.INFRA_ARRANGE_ORDER,
+    }.get(state[0], Scene.INFRA_DETAILS)
+    solver.detect_room.return_value = "recycle"
     detail_button = ((30, 350), (150, 450))
 
     def find(name, **kwargs):
@@ -232,8 +253,8 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
 
     solver.find.side_effect = find
     solver.tap.side_effect = tap
-    solver.back.side_effect = lambda *args: state.__setitem__(
-        0, "map" if args == (0.5,) else "room"
+    solver.back.side_effect = lambda interval=1: state.__setitem__(
+        0, "room" if state[0] == "dashboard" else "map"
     )
     solver.turn_on_room_detail.side_effect = MethodType(
         BaseSchedulerSolver.turn_on_room_detail, solver
@@ -259,11 +280,11 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
     assert solver.turn_on_room_detail.call_count == 3
     assert solver.op_data.plan == original_plan
     assert solver.read_accurate_mood.call_count == 4
-    assert [call.args[1] for call in solver.op_data.update_detail.call_args_list] == [
-        20,
-        20,
-        20,
-        20,
+    assert [call.args[:4] for call in solver.op_data.update_detail.call_args_list] == [
+        ("香草", 20, "recycle", 0),
+        ("芬", 20, "recycle", 1),
+        ("芬", 20, "recycle", 0),
+        ("香草", 20, "recycle", 1),
     ]
     solver.choose_agent.assert_called_once()
     assert solver.choose_agent.call_args.args == (["芬", "香草"], "recycle")

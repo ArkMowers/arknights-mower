@@ -1,5 +1,6 @@
 """进驻信息遮住提交提示时，等待游戏更新驻员后再读取训练室。"""
 
+import pickle
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,14 +11,314 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
+from arknights_mower.solvers import base_schedule as base  # noqa: E402
+from arknights_mower.solvers import mastery_reader  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.tests import (  # noqa: E402
+    scheduler_recovery_preservation_tests as recovery,
+)
+from arknights_mower.tests import (  # noqa: E402
+    training_occupancy_read_tests as occupancy,
+)
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.image import loadres  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
-from arknights_mower.utils.scheduler_task import SchedulerTask  # noqa: E402
+from arknights_mower.utils.scheduler_task import (  # noqa: E402
+    SchedulerTask,
+    TaskTypes,
+    find_next_task,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "selection"
+solver = occupancy.solver
+training_reader = occupancy.training_reader
+scheduler = recovery.scheduler
+
+
+@pytest.fixture
+def training_dispatch(scheduler, training_reader, monkeypatch):
+    instance = scheduler.solver
+    instance.op_data = training_reader.op_data
+    now = scheduler.clock.now()
+    task = SchedulerTask(now, {"train": ["Current", "余"]}, TaskTypes.SELF_CORRECTION)
+    depot = SchedulerTask(now, task_type=TaskTypes.DEPOT)
+    instance.task, instance.tasks = task, [task, depot]
+    for method in (
+        "back_to_infrastructure",
+        "enter_room",
+        "turn_on_room_detail",
+        "refresh_current_room",
+        "_prepare_shift_cycle",
+        "_prepare_group_shift",
+        "_switch_products_before_arrangement",
+        "_defer_conflicting_product_shift_slots",
+        "_fill_empty_dorms",
+        "plan_metadata",
+    ):
+        setattr(instance, method, MagicMock())
+    instance._complete_group_shift = MagicMock(return_value=True)
+    instance.仓库扫描 = MagicMock()
+    monkeypatch.setattr(config.conf, "enable_mastery", False)
+    monkeypatch.setattr(config.conf, "performance_mode", "high")
+    monkeypatch.setattr(
+        mastery_reader,
+        "read_room_state",
+        lambda *a, **kw: mastery_reader.RoomState("empty"),
+    )
+    monkeypatch.setattr(base, "save_exception", MagicMock())
+    return instance, task, depot
+
+
+def test_failure_before_training_submit_yields_to_independent_task(
+    scheduler, training_dispatch
+):
+    instance, task, depot = training_dispatch
+    now = task.time
+    instance.get_agent_from_room = MagicMock(
+        return_value=[{"agent": "望"}, {"agent": ""}]
+    )
+    instance.choose_train = MagicMock(
+        side_effect=base.AgentSelectionNotReady("未能打开训练室选人页，返回房间重试")
+    )
+
+    instance.infra_main()
+
+    assert instance.choose_train.call_count == 2
+    assert task.execution_failure["rooms"] == ("train",)
+    assert task.time == now and task.plan == {"train": ["Current", "余"]}
+    for _ in range(3):
+        instance._resume_failed_tasks()
+        assert find_next_task(instance.tasks) is depot
+    instance.run()
+    instance.仓库扫描.assert_called_once()
+    assert task in instance.tasks and depot not in instance.tasks
+    assert find_next_task([task]) is None
+    assert instance.choose_train.call_count == 2
+    assert not any(
+        call.kwargs.get("strict_observation")
+        for call in instance.get_agent_from_room.call_args_list
+    )
+    assert task.time == now and task.plan == {"train": ["Current", "余"]}
+    scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "feedback", ["room_retry", "settled", "old", "unreadable_mood", "legacy_save"]
+)
+def test_dispatch_reads_late_training_submission_once(
+    scheduler, training_dispatch, training_reader, monkeypatch, feedback
+):
+    instance, task, depot = training_dispatch
+    original_time = task.time
+    residents = ["望", ""]
+    page = Scene.INFRA_MAIN
+
+    def show(scene):
+        nonlocal page
+        page = scene
+
+    def enter(room):
+        assert room == "train"
+        if feedback == "room_retry" and instance.tap_confirm.called:
+            residents[1] = "余"
+        show(Scene.INFRA_DETAILS)
+
+    instance.scene.side_effect = lambda: page
+    instance.recog.w, instance.recog.h = 1920, 1080
+    instance.enter_room.side_effect = enter
+    instance.back_to_infrastructure.side_effect = lambda: show(Scene.INFRA_MAIN)
+    instance.back = MagicMock(side_effect=lambda interval=1: show(Scene.INFRA_MAIN))
+    instance.tap = MagicMock(side_effect=lambda pos: show(Scene.INFRA_ARRANGE_ORDER))
+    instance._require_training_selection = MagicMock()
+    instance.choose_train_ope = MagicMock()
+    instance.tap_confirm = MagicMock(
+        side_effect=lambda *a, **kw: show(Scene.INFRA_DETAILS)
+    )
+    training_reader.task, training_reader.tasks = task, instance.tasks
+    training_reader.find_next_task.return_value = None
+    training_reader.recog.gray[344:] = 1
+    training_reader.find.side_effect = lambda res, **kw: (
+        res == "infra_no_operator" and not residents[int(kw["scope"][0][1] == 344)]
+    )
+    training_reader.read_screen.side_effect = lambda crop, **kw: residents[crop[0, 0]]
+    training_reader.selection_transition_timing = lambda: (0.25, 2)
+    instance.get_agent_from_room = MagicMock(wraps=training_reader.get_agent_from_room)
+    save = MagicMock(return_value=True)
+    monkeypatch.setattr(base, "save_current_state", save)
+
+    instance.infra_main()
+    if feedback == "room_retry":
+        assert task not in instance.tasks
+        assert instance.op_data.get_current_room("train", True) == ["望", "余"]
+        instance.tap_confirm.assert_called_once_with("train", training_slot=1)
+        save.assert_not_called()
+        return
+    assert task.execution_failure["rooms"] == ("train",)
+    assert "训练位提交后未确认" in task.execution_failure["reason"]
+    assert task.time == original_time and task.plan == {"train": ["Current", "余"]}
+    assert find_next_task(instance.tasks) is depot
+    assert instance.op_data.get_current_room("train", True) == ["望", ""]
+    if feedback == "legacy_save":
+        task = pickle.loads(pickle.dumps(task))
+        task.execution_failure.pop("submitted_training_slot", None)
+        task.execution_failure["reason"] = (
+            "训练室训练位提交后未确认目标驻员，返回房间重试"
+        )
+        instance.tasks = training_reader.tasks = [task, depot]
+        instance.task = training_reader.task = task
+    instance.get_agent_from_room.reset_mock()
+    if feedback != "old":
+        residents[1] = "余"
+    if feedback == "unreadable_mood":
+        training_reader.read_accurate_mood.return_value = -1
+
+    instance.infra_main()
+
+    instance.get_agent_from_room.assert_called_once_with(
+        "train", strict_observation=True
+    )
+    instance.tap_confirm.assert_called_once_with("train", training_slot=1)
+    instance.choose_train_ope.assert_called_once_with("余")
+    save.assert_called_once()
+    assert task.plan == {"train": ["Current", "余"]} and task.time == original_time
+    if feedback in ("settled", "legacy_save"):
+        assert find_next_task([task]) is task
+        assert instance.op_data.get_current_room("train", True) == ["望", "余"]
+        assert instance.op_data.operators["余"].mood == 18
+        instance.task = task
+        instance.infra_main()
+        assert task not in instance.tasks
+        instance.tap_confirm.assert_called_once()
+    else:
+        assert instance.op_data.get_current_room("train", True) == ["望", ""]
+        for _ in range(3):
+            instance._resume_failed_tasks()
+            assert instance._observe_failed_arrangement_confirmation() is False
+            assert find_next_task(instance.tasks) is depot
+        assert instance.tasks == [task, depot] and task.time == original_time
+        instance.get_agent_from_room.assert_called_once()
+        if feedback == "old":
+            residents[1] = "余"
+            training_reader.get_agent_from_room("train", strict_observation=True)
+            instance._resume_failed_tasks()
+            assert find_next_task([task]) is task
+            instance.tap_confirm.assert_called_once()
+    scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize("settles_after", [1, 3, None])
+def test_late_training_occupant_after_submission(training_reader, settles_after):
+    instance = training_reader
+    for method in ("train_scene", "detect_room", "find", "read_screen"):
+        delattr(instance, method)
+    transition, settled = (
+        Recognizer(
+            None,
+            screencap=(
+                FIXTURES / f"training_trainee_{stage}_20261123.jpg"
+            ).read_bytes(),
+        )
+        for stage in ("transition", "settled")
+    )
+    selection = Recognizer(
+        None, screencap=(FIXTURES / "training_selected_yu_20261123.jpg").read_bytes()
+    )
+    instance.recog = transition
+    find = instance.find
+    instance.find = lambda resource, *args, **kwargs: (
+        instance.recog.get_train_scene() == Scene.INFRA_DETAILS
+        if resource == "room_detail"
+        else find(resource, *args, **kwargs)
+    )
+    page = Scene.INFRA_DETAILS
+    instance.scene = lambda: page
+    selections = []
+    waits = []
+    submitted_revision = None
+
+    def open_slot(pos, **kwargs):
+        nonlocal page
+        assert pos == (1920 * 0.82, 1080 * 0.36)
+        assert not selections, "训练位提交后再次进入选人页"
+        instance.recog = selection
+        page = Scene.INFRA_ARRANGE_ORDER
+
+    def submit(room, *, training_slot):
+        nonlocal page, submitted_revision
+        assert room == "train" and training_slot == 1
+        submitted_revision = instance.op_data.room_observations["train"]
+        instance.recog = transition
+        page = Scene.INFRA_DETAILS
+
+    def next_frame(interval=1):
+        assert instance.op_data.room_observations["train"] == submitted_revision
+        waits.append(interval)
+        if len(waits) == settles_after:
+            instance.recog = settled
+        assert len(waits) < 12
+
+    instance.tap = instance.ctap = open_slot
+    instance.choose_train_ope = selections.append
+    instance.tap_confirm = submit
+    instance.sleep = next_frame
+    instance.selection_transition_timing = lambda: (0.75, 6)
+    if settles_after is None:
+        with pytest.raises(base.AgentSelectionNotReady, match="训练位.*未确认"):
+            instance.choose_train(["望", "余"])
+        assert instance.op_data.get_current_room("train", True) == ["望", ""]
+    else:
+        instance.choose_train(["望", "余"])
+        assert len(waits) == settles_after
+        assert instance.op_data.get_current_room("train", True) == ["望", "余"]
+    assert selections == ["余"]
+
+
+@pytest.mark.parametrize("input_feedback", ["delayed", "dropped", "absent"])
+def test_training_slot_waits_for_its_own_input(monkeypatch, input_feedback):
+    page = Scene.INFRA_DETAILS
+    elapsed = 0
+    taps = []
+    occupants = ["望", ""]
+    instance = MagicMock()
+    instance.recog.w, instance.recog.h = 1920, 1080
+    instance.scene.side_effect = lambda: page
+    instance.get_agent_from_room.side_effect = lambda *args, **kwargs: [
+        {"agent": name} for name in occupants
+    ]
+    monkeypatch.setattr(base, "monotonic", lambda: elapsed)
+
+    def tap(pos):
+        nonlocal page
+        assert pos == (1920 * 0.82, 1080 * 0.36)
+        taps.append(elapsed)
+        if input_feedback == "dropped" and len(taps) == 2:
+            page = Scene.INFRA_ARRANGE_ORDER
+
+    def next_frame(interval=1):
+        nonlocal elapsed, page
+        elapsed += interval
+        if input_feedback == "delayed" and elapsed >= 3:
+            page = Scene.INFRA_ARRANGE_ORDER
+
+    def confirm(room, *, training_slot):
+        nonlocal page
+        assert training_slot == 1
+        occupants[1] = "余"
+        page = Scene.INFRA_DETAILS
+
+    instance.tap.side_effect = tap
+    instance.sleep.side_effect = next_frame
+    instance.tap_confirm.side_effect = confirm
+    if input_feedback == "absent":
+        with pytest.raises(base.AgentSelectionNotReady, match="未能打开"):
+            BaseSchedulerSolver.choose_train(instance, ["Current", "余"])
+        instance.choose_train_ope.assert_not_called()
+    else:
+        BaseSchedulerSolver.choose_train(instance, ["Current", "余"])
+        instance.choose_train_ope.assert_called_once_with("余")
+        assert occupants == ["望", "余"]
+    assert taps == ([0] if input_feedback == "delayed" else [0, 10])
 
 
 def captured_recognizer(submitting):
@@ -58,7 +359,7 @@ def test_training_readback_waits_for_submission_before_reselecting(monkeypatch):
     )
     waits = []
     monkeypatch.setattr("arknights_mower.utils.solver.csleep", waits.append)
-    solver.ctap = MagicMock(
+    solver.tap = MagicMock(
         side_effect=AssertionError("提交过渡帧导致再次打开训练位选人")
     )
     reads = []
@@ -80,7 +381,7 @@ def test_training_readback_waits_for_submission_before_reselecting(monkeypatch):
     assert waits == [1]
     assert solver.recog is pending
     pending.device.screencap.assert_called_once_with()
-    solver.ctap.assert_not_called()
+    solver.tap.assert_not_called()
     solver.choose_train_ope.assert_not_called()
     solver.tap_confirm.assert_not_called()
 
@@ -111,7 +412,10 @@ def test_confirmation_waits_for_occluded_submission_without_reclicking(monkeypat
     solver.tap_confirm("train")
 
     assert solver.tap.call_count == 1
-    solver.sleep.assert_called_once_with(1)
+    profile = solver.performance_profile
+    solver.sleep.assert_called_once_with(
+        max(profile.poll_interval, profile.screenshot_interval / 1000)
+    )
     assert solver.recog.get_scene() == Scene.INFRA_DETAILS
     device.screencap.assert_not_called()
 

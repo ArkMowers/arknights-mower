@@ -46,6 +46,281 @@ def test_single_operator_still_selects_correctly(monkeypatch):
     assert selected == ["伊芙利特"]
 
 
+@pytest.mark.parametrize("visible", [True, False])
+def test_named_dorm_resident_searches_inherited_page_before_mood_sort(
+    monkeypatch, visible
+):
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    events = []
+
+    def scan(pending, **kwargs):
+        events.append("scan")
+        if pending and (visible or "心情" in events):
+            name = pending.pop(0)
+            selected.append(name)
+            return [name], []
+        return [], []
+
+    original_sort = solver.switch_arrange_order.side_effect
+
+    def sort(kind, *args, **kwargs):
+        events.append(kind)
+        return original_sort(kind, *args, **kwargs)
+
+    solver.switch_arrange_order.side_effect = sort
+    solver.scan_agent.side_effect = scan
+    solver.choose_agent(["伊芙利特"], "dormitory_1")
+    assert events[0] == "scan"
+    assert ("心情" in events) is not visible
+    assert selected == ["伊芙利特"]
+
+
+@pytest.mark.parametrize("free_slot", [0, 1, 2])
+def test_resolved_free_operator_keeps_original_slot_next_to_explicit_vacancies(
+    monkeypatch, free_slot
+):
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    row = ["", "", ""]
+    row[free_slot] = "Free"
+    room = "dormitory_1"
+    solver.op_data.dorm_capacity_allows = MagicMock(return_value=True)
+    solver.choose_agent(row, room)
+
+    assert selected == ["伊芙利特"]
+    assert row == ["伊芙利特" if i == free_slot else "" for i in range(3)]
+    assert all(
+        call.args[1] == (room, free_slot)
+        for call in solver.op_data.dorm_capacity_allows.call_args_list
+    )
+    solver.op_data.dorm_capacity_allows.assert_called()
+
+
+def test_group_reselection_updates_original_row_with_an_explicit_vacancy(monkeypatch):
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    row = ["", "Free"]
+    corrected = []
+
+    def restore(names, room, *, reason):
+        if reason == "选人页最终名单与 Free 解析" and not corrected:
+            assert names == ["", "伊芙利特"]
+            names[1] = "爱丽丝"
+            corrected.append(room)
+            return True
+        return False
+
+    solver._check_group_shift_targets = restore
+    solver.choose_agent(row, "dormitory_1")
+    assert corrected == ["dormitory_1"]
+    assert selected == ["爱丽丝"]
+    assert row == ["", "爱丽丝"]
+
+
+@pytest.mark.parametrize(
+    ("room", "visible", "single_slot"),
+    [
+        ("factory", True, True),
+        ("contact", True, True),
+        ("train", True, True),
+        ("contact", False, True),
+        ("room_2_1", True, False),
+        ("meeting", True, False),
+    ],
+)
+def test_single_slot_verifies_target_before_restoring_filters(
+    monkeypatch, room, visible, single_slot
+):
+    target = ["伊芙利特"]
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    solver.op_data.plan[room] = [SimpleNamespace(agent=target[0])]
+    solver.wait_for_arranged_agents = MagicMock(
+        return_value=target if visible else None
+    )
+    solver.verify_agent = MagicMock(return_value=True)
+
+    solver.choose_agent(target.copy(), room)
+
+    assert selected == target
+    assert solver.last_room == room
+    if single_slot:
+        solver.wait_for_arranged_agents.assert_called_once_with(
+            target, full_scan=False, visible_only=True
+        )
+    else:
+        solver.wait_for_arranged_agents.assert_not_called()
+    if single_slot and visible:
+        solver.verify_agent.assert_not_called()
+        assert not any(
+            c.args == ("ALL",) for c in solver.profession_filter.call_args_list
+        )
+        assert not any(
+            c.args[0] == "技能" for c in solver.switch_arrange_order.call_args_list
+        )
+    else:
+        solver.verify_agent.assert_called_once()
+        assert solver.switch_arrange_order.call_args_list[-1].args == ("技能", room)
+
+
+@pytest.mark.parametrize("room", ["meeting", "recycle"])
+@pytest.mark.parametrize("slots", [(1, 2), (2, 1), (1, None)])
+def test_two_slot_room_skips_reordering_only_with_both_target_numbers(
+    monkeypatch, room, slots
+):
+    target = RESIDENTS[:2]
+    solver, selected = selection_solver(monkeypatch, residents=target)
+
+    def observe(expected, *, slot_numbers, **kwargs):
+        slot_numbers.update(
+            (name, slot) for name, slot in zip(expected, slots) if slot is not None
+        )
+        return selected.copy()
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=observe)
+    solver.verify_agent = MagicMock(return_value=True)
+    solver.reorder_selected_agents = MagicMock(wraps=solver.reorder_selected_agents)
+    solver.choose_agent(target.copy(), room)
+
+    assert selected == target
+    if slots == (1, 2):
+        solver.reorder_selected_agents.assert_not_called()
+        solver.verify_agent.assert_not_called()
+    else:
+        solver.reorder_selected_agents.assert_called_once_with(target, target)
+        solver.verify_agent.assert_called_once()
+
+
+@pytest.mark.parametrize("resident_count", range(6))
+def test_full_control_center_keeps_visible_numbered_roster(monkeypatch, resident_count):
+    from arknights_mower.tests.agent_page_search_tests import page
+
+    target = RESIDENTS + ["伊芙利特"]
+    solver, selected = selection_solver(monkeypatch, residents=target[:resident_count])
+    cards = page(target)
+    solver.recog.img = cards
+    monkeypatch.setattr(base_mixin, "operator_list", lambda img, **_: img)
+    solver.scan_agent = MagicMock(wraps=base_mixin.BaseMixin.scan_agent.__get__(solver))
+
+    def tap(scope, **_):
+        name = next(name for name, box in cards if box == scope)
+        assert name not in selected
+        selected.append(name)
+
+    def read_roster(expected, *, slot_numbers, **_):
+        assert selected == expected
+        slot_numbers.update((name, index) for index, name in enumerate(selected, 1))
+        return selected.copy()
+
+    solver.tap.side_effect = tap
+    solver.wait_for_arranged_agents = MagicMock(side_effect=read_roster)
+    solver.choose_agent(target.copy(), "central", fresh_room_entry=True)
+
+    assert selected == target
+    assert solver.scan_agent.call_count == (resident_count < 5)
+    assert [call.args[0] for call in solver.tap.call_args_list] == [
+        scope for _, scope in cards[resident_count:]
+    ]
+    solver.switch_arrange_order.assert_not_called()
+    solver.swipe_left.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "mode,interval", [("xhigh", 0), ("high", 0.1), ("medium", 0.2), ("low", 0.2)]
+)
+@pytest.mark.parametrize(
+    "current_order,expected_clicks",
+    [
+        ([0, 3, 1, 4, 2], 4),
+        ([2, 0, 1, 3, 4], 6),
+    ],
+)
+def test_numbered_full_room_reorders_in_current_view(
+    monkeypatch, mode, interval, current_order, expected_clicks
+):
+    target = RESIDENTS + ["伊芙利特"]
+    current = [target[index] for index in current_order]
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    solver, selected = selection_solver(monkeypatch, residents=current)
+    solver.recog.img = np.zeros((1, 1, 3), dtype=np.uint8)
+    cards = dict(base_mixin.operator_list(solver.recog.img))
+    monkeypatch.setattr(
+        base_mixin,
+        "agent_card_selected",
+        lambda img, scope, **_: any(cards[name] == scope for name in selected),
+    )
+    solver.choose_agent(target, "central", fresh_room_entry=True)
+
+    assert selected == target
+    assert solver.tap.call_count == expected_clicks
+    card_taps = [
+        call for call in solver.tap.call_args_list if isinstance(call.args[0][0], tuple)
+    ]
+    assert [call.kwargs["interval"] for call in card_taps] == [interval] * (
+        4 if expected_clicks == 4 else 5
+    )
+    assert solver.wait_for_cleared_selection.call_count == (expected_clicks == 6)
+    solver.switch_arrange_order.assert_not_called()
+    solver.swipe_left.assert_not_called()
+
+
+def test_dropped_suffix_deselection_reobserves_before_full_recovery(monkeypatch):
+    target = RESIDENTS + ["伊芙利特"]
+    current = [target[i] for i in (0, 3, 1, 4, 2)]
+    solver, selected = selection_solver(monkeypatch, residents=current)
+    solver.recog.img = np.zeros((1, 1, 3), dtype=np.uint8)
+    cards = dict(base_mixin.operator_list(solver.recog.img))
+    monkeypatch.setattr(
+        base_mixin,
+        "agent_card_selected",
+        lambda img, scope, **_: any(cards[name] == scope for name in selected),
+    )
+    solver.require_agent_selection_page = MagicMock()
+    tap = solver.tap.side_effect
+    lost = False
+
+    def drop_one(scope, **kwargs):
+        nonlocal lost
+        if scope == cards[target[-1]] and not lost:
+            lost = True
+            return
+        tap(scope, **kwargs)
+
+    solver.tap.side_effect = drop_one
+    solver.choose_agent(target, "central", fresh_room_entry=True)
+    assert lost
+    assert selected == target
+    assert [call.args[0] for call in solver.tap.call_args_list[:3]] == [
+        cards[target[-2]],
+        cards[target[-1]],
+        (729.6, 1026.0),
+    ]
+
+
+@pytest.mark.parametrize("title_in_verified_frame", [True, False])
+def test_power_single_slot_requires_title_in_the_blue_border_frame(
+    monkeypatch, title_in_verified_frame
+):
+    target = ["伊芙利特"]
+    solver, selected = selection_solver(monkeypatch, residents=[])
+    before = solver.recog.img = object()
+    after = object()
+    title = MagicMock(side_effect=[True, title_in_verified_frame])
+    monkeypatch.setattr(base_schedule, "selection_shows_power_plant", title)
+
+    def observe(agents, **kwargs):
+        solver.recog.img = after
+        return selected.copy()
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=observe)
+    solver.verify_agent = MagicMock(return_value=True)
+    solver.choose_agent(target.copy(), "room_1_3")
+
+    assert [c.args[0] for c in title.call_args_list] == [before, after]
+    assert selected == target
+    if title_in_verified_frame:
+        solver.verify_agent.assert_not_called()
+    else:
+        solver.verify_agent.assert_called_once()
+
+
 def test_unexpected_dorm_residents_rebuild_selection_before_canceling_cards(
     monkeypatch,
 ):
@@ -134,6 +409,8 @@ def test_high_mode_checks_full_roster_after_all_reorder_clicks(monkeypatch):
     def confirm(prefix, **kwargs):
         confirmations.append(prefix.copy())
         tap_counts.append(solver.tap.call_count)
+        if len(confirmations) == 3:
+            kwargs["slot_numbers"].update((n, i) for i, n in enumerate(selected, 1))
         return list(reversed(RESIDENTS)) if len(confirmations) <= 2 else prefix
 
     solver.wait_for_arranged_agents = MagicMock(side_effect=confirm)
@@ -194,7 +471,7 @@ def test_page_change_bypasses_filter_reset_in_reorder_and_final_verification(
     with pytest.raises(base_mixin.AgentSelectionPageChanged):
         solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
     assert solver.tap.call_count == (0 if phase == "exists" else len(RESIDENTS) + 1)
-    assert solver.profession_filter.call_count == 2
+    assert solver.profession_filter.call_count == 1
     assert all(not call.args for call in solver.profession_filter.call_args_list)
     solver.swipe_left.assert_not_called()
     solver.tap_confirm.assert_not_called()
@@ -218,22 +495,29 @@ def test_non_ultra_rebuilds_order_without_selection_number_proof(
     )
     solver, selected = selection_solver(monkeypatch, residents=RESIDENTS)
     solver.recog.img = selected_card_frame()
-    solver.wait_for_arranged_agents = MagicMock(
-        side_effect=lambda expected, **kwargs: [
-            name for name in RESIDENTS if name in selected
-        ]
-    )
+    observed_prefixes = []
+
+    def observe(expected, **kwargs):
+        if "card_scopes" in kwargs:
+            kwargs["card_scopes"].update(base_mixin.operator_list(solver.recog.img))
+            observed_prefixes.append(expected.copy())
+        return [name for name in RESIDENTS if name in selected]
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=observe)
 
     solver.choose_agent(RESIDENTS.copy(), "dormitory_1")
 
     assert selected == RESIDENTS
-    assert solver.tap.call_count == len(RESIDENTS) + 1
-    assert solver.tap.call_args_list[0].kwargs["interval"] == (
-        0.3 if mode == "high" else 0.5
-    )
+    assert observed_prefixes == [RESIDENTS[:i] for i in range(1, len(RESIDENTS) + 1)]
+    assert solver.tap.call_count == 2 * (len(RESIDENTS) + 1)
     assert all(
-        call.kwargs["interval"] == click_interval
-        for call in solver.tap.call_args_list[1:]
+        call.kwargs["interval"]
+        == (
+            (0.3 if mode == "high" else 0.5)
+            if call.args[0][1] == 1026
+            else click_interval
+        )
+        for call in solver.tap.call_args_list
     )
     assert solver.switch_arrange_order.call_count == 2
 
@@ -247,6 +531,8 @@ def test_reorder_accepts_page_order_different_from_click_order(monkeypatch):
 
     def observe(expected, *, ordered=True, **kwargs):
         actual = [name for name in page_order if name in selected]
+        if "slot_numbers" in kwargs:
+            kwargs["slot_numbers"].update((n, i) for i, n in enumerate(selected, 1))
         matches = actual == expected if ordered else sorted(actual) == sorted(expected)
         return actual if matches else None
 
@@ -277,7 +563,7 @@ def test_reorder_does_not_trust_cached_selection_order(monkeypatch):
     original_order = solver.switch_arrange_order.side_effect
     first = True
 
-    def order(kind, *args):
+    def order(kind, *args, **kwargs):
         nonlocal first
         if kind == "技能" and first:
             first = False
@@ -390,6 +676,7 @@ def test_same_profession_normal_targets_precede_tail_search(
     solver.swipe_left.side_effect = rewind
     solver.swipe_agent_page.side_effect = next_page
     solver.swipe_noinertia.side_effect = jump_tail
+    solver._close_profession_filter = MagicMock()
     agents = (
         ["特米米", "伊芙利特", "深靛"]
         if normal_first
@@ -413,7 +700,7 @@ def test_same_profession_normal_targets_precede_tail_search(
     assert events.index(("tail",)) < events.index(("select", "伊芙利特"))
     assert solver.swipe_noinertia.call_count == 3
     assert solver.swipe_agent_page.call_count == max(normal_pages)
-    assert events.count(("rewind",)) == 1
+    assert events.count(("rewind",)) == 0
 
 
 def test_other_profession_does_not_delay_resting_operator_tail_search(monkeypatch):
@@ -483,6 +770,7 @@ def test_resting_operator_tail_miss_searches_from_first_page(
     solver.scan_agent.side_effect = scan_page
     solver.swipe_left.side_effect = rewind
     solver.swipe_agent_page.side_effect = next_page
+    solver._close_profession_filter = MagicMock()
     solver.swipe_noinertia.side_effect = lambda *args, **kwargs: state.update(page=2)
 
     expected = ["伊芙利特"] + (["特米米"] if tail_companion else [])
@@ -503,7 +791,10 @@ def test_resting_operator_tail_miss_searches_from_first_page(
     else:
         assert observed_pages[:4] == [0, 2, 0, 1]
         assert any(call.args[0] > 0 for call in solver.swipe_left.call_args_list)
-        assert len(observed_pages) <= 6
+        if target_page is None:
+            solver._close_profession_filter.assert_called_once()
+            assert observed_pages[-2:] == [2, 2]
+        assert len(observed_pages) <= 6 + int(target_page is None)
 
 
 @pytest.mark.parametrize("targets", [[], ["伊芙利特"], ["Free"]])
@@ -527,7 +818,6 @@ def selection_solver(monkeypatch, residents=None):
     solver = object.__new__(BaseSchedulerSolver)
     solver._protected_training_slots = lambda: set()
     solver.task = None
-    solver.wait_for_cleared_selection = MagicMock()
     current = list(RESIDENTS if residents is None else residents)
     selected = current.copy()
     cards = current.copy()
@@ -594,7 +884,7 @@ def selection_solver(monkeypatch, residents=None):
         nonlocal profession
         profession = value or "ALL"
 
-    def order(kind, *args):
+    def order(kind, *args, **kwargs):
         if kind == "技能":
             cards[:] = visible(selected + [n for n in roster if n not in selected])
 
@@ -602,7 +892,24 @@ def selection_solver(monkeypatch, residents=None):
         if point[1] == 1026:
             selected.clear()
         else:
-            name = cards[positions.index(point)]
+            if isinstance(point[0], tuple):
+                name = next(
+                    name
+                    for name, scope in base_mixin.operator_list(None)
+                    if scope == point
+                )
+            elif point in positions:
+                name = cards[positions.index(point)]
+            else:
+                x, y = point
+                name = next(
+                    name
+                    for name, (
+                        (left, top),
+                        (right, bottom),
+                    ) in base_mixin.operator_list(None)
+                    if left <= x <= right and top <= y <= bottom
+                )
             if name in selected:
                 selected.remove(name)
             else:
@@ -637,6 +944,21 @@ def selection_solver(monkeypatch, residents=None):
             )
             for i, name in enumerate(cards)
         ],
+    )
+    solver.wait_for_cleared_selection = MagicMock(
+        side_effect=lambda: base_mixin.operator_list(solver.recog.img)
+    )
+    monkeypatch.setattr(
+        base_mixin,
+        "selection_slot",
+        lambda image, scope: next(
+            (
+                selected.index(name) + 1
+                for name, pos in base_mixin.operator_list(image)
+                if pos == scope and name in selected
+            ),
+            None,
+        ),
     )
     return solver, selected
 

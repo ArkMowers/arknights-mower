@@ -1130,6 +1130,7 @@ class TestBaseScheduler(unittest.TestCase):
     def test_get_agent_from_room_uses_train_slots_without_train_plan(self):
         solver = self._create_no_train_plan_solver()
         solver.task = None
+        solver.recog = SimpleNamespace(gray=object())
         solver.train_scene = MagicMock(return_value=base_schedule.Scene.INFRA_DETAILS)
         solver.detect_room = MagicMock(return_value="train")
 
@@ -1140,10 +1141,16 @@ class TestBaseScheduler(unittest.TestCase):
                 "detect_product_complete",
                 return_value=False,
             ),
-            patch.object(BaseSchedulerSolver, "find", return_value=True),
+            patch.object(BaseSchedulerSolver, "find", return_value=True) as find,
         ):
             result = solver.get_agent_from_room("train")
 
+        find.assert_has_calls(
+            [
+                call("infra_no_operator", scope=((1288, 135), (1869, 326))),
+                call("infra_no_operator", scope=((1288, 344), (1869, 535))),
+            ]
+        )
         self.assertEqual(len(result), 2)
         self.assertEqual([item["agent"] for item in result], ["", ""])
 
@@ -3303,7 +3310,7 @@ class TestRunOrderCountdownTiming(unittest.TestCase):
         )
         solver.tap_confirm = MagicMock(side_effect=lambda *_: events.append("confirm"))
 
-        def read_room(*_):
+        def read_room(*_, observed_facilities=None):
             if not solver.choose_agent.call_count:
                 events.append("roster")
                 return [{"agent": "旧干员"}]
@@ -3963,6 +3970,35 @@ class TestClueProductCompleteWait(unittest.TestCase):
             recog_info.find("infra_info_complete", scope=scope, score=0.1)
         )
         self.assertIsNotNone(mixin.detect_product_complete())
+
+    def test_product_wait_rejects_archived_room_edges_and_accepts_collection(self):
+        from arknights_mower.utils.matcher import Matcher
+
+        fixtures = Path(__file__).parent / "fixtures"
+        frame = (
+            fixtures / "recycling" / "reward_notifications_20261018.jpg"
+        ).read_bytes()
+        solver = object.__new__(BaseSchedulerSolver)
+        solver.recog = Recognizer(MagicMock(), frame)
+        self.assertIsNotNone(solver.detect_product_complete())
+        solver.sleep = MagicMock()
+        # 归档 JPEG 有损；回放 B302 和宿舍1原始帧在日志中记录的匹配分数。
+        for rect, scores in (
+            (
+                [[1242, 372], [1365, 462]],
+                (0.14511041009463724, 0, 0.25, 0.13121952540904308),
+            ),
+            (
+                [[1492, 1000], [1641, 1056]],
+                (0.15748031496062992, 0, -0.5625, 0.1427088705081985),
+            ),
+        ):
+            with (
+                self.subTest(rect=rect),
+                patch.object(Matcher, "score", return_value=(rect, scores)),
+            ):
+                self.assertTrue(solver.wait_product_complete())
+                solver.sleep.assert_not_called()
 
     def test_live_credit_prompt_appears_and_clears(self):
         """实机截图：接收线索后提示出现，消失后才能继续。"""

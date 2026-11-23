@@ -18,7 +18,9 @@ from arknights_mower.tests.trade_restore_selection_tests import (
 )
 
 
-def run_order_screen(monkeypatch, selection_modules, mode, *, readback_works=True):
+def run_order_screen(
+    monkeypatch, selection_modules, mode, *, readback_works=True, inherited_order=None
+):
     _, schedule = selection_modules
     from arknights_mower.utils import config
     from arknights_mower.utils.operators import Operator
@@ -26,7 +28,11 @@ def run_order_screen(monkeypatch, selection_modules, mode, *, readback_works=Tru
     from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 
     solver, task, selected, screen, events = restoration_solver(
-        monkeypatch, selection_modules, mode, miss_cancel=False
+        monkeypatch,
+        selection_modules,
+        mode,
+        miss_cancel=False,
+        inherited_order=inherited_order,
     )
     original_time = task.time
 
@@ -62,6 +68,11 @@ def run_order_screen(monkeypatch, selection_modules, mode, *, readback_works=Tru
     screen["cards"] = ORIGINAL + [
         name for name in screen["cards"] if name not in ORIGINAL
     ]
+    if inherited_order:
+        front = ORIGINAL + ["龙舌兰", "但书"]
+        screen["cards"] = front + [
+            name for name in screen["cards"] if name not in front
+        ]
     phase = {"page": "details", "restoring": False}
     confirmations = []
     observed = []
@@ -123,13 +134,16 @@ def run_order_screen(monkeypatch, selection_modules, mode, *, readback_works=Tru
         if phase["restoring"] and not screen["missed"]:
             page = selection_modules[0].operator_list(solver.recog.img)
             positions = [(672, 378), (672, 810), (864, 378)]
-            if not isinstance(point[0], tuple) and tuple(point) in positions:
+            name = None
+            if isinstance(point[0], tuple):
+                name = next((name for name, scope in page if scope == point), None)
+            elif tuple(point) in positions:
                 name = page[positions.index(tuple(point))][0]
-                if name == "龙舌兰":
-                    screen["missed"] = True
-                    events.append(("cancel_missed", name))
-                    capture()
-                    return
+            if name == "龙舌兰":
+                screen["missed"] = True
+                events.append(("cancel_missed", name))
+                capture()
+                return
         select(point, **kwargs)
 
     def read(room, *args, **kwargs):
@@ -159,6 +173,9 @@ def run_order_screen(monkeypatch, selection_modules, mode, *, readback_works=Tru
 
     solver.enter_room = Mock(side_effect=enter)
     solver.turn_on_room_detail = Mock(side_effect=enter)
+    solver.detect_room = Mock(
+        side_effect=lambda: ROOM if phase["page"] == "details" else ""
+    )
     solver.find = Mock(side_effect=find)
     solver.scene = Mock(
         side_effect=lambda: {
@@ -219,3 +236,177 @@ def test_current_restore_readback_failure_retains_original_task(
     assert task.plan == task.run_order_original_roster == {ROOM: ORIGINAL}
     assert task.run_order_restore_pending
     assert task.meta_data == ""
+
+
+@pytest.mark.parametrize(
+    "mode, inherited_order",
+    [
+        ("low", ("技能", True)),
+        ("high", ("心情", False)),
+        ("high", ("效率", True)),
+        ("medium", ("工作状态", False)),
+    ],
+)
+def test_mixed_visible_professions_keep_inherited_order_and_request_slot_order(
+    monkeypatch, selection_modules, mode, inherited_order
+):
+    solver, task, _, confirmed, observed, events = run_order_screen(
+        monkeypatch, selection_modules, mode, inherited_order=inherited_order
+    )
+    assert (
+        selection_modules[0].BaseMixin.detect_arrange_order(solver, ROOM)
+        == inherited_order
+    )
+
+    solver.agent_arrange(task.plan)
+
+    first_confirm = events.index(("confirm", tuple(INSERTED)))
+    entry = events[events.index(("open_selection", ROOM)) + 1 : first_confirm]
+    assert [event[1] for event in entry if event[0] == "select"] == [
+        "但书",
+        "龙舌兰",
+    ]
+    assert not any(e[0] in ("clear", "sort") for e in entry), entry
+    assert confirmed == [INSERTED, ORIGINAL]
+    assert INSERTED in observed and observed[-1] == ORIGINAL
+    assert task.plan == {}
+
+
+def test_inherited_and_configured_trust_switch_before_deselecting_residents(
+    monkeypatch, selection_modules
+):
+    solver, task, _, confirmed, _, events = run_order_screen(
+        monkeypatch, selection_modules, "high"
+    )
+    solver.get_order.return_value = False, ("信赖值", True)
+    order = ("信赖值", True)
+    solver.detect_arrange_order.side_effect = lambda room: order
+    sort = solver.switch_arrange_order.side_effect
+
+    def change_order(criterion, room, ascending=False, **kwargs):
+        nonlocal order
+        assert criterion != "信赖值"
+        order = criterion, ascending
+        return sort(criterion, room, ascending, **kwargs)
+
+    solver.switch_arrange_order.side_effect = change_order
+    solver.agent_arrange(task.plan)
+    entry = events.index(("open_selection", ROOM))
+    actions = [
+        e for e in events[entry:] if e[0] in ("sort", "select", "cancel", "clear")
+    ]
+    assert actions[0] == ("sort", "工作状态")
+    assert confirmed == [INSERTED, ORIGINAL]
+
+
+@pytest.mark.parametrize("case", ["short", "unresolved_free", "empty_tail"])
+def test_ordinary_retry_confirms_all_three_positions(
+    monkeypatch, selection_modules, case
+):
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    solver, task, original_time, _, _, _ = run_order_screen(
+        monkeypatch, selection_modules, "high"
+    )
+    target = (
+        ORIGINAL[:2]
+        if case != "unresolved_free"
+        else [ORIGINAL[0], "Free", ORIGINAL[2]]
+    )
+    occupants = [*ORIGINAL[:2], ""] if case == "empty_tail" else ORIGINAL.copy()
+    if case == "unresolved_free":
+        occupants[1] = ""
+    task.type = TaskTypes.SELF_CORRECTION
+    task.arrangement_retry_room, task.arrangement_retry_count = ROOM, 1
+    task.plan = {ROOM: target}
+    solver.op_data.get_current_room = lambda *args, **kwargs: occupants.copy()
+    solver.get_agent_from_room.side_effect = lambda *args, **kwargs: [
+        {"agent": name} for name in occupants
+    ]
+
+    def select(names, *args, **kwargs):
+        if "Free" in names:
+            names[names.index("Free")] = ORIGINAL[1]
+
+    def confirm(*args, **kwargs):
+        occupants[:] = target + [""] * (3 - len(target))
+
+    solver.choose_agent = Mock(side_effect=select)
+    solver.tap_confirm = Mock(side_effect=confirm)
+    solver.agent_arrange_room({}, ROOM, task.plan)
+
+    assert task.time == original_time and not task.plan
+    assert occupants == (ORIGINAL if case == "unresolved_free" else [*ORIGINAL[:2], ""])
+    assert (
+        solver.choose_agent.call_count
+        == solver.tap_confirm.call_count
+        == int(case != "empty_tail")
+    )
+
+
+@pytest.mark.parametrize("tail", ["still_occupied", "unread", "missing"])
+def test_short_ordinary_plan_stays_pending_until_tail_is_confirmed_empty(
+    monkeypatch, selection_modules, tail
+):
+    from arknights_mower.solvers.base_schedule import RoomArrangementDeferred
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    solver, task, original_time, _, _, _ = run_order_screen(
+        monkeypatch, selection_modules, "high"
+    )
+    target = ORIGINAL[:2]
+    task.type = TaskTypes.SELF_CORRECTION
+    task.arrangement_retry_room, task.arrangement_retry_count = ROOM, 1
+    task.plan = {ROOM: target.copy()}
+    rows = [{"agent": name} for name in ORIGINAL]
+    if tail == "missing":
+        rows.pop()
+    elif tail == "unread":
+        rows[-1] = {"agent": "", "observed": False}
+    solver.get_agent_from_room.side_effect = None
+    solver.get_agent_from_room.return_value = rows
+    solver.choose_agent = Mock(return_value=True)
+    solver.tap_confirm = Mock()
+    with pytest.raises(RoomArrangementDeferred):
+        solver.agent_arrange_room({}, ROOM, task.plan)
+
+    assert task.plan == {ROOM: target} and task.time == original_time
+    if tail == "still_occupied":
+        assert 0 < solver.tap_confirm.call_count <= 3
+    else:
+        solver.tap_confirm.assert_not_called()
+
+
+@pytest.mark.parametrize("same_room", [False, True])
+def test_room_capacity_reaches_selection_only_with_matching_room_title(
+    monkeypatch, selection_modules, same_room
+):
+    import numpy as np
+
+    from arknights_mower.solvers.base_schedule import RoomArrangementDeferred
+    from arknights_mower.utils.csleep import MowerExit
+    from arknights_mower.utils.image import loadimg
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    solver, task, original_time, confirmed, _, events = run_order_screen(
+        monkeypatch, selection_modules, "high"
+    )
+    task.type = TaskTypes.SELF_CORRECTION
+    task.plan = {ROOM: INSERTED[:2]}
+    bands = loadimg(str(FIXTURES / "manufacturing_capacity.webp"))
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[1006:1056, 1650:1920] = bands[77:127, :270]
+    solver.recog._img = frame
+    solver.detect_room = Mock(return_value=ROOM if same_room else "room_3_2")
+    solver.choose_agent = Mock(side_effect=MowerExit)
+    if same_room:
+        with pytest.raises(MowerExit):
+            solver.agent_arrange(task.plan)
+        assert solver.choose_agent.call_args.kwargs["two_slot_room"] is True
+    else:
+        with pytest.raises(RoomArrangementDeferred, match="未确认目标房间"):
+            solver.agent_arrange(task.plan)
+        assert ("open_selection", ROOM) not in events
+        solver.choose_agent.assert_not_called()
+        assert not confirmed
+        assert task.plan == {ROOM: INSERTED[:2]} and task.time == original_time

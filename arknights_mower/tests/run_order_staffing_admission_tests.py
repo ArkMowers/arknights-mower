@@ -110,8 +110,9 @@ def staffed_order(monkeypatch):
         Clock.current += timedelta(seconds=durations[room])
         events.append(("staffed", room, Clock.now()))
 
-    def back(*args, **kwargs):
-        solver._page.update(room=None, open=False)
+    def choose_agents(names, room, *args, **kwargs):
+        if room.startswith("dorm"):
+            names[:] = ["" if name == "Free" else name for name in names]
 
     def sleep(seconds=1):
         Clock.current += timedelta(seconds=seconds)
@@ -136,10 +137,8 @@ def staffed_order(monkeypatch):
     monkeypatch.setattr(solver, "prepare_dorm_selection", MagicMock(return_value=None))
     monkeypatch.setattr(solver, "enter_room", MagicMock(side_effect=enter_room))
     monkeypatch.setattr(solver, "find", MagicMock(side_effect=find))
-    monkeypatch.setattr(solver, "scene", MagicMock(return_value=base.Scene.INFRA_MAIN))
-    monkeypatch.setattr(solver, "choose_agent", MagicMock())
+    monkeypatch.setattr(solver, "choose_agent", MagicMock(side_effect=choose_agents))
     monkeypatch.setattr(solver, "tap_confirm", MagicMock(side_effect=confirm))
-    monkeypatch.setattr(solver, "back", MagicMock(side_effect=back))
     monkeypatch.setattr(solver, "sleep", MagicMock(side_effect=sleep))
     monkeypatch.setattr(solver, "accept_order", MagicMock(side_effect=accept_order))
     monkeypatch.setattr(

@@ -84,8 +84,9 @@ def test_clear_does_not_hide_cancellation_or_page_exit(selection_module, error):
 
 
 @pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])
+@pytest.mark.parametrize("show_numbers", [True, False])
 def test_normal_selection_cannot_skip_residents_from_delayed_clear(
-    monkeypatch, selection_module, mode
+    monkeypatch, selection_module, mode, show_numbers
 ):
     base_mixin = selection_module
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
@@ -128,10 +129,10 @@ def test_normal_selection_cannot_skip_residents_from_delayed_clear(
             left, top = 631 + index // 2 * 216, 488 + index % 2 * 421
             scope = ((left, top), (left + 189, top + 32))
             page.append((name, scope))
-        frames[id(img)] = (page, set(selected))
+        frames[id(img)] = (page, tuple(selected))
         solver.recog.img = img
 
-    def order(*_):
+    def order(*_, **kwargs):
         cards[:] = selected + [name for name in roster if name not in selected]
         refresh()
 
@@ -182,7 +183,17 @@ def test_normal_selection_cannot_skip_residents_from_delayed_clear(
             in frames[id(img)][1]
         ),
     )
+    if show_numbers:
+
+        def slot_in_frame(img, scope):
+            page, occupants = frames[id(img)]
+            name = next(name for name, box in page if box == scope)
+            return occupants.index(name) + 1 if name in occupants else None
+
+        monkeypatch.setattr(base_mixin, "selection_slot", slot_in_frame)
     refresh()
     solver.choose_agent(targets.copy(), "dormitory_3", fast_mode=False)
     assert selected == targets
-    assert events.count("clear") == events.count("cleared") == 2
+    assert (
+        events.count("clear") == events.count("cleared") == (2 if show_numbers else 3)
+    )

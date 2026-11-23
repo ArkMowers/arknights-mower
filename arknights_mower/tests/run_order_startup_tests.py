@@ -1,6 +1,7 @@
 """启动订单检查只发布临近跑单，实际驻员心情供首次全设施扫描复用。"""
 
 import copy
+import logging
 import pickle
 from contextlib import ExitStack
 from datetime import timedelta
@@ -25,6 +26,107 @@ def prepare(ui):
 
 def orders(ui):
     return [task for task in ui.solver.tasks if task.type == ui.task_type.RUN_ORDER]
+
+
+@pytest.mark.parametrize(
+    ("state", "strategy", "name", "advance_minutes"),
+    [
+        ("active", "龙门商法", "孑", 3),
+        ("active", "开采协力", "孑", 0),
+        ("active", "", "孑", 3),
+        ("paused", "龙门商法", "", None),
+        ("unknown", "开采协力", "孑", None),
+    ],
+)
+def test_startup_observes_trade_staff_and_reads_one_order_page(
+    staffed_order, monkeypatch, caplog, state, strategy, name, advance_minutes
+):
+    from arknights_mower.utils import mastery_recommendation
+
+    ui = staffed_order
+    solver = prepare(ui)
+    room = "room_1_1"
+    ui.states[room] = state
+    solver.op_data.update_facility_state(room, "trade", "lmd")
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(
+        mastery_recommendation,
+        "get_cultivate_characters",
+        lambda: {"char_272_strong": {"evolvePhase": 0}},
+    )
+    solver.recog.gray = MagicMock()
+    solver.get_agent_from_room = (
+        ui.base.BaseSchedulerSolver.get_agent_from_room.__get__(solver)
+    )
+    solver._cache_facility_state_from_current_page = (
+        ui.base.BaseSchedulerSolver._cache_facility_state_from_current_page.__get__(
+            solver
+        )
+    )
+    solver.detect_room_type = MagicMock(return_value="贸易站")
+    solver.wait_product_complete = MagicMock()
+    solver.find = MagicMock(
+        side_effect=lambda resource, **_: resource == "infra_no_operator" and not name
+    )
+    solver.read_screen = MagicMock(return_value=name)
+    solver.read_accurate_mood = MagicMock(return_value=18)
+
+    def observe(occupant, mood, location, index, *args, **kwargs):
+        operator = solver.op_data.operators[occupant]
+        operator.current_room, operator.current_index = location, index
+        operator.mood, operator.time_stamp = mood, ui.clock.now()
+
+    solver.op_data.update_detail = MagicMock(side_effect=observe)
+    page_visits = []
+
+    def open_order_page(**kwargs):
+        assert solver._page["room"] == room and not solver._page["open"]
+        assert solver.op_data.get_current_room(room, True) == [name]
+        solver._page["open"] = True
+        page_visits.append(room)
+
+    def read_text(scope):
+        assert solver._page["open"]
+        if scope[0][0] == 1400:
+            return strategy
+        return "订单暂停获取中" if state == "paused" else ""
+
+    solver._wait_drone_interface = MagicMock(side_effect=open_order_page)
+    solver._product_ocr_text = MagicMock(side_effect=read_text)
+    if state == "unknown":
+        solver.read_time.side_effect = lambda *args, **kwargs: None
+        with pytest.raises(ui.base.RecognizeError, match="未确认订单暂停"):
+            solver.get_run_order_time(room, read_mood=True)
+    else:
+        actual = solver.get_run_order_time(room, read_mood=True)
+        expected = (
+            ui.deadlines[room] - timedelta(minutes=advance_minutes)
+            if advance_minutes is not None
+            else None
+        )
+        assert actual == expected
+        if state == "paused":
+            solver.scene_graph_navigation.assert_called_once_with(
+                ui.base.Scene.INFRA_MAIN
+            )
+        else:
+            assert solver.back.call_count == 2
+        assert solver._page["room"] is None
+    assert page_visits == [room]
+    assert solver.op_data.facility_states[room]["product"] == (
+        "orundum" if strategy == "开采协力" else "lmd"
+    )
+    assert room in solver._startup_mood_observations
+    facility_events = [
+        record.log_event
+        for record in caplog.records
+        if getattr(record, "log_event", {}).get("type") == "facility-observation"
+    ]
+    assert [event["phase"] for event in facility_events] == ["started", "completed"]
+    assert facility_events[0]["id"] == facility_events[1]["id"]
+    expected_state = f"订单类型为{strategy}" if strategy else "订单类型未确认"
+    assert expected_state in facility_events[1]["summary"]
+    assert ("心情18" if name else "第1位空位") in facility_events[1]["summary"]
 
 
 @pytest.mark.parametrize(
@@ -66,6 +168,30 @@ def test_existing_order_including_restoration_consumes_startup_check(
     solver.tasks.clear()
     solver._check_startup_run_orders()
     assert not admission.reads(ui)
+
+
+def test_startup_keeps_first_urgent_order_when_second_return_is_unresolved(
+    staffed_order, monkeypatch
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(minutes=4)
+    second = solver._queue_order_refresh("room_2_2")
+    original_time = second.time
+    room_scene = solver.scene.side_effect
+    solver.scene.side_effect = lambda: (
+        ui.base.Scene.UNKNOWN
+        if solver._page == {"room": "room_2_2", "open": True}
+        else room_scene()
+    )
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    with pytest.raises(ui.base.OrderReturnUnresolved):
+        solver._check_startup_run_orders()
+    assert {task.meta_data for task in orders(ui)} == {"room_1_1"}
+    assert second in solver.tasks and second.time == original_time
+    assert second.execution_failure
+    assert solver.read_time.call_count == 2
+    solver.scene_graph_navigation.assert_not_called()
 
 
 @pytest.mark.parametrize("maintenance", ["entry", "replacement"])
@@ -184,6 +310,7 @@ def test_initial_mood_scan_reuses_only_unchanged_strict_startup_observation(
     assert read_options == {
         "force_mood": True,
         "strict_observation": True,
+        "defer_trade_order": True,
         "facility_observation": {},
         "facility_observation_scope": ANY,
     }

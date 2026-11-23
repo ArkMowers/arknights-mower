@@ -2,7 +2,11 @@ import json
 from pathlib import Path
 
 from .. import __rootdir__
-from ..utils.operator_data import OPERATOR_CATALOG_DATA, operator_views
+from ..utils.operator_data import (
+    OPERATOR_CATALOG_DATA,
+    operator_views,
+    selection_branches,
+)
 from ..utils.resource_pkg import register_resource_reload, resource_pkg_path
 
 
@@ -39,6 +43,23 @@ def stage_data_path() -> Path:
     return _data_path("stage_data_full.json")
 
 
+def _selection_branches():
+    try:
+        training = _read_resource_json("skill_data.json", dict).get("training", {})
+    except FileNotFoundError:
+        return {}
+    if not training.get("operators"):
+        return {}
+    labels = training.get("branchNames")
+    if labels is None:
+        # 旧包提供本期干员的分支编号，仅菜单文字沿用随程序发布的名称。
+        builtin = json.loads(
+            (Path(__rootdir__) / "data/skill_data.json").read_text("utf-8")
+        )
+        labels = builtin.get("training", {}).get("branchNames", {})
+    return selection_branches(training, labels)
+
+
 # 全量关卡数据：启动时读入，资源包更新后原位刷新。
 _stage_data_base = json.loads(stage_data_path().read_text("utf-8"))
 
@@ -54,6 +75,7 @@ stage_data_full = StageData()
 
 # agents list in Arknights
 agent_list, agent_profession = _agent_views()
+agent_branch = _selection_branches()
 workshop_formula = json.loads(_data_path("workshop_formula.json").read_text("utf-8"))
 
 stage_order = json.loads(_data_path("stage_order.json").read_text("utf-8"))
@@ -144,6 +166,7 @@ def reload_resource_data() -> None:
     """资源包切换后原位刷新数据，保留各调用模块已经导入的对象引用。"""
     new_stage_data_base = _read_resource_json("stage_data_full.json", list)
     new_agent_list, new_agent_profession = _agent_views()
+    new_agent_branch = _selection_branches()
     new_workshop_formula = _read_resource_json("workshop_formula.json", dict)
     new_stage_order = _read_resource_json("stage_order.json", list)
     new_recruit_agent = _read_resource_json("recruit.json", dict)
@@ -156,6 +179,7 @@ def reload_resource_data() -> None:
     _replace_list(_stage_data_base, new_stage_data_base)
     _replace_list(agent_list, new_agent_list)
     _replace_dict(agent_profession, new_agent_profession)
+    _replace_dict(agent_branch, new_agent_branch)
     _replace_dict(workshop_formula, new_workshop_formula)
     _replace_list(stage_order, new_stage_order)
     _replace_dict(recruit_agent, new_recruit_agent)

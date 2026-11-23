@@ -3,12 +3,19 @@
 from arknights_mower.utils import typealias as tp
 
 NOINERTIA_OFFSET = 100
+DEFAULT_SWIPE_MS_PER_100PX = 20
+
+
+def swipe_duration_ms(
+    distance: float, ms_per_100px: int = DEFAULT_SWIPE_MS_PER_100PX
+) -> int:
+    return int(abs(distance) * ms_per_100px // 100)
 
 
 def noinertia_path(
     start: tp.Coordinate,
     movement: tp.Coordinate,
-    duration: int = 20,
+    duration: int = DEFAULT_SWIPE_MS_PER_100PX,
     *,
     retry: bool = False,
 ) -> tuple[list[tp.Coordinate], list[int]]:
@@ -31,7 +38,7 @@ def noinertia_path(
             (x + dx, y + NOINERTIA_OFFSET),
             (x + dx, y),
         ]
-    main_duration = distance * duration // 100
+    main_duration = swipe_duration_ms(distance, duration)
     if retry:
         # 短距离复核也需要足够的拖动时间，不能只按距离缩短。
         main_duration = max(main_duration, distance * 80 // 100, 400)

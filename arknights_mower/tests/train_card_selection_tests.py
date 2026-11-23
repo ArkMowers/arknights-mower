@@ -1,5 +1,6 @@
 """训练室选人页已有待确认选择时，不能再次点击同一张卡。"""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -10,6 +11,7 @@ import pytest
 from arknights_mower.solvers import base_mixin
 from arknights_mower.solvers.base_mixin import (
     AgentSelectionNotReady,
+    AgentSelectionPageChanged,
     BaseMixin,
     agent_card_selected,
     train_card_selected,
@@ -209,3 +211,140 @@ def test_neighboring_blue_frames_do_not_select_occluded_card(monkeypatch):
     monkeypatch.setattr(base_mixin, "operator_list", lambda img, **kwargs: page)
     with pytest.raises(AgentSelectionNotReady):
         solver.wait_for_arranged_agents(["但书"])
+
+
+@pytest.mark.parametrize("low_frame_rate", [False, True])
+@pytest.mark.parametrize(
+    "target,filename,drop_first",
+    [
+        ("泥岩", "training_visible_mudrock", False),
+        ("泥岩", "training_visible_mudrock", True),
+        ("余", "training_selected_yu", False),
+    ],
+)
+def test_visible_trainee_uses_card_then_verifies_on_new_frame(
+    monkeypatch, target, filename, drop_first, low_frame_rate
+):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils.recognize import Recognizer
+
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
+    monkeypatch.setattr("arknights_mower.utils.solver.csleep", lambda _: None)
+    path = Path(__file__).parent / "fixtures/selection" / f"{filename}_20261123.jpg"
+    solver = object.__new__(BaseSchedulerSolver)
+    device = solver.device = MagicMock()
+    device.check_current_focus.return_value = False
+    recog = solver.recog = Recognizer(device, screencap=path.read_bytes())
+    frame = recog.img.copy()
+    page = base_mixin.operator_list_train(frame)
+    scope = dict(page)[target]
+    assert train_card_selected(frame, scope) is (target == "余")
+    device.screencap.side_effect = lambda: (
+        None,
+        frame.copy(),
+        cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY),
+    )
+    solver.op_data = SimpleNamespace(profession_filter=set())
+    solver.profession_filter = MagicMock()
+
+    def tap(point):
+        assert point == solver.get_pos(scope)
+        if drop_first and device.tap.call_count == 1:
+            return
+        (x, y), (right, bottom) = scope
+        # 原录像选择了余，此处只模拟点击泥岩后游戏画出的蓝框。
+        cv2.rectangle(
+            frame, (x - 19, y - 366), (right + 7, bottom + 16), (0, 180, 230), 7
+        )
+
+    device.tap.side_effect = tap
+    solver.choose_train_ope(target)
+
+    if drop_first:
+        solver.profession_filter.assert_called_once_with("TANK")
+    else:
+        solver.profession_filter.assert_not_called()
+    assert device.tap.call_count == int(target == "泥岩") + int(drop_first)
+    assert device.screencap.call_count >= (2 if low_frame_rate else 1)
+    assert solver.last_room == "train"
+
+
+def test_trainee_hidden_by_open_sidebar_cannot_be_selected_in_place():
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils.recognize import Recognizer
+
+    fixtures = Path(__file__).parent / "fixtures/selection"
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.recog = Recognizer(
+        None, (fixtures / "training_tank_yu_open_20261123.jpg").read_bytes()
+    )
+    solver.tap = MagicMock()
+
+    assert not solver._select_visible_trainee("临光", sidebar_open=True)
+    solver.tap.assert_not_called()
+
+
+def test_selected_trainee_with_late_confirmation_returns_to_room(monkeypatch):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils.recognize import Recognizer
+
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", False)
+    fixtures = Path(__file__).parent / "fixtures/selection"
+    device = MagicMock()
+    device.check_current_focus.return_value = False
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.device = device
+    solver.recog = Recognizer(
+        device, (fixtures / "training_selected_yu_20261123.jpg").read_bytes()
+    )
+    prompt = Recognizer(
+        device, (fixtures / "staffing_secondary_confirm_20261024.jpg").read_bytes()
+    )
+    device.screencap.return_value = (prompt.screencap, prompt.img, prompt.gray)
+    solver.profession_filter = MagicMock()
+
+    with pytest.raises(AgentSelectionPageChanged, match="二次确认"):
+        solver.choose_train_ope("余")
+
+    device.tap.assert_not_called()
+    solver.profession_filter.assert_not_called()
+
+
+@pytest.mark.parametrize("low_frame_rate", [False, True])
+def test_trainee_visible_before_open_profession_sidebar_is_selected_in_place(
+    monkeypatch, low_frame_rate
+):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.utils.recognize import Recognizer
+
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", low_frame_rate)
+    monkeypatch.setattr("arknights_mower.utils.solver.csleep", lambda _: None)
+    fixtures = Path(__file__).parent / "fixtures/selection"
+    solver = object.__new__(BaseSchedulerSolver)
+    device = solver.device = MagicMock()
+    device.check_current_focus.return_value = False
+
+    def capture(name):
+        return Recognizer(device, (fixtures / f"{name}_20261123.jpg").read_bytes())
+
+    solver.recog = capture("training_visible_mudrock")
+    ready = capture("training_tank_yu_open")
+    selected = capture("training_tank_yu_selected_open")
+    solver.op_data = SimpleNamespace(profession_filter=set())
+    solver._close_profession_filter = MagicMock(side_effect=AssertionError("不应收栏"))
+    solver.profession_filter = MagicMock(
+        side_effect=lambda _: setattr(solver, "recog", ready)
+    )
+
+    ready_frame = ready.screencap, ready.img.copy(), ready.gray.copy()
+    selected_frame = selected.screencap, selected.img.copy(), selected.gray.copy()
+    device.screencap.side_effect = lambda: (
+        selected_frame if device.tap.called else ready_frame
+    )
+    solver.choose_train_ope("余")
+
+    solver.profession_filter.assert_called_once_with("TANK")
+    solver._close_profession_filter.assert_not_called()
+    device.tap.assert_called_once_with((1105, 908))
+    assert device.screencap.call_count >= (2 if low_frame_rate else 1)
+    assert solver.last_room == "train"

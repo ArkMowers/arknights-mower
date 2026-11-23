@@ -15,6 +15,14 @@ class TestResourceCacheReload(unittest.TestCase):
             "stage_data_full.json": [{"id": "HOT-1"}],
             "agent.json": ["测试干员"],
             "agent_profession.json": {"测试干员": "WARRIOR"},
+            "skill_data.json": {
+                "training": {
+                    "operators": {
+                        "char_test": {"name": "测试干员", "subProfessionId": "lord"}
+                    },
+                    "branchNames": {"lord": "领主"},
+                }
+            },
             "workshop_formula.json": {"测试材料": {"apCost": 2}},
             "stage_order.json": ["HOT-1"],
             "recruit.json": {
@@ -31,6 +39,7 @@ class TestResourceCacheReload(unittest.TestCase):
             "_stage_data_base": data._stage_data_base,
             "agent_list": data.agent_list,
             "agent_profession": data.agent_profession,
+            "agent_branch": data.agent_branch,
             "workshop_formula": data.workshop_formula,
             "stage_order": data.stage_order,
             "recruit_agent": data.recruit_agent,
@@ -63,6 +72,7 @@ class TestResourceCacheReload(unittest.TestCase):
             for name, original_ref in containers.items():
                 self.assertIs(getattr(data, name), original_ref)
             self.assertEqual(data.agent_list, ["测试干员"])
+            self.assertEqual(data.agent_branch, {"测试干员": "领主"})
             self.assertEqual(data._stage_data_base, [{"id": "HOT-1"}])
             self.assertEqual(
                 data.agent_with_tags["测试标签"],
@@ -105,6 +115,8 @@ class TestResourceCacheReload(unittest.TestCase):
         room_original = room_ref.copy()
         widths_original = widths_ref.copy()
         model = {"测试干员": np.ones((4, 7), dtype=np.uint8)}
+        sample = np.pad(room_original["凯尔希"], 2)
+        self.assertIn("凯尔希", base_mixin._room_name_candidates(sample))
         try:
             with patch.object(
                 base_mixin, "_load_operator_room_model", return_value=model
@@ -113,11 +125,15 @@ class TestResourceCacheReload(unittest.TestCase):
             self.assertIs(base_mixin.OP_ROOM, room_ref)
             self.assertIs(base_mixin.OP_ROOM_WIDTH, widths_ref)
             self.assertEqual(widths_ref, {"测试干员": 7})
+            self.assertEqual(
+                list(base_mixin._room_name_candidates(sample)), ["测试干员"]
+            )
         finally:
             room_ref.clear()
             room_ref.update(room_original)
             widths_ref.clear()
             widths_ref.update(widths_original)
+            base_mixin._packed_room_names.cache_clear()
 
     def test_recruit_and_skill_reload_preserve_references(self):
         result_ref = recruit.recruit_res_template

@@ -1,5 +1,6 @@
 """页面反馈延迟时等待新帧，丢点时有界重试，不把残影当成第二次确认。"""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -9,12 +10,146 @@ import pytest
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
-from arknights_mower.utils.recognize import RecognizeError
+from arknights_mower.utils.performance import PERFORMANCE_PRESETS
+from arknights_mower.utils.recognize import RecognizeError, Recognizer
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask
 
 BLUE = ((1550, 40), (1800, 100))
 DETAIL = ((10, 400), (150, 480))
+
+
+@pytest.mark.parametrize(
+    "feedback,expected_taps",
+    [
+        ("immediate", 1),
+        ("slow", 1),
+        ("slow_low", 1),
+        ("zero_interval", 1),
+        ("dropped", 2),
+        ("popup", 1),
+        ("wrong_room", 0),
+    ],
+)
+def test_open_room_selection_waits_for_identity_and_retries_the_room(
+    monkeypatch, feedback, expected_taps
+):
+    from arknights_mower.solvers import base_schedule
+
+    directory = Path(__file__).parent / "fixtures"
+    solver = object.__new__(BaseSchedulerSolver)
+    frames = {
+        key: (directory / path).read_bytes()
+        for key, path in {
+            "room": "manufacture/b102_check_in_exp_20261123.jpg",
+            "selection": "selection/trade_single_selected_20261021.jpg",
+            "popup": "selection/staffing_secondary_confirm_20261024.jpg",
+        }.items()
+    }
+    device = solver.device = MagicMock()
+    current_time = 0
+    if feedback == "slow_low":
+        solver._selection_profile_snapshot = PERFORMANCE_PRESETS["low"]
+    else:
+        solver._selection_profile_snapshot = SimpleNamespace(
+            transition_timeout=2.5,
+            poll_interval=0.5,
+            low_frame_rate=feedback == "zero_interval",
+            screenshot_interval=0 if feedback == "zero_interval" else 500,
+        )
+    monkeypatch.setattr(base_schedule, "monotonic", lambda: current_time)
+    solver.recog = Recognizer(device, frames["room"])
+    device.check_current_focus.return_value = False
+
+    def capture():
+        key = "selection"
+        if feedback == "popup":
+            key = "popup"
+        elif feedback == "slow" and current_time < 1.5:
+            key = "room"
+        elif feedback == "slow_low" and current_time < 5.25:
+            key = "room"
+        elif feedback == "dropped" and device.tap.call_count < 2:
+            key = "room"
+        r = Recognizer(device, frames[key])
+        return r.screencap, r.img, r.gray
+
+    def sleep(interval):
+        nonlocal current_time
+        current_time += interval
+        solver.recog.update()
+
+    device.screencap.side_effect = capture
+    solver.sleep = sleep
+    if feedback in ("popup", "wrong_room"):
+        with pytest.raises(RecognizeError):
+            solver._open_room_selection(
+                "room_1_1" if feedback == "wrong_room" else "room_1_2"
+            )
+    else:
+        solver._open_room_selection("room_1_2")
+        assert solver.scene() == Scene.INFRA_ARRANGE_ORDER
+        if feedback in ("immediate", "zero_interval"):
+            assert current_time == 0
+            assert device.screencap.call_count == 1
+        if feedback == "dropped":
+            assert current_time >= 2.5
+    assert device.tap.call_count == expected_taps
+
+
+@pytest.mark.parametrize("map_after", [0, 1.5, 2.9, None])
+def test_completed_room_waits_for_a_new_map_frame_before_retiring_plan(
+    monkeypatch, map_after
+):
+    from arknights_mower.solvers import base_schedule
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+    solver.op_data = SimpleNamespace()
+    solver._selection_profile_snapshot = SimpleNamespace(
+        transition_timeout=2.5, poll_interval=0.5, screenshot_interval=500
+    )
+    solver._confirm_facility_arrangement_log = MagicMock()
+    directory = Path(__file__).parent / "fixtures"
+    device = solver.device = MagicMock()
+    room = Recognizer(
+        device, (directory / "manufacture/b102_check_in_exp_20261123.jpg").read_bytes()
+    )
+    base_map = Recognizer(device, (directory / "recycle/map.png").read_bytes())
+    solver.recog = Recognizer(device, room.screencap)
+    room_frame = room.screencap, room.img, room.gray
+    map_frame = base_map.screencap, base_map.img, base_map.gray
+    clock = 0
+    monkeypatch.setattr(base_schedule, "monotonic", lambda: clock)
+    device.screencap.side_effect = lambda: (
+        map_frame if map_after is not None and clock >= map_after else room_frame
+    )
+
+    def sleep(interval):
+        nonlocal clock
+        clock += interval
+        solver.recog.update()
+
+    solver.sleep = sleep
+    plan = {"room_1_2": ["余"]}
+    observed = [{"agent": "余"}]
+    if map_after is None:
+        with pytest.raises(RecognizeError, match="全局视角"):
+            solver._complete_room_arrangement({}, "room_1_2", plan, observed=observed)
+        assert plan == {"room_1_2": ["余"]}
+        solver._confirm_facility_arrangement_log.assert_not_called()
+    else:
+        solver._complete_room_arrangement({}, "room_1_2", plan, observed=observed)
+        assert clock >= map_after
+        if map_after == 0:
+            assert clock == 0.375
+            assert device.screencap.call_count == 1
+        assert not plan
+        solver._confirm_facility_arrangement_log.assert_called_once_with(
+            "room_1_2", ["余"], observed
+        )
+    device.send_keyevent.assert_called_once()
 
 
 def solver_for(frames):
@@ -53,6 +188,9 @@ def test_confirmation_disappearance_needs_no_extra_wait_or_click():
     solver.tap_confirm("room_1_1")
     solver.tap.assert_called_once_with(BLUE, interval=0.2)
     solver.sleep.assert_not_called()
+    checked = [call.args[0] for call in solver.find.call_args_list]
+    assert checked.count("confirm_blue") == 2
+    assert checked.count("confirm_train") == checked.count("arrange_confirm") == 1
 
 
 def test_fading_confirmation_is_observed_without_reclicking():
@@ -191,11 +329,22 @@ def test_connection_timeout_recovers_without_reporting_confirmation_success(
         solver.tap_confirm("room_1_1")
 
     solver.tap.assert_called_once_with(BLUE, interval=0.2)
-    assert solver.sleep.call_count == 3
+    assert sum(call.args[0] for call in solver.sleep.call_args_list) == pytest.approx(3)
     solver.device.exit.assert_called_once_with()
     recovery_sleep.assert_called_once_with(3)
     solver.check_current_focus.assert_called_once_with()
     solver.back_to_infrastructure.assert_called_once_with()
+
+
+def test_short_connection_after_submission_uses_next_capture_opportunity(monkeypatch):
+    monkeypatch.setattr(config.conf.waiting_scene, "CONNECTING", (3, 5))
+    monkeypatch.setattr(config.conf, "performance_mode", "xhigh")
+    solver = solver_for(
+        [{"confirm_blue": BLUE}, {"connecting": True}, {"room_detail": DETAIL}]
+    )
+    solver.tap_confirm("room_1_1")
+    solver.tap.assert_called_once_with(BLUE, interval=0.2)
+    solver.sleep.assert_called_once_with(0.5)
 
 
 def test_detail_is_closed_before_opening_orders():
@@ -217,6 +366,27 @@ def test_order_entrance_lost_tap_can_retry():
     solver = solver_for([{}, {}, {}, {"bill_accelerate": BLUE}])
     solver._wait_drone_interface()
     assert solver.tap.call_count == 2
+
+
+def test_product_read_waits_through_delayed_entrance_frames(monkeypatch):
+    from arknights_mower.solvers import base_schedule
+
+    solver = solver_for(
+        [{"arrange_check_in_on": DETAIL}] * 4
+        + [{}] * 4
+        + [{"manufacture_accelerate": BLUE}]
+    )
+    monkeypatch.setattr(
+        base_schedule,
+        "monotonic",
+        lambda: (solver.tap.call_count + solver.sleep.call_count) / 5,
+    )
+    solver._wait_drone_interface(
+        accelerate_template="manufacture_accelerate", retry_after=3
+    )
+
+    assert [c.args[0] for c in solver.tap.call_args_list] == [DETAIL, (96, 1026)]
+    assert all(call.args[0] <= 0.2 for call in solver.sleep.call_args_list)
 
 
 def test_unrelated_factory_button_is_not_trade_success():

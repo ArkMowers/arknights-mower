@@ -79,7 +79,7 @@ def test_startup_scans_cards_without_selection_or_occupancy_changes(solver, task
     solver.swipe_left.assert_called_once_with(1, "ALL")
     solver.tap.assert_called_once_with((1920 * 0.38, 1080 * 0.95), interval=0.5)
     solver.switch_arrange_order.assert_called_once_with(
-        "心情", solver.enter_room.call_args.args[0], True
+        "心情", solver.enter_room.call_args.args[0], True, refresh=False
     )
     solver.agent_arrange_room.assert_not_called()
     solver.tap_confirm.assert_not_called()
@@ -265,8 +265,9 @@ def test_latest_mood_wins_and_estimate_expiry_keeps_unknown(solver):
     data.dorm_mood_estimates["银灰"] = (3, datetime.now() - timedelta(hours=1))
     assert dorm_candidate_mood(data, "银灰") is None
     data.update_detail("银灰", 12, "meeting", 0, True)
-    data.dorm_mood_estimates["银灰"] = (3, datetime.now())
-    assert dorm_candidate_mood(data, "银灰") == 3
+    newer = op.time_stamp + timedelta(seconds=1)
+    data.dorm_mood_estimates["银灰"] = (3, newer)
+    assert dorm_candidate_mood(data, "银灰", now=newer) == 3
     assert op.mood == 12
     for observed_at in (op.time_stamp, op.time_stamp - timedelta(seconds=1)):
         data.dorm_mood_estimates["银灰"] = (3, observed_at)

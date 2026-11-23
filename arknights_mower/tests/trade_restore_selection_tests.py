@@ -98,6 +98,8 @@ def restoration_solver(
     *,
     clear_works=True,
     full_selection_wrong=False,
+    inherited_order=None,
+    show_numbers=True,
 ):
     mixin, schedule = selection_modules
     from arknights_mower.utils import config
@@ -121,6 +123,13 @@ def restoration_solver(
     for stage in ("before", "original"):
         for name, ((left, top), (right, bottom)) in pages[stage]:
             name_strips[name] = images[stage][top:bottom, left:right].copy()
+
+    numbers = []
+    if show_numbers:
+        for _, ((left, top), _) in pages["before"][:3]:
+            numbers.append(
+                images["before"][top - 330 : top - 242, left + 115 : left + 189]
+            )
 
     selected = INSERTED.copy()
     state = {
@@ -158,6 +167,11 @@ def restoration_solver(
         # 归档没有本次失败后成功清空、重新选入的画面；只为后续 UI 反馈绘制蓝框，
         # 姓名仍取自原图，继续执行真实姓名分割、匹配和蓝框识别。
         frame = np.full((1080, 1920, 3), 245, dtype=np.uint8)
+        if inherited_order:
+            criterion, ascending = inherited_order
+            x = solver._arrange_order_x(ROOM)[criterion]
+            y = 80 if ascending else 70
+            frame[y : y + 3, x : x + 5] = (0, 166, 220)
         for index, name in enumerate(state["cards"][:12]):
             left = 631 + index // 2 * 216
             top = 488 + index % 2 * 421
@@ -165,6 +179,10 @@ def restoration_solver(
             frame[top : top + 32, left - 1 : left + 190] = 45
             frame[top : top + strip.shape[0], left : left + strip.shape[1]] = strip
             if name in selected:
+                if numbers:
+                    frame[top - 330 : top - 242, left + 115 : left + 189] = numbers[
+                        selected.index(name)
+                    ]
                 cv2.rectangle(
                     frame,
                     (left - 22, top - 375),
@@ -206,7 +224,13 @@ def restoration_solver(
             return
         page = mixin.operator_list(solver.recog.img)
         if isinstance(point[0], tuple):
-            name = next(name for name, scope in page if scope == point)
+            # 真实点击落在姓名框中心，相邻蓝框可使识别框边缘移动几个像素。
+            x, y = ((start + end) // 2 for start, end in zip(*point))
+            name = next(
+                name
+                for name, ((left, top), (right, bottom)) in page
+                if left <= x <= right and top <= y <= bottom
+            )
         else:
             positions = [(672, 378), (672, 810), (864, 378), (864, 810), (1056, 378)]
             name = page[positions.index(tuple(point))][0]
@@ -226,7 +250,8 @@ def restoration_solver(
             events.append(("capacity_full", name))
         refresh()
 
-    def sort(*_):
+    def sort(criterion, *_, **kwargs):
+        events.append(("sort", criterion))
         state["page"] = "first"
         state["cards"] = selected + [
             name for name in name_strips if name not in selected
@@ -256,6 +281,213 @@ def restoration_solver(
     solver.swipe_agent_page = Mock(side_effect=next_page)
     refresh()
     return solver, task, selected, state, events
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "low"])
+def test_numbered_full_production_roster_keeps_current_sort(
+    monkeypatch, selection_modules, mode
+):
+    solver, _, selected, _, _ = restoration_solver(monkeypatch, selection_modules, mode)
+    solver.choose_agent(INSERTED.copy(), ROOM, fresh_room_entry=True)
+    assert selected == INSERTED
+    solver.tap.assert_not_called()
+    solver.switch_arrange_order.assert_not_called()
+    solver.swipe_left.assert_not_called()
+
+
+def test_numbered_roster_in_other_order_is_reselected(monkeypatch, selection_modules):
+    solver, _, selected, _, events = restoration_solver(
+        monkeypatch, selection_modules, miss_cancel=False
+    )
+    target = list(reversed(INSERTED))
+    assert not solver.verify_agent(target, ROOM, ordered=False)
+    solver.choose_agent(target.copy(), ROOM)
+    assert events.count(("clear",)) == 1
+    assert selected == target
+
+
+def test_number_overlay_arrives_after_the_selected_border(
+    monkeypatch, selection_modules
+):
+    solver, _, _, _, _ = restoration_solver(monkeypatch, selection_modules, "xhigh")
+    settled = load_frame("before")
+    delayed = settled.copy()
+    _, ((x, y), _) = selection_modules[0].operator_list(settled)[2]
+    delayed[y - 330 : y - 242, x + 115 : x + 189] = 0
+    solver.recog.update = Mock(
+        side_effect=lambda: setattr(solver.recog, "img", delayed)
+    )
+    solver.wait_for_next_observation = Mock(
+        side_effect=lambda *_: setattr(solver.recog, "img", settled)
+    )
+    slots = {}
+    assert (
+        solver.wait_for_arranged_agents(
+            INSERTED, ordered=False, visible_only=True, slot_numbers=slots
+        )
+        == INSERTED
+    )
+    assert slots == {name: i for i, name in enumerate(INSERTED, 1)}
+    solver.tap.assert_not_called()
+    solver.wait_for_next_observation.assert_called_once()
+
+
+@pytest.mark.parametrize("swap_after", ["clear", "first_click"])
+@pytest.mark.parametrize("show_numbers", [True, False])
+def test_reorder_recovers_changed_layout(
+    monkeypatch, selection_modules, swap_after, show_numbers
+):
+    solver, _, selected, state, events = restoration_solver(
+        monkeypatch, selection_modules, miss_cancel=False, show_numbers=show_numbers
+    )
+    tap = solver.tap.side_effect
+    swapped = False
+
+    def move_cards(point, **kwargs):
+        nonlocal swapped
+        tap(point, **kwargs)
+        if not state["cleared"] or swapped:
+            return
+        if len(selected) == (0 if swap_after == "clear" else 1):
+            cards = state["cards"]
+            cards[0], cards[1] = cards[1], cards[0]
+            swapped = True
+            solver.recog.update()
+
+    solver.tap.side_effect = move_cards
+    target = list(reversed(INSERTED))
+    solver.choose_agent(target.copy(), ROOM)
+    assert swapped
+    assert selected == target
+    first_clicks = [event[1] for event in events if event[0] == "select"][:3]
+    if swap_after == "clear":
+        assert first_clicks == target
+    else:
+        assert first_clicks == ["龙舌兰", "黑键", "但书"]
+    assert events.count(("clear",)) == (
+        1 if swap_after == "clear" and show_numbers else 2
+    )
+
+
+def test_partial_numbered_roster_still_clears_hidden_selections(
+    monkeypatch, selection_modules
+):
+    solver, _, selected, _, events = restoration_solver(
+        monkeypatch, selection_modules, miss_cancel=False
+    )
+    solver.choose_agent(INSERTED[:2], ROOM)
+    assert ("clear",) in events
+    assert selected == INSERTED[:2]
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "low"])
+@pytest.mark.parametrize("stale_frames", [0, 2])
+def test_one_misplaced_operator_moves_to_last_slot_without_clearing(
+    monkeypatch, selection_modules, mode, stale_frames
+):
+    solver, _, selected, _, events = restoration_solver(
+        monkeypatch,
+        selection_modules,
+        mode,
+        miss_cancel=False,
+        inherited_order=("技能", False),
+    )
+    target = [INSERTED[0], INSERTED[2], INSERTED[1]]
+    before = solver.recog.img
+    capture = solver.recog.update.side_effect
+    pending = stale_frames
+
+    def refresh(*_):
+        nonlocal pending
+        if len(selected) == 2 and pending:
+            pending -= 1
+            solver.recog.img = before
+        else:
+            capture()
+
+    solver.recog.update.side_effect = refresh
+    solver.wait_for_next_observation.side_effect = refresh
+    solver.choose_agent(target, ROOM, fresh_room_entry=True)
+    assert pending == 0
+    assert selected == target
+    assert [e for e in events if e[0] in ("clear", "cancel", "select", "sort")] == [
+        ("cancel", "但书"),
+        ("select", "但书"),
+    ]
+
+
+def test_two_numbered_workers_fill_observed_two_slot_facility(
+    monkeypatch, selection_modules
+):
+    solver, _, selected, state, events = restoration_solver(
+        monkeypatch, selection_modules, inherited_order=("技能", False)
+    )
+    target = INSERTED[:2]
+    selected[:] = target
+    state["cleared"] = True
+    solver.op_data.get_current_room = lambda *_: target.copy()
+    solver.choose_agent(target, ROOM, fresh_room_entry=True, two_slot_room=True)
+    assert selected == target
+    assert not any(e[0] in ("clear", "cancel", "select", "sort") for e in events)
+
+
+def test_deselects_the_named_resident_when_entry_order_differs_from_cache(
+    monkeypatch, selection_modules
+):
+    solver, _, selected, _, events = restoration_solver(
+        monkeypatch,
+        selection_modules,
+        miss_cancel=False,
+        inherited_order=("技能", False),
+    )
+    solver.op_data.get_current_room = lambda *_: list(reversed(INSERTED))
+    solver.find.side_effect = lambda name, **_: (
+        ((1724, 990), (1813, 1041)) if name == "confirm_blue" else None
+    )
+    target = [*INSERTED[:2], ORIGINAL[1]]
+    solver.choose_agent(target, ROOM, fresh_room_entry=True)
+    assert selected == target
+    assert ("cancel", INSERTED[0]) not in events
+    assert ("clear",) not in events
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "low"])
+def test_dropped_final_card_input_repairs_only_the_empty_slot(
+    monkeypatch, selection_modules, mode
+):
+    solver, _, selected, _, events = restoration_solver(
+        monkeypatch,
+        selection_modules,
+        mode,
+        miss_cancel=False,
+        inherited_order=("技能", False),
+    )
+    target = [INSERTED[0], INSERTED[2], INSERTED[1]]
+    selected[:] = target[:-1]
+    solver.op_data.get_current_room = lambda *_: target[:-1]
+    solver.recog.update()
+    tap = solver.tap.side_effect
+
+    def drop_first_input(point, **kwargs):
+        if not any(e[0] == "dropped" for e in events):
+            name = next(
+                name
+                for name, scope in selection_modules[0].operator_list(solver.recog.img)
+                if scope == point
+            )
+            assert name == target[-1]
+            events.append(("dropped", name))
+            return
+        tap(point, **kwargs)
+
+    solver.tap.side_effect = drop_first_input
+    solver.choose_agent(target, ROOM, fresh_room_entry=True)
+    assert selected == target
+    assert ("clear",) not in events
+    assert [e for e in events if e[0] in ("dropped", "select", "cancel")] == [
+        ("dropped", target[-1]),
+        ("select", target[-1]),
+    ]
 
 
 @pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])

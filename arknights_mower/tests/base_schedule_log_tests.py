@@ -335,12 +335,14 @@ def test_unreadable_product_keeps_the_warning_without_a_success_summary(
     "outcome", ["confirmed", "unknown_product", "cached_mood", "interrupted"]
 )
 @pytest.mark.parametrize(
-    ("facility", "room_label", "previous", "observed", "reading", "subject"),
+    ("facility", "room_label", "previous", "observed", "reading", "subject", "panel"),
     [
-        ("manufacture", "制造站 B102", "gold", "exp3", "中级作战记录", "产物"),
-        ("trade", "贸易站 B101", "lmd", "orundum", "开采协力", "订单类型"),
+        ("manufacture", "制造站 B102", "gold", "exp3", "中级作战记录", "产物", None),
+        ("manufacture", "制造站 B102", "gold", "exp3", "中级作战记录", "产物", "open"),
+        ("trade", "贸易站 B101", "lmd", "orundum", "开采协力", "订单类型", "closed"),
+        ("trade", "贸易站 B101", "lmd", "orundum", "开采协力", "订单类型", "open"),
     ],
-    ids=["manufacture", "trade"],
+    ids=["manufacture", "manufacture-open", "trade-closed", "trade-open"],
 )
 def test_mood_patrol_updates_one_facility_observation(
     monkeypatch,
@@ -352,6 +354,7 @@ def test_mood_patrol_updates_one_facility_observation(
     observed,
     reading,
     subject,
+    panel,
 ):
     caplog.set_level(logging.INFO)
     monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
@@ -368,20 +371,35 @@ def test_mood_patrol_updates_one_facility_observation(
     instance.op_data.update_detail = MagicMock(return_value=None)
     instance.recog = SimpleNamespace(w=1920, h=1080, gray=MagicMock())
     instance.detect_room_type = MagicMock(return_value=room_label.split()[0])
+    instance._work_room_panel = MagicMock(return_value=panel)
+    instance._visible_manufacture_product = MagicMock(return_value=None)
     instance._wait_drone_interface = MagicMock()
     instance._product_ocr_text = MagicMock(
         return_value="无法识别的文字" if outcome == "unknown_product" else reading
     )
-    instance.scene_graph_navigation = MagicMock(
-        side_effect=lambda _: base.logger.info("进入设施详情")
-    )
+    in_room = False
+
+    def return_to_room(*args, **kwargs):
+        nonlocal in_room
+        assert not in_room
+        in_room = True
+        base.logger.info("进入设施详情")
+
+    instance.scene_graph_navigation = MagicMock(side_effect=return_to_room)
+    instance.back = MagicMock(side_effect=return_to_room)
+    instance.detect_room = MagicMock(side_effect=lambda: room if in_room else "")
     instance._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     instance.turn_on_room_detail = MagicMock()
     instance.wait_product_complete = MagicMock()
-    instance.find = MagicMock(return_value=None)
+    instance.find = MagicMock(
+        side_effect=lambda resource, **_: in_room and resource == "arrange_check_in"
+    )
     instance.read_screen = MagicMock(return_value=name)
 
     def measure(_):
+        assert instance._wait_drone_interface.call_count == (
+            0 if panel == "open" else 1
+        )
         assert [
             record.log_event["phase"]
             for record in records(caplog, logging.INFO)
@@ -403,12 +421,19 @@ def test_mood_patrol_updates_one_facility_observation(
             == name
         )
 
-    start, navigation, end = records(caplog, logging.INFO)
+    start, *navigation, end = records(caplog, logging.INFO)
     assert start.log_event["id"] == end.log_event["id"]
     parent = {"type": "facility-observation", "id": start.log_event["id"]}
-    assert start.log_parent == navigation.log_parent == end.log_parent == parent
-    assert navigation.getMessage() == "进入设施详情"
-    assert not hasattr(navigation, "log_event")
+    assert start.log_parent == end.log_parent == parent
+    interrupted_before_order = panel == "open" and outcome == "interrupted"
+    if interrupted_before_order:
+        assert navigation == []
+        instance._wait_drone_interface.assert_not_called()
+    else:
+        assert len(navigation) == 1 and navigation[0].log_parent == parent
+        assert navigation[0].getMessage() == "进入设施详情"
+        assert not hasattr(navigation[0], "log_event")
+        instance._wait_drone_interface.assert_called_once()
     base.logger.info("继续巡检")
     assert not hasattr(records(caplog, logging.INFO)[-1], "log_parent")
     assert start.log_event["anchor"] and not end.log_event["anchor"]
@@ -419,12 +444,14 @@ def test_mood_patrol_updates_one_facility_observation(
     state = (
         f"{subject}未确认" if outcome == "unknown_product" else f"{subject}为{reading}"
     )
-    assert start.getMessage() == f"{room_label}：{state}，正在读取干员心情"
+    initial_state = f"{subject}待确认" if panel == "open" else state
+    assert start.getMessage() == f"{room_label}：{initial_state}，正在读取干员心情"
     expected_detail = {
         "cached_mood": f"[[operator:{name}]]（心情未实读）",
         "interrupted": "干员心情读取未完成",
     }.get(outcome, f"[[operator:{name}]]（心情16.124）")
-    assert end.getMessage() == f"{room_label}：{state}，{expected_detail}"
+    final_state = initial_state if interrupted_before_order else state
+    assert end.getMessage() == f"{room_label}：{final_state}，{expected_detail}"
     assert end.log_event["phase"] == (
         "failed" if outcome == "interrupted" else "completed"
     )
@@ -434,19 +461,164 @@ def test_mood_patrol_updates_one_facility_observation(
         == ([] if outcome == "interrupted" else [name])
     )
     assert instance.op_data.facility_states[room]["product"] == (
-        previous if outcome == "unknown_product" else observed
+        previous
+        if outcome == "unknown_product" or interrupted_before_order
+        else observed
     )
     if outcome == "cached_mood":
         instance.read_accurate_mood.assert_not_called()
+    instance._work_room_panel.assert_called_once_with(room)
+    assert instance._visible_manufacture_product.call_count == (
+        1 if facility == "manufacture" and panel else 0
+    )
 
 
-def test_selected_card_order_is_visible_but_still_awaits_sorting_before_confirmation(
-    monkeypatch, caplog
+@pytest.mark.parametrize(
+    ("visible", "next_frame"),
+    [("exp3", None), (None, None), (None, "same_room"), (None, "wrong_room")],
+)
+def test_staffing_reads_room_product_once_before_using_factory_detail(
+    monkeypatch, visible, next_frame
+):
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
+    room, plan = product_plan()
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.task = SimpleNamespace(type=base.TaskTypes.SELF_CORRECTION)
+    solver.tasks = []
+    solver.op_data = Operators(plan)
+    solver.recog = SimpleNamespace(gray=MagicMock(), capture_started_at=1)
+    events = []
+
+    def observe_panel(target):
+        assert target == room
+        events.append("panel")
+        if solver.recog.capture_started_at == 2 and next_frame == "wrong_room":
+            raise base.RecognizeError("房号不符")
+        return "open"
+
+    def find(resource, **kwargs):
+        if resource == "infra_no_operator":
+            events.append("slot")
+            if next_frame:
+                solver.recog.capture_started_at = 2
+            return True
+        return resource == "arrange_check_in"
+
+    solver._work_room_panel = MagicMock(side_effect=observe_panel)
+    solver._visible_manufacture_product = MagicMock(return_value=visible)
+    solver.detect_room_type = MagicMock(return_value="制造站")
+    solver.detect_room = MagicMock(return_value=room)
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.find = MagicMock(side_effect=find)
+    solver._wait_drone_interface = MagicMock(
+        side_effect=lambda **_: events.append("detail")
+    )
+    solver.read_manufacture_product = MagicMock(return_value="exp3")
+    solver.back = MagicMock()
+    observed = set()
+    if next_frame == "wrong_room":
+        with pytest.raises(base.RecognizeError, match="房号不符"):
+            solver.get_agent_from_room(room, observed_facilities=observed)
+        assert events == ["panel", "slot", "panel"]
+        assert observed == set()
+    else:
+        result = solver.get_agent_from_room(room, observed_facilities=observed)
+        assert [item["agent"] for item in result] == [""]
+        expected = ["panel", "slot"]
+        if next_frame:
+            expected.append("panel")
+        if not visible:
+            expected.append("detail")
+        assert events == expected
+        assert observed == {room}
+        assert solver.op_data.facility_product(room) == "exp3"
+    solver._visible_manufacture_product.assert_called_once_with()
+    solver.detect_room_type.assert_called_once_with()
+
+
+@pytest.mark.parametrize("transition", ["open_panel", "retry_name"])
+@pytest.mark.parametrize("unexpected", ["foreign_empty", "foreign_operator", "closed"])
+def test_changed_panel_frame_cannot_write_another_rooms_slot(
+    monkeypatch, transition, unexpected
+):
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
+    room, plan = product_plan()
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.task = SimpleNamespace(type=base.TaskTypes.SELF_CORRECTION)
+    solver.tasks = []
+    solver.op_data = Operators(plan)
+    resident = Operator("Lancet-2", room, current_room=room, current_index=0, mood=18)
+    visitor = Operator(
+        "夜刀", "room_1_1", current_room="room_1_1", current_index=0, mood=14
+    )
+    solver.op_data.add(resident)
+    solver.op_data.add(visitor)
+    solver.op_data.update_detail = MagicMock()
+    solver._reconcile_room_observation = MagicMock()
+    original = object()
+    solver.recog = SimpleNamespace(
+        _img=original, gray=MagicMock(), capture_started_at=None
+    )
+
+    def change_frame(*_):
+        solver.recog._img = object()
+
+    def observe_panel(_):
+        if solver.recog._img is original:
+            return "open"
+        if unexpected == "closed":
+            return "closed"
+        raise base.RecognizeError("进驻面板属于其它房间")
+
+    solver._work_room_panel = MagicMock(side_effect=observe_panel)
+    solver.detect_room_type = MagicMock(return_value="制造站")
+    solver._visible_manufacture_product = MagicMock(return_value=None)
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock(
+        side_effect=change_frame if transition == "open_panel" else None
+    )
+    solver.wait_product_complete = MagicMock()
+    solver.sleep = MagicMock(side_effect=change_frame)
+    solver.find = MagicMock(
+        side_effect=lambda resource, **_: (
+            resource == "infra_no_operator"
+            and solver.recog._img is not original
+            and unexpected == "foreign_empty"
+        )
+    )
+    solver.read_screen = MagicMock(
+        side_effect=lambda *_, **__: "" if solver.recog._img is original else "夜刀"
+    )
+    solver._wait_drone_interface = MagicMock()
+    observed = set()
+
+    with pytest.raises(base.RecognizeError):
+        solver.get_agent_from_room(room, observed_facilities=observed)
+
+    assert solver._work_room_panel.call_count == 2
+    assert (
+        solver.find.call_count
+        == solver.read_screen.call_count
+        == (1 if transition == "retry_name" else 0)
+    )
+    solver.op_data.update_detail.assert_not_called()
+    solver._reconcile_room_observation.assert_not_called()
+    solver._wait_drone_interface.assert_not_called()
+    assert resident.current_room == room and resident.mood == 18
+    assert visitor.current_room == "room_1_1" and visitor.mood == 14
+    assert observed == set()
+
+
+@pytest.mark.parametrize("different_order", [True, False])
+def test_selected_card_order_is_visible_and_reports_whether_sorting_is_pending(
+    monkeypatch, caplog, different_order
 ):
     caplog.set_level(logging.DEBUG)
     instance, selected = selection_solver(monkeypatch)
     instance.tap_confirm = MagicMock()
-    requested = RESIDENTS + ["伊芙利特"]
+    requested = (RESIDENTS[::-1] if different_order else RESIDENTS) + ["伊芙利特"]
 
     instance.choose_agent(requested, "dormitory_1")
 
@@ -456,7 +628,7 @@ def test_selected_card_order_is_visible_but_still_awaits_sorting_before_confirma
     assert len(observations) == 1
     assert observations[0].levelno == logging.INFO
     assert observations[0].getMessage().startswith("宿舍1：选人页当前选中：")
-    assert observations[0].getMessage().endswith("，待排序核对")
+    assert observations[0].getMessage().endswith("，待排序核对") == different_order
     assert observations[0].log_room == "dormitory_1"
     assert set(observations[0].log_agents) == set(requested)
     assert all(
@@ -544,9 +716,9 @@ def test_room_observation_updates_idle_cache_without_claiming_a_new_departure(
     dorm_solver.tap_confirm.assert_not_called()
 
 
-@pytest.mark.parametrize("placeholders_only", [False, True])
+@pytest.mark.parametrize("empty_room", [False, True])
 def test_retry_reports_freshly_confirmed_names_without_repeating_selection(
-    dorm_solver, caplog, placeholders_only
+    dorm_solver, caplog, empty_room
 ):
     caplog.set_level(logging.DEBUG)
     room = dorm_recovery_tests.ROOM
@@ -554,10 +726,10 @@ def test_retry_reports_freshly_confirmed_names_without_repeating_selection(
     dorm_solver.task.arrangement_retry_count = 3
     dorm_solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
     dorm_solver.physical = dorm_recovery_tests.FINAL.copy()
-    if placeholders_only:
-        dorm_solver.task.plan[room] = ["Free"] * 5
-        dorm_solver._prepare_group_shift_execution_targets = MagicMock()
-        dorm_solver.prepare_dorm_selection = MagicMock(return_value=[])
+    if empty_room:
+        dorm_solver.task.emergency_dorm = True
+        dorm_solver.physical = [""] * 5
+        dorm_solver.task.plan[room] = dorm_solver.physical.copy()
     reads_before = dorm_solver.get_agent_from_room.call_count
 
     dorm_solver.agent_arrange_room({}, room, dorm_solver.task.plan)
@@ -570,13 +742,11 @@ def test_retry_reports_freshly_confirmed_names_without_repeating_selection(
     assert len(verified) == 1
     assert verified[0].getMessage() == (
         "重试时重新读取宿舍1：按当前计划无需重复选人"
-        if placeholders_only
+        if empty_room
         else "重试时重新读取宿舍1：[[operator:杜林]]、[[operator:琴柳]]、[[operator:红]]、[[operator:银灰]]、[[operator:陈]]已在计划位置，跳过重复选人"
     )
     assert verified[0].log_room == room
-    assert verified[0].log_agents == (
-        [] if placeholders_only else dorm_recovery_tests.FINAL
-    )
+    assert verified[0].log_agents == ([] if empty_room else dorm_recovery_tests.FINAL)
     assert any(
         "重试复核计划：" in record.getMessage()
         for record in records(caplog, logging.DEBUG)

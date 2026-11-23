@@ -47,11 +47,16 @@ def test_mastery_generation_includes_patch_forms_in_training_metadata(
         "characterUpgradeCostMap": [],
         "evolveGoldCost": [],
     }
-    monkeypatch.setattr(processor, "加载json", lambda _: {})
+    monkeypatch.setattr(
+        processor,
+        "加载json",
+        lambda _: {"subProfDict": {"corecaster": {"subProfessionName": "中坚术师"}}},
+    )
 
     processor.提取专精数据()
 
     data = json.loads((tmp_path / "arknights_mower/data/skill_data.json").read_text())
+    assert data["training"]["branchNames"] == {"corecaster": "中坚术师"}
     for cid, (profession, branch, skill) in forms.items():
         assert data["characters"][cid]["skills"][0]["name"] == skill
         assert data["training"]["operators"][cid] == {
@@ -67,7 +72,13 @@ def test_mastery_generation_includes_patch_forms_in_training_metadata(
 
 @pytest.mark.parametrize(
     ("room", "expected"),
-    [("RECYCLE", "回收站"), ("TRAINING", "训练室"), ("FUTURE_ROOM", "FUTURE_ROOM")],
+    [
+        ("RECYCLE", "回收站"),
+        ("TRAINING", "训练室"),
+        ("FUTURE_ROOM", "FUTURE_ROOM"),
+        ("MANUFACTURE", "制造站"),
+        ("TRADING", "贸易站"),
+    ],
 )
 @pytest.mark.parametrize("phase", [2, "PHASE_2"])
 def test_building_skill_generation_preserves_new_and_unknown_facilities(
@@ -83,6 +94,9 @@ def test_building_skill_generation_preserves_new_and_unknown_facilities(
         "buffs": {
             "test_buff": {
                 "buffName": "测试技能",
+                "sortId": 7201,
+                "targets": ["F_EXP"] if room == "MANUFACTURE" else [],
+                "efficiency": -5 if room == "MANUFACTURE" else 0,
                 "description": "使用<$recycle.power>回收材料",
                 "roomType": room,
                 "buffCategory": "OUTPUT",
@@ -113,6 +127,13 @@ def test_building_skill_generation_preserves_new_and_unknown_facilities(
     assert records[0]["span"] == 1
     skill = records[0]["child_skill"][0]
     assert skill["roomType"] == expected
+    assert skill["sortId"] == 7201
+    if room == "MANUFACTURE":
+        assert skill["targets"] == ["F_EXP"] and skill["efficiency"] == -5
+    elif room == "TRADING":
+        assert skill["targets"] == [] and skill["efficiency"] == 0
+    else:
+        assert "targets" not in skill and "efficiency" not in skill
     assert skill["phase_level"] == "精2 1级"
     assert skill["skillname"] == "测试技能"
     assert skill["skillIcon"] == "test_icon"
@@ -198,3 +219,19 @@ def test_avatar_generation_preserves_complete_operator_metadata(tmp_path, monkey
     assert json.loads(
         (tmp_path / "arknights_mower/data/agent_profession.json").read_text()
     ) == {"旅骨": "MEDIC"}
+
+
+def test_selection_branches_exclude_shared_forms_and_unknown_branches():
+    from arknights_mower.utils.operator_data import selection_branches
+
+    training = {
+        "operators": {
+            "base": {"name": "阿米娅", "subProfessionId": "corecaster"},
+            "patch": {"name": "阿米娅", "subProfessionId": "artsfghter"},
+            "caster": {"name": "史都华德", "subProfessionId": "corecaster"},
+            "other": {"name": "测试干员", "subProfessionId": "unknown"},
+        }
+    }
+    assert selection_branches(training, {"corecaster": "中坚术师"}) == {
+        "史都华德": "中坚术师"
+    }

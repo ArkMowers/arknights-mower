@@ -12,6 +12,14 @@ from arknights_mower.utils.recognize import Recognizer
 
 
 class BaseTimeReaderTests(unittest.TestCase):
+    def test_room_timer_retries_impossible_clock_digits(self):
+        solver = self.solver()
+        for invalid in ("00:60:01", "01:05:60", "00:-1:05", "-1:00:00"):
+            with self.subTest(invalid=invalid):
+                solver.read_screen = MagicMock(side_effect=[invalid, "02:59:59"])
+                self.assertEqual(solver.read_time(None, None), 10799)
+                self.assertEqual(solver.read_screen.call_count, 2)
+
     def solver(self):
         solver = BaseMixin()
         solver.recog = MagicMock()

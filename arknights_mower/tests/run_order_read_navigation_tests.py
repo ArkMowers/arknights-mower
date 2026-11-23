@@ -320,8 +320,9 @@ def test_blocked_order_allows_independent_final_refresh(order_navigation):
 
 
 @pytest.mark.parametrize("next_room", ["room_2_2", "dormitory_1"])
+@pytest.mark.parametrize("failed_stage", ["countdown", "return_to_map"])
 def test_failed_final_order_read_restores_navigation_before_next_task(
-    order_navigation, monkeypatch, next_room
+    order_navigation, monkeypatch, next_room, failed_stage
 ):
     from arknights_mower.solvers import base_mixin
 
@@ -343,7 +344,16 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
     solver.op_data.products["room_2_2"] = "orundum"
     solver.op_data.refresh_run_order_rooms()
     ui.states["room_1_1"] = "active"
-    solver.read_time.side_effect = ui.base.RecognizeError("订单数字未确认")
+    original_time = refresh.time
+    if failed_stage == "countdown":
+        solver.read_time.side_effect = ui.base.RecognizeError("订单数字未确认")
+    else:
+        working_back = solver.back
+        solver.back = MagicMock()
+        started_at = ui.clock.now()
+        monkeypatch.setattr(
+            ui.base, "monotonic", lambda: (ui.clock.now() - started_at).total_seconds()
+        )
 
     def return_to_base(*args, **kwargs):
         page.update(room=None, open=False)
@@ -354,6 +364,24 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
     solver._read_arrangement_order_times("room_1_1")
 
     assert refresh.execution_failure
+    assert refresh.time == original_time
+    if failed_stage == "return_to_map":
+        assert "返回键未生效" in refresh.execution_failure["reason"]
+        assert solver.back.call_count == 2
+        solver.read_time.assert_called_once()
+        solver.recog.update = MagicMock()
+        with pytest.raises(ui.base.OrderReturnUnresolved):
+            solver.transition()
+        assert solver.back.call_count == 3
+        solver.back_to_infrastructure.assert_not_called()
+        assert page == {"room": "room_1_1", "open": True}
+        solver.back.side_effect = working_back
+        ui.base.BaseSchedulerSolver.scene_graph_navigation(solver, scene.INFRA_MAIN)
+        assert solver.back.call_count == 5  # 订单页和房间各返回一次。
+        assert page == {"room": None, "open": False}
+        solver._read_pending_order_times()
+        solver.read_time.assert_called_once()
+        assert refresh.execution_failure and refresh.time == original_time
     assert arrangement.plan == {}
     assert arrangement in solver.tasks and refresh in solver.tasks
 
@@ -389,6 +417,171 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
     assert ui.clock.now() == entered_at
     solver.back_to_index.assert_not_called()
     solver.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "readback",
+    [
+        "trade",
+        "other_room",
+        "other_type",
+        "order_marker",
+        "no_arrow",
+        "cancel_dialog",
+        "late_arrow",
+        "dropped_arrow",
+    ],
+)
+def test_exhausted_trade_room_return_checks_room_and_uses_one_visible_arrow(
+    order_navigation, monkeypatch, readback
+):
+    ui = order_navigation
+    solver, scene = ui.solver, ui.base.Scene
+    room = "room_1_1"
+    refresh = ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data=room)
+    solver.tasks = [refresh]
+    original_time = refresh.time
+    ui.states[room] = "active"
+    working_back = solver.back
+
+    def stuck_in_room(**kwargs):
+        if solver._page["open"]:
+            working_back(**kwargs)
+
+    solver.back = MagicMock(side_effect=stuck_in_room)
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    solver._read_pending_order_times()
+    assert refresh.execution_failure and solver._page == {"room": room, "open": False}
+    assert solver.back.call_count == 3
+    old_actions = solver.tap.call_count
+    arrow = ((20, 15), (380, 95))
+    updates = []
+    solver.recog.update = lambda: updates.append(True)
+    advance = solver.sleep.side_effect
+
+    def next_frame(interval):
+        advance(interval)
+        solver.recog.update()
+
+    solver.sleep.side_effect = next_frame
+    solver.detect_room = MagicMock(
+        return_value="room_1_2" if readback == "other_room" else room
+    )
+    solver.detect_room_type = MagicMock(
+        return_value="制造站" if readback == "other_type" else "贸易站"
+    )
+    if readback == "cancel_dialog":
+        solver.scene.side_effect = lambda: scene.INFRA_ARRANGE_CONFIRM
+
+    def find(name):
+        if name == "order_label":
+            return readback == "order_marker"
+        if (
+            name == "nav_button"
+            and readback != "no_arrow"
+            and (readback != "late_arrow" or len(updates) >= 3)
+        ):
+            return arrow
+
+    solver.find.side_effect = find
+
+    def tap(scope, *, x_rate, interval):
+        assert len(updates) >= 2 and scope == arrow and x_rate == 0.08
+        if readback != "dropped_arrow":
+            solver._page.update(room=None, open=False)
+
+    solver.tap.side_effect = tap
+    if readback in ("trade", "late_arrow"):
+        solver.transition()
+        assert solver._page == {"room": None, "open": False}
+        assert solver.tap.call_count == old_actions + 1
+    else:
+        with pytest.raises(ui.base.OrderReturnUnresolved):
+            solver.transition()
+        assert solver.tap.call_count == old_actions + int(readback == "dropped_arrow")
+    assert 1 <= len(updates) <= solver.performance_profile.transition_attempts + 1
+    assert solver.back.call_count == 3
+    solver.read_time.assert_called_once()
+    assert solver.tasks == [refresh] and refresh.time == original_time
+
+
+@pytest.mark.parametrize("new_scene", ["INDEX", "LOGIN_MAIN", "CONNECTING"])
+def test_exhausted_trade_view_resumes_navigation_after_reconnection(
+    order_navigation, new_scene, monkeypatch
+):
+    ui = order_navigation
+    solver, scene = ui.solver, ui.base.Scene
+    scope = {"page": getattr(scene, new_scene)}
+    solver._order_return_unresolved = scene.INFRA_DETAILS
+    solver._order_return_room = "room_1_1"
+    solver.recog.update = MagicMock()
+    solver.scene.side_effect = lambda: scope["page"]
+    solver.waiting_scene = [scene.CONNECTING]
+    solver.waiting_solver = MagicMock(
+        side_effect=lambda: scope.update(page=scene.INDEX) or True
+    )
+    solver.login = MagicMock(side_effect=lambda: scope.update(page=scene.INDEX))
+    solver.tap_index_element = MagicMock(
+        side_effect=lambda _: scope.update(page=scene.INFRA_MAIN)
+    )
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    solver.transition()
+    assert scope["page"] == scene.INFRA_MAIN
+    assert solver.login.call_count == int(new_scene == "LOGIN_MAIN")
+    assert solver.waiting_solver.call_count == int(new_scene == "CONNECTING")
+    solver.tap_index_element.assert_called_once_with("infrastructure")
+    solver.read_time.assert_not_called()
+    solver.back.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    assert "_order_return_unresolved" not in vars(solver)
+
+
+@pytest.mark.parametrize("initial", ["ORDER_LIST", "INFRA_ARRANGE_CONFIRM"])
+def test_exhausted_order_navigation_checks_the_frame_before_input(
+    order_navigation, monkeypatch, initial
+):
+    ui = order_navigation
+    solver, scene = ui.solver, ui.base.Scene
+    refresh = ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data="room_1_1")
+    solver.tasks = [refresh]
+    original_time = refresh.time
+    ui.states["room_1_1"] = "active"
+    frame = getattr(scene, initial)
+
+    def countdown(*args, **kwargs):
+        solver.scene.side_effect = lambda: frame
+        solver.tap = MagicMock()
+        return 3600
+
+    def fresh_frame():
+        nonlocal frame
+        if initial == "ORDER_LIST":
+            frame = scene.UNKNOWN
+
+    solver.read_time.side_effect = countdown
+    solver.back = MagicMock()
+    solver.recog.update = fresh_frame
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    solver._read_pending_order_times()
+    assert refresh.execution_failure
+    if initial == "ORDER_LIST":
+        solver.tap.assert_not_called()
+        assert solver.back.call_count == 2
+    else:
+        solver.back.assert_not_called()
+        assert solver.tap.call_args_list
+        assert all(call.args == ((640, 1070),) for call in solver.tap.call_args_list)
+
+    solver.tap.reset_mock()
+    solver.back.reset_mock()
+    for _ in range(2):
+        with pytest.raises(ui.base.OrderReturnUnresolved):
+            solver.transition()
+    solver.tap.assert_not_called()
+    solver.back.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    solver.read_time.assert_called_once()
+    assert solver.tasks == [refresh] and refresh.time == original_time
 
 
 @pytest.mark.parametrize(

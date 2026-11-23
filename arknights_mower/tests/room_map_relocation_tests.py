@@ -820,6 +820,52 @@ def test_stop_during_room_title_wait_propagates_without_navigation(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "late_page", ["room", "wrong_room", "entering", "mask", "order", "stop"]
+)
+def test_unknown_after_click_rechecks_room_once_before_home(monkeypatch, late_page):
+    room_map = map_frame(rectangle(450, 350, 750, 600))
+    solver, _ = navigation_solver(
+        monkeypatch,
+        [room_map]
+        + [{"kind": "entering"}] * 21
+        + [{"kind": late_page}, room_map, {"kind": "room"}],
+    )
+    find = solver.find.side_effect
+    solver.find.side_effect = lambda name: (
+        solver.recog.img["kind"] == "order" if name == "order_label" else find(name)
+    )
+    solver.detect_room.side_effect = lambda: {
+        "room": ROOM,
+        "order": ROOM,
+        "mask": ROOM,
+        "wrong_room": "room_2_1",
+    }.get(solver.recog.img["kind"], "")
+    solver.scene.side_effect = lambda: (
+        Scene.INFRA_MAIN if solver.recog.img["kind"] == "map" else Scene.UNKNOWN
+    )
+    sleep = solver.sleep.side_effect
+
+    def wait(interval=1):
+        if late_page == "stop" and interval == 1:
+            raise MowerExit
+        sleep(interval)
+
+    solver.sleep.side_effect = wait
+    solver.back_to_infrastructure.side_effect = None
+    if late_page == "stop":
+        with pytest.raises(MowerExit):
+            solver.enter_room(ROOM)
+    else:
+        solver.enter_room(ROOM)
+
+    recovered = late_page not in ("room", "stop")
+    assert solver.tap.call_count == (2 if recovered else 1)
+    assert solver.back_to_index.call_count == int(recovered)
+    assert solver.back_to_infrastructure.call_count == int(recovered)
+    assert solver.sleep.call_args_list == [((0.1,),)] * 20 + [()]
+
+
+@pytest.mark.parametrize(
     "timeout,screenshot_interval,last_frame",
     [(2.5, 1200, 3), (2.5, 2000, 2), (2.5, 2500, 2), (1.0, 1500, 1), (4.5, 1200, 4)],
 )

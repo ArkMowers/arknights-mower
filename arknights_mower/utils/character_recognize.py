@@ -245,6 +245,27 @@ def _normalize_name_field(gray, scale, mode):
     return template
 
 
+def _has_trust_icon(name_strip):
+    # 信赖百分比前的双人图标在姓名条左侧。排序箭头先变化时，旧卡片仍可能显示它。
+    icon = name_strip[:, 12:48]
+    if not np.any(icon[3:10, 5:16] > 175):
+        return False
+    mask = cv2.inRange(icon, 176, 255)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    parts = [cv2.boundingRect(c) for c in contours]
+    heads = sorted(
+        x for x, y, w, h in parts if 2 <= y <= 4 and 6 <= w <= 9 and 6 <= h <= 8
+    )
+    return (
+        len(heads) == 2
+        and 12 <= heads[1] - heads[0] <= 16
+        and any(
+            abs(x - heads[0]) <= 2 and 10 <= y <= 12 and 20 <= w <= 24 and 16 <= h <= 20
+            for x, y, w, h in parts
+        )
+    )
+
+
 @timed_step("names")
 def operator_list(img, draw=False, full_scan=True):
     name_y = ((488, 520), (909, 941))
@@ -297,6 +318,8 @@ def operator_list(img, draw=False, full_scan=True):
     def process_name_region(p):
         (x0, y0), (x1, _) = p
         im = gray_rows[y0][:, x0 - 600 : x1 - 600]
+        if _has_trust_icon(im):
+            return ""
         im = thres2(im, 140)
         im = cv2.copyMakeBorder(im, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(im, kernel, iterations=1)

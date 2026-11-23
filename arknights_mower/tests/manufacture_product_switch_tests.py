@@ -117,11 +117,16 @@ def test_facility_state_refresh_uses_title_over_conflicting_icon(facility):
         np.full((72, 72, 3), (25, 230, 220), dtype=np.uint8), cv2.COLOR_HSV2RGB
     )
     solver = object.__new__(base.BaseSchedulerSolver)
-    solver.recog = SimpleNamespace(img=frame)
+    solver.recog = SimpleNamespace(
+        img=frame, gray=cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY)
+    )
     solver.op_data = MagicMock()
     solver._wait_drone_interface = MagicMock()
     solver._cache_facility_state_from_current_page = MagicMock()
     solver.scene_graph_navigation = MagicMock()
+    solver.back = MagicMock()
+    solver.find = MagicMock(side_effect=lambda name: name == "arrange_check_in")
+    solver.detect_room = MagicMock(return_value="room_1_3")
     solver.refresh_facility_state("room_1_3")
     if facility == "factory":
         solver.op_data.update_facility_state.assert_not_called()
@@ -134,7 +139,7 @@ def test_facility_state_refresh_uses_title_over_conflicting_icon(facility):
             solver._wait_drone_interface.assert_not_called()
         else:
             solver._cache_facility_state_from_current_page.assert_called_once_with(
-                "room_1_3", facility
+                "room_1_3", facility, defer_log=True
             )
 
 
@@ -1612,6 +1617,89 @@ def test_facility_state_is_cached_and_available_to_backup_expression():
     assert operators.evaluate_expression("op_data.facility_product('room_1_2') == exp3")
 
 
+@pytest.fixture
+def product_condition_room():
+    room, plan = product_plan()
+    plan["default_plan"].plan[room] = [Room("陈", "", ["红"], "制造站", "gold")]
+    plan["backup_plans"][0].trigger = LogicExpression(
+        f"op_data.facility_product('{room}')", "==", "exp3"
+    )
+    solver = reload_test_solver(Operators(plan))
+    assert solver.op_data.init_and_validate() is None
+    solver.task = None
+    solver.op_data.update_facility_state(room, "manufacture", "gold")
+    solver._work_room_panel = MagicMock(return_value="open")
+    solver.detect_room_type = MagicMock(return_value="制造站")
+    solver.detect_room = MagicMock(return_value=room)
+    solver._visible_manufacture_product = MagicMock(return_value=None)
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.back = MagicMock()
+    solver.recog.gray = MagicMock()
+    solver.find = MagicMock(
+        side_effect=lambda resource, **kwargs: (
+            resource in {"infra_no_operator", "arrange_check_in"}
+        )
+    )
+    return room, solver
+
+
+@pytest.mark.parametrize("source", ["room_label", "recipe_detail", "unreadable"])
+def test_patrol_product_reaches_next_backup_check(product_condition_room, source):
+    room, solver = product_condition_room
+    solver._visible_manufacture_product.return_value = (
+        "exp3" if source == "room_label" else None
+    )
+    solver.read_manufacture_product.return_value = "exp3"
+    if source == "unreadable":
+        solver.read_manufacture_product.side_effect = base.RecognizeError("配方未确认")
+
+    def find(resource, **kwargs):
+        if resource == "infra_no_operator":
+            assert solver.op_data.plan_condition == [False]
+            assert solver.op_data.evaluate_backup_selection().conditions == [
+                source == "room_label"
+            ]
+            return True
+        return resource == "arrange_check_in"
+
+    solver.find = MagicMock(side_effect=find)
+    solver._read_room_mood(room)
+    assert solver.op_data.plan_condition == [False]
+    solver.backup_plan_solver()
+    assert solver.op_data.plan_condition == [source != "unreadable"]
+    assert solver.op_data.products[room] == (
+        "gold" if source == "unreadable" else "exp3"
+    )
+    solver.queue_product_switches()
+    assert not any(task.type == TaskTypes.SWITCH_PRODUCT for task in solver.tasks)
+
+
+def test_staffing_retries_unreadable_product_and_scopes_success_to_one_visit(
+    product_condition_room,
+):
+    room, solver = product_condition_room
+    solver.task = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+    solver.read_manufacture_product.side_effect = [
+        base.RecognizeError("配方未确认"),
+        "exp3",
+    ]
+    visit = set()
+    solver.get_agent_from_room(room, observed_facilities=visit)
+    assert not visit and solver.op_data.facility_product(room) == "gold"
+    solver.get_agent_from_room(room, observed_facilities=visit)
+    assert visit == {room} and solver.op_data.facility_product(room) == "exp3"
+    solver.get_agent_from_room(room, observed_facilities=visit)
+    assert solver.read_manufacture_product.call_count == 2
+    assert solver._visible_manufacture_product.call_count == 2
+
+    solver._visible_manufacture_product.return_value = "gold"
+    solver.get_agent_from_room(room, observed_facilities=set())
+    assert solver.op_data.facility_product(room) == "gold"
+    assert solver._visible_manufacture_product.call_count == 3
+
+
 def test_facility_product_conditions_fall_back_to_main_plan_until_cached():
     room, plan = product_plan(default="gold")
     operators = Operators(plan)
@@ -1778,23 +1866,134 @@ def test_facility_state_can_hold_inventory_backup_until_lower_threshold(monkeypa
     assert not operators.evaluate_expression(expression)
 
 
-def test_mood_room_visit_refreshes_manufacture_state_before_operator_detail():
-    room, plan = product_plan()
+@pytest.mark.parametrize(
+    ("room", "product", "filename"),
+    [
+        ("room_3_3", "gold", "b303_room_20261123.jpg"),
+        ("room_1_2", "exp3", "b102_check_in_exp_20261123.jpg"),
+    ],
+)
+def test_room_product_label_preserves_check_in_panel(room, product, filename):
+    from arknights_mower.utils.recognize import Recognizer
+
+    _, plan = product_plan()
+    fixtures = Path(__file__).parent / "fixtures/manufacture"
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = Operators(plan)
-    solver.detect_room_type = MagicMock(return_value="制造站")
+    solver.recog = Recognizer(None, (fixtures / filename).read_bytes())
     solver._wait_drone_interface = MagicMock()
+    solver.back = MagicMock()
+    solver.scene_graph_navigation = MagicMock()
+
+    assert solver.refresh_facility_state(room)
+    assert solver.op_data.facility_product(room) == product
+    solver._wait_drone_interface.assert_not_called()
+    solver.back.assert_not_called()
+    solver.scene_graph_navigation.assert_not_called()
+
+
+def test_work_room_waits_for_check_in_button_during_entry():
+    from arknights_mower.utils.recognize import Recognizer
+
+    _, plan = product_plan()
+    fixtures = Path(__file__).parent / "fixtures/manufacture"
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver.recog = Recognizer(
+        None, (fixtures / "b102_room_zoom_20261123.jpg").read_bytes()
+    )
+    settled = (fixtures / "b102_check_in_exp_20261123.jpg").read_bytes()
+    solver.sleep = MagicMock(
+        side_effect=lambda _: setattr(solver, "recog", Recognizer(None, settled))
+    )
+    solver._wait_drone_interface = MagicMock()
+    solver.back = MagicMock()
+
+    assert solver.detect_room() == "room_1_2"
+    assert not solver.find("arrange_check_in") and not solver.find(
+        "arrange_check_in_on"
+    )
+    assert solver.refresh_facility_state("room_1_2")
+    assert solver.op_data.facility_product("room_1_2") == "exp3"
+    solver.sleep.assert_called_once()
+    solver._wait_drone_interface.assert_not_called()
+    solver.back.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "line", [["赤金", 0.8], ["源石碎片", 1.0], ["初级作战记录", 1.0]]
+)
+def test_ambiguous_room_product_requires_recipe_detail(monkeypatch, line):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(gray=np.zeros((1080, 1920), np.uint8))
+    monkeypatch.setattr(base.rapidocr, "engine", MagicMock(return_value=([line], [])))
+
+    assert solver._visible_manufacture_product() is None
+
+
+@pytest.mark.parametrize("feedback", ["delayed", "dropped", "unknown", "wrong_room"])
+def test_mood_room_visit_returns_from_recognized_product_to_the_same_facility(
+    feedback, monkeypatch
+):
+    from arknights_mower.utils.recognize import RecognizeError, Recognizer
+
+    _, plan = product_plan()
+    room = "room_3_3"
+    fixtures = Path(__file__).parent / "fixtures/manufacture"
+    opening = (fixtures / "b303_product_opening_20261123.jpg").read_bytes()
+    settled = (fixtures / "b303_product_settled_20261123.jpg").read_bytes()
+    returned = (fixtures / "b303_room_20261123.jpg").read_bytes()
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.op_data = Operators(plan)
+    solver.recog = Recognizer(None, returned)
+    solver.recog.gray[925:975, 225:478] = 0
+    solver.tap = MagicMock(side_effect=lambda *_args, **_kwargs: install(opening))
     solver.read_manufacture_product = MagicMock(return_value="gold")
     solver.scene_graph_navigation = MagicMock()
-    solver.translate_room = MagicMock(return_value="B102")
+    solver.selection_transition_timing = MagicMock(return_value=(0.1, 3))
+    pending = []
+    now = 0.0
+    monkeypatch.setattr(base, "monotonic", lambda: now)
 
-    solver.refresh_facility_state(room)
+    def install(frame):
+        solver.recog = Recognizer(None, frame)
 
-    assert solver.op_data.facility_product(room) == "gold"
-    solver._wait_drone_interface.assert_called_once_with(
-        interval=3, accelerate_template="manufacture_accelerate"
-    )
-    solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
+    def back(**_):
+        retry = solver.back.call_count > 1
+        assert solver.recog.screencap == (settled if retry else opening)
+        if feedback == "unknown":
+            blank = np.zeros((1080, 1920, 3), np.uint8)
+            install(cv2.imencode(".png", blank)[1].tobytes())
+        elif feedback == "dropped" and not retry:
+            # 首次返回丢失后，制造页淡入完成，才有同一房间仍未退出的证据。
+            pending.append(settled)
+        else:
+            destination = (
+                (fixtures / "b102_check_in_exp_20261123.jpg").read_bytes()
+                if feedback == "wrong_room"
+                else returned
+            )
+            pending.extend([solver.recog.screencap, destination])
+
+    solver.back = MagicMock(side_effect=back)
+
+    def sleep(seconds):
+        nonlocal now
+        now += seconds
+        if pending:
+            install(pending.pop(0))
+
+    solver.sleep = MagicMock(side_effect=sleep)
+    if feedback in ("unknown", "wrong_room"):
+        with pytest.raises(RecognizeError, match="返回"):
+            solver.refresh_facility_state(room)
+    else:
+        assert solver.refresh_facility_state(room)
+        assert solver.detect_room() == room
+        assert solver.op_data.facility_product(room) == "gold"
+    assert solver.back.call_count == (2 if feedback == "dropped" else 1)
+    solver.tap.assert_called_once()
+    solver.scene_graph_navigation.assert_not_called()
 
 
 def test_mood_room_visit_refreshes_trade_order_state():
@@ -1811,9 +2010,9 @@ def test_mood_room_visit_refreshes_trade_order_state():
 
     assert solver.op_data.facility_product(room) == "orundum"
     solver._wait_drone_interface.assert_called_once_with(
-        interval=3,
         accelerate_template="bill_accelerate",
         page_template="order_label",
+        retry_after=3,
     )
     solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
 
@@ -1952,9 +2151,9 @@ def test_mood_room_visit_caches_locked_trade_as_lmd_without_opening_selector():
 
     assert solver.op_data.facility_product(room) == "lmd"
     solver._wait_drone_interface.assert_called_once_with(
-        interval=3,
         accelerate_template="bill_accelerate",
         page_template="order_label",
+        retry_after=3,
     )
     solver.scene_graph_navigation.assert_called_once_with(base.Scene.INFRA_DETAILS)
 

@@ -1114,6 +1114,7 @@ def test_handoff_uses_real_arrangement_with_its_own_task_context(solver, previou
     solver.agent_get_mood = MagicMock(side_effect=[plan.copy(), {}])
     solver._emergency_read_rooms = MagicMock()
     solver.enter_room = MagicMock()
+    solver.get_agent_from_room = MagicMock(return_value=[{"agent": PRIMARY[0]}])
     observed_tasks = []
     solver.turn_on_room_detail = MagicMock(
         side_effect=lambda room: observed_tasks.append(solver.task)
@@ -1130,6 +1131,8 @@ def test_handoff_uses_real_arrangement_with_its_own_task_context(solver, previou
     assert len(observed_tasks) == 1
     assert observed_tasks[0] is not previous_task
     assert observed_tasks[0].type == TaskTypes.NOT_SPECIFIC
+    solver.get_agent_from_room.assert_called_once()
+    assert solver.get_agent_from_room.call_args.args[0] == "room_1_1"
     assert not solver._emergency_handoff
     solver.enter_room.assert_called_once_with("room_1_1")
 

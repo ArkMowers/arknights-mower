@@ -1,9 +1,11 @@
 """筛选迟到高亮与无关卡片异常的真实调用路径回归。"""
 
 import hashlib
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 from arknights_mower.solvers import base_mixin
@@ -19,12 +21,18 @@ pytestmark = pytest.mark.usefixtures("legacy_selection_conf")
 
 @pytest.mark.parametrize("enabled,delay", [(False, 0.2), (False, 0.8), (True, 0.8)])
 @pytest.mark.parametrize("opened", [False, True])
-def test_same_profession_waits_for_all_then_restores_without_repeated_inputs(
+def test_mixed_professions_wait_for_all_then_select_only_target(
     monkeypatch, enabled, delay, opened
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     solver = solver_for(monkeypatch, [page()] * 10)
     state = configure_real_filter(solver, monkeypatch, initial="MEDIC", opened=opened)
+    color = solver.get_color.side_effect
+    solver.get_color.side_effect = lambda position: (
+        (0, 0, 255)
+        if position == (1918, 245) and not state["changes"]
+        else color(position)
+    )
     apply_tap = solver.device.tap.side_effect
     clock = [0.0]
     monkeypatch.setattr(base_mixin, "perf_counter", lambda: clock[0])
@@ -51,23 +59,75 @@ def test_same_profession_waits_for_all_then_restores_without_repeated_inputs(
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_immediate_filter_feedback_needs_no_poll_waits(monkeypatch, enabled):
+def test_only_target_profession_needs_no_taps_or_waits(monkeypatch, enabled):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
+    monkeypatch.setattr(
+        base_mixin,
+        "branch_filter_state",
+        lambda *_: (False, False),
+    )
     solver = solver_for(monkeypatch, [page()] * 10)
     configure_real_filter(solver, monkeypatch, initial="MEDIC", opened=True)
     solver.profession_filter("MEDIC")
-    assert [c.args[0] for c in solver.sleep.call_args_list] == [0.1, 0.1]
+    solver.device.tap.assert_not_called()
+    solver.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("state", [(True, True), (False, True), None])
+def test_same_profession_clears_active_or_unknown_branch(monkeypatch, state):
+    solver = solver_for(monkeypatch, [page()] * 10)
+    panel = configure_real_filter(solver, monkeypatch, initial="TANK", opened=True)
+    monkeypatch.setattr(
+        base_mixin,
+        "branch_filter_state",
+        lambda *_: (False, False) if panel["changes"] else state,
+    )
+    solver.profession_filter("TANK")
+    assert panel["changes"] == ["ALL", "TANK"]
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_unacknowledged_all_prevents_target_click_and_times_out(monkeypatch, enabled):
+def test_change_profession_waits_for_old_highlight_to_clear(monkeypatch, enabled):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     solver = solver_for(monkeypatch, [page()] * 10)
-    configure_real_filter(solver, monkeypatch, initial="MEDIC", opened=True)
-    solver.device.tap.side_effect = None  # 输入未生效，MEDIC 一直高亮。
+    state = configure_real_filter(solver, monkeypatch, initial="SNIPER", opened=True)
+    color = solver.get_color.side_effect
+    old = (1918, 575)
+    solver.get_color.side_effect = lambda pos: (
+        (0, 177, 255) if pos == old and solver.sleep.call_count < 3 else color(pos)
+    )
+    solver.profession_filter("TANK")
+    assert state["changes"] == ["TANK"]
+    solver.device.tap.assert_called_once_with((1918, 465))
+    assert solver.sleep.call_count == 3
+
+
+def test_captured_tank_filter_reuses_all_branches_without_taps():
+    from arknights_mower.utils.image import img2bytes, loadimg
+    from arknights_mower.utils.recognize import Recognizer
+
+    path = Path(__file__).parent / "fixtures/selection/branch_tank_all_closed.webp"
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[:, 1570:] = loadimg(str(path))
+    solver = BaseMixin()
+    solver.recog = Recognizer(MagicMock(), img2bytes(frame).tobytes())
+    solver.find = solver.recog.find
+    solver.get_color = lambda position: solver.recog.color(*position)
+    solver.tap = MagicMock(side_effect=AssertionError("职业已选中"))
+    solver.sleep = MagicMock(side_effect=AssertionError("职业筛选已展开"))
+    solver.profession_filter("TANK")
+    solver.recog.device.screencap.assert_not_called()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_unacknowledged_target_click_times_out_without_retapping(monkeypatch, enabled):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
+    solver = solver_for(monkeypatch, [page()] * 10)
+    configure_real_filter(solver, monkeypatch, initial="CASTER", opened=True)
+    solver.device.tap.side_effect = None
     with pytest.raises(AgentSelectionNotReady, match="职业筛选尚未生效"):
         solver.profession_filter("MEDIC")
-    solver.device.tap.assert_called_once_with((1918, 135))
+    solver.device.tap.assert_called_once_with((1918, 795))
     assert sum(c.args[0] for c in solver.sleep.call_args_list) == pytest.approx(2.6)
 
 

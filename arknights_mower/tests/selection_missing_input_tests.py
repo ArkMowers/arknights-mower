@@ -25,7 +25,6 @@ def test_matching_names_still_rebuild_actual_selection(
 ):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
     solver = object.__new__(BaseSchedulerSolver)
-    solver.wait_for_cleared_selection = MagicMock()
     targets = ["鸿雪", "但书"]
     current = (
         ["鸿雪", "但书", "黑键"] if dropped_input == "deselect" else ["鸿雪", "黑键"]
@@ -35,6 +34,7 @@ def test_matching_names_still_rebuild_actual_selection(
     events = []
     dropped = False
     solver.recog = LivePageRecognizer(lambda: page(cards), events)
+    solver.wait_for_cleared_selection = MagicMock(side_effect=lambda: solver.recog.img)
     solver.op_data = Operators(
         {"default_plan": Plan({}, PlanConfig("", "", "")), "backup_plans": []}
     )
@@ -85,6 +85,14 @@ def test_matching_names_still_rebuild_actual_selection(
     solver.switch_arrange_order = MagicMock(side_effect=sort)
     solver.swipe_noinertia = MagicMock(side_effect=AssertionError("无需翻页"))
     monkeypatch.setattr(base_mixin, "operator_list", lambda img, **kw: tuple(img))
+    monkeypatch.setattr(
+        base_mixin,
+        "selection_slot",
+        lambda img, scope: next(
+            (selected.index(n) + 1 for n, box in img if box == scope and n in selected),
+            None,
+        ),
+    )
     solver.choose_agent(targets.copy(), "room_2_1")
     assert dropped is (dropped_input is not None)
     assert selected == targets

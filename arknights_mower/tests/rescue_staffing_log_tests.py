@@ -54,39 +54,57 @@ def queued(staffing, caplog, monkeypatch):
 
 def use_room_pages(solver, task):
     physical = {room: solver.op_data.get_current_room(room, True) for room in task.plan}
-    page = SimpleNamespace(room=None)
+    page = SimpleNamespace(room=None, selecting=False)
+    selected = []
+
+    def enter(room):
+        page.room, page.selecting = room, False
+
+    def scene():
+        if page.selecting:
+            return base.Scene.INFRA_ARRANGE_ORDER
+        return base.Scene.INFRA_MAIN if page.room is None else base.Scene.INFRA_DETAILS
+
     solver.task = task
-    solver.recog = SimpleNamespace(update=MagicMock(), w=1920, h=1080)
+    solver.recog = SimpleNamespace(update=MagicMock(), img=None, w=1920, h=1080)
     solver.waiting_scene = []
-    solver.enter_room = MagicMock(side_effect=lambda room: setattr(page, "room", room))
+    solver.enter_room = MagicMock(side_effect=enter)
     solver.turn_on_room_detail = MagicMock()
     solver.ensure_dorm_recovery_order = MagicMock(return_value=False)
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
-    solver.find = MagicMock(return_value=True)
-    solver.scene = MagicMock(return_value=base.Scene.INFRA_DETAILS)
-    solver.back = MagicMock()
-    solver._wait_for_room_exit = MagicMock()
-    solver._wait_for_room_entry_before_exit = MagicMock(return_value=False)
+    solver.find = MagicMock(
+        side_effect=lambda resource: (
+            ((1770, 960), (1880, 1025))
+            if resource == "confirm_blue" and page.selecting
+            else None
+        )
+    )
+    solver.scene = MagicMock(side_effect=scene)
+    solver.detect_room = MagicMock(side_effect=lambda: page.room)
+    solver.back = MagicMock(side_effect=lambda *args, **kwargs: enter(None))
     solver.record_selection_success = MagicMock()
     solver.record_selection_failure = MagicMock()
     solver.last_room = ""
-    solver.tap = MagicMock()
-    chosen = {}
+    solver.tap = MagicMock(
+        side_effect=lambda *args, **kwargs: setattr(page, "selecting", True)
+    )
+    solver.detect_arrange_order = MagicMock(return_value=("技能", False))
+    solver.profession_filter = MagicMock()
+    solver.switch_arrange_order = MagicMock()
+    solver.clear_agent_selection = MagicMock(side_effect=lambda room: selected.clear())
 
-    class CardPageBoundary(Exception):
-        pass
-
-    solver.profession_filter = MagicMock(side_effect=CardPageBoundary)
-
-    def choose(names, room, **kwargs):
-        try:
-            base.BaseSchedulerSolver.choose_agent(solver, names, room, **kwargs)
-        except CardPageBoundary:
-            pass
-        chosen[room] = list(names)
+    def select_visible(pending, **kwargs):
+        assert page.selecting
+        found = [name for name in existing.COVERS if name in pending]
+        for name in found:
+            pending.remove(name)
+        selected.extend(found)
+        return found, []
 
     def confirm(room, new_plan):
-        physical[room] = chosen[room]
+        assert page.selecting and page.room == room
+        physical[room] = selected.copy()
+        page.selecting = False
 
     def read(room, *args, **kwargs):
         rows = [{"agent": name, "observed": True} for name in physical[room]]
@@ -97,7 +115,11 @@ def use_room_pages(solver, task):
         solver._reconcile_room_observation(room, rows)
         return rows
 
-    solver.choose_agent = MagicMock(side_effect=choose)
+    solver.scan_agent = MagicMock(side_effect=select_visible)
+    solver.verify_agent = MagicMock(side_effect=lambda names, room: selected == names)
+    solver.choose_agent = MagicMock(
+        wraps=base.BaseSchedulerSolver.choose_agent.__get__(solver)
+    )
     solver.tap_confirm = MagicMock(side_effect=confirm)
     solver.get_agent_from_room = MagicMock(side_effect=read)
     return physical
@@ -263,7 +285,10 @@ def test_failed_task_reuses_parent_uuid_while_each_facility_attempt_is_new(
         )
 
 
-def test_cached_same_roster_and_plan_removal_are_not_fresh_completion(queued, caplog):
+@pytest.mark.parametrize("read_rooms", [False, True], ids=["cache-only", "room-read"])
+def test_matching_cached_roster_requires_fresh_reads_for_completion(
+    queued, caplog, read_rooms
+):
     solver, task, _ = queued
     original = deepcopy(task.plan)
     physical = use_room_pages(solver, task)
@@ -274,13 +299,23 @@ def test_cached_same_roster_and_plan_removal_are_not_fresh_completion(queued, ca
                 solver.op_data.operators[name].current_room,
                 solver.op_data.operators[name].current_index,
             ) = room, index
-    for room in list(task.plan):
-        solver.agent_arrange_room({}, room, task.plan)
+    if read_rooms:
+        for room in original:
+            solver.agent_arrange_room({}, room, task.plan)
+            assert solver.get_agent_from_room.call_args.args[0] == room
+        assert solver.get_agent_from_room.call_count == len(original)
+        assert parents(caplog)[-1].log_event["phase"] == "completed"
+    else:
+        task.plan.clear()
+        solver._prune_rescue_staffing_logs()
+        solver.get_agent_from_room.assert_not_called()
+        assert not any(
+            record.log_event["phase"] == "completed" for record in parents(caplog)
+        )
+        assert parents(caplog)[-1].log_event["phase"] == "failed"
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
     assert not task.plan
-    assert not any(
-        record.log_event["phase"] == "completed" for record in parents(caplog)
-    )
-    assert parents(caplog)[-1].log_event["phase"] == "failed"
 
 
 @pytest.mark.parametrize("observed", [[], [{"agent": "", "observed": False}]])
@@ -485,19 +520,21 @@ def test_explicit_empty_target_requires_an_actual_empty_read(staffing, caplog):
 
 
 def test_failed_room_exit_cannot_be_completed_by_an_unrelated_fresh_read(
-    queued, caplog
+    queued, caplog, monkeypatch
 ):
     solver, task, _ = queued
     use_room_pages(solver, task)
     for room in list(task.plan)[:-1]:
         solver.agent_arrange_room({}, room, task.plan)
     room = next(iter(task.plan))
-    solver._wait_for_room_exit = MagicMock(
-        side_effect=base.RecognizeError("退出校验未完成")
-    )
-    solver.scene = MagicMock(return_value=base.Scene.INFRA_MAIN)
-    with pytest.raises(base.RoomArrangementDeferred):
-        solver.agent_arrange_room({}, room, task.plan)
+    with monkeypatch.context() as failed_exit:
+        failed_exit.setattr(
+            solver,
+            "_wait_for_room_exit",
+            MagicMock(side_effect=base.RecognizeError("退出校验未完成")),
+        )
+        with pytest.raises(base.RoomArrangementDeferred, match="退出校验未完成"):
+            solver.agent_arrange_room({}, room, task.plan)
     assert parents(caplog)[-1].log_event["phase"] == "failed"
 
     solver.get_agent_from_room(room)
@@ -507,8 +544,6 @@ def test_failed_room_exit_cannot_be_completed_by_an_unrelated_fresh_read(
         item["status"] == "unconfirmed"
         for item in parents(caplog)[-1].log_event["rooms"]
     )
-    solver._wait_for_room_exit.side_effect = None
-    solver._wait_for_room_entry_before_exit.return_value = True
     solver.agent_arrange_room({}, room, task.plan)
     assert parents(caplog)[-1].log_event["phase"] == "completed"
 
