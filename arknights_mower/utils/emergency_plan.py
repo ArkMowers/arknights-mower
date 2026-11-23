@@ -143,13 +143,32 @@ def rescue_plan_for(data, plan):
     return {room: list(names) for room, names in plan.items()}
 
 
+def _validate_trade_staff(room, facility):
+    from arknights_mower.utils.operators import (
+        select_run_order_agents,
+        validate_orundum_staff,
+    )
+
+    if not room.startswith("room_") or facility.get("name", "") not in ("", "贸易站"):
+        return
+    rows = facility["plans"]
+    replacements = [
+        all_replacements(slot.get("replacement", ()), slot.get("group_bindings", ()))
+        for slot in rows
+    ]
+    if facility.get("product") == "orundum":
+        validate_orundum_staff(
+            room, ((slot["agent"], *names) for slot, names in zip(rows, replacements))
+        )
+    select_run_order_agents(room, replacements)
+
+
 def validate_rescue_schedule(data, schedule):
     """静态校验救急主副表自身；条件生效后的设施对照交给初始化。"""
     from arknights_mower.utils.backup_group_tasks import validate_group_task_names
     from arknights_mower.utils.operators import (
         TRADE_ORDER_AGENTS,
         build_global_plan,
-        select_run_order_agents,
     )
 
     source = schedule
@@ -188,20 +207,8 @@ def validate_rescue_schedule(data, schedule):
             capacity = RESCUE_ROOMS.get(room, 5 if room in RESCUE_DORMS else 0)
             if not capacity or len(rows) > capacity:
                 raise ValueError(f"救急{label} {room} 岗位数量不正确")
-            if (
-                not backup
-                and room.startswith("room_")
-                and facility.get("name", "") in ("", "贸易站")
-            ):
-                select_run_order_agents(
-                    room,
-                    (
-                        all_replacements(
-                            slot.get("replacement", ()), slot.get("group_bindings", ())
-                        )
-                        for slot in rows
-                    ),
-                )
+            if not backup:
+                _validate_trade_staff(room, facility)
             for index, slot in enumerate(rows):
                 name = slot["agent"]
                 if name == "Current" and backup:
@@ -429,11 +436,10 @@ def effective_rescue_plan(data, schedule):
                 raise ValueError(f"救急宿舍 {room} 的干员 {name} 无效或重复")
             seen.add(name)
         managers[room] = row
-    from arknights_mower.utils.operators import (
-        TRADE_ORDER_AGENTS,
-        select_run_order_agents,
-    )
+    from arknights_mower.utils.operators import TRADE_ORDER_AGENTS
 
+    for room in work:
+        _validate_trade_staff(room, facilities[room])
     run_orders = {
         room: [
             [
@@ -447,12 +453,6 @@ def effective_rescue_plan(data, schedule):
         ]
         for room in work
     }
-    for room, choices in run_orders.items():
-        if room.startswith("room_") and facilities[room].get("name", "") in (
-            "",
-            "贸易站",
-        ):
-            select_run_order_agents(room, choices)
     fia_targets = [
         name
         for room, row in managers.items()

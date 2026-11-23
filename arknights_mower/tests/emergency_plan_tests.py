@@ -797,3 +797,36 @@ def test_rescue_run_order_conflict_after_backup_keeps_current_slot():
         ValueError, match="room_1_1 的第 1、2 个工位同时选择了跑单干员但书"
     ):
         effective_rescue_plan(data, document)
+
+
+@pytest.mark.parametrize("backup", [False, True])
+def test_rescue_orundum_rejects_group_runner(backup):
+    room = "room_1_1"
+    data = SimpleNamespace(
+        plan={room: [Room(n, "", [], "贸易站", "orundum") for n in ("红", "砾", "芬")]},
+        evaluate_expression=lambda _: True,
+    )
+    slots = [
+        {
+            "agent": "初雪",
+            "group_bindings": [{"group": "贸易", "replacement": ["但书"]}],
+        }
+    ]
+    document = PlanModel(
+        plan1={room: {"product": "lmd" if backup else "orundum", "plans": slots}},
+        backup_plans=[
+            {
+                "name": "卖玉",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {room: {"product": "orundum", "plans": []}},
+            }
+        ]
+        if backup
+        else [],
+    )
+    with pytest.raises(
+        ValueError, match="room_1_1 的第 1 个工位卖玉时不能安排跑单干员但书"
+    ):
+        effective_rescue_plan(data, document)

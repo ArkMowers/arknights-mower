@@ -7,6 +7,7 @@ const failureCodes = new Set([
   'BACKUP_EXECUTION_FAILED',
   'INVALID_RUNTIME',
   'DUPLICATE_RUN_ORDER_OPERATOR',
+  'ORUNDUM_RUN_ORDER_OPERATOR',
   'INVENTORY_INVALID',
   'SKILL_STAGE_UNSUPPORTED',
   'OPERATION_DURATION_UNSUPPORTED'
@@ -51,7 +52,7 @@ export function incomeDiagnosticGroups(diagnostics = []) {
     if (seen.has(key)) continue
     seen.add(key)
     const group =
-      failureCodes.has(diagnostic.code) || diagnostic.severity === 'error'
+      failureCodes.has(diagnostic.code) || ['error', 'critical'].includes(diagnostic.severity)
         ? 'failures'
         : /_(?:MODEL|ASSUMPTION)$/.test(diagnostic.code) ||
             diagnostic.code === 'PASSIVE_AUXILIARY_OCCUPANCY'

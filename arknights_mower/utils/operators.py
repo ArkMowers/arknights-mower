@@ -72,6 +72,30 @@ _NUMERIC_EXPRESSION_CALLS = {
 }
 
 
+def validate_orundum_staff(room, slots):
+    for index, names in enumerate(slots, start=1):
+        runner = next((name for name in names if name in TRADE_ORDER_AGENTS), None)
+        if runner:
+            raise ValueError(
+                f"{room} 的第 {index} 个工位卖玉时不能安排跑单干员{runner}"
+            )
+
+
+def orundum_roster_error(plan, products, entry_tasks=()):
+    try:
+        for room, slots in plan.items():
+            if not slots or products.get(room, slots[0].product) != "orundum":
+                continue
+            validate_orundum_staff(
+                room, ((slot.agent, *slot.all_replacements) for slot in slots)
+            )
+            for task in entry_tasks:
+                validate_orundum_staff(room, ((name,) for name in task.get(room, ())))
+    except ValueError as error:
+        return str(error)
+    return None
+
+
 def select_run_order_agents(room, replacements):
     targets = []
     for index, choices in enumerate(replacements, start=1):
@@ -522,30 +546,42 @@ class Operators:
             ),
         ):
             return error
-        self.emergency_run_order_replacements = None
-        self.emergency_dorm_agents.clear()
-        self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
-        self.products = copy.deepcopy(self.global_plan["default_plan"].products)
-        self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
-        self.maintenance_primary_slots = set()
+        plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+        products = copy.deepcopy(self.global_plan["default_plan"].products)
+        plan_config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
+        maintenance_slots = set()
         for index, success in enumerate(condition):
             if success:
-                self.plan, self.config = self.merge_plan(index, self.config, self.plan)
+                plan, plan_config = self.merge_plan(index, plan_config, plan)
                 backup = self.global_plan["backup_plans"][index]
-                self.products.update(backup.products)
+                products.update(backup.products)
                 maintenance = backup.uses_condition(
                     "major_maintenance_remaining_hours",
                     backup_group or self.backup_group,
                 )
                 for room, slots in backup.plan.items():
-                    if room not in self.plan:
+                    if room not in plan:
                         continue
                     for slot_index, slot in enumerate(slots):
                         if slot.agent == "Current":
                             continue
-                        self.maintenance_primary_slots.discard((room, slot_index))
+                        maintenance_slots.discard((room, slot_index))
                         if maintenance and slot.agent in TRADE_ORDER_AGENTS:
-                            self.maintenance_primary_slots.add((room, slot_index))
+                            maintenance_slots.add((room, slot_index))
+        if self.plan is not None:
+            entry_tasks = [
+                backup.task
+                for backup, enabled, previous in zip(
+                    self.backup_plans, condition, self.plan_condition
+                )
+                if enabled and not previous and backup.task
+            ]
+            if error := orundum_roster_error(plan, products, entry_tasks):
+                return error
+        self.plan, self.products, self.config = plan, products, plan_config
+        self.maintenance_primary_slots = maintenance_slots
+        self.emergency_run_order_replacements = None
+        self.emergency_dorm_agents.clear()
         self.plan_condition = condition
         if backup_group is not None:
             self.backup_group = backup_group
@@ -589,6 +625,8 @@ class Operators:
         if error := validate_trade_order_targets(
             primary.plan, primary.products, label="主表"
         ):
+            return error
+        if error := orundum_roster_error(self.plan, self.products):
             return error
         for name in self.config.operator_mood_limits:
             if name not in agent_list:

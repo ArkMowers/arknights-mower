@@ -4,7 +4,7 @@ import {readMowerOperatorList} from './mowerBackupConfig'
 import {MOWER_OPERATOR_LIST_FIELDS as LIST_POLICIES} from '../domain/roster'
 import {mowerDormOrderError} from './mowerGlobalDormOrder'
 import {readMowerMoodLimits} from './mowerMoodLimits'
-import { isTradeRunOrderOperator } from '../domain/shiftRunPolicy'
+import { isTradeRunOrderOperator, orundumRunOrderError } from '../domain/shiftRunPolicy'
 import { GAME_DATA_VERSION, OPERATOR_MAP } from '../domain/operators'
 import { resolveOperatorCharId } from '../domain/operatorIdentifiers'
 import type { MowerMainConf, RosterWorkspace } from '../domain/roster'
@@ -108,6 +108,11 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
           return id
         })})),
       ] : undefined
+      if (facility.type === 'trading' && facility.product === 'orundum') {
+        const candidates = groupBindings?.flatMap(binding => binding.replacement) ?? orderedCandidates
+        const error = orundumRunOrderError(facility.roomId, slotIndex, primaryOperatorId ? [primaryOperatorId, ...candidates] : candidates)
+        if (error) diagnostics.push({ code: 'ORUNDUM_RUN_ORDER_OPERATOR', severity: 'error', path: `${facility.roomId}.slots.${slotIndex}`, message: error })
+      }
       for (const [candidateIndex, id] of orderedCandidates.entries()) {
         if(id==='Free'&&facility.type==='dormitory'&&slot.groupId&&primaryOperatorId&&OPERATOR_MAP.get(primaryOperatorId)?.name!=='菲亚梅塔')continue
         if (!isKnown(id)) diagnostics.push({ code: 'UNKNOWN_OPERATOR', severity: 'warning', path: `${facility.roomId}.slots.${slotIndex}.replacements.${candidateIndex}`, message: `未知干员 ${id}` })

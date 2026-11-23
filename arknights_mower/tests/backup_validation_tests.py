@@ -1120,3 +1120,47 @@ def test_trade_run_order_validates_slots_after_merging_current_and_group_binding
     result = data.validate_backup_plans()
     assert not result["success"]
     assert "room_1_1 的第 1、2 个工位同时选择了跑单干员但书" in result["message"]
+
+
+@pytest.mark.parametrize(
+    "role,name",
+    [("agent", "但书"), ("replacement", "龙舌兰"), ("group_bindings", "可露希尔")],
+)
+def test_orundum_primary_checks_all_slot_candidates(role, name):
+    plan = trade_schedule(3, primary="orundum")
+    slot = plan["default_plan"].plan["room_1_1"][1]
+    if role == "agent":
+        slot.agent = name
+    elif role == "replacement":
+        slot.replacement.append(name)
+    else:
+        slot.group_bindings = [{"group": "贸易", "replacement": [name]}]
+    assert Operators(plan).init_and_validate() == (
+        f"room_1_1 的第 2 个工位卖玉时不能安排跑单干员{name}"
+    )
+
+
+@pytest.mark.parametrize("role", ["inherited", "task"])
+def test_orundum_product_only_backup_rejects_runner_before_activation(role):
+    config.conf.product_switching.enable = True
+    plan = trade_schedule(3, backup="orundum")
+    backup = plan["backup_plans"][0]
+    backup.plan["room_1_1"] = []
+    if role == "inherited":
+        plan["default_plan"].plan["room_1_1"][1].replacement.insert(0, "佩佩")
+    else:
+        backup.task = {"room_1_1": ["Current", "佩佩"]}
+    data = initialize(plan)
+    error = "room_1_1 的第 2 个工位卖玉时不能安排跑单干员佩佩"
+    assert error in data.validate_backup_plans()["message"]
+    original = data.plan
+    assert data.swap_plan([True], refresh=True) == error
+    assert data.plan is original
+    assert data.products["room_1_1"] == "lmd"
+    assert data.plan_condition == [False]
+    if role == "inherited":
+        del plan["default_plan"].plan["room_1_1"][1].replacement[0]
+    else:
+        backup.task = {}
+    assert data.swap_plan([True], refresh=True) is None
+    assert data.products["room_1_1"] == "orundum"

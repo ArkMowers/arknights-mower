@@ -55,6 +55,13 @@ def validate_backup_facilities(default_plan, backups, *, product_switching_enabl
             if room not in default_plan.plan:
                 return f"副表“{label}”的 {room} 不在主表设施中"
             original = default_plan.plan[room]
+            if (
+                not slots
+                and original
+                and original[0].facility == "贸易站"
+                and backup.products.get(room) in TRADE_PRODUCTS
+            ):
+                continue  # 仅切换订单类型时继承主表工位。
             if room.startswith("room_") and len(slots) != len(original):
                 return (
                     f"副表“{label}”的 {room} 改变设施等级（岗位数 "

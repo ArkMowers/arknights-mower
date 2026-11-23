@@ -783,9 +783,11 @@ def test_replacement_batch_excludes_orundum(solver, source):
     if source == "configured":
         config.conf.product_switching.enable = True
         data.backup_plans[0].products["room_1_1"] = "orundum"
+        with pytest.raises(ValueError, match="卖玉时不能安排跑单干员但书"):
+            solver._advance_orders_before_maintenance([True])
     else:
         data.update_facility_state("room_1_1", "trade", "orundum")
-    assert not solver._advance_orders_before_maintenance([True])
+        assert not solver._advance_orders_before_maintenance([True])
     assert solver.tasks == []
 
 

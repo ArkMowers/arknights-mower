@@ -1,3 +1,4 @@
+import { orundumRunOrderError } from './shiftRunPolicy'
 import { facilityCapacity } from './facilities'
 import type { MowerFacility, MowerRoomId, RosterWorkspace } from './roster'
 
@@ -51,6 +52,12 @@ export function assertMowerBackupTaskRooms(effective: RosterWorkspace, task: Rec
     const facility = effective.mainPlan.facilities[roomId as MowerRoomId]
     if (!facility || facility.level === 0 || targets.length > facility.slots.length) {
       throw new Error(`副表任务缺少有效排班岗位：${roomId}`)
+    }
+    if (facility.type === 'trading' && facility.product === 'orundum') {
+      for (const [index, name] of targets.entries()) {
+        const error = orundumRunOrderError(roomId, index, [name])
+        if (error) throw new Error(error)
+      }
     }
   }
 }
