@@ -16315,7 +16315,21 @@ class BaseSchedulerSolver(
             agents[:] = original
             if row is not None:
                 row[:] = original_row
-        if not snapshot.recovering:
+        takeovers = {}
+        if task.type == TaskTypes.NOT_SPECIFIC and room in getattr(
+            task, "dorm_fill_plan", {}
+        ):
+            recovering = set(snapshot.recovering) | set(snapshot.estimated_recovering)
+            for bed in self.op_data.dorm:
+                bed_room, index = bed.position
+                if (
+                    bed_room == room
+                    and index in slots
+                    and bed.name
+                    and original[index] in recovering
+                ):
+                    takeovers[index] = bed
+        if not snapshot.recovering and not takeovers:
             return None
         candidates = snapshot.filling
         self.profession_filter("ALL")
@@ -16337,10 +16351,39 @@ class BaseSchedulerSolver(
             if name not in self.op_data.operators:
                 self.op_data.add(Operator(name, ""))
             observed.append(name)
-        for index in slots:
-            agents[index] = "Free"
+        page_names = {name for name, _ in page}
+        ranked = sorted(observed, key=lambda name: resting_key(self.op_data, name))
+        for index in sorted(slots):
+            target = "Free"
+            planned = original[index]
+            if index in takeovers and (
+                planned in observed or planned not in page_names
+            ):
+                tier = resting_tier(self.op_data, planned)
+                preferred = [
+                    name
+                    for name in ranked
+                    if name not in agents and resting_tier(self.op_data, name) < tier
+                ]
+                preferred.append(planned)
+                plan = {**task.plan, room: agents}
+                transitions = self._execution_group_transitions(plan)
+                target = next(
+                    (
+                        name
+                        for name in preferred
+                        if self.op_data._slot_takable(
+                            takeovers[index],
+                            requester=name,
+                            plan=plan,
+                            group_transitions=transitions,
+                        )
+                    ),
+                    "Free",
+                )
+            agents[index] = target
             if row is not None:
-                row[index] = "Free"
+                row[index] = target
         return observed
 
     def _check_workshop_selection_mood(self, name, mood):

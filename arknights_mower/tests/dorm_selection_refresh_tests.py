@@ -93,7 +93,76 @@ def test_planned_named_fill_rechecks_its_original_ordinary_candidate(
 
     instance.choose_agent(plan, ROOM)
 
-    assert plan == selected and plan[-1] == "伊芙利特"
+    assert plan == selected and plan[-1] == ("伊芙利特" if vacant else "陈")
+
+
+@pytest.mark.parametrize("other_measured", [False, True])
+@pytest.mark.parametrize(
+    ("visible_priority", "expected"),
+    [("lower", "红"), ("equal", "红"), ("higher", "伊芙利特")],
+)
+def test_first_page_competes_with_estimated_named_takeover(
+    solver, monkeypatch, visible_priority, expected, other_measured
+):
+    instance, selected = solver
+    data = instance.op_data
+    data.config.resting_priority_replacement = ["红"]
+    data.config.resting_standby = ["空爆"]
+    data.operators["空爆"].mood = 0
+    data.operators["红"].time_stamp = None
+    data.dorm_mood_estimates["红"] = (22, datetime.now())
+    if other_measured:
+        data.add(Operator("陈", "", mood=10, time_stamp=datetime.now()))
+    if visible_priority == "equal":
+        data.plan["meeting"][0].replacement.append("伊芙利特")
+        data.config.resting_priority_replacement.append("伊芙利特")
+    elif visible_priority == "higher":
+        data.config.ope_resting_priority = ["伊芙利特"]
+    monkeypatch.setattr(resting_priority, "agent_list", [*data.operators, "伊芙利特"])
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    instance.task = tasks[0]
+    plan = instance.task.plan[ROOM]
+    assert plan[-1] == "红"
+    plan[:4] = selected[:4]
+    observations = first_page(instance, monkeypatch, {"伊芙利特": 1})
+
+    instance.choose_agent(plan, ROOM)
+
+    assert observations.count([]) == 1
+    assert plan == selected and selected[-1] == expected
+
+
+@pytest.mark.parametrize("higher_visible", [False, True])
+def test_named_takeover_rechecks_resident_after_queueing(
+    solver, monkeypatch, higher_visible
+):
+    instance, selected = solver
+    data = instance.op_data
+    data.config.resting_priority_replacement = ["红", "陈"]
+    data.plan["meeting"][0].replacement.append("陈")
+    data.operators["红"].mood = 12
+    data.operators["空爆"].mood = 0
+    tasks = []
+    try_add_release_dorm({}, None, data, tasks)
+    instance.task = tasks[0]
+    plan = instance.task.plan[ROOM]
+    assert plan[-1] == "红"
+    plan[:4] = selected[:4]
+
+    data.update_detail("空爆", 0, "", -1, True)
+    data.add(Operator("陈", ""))
+    data.update_detail("陈", 15, ROOM, 4, True)
+    assert data.dorm[0].name == "陈"
+    if higher_visible:
+        data.config.ope_resting_priority = ["伊芙利特"]
+    monkeypatch.setattr(resting_priority, "agent_list", [*data.operators, "伊芙利特"])
+    first_page(instance, monkeypatch, {"伊芙利特": 1})
+
+    instance.choose_agent(plan, ROOM, fast_mode=False)
+
+    assert plan == selected
+    assert selected[-1] == ("伊芙利特" if higher_visible else "陈")
 
 
 def test_previously_full_operator_uses_new_card_without_overwriting_measurement(
