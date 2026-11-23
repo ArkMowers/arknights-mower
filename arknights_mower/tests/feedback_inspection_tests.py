@@ -1,6 +1,7 @@
 """反馈证据检查、源码推断及发送校验的真实工具调用路径。"""
 
 import json
+from collections import Counter
 from unittest.mock import Mock
 
 import pytest
@@ -295,6 +296,54 @@ def test_supplementary_window_keeps_prior_task_and_final_zip_sizes(evidence):
         assert segment["log_archive"]["bytes"] == info.compress_size
         assert segment["log_archive"]["uncompressed_bytes"] == info.file_size
     assert all(not name.endswith(".zip") for name in contents)
+
+
+def test_large_inspection_preview_keeps_supplementary_window_records(feedback):
+    logs, _, sent = feedback
+    (logs / "runtime.log").write_text(
+        "".join(
+            f"2026-10-20 {minute}:{second:02d} scheduler INFO 训练室 "
+            + "x" * 950
+            + "\n"
+            for minute in ("11:30", "12:00")
+            for second in range(30)
+        ),
+        encoding="utf-8",
+    )
+    arguments = {
+        "start_time": START,
+        "end_time": END,
+        "focus_terms": ["训练室"],
+        "evidence_windows": [
+            {
+                "start_time": "2026-10-20 11:30:00",
+                "end_time": "2026-10-20 11:31:00",
+                "reason": "核对问题发生前的训练室记录",
+            }
+        ],
+    }
+    result = submit_issue.inspect_feedback(**arguments)
+    assert len(result) <= MAX_RESULT_CHARS
+    preview = json.loads(result)["references"]
+    assert sent == []
+    assert submit_issue.submit_issue("训练室问题", **arguments) == "邮件发送成功！"
+    index = json.loads(parts(sent)["references.json"])
+
+    primary, supplementary = "runtime.log", "windows/1/runtime.log"
+    full_records = index["records"]
+    assert Counter(row["member"] for row in full_records) == {
+        primary: 24,
+        supplementary: 24,
+    }
+    preview_records = preview["records"]
+    counts = Counter(row["member"] for row in preview_records)
+    assert counts[primary] and counts[supplementary], counts
+    assert abs(counts[primary] - counts[supplementary]) <= 1
+    assert preview["coverage"]["inspection_omitted_records"] == len(full_records) - len(
+        preview_records
+    )
+    shown = {row["id"] for row in preview_records}
+    assert preview_records == [row for row in full_records if row["id"] in shown]
 
 
 @pytest.mark.parametrize("token", [None, "incorrect"])

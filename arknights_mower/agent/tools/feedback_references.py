@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+from collections import Counter
 from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
 
@@ -65,6 +66,14 @@ def _priority(record):
     return (0 if record.get("focus_matched") else 1), rank
 
 
+def _member_priority_key(record, counts):
+    priority = _priority(record)
+    group = (record["member"], priority)
+    order = counts[group]
+    counts[group] += 1
+    return priority, order
+
+
 def _selection_key(record):
     return _priority(record), record["_priority_order"], record["_order"]
 
@@ -110,7 +119,7 @@ def _scan_member(bundle, info, remaining, retained, position, focus_terms):
     digest = hashlib.sha256()
     current = None
     history = info.filename.endswith(".jsonl")
-    priority_counts = {}
+    priority_counts = Counter()
 
     def finish():
         if current is None:
@@ -136,9 +145,7 @@ def _scan_member(bundle, info, remaining, retained, position, focus_terms):
         current["focus_matched"] = any(
             term in current["text"].casefold() for term in focus_terms
         )
-        priority = _priority(current)
-        current["_priority_order"] = priority_counts.get(priority, 0)
-        priority_counts[priority] = current["_priority_order"] + 1
+        _, current["_priority_order"] = _member_priority_key(current, priority_counts)
         current["_order"] = position[0]
         position[0] += 1
         # 同级按每个成员中的出现次数交错保留，再按附件顺序输出。
@@ -495,7 +502,12 @@ def format_feedback_inspection(details: dict, max_chars: int) -> str:
         else:
             shown_records.add(record_id)
 
-    for record in sorted(records.values(), key=_priority):
+    priority_counts = Counter()
+    ranked_records = [
+        (_member_priority_key(record, priority_counts), record)
+        for record in records.values()
+    ]
+    for _, record in sorted(ranked_records, key=lambda item: item[0]):
         if record["id"] not in shown_records:
             preview["records"].append(record)
             if len(encode()) > max_chars:
