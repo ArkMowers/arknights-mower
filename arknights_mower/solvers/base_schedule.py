@@ -536,12 +536,40 @@ class OrderReturnUnresolved(RecognizeError):
     """订单已读，返回地图的画面仍未确认。"""
 
 
+class TrainingSubmissionUnconfirmed(AgentSelectionNotReady):
+    messages = (
+        "训练室协助位提交后未确认目标驻员，返回房间重试",
+        "训练室训练位提交后未确认目标驻员，返回房间重试",
+    )
+
+    def __init__(self, index, target):
+        super().__init__(self.messages[index])
+        self.slot = (index, target)
+
+    @classmethod
+    def retained_slot(cls, task):
+        failure = task.execution_failure
+        if "submitted_training_slot" in failure:
+            return failure["submitted_training_slot"]
+        # 旧存档只有提交后失败的岗位名称，目标取自原任务的该岗位。
+        if (
+            "train" in failure.get("rooms", ())
+            and failure.get("reason") in cls.messages
+        ):
+            index = cls.messages.index(failure["reason"])
+            targets = task.plan.get("train", ())
+            if index < len(targets):
+                return index, targets[index]
+        return None
+
+
 class RoomArrangementDeferred(RuntimeError):
     """房间重试暂未成功，保留剩余任务并把调度权交回队列。"""
 
-    def __init__(self, room, error):
+    def __init__(self, room, error, *, submitted_training_slot=None):
         super().__init__(str(error))
         self.room = room
+        self.submitted_training_slot = submitted_training_slot
 
 
 class MoodArrangementChanged(RuntimeError):
@@ -1105,7 +1133,7 @@ class BaseSchedulerSolver(
             TaskTypes.NOT_SPECIFIC,
         }
         pending = [
-            (task, failure)
+            (task, failure, training_slot)
             for task in self.tasks
             if (
                 task.type in ordinary
@@ -1114,11 +1142,15 @@ class BaseSchedulerSolver(
                 and not task.meta_data
             )
             and (failure := getattr(task, "execution_failure", None))
-            and failure.get("reason", "").startswith("干员确认")
+            and (
+                (training_slot := TrainingSubmissionUnconfirmed.retained_slot(task))
+                is not None
+                or failure.get("reason", "").startswith("干员确认")
+            )
         ]
         if not pending or self.scene() != Scene.INFRA_MAIN:
             return False
-        for task, failure in pending:
+        for task, failure, training_slot in pending:
             recovery = getattr(task, "confirmation_recovery_rooms", {})
             for room in failure.get("rooms", ()):
                 if room not in task.plan or recovery.get(room) == "consumed":
@@ -1179,13 +1211,18 @@ class BaseSchedulerSolver(
                         and getattr(self.op_data, "room_observations", {}).get(room, 0)
                         > revision
                     )
+                    if complete and room == "train" and training_slot is not None:
+                        index, target = training_slot
+                        complete = self._training_slot_matches(
+                            index, target, rows[index]["agent"]
+                        )
                 except (MowerExit, DeviceRecoveryError, SharedADBError):
                     raise
                 except Exception as exc:
                     logger.warning("确认结果补充实读未完成，保留原任务：%s", exc)
                 finally:
                     if not complete:
-                        # 部分岗位的时间戳更新不能被当作完整成功实读来解除失败。
+                        # 补读不完整或提交的岗位仍不符时，本次读数不解除失败。
                         failure["snapshot"] = self._task_failure_snapshot(
                             task, failure["rooms"]
                         )
@@ -4347,6 +4384,10 @@ class BaseSchedulerSolver(
                     and getattr(task, "run_order_restore_pending", False)
                 ):
                     self._retain_failed_task(task, str(e), [e.room])
+                    if e.submitted_training_slot is not None:
+                        task.execution_failure["submitted_training_slot"] = (
+                            e.submitted_training_slot
+                        )
                 self.skip()
                 self.back_to_infrastructure()
             except ProductSwitchFailed as e:
@@ -12667,11 +12708,15 @@ class BaseSchedulerSolver(
     def _return_after_order_countdown(self):
         """读到订单倒计时后逐页返回，每次按键都以新场景确认结果。"""
         profile = self.performance_profile
+        previous = self.__dict__.get("_order_return_unresolved")
+        attempts = {previous: 2} if previous is not None else {}
+        if previous == Scene.ORDER_LIST:
+            # 上一轮已等过按键反馈，本轮重新取帧确认订单页后只补一次返回。
+            self.recog.update()
+            attempts[Scene.ORDER_LIST] = 1
+            previous = None
         scene = self.scene()
         deadline = monotonic() + profile.transition_timeout
-        previous = self.__dict__.get("_order_return_unresolved")
-        # 耗尽后只观察同一画面；新的场景才允许下一次导航输入。
-        attempts = {previous: 2} if previous == scene else {}
         waited = set()
         failure = "读单后未确认返回基建地图，保留订单刷新任务"
         while scene != Scene.INFRA_MAIN:
@@ -17031,8 +17076,8 @@ class BaseSchedulerSolver(
         return (facility, profession, order, prefix, label), names
 
     def _remember_skill_successor(self, first, room, page):
-        cache = self.__dict__.get("_profession_search_pages")
-        if cache is None or not first:
+        pairs = self.__dict__.get("_profession_search_pages")
+        if pairs is None or not first:
             return
         key, left = first
         _, profession, order, selected, _ = key
@@ -17052,7 +17097,6 @@ class BaseSchedulerSolver(
         )
         if not overlap or not set(left).isdisjoint(right[overlap:]):
             return
-        pairs = cache.setdefault("skill_successors", {})
         key = (*key, left[-3:])
         if (
             key not in pairs
@@ -17392,7 +17436,6 @@ class BaseSchedulerSolver(
         profession_pages = (
             self.__dict__.get("_profession_search_pages") if production else None
         )
-        earlier_pages = profession_pages.copy() if profession_pages is not None else {}
         pending_skill_page = None
         exhausted_filters = set()
         tried_branches = set()
@@ -17512,15 +17555,6 @@ class BaseSchedulerSolver(
             )
             if first:
                 self._remember_skill_successor(first, room, last_scanned_page)
-            if (
-                profession_pages is not None
-                and last_special_filter != "ALL"
-                and not active_branch
-                and right_swipe == 0
-            ):
-                profession_pages[last_special_filter, search_order] = tuple(
-                    name for name, _ in last_scanned_page
-                )
             return chosen, last_scanned_page
 
         def swipe_search_page(page, *, full_scan, first=None):
@@ -17862,21 +17896,14 @@ class BaseSchedulerSolver(
                 and (profession, branch) not in tried_branches
             ):
                 first = None
-                probe = (
-                    profession,
-                    branch,
-                ) not in probed_pages and self.next_page_may_contain(
-                    ret, earlier_pages.get((profession, search_order), ()), target
-                )
+                probe = False
                 if (
-                    not probe
-                    and (profession, branch) not in probed_pages
+                    (profession, branch) not in probed_pages
                     and right_swipe == 0
                     and search_order[0] == "技能"
                     and profession_pages
                     and self._is_ordinary_facility_arrangement(task)
                 ):
-                    pairs = profession_pages.get("skill_successors", {})
                     tail = tuple(name for name, _ in ret[-3:])
                     if any(
                         key[1] == profession
@@ -17884,13 +17911,13 @@ class BaseSchedulerSolver(
                         and set(key[3]) == selected
                         and key[-1] == tail
                         and self.next_page_may_contain(ret, history, target)
-                        for key, history in pairs.items()
+                        for key, history in profession_pages.items()
                     ):
                         first = self._skill_profession_page(
                             room, profession, search_order, selected, ret, first=True
                         )
                         probe = first is not None and self.next_page_may_contain(
-                            ret, pairs.get((*first[0], tail), ()), target
+                            ret, profession_pages.get((*first[0], tail), ()), target
                         )
                 if probe:
                     probed_pages.add((profession, branch))
@@ -18271,7 +18298,7 @@ class BaseSchedulerSolver(
                 if all(scope is not None and scope[1][0] <= 1790 for scope in suffix):
                     if len(suffix) * 2 < len(agents) + 1:
                         for scope in suffix:
-                            self.tap(scope, interval=0)
+                            self.tap_reorder_card(scope)
                         verified = self.fill_visible_selection_suffix(
                             agents, retained, wait_for_feedback=True
                         )
@@ -18731,10 +18758,7 @@ class BaseSchedulerSolver(
                         break
                     remaining = deadline - monotonic()
                     if attempt + 1 == attempts or remaining <= 0:
-                        position = "协助位" if index == 0 else "训练位"
-                        raise AgentSelectionNotReady(
-                            f"训练室{position}提交后未确认目标驻员，返回房间重试"
-                        )
+                        raise TrainingSubmissionUnconfirmed(index, target)
                     self.sleep(min(interval, remaining))
                     training_observation = BaseSchedulerSolver._observe_training_room(
                         self, read_time_index or [], departing_plan, force_mood
@@ -20220,6 +20244,7 @@ class BaseSchedulerSolver(
         checked = False
         reconcile_after_confirmation = False
         reconcile_after_selection = False
+        submitted_training_slot = None
         while not finished:
             confirmation_pending = False
             selection_attempted = False
@@ -20633,6 +20658,17 @@ class BaseSchedulerSolver(
                     final_observation = self.get_agent_from_room(
                         room, read_time_index, **observation_context
                     )
+                if submitted_training_slot is not None:
+                    index, target = submitted_training_slot
+                    if (
+                        index < len(plan[room])
+                        and plan[room][index] == target
+                        and not self._training_slot_matches(
+                            index, target, final_observation[index]["agent"]
+                        )
+                    ):
+                        raise TrainingSubmissionUnconfirmed(index, target)
+                    submitted_training_slot = None
                 same = final_observation is not None and self._room_matches_arrangement(
                     room, plan[room], final_observation
                 )
@@ -20874,6 +20910,8 @@ class BaseSchedulerSolver(
             ):
                 raise
             except Exception as e:
+                if isinstance(e, TrainingSubmissionUnconfirmed):
+                    submitted_training_slot = e.slot
                 pending = getattr(self.task, "run_order_confirmation_pending", None)
                 if pending and not pending["submitted"]:
                     self.task.__dict__.pop("run_order_confirmation_pending", None)
@@ -20931,8 +20969,12 @@ class BaseSchedulerSolver(
                         for task in self.tasks
                     )
                 )
-                if queued and (choose_error > retry_limit or urgent):
-                    raise RoomArrangementDeferred(room, e) from e
+                if queued:
+                    deferred = RoomArrangementDeferred(
+                        room, e, submitted_training_slot=submitted_training_slot
+                    )
+                    if choose_error > retry_limit or urgent:
+                        raise deferred from e
                 if choose_error > retry_limit:
                     raise e
                 # 确认后的失败统一返回再读实际驻员，由下一轮决定是否重选。
@@ -20943,7 +20985,7 @@ class BaseSchedulerSolver(
                             self.back_to_infrastructure()
                             if self.scene() != Scene.INFRA_MAIN:
                                 if queued:
-                                    raise RoomArrangementDeferred(room, e) from e
+                                    raise deferred from e
                                 raise e
                             break
                     else:
@@ -20951,7 +20993,7 @@ class BaseSchedulerSolver(
                     back_count += 1
                     if back_count > 3:
                         if queued:
-                            raise RoomArrangementDeferred(room, e) from e
+                            raise deferred from e
                         raise e
                 continue
         return new_plan

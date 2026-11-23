@@ -130,6 +130,89 @@ it('does not start when configuration save fails and exposes server errors', asy
   expect(state.http.post).not.toHaveBeenCalled()
   expect(component.error.value).toBe('保存失败')
 })
+it('clears the status alert on the next successful poll with xhigh selected', async () => {
+  vi.useFakeTimers()
+  vi.stubGlobal('document', Object.assign(new EventTarget(), { hidden: false }))
+  const { component } = setup()
+  state.config.performance_mode = 'xhigh'
+  state.http.get
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValueOnce({ data: { status: 'idle', id: null } })
+
+  state.mounted.forEach((callback) => callback())
+  await vi.advanceTimersByTimeAsync(0)
+  expect(state.http.get).toHaveBeenCalledWith('/device/performance-test')
+  expect(component.error.value).toBe('读取性能测试状态失败')
+
+  await vi.advanceTimersByTimeAsync(1500)
+  expect(component.job.value).toEqual({ status: 'idle', id: null })
+  expect(component.error.value).toBe('')
+  expect(state.config.performance_mode).toBe('xhigh')
+  expect(state.http.post).not.toHaveBeenCalled()
+})
+
+it.each(['success', 'failure'])(
+  'ignores a late status %s after a newer poll succeeds',
+  async (outcome) => {
+    const { component } = setup()
+    const first = Promise.withResolvers()
+    const finished = { status: 'cancelled', id: 'test' }
+    state.http.get.mockReturnValueOnce(first.promise).mockResolvedValueOnce({ data: finished })
+    const oldRead = component.readStatus()
+    await component.readStatus()
+    if (outcome === 'success') first.resolve({ data: { status: 'running', id: 'test' } })
+    else first.reject(new Error('offline'))
+    await oldRead
+
+    expect(component.job.value).toEqual(finished)
+    expect(component.error.value).toBe('')
+  }
+)
+
+it('shows a completed read while the next poll is still pending', async () => {
+  const { component } = setup()
+  const first = Promise.withResolvers()
+  const second = Promise.withResolvers()
+  state.http.get.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise)
+  const firstRead = component.readStatus()
+  const secondRead = component.readStatus()
+
+  first.resolve({ data: { status: 'running', id: 'test' } })
+  await firstRead
+  expect(component.running.value).toBe(true)
+  second.resolve({ data: { status: 'cancelled', id: 'test' } })
+  await secondRead
+  expect(component.job.value.status).toBe('cancelled')
+})
+
+it.each([
+  ['start', 'post', 'idle', '请先保存当前配置'],
+  ['cancel', 'delete', 'running', '该性能测试已结束或被替换']
+])(
+  'keeps the %s error through failed and successful status reads until the next action',
+  async (action, method, status, message) => {
+    const { component } = setup()
+    component.job.value = { status, id: status === 'idle' ? null : 'test' }
+    state.http[method].mockRejectedValueOnce({ response: { data: { message } } })
+    await component[action]()
+    expect(component.error.value).toBe(message)
+
+    state.http.get
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce({ data: component.job.value })
+    await component.readStatus()
+    expect(component.error.value).toBe(message)
+    await component.readStatus()
+    expect(component.error.value).toBe(message)
+
+    state.http[method].mockResolvedValueOnce({
+      data: { status: 'running', id: 'test', phase: action === 'start' ? 'starting' : 'cleanup' }
+    })
+    await component[action]()
+    expect(component.error.value).toBe('')
+  }
+)
+
 it('cancels only the current test and keeps polling until cleanup ends', async () => {
   const { component } = setup()
   component.job.value = { status: 'running', id: 'test', phase: 'testing', mode: 'high', round: 2 }

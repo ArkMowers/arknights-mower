@@ -369,14 +369,19 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
         assert "返回键未生效" in refresh.execution_failure["reason"]
         assert solver.back.call_count == 2
         solver.read_time.assert_called_once()
+        solver.recog.update = MagicMock()
         with pytest.raises(ui.base.OrderReturnUnresolved):
             solver.transition()
-        assert solver.back.call_count == 2
+        assert solver.back.call_count == 3
         solver.back_to_infrastructure.assert_not_called()
-        page["open"] = False
-        solver.back = working_back
-        solver.transition()
+        assert page == {"room": "room_1_1", "open": True}
+        solver.back.side_effect = working_back
+        ui.base.BaseSchedulerSolver.scene_graph_navigation(solver, scene.INFRA_MAIN)
+        assert solver.back.call_count == 5  # 订单页和房间各返回一次。
         assert page == {"room": None, "open": False}
+        solver._read_pending_order_times()
+        solver.read_time.assert_called_once()
+        assert refresh.execution_failure and refresh.time == original_time
     assert arrangement.plan == {}
     assert arrangement in solver.tasks and refresh in solver.tasks
 
@@ -412,6 +417,54 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
     assert ui.clock.now() == entered_at
     solver.back_to_index.assert_not_called()
     solver.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("initial", ["ORDER_LIST", "INFRA_ARRANGE_CONFIRM"])
+def test_exhausted_order_navigation_checks_the_frame_before_input(
+    order_navigation, monkeypatch, initial
+):
+    ui = order_navigation
+    solver, scene = ui.solver, ui.base.Scene
+    refresh = ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data="room_1_1")
+    solver.tasks = [refresh]
+    original_time = refresh.time
+    ui.states["room_1_1"] = "active"
+    frame = getattr(scene, initial)
+
+    def countdown(*args, **kwargs):
+        solver.scene.side_effect = lambda: frame
+        solver.tap = MagicMock()
+        return 3600
+
+    def fresh_frame():
+        nonlocal frame
+        if initial == "ORDER_LIST":
+            frame = scene.UNKNOWN
+
+    solver.read_time.side_effect = countdown
+    solver.back = MagicMock()
+    solver.recog.update = fresh_frame
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    solver._read_pending_order_times()
+    assert refresh.execution_failure
+    if initial == "ORDER_LIST":
+        solver.tap.assert_not_called()
+        assert solver.back.call_count == 2
+    else:
+        solver.back.assert_not_called()
+        assert solver.tap.call_args_list
+        assert all(call.args == ((640, 1070),) for call in solver.tap.call_args_list)
+
+    solver.tap.reset_mock()
+    solver.back.reset_mock()
+    for _ in range(2):
+        with pytest.raises(ui.base.OrderReturnUnresolved):
+            solver.transition()
+    solver.tap.assert_not_called()
+    solver.back.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    solver.read_time.assert_called_once()
+    assert solver.tasks == [refresh] and refresh.time == original_time
 
 
 @pytest.mark.parametrize(

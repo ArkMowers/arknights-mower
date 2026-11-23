@@ -14,7 +14,9 @@ const base = `${import.meta.env.VITE_HTTP_URL || ''}/device/performance-test`
 const labels = { xhigh: '极高', high: '高', medium: '中', low: '低' }
 const job = ref({ status: 'idle' })
 const pending = ref(false)
-const error = ref('')
+const statusError = ref('')
+const actionError = ref('')
+const error = computed(() => actionError.value || statusError.value)
 const screenshot = ref('')
 const running = computed(() => job.value.status === 'running')
 const recommendation = computed(() => {
@@ -41,7 +43,8 @@ const progress = computed(() => {
 })
 let timer
 let disposed = false
-let revision = 0
+let latestReadId = 0
+let handledReadId = 0
 let mounted = false
 let previewJobId = null
 const screenshotPreview = createScreenshotPreview({
@@ -67,21 +70,30 @@ watch([running, () => job.value.id, windowMinimized], updateScreenshotPreview)
 
 async function readStatus() {
   if (pending.value) return
-  const current = revision
+  const readId = ++latestReadId
+  let nextJob
+  let message = ''
   try {
-    const response = await axios.get(base)
-    if (!disposed && current === revision) job.value = response.data
+    nextJob = (await axios.get(base)).data
   } catch (reason) {
-    if (!disposed && current === revision)
-      error.value = reason.response?.data?.message || '读取性能测试状态失败'
+    message = reason.response?.data?.message || '读取性能测试状态失败'
   }
+  if (disposed || readId <= handledReadId) return
+  handledReadId = readId
+  statusError.value = message
+  if (!message) job.value = nextJob
+}
+
+function beginAction() {
+  pending.value = true
+  handledReadId = latestReadId
+  actionError.value = ''
+  statusError.value = ''
 }
 
 async function start() {
   if (props.disabled || pending.value || running.value) return
-  pending.value = true
-  error.value = ''
-  ++revision
+  beginAction()
   try {
     // Save completion precedes device input, including a recently edited timing value.
     await config.save_config()
@@ -90,7 +102,8 @@ async function start() {
     if (!disposed) job.value = response.data
   } catch (reason) {
     if (!disposed)
-      error.value = reason.response?.data?.message || reason.message || '游戏内性能测试启动失败'
+      actionError.value =
+        reason.response?.data?.message || reason.message || '游戏内性能测试启动失败'
   } finally {
     pending.value = false
   }
@@ -98,13 +111,12 @@ async function start() {
 
 async function cancel() {
   if (pending.value || !running.value) return
-  pending.value = true
-  ++revision
+  beginAction()
   try {
     const response = await axios.delete(base, { data: { id: job.value.id } })
     if (!disposed) job.value = response.data
   } catch (reason) {
-    if (!disposed) error.value = reason.response?.data?.message || '取消性能测试失败'
+    if (!disposed) actionError.value = reason.response?.data?.message || '取消性能测试失败'
   } finally {
     pending.value = false
   }
@@ -156,7 +168,8 @@ onUnmounted(() => {
       </n-button>
       <help-text>
         停止任务后测试，连接设备、启动游戏并进入宿舍一；登录验证、协议确认需手动完成。
-        从极高开始，每轮先选三人，连续滑动三次后补至五人，重排并缩减为三人，逐次核验名单。
+        从极高开始，每轮先选三人，连续滑动三次后补至五人。
+        核对五人倒序后的床位编号，再清空暂选。按原顺序选回前两人并核对床位，补选同页的第三人后再核对三人的顺序。
         连续三轮通过才推荐，一次失败立即降档。
         测试不确认换人，可随时取消。期间请勿操作游戏，采用建议需手动确认。
       </help-text>

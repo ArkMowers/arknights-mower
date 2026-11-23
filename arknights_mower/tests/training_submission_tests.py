@@ -1,5 +1,6 @@
 """进驻信息遮住提交提示时，等待游戏更新驻员后再读取训练室。"""
 
+import pickle
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -35,9 +36,8 @@ training_reader = occupancy.training_reader
 scheduler = recovery.scheduler
 
 
-def test_exhausted_training_room_yields_until_a_new_observation(
-    scheduler, training_reader, monkeypatch
-):
+@pytest.fixture
+def training_dispatch(scheduler, training_reader, monkeypatch):
     instance = scheduler.solver
     instance.op_data = training_reader.op_data
     now = scheduler.clock.now()
@@ -58,12 +58,6 @@ def test_exhausted_training_room_yields_until_a_new_observation(
     ):
         setattr(instance, method, MagicMock())
     instance._complete_group_shift = MagicMock(return_value=True)
-    instance.get_agent_from_room = MagicMock(
-        return_value=[{"agent": "望"}, {"agent": ""}]
-    )
-    instance.choose_train = MagicMock(
-        side_effect=base.AgentSelectionNotReady("训练位提交未确认")
-    )
     instance.仓库扫描 = MagicMock()
     monkeypatch.setattr(config.conf, "enable_mastery", False)
     monkeypatch.setattr(config.conf, "performance_mode", "high")
@@ -73,6 +67,20 @@ def test_exhausted_training_room_yields_until_a_new_observation(
         lambda *a, **kw: mastery_reader.RoomState("empty"),
     )
     monkeypatch.setattr(base, "save_exception", MagicMock())
+    return instance, task, depot
+
+
+def test_failure_before_training_submit_yields_to_independent_task(
+    scheduler, training_dispatch
+):
+    instance, task, depot = training_dispatch
+    now = task.time
+    instance.get_agent_from_room = MagicMock(
+        return_value=[{"agent": "望"}, {"agent": ""}]
+    )
+    instance.choose_train = MagicMock(
+        side_effect=base.AgentSelectionNotReady("未能打开训练室选人页，返回房间重试")
+    )
 
     instance.infra_main()
 
@@ -87,10 +95,115 @@ def test_exhausted_training_room_yields_until_a_new_observation(
     assert task in instance.tasks and depot not in instance.tasks
     assert find_next_task([task]) is None
     assert instance.choose_train.call_count == 2
-    instance.op_data.room_observations["train"] += 1
-    instance._resume_failed_tasks()
-    assert find_next_task([task]) is task
+    assert not any(
+        call.kwargs.get("strict_observation")
+        for call in instance.get_agent_from_room.call_args_list
+    )
     assert task.time == now and task.plan == {"train": ["Current", "余"]}
+    scheduler.io.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "feedback", ["room_retry", "settled", "old", "unreadable_mood", "legacy_save"]
+)
+def test_dispatch_reads_late_training_submission_once(
+    scheduler, training_dispatch, training_reader, monkeypatch, feedback
+):
+    instance, task, depot = training_dispatch
+    original_time = task.time
+    residents = ["望", ""]
+    page = Scene.INFRA_MAIN
+
+    def show(scene):
+        nonlocal page
+        page = scene
+
+    def enter(room):
+        assert room == "train"
+        if feedback == "room_retry" and instance.tap_confirm.called:
+            residents[1] = "余"
+        show(Scene.INFRA_DETAILS)
+
+    instance.scene.side_effect = lambda: page
+    instance.recog.w, instance.recog.h = 1920, 1080
+    instance.enter_room.side_effect = enter
+    instance.back_to_infrastructure.side_effect = lambda: show(Scene.INFRA_MAIN)
+    instance.back = MagicMock(side_effect=lambda interval=1: show(Scene.INFRA_MAIN))
+    instance.tap = MagicMock(side_effect=lambda pos: show(Scene.INFRA_ARRANGE_ORDER))
+    instance._require_training_selection = MagicMock()
+    instance.choose_train_ope = MagicMock()
+    instance.tap_confirm = MagicMock(
+        side_effect=lambda *a, **kw: show(Scene.INFRA_DETAILS)
+    )
+    training_reader.task, training_reader.tasks = task, instance.tasks
+    training_reader.find_next_task.return_value = None
+    training_reader.recog.gray[344:] = 1
+    training_reader.find.side_effect = lambda res, **kw: (
+        res == "infra_no_operator" and not residents[int(kw["scope"][0][1] == 344)]
+    )
+    training_reader.read_screen.side_effect = lambda crop, **kw: residents[crop[0, 0]]
+    training_reader.selection_transition_timing = lambda: (0.25, 2)
+    instance.get_agent_from_room = MagicMock(wraps=training_reader.get_agent_from_room)
+    save = MagicMock(return_value=True)
+    monkeypatch.setattr(base, "save_current_state", save)
+
+    instance.infra_main()
+    if feedback == "room_retry":
+        assert task not in instance.tasks
+        assert instance.op_data.get_current_room("train", True) == ["望", "余"]
+        instance.tap_confirm.assert_called_once_with("train", training_slot=1)
+        save.assert_not_called()
+        return
+    assert task.execution_failure["rooms"] == ("train",)
+    assert "训练位提交后未确认" in task.execution_failure["reason"]
+    assert task.time == original_time and task.plan == {"train": ["Current", "余"]}
+    assert find_next_task(instance.tasks) is depot
+    assert instance.op_data.get_current_room("train", True) == ["望", ""]
+    if feedback == "legacy_save":
+        task = pickle.loads(pickle.dumps(task))
+        task.execution_failure.pop("submitted_training_slot", None)
+        task.execution_failure["reason"] = (
+            "训练室训练位提交后未确认目标驻员，返回房间重试"
+        )
+        instance.tasks = training_reader.tasks = [task, depot]
+        instance.task = training_reader.task = task
+    instance.get_agent_from_room.reset_mock()
+    if feedback != "old":
+        residents[1] = "余"
+    if feedback == "unreadable_mood":
+        training_reader.read_accurate_mood.return_value = -1
+
+    instance.infra_main()
+
+    instance.get_agent_from_room.assert_called_once_with(
+        "train", strict_observation=True
+    )
+    instance.tap_confirm.assert_called_once_with("train", training_slot=1)
+    instance.choose_train_ope.assert_called_once_with("余")
+    save.assert_called_once()
+    assert task.plan == {"train": ["Current", "余"]} and task.time == original_time
+    if feedback in ("settled", "legacy_save"):
+        assert find_next_task([task]) is task
+        assert instance.op_data.get_current_room("train", True) == ["望", "余"]
+        assert instance.op_data.operators["余"].mood == 18
+        instance.task = task
+        instance.infra_main()
+        assert task not in instance.tasks
+        instance.tap_confirm.assert_called_once()
+    else:
+        assert instance.op_data.get_current_room("train", True) == ["望", ""]
+        for _ in range(3):
+            instance._resume_failed_tasks()
+            assert instance._observe_failed_arrangement_confirmation() is False
+            assert find_next_task(instance.tasks) is depot
+        assert instance.tasks == [task, depot] and task.time == original_time
+        instance.get_agent_from_room.assert_called_once()
+        if feedback == "old":
+            residents[1] = "余"
+            training_reader.get_agent_from_room("train", strict_observation=True)
+            instance._resume_failed_tasks()
+            assert find_next_task([task]) is task
+            instance.tap_confirm.assert_called_once()
     scheduler.io.assert_not_called()
 
 

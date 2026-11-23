@@ -27,6 +27,14 @@ def complete_selection(pending, **_):
     return [], []
 
 
+def read_beds(occupants, *, slot_numbers=None, **_):
+    if occupants is None:
+        return None
+    if slot_numbers is not None:
+        slot_numbers.update((name, i) for i, name in enumerate(occupants, 1))
+    return list(occupants)
+
+
 @pytest.fixture
 def solver(monkeypatch):
     monkeypatch.setattr(config, "stop_mower", module.config.stop_mower.__class__())
@@ -171,7 +179,10 @@ def test_trial_uses_shared_selection_reorder_and_actual_roster(
     solver.scan_agent = MagicMock(side_effect=complete_selection)
     solver.switch_arrange_order = MagicMock()
     solver.swipe_left = MagicMock(return_value=(0, None))
-    solver.wait_for_arranged_agents = MagicMock(return_value=["斯卡蒂", "安哲拉"])
+    occupants = iter((["斯卡蒂", "安哲拉"], ["安哲拉", "斯卡蒂"]))
+    solver.wait_for_arranged_agents = MagicMock(
+        side_effect=lambda _, **opts: read_beds(next(occupants), **opts)
+    )
     solver.tap = MagicMock()
     with solver.profile(mode):
         SelectionPerformanceTest.trial(solver, [], ["安哲拉", "斯卡蒂"])
@@ -199,7 +210,10 @@ def test_stable_wrong_selection_is_failure_even_when_names_were_found(
     solver.tap = MagicMock()
     with (
         solver.profile("high"),
-        pytest.raises(AgentSelectionNotReady, match="选择错误"),
+        pytest.raises(
+            AgentSelectionNotReady,
+            match="床位顺序" if wrong_after_reorder else "选择错误",
+        ),
     ):
         SelectionPerformanceTest.trial(solver, [], ["安哲拉", "斯卡蒂"])
 
@@ -237,7 +251,9 @@ def test_each_selection_follows_three_swipes_using_the_latest_page(solver):
     solver.scan_agent = MagicMock(side_effect=scan)
     solver.switch_arrange_order = MagicMock()
     solver.swipe_left = MagicMock(return_value=(0, None))
-    solver.wait_for_arranged_agents = MagicMock(return_value=["安哲拉", "斯卡蒂"])
+    solver.wait_for_arranged_agents = MagicMock(
+        side_effect=lambda _, **opts: read_beds(["安哲拉", "斯卡蒂"], **opts)
+    )
     solver.reorder_selected_agents = MagicMock()
     with solver.profile("xhigh"):
         SelectionPerformanceTest.trial(solver, pages[0], ["安哲拉", "斯卡蒂"])
@@ -297,12 +313,25 @@ def test_prepared_targets_remain_reachable_after_three_production_swipes(
     solver.swipe_left = MagicMock(side_effect=reset)
     solver.swipe_noinertia = MagicMock(side_effect=swipe)
     solver.tap = MagicMock(side_effect=tap)
-    solver.reorder_selected_agents = MagicMock()
+
+    def reorder(names, _):
+        selected[:] = names
+
+    solver.reorder_selected_agents = reorder
     refresh()
     # Exercise the actual page geometry and scanner, rather than scripting
     # matching preparation/trial pages that hide a distance mismatch.
     before, targets = SelectionPerformanceTest.prepare_round(solver, mode)
-    solver.wait_for_arranged_agents = MagicMock(side_effect=lambda names, **_: names)
+
+    def read(names, *, card_scopes=None, **opts):
+        if sorted(names) != sorted(selected):
+            return None
+        if card_scopes is not None:
+            card_scopes.update(solver.recog.img)
+        return read_beds(selected, **opts)
+
+    monkeypatch.setattr(base_mixin, "agent_card_selected", lambda img, scope: False)
+    solver.wait_for_arranged_agents = MagicMock(side_effect=read)
     with solver.profile(mode):
         SelectionPerformanceTest.trial(solver, before, targets)
     assert len(targets) == 5
@@ -540,7 +569,9 @@ def test_entry_opens_known_dormitory_and_cleanup_refuses_unknown_dialogs(solver)
 
 @pytest.mark.parametrize("mode", module.MODES)
 @pytest.mark.parametrize("partial_matches", [False, True])
-def test_full_trial_checks_five_to_three_roster(solver, mode, partial_matches):
+def test_full_trial_checks_five_to_three_roster(
+    solver, monkeypatch, mode, partial_matches
+):
     targets = ["杜林", "流明", "斑点", "摩根", "杰西卡"]
     solver.swipe_agent_page = MagicMock(return_value=(1, None))
     solver.scan_agent = MagicMock(side_effect=complete_selection)
@@ -548,9 +579,28 @@ def test_full_trial_checks_five_to_three_roster(solver, mode, partial_matches):
     solver.swipe_left = MagicMock(return_value=(0, None))
     solver.reorder_selected_agents = MagicMock()
     solver.clear_agent_selection = MagicMock()
-    solver.wait_for_arranged_agents = MagicMock(
-        side_effect=[targets, targets, targets[:3] if partial_matches else None]
+    reversed_targets = list(reversed(targets))
+    occupants = iter(
+        [
+            targets,
+            reversed_targets,
+            targets[:2],
+            targets[:3] if partial_matches else None,
+        ]
     )
+    third = ((846, 488), (1034, 520))
+    solver.recog.img = object()
+    solver.tap = MagicMock()
+    monkeypatch.setattr(
+        "arknights_mower.solvers.base_mixin.agent_card_selected", lambda *_: False
+    )
+
+    def read(_, *, card_scopes=None, **opts):
+        if card_scopes is not None:
+            card_scopes[targets[2]] = third
+        return read_beds(next(occupants), **opts)
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=read)
     with solver.profile(mode):
         if partial_matches:
             SelectionPerformanceTest.trial(solver, [], targets)
@@ -560,5 +610,49 @@ def test_full_trial_checks_five_to_three_roster(solver, mode, partial_matches):
     solver.clear_agent_selection.assert_called_once()
     assert [
         call.args[0] for call in solver.wait_for_arranged_agents.call_args_list
-    ] == [targets, targets, targets[:3]]
+    ] == [targets, reversed_targets, targets[:2], targets[:3]]
+    assert solver.tap.call_count == 1 and solver.tap.call_args.args == (third,)
     assert solver.swipe_agent_page.call_count == 3
+
+
+@pytest.mark.parametrize("wrong_size", [5, 2, 3])
+@pytest.mark.parametrize("unreadable", [False, True])
+def test_recommendation_requires_observed_bed_order(
+    solver, monkeypatch, wrong_size, unreadable
+):
+    targets = ["杜林", "流明", "斑点", "摩根", "杰西卡"]
+    solver.prepare_round.return_value = ([], targets)
+    solver.trial = SelectionPerformanceTest.trial.__get__(solver)
+    solver.scan_agent = MagicMock(side_effect=complete_selection)
+    solver.swipe_agent_page = MagicMock(return_value=(1, None))
+    solver.swipe_left = MagicMock(return_value=(0, None))
+    solver.switch_arrange_order = MagicMock()
+    solver.clear_agent_selection = MagicMock()
+    solver.reorder_selected_agents = MagicMock()
+
+    solver.recog.img = object()
+    solver.tap = MagicMock()
+    monkeypatch.setattr(
+        "arknights_mower.solvers.base_mixin.agent_card_selected", lambda *_: False
+    )
+
+    def read(names, *, slot_numbers=None, card_scopes=None, **_):
+        order = list(reversed(targets)) if len(names) == 5 else targets[: len(names)]
+        if card_scopes is not None:
+            card_scopes[targets[2]] = ((846, 488), (1034, 520))
+        if len(names) == wrong_size:
+            if unreadable:
+                order.pop()
+            else:
+                order[0], order[1] = order[1], order[0]
+        if slot_numbers is not None:
+            slot_numbers.update((name, i) for i, name in enumerate(order, 1))
+        return sorted(names)
+
+    solver.wait_for_arranged_agents = MagicMock(side_effect=read)
+    result = solver.run()
+    assert result["recommended_mode"] is None
+    assert [row["mode"] for row in result["trials"]] == list(module.MODES)
+    assert all(not row["ok"] for row in result["trials"])
+    assert solver.tap.call_count == (len(module.MODES) if wrong_size == 3 else 0)
+    solver.cancel_selection.assert_called_once()

@@ -450,11 +450,15 @@ class BaseMixin:
         )
         return profile.poll_interval, attempts
 
+    def tap_reorder_card(self, scope):
+        interval = {"xhigh": 0, "high": 0.1}.get(self.performance_profile.mode, 0.2)
+        self.tap(scope, interval=interval)
+
     def reorder_selected_agents(self, agents, actual, *, confirm_each=False):
         """按清空反馈帧的姓名重新选入。序号不可辨时逐次核对已选集合。"""
-        mode = self.performance_profile.mode
-        interval = {"xhigh": 0, "high": 0.1}.get(mode, 0.2)
-        logger.debug(f"选人重排清空：性能档位{mode}，页面已选{actual}，目标{agents}")
+        logger.debug(
+            f"选人重排清空：性能档位{self.performance_profile.mode}，页面已选{actual}，目标{agents}"
+        )
         page = self.clear_agent_selection()
         scopes = dict(page)
         if len(scopes) != len(page):
@@ -465,7 +469,7 @@ class BaseMixin:
                 raise AgentSelectionNotReady(
                     f"重排时未读到可点击的{name}，返回房间重试"
                 )
-            self.tap(scope, interval=interval)
+            self.tap_reorder_card(scope)
             if confirm_each:
                 scopes = {}
                 if (
@@ -502,7 +506,7 @@ class BaseMixin:
         ):
             return False
         for scope in suffix:
-            self.tap(scope, interval=0)
+            self.tap_reorder_card(scope)
         numbers.clear()
         self.wait_for_arranged_agents(
             agents,

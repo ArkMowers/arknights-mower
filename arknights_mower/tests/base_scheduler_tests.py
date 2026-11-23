@@ -1130,6 +1130,7 @@ class TestBaseScheduler(unittest.TestCase):
     def test_get_agent_from_room_uses_train_slots_without_train_plan(self):
         solver = self._create_no_train_plan_solver()
         solver.task = None
+        solver.recog = SimpleNamespace(gray=object())
         solver.train_scene = MagicMock(return_value=base_schedule.Scene.INFRA_DETAILS)
         solver.detect_room = MagicMock(return_value="train")
 
@@ -1140,10 +1141,16 @@ class TestBaseScheduler(unittest.TestCase):
                 "detect_product_complete",
                 return_value=False,
             ),
-            patch.object(BaseSchedulerSolver, "find", return_value=True),
+            patch.object(BaseSchedulerSolver, "find", return_value=True) as find,
         ):
             result = solver.get_agent_from_room("train")
 
+        find.assert_has_calls(
+            [
+                call("infra_no_operator", scope=((1288, 135), (1869, 326))),
+                call("infra_no_operator", scope=((1288, 344), (1869, 535))),
+            ]
+        )
         self.assertEqual(len(result), 2)
         self.assertEqual([item["agent"] for item in result], ["", ""])
 

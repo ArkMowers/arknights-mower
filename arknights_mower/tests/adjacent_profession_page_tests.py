@@ -235,7 +235,7 @@ def test_observed_prefix_order_and_bounded_batch_history(monkeypatch):
     monkeypatch.setattr(base_schedule, "agent_card_selected", lambda *_: False)
     after = page(("砾", "杏仁", "温蒂", "贝娜", "阿斯卡纶", "艾拉"))
     solver._remember_skill_successor(prefix, "room_3_1", after)
-    pairs = solver._profession_search_pages["skill_successors"]
+    pairs = solver._profession_search_pages
     key = (*prefix[0], prefix[1][-3:])
     assert key in pairs and (*reversed_prefix[0], reversed_prefix[1][-3:]) not in pairs
     for index in range(24):

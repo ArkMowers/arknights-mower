@@ -222,7 +222,9 @@ def test_full_control_center_keeps_visible_numbered_roster(monkeypatch, resident
     solver.swipe_left.assert_not_called()
 
 
-@pytest.mark.parametrize("mode", ["xhigh", "low"])
+@pytest.mark.parametrize(
+    "mode,interval", [("xhigh", 0), ("high", 0.1), ("medium", 0.2), ("low", 0.2)]
+)
 @pytest.mark.parametrize(
     "current_order,expected_clicks",
     [
@@ -231,7 +233,7 @@ def test_full_control_center_keeps_visible_numbered_roster(monkeypatch, resident
     ],
 )
 def test_numbered_full_room_reorders_in_current_view(
-    monkeypatch, mode, current_order, expected_clicks
+    monkeypatch, mode, interval, current_order, expected_clicks
 ):
     target = RESIDENTS + ["伊芙利特"]
     current = [target[index] for index in current_order]
@@ -248,6 +250,12 @@ def test_numbered_full_room_reorders_in_current_view(
 
     assert selected == target
     assert solver.tap.call_count == expected_clicks
+    card_taps = [
+        call for call in solver.tap.call_args_list if isinstance(call.args[0][0], tuple)
+    ]
+    assert [call.kwargs["interval"] for call in card_taps] == [interval] * (
+        4 if expected_clicks == 4 else 5
+    )
     assert solver.wait_for_cleared_selection.call_count == (expected_clicks == 6)
     solver.switch_arrange_order.assert_not_called()
     solver.swipe_left.assert_not_called()

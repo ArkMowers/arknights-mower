@@ -962,17 +962,8 @@ def test_branch_selection_preserves_order_and_recovers_to_profession(
 
 
 @pytest.mark.parametrize("mode", ["high", "low"])
-@pytest.mark.parametrize(
-    "previous,next_has_target,expected_route",
-    [
-        ("adjacent", True, ["下一页"]),
-        ("adjacent", False, ["下一页", "陷阱师"]),
-        ("absent", True, ["陷阱师"]),
-        ("distant", False, ["陷阱师"]),
-    ],
-)
-def test_dorothy_search_uses_previous_room_only_within_one_page(
-    monkeypatch, mode, previous, next_has_target, expected_route
+def test_single_profession_page_in_previous_room_does_not_precede_branch(
+    monkeypatch, mode
 ):
     from arknights_mower.tests.choose_agent_filter_tests import selection_solver
 
@@ -1007,18 +998,6 @@ def test_dorothy_search_uses_previous_room_only_within_one_page(
         "裁度",
         "槐琥",
     ]
-    if previous == "distant":
-        # 更早读到的多萝西离当前末列超过一次翻页的覆盖范围。
-        current = [
-            "娜斯提",
-            "温蒂",
-            "红",
-            "绮良",
-            "暗索",
-            "贝娜",
-            "阿斯卡纶",
-            *saved[:3],
-        ]
     pages = {"ALL": ["酒神", "红豆"], "SPECIAL": saved}
     route = []
     view = "ALL"
@@ -1035,11 +1014,6 @@ def test_dorothy_search_uses_previous_room_only_within_one_page(
             remaining.remove(name)
         return found, page(names)
 
-    def swipe(*args, **kwargs):
-        route.append("下一页")
-        pages["SPECIAL"] = ["槐琥", "多萝西" if next_has_target else "裁度"]
-        return 1, None
-
     def narrow(*args):
         route.append("陷阱师")
         pages["SPECIAL"] = ["多萝西"]
@@ -1047,16 +1021,15 @@ def test_dorothy_search_uses_previous_room_only_within_one_page(
 
     solver.profession_filter.side_effect = change
     solver.scan_agent.side_effect = scan
-    solver.swipe_agent_page.side_effect = swipe
+    solver.swipe_agent_page.side_effect = AssertionError("只读过一页，不能提前翻页")
     monkeypatch.setattr(base_schedule, "select_visible_branch", narrow)
-    if previous != "absent":
-        solver.choose_agent(["砾"], "room_2_2")
-        assert selected == ["砾"]
-        selected.clear()
+    solver.choose_agent(["砾"], "room_2_2")
+    assert selected == ["砾"]
+    selected.clear()
     pages["SPECIAL"] = current
     solver.choose_agent(["多萝西"], "room_3_1")
     assert selected == ["多萝西"]
-    assert route == expected_route
+    assert route == ["陷阱师"]
 
 
 @pytest.mark.parametrize("mode", ["high", "low"])
