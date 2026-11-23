@@ -39,7 +39,7 @@ bottle==0.12.25
     # via
     #   -r requirements.txt
     #   pywebview
-certifi==2024.7.4
+certifi==2026.11.20
     # via
     #   -r requirements.txt
     #   httpcore
