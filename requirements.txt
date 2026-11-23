@@ -195,14 +195,14 @@ pyclipper==1.3.0.post5
     # via rapidocr
 pycparser==2.22
     # via cffi
-pydantic==2.8.2
+pydantic==2.14.4
     # via
     #   -r requirements.in
     #   langchain-core
     #   langgraph
     #   langsmith
     #   openai
-pydantic-core==2.20.1
+pydantic-core==2.50.5
     # via pydantic
 pygetwindow==0.0.9
     # via pyautogui
@@ -285,7 +285,7 @@ tqdm==4.67.1
     # via
     #   openai
     #   rapidocr
-typing-extensions==4.12.2
+typing-extensions==4.16.0
     # via
     #   aiohttp
     #   aiosignal
@@ -296,6 +296,9 @@ typing-extensions==4.12.2
     #   pydantic-core
     #   pywebview
     #   qrcode
+    #   typing-inspection
+typing-inspection==0.4.5
+    # via pydantic
 tzdata==2024.1
     # via tzlocal
 tzlocal==5.4.5
