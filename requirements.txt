@@ -298,7 +298,7 @@ typing-extensions==4.12.2
     #   qrcode
 tzdata==2024.1
     # via tzlocal
-tzlocal==5.2
+tzlocal==5.4.5
     # via -r requirements.in
 urllib3==2.8.0
     # via requests
