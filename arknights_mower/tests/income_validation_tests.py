@@ -305,11 +305,12 @@ def test_income_preflight_rejects_invalid_trade_runners(client, product):
     assert validate()["success"]
 
 
+@pytest.mark.parametrize("literal", ["1", "-1", "+1"])
 @pytest.mark.parametrize(
     "later_target,expected_success", [("砾", True), ("Current", False)]
 )
 def test_orundum_preflight_merges_simultaneous_entry_tasks(
-    client, later_target, expected_success
+    client, later_target, expected_success, literal
 ):
     room = "room_1_1"
     snapshot = simple_plan()
@@ -324,7 +325,7 @@ def test_orundum_preflight_merges_simultaneous_entry_tasks(
     snapshot["backup_plans"] = [
         {
             "name": name,
-            "trigger": {"left": "1", "operator": "==", "right": "1"},
+            "trigger": {"left": literal, "operator": "==", "right": literal},
             "conf": {},
             "plan": {},
             "task": {room: ["Current", target]},

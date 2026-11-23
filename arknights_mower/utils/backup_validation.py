@@ -6,7 +6,7 @@ from itertools import product
 from time import monotonic
 
 from arknights_mower.data import base_room_list
-from arknights_mower.utils.logic_expression import MAX_INTEGER_LITERAL_BITS
+from arknights_mower.utils.logic_expression import integer_literal
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
@@ -22,6 +22,53 @@ STRING_CONSTANTS = (
 
 class BackupValidationLimitExceeded(ValueError):
     """条件分析或组合检查超出预算；不表示已确认排班错误。"""
+
+
+class OrundumEntryTargets:
+    """检查副表切入任务最终能否把跑单干员派入卖玉工位。"""
+
+    def __init__(self, backups, combinations, runners, deadline):
+        layers = {}
+        for index, backup in enumerate(backups):
+            for room, names in (backup.task or {}).items():
+                for slot, name in enumerate(names):
+                    if name != "Current":
+                        layers.setdefault((room, slot), []).append((index, name))
+        self.runners = runners
+        self.layers = {
+            position: entries
+            for position, entries in layers.items()
+            if any(name in runners for _, name in entries)
+        }
+        indices = {index for entries in self.layers.values() for index, _ in entries}
+        # 每一位代表一个可达的上一轮组合；额外一位代表启动时尚无副表生效。
+        self.all_previous = (1 << (len(combinations) + 1)) - 1
+        self.active_previous = {}
+        for index in indices:
+            check_validation_deadline(deadline)
+            packed = bytearray((len(combinations) + 7) // 8)
+            for i, flags in enumerate(combinations):
+                if flags[index]:
+                    packed[i // 8] |= 1 << (i % 8)
+            self.active_previous[index] = int.from_bytes(packed, "little")
+
+    def error(self, flags, plan, products):
+        for (room, slot), entries in self.layers.items():
+            slots = plan.get(room)
+            if not slots or products.get(room, slots[0].product) != "orundum":
+                continue
+            remaining = self.all_previous
+            # 后表已生效的上一轮组合，才有机会让更早的切入任务成为最终目标。
+            for index, name in reversed(entries):
+                if not flags[index]:
+                    continue
+                already_active = self.active_previous[index]
+                if name in self.runners and remaining & ~already_active:
+                    return f"{room} 的第 {slot + 1} 个工位卖玉时不能安排跑单干员{name}"
+                remaining &= already_active
+                if not remaining:
+                    break
+        return None
 
 
 def validate_trade_order_targets(layout, products, *, label):
@@ -367,18 +414,11 @@ def _ungrouped_backup_conditions(
             return lambda state: False
         if isinstance(node, ast.Compare) and len(node.ops) == 1:
             left, right, comparison = node.left, node.comparators[0], type(node.ops[0])
-            if comparison in (ast.Eq, ast.NotEq) and all(
-                isinstance(side, ast.Constant)
-                and type(side.value) is int
-                and side.value.bit_length() <= MAX_INTEGER_LITERAL_BITS
-                for side in (left, right)
-            ):
-                result = (
-                    left.value == right.value
-                    if comparison is ast.Eq
-                    else left.value != right.value
-                )
-                return lambda state: result
+            if comparison in (ast.Eq, ast.NotEq):
+                lhs, rhs = integer_literal(left), integer_literal(right)
+                if lhs is not None and rhs is not None:
+                    result = lhs == rhs if comparison is ast.Eq else lhs != rhs
+                    return lambda state: result
             # 支持将常量写在等式左侧。
             if (
                 isinstance(left, ast.Constant) or _string_literal(left) is not None

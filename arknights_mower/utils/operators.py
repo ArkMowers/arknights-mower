@@ -4,7 +4,7 @@ import json
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta
-from functools import lru_cache, partial
+from functools import lru_cache
 from time import monotonic
 from typing import Any, Literal, overload
 
@@ -16,7 +16,10 @@ from arknights_mower.utils.calculated_mood import (
     measure_mood_calculation,
 )
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
-from arknights_mower.utils.logic_expression import MAX_INTEGER_LITERAL_BITS
+from arknights_mower.utils.logic_expression import (
+    MAX_INTEGER_LITERAL_BITS,
+    integer_literal,
+)
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
@@ -81,7 +84,7 @@ def validate_orundum_staff(room, slots):
             )
 
 
-def trade_run_order_roster_error(plan, products, *, entry_targets=None):
+def trade_run_order_roster_error(plan, products):
     try:
         for room, slots in plan.items():
             if not slots:
@@ -90,8 +93,6 @@ def trade_run_order_roster_error(plan, products, *, entry_targets=None):
                 validate_orundum_staff(
                     room, ((slot.agent, *slot.all_replacements) for slot in slots)
                 )
-                if entry_targets is not None:
-                    validate_orundum_staff(room, entry_targets(room, len(slots)))
             elif room.startswith("room_") and slots[0].facility in ("", "贸易站"):
                 validate_run_order_slots(
                     room, (slot.all_replacements for slot in slots)
@@ -116,20 +117,6 @@ def validate_run_order_slots(room, replacements):
                 f"{room} 的第 {selected[runner]}、{index} 个工位同时选择了跑单干员{runner}"
             )
         selected[runner] = index
-
-
-def _integer_literal(node: ast.AST) -> int | None:
-    if isinstance(node, ast.Constant) and isinstance(node.value, int):
-        return node.value
-    if (
-        isinstance(node, ast.UnaryOp)
-        and isinstance(node.op, (ast.UAdd, ast.USub))
-        and isinstance(node.operand, ast.Constant)
-        and isinstance(node.operand.value, int)
-    ):
-        value = node.operand.value
-        return value if isinstance(node.op, ast.UAdd) else -value
-    return None
 
 
 def _numeric_result_bits(node: ast.AST) -> int | None:
@@ -158,7 +145,7 @@ def _numeric_result_bits(node: ast.AST) -> int | None:
         if left_bits is None or right_bits is None:
             return None
         if isinstance(node.op, ast.Pow):
-            exponent = _integer_literal(node.right)
+            exponent = integer_literal(node.right, allow_bool=True)
             if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
                 return None
             return max(1, left_bits * exponent)
@@ -227,7 +214,7 @@ def _validate_expression_resources(expression: str) -> None:
             if result_bits > _MAX_NUMERIC_RESULT_BITS:
                 raise ValueError("乘法结果过大")
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
-            exponent = _integer_literal(node.right)
+            exponent = integer_literal(node.right, allow_bool=True)
             result_bits = _numeric_result_bits(node)
             if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
                 raise ValueError(
@@ -3614,6 +3601,7 @@ class Operators:
         """独立检查可能的副表组合；可选耗时预算覆盖条件分析和组合检查。"""
         from arknights_mower.utils.backup_validation import (
             BackupValidationLimitExceeded,
+            OrundumEntryTargets,
             check_validation_deadline,
             possible_backup_conditions,
             validate_backup_facilities,
@@ -3661,60 +3649,44 @@ class Operators:
                 groups=self.backup_groups,
             )
 
-            @lru_cache
-            def entry_runner(layers):
-                if not any(name in TRADE_ORDER_AGENTS for _, name in layers):
-                    return None
-                # 从主表同时切入时，最后一个显式目标生效。
-                if layers[-1][1] in TRADE_ORDER_AGENTS:
-                    return layers[-1][1]
-                # 后表可能早已生效。只合并本轮新切入的任务，已执行的任务不再覆盖。
-                for previous in combinations:
-                    check_validation_deadline(deadline)
-                    target = next(
-                        (
-                            name
-                            for index, name in reversed(layers)
-                            if not previous[index]
-                        ),
-                        None,
-                    )
-                    if target in TRADE_ORDER_AGENTS:
-                        return target
-                return None
-
-            def entry_targets(flags, room, slot_count):
-                targets = [[] for _ in range(slot_count)]
-                for index, backup in enumerate(self.backup_plans):
-                    if flags[index] and backup.task:
-                        for slot, name in enumerate(backup.task.get(room, ())):
-                            if name != "Current":
-                                targets[slot].append((index, name))
-                return ((entry_runner(tuple(layers)),) for layers in targets)
-
+            entry_targets = OrundumEntryTargets(
+                self.backup_plans, combinations, TRADE_ORDER_AGENTS, deadline
+            )
+            # 只有换人任务且各表的排班设置相同时，重复合并相同设置不会改变驻员或产物。
+            task_only = all(
+                not backup.plan
+                and not backup.products
+                and not backup.group_tasks
+                and vars(backup.config) == vars(self.backup_plans[0].config)
+                for backup in self.backup_plans
+            )
+            checked_task_roster = False
             for flags in combinations:
                 check_validation_deadline(deadline)
-                condition = list(flags)
-                # 每个组合从独立模型开始，失败及检查顺序都不影响实际排班和驻员。
-                simulation = copy.copy(baseline)
-                simulation.operators, simulation.dorm = {}, []
-                error = simulation.swap_plan(condition)
-                if error is None:
-                    error = trade_run_order_roster_error(
-                        simulation.plan,
-                        simulation.products,
-                        entry_targets=partial(entry_targets, flags),
-                    )
-                if error is None:
-                    key = simulation._schedule_validation_key()
-                    if key in validated:
-                        check_validation_deadline(deadline)
-                        continue
-                    error = simulation.init_and_validate(True)
-                    simulation.first_init = False
-                    tested_count += 1
+                if task_only and checked_task_roster:
+                    error = entry_targets.error(flags, baseline.plan, baseline.products)
+                else:
+                    # 每个新排班从独立模型开始；失败及检查顺序不影响实际排班和驻员。
+                    simulation = copy.copy(baseline)
+                    simulation.operators, simulation.dorm = {}, []
+                    error = simulation.swap_plan(list(flags))
                     if error is None:
-                        validated.add(key)
+                        error = entry_targets.error(
+                            flags, simulation.plan, simulation.products
+                        )
+                    if error is None:
+                        key = simulation._schedule_validation_key()
+                        if key not in validated:
+                            error = trade_run_order_roster_error(
+                                simulation.plan, simulation.products
+                            )
+                            if error is None:
+                                error = simulation.init_and_validate(True)
+                            tested_count += 1
+                            if error is None:
+                                validated.add(key)
+                        if task_only and any(flags):
+                            checked_task_roster = True
                 if error is not None:
                     active = "、".join(
                         backup.name or f"副表{index + 1}"

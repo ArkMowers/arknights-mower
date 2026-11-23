@@ -1203,3 +1203,53 @@ def test_active_backup_does_not_reissue_its_overriding_entry_task():
     result = initialize(plan).validate_backup_plans(check_owned=False)
     assert not result["success"]
     assert f"{room} 的第 1 个工位卖玉时不能安排跑单干员但书" in result["message"]
+
+
+@pytest.mark.parametrize("count,paired", [(12, False), (14, True)])
+def test_orundum_entry_budget_covers_many_legal_combinations(count, paired):
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    conf = PlanConfig("", "", "")
+    triggers = [
+        f"op_data.facility_product('{facility}') == 'gold'"
+        for facility in backup_validation.base_room_list[:count]
+    ]
+    layers = (
+        [(trigger, name) for trigger in triggers for name in ("但书", "砾")]
+        if paired
+        else [
+            ("True", "但书"),
+            *((trigger, "砾") for trigger in triggers),
+            ("True", "砾"),
+        ]
+    )
+    plan["backup_plans"] = [
+        Plan({}, conf, trigger=trigger, task={room: [name]}) for trigger, name in layers
+    ]
+    result = initialize(plan).validate_backup_plans(max_seconds=5, check_owned=False)
+    assert result["status"] == "passed", result
+
+
+def test_orundum_entry_index_timeout_is_incomplete(monkeypatch):
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    plan["backup_plans"][0].task = {room: ["但书"]}
+    data = initialize(plan)
+    clock = [100.0]
+    monkeypatch.setattr(operators, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(backup_validation, "monotonic", lambda: clock[0])
+    analyze = backup_validation.possible_backup_conditions
+
+    def use_remaining_budget(*args, **kwargs):
+        combinations = analyze(*args, **kwargs)
+        clock[0] += 5
+        return combinations
+
+    monkeypatch.setattr(
+        backup_validation, "possible_backup_conditions", use_remaining_budget
+    )
+    result = data.validate_backup_plans(max_seconds=5, check_owned=False)
+    assert result["status"] == "incomplete"
+    assert "耗时预算" in result["reason"]
+    assert "允许启动" in result["message"]
+    assert data.plan_condition == [False]
