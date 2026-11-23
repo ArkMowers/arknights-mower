@@ -63,7 +63,7 @@
     "eslint-plugin-vue": "10.11.1",
     "globals": "^17.13.0",
     "naive-ui": "^2.45.3",
-    "sass": "^1.105.2",
+    "sass": "^1.108.2",
     "typescript": "^5.9.3",
     "unplugin-auto-import": "^21.1.0",
     "unplugin-vue-components": "^32.1.0",
