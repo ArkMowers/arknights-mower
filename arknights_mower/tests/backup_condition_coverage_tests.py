@@ -290,3 +290,9 @@ def test_elapsed_budget_interrupts_analysis_without_becoming_an_unknown_conditio
         backup_validation.BackupValidationLimitExceeded, match="耗时预算"
     ):
         possible_backup_conditions(plans, 16384, deadline=105)
+
+
+def test_signed_bounded_integer_comparisons():
+    assert possibilities("-1 == -1", "+1 != -1", "-0 != +0") == {(True, True, False)}
+    oversized = 1 << 256
+    assert possibilities(f"-{oversized} == -{oversized}") == {(False,), (True,)}

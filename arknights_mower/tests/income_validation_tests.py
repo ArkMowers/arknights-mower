@@ -258,3 +258,83 @@ def test_income_combination_validation_has_no_elapsed_time_cutoff(client, monkey
     ).json
     assert result["success"], result
     assert result["status"] == "passed"
+
+
+@pytest.mark.parametrize("product", ["lmd", "orundum"])
+def test_income_preflight_rejects_invalid_trade_runners(client, product):
+    snapshot = simple_plan()
+    snapshot["conf"]["workaholic"] = "巫恋,柏喙,芬"
+    room = "room_1_2"
+    slots = [{"agent": name} for name in ("巫恋", "柏喙", "芬")]
+    slots[0]["replacement"] = ["但书"]
+    snapshot["plan1"] = {room: {"name": "贸易站", "product": "lmd", "plans": slots}}
+    snapshot["advanced_settings"] = {"product_switching": {"enable": True}}
+    overlay = (
+        []
+        if product == "orundum"
+        else [
+            {"agent": "Current"},
+            {"agent": "柏喙", "replacement": ["但书"]},
+            {"agent": "Current"},
+        ]
+    )
+    snapshot["backup_plans"] = [
+        {
+            "name": "贸易",
+            "trigger": {"left": "1", "operator": "==", "right": "1"},
+            "conf": {},
+            "task": {},
+            "plan": {room: {"name": "贸易站", "product": product, "plans": overlay}},
+        }
+    ]
+
+    def validate():
+        return client.post(
+            "/validate-plan", json={"plan": snapshot, "operatorMode": "maximum"}
+        ).json
+
+    result = validate()
+    assert result["status"] == "failed"
+    assert room in result["message"]
+    assert (
+        "第 1 个工位卖玉时不能安排跑单干员但书"
+        if product == "orundum"
+        else "第 1、2 个工位同时选择了跑单干员但书"
+    ) in result["message"]
+    slots[0]["replacement"] = []
+    assert validate()["success"]
+
+
+@pytest.mark.parametrize("literal", ["1", "-1", "+1"])
+@pytest.mark.parametrize(
+    "later_target,expected_success", [("砾", True), ("Current", False)]
+)
+def test_orundum_preflight_merges_simultaneous_entry_tasks(
+    client, later_target, expected_success, literal
+):
+    room = "room_1_1"
+    snapshot = simple_plan()
+    snapshot["conf"]["workaholic"] = "巫恋,柏喙,芬"
+    snapshot["plan1"] = {
+        room: {
+            "name": "贸易站",
+            "product": "orundum",
+            "plans": [{"agent": name} for name in ("巫恋", "柏喙", "芬")],
+        }
+    }
+    snapshot["backup_plans"] = [
+        {
+            "name": name,
+            "trigger": {"left": literal, "operator": "==", "right": literal},
+            "conf": {},
+            "plan": {},
+            "task": {room: ["Current", target]},
+        }
+        for name, target in [("先切入", "但书"), ("后切入", later_target)]
+    ]
+    result = client.post(
+        "/validate-plan", json={"plan": snapshot, "operatorMode": "maximum"}
+    ).json
+    assert result["success"] == expected_success, result
+    if not expected_success:
+        assert f"{room} 的第 2 个工位卖玉时不能安排跑单干员但书" in result["message"]

@@ -6,8 +6,9 @@ import { parseProduct, serializeProduct } from '../domain/mowerProducts'
 import type {AppConfig} from '../domain/types'
 import {OPERATOR_MAP} from '../domain/operators'
 import {evaluateManufacturingCapacity,type OperatorEfficiencyResult} from '../engine/operatorRules'
-import {qualitySkillWarmupHours} from '../engine/timeDependentSkills'
+import {qualitySkillWarmupHours,temporalTradeQuality,type TimeContext} from '../engine/timeDependentSkills'
 import {evaluateTradeOrderCapacity} from '../engine/orderCapacity'
+import {tradeRunOrderSlots} from '../scheduler/compileRosterSchedule'
 import type {CompiledSchedule} from '../scheduler/types'
 import type {RuntimeState} from '../scheduler/rosterRuntime'
 import {getOrderDistribution,selectBaseOrder,expectedBaseOrder,captureOrder,type SpecialCapture,type OrderMode} from '../rules/orderRules'
@@ -40,7 +41,7 @@ export interface ProductionOptions {
  droneTarget?:'gold'|'exp'|'none'|'trading';droneTradingRoomId?:string;droneRoomId?:string;droneReserve?:number
  fragmentFormulaByRoom?:Record<string,'fragment-orirock'|'fragment-device'>
 }
-export interface ProductionFrame {desiredProducts?:Record<string,string>;time:number;config:AppConfig;active:Set<string>;morale:Map<string,number>;evaluations:Record<string,OperatorEfficiencyResult>}
+export interface ProductionFrame {skillTime?:TimeContext;desiredProducts?:Record<string,string>;time:number;config:AppConfig;active:Set<string>;morale:Map<string,number>;evaluations:Record<string,OperatorEfficiencyResult>}
 export interface ProductionEvent {time:number;type:string;roomId?:string;orderId?:string;amount?:number;operatorIds?:string[];delta?:ResourceAmounts;order?:CompletedOrder;fromProduct?:string;toProduct?:string}
 type CompletedOrder=ReturnType<typeof finishOrder>
 interface ManufactureRoom {completedByProduct:Record<string,number>;pendingSwitch?:{target:string;accelerated:boolean;readyAt?:number};roomId:string;state:ManufacturingState;blockedHours:number;blockedMaterialHours:number;collectedItems:number}
@@ -280,20 +281,30 @@ export function createProductionTimeline(schedule:CompiledSchedule,state:Runtime
   for(const m of manufactures.values())fund(m)
   for(const t of trades.values())if(staffedRooms.has(t.roomId)&&!t.active&&!t.disabled&&t.limit!==null&&t.pending.length<t.limit){
    const room=frame.config.rooms.find(r=>r.id===t.roomId)!,c=capture(frame,t.roomId)
+   const policy=(state.config.runOrderPolicies??schedule.runOrderPolicies).find(p=>p.roomId===t.roomId)
    if(t.product!=='orundum'){
-    const policy=(state.config.runOrderPolicies??schedule.runOrderPolicies).find(p=>p.roomId===t.roomId)
     for(const id of policy?.orderedOperatorIds??[]){
      if(hasOperatorSkill(frame.config,id,'trade_ord_pepe[000]'))c.pepe=true
      if(hasOperatorSkill(frame.config,id,'trade_ord_closure[000]'))c.closure=true
     }
    }
    const orderMode:OrderMode=t.product==='orundum'?'orundum':c.pepe?'pepe':c.closure?'closure':'gold'
+   let orderQuality:Pick<OperatorEfficiencyResult,'quality'|'qualityWarmup'>=frame.evaluations[t.roomId]!
    if(orderMode==='gold'){
-    const tailors=room.operatorIds.filter(id=>frame.active.has(id)&&qualitySkillWarmupHours(id,frame.config)>0)
+    let activeIds=room.operatorIds.filter(id=>frame.active.has(id))
+    if(policy){
+     const slots=schedule.rooms.find(r=>r.roomId===t.roomId)!.slots
+     const displaced=tradeRunOrderSlots(slots)
+      .filter(slot=>policy.orderedOperatorIds.includes(slot.operatorId))
+      .map(slot=>state.occupants[`${t.roomId}_${slot.slotIndex}`])
+     activeIds=activeIds.filter(id=>!displaced.includes(id))
+     orderQuality=temporalTradeQuality(activeIds,room.quality,frame.config,frame.skillTime,room.level)
+    }
+    const tailors=activeIds.filter(id=>qualitySkillWarmupHours(id,frame.config)>0)
     if(tailors.length>1)throw new Error(`${room.id}：暂不支持多名裁缝类干员同时影响订单概率（${tailors.map(id=>OPERATOR_MAP.get(id)?.name??id).join('、')}）；请调整排班后重新演算。`)
    }
    if(orderMode==='pepe'&&target==='trading')diagnostic('PEPE_DRONE_UNVERIFIED',`${t.roomId}：佩佩订单无人机加速未核实；保留无人机库存，不计加速`)
-   try{const distribution=getOrderDistribution(room.level,frame.evaluations[t.roomId]!.quality,orderMode,frame.evaluations[t.roomId]!.qualityWarmup),base=expectationMode?expectedBaseOrder(distribution):selectBaseOrder(distribution,rng(t));t.active=startOrder({id:`${t.roomId}:${t.completedOrders+1}`,startedAt:state.time,base});record('order-started',{roomId:t.roomId,orderId:t.active.id})}
+   try{const distribution=getOrderDistribution(room.level,orderQuality.quality,orderMode,orderQuality.qualityWarmup),base=expectationMode?expectedBaseOrder(distribution):selectBaseOrder(distribution,rng(t));t.active=startOrder({id:`${t.roomId}:${t.completedOrders+1}`,startedAt:state.time,base});record('order-started',{roomId:t.roomId,orderId:t.active.id})}
    catch(error){t.disabled=true;unsupported('ORDER_DISTRIBUTION_UNSUPPORTED',`${t.roomId}：${String(error)}`)}
   }
  }

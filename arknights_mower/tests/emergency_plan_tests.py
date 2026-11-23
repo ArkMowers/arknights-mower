@@ -16,6 +16,7 @@ from arknights_mower.utils.emergency_plan import (
     configured_rescue_names,
     effective_rescue_plan,
     rescue_plan_for,
+    validate_rescue_schedule,
 )
 from arknights_mower.utils.emergency_recovery import NativeProjection
 from arknights_mower.utils.plan import Room
@@ -759,3 +760,93 @@ def test_complete_saved_rescue_ignores_retired_room_exclusions(solver):
     solver._emergency_sync_reservations()
     assert solver.op_data.emergency_reserved_agents == set()
     assert set(state["targets"]) == set(PRIMARY)
+
+
+def test_rescue_run_order_conflict_after_backup_keeps_current_slot(monkeypatch):
+    room = "room_1_1"
+    slots = [{"agent": "巫恋", "replacement": ["但书"]}, {"agent": "柏喙"}]
+    document = PlanModel(
+        plan1={room: {"name": "贸易站", "product": "lmd", "plans": slots}},
+        backup_plans=[
+            {
+                "name": "贸易",
+                "conf": {},
+                "task": {},
+                "trigger": {
+                    "left": "op_data.operators['红'].is_working()",
+                    "operator": "==",
+                    "right": "True",
+                },
+                "plan": {
+                    room: {
+                        "name": "贸易站",
+                        "plans": [
+                            {"agent": "Current"},
+                            {"agent": "柏喙", "replacement": ["但书"]},
+                        ],
+                    }
+                },
+            }
+        ],
+    )
+    data = SimpleNamespace(
+        plan={room: [Room(n, "", [], "贸易站", "lmd") for n in ("红", "砾")]},
+        evaluate_expression=lambda _: False,
+    )
+    assert effective_rescue_plan(data, document)["run_order_replacements"][room] == [
+        ["但书"],
+        [],
+    ]
+    with pytest.raises(
+        ValueError, match="room_1_1 的第 1、2 个工位同时选择了跑单干员但书"
+    ):
+        validate_rescue_schedule(data, document)
+
+    repair = document.backup_plans[0].model_copy(deep=True)
+    repair.name = "改派龙舌兰"
+    repair.plan.room_1_1.plans[1].replacement = ["龙舌兰"]
+    document.backup_plans.append(repair)
+    validate_rescue_schedule(data, document)
+    recheck = MagicMock(side_effect=AssertionError("运行时重复校验救急跑单人选"))
+    monkeypatch.setattr(
+        "arknights_mower.utils.emergency_plan._validate_rescue_trade_rosters", recheck
+    )
+    data.evaluate_expression = lambda _: True
+    assert effective_rescue_plan(data, document)["run_order_replacements"][room] == [
+        ["但书"],
+        ["龙舌兰"],
+    ]
+    recheck.assert_not_called()
+
+
+@pytest.mark.parametrize("backup", [False, True])
+def test_rescue_orundum_rejects_group_runner(backup):
+    room = "room_1_1"
+    data = SimpleNamespace(
+        plan={room: [Room(n, "", [], "贸易站", "orundum") for n in ("红", "砾", "芬")]},
+        evaluate_expression=lambda _: True,
+    )
+    slots = [
+        {
+            "agent": "初雪",
+            "group_bindings": [{"group": "贸易", "replacement": ["但书"]}],
+        }
+    ]
+    document = PlanModel(
+        plan1={room: {"product": "lmd" if backup else "orundum", "plans": slots}},
+        backup_plans=[
+            {
+                "name": "卖玉",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {room: {"product": "orundum", "plans": []}},
+            }
+        ]
+        if backup
+        else [],
+    )
+    with pytest.raises(
+        ValueError, match="room_1_1 的第 1 个工位卖玉时不能安排跑单干员但书"
+    ):
+        validate_rescue_schedule(data, document)

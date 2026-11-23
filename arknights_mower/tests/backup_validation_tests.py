@@ -1073,3 +1073,183 @@ def test_default_and_custom_group_overlays_are_validated_together():
     assert "替班变更" in result["message"]
     assert "替换组不可用高效组干员" in result["message"]
     assert (repr(data.plan), data.plan_condition, data.backup_group) == previous
+
+
+def test_trade_run_order_rejects_two_slots_selecting_the_same_runner():
+    plan = trade_schedule(3)
+    plan["backup_plans"] = []
+    primary = plan["default_plan"]
+    room = "room_1_1"
+    primary.config.workaholic = ["巫恋", "柏喙", "芬"]
+    primary.plan[room] = [
+        Room("巫恋", "", ["但书"], "贸易站", "lmd"),
+        Room("柏喙", "", ["但书"], "贸易站", "lmd"),
+        Room("芬", "", [], "贸易站", "lmd"),
+    ]
+    data = Operators(plan)
+    error = "room_1_1 的第 1、2 个工位同时选择了跑单干员但书"
+    assert data.init_and_validate() == error
+    assert error in data.validate_backup_plans()["message"]
+
+    primary.plan[room][1].replacement = ["龙舌兰"]
+    primary.plan["room_2_1"] = [Room("红", "", ["但书", "砾"], "贸易站", "lmd")]
+    primary.products["room_2_1"] = "lmd"
+    data = initialize(plan)
+    assert data.validate_backup_plans()["success"]
+    assert data.run_order_plan(room) == ["但书", "龙舌兰", "Current"]
+    assert data.run_order_plan("room_2_1") == ["但书"]
+
+
+def test_trade_run_order_validates_slots_after_merging_current_and_group_bindings():
+    plan = trade_schedule(3)
+    room = "room_1_1"
+    primary = plan["default_plan"]
+    primary.config.workaholic = ["能天使", "银灰", "陈"]
+    primary.plan[room][0].replacement = ["但书"]
+    primary.plan[room][0].group_bindings = [{"group": "贸易", "replacement": ["但书"]}]
+    backup = plan["backup_plans"][0]
+    backup.plan[room] = [
+        Room("Current", "", [], "贸易站"),
+        Room("银灰", "", ["角峰", "但书"], "贸易站"),
+        Room("Current", "", [], "贸易站"),
+    ]
+    data = initialize(plan)
+    assert data.run_order_plan(room) == ["但书", "Current", "Current"]
+    result = data.validate_backup_plans()
+    assert not result["success"]
+    assert "room_1_1 的第 1、2 个工位同时选择了跑单干员但书" in result["message"]
+
+
+@pytest.mark.parametrize(
+    "role,name",
+    [("agent", "但书"), ("replacement", "龙舌兰"), ("group_bindings", "可露希尔")],
+)
+def test_orundum_primary_checks_all_slot_candidates(role, name):
+    plan = trade_schedule(3, primary="orundum")
+    slot = plan["default_plan"].plan["room_1_1"][1]
+    if role == "agent":
+        slot.agent = name
+    elif role == "replacement":
+        slot.replacement.append(name)
+    else:
+        slot.group_bindings = [{"group": "贸易", "replacement": [name]}]
+    assert Operators(plan).init_and_validate() == (
+        f"room_1_1 的第 2 个工位卖玉时不能安排跑单干员{name}"
+    )
+
+
+@pytest.mark.parametrize("role", ["inherited", "task"])
+def test_orundum_product_only_backup_rejects_runner_before_activation(role):
+    config.conf.product_switching.enable = True
+    plan = trade_schedule(3, backup="orundum")
+    backup = plan["backup_plans"][0]
+    backup.plan["room_1_1"] = []
+    if role == "inherited":
+        plan["default_plan"].plan["room_1_1"][1].replacement.insert(0, "佩佩")
+    else:
+        backup.task = {"room_1_1": ["Current", "佩佩"]}
+    data = initialize(plan)
+    error = "room_1_1 的第 2 个工位卖玉时不能安排跑单干员佩佩"
+    assert error in data.validate_backup_plans()["message"]
+    assert data.products["room_1_1"] == "lmd"
+    assert data.plan_condition == [False]
+    if role == "inherited":
+        del plan["default_plan"].plan["room_1_1"][1].replacement[0]
+    else:
+        backup.task = {}
+    assert data.validate_backup_plans()["success"]
+    assert data.swap_plan([True], refresh=True) is None
+    assert data.products["room_1_1"] == "orundum"
+
+
+@pytest.mark.parametrize(
+    "later_targets, later_trigger, expected_error",
+    [
+        (["Current", "砾"], "True", False),
+        (["Current", "Current"], "True", True),
+        (["砾"], "True", True),
+        (["Current", "砾"], "op_data.operators['银灰'].is_working()", True),
+    ],
+)
+def test_orundum_entry_checks_final_explicit_slot(
+    later_targets, later_trigger, expected_error
+):
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    conf = plan["default_plan"].config
+    plan["backup_plans"] = [
+        Plan({}, conf, trigger="True", task={room: ["Current", "但书"]}),
+        Plan({}, conf, trigger=later_trigger, task={room: later_targets}),
+    ]
+    result = initialize(plan).validate_backup_plans(check_owned=False)
+    assert result["success"] == (not expected_error), result
+    if expected_error:
+        assert f"{room} 的第 2 个工位卖玉时不能安排跑单干员但书" in result["message"]
+
+
+def test_active_backup_does_not_reissue_its_overriding_entry_task():
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    conf = plan["default_plan"].config
+    plan["backup_plans"] = [
+        Plan(
+            {},
+            conf,
+            trigger="op_data.operators['银灰'].is_working()",
+            task={room: ["但书"]},
+        ),
+        Plan({}, conf, trigger="True", task={room: ["砾"]}),
+    ]
+    result = initialize(plan).validate_backup_plans(check_owned=False)
+    assert not result["success"]
+    assert f"{room} 的第 1 个工位卖玉时不能安排跑单干员但书" in result["message"]
+
+
+@pytest.mark.parametrize("count,paired", [(12, False), (14, True)])
+def test_orundum_entry_budget_covers_many_legal_combinations(count, paired):
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    conf = PlanConfig("", "", "")
+    triggers = [
+        f"op_data.facility_product('{facility}') == 'gold'"
+        for facility in backup_validation.base_room_list[:count]
+    ]
+    layers = (
+        [(trigger, name) for trigger in triggers for name in ("但书", "砾")]
+        if paired
+        else [
+            ("True", "但书"),
+            *((trigger, "砾") for trigger in triggers),
+            ("True", "砾"),
+        ]
+    )
+    plan["backup_plans"] = [
+        Plan({}, conf, trigger=trigger, task={room: [name]}) for trigger, name in layers
+    ]
+    result = initialize(plan).validate_backup_plans(max_seconds=5, check_owned=False)
+    assert result["status"] == "passed", result
+
+
+def test_orundum_entry_index_timeout_is_incomplete(monkeypatch):
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    plan["backup_plans"][0].task = {room: ["但书"]}
+    data = initialize(plan)
+    clock = [100.0]
+    monkeypatch.setattr(operators, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(backup_validation, "monotonic", lambda: clock[0])
+    analyze = backup_validation.possible_backup_conditions
+
+    def use_remaining_budget(*args, **kwargs):
+        combinations = analyze(*args, **kwargs)
+        clock[0] += 5
+        return combinations
+
+    monkeypatch.setattr(
+        backup_validation, "possible_backup_conditions", use_remaining_budget
+    )
+    result = data.validate_backup_plans(max_seconds=5, check_owned=False)
+    assert result["status"] == "incomplete"
+    assert "耗时预算" in result["reason"]
+    assert "允许启动" in result["message"]
+    assert data.plan_condition == [False]

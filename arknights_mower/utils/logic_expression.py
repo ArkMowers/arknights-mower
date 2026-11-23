@@ -1,4 +1,21 @@
+import ast
 from typing import Optional, Self
+
+MAX_INTEGER_LITERAL_BITS = 256
+
+
+def integer_literal(node: ast.AST, *, allow_bool=False) -> int | None:
+    sign = 1
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+        sign = -1 if isinstance(node.op, ast.USub) else 1
+        node = node.operand
+    if isinstance(node, ast.Constant) and isinstance(node.value, int):
+        value = node.value
+        if type(value) is bool and not allow_bool:
+            return None
+        if value.bit_length() <= MAX_INTEGER_LITERAL_BITS:
+            return sign * value
+    return None
 
 
 class LogicExpression:

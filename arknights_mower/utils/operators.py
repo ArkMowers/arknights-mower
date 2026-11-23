@@ -16,6 +16,10 @@ from arknights_mower.utils.calculated_mood import (
     measure_mood_calculation,
 )
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
+from arknights_mower.utils.logic_expression import (
+    MAX_INTEGER_LITERAL_BITS,
+    integer_literal,
+)
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
@@ -55,7 +59,6 @@ FACILITY_TYPE_IDS = {
 
 _MAX_EXPRESSION_LENGTH = 2048
 _MAX_EXPRESSION_NODES = 128
-_MAX_INTEGER_LITERAL_BITS = 256
 _MAX_STRING_LITERAL_LENGTH = 512
 _MAX_POWER_EXPONENT = 64
 _MAX_NUMERIC_RESULT_BITS = 4096
@@ -72,18 +75,48 @@ _NUMERIC_EXPRESSION_CALLS = {
 }
 
 
-def _integer_literal(node: ast.AST) -> int | None:
-    if isinstance(node, ast.Constant) and isinstance(node.value, int):
-        return node.value
-    if (
-        isinstance(node, ast.UnaryOp)
-        and isinstance(node.op, (ast.UAdd, ast.USub))
-        and isinstance(node.operand, ast.Constant)
-        and isinstance(node.operand.value, int)
-    ):
-        value = node.operand.value
-        return value if isinstance(node.op, ast.UAdd) else -value
+def validate_orundum_staff(room, slots):
+    for index, names in enumerate(slots, start=1):
+        runner = first_run_order_agent(names)
+        if runner:
+            raise ValueError(
+                f"{room} 的第 {index} 个工位卖玉时不能安排跑单干员{runner}"
+            )
+
+
+def trade_run_order_roster_error(plan, products):
+    try:
+        for room, slots in plan.items():
+            if not slots:
+                continue
+            if products.get(room, slots[0].product) == "orundum":
+                validate_orundum_staff(
+                    room, ((slot.agent, *slot.all_replacements) for slot in slots)
+                )
+            elif room.startswith("room_") and slots[0].facility in ("", "贸易站"):
+                validate_run_order_slots(
+                    room, (slot.all_replacements for slot in slots)
+                )
+    except ValueError as error:
+        return str(error)
     return None
+
+
+def first_run_order_agent(choices):
+    return next((name for name in choices if name in TRADE_ORDER_AGENTS), None)
+
+
+def validate_run_order_slots(room, replacements):
+    selected = {}
+    for index, choices in enumerate(replacements, start=1):
+        runner = first_run_order_agent(choices)
+        if runner is None:
+            continue
+        if runner in selected:
+            raise ValueError(
+                f"{room} 的第 {selected[runner]}、{index} 个工位同时选择了跑单干员{runner}"
+            )
+        selected[runner] = index
 
 
 def _numeric_result_bits(node: ast.AST) -> int | None:
@@ -112,7 +145,7 @@ def _numeric_result_bits(node: ast.AST) -> int | None:
         if left_bits is None or right_bits is None:
             return None
         if isinstance(node.op, ast.Pow):
-            exponent = _integer_literal(node.right)
+            exponent = integer_literal(node.right, allow_bool=True)
             if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
                 return None
             return max(1, left_bits * exponent)
@@ -166,7 +199,7 @@ def _validate_expression_resources(expression: str) -> None:
         if isinstance(node, ast.Constant):
             if (
                 isinstance(node.value, int)
-                and node.value.bit_length() > _MAX_INTEGER_LITERAL_BITS
+                and node.value.bit_length() > MAX_INTEGER_LITERAL_BITS
             ):
                 raise ValueError("整数常量过大")
             if (
@@ -181,7 +214,7 @@ def _validate_expression_resources(expression: str) -> None:
             if result_bits > _MAX_NUMERIC_RESULT_BITS:
                 raise ValueError("乘法结果过大")
         if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Pow):
-            exponent = _integer_literal(node.right)
+            exponent = integer_literal(node.right, allow_bool=True)
             result_bits = _numeric_result_bits(node)
             if exponent is None or not 0 <= exponent <= _MAX_POWER_EXPONENT:
                 raise ValueError(
@@ -575,6 +608,10 @@ class Operators:
         primary = self.global_plan["default_plan"]
         if error := validate_trade_order_targets(
             primary.plan, primary.products, label="主表"
+        ):
+            return error
+        if not update and (
+            error := trade_run_order_roster_error(self.plan, self.products)
         ):
             return error
         for name in self.config.operator_mood_limits:
@@ -1885,7 +1922,7 @@ class Operators:
         if self.is_order_collection_room(room):
             return ["Current"] * len(self.plan[room])
         return [
-            next((name for name in choices if name in TRADE_ORDER_AGENTS), "Current")
+            first_run_order_agent(choices) or "Current"
             for choices in self.run_order_replacements(room)
         ]
 
@@ -3564,6 +3601,7 @@ class Operators:
         """独立检查可能的副表组合；可选耗时预算覆盖条件分析和组合检查。"""
         from arknights_mower.utils.backup_validation import (
             BackupValidationLimitExceeded,
+            OrundumEntryTargets,
             check_validation_deadline,
             possible_backup_conditions,
             validate_backup_facilities,
@@ -3610,23 +3648,45 @@ class Operators:
                 deadline=deadline,
                 groups=self.backup_groups,
             )
+
+            entry_targets = OrundumEntryTargets(
+                self.backup_plans, combinations, TRADE_ORDER_AGENTS, deadline
+            )
+            # 只有换人任务且各表的排班设置相同时，重复合并相同设置不会改变驻员或产物。
+            task_only = all(
+                not backup.plan
+                and not backup.products
+                and not backup.group_tasks
+                and vars(backup.config) == vars(self.backup_plans[0].config)
+                for backup in self.backup_plans
+            )
+            checked_task_roster = False
             for flags in combinations:
                 check_validation_deadline(deadline)
-                condition = list(flags)
-                # 每个组合从独立模型开始，失败及检查顺序都不影响实际排班和驻员。
-                simulation = copy.copy(baseline)
-                simulation.operators, simulation.dorm = {}, []
-                error = simulation.swap_plan(condition)
-                if error is None:
-                    key = simulation._schedule_validation_key()
-                    if key in validated:
-                        check_validation_deadline(deadline)
-                        continue
-                    error = simulation.init_and_validate(True)
-                    simulation.first_init = False
-                    tested_count += 1
+                if task_only and checked_task_roster:
+                    error = entry_targets.error(flags, baseline.plan, baseline.products)
+                else:
+                    # 每个新排班从独立模型开始；失败及检查顺序不影响实际排班和驻员。
+                    simulation = copy.copy(baseline)
+                    simulation.operators, simulation.dorm = {}, []
+                    error = simulation.swap_plan(list(flags))
                     if error is None:
-                        validated.add(key)
+                        error = entry_targets.error(
+                            flags, simulation.plan, simulation.products
+                        )
+                    if error is None:
+                        key = simulation._schedule_validation_key()
+                        if key not in validated:
+                            error = trade_run_order_roster_error(
+                                simulation.plan, simulation.products
+                            )
+                            if error is None:
+                                error = simulation.init_and_validate(True)
+                            tested_count += 1
+                            if error is None:
+                                validated.add(key)
+                        if task_only and any(flags):
+                            checked_task_roster = True
                 if error is not None:
                     active = "、".join(
                         backup.name or f"副表{index + 1}"
@@ -3654,7 +3714,7 @@ class Operators:
                 "success": False,
                 "status": "incomplete",
                 "reason": str(error),
-                "message": f"{error}，已验证 {tested_count} 次。主表已通过检查，允许启动；实际生效的副表组合由运行时检查。",
+                "message": f"{error}，已验证 {tested_count} 次。主表已通过检查，允许启动。尚未检查全部副表组合，可在排班编辑器中重新校验。",
             }
         if backup_count == 0:
             return {

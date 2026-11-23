@@ -143,14 +143,104 @@ def rescue_plan_for(data, plan):
     return {room: list(names) for room, names in plan.items()}
 
 
-def validate_rescue_schedule(data, schedule):
+def _validate_trade_staff(room, facility):
+    from arknights_mower.utils.operators import (
+        validate_orundum_staff,
+        validate_run_order_slots,
+    )
+
+    if not room.startswith("room_") or facility.get("name", "") not in ("", "贸易站"):
+        return
+    rows = facility["plans"]
+    replacements = [
+        all_replacements(slot.get("replacement", ()), slot.get("group_bindings", ()))
+        for slot in rows
+    ]
+    if facility.get("product") == "orundum":
+        validate_orundum_staff(
+            room, ((slot["agent"], *names) for slot, names in zip(rows, replacements))
+        )
+    validate_run_order_slots(room, replacements)
+
+
+def _merge_rescue_facility(room, previous, overlay, backup_name):
+    original = previous.get("plans", [])
+    rows = []
+    for index, slot in enumerate(overlay["plans"]):
+        if slot["agent"] == "Current":
+            if index >= len(original):
+                raise ValueError(f"救急副表 {backup_name} 的 {room} 没有可保留岗位")
+            slot = original[index]
+        rows.append(slot)
+    return {
+        **previous,
+        **overlay,
+        "name": overlay.get("name") or previous.get("name", ""),
+        "plans": rows + original[len(rows) :],
+    }
+
+
+def _validate_rescue_trade_rosters(schedule, global_plan):
+    from arknights_mower.utils.backup_validation import possible_backup_conditions
+    from arknights_mower.utils.operators import (
+        MAX_BACKUP_VALIDATION_COMBINATIONS,
+        TRADE_ORDER_AGENTS,
+        first_run_order_agent,
+    )
+
+    backups = global_plan["backup_plans"]
+    rooms = {
+        room
+        for layer in [global_plan["default_plan"], *backups]
+        for room, slots in layer.plan.items()
+        if room.startswith("room_")
+        and slots
+        and slots[0].facility in ("", "贸易站")
+        and any(
+            slot.agent in TRADE_ORDER_AGENTS
+            or first_run_order_agent(slot.all_replacements)
+            for slot in slots
+        )
+    }
+    if not rooms:
+        return
+    primary = schedule.plan1.model_dump(exclude_none=True)
+    for room in sorted(rooms.intersection(primary)):
+        _validate_trade_staff(room, primary[room])
+    if not any(rooms.intersection(backup.plan) for backup in backups):
+        return
+    overlays = [
+        backup.plan.model_dump(exclude_none=True) for backup in schedule.backup_plans
+    ]
+    for flags in possible_backup_conditions(
+        backups,
+        MAX_BACKUP_VALIDATION_COMBINATIONS,
+        groups=global_plan["backup_groups"],
+    ):
+        effective = {}
+        for overlay, backup, active in zip(overlays, schedule.backup_plans, flags):
+            if active:
+                for room in sorted(rooms.intersection(overlay)):
+                    previous = effective.get(room, primary.get(room, {}))
+                    effective[room] = _merge_rescue_facility(
+                        room, previous, overlay[room], backup.name
+                    )
+        for room, facility in effective.items():
+            _validate_trade_staff(room, facility)
+
+
+def validate_rescue_schedule(data, schedule, *, check_run_orders=True):
     """静态校验救急主副表自身；条件生效后的设施对照交给初始化。"""
     from arknights_mower.utils.backup_group_tasks import validate_group_task_names
-    from arknights_mower.utils.operators import TRADE_ORDER_AGENTS, build_global_plan
+    from arknights_mower.utils.operators import (
+        TRADE_ORDER_AGENTS,
+        build_global_plan,
+    )
 
     source = schedule
     schedule = compile_rescue_schedule(data, schedule)
-    validate_group_task_names(build_global_plan(plan_model=schedule))
+    global_plan = build_global_plan(plan_model=schedule)
+    validate_group_task_names(global_plan)
 
     primary = schedule.plan1.model_dump(exclude_none=True)
     roster = {
@@ -258,6 +348,8 @@ def validate_rescue_schedule(data, schedule):
                     f"救急排班 {room} 设施等级不一致："
                     f"正常排班 {levels.get(room)} 级，救急排班 {level} 级"
                 )
+    if check_run_orders:
+        _validate_rescue_trade_rosters(schedule, global_plan)
     return schedule
 
 
@@ -292,7 +384,7 @@ def effective_rescue_plan(data, schedule):
         )
 
     source = schedule
-    schedule = validate_rescue_schedule(data, schedule)
+    schedule = validate_rescue_schedule(data, schedule, check_run_orders=False)
     worker_config = recovery_config(schedule.conf)
     facilities = schedule.plan1.model_dump(exclude_none=True)
     from types import SimpleNamespace
@@ -327,26 +419,9 @@ def effective_rescue_plan(data, schedule):
         for room, facility in definition["plan"].items():
             if room not in RESCUE_ROOMS.keys() | RESCUE_DORMS:
                 continue
-            previous_facility = facilities.get(room, {})
-            previous = previous_facility.get("plans", [])
-            rows = []
-            for index, slot in enumerate(facility["plans"]):
-                if slot["agent"] == "Current":
-                    if index >= len(previous):
-                        raise ValueError(
-                            f"救急副表 {backup.name} 的 {room} 没有可保留岗位"
-                        )
-                    slot = previous[index]
-                rows.append(slot)
-            if rows:
-                rows.extend(copy.deepcopy(previous[len(rows) :]))
-            facilities[room] = {
-                **previous_facility,
-                **facility,
-                "plans": rows or previous,
-            }
-            if not facility.get("name"):
-                facilities[room]["name"] = previous_facility.get("name", "")
+            facilities[room] = _merge_rescue_facility(
+                room, facilities.get(room, {}), facility, backup.name
+            )
     roster = {
         room: [slot["agent"] for slot in facility["plans"]]
         for room, facility in facilities.items()

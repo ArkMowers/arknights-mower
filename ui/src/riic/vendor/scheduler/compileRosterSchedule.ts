@@ -10,6 +10,14 @@ import { resolveOperatorCharId } from '../domain/operatorIdentifiers'
 import type { MowerMainConf, RosterWorkspace } from '../domain/roster'
 import type { CompiledSchedule, CompiledSlot, SimulationAssumptions } from './types'
 
+export function tradeRunOrderSlots(slots: readonly CompiledSlot[]) {
+  return slots.flatMap(slot => {
+    const candidates = slot.groupBindings?.flatMap(binding => binding.replacement) ?? slot.orderedCandidates
+    const operatorId = candidates.find(isTradeRunOrderOperator)
+    return operatorId ? [{ slotIndex: slot.slotIndex, operatorId }] : []
+  })
+}
+
 const DEFAULTS: SimulationAssumptions = {
   schemaVersion: 1, predictiveMoodControl: false, initialMorale: 24, enableParty:false, leifengMode:true, droneIntervalHours:3, droneCountLimit:100, reloadRooms:[], maaGapHours:3, restingThreshold: 0.65, rescueThreshold: 0.75, freeRoom: false, dormOrder: '', groupRestInFullOnMoodGap: true, groupMoodGapThresholdMinutes: null, groupMoodGapMaxExtraWaitHours: 0, groupMoodGapExclusions: [], mergeIntervalMinutes: 10, enableMastery: true, fiammettaFool: true, fiammettaThreshold: 0.9, operatorMorale: {}, dormAtmosphere: 0,
   initialGold: 0, initialFragments: 0, initialDrones: 0,
@@ -83,7 +91,6 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
   const runOrderPolicies: CompiledSchedule['runOrderPolicies'] = []
   const rooms = mowerPlanEntries(workspace.mainPlan.facilities).filter(([, facility]) => facility.level > 0).map(([,facility]) => {
     const freeSlotIndices: number[] = []
-    const runCandidates: string[] = []
     const slots = facility.slots.map((slot, slotIndex) => {
       let primaryOperatorId: string | null = null
       if (slot.occupant.kind === 'operator') primaryOperatorId = resolveOperatorCharId(slot.occupant.operatorId)
@@ -110,14 +117,12 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
       const role: CompiledSlot['role'] = slot.occupant.kind === 'free' ? 'free-rest' : isFiammetta ? 'fiammetta' : facility.type === 'dormitory' ? 'dorm-keeper' : 'work'
       if (role === 'free-rest') freeSlotIndices.push(slotIndex)
       if (isFiammetta && primaryOperatorId) fiammettaPolicies.push({ roomId: facility.roomId, slotIndex, operatorId: primaryOperatorId, orderedTargets: [...orderedCandidates] })
-      if (facility.type === 'trading') for (const id of orderedCandidates) {
-        if (isTradeRunOrderOperator(id)) runCandidates.push(id)
-      }
       if (primaryOperatorId) operators[primaryOperatorId] = { operatorId: primaryOperatorId, morale: assumptions.operatorMorale[primaryOperatorId] ?? assumptions.initialMorale, roomId: facility.roomId, slotIndex }
       const slotMeta = (slot as { metadata?: Record<string, unknown> }).metadata
       return { roomId: facility.roomId, slotIndex, occupant: structuredClone(slot.occupant), primaryOperatorId, orderedCandidates, groupId: slot.groupId, groupBindings, role, metadata: slotMeta ? structuredClone(slotMeta) : undefined }
     })
     if (freeSlotIndices.length) restPools.push({ roomId: facility.roomId, capacity: freeSlotIndices.length, freeSlotIndices })
+    const runCandidates = facility.type === 'trading' ? tradeRunOrderSlots(slots).map(slot => slot.operatorId) : []
     if (runCandidates.length) runOrderPolicies.push({ roomId: facility.roomId, orderedOperatorIds: runCandidates })
     return { roomId: facility.roomId, type: facility.type, level: facility.level, product: facility.product, capacity: facility.slots.length, slots }
   })

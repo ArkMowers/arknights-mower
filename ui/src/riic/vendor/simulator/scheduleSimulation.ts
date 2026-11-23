@@ -210,7 +210,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   checkTemporalSkills()
  }
  refreshSessions()
- if([...entered.keys()].some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0)||Object.keys(schedule.operators).some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0))diagnostic('TRADE_QUALITY_WARMUP_MODEL',`裁缝类订单概率采用${warmupModel==='hourly'?'满整小时等幅递增':'连续线性'}近似：α／β分别在原工位连续工作 3／5 小时达到峰值；移动工位或离岗后重新计时。仅支持单名裁缝影响普通赤金订单概率；同站多名裁缝实际生效时不支持演算，不采用取最强或叠加近似。中间暖机曲线未经实测核验。`)
+ if([...entered.keys()].some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0)||Object.keys(schedule.operators).some(id=>qualitySkillWarmupHours(id,{operatorRecords})>0))diagnostic('TRADE_QUALITY_WARMUP_MODEL',`裁缝类订单概率采用${warmupModel==='hourly'?'满整小时等幅递增':'连续线性'}近似：α／β分别在原工位连续工作 3／5 小时达到峰值；移动工位或离岗后重新计时。理想跑单按换人后仍在岗的裁缝计算普通赤金订单概率。同站仍有多名裁缝生效时停止演算。中间暖机曲线未经实测核验。`)
  const stats=new Map(Object.keys(state.morale).map(id=>[id,{operatorId:id,operatorName:isMowerDormFiller(id)?MOWER_DORM_FILLER_NAME:OPERATOR_MAP.get(id)?.name??id,mainWorkHours:0,substituteWorkHours:0,workHours:0,exhaustedHours:0,restHours:0,idleHours:0,permanentPrimaryOccupancyHours:0,workFraction:0,workRestRatio:null,initialMorale:initial[id]!,finalMorale:initial[id]!} as SimulatedOperator]))
  const roomStats=new Map(projectScheduleState(schedule,state).rooms.map(r=>[r.id,{roomId:r.id,roomType:r.type,averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]} as SimulatedRoom]))
  if(schedule.rooms.some(r=>r.type==='recycle'))roomStats.set('recycle',{roomId:'recycle',roomType:'recycle',averageEfficiencyPercent:0,efficiencyPercentHours:0,occupiedHours:0,teams:[]})
@@ -402,6 +402,7 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
  }
  let cachedEvalVersion=-1,cachedZeroMorale='',cachedMoodEfficiency='',cachedTemporalPhase=''
  let cachedEvaluations:ProductionFrame['evaluations']|undefined
+ let skillTime:ProductionFrame['skillTime']
  const frameAt=(offset:number):ProductionFrame=>{
   const base=getBaseConfig()
   const c={...base,operatorMorale:{...state.morale}}
@@ -419,16 +420,17 @@ export function simulateSchedule(schedule:CompiledSchedule,options:ScheduleSimul
   const fullEvaluationChanged=!evaluations||occupancyRevision!==cachedEvalVersion||zeroMoraleKey!==cachedZeroMorale||moodEfficiencyKey!==cachedMoodEfficiency
   if(fullEvaluationChanged||(hasActiveTemporalSkills&&(hasActiveContinuousWarmup||temporalPhaseKey!==cachedTemporalPhase))){
    const context=buildRiicGlobalContext(c,active,morale),workHoursByOperator=new Map([...entered].map(([id,s])=>[id,Math.max(0,state.time+offset-s.time)]))
+   skillTime={workHoursByOperator,warmupModel}
    if(fullEvaluationChanged){
     evaluations={}
-    for(const room of c.rooms){const result=evaluateOperators(room,c,active,morale,context,{workHoursByOperator,warmupModel});evaluations[room.id]=result;for(const text of result.unquantifiedSkills)diagnostic('UNQUANTIFIED_EFFICIENCY',`${room.id}: ${text}`)}
+    for(const room of c.rooms){const result=evaluateOperators(room,c,active,morale,context,skillTime);evaluations[room.id]=result;for(const text of result.unquantifiedSkills)diagnostic('UNQUANTIFIED_EFFICIENCY',`${room.id}: ${text}`)}
    }else{
     evaluations={...evaluations}
-    for(const room of c.rooms){if(room.operatorIds.some(id=>getTemporalSkillBoundaries(id,{operatorRecords}).length>0)){evaluations[room.id]=evaluateOperators(room,c,active,morale,context,{workHoursByOperator,warmupModel})}}
+    for(const room of c.rooms){if(room.operatorIds.some(id=>getTemporalSkillBoundaries(id,{operatorRecords}).length>0)){evaluations[room.id]=evaluateOperators(room,c,active,morale,context,skillTime)}}
    }
    cachedEvalVersion=occupancyRevision;cachedZeroMorale=zeroMoraleKey;cachedMoodEfficiency=moodEfficiencyKey;cachedTemporalPhase=temporalPhaseKey;cachedEvaluations=evaluations
   }
-  return {time:state.time+offset,config:c,active,morale,evaluations:evaluations!,desiredProducts:Object.fromEntries(schedule.rooms.filter(r=>r.type==='manufacture'||r.type==='trading').map(r=>{const raw=schedule.sourceWorkspace.compatibility.facilityMetadata?.[r.roomId]?.rawProduct;return [r.roomId,typeof raw==='string'&&parseProduct(raw)===r.product?raw:serializeProduct(r.type,r.product)!]}))}
+  return {time:state.time+offset,config:c,active,morale,skillTime,evaluations:evaluations!,desiredProducts:Object.fromEntries(schedule.rooms.filter(r=>r.type==='manufacture'||r.type==='trading').map(r=>{const raw=schedule.sourceWorkspace.compatibility.facilityMetadata?.[r.roomId]?.rawProduct;return [r.roomId,typeof raw==='string'&&parseProduct(raw)===r.product?raw:serializeProduct(r.type,r.product)!]}))}
  }
  const efficiencies=(frame:ProductionFrame):Record<string,number>=>({
   ...Object.fromEntries(Object.entries(frame.evaluations).map(([id,r])=>[id,r.efficiencyPercent])),

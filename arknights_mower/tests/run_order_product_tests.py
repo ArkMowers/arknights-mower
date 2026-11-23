@@ -47,7 +47,7 @@ def solver(monkeypatch):
             ),
             "backup_plans": [
                 Plan(
-                    {},
+                    {"room_1_1": [Room("鸿雪", "", ["孑"])]},
                     PlanConfig("", "", ""),
                     trigger=LogicExpression("1", "==", "1"),
                     products={"room_1_1": "orundum"},
