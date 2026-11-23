@@ -503,7 +503,9 @@ def test_real_strict_release_arrangement_reads_departure_before_selection(
         solver.agent_arrange_room({}, ROOM, plan)
 
     solver.choose_agent.assert_called_once()
-    solver.get_agent_from_room.assert_called_once_with(ROOM, departing_plan=plan[ROOM])
+    solver.get_agent_from_room.assert_called_once_with(
+        ROOM, departing_plan=plan[ROOM], expected_agents=plan[ROOM]
+    )
     solver.tap_confirm.assert_not_called()
     mood, predicted, ready, readings = at_selection[0]
     assert mood == 11.8 and not predicted and not ready

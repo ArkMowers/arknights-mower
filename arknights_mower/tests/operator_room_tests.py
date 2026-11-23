@@ -6,13 +6,37 @@ import numpy as np
 from arknights_mower.solvers.base_mixin import (
     OP_ROOM,
     OP_ROOM_WIDTH,
+    PREFIX_NAME_SCORE_RATIO,
     BaseMixin,
     _foreground_width,
     _resolve_operator_room_prefix,
+    _room_name_candidates,
 )
 
 
 class TestOperatorRoomRecognition(unittest.TestCase):
+    def test_binary_search_keeps_all_possible_name_and_prefix_matches(self):
+        for name, y, x in [("Lancet-2", 0, 4), ("凯尔希·思衡托", 3, 0), ("夜刀", 4, 2)]:
+            with self.subTest(name=name):
+                template = OP_ROOM[name]
+                height, width = template.shape
+                sample = np.zeros((height + 4, width + 4), np.uint8)
+                sample[y : y + height, x : x + width] = template
+                sample[5:8, 1:12] = 255
+                scores = {
+                    operator: cv2.minMaxLoc(
+                        cv2.matchTemplate(sample, other, cv2.TM_CCORR_NORMED)
+                    )[1]
+                    for operator, other in OP_ROOM.items()
+                }
+                cutoff = max(scores.values()) * PREFIX_NAME_SCORE_RATIO
+                candidates = set(_room_name_candidates(sample))
+                self.assertTrue(
+                    {op for op, score in scores.items() if score >= cutoff}
+                    <= candidates
+                )
+                self.assertLess(len(candidates), len(OP_ROOM))
+
     def test_prefix_operator_uses_long_name_when_extra_text_is_visible(self):
         result = _resolve_operator_room_prefix(
             "凯尔希",
@@ -113,7 +137,7 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         gray = np.arange(1080 * 1920, dtype=np.uint8).reshape(1080, 1920)
         solver.recog.gray = gray
         solver.recog.update = MagicMock()
-        solver.sleep = MagicMock()
+        solver.sleep = MagicMock(side_effect=lambda _: solver.recog.update())
         solver.find = MagicMock(return_value=None)
         solver.refresh_facility_state = MagicMock()
         solver.turn_on_room_detail = MagicMock()

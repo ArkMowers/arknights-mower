@@ -115,6 +115,23 @@ def test_next_same_scene_uses_base_plus_observation_without_extra_margin(waiting
     )
 
 
+@pytest.mark.parametrize("network_ends_at,expected", [(0.4, 0.5), (3.5, 6), (100, 9)])
+def test_first_submission_observation_preserves_regular_deadlines(
+    waiting, network_ends_at, expected
+):
+    waiting.conf.waiting_scene.CONNECTING = (3, 3)
+    waiting.scene_at = lambda elapsed: (
+        Scene.CONNECTING if elapsed < network_ends_at else Scene.INDEX
+    )
+    assert waiting.solver.waiting_solver(restart_on_timeout=False, first_check=0.5) == (
+        network_ends_at <= expected
+    )
+    assert waiting.clock.seconds == expected
+    assert waiting.delays[0] == 0.5
+    assert sum(waiting.delays[:2]) == min(expected, 3)
+    waiting.device.exit.assert_not_called()
+
+
 def test_timeout_records_lower_bound_before_restart(waiting):
     remember(waiting, 30)
     events_at_exit = []

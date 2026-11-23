@@ -18,7 +18,8 @@ def catalogue():
 
 def normal_name(value):
     value = value.replace("奧", "奥")
-    return "".join(c for c in value if c not in ' \t\r\n“”"·.：:').lower()
+    name = "".join(c for c in value if c not in ' \t\r\n“”"·.：:').lower()
+    return "桑葚" if name == "桑甚" else name
 
 
 def identity_key(conf):

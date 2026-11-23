@@ -147,7 +147,12 @@ def test_partial_release_preserves_unfinished_room_and_observed_departure(
     assert data.operators["红"].current_room == OTHER
 
 
-def test_real_arrangement_skip_keeps_full_resident_without_reorder(incident):
+@pytest.mark.parametrize("candidates_observed", [True, False])
+def test_real_arrangement_skip_keeps_full_resident_without_reorder(
+    incident, candidates_observed
+):
+    from arknights_mower.solvers.base_schedule import RoomArrangementDeferred
+
     instance, physical, _ = incident
     data = instance.op_data
     data.operators["陈"].mood = 24
@@ -158,12 +163,24 @@ def test_real_arrangement_skip_keeps_full_resident_without_reorder(incident):
     )
     instance.task, instance.tasks = task, [task]
     original = copy.deepcopy(physical)
-
-    assert instance.arrange_release_dorm()[0] is not False
+    original_plan, original_time = copy.deepcopy(task.plan), task.time
+    unknown = instance.get_dorm_candidates(current_resident="芬", room=ROOM).unknown
+    assert unknown
+    if candidates_observed:
+        data.dorm_mood_estimates.update(dict.fromkeys(unknown, (24, datetime.now())))
+        assert instance.arrange_release_dorm()[0] is not False
+        assert task.plan == {}
+        instance.choose_agent.assert_not_called()
+    else:
+        instance.choose_agent.side_effect = RuntimeError("选人页未能核实空闲候选")
+        with pytest.raises(RoomArrangementDeferred, match="未能核实空闲候选"):
+            instance.arrange_release_dorm()
+        assert task.plan == original_plan
+        assert task.time == original_time
+        assert 0 < instance.choose_agent.call_count <= 4
 
     assert physical == original
     assert instance.tasks == [task]
-    assert task.plan == {}
     instance.tap_confirm.assert_not_called()
 
 

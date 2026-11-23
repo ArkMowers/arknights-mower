@@ -13,6 +13,7 @@ from arknights_mower.utils.dorm_candidates import dorm_candidate_mood
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.operators import Operator, Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
+from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes, plan_metadata
 
 ROOM = "dormitory_1"
@@ -147,6 +148,232 @@ def incident(monkeypatch, offline_maintenance):
     return solver, physical, snapshots
 
 
+@pytest.mark.parametrize("first_read_fails", [False, True])
+@pytest.mark.parametrize("already_in_selection", [False, True])
+def test_staffing_reuses_only_product_read_in_this_visit(
+    incident, first_read_fails, already_in_selection
+):
+    solver, physical, snapshots = incident
+    room = "room_3_2"
+    config.conf.product_switching.enable = True
+    del solver.refresh_facility_state
+    solver.detect_room_type = MagicMock(return_value="制造站")
+    solver.detect_room = MagicMock(return_value=room)
+    room_find = solver.find
+    selecting = already_in_selection
+
+    def open_selection(_):
+        nonlocal selecting
+        selecting = True
+
+    def find(name, **kwargs):
+        if name == "confirm_blue":
+            return True if selecting else None
+        if name in ("manufacture_accelerate", "connecting"):
+            return None
+        return room_find(name, **kwargs)
+
+    solver._open_room_selection = open_selection
+    solver.find = MagicMock(side_effect=find)
+    solver._wait_drone_interface = MagicMock()
+    solver.scene_graph_navigation = MagicMock()
+    solver.op_data.update_facility_state(room, "manufacture", "exp3")
+    readings = ["gold", "exp3"]
+    if first_read_fails:
+        readings.insert(0, ValueError("无法读取产物"))
+    solver.read_manufacture_product = MagicMock(side_effect=readings)
+
+    for target, product in [("陈", "gold"), ("米格鲁", "exp3")]:
+        original = physical[room].copy()
+        task = SchedulerTask(
+            task_type=TaskTypes.SELF_CORRECTION, task_plan={room: [target]}
+        )
+        solver.task, solver.tasks = task, [task]
+        selecting = already_in_selection
+        solver.agent_arrange_room({}, room, task.plan)
+        assert snapshots[-2:] == [original, [target]]
+        assert solver.op_data.facility_product(room) == product
+        assert solver.choose_agent.call_args.kwargs["selection_product"] == (
+            None
+            if already_in_selection or (target == "陈" and first_read_fails)
+            else product
+        )
+        assert room not in task.plan
+    assert solver._wait_drone_interface.call_count == 2 + first_read_fails
+
+
+@pytest.mark.parametrize(
+    ("starts_open", "change", "fail_first"),
+    [
+        (True, False, False),
+        (False, False, False),
+        (True, True, False),
+        (True, True, True),
+        (False, True, True),
+    ],
+)
+@pytest.mark.parametrize(
+    ("strategy_name", "product"), [("开采协力", "orundum"), ("龙门商法", "lmd")]
+)
+def test_trade_staffing_reads_strategy_and_residents_in_current_panel_order(
+    incident, starts_open, change, fail_first, strategy_name, product
+):
+    solver, physical, snapshots = incident
+    room = "room_3_2"
+    resident = physical[room][0]
+    target = "陈" if change else resident
+    task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={room: [target]}
+    )
+    solver.task, solver.tasks = task, [task]
+    config.conf.product_switching.enable = True
+    solver.op_data.update_facility_state(room, "trade", "lmd")
+    solver.recog._img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    solver.recog.w, solver.recog.h = 1920, 1080
+    solver.detect_room_type = lambda: "贸易站"
+    room_titles = []
+
+    def detect_room():
+        # 第一帧仍显示上一站的房号，换帧后才提供当前房间身份。
+        room_titles.append(room if solver.recog.update.call_count else "room_3_1")
+        return room_titles[-1]
+
+    solver.detect_room = detect_room
+    solver.get_color = lambda point: np.array([255, 255, 255])
+    del solver.refresh_facility_state
+    del solver.turn_on_room_detail
+    events = []
+    page = "details" if starts_open else "room"
+    closing = False
+    original_find = solver.find
+
+    def find(name, **kwargs):
+        if name == "infra_no_operator":
+            assert page == "details"
+            assert solver.detect_room() == room
+            events.append("roster")
+            return original_find(name, **kwargs)
+        if name == "bill_accelerate" and page == "orders":
+            return (100, 200)
+        if name in ("room_detail", "arrange_check_in_on") and page == "details":
+            return (80, 410)
+        if name == "arrange_check_in" and page == "room":
+            return (80, 410)
+        if name == "confirm_blue" and page == "selection":
+            return (1500, 950)
+        return None
+
+    def tap(point, **kwargs):
+        nonlocal page, closing
+        if point == (80, 410):
+            if page == "details":
+                assert not closing
+                closing = True
+                events.append("close")
+            else:
+                assert page == "room"
+                page = "details"
+                events.append("open")
+        elif point[0] < 100:
+            assert page == "room"
+            page = "orders"
+        else:
+            assert page == "details"
+            page = "selection"
+            events.append("select")
+
+    def next_frame(_):
+        nonlocal page, closing
+        if closing:
+            page, closing = "room", False
+
+    def end_orders(_):
+        nonlocal page
+        assert page == "orders"
+        page = "room"
+
+    def strategy(_):
+        assert page == "orders"
+        assert solver.detect_room() == room
+        events.append("strategy")
+        return "" if fail_first and events.count("strategy") == 1 else strategy_name
+
+    original_confirm = solver.tap_confirm.side_effect
+
+    def confirm(*args):
+        nonlocal page
+        assert page == "selection"
+        original_confirm(*args)
+        page = "details"
+
+    solver.find = find
+    solver.tap = tap
+    solver.sleep = next_frame
+    solver.scene.side_effect = lambda: (
+        Scene.RIIC_OPERATOR_SELECT if page == "selection" else Scene.INFRA_MAIN
+    )
+    solver.scene_graph_navigation = end_orders
+    solver._product_ocr_text = strategy
+    solver.tap_confirm.side_effect = confirm
+
+    solver.agent_arrange_room({}, room, task.plan)
+
+    expected = (
+        ["roster", "close", "strategy"]
+        if starts_open
+        else ["strategy", "open", "roster"]
+    )
+    if change:
+        if starts_open:
+            expected.append("open")
+        expected.extend(["select", "roster"])
+        if fail_first:
+            expected.extend(["close", "strategy"])
+    assert events == expected
+    assert room_titles[:2] == ["room_3_1", room]
+    assert snapshots == ([[resident], [target]] if change else [[resident]])
+    assert physical[room] == [target]
+    assert task.plan == {}
+    if change:
+        assert solver.choose_agent.call_args.kwargs["selection_product"] == (
+            None if fail_first else product
+        )
+    assert solver.op_data.facility_product_count("orundum") == int(product == "orundum")
+    assert solver.op_data.facility_product_count("lmd") == int(product == "lmd")
+
+
+@pytest.mark.parametrize("panel", ["arrange_check_in_on", "arrange_check_in"])
+@pytest.mark.parametrize("detected_room", ["room_3_1", ""])
+def test_stale_trade_room_cannot_publish_strategy_or_residents(
+    incident, panel, detected_room
+):
+    from arknights_mower.utils.recognize import RecognizeError
+
+    solver, physical, snapshots = incident
+    room = "room_3_2"
+    config.conf.product_switching.enable = True
+    solver.task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={room: ["陈"]}
+    )
+    solver.op_data.update_facility_state(room, "trade", "lmd")
+    solver.recog._img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    solver.detect_room_type = lambda: "贸易站"
+    solver.detect_room = lambda: detected_room
+    solver.find = lambda name, **kw: (80, 410) if name == panel else None
+    del solver.refresh_facility_state
+    solver._wait_drone_interface = MagicMock()
+    observed = set()
+
+    with pytest.raises(RecognizeError, match="房号"):
+        solver.get_agent_from_room(room, observed_facilities=observed)
+
+    assert not observed and not snapshots
+    assert solver.op_data.get_current_room(room, True) == physical[room]
+    assert solver.op_data.facility_product(room) == "lmd"
+    solver._wait_drone_interface.assert_not_called()
+    solver.read_screen.assert_not_called()
+
+
 @pytest.mark.parametrize("sample", ["measured", "prediction", "unknown"])
 @pytest.mark.parametrize("single_target", [False, True])
 def test_generated_idle_release_preserves_resting_group(
@@ -259,6 +486,25 @@ def test_local_arrangement_readback_does_not_use_outer_task_roster(incident):
     assert physical[ROOM] == ["杜林", "琴柳", "陈", "芬", "夜刀"]
     assert solver.op_data.operators["斯卡蒂"].time_stamp is not None
     assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
+
+
+def test_only_adding_residents_reuses_single_recovery_readback(incident):
+    solver, physical, snapshots = incident
+    target = ["杜林", "琴柳", "歌蕾蒂娅", "斯卡蒂", "陈"]
+    empty = [""] * len(target)
+    temporary = [*target[:3], "", ""]
+    physical[ROOM] = empty.copy()
+    solver.task = SchedulerTask(
+        task_type=TaskTypes.SELF_CORRECTION, task_plan={ROOM: target.copy()}
+    )
+    solver.tasks = [solver.task]
+
+    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+
+    assert snapshots == [empty, temporary, target]
+    assert solver.choose_agent.call_count == solver.tap_confirm.call_count == 2
+    assert solver.op_data.operators["歌蕾蒂娅"].dorm_recovery_index == 2
+    assert not solver.task.plan
 
 
 @pytest.mark.parametrize("sample", ["measured", "prediction", "unknown"])

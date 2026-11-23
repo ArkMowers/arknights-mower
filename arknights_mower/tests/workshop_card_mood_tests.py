@@ -6,6 +6,8 @@ from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import cv2
+import numpy as np
 import pytest
 
 from arknights_mower.solvers import base_mixin, base_schedule, record
@@ -24,6 +26,7 @@ from arknights_mower.utils.workshop_status import workshop_status
 
 op_data = initial_dorm_mood_tests.op_data
 card_scan_solver = initial_dorm_mood_tests.solver
+WORKSHOP_CARD = ((631, 488), (820, 520))
 
 
 @pytest.fixture(params=["manual", "mastery"])
@@ -232,8 +235,8 @@ def workshop_selection_solver(case, monkeypatch, slow, mood):
     )
     monkeypatch.setattr(base_schedule, "get_inventory_counts", lambda: case.stock)
     instance.scan_agent = base_mixin.BaseMixin.scan_agent.__get__(instance)
-    instance.recog.img = {"mood": mood}
-    page = [("赫拉格", ((0, 32), (189, 64)))]
+    instance.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    page = [("赫拉格", WORKSHOP_CARD)]
     instance.wait_for_agent_page = MagicMock(return_value=page)
     monkeypatch.setattr(base_mixin, "operator_list", lambda *args, **kwargs: page)
     monkeypatch.setattr(base_mixin, "estimate_agent_mood", lambda img, scope: mood)
@@ -242,8 +245,15 @@ def workshop_selection_solver(case, monkeypatch, slow, mood):
     )
     instance.check_agent_page = MagicMock(return_value=True)
     instance.clear_agent_selection = MagicMock()
-    instance.tap = MagicMock()
-    instance.verify_agent = MagicMock(return_value=True)
+
+    def update_frame():
+        if selected:
+            cv2.rectangle(instance.recog.img, (609, 113), (833, 535), (0, 180, 230), 8)
+
+    instance.recog.update.side_effect = update_frame
+    instance.wait_for_arranged_agents = MagicMock(
+        wraps=instance.wait_for_arranged_agents
+    )
     return instance, selected
 
 
@@ -252,14 +262,16 @@ def workshop_selection_solver(case, monkeypatch, slow, mood):
 def test_workshop_selection_allows_unknown_or_affordable_card(
     case, monkeypatch, slow, mood
 ):
-    instance, _ = workshop_selection_solver(case, monkeypatch, slow, mood)
+    instance, selected = workshop_selection_solver(case, monkeypatch, slow, mood)
 
     instance.choose_agent(["赫拉格"], "factory", fast_mode=False)
 
     instance.tap.assert_called_once()
-    assert instance.tap.call_args.args[0] == ((0, 32), (189, 64))
-    instance.verify_agent.assert_called_once_with(["赫拉格"], "factory")
-    assert instance.recog.update.call_count == (0 if slow else 1)
+    assert instance.tap.call_args.args[0] == WORKSHOP_CARD
+    assert selected == ["赫拉格"]
+    instance.wait_for_arranged_agents.assert_called_once_with(
+        ["赫拉格"], full_scan=False, visible_only=True
+    )
     if mood is None:
         assert "赫拉格" not in instance.op_data.dorm_mood_estimates
     else:

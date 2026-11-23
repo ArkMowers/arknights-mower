@@ -141,6 +141,36 @@ def test_swipe_overlaps_two_columns(monkeypatch):
     solver.swipe_noinertia.assert_called_once_with((1490, 488), (-860, 0), capture=True)
 
 
+@pytest.mark.parametrize("mode", ["high", "low"])
+def test_one_column_never_sends_a_swipe_over_its_cards(monkeypatch, mode):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    solver = reader(monkeypatch, [])
+    # 同一列的上下姓名边缘可有少量像素偏差。
+    cards = [("砾", ((630, 488), (818, 520))), ("芬", ((632, 909), (820, 941)))]
+    with pytest.raises(base_mixin.AgentPageNotAdvanced):
+        solver.swipe_agent_page(cards, ["能天使"])
+    solver.swipe_noinertia.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["high", "low"])
+def test_three_cards_swipe_from_second_column(monkeypatch, mode):
+    monkeypatch.setattr(base_mixin.config.conf, "performance_mode", mode)
+    before = page(("砾", "芬", "杜林"))
+    after = page(("杜林", "香草", "能天使"))
+    solver = reader(monkeypatch, [after] * 4)
+    solver.swipe_agent_page(before, ["能天使"])
+    solver.swipe_noinertia.assert_called_once()
+    assert solver.swipe_noinertia.call_args.args == ((845, 488), (-215, 0))
+
+
+def test_missing_card_scope_does_not_report_the_end_of_a_filter(monkeypatch):
+    solver = reader(monkeypatch, [])
+    with pytest.raises(AgentSelectionNotReady, match="位置不明") as result:
+        solver.swipe_agent_page([("砾", None)], ["能天使"])
+    assert not isinstance(result.value, base_mixin.AgentPageNotAdvanced)
+    solver.swipe_noinertia.assert_not_called()
+
+
 @pytest.mark.parametrize("mode,interval", [("high", 0.1), ("xhigh", 0.2)])
 def test_fast_page_swipe_requests_held_capture_without_an_extra_observation(
     monkeypatch, mode, interval
@@ -221,6 +251,7 @@ def test_training_free_search_checks_next_page_when_first_page_has_no_target():
     from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
 
     solver = object.__new__(BaseSchedulerSolver)
+    solver.detect_arrange_order = MagicMock(return_value=("等级", False))
     solver.profession_filter = MagicMock()
     solver.find = MagicMock(
         side_effect=lambda name: (
@@ -329,3 +360,23 @@ def test_name_cache_does_not_survive_a_new_wait(monkeypatch):
     BaseMixin.agent_page_reader()(img)
     BaseMixin.agent_page_reader()(img)
     assert matcher.call_count == 2
+
+
+def test_preferred_slot_order_relocates_the_next_card_on_slow_frames(monkeypatch):
+    first = page(("黑键", "龙舌兰", "芬", "杜林", "但书", "红"))
+    settled = page(("黑键", "芬", "杜林", "红", "但书", "龙舌兰"))
+    solver = reader(monkeypatch, [first, first, settled, settled])
+    targets = ["但书", "龙舌兰"]
+
+    chosen, observed = solver.scan_agent(
+        targets,
+        target_slots={"黑键": 0, "但书": 1, "龙舌兰": 2},
+    )
+
+    assert targets == []
+    assert chosen == ["但书", "龙舌兰"]
+    assert observed == settled
+    assert [call.args[0] for call in solver.tap.call_args_list] == [
+        first[4][1],
+        settled[5][1],
+    ]

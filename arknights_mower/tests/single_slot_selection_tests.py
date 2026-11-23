@@ -295,6 +295,59 @@ def test_captured_workshop_single_slot_selection_border(selection_module):
     )
 
 
+def test_only_legible_power_title_confirms_the_production_room_capacity(
+    selection_module,
+):
+    fixture_dir = Path(__file__).parent / "fixtures/selection"
+    title = np.array(
+        Image.open(fixture_dir / "power_selection_title.webp").convert("RGB")
+    )
+    frame = np.array(Image.open(fixture_dir / "trade_single_selected_20261021.jpg"))
+    assert not selection_module.selection_shows_power_plant(frame)
+    region = frame[140:198, 40:170]
+    region[:] = title
+    assert selection_module.selection_shows_power_plant(frame)
+    region[:, 75:117] = 200
+    assert not selection_module.selection_shows_power_plant(frame)
+    region[:] = title // 8 + 160
+    assert not selection_module.selection_shows_power_plant(frame)
+    region[:] = 200
+    assert not selection_module.selection_shows_power_plant(frame)
+
+
+@pytest.mark.parametrize(
+    ("mode", "delayed", "confirmed"),
+    [("xhigh", True, True), ("low", False, True), ("low", True, False)],
+)
+def test_single_slot_reads_fresh_blue_border_without_number(
+    monkeypatch, selection_module, mode, delayed, confirmed
+):
+    fixture_dir = Path(__file__).parent / "fixtures/selection"
+    selected = np.array(
+        Image.open(fixture_dir / "workshop_single_selected_20261029.jpg")
+    )
+    cleared = np.array(Image.open(fixture_dir / "trade_single_cleared_20261021.jpg"))
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode=mode))
+    solver = selection_module.BaseMixin()
+    solver.recog = SimpleNamespace(img=cleared)
+    solver.recog.update = Mock(
+        side_effect=lambda: setattr(
+            solver.recog, "img", cleared if delayed else selected
+        )
+    )
+    solver.find = Mock(return_value=False)
+    solver.wait_for_next_observation = Mock(
+        side_effect=lambda *_: setattr(solver.recog, "img", selected)
+    )
+    solver.require_agent_selection_page = Mock()
+    observed = solver.wait_for_arranged_agents(
+        ["特克诺"], full_scan=False, visible_only=True
+    )
+    assert observed == (["特克诺"] if confirmed else None)
+    solver.recog.update.assert_called_once_with()
+    assert solver.wait_for_next_observation.call_count >= 1
+
+
 @pytest.mark.parametrize("room", ["factory", "contact", "train"])
 @pytest.mark.parametrize("plan_count", [None, 0, 1, 2])
 def test_right_side_single_selection_clear_without_static_staff(

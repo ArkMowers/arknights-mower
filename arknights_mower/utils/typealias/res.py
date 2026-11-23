@@ -1,6 +1,7 @@
 from typing import Literal
 
 Res = Literal[
+    "selection_slot_digits",
     "recycle/dashboard",
     "room/recycle",
     "12cadpa",
@@ -463,6 +464,7 @@ Res = Literal[
     "room/contact",
     "room/dormitory",
     "room/meeting",
+    "room/occupancy_two",
     "sf/available",
     "sf/card",
     "sf/click_anywhere",

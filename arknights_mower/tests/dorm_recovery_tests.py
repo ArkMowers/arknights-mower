@@ -74,7 +74,12 @@ def solver(monkeypatch):
     instance.physical = ["杜林", "琴柳", "红", "陈", "银灰"]
 
     def observe(
-        room=ROOM, read_time_index=None, *, departing_plan=None, expected_agents=None
+        room=ROOM,
+        read_time_index=None,
+        *,
+        departing_plan=None,
+        expected_agents=None,
+        observed_facilities=None,
     ):
         instance.reads.append(list(read_time_index or []))
         for op in instance.op_data.operators.values():

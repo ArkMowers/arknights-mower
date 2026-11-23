@@ -218,8 +218,6 @@ def test_pending_admission_does_not_reinsert_newly_ready_idle_primary(
         assert name not in state.get("ready_members", ())
     assert fill in solver.tasks
     solver.task = fill
-    for room, row in fill.plan.items():
-        base_schedule.BaseSchedulerSolver.prepare_dorm_selection(solver, row, room)
     solver.recog = SimpleNamespace(update=MagicMock())
     solver.enter_room = MagicMock()
     solver.turn_on_room_detail = MagicMock()
@@ -228,7 +226,15 @@ def test_pending_admission_does_not_reinsert_newly_ready_idle_primary(
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     solver._track_idle_dorm_shift = MagicMock()
     solver._finish_idle_dorm_shift = MagicMock()
-    solver.find = MagicMock(return_value=True)
+    physical = {room: solver.op_data.get_current_room(room, True) for room in fill.plan}
+    solver.get_agent_from_room = MagicMock(
+        side_effect=lambda room, *args, **kwargs: [
+            {"agent": op} for op in physical[room]
+        ]
+    )
+    solver.find = MagicMock(
+        side_effect=lambda resource: True if resource == "confirm_blue" else None
+    )
     solver.choose_agent = MagicMock(side_effect=MowerExit("offline selection boundary"))
     solver.back_to_infrastructure = MagicMock()
     solver.back = MagicMock()
@@ -240,7 +246,9 @@ def test_pending_admission_does_not_reinsert_newly_ready_idle_primary(
         base_schedule.BaseSchedulerSolver.agent_arrange(
             solver, fill.plan, get_time=True
         )
-    selected = solver.choose_agent.call_args.args[0]
+    selected, selected_room = solver.choose_agent.call_args.args
+    assert name not in physical[selected_room]
+    assert solver.get_agent_from_room.call_args.args[0] == selected_room
     assert name in selected, {
         "ready": state["ready_members"],
         "target": state["targets"][name],

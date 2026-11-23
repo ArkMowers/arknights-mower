@@ -463,11 +463,11 @@ def infra_back(solver: BaseSolver):
 
 
 @edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
-def trade_view_back(solver: BaseSolver, arrow_bar=None):
+def trade_view_back(solver: BaseSolver, arrow_bar=None, *, interval=1):
     if arrow_bar is None:
         arrow_bar = solver.find("nav_button")
     if arrow_bar:
-        solver.tap(arrow_bar, x_rate=0.08)
+        solver.tap(arrow_bar, x_rate=0.08, interval=interval)
     else:
         solver.sleep(0.3)
 

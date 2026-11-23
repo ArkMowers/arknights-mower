@@ -180,18 +180,24 @@ def test_maa_stops_for_newly_read_order(pending_orders, monkeypatch):
     from arknights_mower.tests import long_task_dorm_tests
 
     ui = pending_orders
-    ui.now = ui.clock.now()
-    del ui.solver.maa_plan_solver
-    solver = long_task_dorm_tests.maa_solver.__wrapped__(ui, monkeypatch)
+    solver = ui.solver
+    order_time = ui.deadlines["room_1_1"] - timedelta(minutes=3)
+
+    def start_maa(tasks):
+        assert solver.scene() == ui.base.Scene.INFRA_MAIN
+        assert set(orders(ui)) == {"room_1_1", "room_2_2"}
+        long_task_dorm_tests.maa_solver.__wrapped__(ui, monkeypatch)
+        return ui.base.BaseSchedulerSolver.maa_plan_solver(solver, tasks)
 
     def tick(_):
-        assert "room_1_1" in orders(ui)
-        ui.clock.current = orders(ui)["room_1_1"].time - timedelta(seconds=25)
+        ui.clock.current = order_time - timedelta(seconds=25)
 
+    solver.maa_plan_solver.side_effect = start_maa
     monkeypatch.setattr(ui.base, "csleep", tick)
 
     assert ui.manual.run_long_task_if_dorm_pending(solver)
 
     solver.MAA.start.assert_called_once()
     solver.maa_stop.assert_called_once()
-    assert ui.clock.now() < orders(ui)["room_1_1"].time
+    assert orders(ui)["room_1_1"].time == order_time
+    assert ui.clock.now() == order_time - timedelta(seconds=25)

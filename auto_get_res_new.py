@@ -10,7 +10,11 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from arknights_mower.utils.building_skill_data import write_building_skill_data
+from arknights_mower.utils.building_skill_data import (
+    BUILDING_ROOM_NAMES,
+    selection_sort_fields,
+    write_building_skill_data,
+)
 from arknights_mower.utils.event_shop_data import write_event_shop_data
 from arknights_mower.utils.furniture_data import (
     FURNITURE_DATA_PATH,
@@ -910,6 +914,9 @@ class Arknights数据处理器:
 
                         干员技能详情["skill_key"] = skill_key
                         干员技能详情["skill_level"] = skill_level
+                        干员技能详情.update(
+                            selection_sort_fields(buff描述[item2["buffId"]])
+                        )
                         skill_level += 1
                         # 兼容精英阶段字段：旧版 0/1/2 数字，新版 "PHASE_x" 字符串
                         phase = item2["cond"]["phase"]
@@ -936,7 +943,9 @@ class Arknights数据处理器:
 
                         干员技能详情["des"] = text
                         房间类型 = buff_table[item2["buffId"]][2]
-                        干员技能详情["roomType"] = roomType.get(房间类型, 房间类型)
+                        干员技能详情["roomType"] = BUILDING_ROOM_NAMES.get(
+                            房间类型, 房间类型
+                        )
                         干员技能详情["buffCategory"] = buff_table[item2["buffId"]][3]
                         干员技能详情["skillIcon"] = buff_table[item2["buffId"]][4]
                         干员技能详情["buffColor"] = buff_table[item2["buffId"]][5]
@@ -1101,15 +1110,22 @@ class Arknights数据处理器:
 
         from arknights_mower.utils.growth_data import compile_growth_data
 
+        equipment = self.加载json(
+            "./ArknightsGameResource/gamedata/excel/uniequip_table.json"
+        )
         output["growth"] = compile_growth_data(
             all_characters,
-            self.加载json("./ArknightsGameResource/gamedata/excel/uniequip_table.json"),
+            equipment,
             self.游戏变量,
             self.干员形态表.get("infos", {}),
         )
 
         output_path = "./arknights_mower/data/skill_data.json"
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        output["training"]["branchNames"] = {
+            key: row["subProfessionName"]
+            for key, row in equipment["subProfDict"].items()
+        }
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(output, f, ensure_ascii=False, separators=(",", ":"))
 
@@ -1232,18 +1248,6 @@ class Arknights数据处理器:
         print("生成 version.json,完成")
 
 
-roomType = {
-    "POWER": "发电站",
-    "DORMITORY": "宿舍",
-    "MANUFACTURE": "制造站",
-    "MEETING": "会客室",
-    "WORKSHOP": "加工站",
-    "TRADING": "贸易站",
-    "HIRE": "人力办公室",
-    "TRAINING": "训练室",
-    "CONTROL": "中枢",
-    "RECYCLE": "回收站",
-}
 formulaType = {
     "F_SKILL": "技巧概要",
     "F_ASC": "芯片",

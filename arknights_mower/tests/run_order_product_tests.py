@@ -559,6 +559,9 @@ def test_orundum_room_still_gets_normal_mood_scan(solver, monkeypatch):
     assert read_args.count(("room_1_1", None)) == 1
 
 
+ORDER_RETURN_ARROW = ((26, 20), (559, 93))
+
+
 def use_order_pages(solver, order_states):
     page = {"room": None, "open": False}
     marker = ((404, 137), (556, 195))
@@ -566,8 +569,11 @@ def use_order_pages(solver, order_states):
     def enter_room(room):
         page.update(room=room, open=False)
 
-    def open_orders(*args, **kwargs):
-        page["open"] = True
+    def tap(location, *, x_rate=0.5, interval=1):
+        if location == ORDER_RETURN_ARROW and x_rate == 0.08:
+            back(interval)
+        else:
+            page["open"] = True
 
     def return_to_base(scene):
         if scene == Scene.INFRA_DETAILS:
@@ -576,9 +582,19 @@ def use_order_pages(solver, order_states):
         assert scene == Scene.INFRA_MAIN
         page.update(room=None, open=False)
 
+    def current_scene():
+        if page["open"]:
+            return Scene.ORDER_LIST
+        return Scene.INFRA_DETAILS if page["room"] is not None else Scene.INFRA_MAIN
+
+    def back(interval=1):
+        return_to_base(Scene.INFRA_DETAILS if page["open"] else Scene.INFRA_MAIN)
+
     def find(resource):
         if resource == "control_central" and page["room"] is None:
             return marker
+        if resource == "nav_button" and page["room"] in order_states:
+            return ORDER_RETURN_ARROW
         if not page["open"]:
             return None
         state = order_states[page["room"]]
@@ -601,10 +617,16 @@ def use_order_pages(solver, order_states):
     solver.get_run_order_time = BaseSchedulerSolver.get_run_order_time.__get__(solver)
     solver.recog = SimpleNamespace(w=1920, h=1080)
     solver.enter_room = MagicMock(side_effect=enter_room)
-    solver.tap = MagicMock(side_effect=open_orders)
+    solver.tap = MagicMock(side_effect=tap)
     solver.sleep = MagicMock()
     solver.find = MagicMock(side_effect=find)
     solver.scene_graph_navigation = MagicMock(side_effect=return_to_base)
+    solver.scene = MagicMock(side_effect=current_scene)
+    solver.back = MagicMock(side_effect=back)
+    solver.detect_room = MagicMock(side_effect=lambda: page["room"])
+    solver.detect_room_type = MagicMock(
+        side_effect=lambda: "贸易站" if page["room"] in order_states else None
+    )
     solver._cache_facility_state_from_current_page = MagicMock(return_value=None)
     solver._product_ocr_text = MagicMock(
         side_effect=lambda scope: (
@@ -632,7 +654,8 @@ def use_order_pages(solver, order_states):
 def use_mood_pages(solver, monkeypatch, occupants):
     solver.op_data.facility_levels["train"] = 0
     monkeypatch.setattr(base_schedule, "try_workshop_tasks", MagicMock())
-    solver.back = MagicMock()
+    if not hasattr(solver, "_page"):
+        solver.back = MagicMock()
     solver._plan_dorm_recovery = MagicMock(return_value=True)
 
     def read_room(room, *args, **kwargs):
@@ -682,6 +705,289 @@ def test_no_run_order_time_does_not_create_an_immediate_task(solver):
     solver.plan_run_order("room_1_1")
 
     assert solver.tasks == [shift]
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "low"])
+@pytest.mark.parametrize(
+    "feedback",
+    [
+        "ready",
+        "delayed",
+        "dropped",
+        "stuck",
+        "arrow_late",
+        "no_arrow",
+        "network",
+        "network_timeout",
+    ],
+)
+def test_order_countdown_exit_waits_for_each_back_action(
+    solver, monkeypatch, mode, feedback
+):
+    room = "room_1_1"
+    use_order_pages(solver, {room: "active"})
+    config.conf.performance_mode = mode
+    profile = solver.performance_profile
+    now = 0.0
+    page = Scene.ORDER_LIST
+    due = None
+    sends = []
+
+    def observe():
+        nonlocal due, page
+        if due is not None and now >= due:
+            page = Scene.INFRA_DETAILS if page == Scene.ORDER_LIST else Scene.INFRA_MAIN
+            due = None
+        return page
+
+    def sleep(interval):
+        nonlocal now
+        now += interval
+
+    def back(interval=1):
+        nonlocal due, page
+        assert page in (Scene.ORDER_LIST, Scene.INFRA_DETAILS)
+        assert due is None, "上次返回的画面尚未变化就重复发送了按键"
+        sends.append((page, now, interval))
+        if feedback.startswith("network") and len(sends) == 1:
+            page = Scene.CONNECTING
+        elif feedback != "stuck" and (feedback != "dropped" or len(sends) != 1):
+            due = now + (
+                profile.transition_timeout * 0.7 if feedback == "delayed" else 0
+            )
+        sleep(interval)
+
+    def network_completed(**kwargs):
+        nonlocal page
+        assert page == Scene.CONNECTING
+        if feedback == "network_timeout":
+            return False
+        page = Scene.INFRA_DETAILS
+        return True
+
+    solver.scene = observe
+    solver.sleep = sleep
+    open_order = solver.tap.side_effect
+    find_element = solver.find.side_effect
+    arrow_ready_at = 3 * profile.poll_interval
+
+    def find(resource):
+        if resource == "nav_button" and page == Scene.ORDER_LIST:
+            if feedback == "no_arrow" or (
+                feedback == "arrow_late" and now < arrow_ready_at
+            ):
+                return None
+        return find_element(resource)
+
+    def tap(location, *, x_rate=0.5, interval=1):
+        if x_rate == 0.08:
+            assert location == ORDER_RETURN_ARROW
+            back(interval)
+        else:
+            open_order(location, x_rate=x_rate, interval=interval)
+
+    solver.tap.side_effect = tap
+    solver.find.side_effect = find
+    solver.back.side_effect = AssertionError("贸易站不能发送系统返回键")
+    solver.waiting_solver = MagicMock(side_effect=network_completed)
+    solver.scene_graph_navigation.side_effect = AssertionError(
+        "正常订单返回不需要通用场景恢复"
+    )
+    monkeypatch.setattr(base_schedule, "monotonic", lambda: now)
+
+    if feedback == "network_timeout":
+        with pytest.raises(RecognizeError, match="联网等待超时"):
+            solver.get_run_order_time(room)
+        assert [stage for stage, _, _ in sends] == [Scene.ORDER_LIST]
+        solver.waiting_solver.assert_called_once()
+    elif feedback == "stuck":
+        with pytest.raises(RecognizeError, match="返回"):
+            solver.get_run_order_time(room)
+        assert [stage for stage, _, _ in sends] == [Scene.ORDER_LIST] * 2
+    elif feedback == "no_arrow":
+        with pytest.raises(base_schedule.OrderReturnUnresolved, match="返回箭头"):
+            solver.get_run_order_time(room)
+        assert sends == []
+    else:
+        assert isinstance(solver.get_run_order_time(room), datetime)
+        assert page == Scene.INFRA_MAIN
+        assert [stage for stage, _, _ in sends] == (
+            [Scene.ORDER_LIST] * (2 if feedback == "dropped" else 1)
+            + [Scene.INFRA_DETAILS]
+        )
+        if feedback == "network":
+            solver.waiting_solver.assert_called_once()
+    if feedback in ("dropped", "stuck"):
+        assert sends[1][1] - sends[0][1] >= profile.transition_timeout
+    if feedback == "arrow_late":
+        assert sends[0][1] >= arrow_ready_at
+    assert all(interval == profile.poll_interval for _, _, interval in sends)
+    solver.read_time.assert_called_once()
+
+
+@pytest.mark.parametrize("cleanup_failed", [True, False])
+def test_order_exit_reconciles_uncertain_back_before_next_key(
+    solver, monkeypatch, cleanup_failed
+):
+    room = "room_1_1"
+    use_order_pages(solver, {room: "active"})
+    confirmed_tap = solver.tap.side_effect
+    solver.device = MagicMock()
+    solver.recog.update = MagicMock()
+    monkeypatch.setattr(base_schedule, "csleep", MagicMock())
+    pressed = []
+
+    def uncertain_tap(location, *, x_rate=0.5, interval=1):
+        if x_rate != 0.08:
+            return confirmed_tap(location, x_rate=x_rate, interval=interval)
+        pressed.append(solver.scene())
+        confirmed_tap(location, x_rate=x_rate, interval=interval)
+        if len(pressed) == 1:
+            cause = ConnectionError("返回键发送后断线")
+            cause.cleanup_failed = cleanup_failed
+            raise base_schedule.TouchFailure(
+                SimpleNamespace(touch_backend="adb"),
+                "windows",
+                cause,
+                delivery_unknown=True,
+                transport="adb",
+            )
+
+    solver.tap.side_effect = uncertain_tap
+    if cleanup_failed:
+        with pytest.raises(base_schedule.TouchFailure):
+            solver.get_run_order_time(room)
+        assert pressed == [Scene.ORDER_LIST]
+        solver.device.reconnect.assert_not_called()
+    else:
+        assert isinstance(solver.get_run_order_time(room), datetime)
+        assert pressed == [Scene.ORDER_LIST, Scene.INFRA_DETAILS]
+        assert solver.scene() == Scene.INFRA_MAIN
+        solver.device.reconnect.assert_called_once_with()
+        solver.recog.update.assert_called_once_with()
+    solver.read_time.assert_called_once()
+
+
+@pytest.mark.parametrize("recovered", [True, False])
+def test_order_exit_confirms_map_after_unexpected_scene(solver, recovered):
+    room = "room_1_1"
+    use_order_pages(solver, {room: "active"})
+    scenes = [Scene.ORDER_LIST, Scene.INDEX]
+    scenes.append(Scene.INFRA_MAIN if recovered else Scene.OPERATOR_SELECT)
+    solver.scene = MagicMock(side_effect=scenes)
+    solver.tap_index_element = MagicMock()
+    if recovered:
+        assert isinstance(solver.get_run_order_time(room), datetime)
+    else:
+        with pytest.raises(RecognizeError, match="未确认返回基建地图"):
+            solver.get_run_order_time(room)
+    solver.scene_graph_navigation.assert_not_called()
+    solver.tap_index_element.assert_called_once_with("infrastructure")
+    solver.back.assert_not_called()
+    assert (
+        sum(action.kwargs.get("x_rate") == 0.08 for action in solver.tap.call_args_list)
+        == 1
+    )
+    solver.read_time.assert_called_once()
+
+
+def test_order_return_after_network_restart_can_log_in_and_reach_map(solver):
+    room = "room_1_1"
+    use_order_pages(solver, {room: "active"})
+    solver.scene = MagicMock(
+        side_effect=[
+            Scene.ORDER_LIST,
+            Scene.CONNECTING,
+            Scene.LOGIN_QUICKLY,
+            Scene.INDEX,
+            Scene.INFRA_MAIN,
+        ]
+    )
+    solver.waiting_solver = MagicMock(return_value=False)
+    solver.login = MagicMock()
+    solver.tap_index_element = MagicMock()
+    with pytest.raises(base_schedule.OrderReturnUnresolved, match="联网"):
+        solver.get_run_order_time(room)
+    solver.transition()
+    solver.login.assert_called_once_with()
+    solver.tap_index_element.assert_called_once_with("infrastructure")
+    solver.scene_graph_navigation.assert_not_called()
+    solver.read_time.assert_called_once()
+
+
+@pytest.mark.parametrize("mode", ["xhigh", "low"])
+@pytest.mark.parametrize("recovery", ["immediate", "transition", "graph"])
+def test_unknown_order_exit_cancels_late_staffing_without_confirming(
+    solver, monkeypatch, mode, recovery
+):
+    room = "room_1_1"
+    use_order_pages(solver, {room: "active"})
+    config.conf.performance_mode = mode
+    profile = solver.performance_profile
+    refresh = solver._queue_order_refresh(room)
+    original_time = refresh.time
+    page = Scene.UNKNOWN
+    now = 0.0
+    actions = []
+
+    def wait(interval):
+        nonlocal page, now
+        now += interval
+        if (
+            recovery == "immediate"
+            and page == Scene.UNKNOWN
+            and now >= profile.poll_interval * 2
+        ):
+            page = Scene.INFRA_ARRANGE_CONFIRM
+
+    def click(pos, interval, *, x_rate=0.5):
+        nonlocal page
+        if x_rate == 0.08:
+            assert page == Scene.INFRA_DETAILS and pos == ORDER_RETURN_ARROW
+            actions.append(("arrow", page))
+            page = Scene.INFRA_MAIN
+            return
+        assert page == Scene.INFRA_ARRANGE_CONFIRM and pos == (640, 1070)
+        actions.append(("cancel", page))
+        page = Scene.RIIC_OPERATOR_SELECT
+
+    def back(interval):
+        nonlocal page
+        actions.append(("back", page))
+        assert page == Scene.RIIC_OPERATOR_SELECT
+        page = Scene.INFRA_DETAILS
+
+    def read(*args, **kwargs):
+        solver.tap = click
+        return 3600
+
+    solver.scene = lambda: page
+    solver.sleep = wait
+    solver.back = back
+    solver.read_time.side_effect = read
+    solver.tap_element = MagicMock(side_effect=AssertionError("读单恢复不能提交排班"))
+    monkeypatch.setattr(base_schedule, "monotonic", lambda: now)
+    if recovery != "immediate":
+        solver._read_pending_order_times(room)
+        assert refresh in solver.tasks and refresh.time == original_time
+        assert refresh.execution_failure
+        assert actions == [] and now == pytest.approx(profile.transition_timeout)
+        page = Scene.INFRA_ARRANGE_CONFIRM
+        if recovery == "transition":
+            solver.transition()
+        else:
+            BaseSchedulerSolver.scene_graph_navigation(solver, Scene.INFRA_MAIN)
+    else:
+        assert isinstance(solver.get_run_order_time(room), datetime)
+    assert page == Scene.INFRA_MAIN
+    assert actions == [
+        ("cancel", Scene.INFRA_ARRANGE_CONFIRM),
+        ("back", Scene.RIIC_OPERATOR_SELECT),
+        ("arrow", Scene.INFRA_DETAILS),
+    ]
+    assert not getattr(solver, "_order_return_unresolved", False)
+    solver.scene_graph_navigation.assert_not_called()
+    solver.read_time.assert_called_once()
 
 
 @pytest.mark.parametrize("state", ["empty", "paused"])

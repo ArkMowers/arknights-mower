@@ -435,62 +435,133 @@ class GarrisonSolver:
             return "play"
         return "verified" if key is not None else "skip"
 
+    @staticmethod
+    def strategy_cells(game, page, *, initial=False):
+        top, bottom = game.GRID_TOP + 60, game.GRID_BOTTOM - 40
+        cells = {
+            (x, y): span
+            for (x, y), span in game.framed_cells(page).items()
+            if top <= y <= bottom
+        }
+        framed_rows = {y for _, y in cells}
+        fallback = game.GRID_Y if initial else game.detect_rows(page)
+        rows = framed_rows.union(
+            y
+            for y in fallback
+            if top <= y <= bottom and not any(abs(y - row) <= 96 for row in framed_rows)
+        )
+        for y in sorted(rows):
+            for x in game.GRID_X:
+                if any(cx == x and abs(cy - y) <= 96 for cx, cy in cells):
+                    continue
+                if game.has_portrait(page, x, y):
+                    # Two portrait estimates still match within 40 pixels.
+                    cells[x, y] = (y - 20, y + 20)
+        return dict(sorted(cells.items(), key=lambda item: (item[0][1], item[0][0])))
+
     def choose_strategy(self, game):
         strategies = {
             normal_name(s["name"]): s["id"] for s in catalogue()["strategies"]
         }
         self.click((1500, 580))
-        page, rows = game.shot(), game.GRID_Y
+        first_page = game.shot()
+        page = first_page
+        cells = self.strategy_cells(game, page, initial=True)
+        faint_slots = {
+            (x, y)
+            for y in game.GRID_Y
+            for x in game.GRID_X
+            if not any(cx == x and abs(cy - y) <= 96 for cx, cy in cells)
+            and game.faint_card(first_page, x, y)
+        }
+
+        def locate_faint(view):
+            if not faint_slots:
+                return {}
+            shift = game.grid_shift(first_page, view)
+            if shift is None:
+                return {}
+            return {
+                (x, y - shift): (x, y)
+                for x, y in sorted(faint_slots, key=lambda point: (point[1], point[0]))
+                if game.GRID_TOP + 60 <= y - shift <= game.GRID_BOTTOM - 40
+                and game.faint_card(view, x, y - shift)
+            }
+
         offset = 0
         checked_rows = {x: [] for x in game.GRID_X}
         skipped_badges = False
         for recheck_panels in (False, True):
-            if recheck_panels and not skipped_badges:
-                break
+            if recheck_panels and faint_slots:
+                # Refresh after the last forward swipe, even if that swipe timed out.
+                view = game.shot()
+                drift = game.grid_shift(page, view)
+                if drift is None:
+                    checked_rows = {x: [] for x in game.GRID_X}
+                    offset = 0
+                else:
+                    offset += drift
+                cells = self.strategy_cells(game, view)
+                page = view
             for page_index in range(8):
-                for y in rows:
-                    if not game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40:
-                        continue
-                    for x in game.GRID_X:
-                        if any(abs(y + offset - row) <= 40 for row in checked_rows[x]):
-                            continue
-                        if (
-                            not recheck_panels
-                            and self.match_limit is None
-                            and (
-                                game.has_color_badge(page, x, y)
-                                or self.target_wins == 3
-                                and game.has_badge(page, x, y)
-                            )
+                candidates = cells
+                if recheck_panels:
+                    if not (skipped_badges or faint_slots):
+                        break
+                    candidates = cells.copy() if skipped_badges else {}
+                    for (x, y), slot in locate_faint(page).items():
+                        faint_slots.remove(slot)
+                        if not any(
+                            cx == x and abs(cy - y) <= 96 for cx, cy in candidates
                         ):
-                            skipped_badges = True
-                            continue
+                            candidates[x, y] = (y - 20, y + 20)
+                for (x, y), (top, bottom) in candidates.items():
+                    start, end = top + offset, bottom + offset
+                    if any(start <= hi and lo <= end for lo, hi in checked_rows[x]):
+                        continue
+                    if (
+                        not recheck_panels
+                        and self.match_limit is None
+                        and (
+                            game.has_color_badge(page, x, y)
+                            or self.target_wins == 3
+                            and game.has_badge(page, x, y)
+                        )
+                    ):
+                        skipped_badges = True
+                        continue
+                    frame = self.capture()
+                    if frame.screen != "strategy":
+                        return frame
+                    game.tap(x, y, 0.7)
+                    action = self.read_strategy_action(game, strategies)
+                    if action == "verified":
+                        checked_rows[x].append((start, end))
+                    if action == "completed":
+                        return None
+                    if action == "play":
                         frame = self.capture()
                         if frame.screen != "strategy":
                             return frame
-                        game.tap(x, y, 0.7)
-                        action = self.read_strategy_action(game, strategies)
-                        if action == "verified":
-                            checked_rows[x].append(y + offset)
-                        if action == "completed":
-                            return None
-                        if action == "play":
-                            frame = self.capture()
-                            if frame.screen != "strategy":
-                                return frame
-                            self.text_click(frame, "确认选择|准备就绪|淮备就绪")
-                            return self.wait(
-                                lambda f: f.screen not in {"strategy", "unknown"}, 20
-                            )
-                if page_index == 7:
+                        self.text_click(frame, "确认选择|准备就绪|淮备就绪")
+                        return self.wait(
+                            lambda f: f.screen not in {"strategy", "unknown"}, 20
+                        )
+                if page_index == 7 or (
+                    recheck_panels and not (skipped_badges or faint_slots)
+                ):
                     break
                 frame = self.capture()
                 if frame.screen != "strategy":
                     return frame
-                next_page = self.scroll_strategy_page(game, backwards=recheck_panels)
+                next_page = self.scroll_strategy_page(
+                    game,
+                    backwards=recheck_panels,
+                    fallback=locate_faint if recheck_panels and faint_slots else None,
+                )
                 if next_page is None:
                     break
-                page, rows, shift = next_page
+                page, cells, shift = next_page
                 if shift is None:
                     # Unknown page alignment cannot identify previously opened cards.
                     checked_rows = {x: [] for x in game.GRID_X}
@@ -499,7 +570,7 @@ class GarrisonSolver:
                     offset += shift
         raise GarrisonError("本次未找到可刷策略，部分胜场仍待核对")
 
-    def scroll_strategy_page(self, game, *, backwards):
+    def scroll_strategy_page(self, game, *, backwards, fallback=None):
         before = game.shot()
         if backwards:
             game.swipe(1000, 480, 1000, 900, ms=800)
@@ -511,9 +582,9 @@ class GarrisonSolver:
             shift = game.grid_shift(before, after)
             if shift is not None and abs(shift) < 20:
                 return None
-            rows = game.detect_rows(after)
-            if any(game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40 for y in rows):
-                return after, rows, shift
+            cells = self.strategy_cells(game, after)
+            if cells or (fallback and fallback(after)):
+                return after, cells, shift
             return None
 
         return self.wait_for_observation(read, bool, 4)

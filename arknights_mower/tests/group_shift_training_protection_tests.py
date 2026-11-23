@@ -545,6 +545,7 @@ def test_restored_dorm_targets_keep_training_protection(
             pass
 
         s.last_room = ""
+        s.detect_arrange_order = MagicMock(return_value=("心情", True))
         s.profession_filter = MagicMock(side_effect=SelectionBoundaryReached())
         with pytest.raises(SelectionBoundaryReached):
             s.choose_agent(

@@ -90,6 +90,16 @@ def test_central_uses_dormitory_mapping_not_production_mapping():
     assert solver.detect_arrange_order("dormitory_1") == ("工作状态", False)
 
 
+def test_production_trust_header_from_emulator():
+    from pathlib import Path
+
+    from arknights_mower.utils.image import loadimg
+
+    path = Path(__file__).parent / "fixtures/selection/trust_percentages.webp"
+    order = solver_for(loadimg(str(path))).detect_arrange_order("room_1_2")
+    assert order is not None and order[0] == "信赖值"
+
+
 @pytest.mark.parametrize("room", ROOMS)
 @pytest.mark.parametrize("shape", [(40, 700, 3), (75, 1100, 3), (82, 1300, 3)])
 def test_partial_dimensions_match_full_image_reference(room, shape):

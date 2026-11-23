@@ -295,6 +295,7 @@ def test_profession_filter_logs_at_debug(monkeypatch, caplog):
     """打开和关闭职业筛选的日志记录在 DEBUG，不进入 INFO。"""
     solver = BaseMixin()
     # 只关心日志级别；跳过实际触摸和颜色读取。
+    solver.recog = SimpleNamespace(img=None)
     solver._set_profession_filter_open = MagicMock()
     solver.get_color = MagicMock(return_value=(0, 0, 255))  # ALL 已高亮，无需点击
     solver._wait_for_profession_filter = MagicMock()

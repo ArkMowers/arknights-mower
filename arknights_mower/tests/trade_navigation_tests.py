@@ -46,7 +46,7 @@ def test_trade_exit_ignores_temporary_recognition_and_uses_visible_back():
 
     solver.scene_graph_navigation(Scene.INFRA_MAIN)
 
-    assert solver.tap.call_args_list == [call(NAV_BAR, x_rate=0.08)] * 2
+    assert solver.tap.call_args_list == [call(NAV_BAR, x_rate=0.08, interval=1)] * 2
     assert solver.sleep.call_args_list == [call(0.3)] * 2
     solver.back.assert_not_called()
 
@@ -93,7 +93,7 @@ def test_room_return_requires_two_frames_without_order_page():
     solver.scene_graph_navigation(Scene.INFRA_DETAILS)
 
     assert solver.scene.call_count == 5
-    assert solver.tap.call_args_list == [call(NAV_BAR, x_rate=0.08)] * 2
+    assert solver.tap.call_args_list == [call(NAV_BAR, x_rate=0.08, interval=1)] * 2
     solver.back.assert_not_called()
 
 
@@ -106,7 +106,7 @@ def test_trade_return_waits_for_arrow_without_spending_an_input_attempt():
     solver.scene_graph_navigation(Scene.INFRA_DETAILS)
 
     assert solver.scene.call_count == 6
-    solver.tap.assert_called_once_with(NAV_BAR, x_rate=0.08)
+    solver.tap.assert_called_once_with(NAV_BAR, x_rate=0.08, interval=1)
     solver.back.assert_not_called()
 
 
@@ -146,7 +146,7 @@ def test_trade_return_budget_is_not_renewed_when_home_navigation_reenters_trade(
     with pytest.raises(graph.TradeNavigationError):
         solver.scene_graph_navigation(Scene.INDEX)
 
-    assert solver.tap.call_args_list == [call(NAV_BAR, x_rate=0.08)] * 6
+    assert solver.tap.call_args_list == [call(NAV_BAR, x_rate=0.08, interval=1)] * 6
     assert solver.back.call_count == 3
 
 
@@ -157,7 +157,7 @@ def test_unexpected_room_view_does_not_complete_trade_return():
     with pytest.raises(graph.TradeNavigationError):
         solver.scene_graph_navigation(Scene.INFRA_DETAILS)
 
-    solver.tap.assert_called_once_with(NAV_BAR, x_rate=0.08)
+    solver.tap.assert_called_once_with(NAV_BAR, x_rate=0.08, interval=1)
     solver.back.assert_not_called()
 
 

@@ -22,6 +22,7 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
     def make_operators(self, support="", trainee="号角", plan=None):
         data = object.__new__(Operators)
         data.config = types.SimpleNamespace(free_room=False)
+        data.profession_filter = set()
         data.plan = {} if plan is None else plan
         data.operators = {
             name: types.SimpleNamespace(
@@ -145,12 +146,12 @@ class TestUnscheduledTrainingRoom(unittest.TestCase):
                 choose_train(solver, ["暴雨", "Current"])
                 solver.verify_agent.assert_called_once_with(["暴雨"], "train")
                 solver.swipe_left.assert_not_called()
-                solver.tap_confirm.assert_called_once_with("train")
+                solver.tap_confirm.assert_called_once_with("train", training_slot=0)
                 solver.choose_train_ope.assert_not_called()
                 self.assertEqual(solver.op_data.plan, schedule)
                 if not old_support:
                     # 协助位为空时不得把训练位当成原协助者点击取消。
-                    solver.tap.assert_not_called()
+                    solver.tap.assert_called_once_with((1920 * 0.82, 1080 * 0.18))
 
 
 def make_solver(scenes, scan_results):
@@ -205,6 +206,63 @@ class TestChooseTrainCurrentReplacement(unittest.TestCase):
             "协助位 Current 应视为保持原样，不应触发 choose_agent",
         )
 
+    def test_opening_second_slot_does_not_inherit_first_slot_input(self):
+        solver = make_solver([], [])
+        occupants = ["", ""]
+        requested = ["望", "余"]
+        page = Scene.INFRA_DETAILS
+        opened = []
+
+        def open_slot(position, **kwargs):
+            nonlocal page
+            index = int(position[1] > solver.recog.h * 0.3)
+            opened.append(index)
+            page = Scene.INFRA_ARRANGE_ORDER
+
+        def confirm(room, *, training_slot):
+            nonlocal page
+            index = opened[-1]
+            self.assertEqual(training_slot, index)
+            occupants[index] = requested[index]
+            page = Scene.INFRA_DETAILS
+
+        solver.tap_info = (None, None)
+        solver.scene.side_effect = lambda: page
+        solver.get_agent_from_room.side_effect = lambda *a, **kw: [
+            {"agent": name} for name in occupants
+        ]
+        solver.ctap = types.MethodType(BaseSchedulerSolver.ctap, solver)
+        solver.tap.side_effect = open_slot
+        solver.tap_confirm.side_effect = confirm
+        solver.sleep.side_effect = AssertionError("训练位首次输入被协助位限频")
+
+        choose_train(solver, requested)
+
+        self.assertEqual(opened, [0, 1])
+        self.assertEqual(occupants, requested)
+        solver.choose_agent.assert_called_once_with(["望"], "train", True)
+        solver.choose_train_ope.assert_called_once_with("余")
+
+    def test_free_trainee_only_needs_selection_for_an_empty_slot(self):
+        for support, trainee in itertools.product(("", "望"), ("", "余")):
+            with self.subTest(support=support, trainee=trainee):
+                initial = [{"agent": support}, {"agent": trainee}]
+                scenes = [Scene.INFRA_DETAILS]
+                observations = [initial]
+                if not trainee:
+                    scenes += [Scene.INFRA_ARRANGE_ORDER, Scene.INFRA_DETAILS]
+                    observations.append([{"agent": support}, {"agent": "余"}])
+                solver = make_solver(scenes, observations)
+                choose_train(solver, ["Free", "Free"])
+                solver.choose_agent.assert_not_called()
+                if trainee:
+                    solver.tap.assert_not_called()
+                    solver.choose_train_ope.assert_not_called()
+                    solver.tap_confirm.assert_not_called()
+                else:
+                    solver.choose_train_ope.assert_called_once_with("Free")
+                    solver.tap_confirm.assert_called_once_with("train", training_slot=1)
+
     def test_swap_assistant_picks_real_name(self):
         """choose_train(['夜莺', 'Current'])：idx0 换协助位走 choose_agent，传真实干员名。"""
         solver = make_solver(
@@ -245,11 +303,16 @@ class TestChooseTrainCurrentReplacement(unittest.TestCase):
                 desired = ["夜莺", "Current"]
                 choose_train(solver, desired)
                 self.assertEqual(solver.get_agent_from_room.call_count, 2)
-                for invocation in solver.get_agent_from_room.call_args_list:
+                for invocation, submitted in zip(
+                    solver.get_agent_from_room.call_args_list, (None, (0, "夜莺"))
+                ):
                     self.assertEqual(invocation.args, ("train",))
                     self.assertEqual(
                         invocation.kwargs,
-                        {"departing_plan": desired},
+                        {
+                            "departing_plan": desired,
+                            "submitted_training_slot": submitted,
+                        },
                     )
 
 
@@ -275,7 +338,7 @@ class TestChooseTrainOpensCheckInDetail(unittest.TestCase):
             if res == "arrange_check_in":
                 # 屏幕左侧进驻按钮（真实识别约 (65,384)-(139,452)）
                 return ((80, 380), (140, 460))
-            if res == "room_detail":
+            if res in ("room_detail", "arrange_check_in_on"):
                 # 浮窗没点开之前找不到；点过 arrange_check_in 后视为已开
                 return True if state["detail_open"] else None
             return True
