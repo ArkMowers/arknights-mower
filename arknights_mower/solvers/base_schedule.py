@@ -16360,17 +16360,26 @@ class BaseSchedulerSolver(
                 planned in observed or planned not in page_names
             ):
                 tier = resting_tier(self.op_data, planned)
+                preferred = [
+                    name
+                    for name in ranked
+                    if name not in agents and resting_tier(self.op_data, name) < tier
+                ]
+                preferred.append(planned)
+                plan = {**task.plan, room: agents}
+                transitions = self._execution_group_transitions(plan)
                 target = next(
                     (
                         name
-                        for name in ranked
-                        if name not in agents
-                        and resting_tier(self.op_data, name) < tier
-                        and self.op_data._slot_takable(
-                            takeovers[index], requester=name, plan=task.plan
+                        for name in preferred
+                        if self.op_data._slot_takable(
+                            takeovers[index],
+                            requester=name,
+                            plan=plan,
+                            group_transitions=transitions,
                         )
                     ),
-                    planned,
+                    "Free",
                 )
             agents[index] = target
             if row is not None:
