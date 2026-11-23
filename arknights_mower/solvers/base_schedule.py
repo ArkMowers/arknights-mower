@@ -532,6 +532,17 @@ class RunOrderConfirmationUnresolved(RecognizeError):
         self.room = room
 
 
+ORDER_RETURN_LOGIN_SCENES = (
+    Scene.LOGIN_START,
+    Scene.LOGIN_MAIN,
+    Scene.LOGIN_QUICKLY,
+    Scene.LOGIN_INPUT,
+    Scene.LOGIN_BILIBILI,
+    Scene.LOGIN_CAPTCHA,
+    Scene.LOGIN_CANCELLED,
+)
+
+
 class OrderReturnUnresolved(RecognizeError):
     """订单已读，返回地图的画面仍未确认。"""
 
@@ -12712,10 +12723,20 @@ class BaseSchedulerSolver(
         self.recog.update()
         previous_detail = False
         tapped = False
+        waited = set()
         for _ in range(profile.transition_attempts):
             scene = self.scene()
-            if scene in (Scene.INFRA_MAIN, Scene.ORDER_LIST):
+            if (
+                scene in (Scene.INFRA_MAIN, Scene.ORDER_LIST, Scene.INDEX)
+                or scene in ORDER_RETURN_LOGIN_SCENES
+            ):
                 return scene
+            if scene in self.waiting_scene and scene != Scene.UNKNOWN:
+                if scene in waited or not self.waiting_solver():
+                    break
+                waited.add(scene)
+                previous_detail = False
+                continue
             if scene != Scene.INFRA_DETAILS:
                 break
             if not tapped:
@@ -12781,15 +12802,7 @@ class BaseSchedulerSolver(
             attempts[scene] = attempts.get(scene, 0) + 1
             previous = scene
             deadline = monotonic() + profile.transition_timeout
-            if scene in (
-                Scene.LOGIN_START,
-                Scene.LOGIN_MAIN,
-                Scene.LOGIN_QUICKLY,
-                Scene.LOGIN_INPUT,
-                Scene.LOGIN_BILIBILI,
-                Scene.LOGIN_CAPTCHA,
-                Scene.LOGIN_CANCELLED,
-            ):
+            if scene in ORDER_RETURN_LOGIN_SCENES:
                 self.login()
                 scene = self.scene()
                 continue

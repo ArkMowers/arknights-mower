@@ -505,6 +505,37 @@ def test_exhausted_trade_room_return_checks_room_and_uses_one_visible_arrow(
     assert solver.tasks == [refresh] and refresh.time == original_time
 
 
+@pytest.mark.parametrize("new_scene", ["INDEX", "LOGIN_MAIN", "CONNECTING"])
+def test_exhausted_trade_view_resumes_navigation_after_reconnection(
+    order_navigation, new_scene, monkeypatch
+):
+    ui = order_navigation
+    solver, scene = ui.solver, ui.base.Scene
+    scope = {"page": getattr(scene, new_scene)}
+    solver._order_return_unresolved = scene.INFRA_DETAILS
+    solver._order_return_room = "room_1_1"
+    solver.recog.update = MagicMock()
+    solver.scene.side_effect = lambda: scope["page"]
+    solver.waiting_scene = [scene.CONNECTING]
+    solver.waiting_solver = MagicMock(
+        side_effect=lambda: scope.update(page=scene.INDEX) or True
+    )
+    solver.login = MagicMock(side_effect=lambda: scope.update(page=scene.INDEX))
+    solver.tap_index_element = MagicMock(
+        side_effect=lambda _: scope.update(page=scene.INFRA_MAIN)
+    )
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    solver.transition()
+    assert scope["page"] == scene.INFRA_MAIN
+    assert solver.login.call_count == int(new_scene == "LOGIN_MAIN")
+    assert solver.waiting_solver.call_count == int(new_scene == "CONNECTING")
+    solver.tap_index_element.assert_called_once_with("infrastructure")
+    solver.read_time.assert_not_called()
+    solver.back.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    assert "_order_return_unresolved" not in vars(solver)
+
+
 @pytest.mark.parametrize("initial", ["ORDER_LIST", "INFRA_ARRANGE_CONFIRM"])
 def test_exhausted_order_navigation_checks_the_frame_before_input(
     order_navigation, monkeypatch, initial
