@@ -36,7 +36,7 @@
     "highlight.js": "^11.12.0",
     "html-to-image": "^1.11.13",
     "luxon": "^3.7.2",
-    "markdown-it": "^14.3.3",
+    "markdown-it": "^15.0.3",
     "markdown-it-external-link": "^1.1.0",
     "pinia": "^4.1.0",
     "pinyin-pro": "^3.29.5",
