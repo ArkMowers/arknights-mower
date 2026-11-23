@@ -450,6 +450,65 @@ def build_feedback_references(bundle_path: Path, focus_terms=None) -> dict:
     return index
 
 
+def format_feedback_inspection(details: dict, max_chars: int) -> str:
+    report = {key: value for key, value in details.items() if key != "generated"}
+
+    def encode():
+        return json.dumps(report, ensure_ascii=False, separators=(",", ":"))
+
+    encoded = encode()
+    if len(encoded) <= max_chars:
+        return encoded
+
+    index = report["references"]
+    records = {record["id"]: record for record in index["records"]}
+    sources = index["sources"]
+    coverage = {
+        key: value
+        for key, value in index["coverage"].items()
+        if key != "source_omissions"
+    }
+    coverage["omitted_source_omissions"] += len(index["coverage"]["source_omissions"])
+    coverage["inspection_omitted_records"] = len(records)
+    coverage["inspection_omitted_sources"] = len(sources)
+    report = {key: report[key] for key in ("context", "coverage", "screenshot_count")}
+    report["current_state"] = {
+        key: details["current_state"][key]
+        for key in ("current_snapshot_not_historical", "scheduler_runtime")
+    }
+    preview = {**index, "coverage": coverage, "records": [], "sources": []}
+    report["references"] = preview
+    if len(encode()) > max_chars:
+        raise ValueError("反馈证据元数据超过工具结果上限")
+
+    shown_records = set()
+    for source in sources:
+        record_id = source["record_id"]
+        new_record = record_id not in shown_records
+        if new_record:
+            preview["records"].append(records[record_id])
+        preview["sources"].append(source)
+        if len(encode()) > max_chars:
+            preview["sources"].pop()
+            if new_record:
+                preview["records"].pop()
+        else:
+            shown_records.add(record_id)
+
+    for record in sorted(records.values(), key=_priority):
+        if record["id"] not in shown_records:
+            preview["records"].append(record)
+            if len(encode()) > max_chars:
+                preview["records"].pop()
+            else:
+                shown_records.add(record["id"])
+
+    preview["records"] = [row for key, row in records.items() if key in shown_records]
+    coverage["inspection_omitted_records"] -= len(shown_records)
+    coverage["inspection_omitted_sources"] -= len(preview["sources"])
+    return encode()
+
+
 def validate_feedback_analysis(analysis: dict, index: dict) -> dict:
     """验证逐项引用存在；不验证模型文字与证据之间的语义关系。"""
     if not isinstance(analysis, dict) or analysis.get("status") not in (

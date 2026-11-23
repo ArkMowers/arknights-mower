@@ -7,6 +7,7 @@ import pytest
 from langchain_core.messages import AIMessage
 
 from arknights_mower.agent import agent
+from arknights_mower.agent.execution import MAX_RESULT_CHARS, Execution
 from arknights_mower.agent.tools import submit_issue
 from arknights_mower.tests import feedback_state_tests, issue_evidence_tests
 from arknights_mower.tests.issue_evidence_tests import (
@@ -15,6 +16,7 @@ from arknights_mower.tests.issue_evidence_tests import (
     parts,
     write_logs,
 )
+from arknights_mower.utils import ai_history
 
 feedback = issue_evidence_tests.feedback
 state_database = feedback_state_tests.database
@@ -68,17 +70,28 @@ def test_inspection_reads_actual_state_and_source_without_sending(evidence):
     assert sent == []
 
 
+@pytest.mark.parametrize("busy_log", [False, True])
 def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
-    evidence, monkeypatch, tmp_path
+    evidence, monkeypatch, tmp_path, busy_log
 ):
-    _, sent, _ = evidence
-    turns = []
+    logs, sent, _ = evidence
+    if busy_log:
+        with (logs / "runtime.log").open("a", encoding="utf-8") as log:
+            for second in range(11, 60):
+                log.write(
+                    f"2026-10-20 12:00:{second:02d} scheduler.py:1 INFO 训练室 "
+                    + "x" * 950
+                    + "\n"
+                )
+    round_number = 0
+    inspected = None
     inspection_args = {"start_time": START, "end_time": END, "focus_terms": ["训练室"]}
 
-    def invoke(messages):
-        turns.append(messages)
-        if len(turns) == 1:
-            return AIMessage(
+    def stream(messages):
+        nonlocal inspected, round_number
+        round_number += 1
+        if round_number == 1:
+            yield AIMessage(
                 content="",
                 tool_calls=[
                     {
@@ -88,11 +101,13 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
                     }
                 ],
             )
-        if len(turns) == 2:
-            report = json.loads(messages[-1].content.split("\n", 1)[-1])
-            index = report["references"]
-            source = index["sources"][0]
-            assert any(row["id"] == source["record_id"] for row in index["records"])
+        elif round_number == 2:
+            result = messages[-1].content.split("\n", 1)[-1]
+            assert len(result) <= MAX_RESULT_CHARS
+            report = json.loads(result)
+            inspected = report["references"]
+            source = inspected["sources"][0]
+            assert any(row["id"] == source["record_id"] for row in inspected["records"])
             analysis = {
                 "status": "analyzed",
                 "claims": [
@@ -104,7 +119,7 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
                 ],
                 "unknowns": ["故障发生时的源码版本和实际训练状态仍未确认。"],
             }
-            return AIMessage(
+            yield AIMessage(
                 content="",
                 tool_calls=[
                     {
@@ -118,19 +133,20 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
                     }
                 ],
             )
-        assert messages[-1].content.endswith("邮件发送成功！")
-        return AIMessage(content="已反馈，并注明待确认事项。")
+        else:
+            assert messages[-1].content.endswith("邮件发送成功！")
+            yield AIMessage(content="已反馈，并注明待确认事项。")
 
     model = Mock()
-    model.stream.side_effect = lambda messages: iter([invoke(messages)])
+    model.stream.side_effect = stream
     monkeypatch.setattr(agent, "build_llm", lambda *args, **kwargs: model)
-    from arknights_mower.agent.execution import Execution
-    from arknights_mower.utils import ai_history
-
+    monkeypatch.setattr(agent.config.conf, "ai_type", "custom-local")
+    monkeypatch.setattr(agent.config.conf, "ai_context_tokens", 256000)
     monkeypatch.setattr(ai_history, "get_path", lambda _: tmp_path / "chat.sqlite3")
     store = ai_history.HistoryStore("feedback-profile")
     approvals = []
-    with store.turn(None, "请反馈训练问题并分析相关代码") as turn:
+    question = "请反馈训练问题并分析相关代码"
+    with store.turn(None, question) as turn:
 
         def send(frame):
             event = frame["event"]
@@ -141,13 +157,7 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
 
         run = Execution(store, turn, send)
         with run.registered():
-            result = list(
-                agent._run_manual_tool_loop(
-                    agent._build_messages("请反馈训练问题并分析相关代码"),
-                    "offline-key",
-                    execution=run,
-                )
-            )
+            result = list(agent.ask_llm(question, api_key="offline-key", execution=run))
     assert len(approvals) == 1
     assert (
         approvals[0]["preview"]["content"]["description"]
@@ -156,6 +166,18 @@ def test_real_ai_tool_loop_inspects_code_then_sends_cited_inference(
     assert result[-1] == "已反馈，并注明待确认事项。"
     contents = parts(sent)
     index = json.loads(contents["references.json"])
+    if busy_log:
+        assert len(json.dumps(index, ensure_ascii=False)) > MAX_RESULT_CHARS
+        assert (
+            inspected["coverage"]["inspection_omitted_records"]
+            == len(index["records"]) - len(inspected["records"])
+            > 0
+        )
+        assert inspected["sources"] == index["sources"]
+        assert all(row in index["records"] for row in inspected["records"])
+        assert ("x" * 950).encode() in contents["runtime.log"]
+    else:
+        assert inspected == index
     analysis = json.loads(contents["analysis.json"])
     source = index["sources"][0]
     assert analysis["claims"][0]["references"] == [source["record_id"], source["id"]]
