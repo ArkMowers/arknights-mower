@@ -437,3 +437,116 @@ it.each(
     expect(order.lmdReward).toBe(1200)
   }
 })
+
+it.each(
+  [true, false].flatMap((expectationMode) =>
+    [
+      ['巫恋', '芬', '柏喙', 5, [0.05, 0.1, 0.85]],
+      ['柏喙', '芬', '巫恋', 3, [0.15, 0.3, 0.55]],
+      ['巫恋', '柏喙', '芬', 1, [0.3, 0.5, 0.2]]
+    ].map((row) => [expectationMode, ...row])
+  )
+)(
+  'applies the remaining tailor probability (expected=%s, replace %s and %s, retain %s)',
+  (expectationMode, first, second, remaining, cap, peak) => {
+    const source = plan()
+    source.facility_levels = { room_1_1: 3 }
+    source.conf.workaholic = [first, second, remaining].join(',')
+    source.plan1.room_1_1.plans = [
+      { agent: first, replacement: ['龙舌兰'] },
+      { agent: second, replacement: ['但书'] },
+      { agent: remaining, replacement: [] }
+    ]
+    const result = calculateIncome(source, { ...settings(), expectationMode, fixedSeed: 42 })
+    expect(result.success, result.error).toBe(true)
+    const events = result.simulationReport.production.events
+    const starts = new Map(
+      events
+        .filter((event) => event.type === 'order-started')
+        .map((event) => [event.orderId, event.time])
+    )
+    const completed = events.filter((event) => event.type === 'order-completed')
+    expect(completed.some((event) => starts.get(event.orderId) >= cap)).toBe(true)
+    for (const { order, orderId } of completed) {
+      const progress = Math.min(Math.floor(starts.get(orderId)) / cap, 1)
+      for (const part of order.expectationComponents ?? [order]) {
+        const tier = [144, 210, 276].indexOf(part.baseMinutes)
+        expect(part.probability).toBeCloseTo(
+          [0.3, 0.5, 0.2][tier] * (1 - progress) + peak[tier] * progress,
+          9
+        )
+      }
+    }
+  }
+)
+
+it.each([true, false])(
+  'rejects two tailors left beside a runner (expected=%s)',
+  (expectationMode) => {
+    const source = plan()
+    source.plan1.room_1_1.plans = [
+      { agent: '巫恋', replacement: [] },
+      { agent: '芬', replacement: ['但书'] },
+      { agent: '柏喙', replacement: [] }
+    ]
+    const result = calculateIncome(source, { ...settings(), expectationMode, fixedSeed: 42 })
+    expect(result.success).toBe(false)
+    expect(result.error).toContain('巫恋、柏喙')
+  }
+)
+
+it.each([true, false])(
+  'uses the active plan when a backup moves the runner to another slot (active=%s)',
+  (active) => {
+    const source = plan()
+    const slots = [
+      { agent: '巫恋', replacement: ['但书'] },
+      { agent: '柏喙', replacement: [] },
+      { agent: '芬', replacement: [] }
+    ]
+    source.facility_levels = { room_1_1: 3 }
+    source.conf.workaholic = '巫恋,柏喙,芬'
+    source.plan1.room_1_1.plans = slots
+    source.backup_plans = [
+      {
+        name: '调整跑单位',
+        trigger: active ? 'True' : 'False',
+        plan: {
+          room_1_1: {
+            plans: [
+              { agent: '巫恋', replacement: [] },
+              { agent: 'Current' },
+              { agent: '芬', replacement: ['但书'] }
+            ]
+          }
+        }
+      }
+    ]
+    const result = calculateIncome(source, settings())
+    expect(result.success, result.error).toBe(!active)
+    if (active) expect(result.error).toContain('巫恋、柏喙')
+  }
+)
+
+it('replaces the tailor when the runner is configured in a group binding', () => {
+  const source = plan()
+  source.facility_levels = { room_1_1: 3 }
+  source.conf.workaholic = '巫恋,柏喙,芬'
+  source.plan1.room_1_1.plans = [
+    {
+      agent: '巫恋',
+      replacement: ['香草'],
+      group_bindings: [{ group: '贸易', replacement: ['但书'] }]
+    },
+    { agent: '柏喙', replacement: [] },
+    { agent: '芬', replacement: [] }
+  ]
+  const result = calculateIncome(source, settings())
+  expect(result.success, result.error).toBe(true)
+  expect(result.simulationReport.production.events).toContainEqual(
+    expect.objectContaining({
+      type: 'run-order-ideal',
+      operatorIds: [resolveOperatorCharId('但书')]
+    })
+  )
+})
