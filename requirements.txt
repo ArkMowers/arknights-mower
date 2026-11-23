@@ -28,6 +28,7 @@ bottle==0.12.25
     # via pywebview
 certifi==2026.11.20
     # via
+    #   -r requirements.in
     #   httpcore
     #   httpx
     #   requests
