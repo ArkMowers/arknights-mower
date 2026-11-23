@@ -419,6 +419,92 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
     solver.sleep.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "readback",
+    [
+        "trade",
+        "other_room",
+        "other_type",
+        "order_marker",
+        "no_arrow",
+        "cancel_dialog",
+        "late_arrow",
+        "dropped_arrow",
+    ],
+)
+def test_exhausted_trade_room_return_checks_room_and_uses_one_visible_arrow(
+    order_navigation, monkeypatch, readback
+):
+    ui = order_navigation
+    solver, scene = ui.solver, ui.base.Scene
+    room = "room_1_1"
+    refresh = ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data=room)
+    solver.tasks = [refresh]
+    original_time = refresh.time
+    ui.states[room] = "active"
+    working_back = solver.back
+
+    def stuck_in_room(**kwargs):
+        if solver._page["open"]:
+            working_back(**kwargs)
+
+    solver.back = MagicMock(side_effect=stuck_in_room)
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    solver._read_pending_order_times()
+    assert refresh.execution_failure and solver._page == {"room": room, "open": False}
+    assert solver.back.call_count == 3
+    old_actions = solver.tap.call_count
+    arrow = ((20, 15), (380, 95))
+    updates = []
+    solver.recog.update = lambda: updates.append(True)
+    advance = solver.sleep.side_effect
+
+    def next_frame(interval):
+        advance(interval)
+        solver.recog.update()
+
+    solver.sleep.side_effect = next_frame
+    solver.detect_room = MagicMock(
+        return_value="room_1_2" if readback == "other_room" else room
+    )
+    solver.detect_room_type = MagicMock(
+        return_value="制造站" if readback == "other_type" else "贸易站"
+    )
+    if readback == "cancel_dialog":
+        solver.scene.side_effect = lambda: scene.INFRA_ARRANGE_CONFIRM
+
+    def find(name):
+        if name == "order_label":
+            return readback == "order_marker"
+        if (
+            name == "nav_button"
+            and readback != "no_arrow"
+            and (readback != "late_arrow" or len(updates) >= 3)
+        ):
+            return arrow
+
+    solver.find.side_effect = find
+
+    def tap(scope, *, x_rate, interval):
+        assert len(updates) >= 2 and scope == arrow and x_rate == 0.08
+        if readback != "dropped_arrow":
+            solver._page.update(room=None, open=False)
+
+    solver.tap.side_effect = tap
+    if readback in ("trade", "late_arrow"):
+        solver.transition()
+        assert solver._page == {"room": None, "open": False}
+        assert solver.tap.call_count == old_actions + 1
+    else:
+        with pytest.raises(ui.base.OrderReturnUnresolved):
+            solver.transition()
+        assert solver.tap.call_count == old_actions + int(readback == "dropped_arrow")
+    assert 1 <= len(updates) <= solver.performance_profile.transition_attempts + 1
+    assert solver.back.call_count == 3
+    solver.read_time.assert_called_once()
+    assert solver.tasks == [refresh] and refresh.time == original_time
+
+
 @pytest.mark.parametrize("initial", ["ORDER_LIST", "INFRA_ARRANGE_CONFIRM"])
 def test_exhausted_order_navigation_checks_the_frame_before_input(
     order_navigation, monkeypatch, initial

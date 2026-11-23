@@ -12701,21 +12701,61 @@ class BaseSchedulerSolver(
             if not self.op_data.is_order_collection_room(room):
                 execute_time -= timedelta(minutes=config.conf.run_order_delay)
             logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
-            self._return_after_order_countdown()
+            self._return_after_order_countdown(room)
             self._resolve_order_read_log(cohort, room, "read")
             return execute_time
 
-    def _return_after_order_countdown(self):
+    def _recover_trade_room_return(self, room):
+        """在两张新画面确认原贸易站的放大页后，点一次游戏内返回箭头。"""
+        profile = self.performance_profile
+        deadline = monotonic() + profile.transition_timeout
+        self.recog.update()
+        previous_detail = False
+        tapped = False
+        for _ in range(profile.transition_attempts):
+            scene = self.scene()
+            if scene in (Scene.INFRA_MAIN, Scene.ORDER_LIST):
+                return scene
+            if scene != Scene.INFRA_DETAILS:
+                break
+            if not tapped:
+                arrow = self.find("nav_button")
+                detail = (
+                    bool(arrow)
+                    and not self.find("order_label")
+                    and (
+                        self.detect_room_type() == "贸易站"
+                        and self.detect_room() == room
+                    )
+                )
+                if detail and previous_detail:
+                    with input_reconciliation_scope("scene"):
+                        self.tap(arrow, x_rate=0.08, interval=profile.poll_interval)
+                    tapped = True
+                    continue
+                previous_detail = detail
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                break
+            self.sleep(min(profile.poll_interval, remaining))
+        raise OrderReturnUnresolved("读单后未确认退出原贸易站，保留订单刷新任务")
+
+    def _return_after_order_countdown(self, room=None):
         """读到订单倒计时后逐页返回，每次按键都以新场景确认结果。"""
         profile = self.performance_profile
         previous = self.__dict__.get("_order_return_unresolved")
+        if room is None:
+            room = self.__dict__.get("_order_return_room")
         attempts = {previous: 2} if previous is not None else {}
         if previous == Scene.ORDER_LIST:
             # 上一轮已等过按键反馈，本轮重新取帧确认订单页后只补一次返回。
             self.recog.update()
             attempts[Scene.ORDER_LIST] = 1
             previous = None
-        scene = self.scene()
+        if previous == Scene.INFRA_DETAILS and room is not None:
+            scene = self._recover_trade_room_return(room)
+        else:
+            scene = self.scene()
         deadline = monotonic() + profile.transition_timeout
         waited = set()
         failure = "读单后未确认返回基建地图，保留订单刷新任务"
@@ -12788,8 +12828,10 @@ class BaseSchedulerSolver(
             scene = self.scene()
         if scene != Scene.INFRA_MAIN:
             self._order_return_unresolved = scene
+            self._order_return_room = room
             raise OrderReturnUnresolved(failure)
         self.__dict__.pop("_order_return_unresolved", None)
+        self.__dict__.pop("_order_return_room", None)
 
     def scene_graph_navigation(self, scene, *, restart_on_unknown=False):
         # 上层恢复仍须先取消读单后迟到的暂选，才能交回通用场景图。
