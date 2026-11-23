@@ -439,10 +439,20 @@ class GarrisonSolver:
     def strategy_cells(game, page, *, initial=False):
         top, bottom = game.GRID_TOP + 60, game.GRID_BOTTOM - 40
         cells = [(x, y) for x, y in game.framed_cells(page) if top <= y <= bottom]
-        if cells:
-            return cells
-        rows = game.GRID_Y if initial else game.detect_rows(page)
-        return [(x, y) for y in rows if top <= y <= bottom for x in game.GRID_X]
+        framed_rows = {y for _, y in cells}
+        fallback = game.GRID_Y if initial else game.detect_rows(page)
+        rows = framed_rows.union(
+            y
+            for y in fallback
+            if top <= y <= bottom and not any(abs(y - row) <= 96 for row in framed_rows)
+        )
+        for y in sorted(rows):
+            for x in game.GRID_X:
+                if any(cx == x and abs(cy - y) <= 96 for cx, cy in cells):
+                    continue
+                if game.has_portrait(page, x, y):
+                    cells.append((x, y))
+        return sorted(cells, key=lambda cell: (cell[1], cell[0]))
 
     def choose_strategy(self, game):
         strategies = {

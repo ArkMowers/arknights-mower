@@ -779,6 +779,60 @@ def test_scroll_opens_unmarked_low_contrast_card_before_reverse_scan(monkeypatch
     game.swipe.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    ("scrolled", "whole_row_weak"), [(False, False), (True, False), (True, True)]
+)
+def test_partial_borders_select_missing_portrait_and_skip_empty_slot(
+    monkeypatch, scrolled, whole_row_weak
+):
+    from arknights_mower.solvers.garrison.upstream import FarmSession
+
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock(), vision=Mock())
+    game = FarmSession(worker).game
+    grid = np.zeros((1080, 1920, 3), np.uint8)
+    rows = [350, 560, 770, 980] if scrolled else game.GRID_Y
+    target = (680, rows[1])
+    expected = []
+    for y in rows:
+        for x in game.GRID_X:
+            if y == rows[-1] and x == game.GRID_X[-1]:
+                continue
+            expected.append((x, y))
+            if (x, y) == target or (whole_row_weak and y == target[1]):
+                grid[y - 72 : y + 72, x - 60 : x + 60 : 2] = 95
+            else:
+                grid[y - 96 : y + 96, x - 96 : x + 96] = 64
+                grid[y - 90 : y + 90, x - 90 : x + 90] = 25
+            if (x, y) != target:
+                grid[y - 92 : y - 49, x + 36 : x + 89] = (0, 180, 255)
+
+    assert target not in game.framed_cells(grid)
+    assert any(abs(y - target[1]) <= 1 for y in game.detect_rows(grid))
+    cells = worker.strategy_cells(game, grid, initial=not scrolled)
+    assert len(cells) == len(expected)
+    assert all(
+        any(cx == x and abs(cy - y) <= 10 for cx, cy in cells) for x, y in expected
+    )
+    current = Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True)
+    replay_unchanged_lobby(monkeypatch, worker, current)
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    first = grid.copy()
+    first[rows[1] - 96 : rows[1] + 96] = 0
+    game.shot = Mock(return_value=first if scrolled else grid)
+    game.scroll_grid = Mock(
+        side_effect=lambda: setattr(game.shot, "return_value", grid)
+    )
+    game.grid_shift = Mock(return_value=210)
+    game.swipe = Mock()
+    game.tap = Mock()
+    game.ocr = Mock(return_value=[(1650, 497, "初始生命值"), (1523, 576, "铃兰")])
+    assert worker.choose_strategy(game).screen == "prep"
+    game.tap.assert_called_once_with(*target, 0.7)
+    assert game.scroll_grid.call_count == int(scrolled)
+    game.swipe.assert_not_called()
+
+
 @pytest.mark.parametrize("shift", [0, 419, -419])
 def test_strategy_grid_alignment_matches_overlapping_frames(shift):
     from arknights_mower.solvers.garrison.upstream import strategy_grid_shift
