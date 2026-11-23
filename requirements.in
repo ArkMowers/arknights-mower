@@ -37,7 +37,7 @@ evalidate==2.0.2
 jsonpickle==3.0.4
 
 # 时区
-tzlocal==5.2
+tzlocal==5.4.5
 pytz==2024.1
 
 # 网络请求、官网公告解析、HTML转Markdown、检查版本
