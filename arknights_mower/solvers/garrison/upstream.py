@@ -65,6 +65,52 @@ def strategy_grid_shift(before, after):
     return None
 
 
+def strategy_card_sides(gray, x, contrast):
+    sides = []
+    for direction in (-1, 1):
+        edge = x + direction * 94
+        outer = edge + direction * 9
+        rim = gray[:, edge - 3 : edge + 4].max(axis=1)
+        background = gray[:, outer - 3 : outer + 4].mean(axis=1)
+        sides.append(rim - background > contrast)
+    return sides[0] & sides[1]
+
+
+def framed_strategy_cells(image, columns):
+    """Map tap points to the visible vertical extent of each framed card."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    cells = {}
+    for x in columns:
+        vertical = strategy_card_sides(gray, x, 17).astype(np.uint8)
+        vertical = cv2.morphologyEx(
+            vertical[:, None], cv2.MORPH_CLOSE, np.ones((7, 1), np.uint8)
+        ).ravel()
+        ends = np.flatnonzero(np.diff(np.r_[0, vertical, 0]))
+        for top, bottom in zip(ends[::2], ends[1::2]):
+            if 125 <= bottom - top <= 205:
+                cells[x, int((top + bottom) // 2)] = (int(top), int(bottom - 1))
+    return cells
+
+
+def strategy_portrait_present(image, x, y, contrast=18):
+    """Apply the portrait row detector's contrast and run length inside one card."""
+    portrait = image[y - 80 : y + 80, x - 60 : x + 60]
+    gray = cv2.cvtColor(portrait, cv2.COLOR_BGR2GRAY)
+    textured = gray.std(axis=1) > contrast
+    ends = np.flatnonzero(np.diff(np.r_[False, textured, False]))
+    return bool(np.any(ends[1::2] - ends[::2] >= 60))
+
+
+def faint_strategy_card(image, x, y):
+    # A faint portrait and two faint sides at the known slot distinguish it from
+    # an empty slot without lowering the thresholds for the ordinary grid scan.
+    strip = image[y - 60 : y + 60, x - 110 : x + 110]
+    gray = cv2.cvtColor(strip, cv2.COLOR_BGR2GRAY)
+    return np.count_nonzero(
+        strategy_card_sides(gray, 110, 8)
+    ) >= 60 and strategy_portrait_present(image, x, y, contrast=4)
+
+
 class FarmSession:
     def __init__(self, owner):
         self.owner = owner
@@ -85,6 +131,9 @@ class FarmSession:
         farm = ModuleType("garrison_farm")
         farm.cv2, farm.np = cv2, np
         exec(compile(script[start:end], "garrison_farm.py", "exec"), vars(farm))
+        farm.framed_cells = lambda page: framed_strategy_cells(page, farm.GRID_X)
+        farm.has_portrait = strategy_portrait_present
+        farm.faint_card = faint_strategy_card
         farm.grid_shift = strategy_grid_shift
         farm.shot = self.shot
         farm.ocr_engine = owner.vision.engine
