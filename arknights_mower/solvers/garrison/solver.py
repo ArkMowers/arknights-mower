@@ -464,16 +464,58 @@ class GarrisonSolver:
             normal_name(s["name"]): s["id"] for s in catalogue()["strategies"]
         }
         self.click((1500, 580))
-        page = game.shot()
+        first_page = game.shot()
+        page = first_page
         cells = self.strategy_cells(game, page, initial=True)
+        faint_slots = {
+            (x, y)
+            for y in game.GRID_Y
+            for x in game.GRID_X
+            if not any(cx == x and abs(cy - y) <= 96 for cx, cy in cells)
+            and game.faint_card(first_page, x, y)
+        }
+
+        def locate_faint(view):
+            if not faint_slots:
+                return {}
+            shift = game.grid_shift(first_page, view)
+            if shift is None:
+                return {}
+            return {
+                (x, y - shift): (x, y)
+                for x, y in sorted(faint_slots, key=lambda point: (point[1], point[0]))
+                if game.GRID_TOP + 60 <= y - shift <= game.GRID_BOTTOM - 40
+                and game.faint_card(view, x, y - shift)
+            }
+
         offset = 0
         checked_rows = {x: [] for x in game.GRID_X}
         skipped_badges = False
         for recheck_panels in (False, True):
-            if recheck_panels and not skipped_badges:
-                break
+            if recheck_panels and faint_slots:
+                # Refresh after the last forward swipe, even if that swipe timed out.
+                view = game.shot()
+                drift = game.grid_shift(page, view)
+                if drift is None:
+                    checked_rows = {x: [] for x in game.GRID_X}
+                    offset = 0
+                else:
+                    offset += drift
+                cells = self.strategy_cells(game, view)
+                page = view
             for page_index in range(8):
-                for (x, y), (top, bottom) in cells.items():
+                candidates = cells
+                if recheck_panels:
+                    if not (skipped_badges or faint_slots):
+                        break
+                    candidates = cells.copy() if skipped_badges else {}
+                    for (x, y), slot in locate_faint(page).items():
+                        faint_slots.remove(slot)
+                        if not any(
+                            cx == x and abs(cy - y) <= 96 for cx, cy in candidates
+                        ):
+                            candidates[x, y] = (y - 20, y + 20)
+                for (x, y), (top, bottom) in candidates.items():
                     start, end = top + offset, bottom + offset
                     if any(start <= hi and lo <= end for lo, hi in checked_rows[x]):
                         continue
@@ -505,12 +547,18 @@ class GarrisonSolver:
                         return self.wait(
                             lambda f: f.screen not in {"strategy", "unknown"}, 20
                         )
-                if page_index == 7:
+                if page_index == 7 or (
+                    recheck_panels and not (skipped_badges or faint_slots)
+                ):
                     break
                 frame = self.capture()
                 if frame.screen != "strategy":
                     return frame
-                next_page = self.scroll_strategy_page(game, backwards=recheck_panels)
+                next_page = self.scroll_strategy_page(
+                    game,
+                    backwards=recheck_panels,
+                    fallback=locate_faint if recheck_panels and faint_slots else None,
+                )
                 if next_page is None:
                     break
                 page, cells, shift = next_page
@@ -522,7 +570,7 @@ class GarrisonSolver:
                     offset += shift
         raise GarrisonError("本次未找到可刷策略，部分胜场仍待核对")
 
-    def scroll_strategy_page(self, game, *, backwards):
+    def scroll_strategy_page(self, game, *, backwards, fallback=None):
         before = game.shot()
         if backwards:
             game.swipe(1000, 480, 1000, 900, ms=800)
@@ -535,7 +583,7 @@ class GarrisonSolver:
             if shift is not None and abs(shift) < 20:
                 return None
             cells = self.strategy_cells(game, after)
-            if cells:
+            if cells or (fallback and fallback(after)):
                 return after, cells, shift
             return None
 

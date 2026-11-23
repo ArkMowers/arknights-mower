@@ -833,6 +833,75 @@ def test_partial_borders_select_missing_portrait_and_skip_empty_slot(
     game.swipe.assert_not_called()
 
 
+@pytest.mark.parametrize("outcome", ["faint", "later", "unreadable", "disappeared"])
+def test_faint_initial_card_follows_primary_scan_and_blank_stays_unopened(
+    monkeypatch, outcome
+):
+    from arknights_mower.solvers.garrison.upstream import FarmSession
+
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock(), vision=Mock())
+    current = Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True)
+    replay_unchanged_lobby(monkeypatch, worker, current)
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    game = FarmSession(worker).game
+    page = np.zeros((1080, 1920, 3), np.uint8)
+    target = (1100, 1000)
+    blank = (1310, 1000)
+    for y in game.GRID_Y:
+        for x in game.GRID_X:
+            if (x, y) == blank:
+                continue
+            page[y - 96 : y + 96, x - 96 : x + 96] = 12 if (x, y) == target else 64
+            page[y - 90 : y + 90, x - 90 : x + 90] = 0
+    page[928:1072, 1040:1160:2] = 14
+    assert len(worker.strategy_cells(game, page, initial=True)) == 14
+
+    other = np.zeros_like(page)
+    other[304:496, 584:776] = 64
+    other[310:490, 590:770] = 0
+    screen = 0
+    first_view = page
+
+    def scroll(next_screen):
+        nonlocal screen, first_view
+        screen = next_screen
+        if next_screen == 0 and outcome == "disappeared":
+            first_view = page.copy()
+            first_view[904:, 1004:1197] = 0
+
+    game.shot = lambda: (first_view, other)[screen]
+    game.scroll_grid = lambda: scroll(1)
+    game.swipe = lambda *args, **kwargs: scroll(0)
+    opened = []
+    game.tap = lambda x, y, delay: opened.append((screen, x, y))
+
+    def panel(*args):
+        active_page, x, y = opened[-1]
+        is_target = active_page == 0 and x == target[0] and y > 950
+        if is_target and outcome == "unreadable":
+            return []
+        if is_target or (active_page == 1 and outcome == "later"):
+            return [(1650, 497, "初始生命值"), (1520, 576, "铃兰")]
+        return [
+            (1600, 200, "已通过模拟3次"),
+            (1650, 497, "初始生命值"),
+            (1520, 576, "陈"),
+        ]
+
+    game.ocr = panel
+    if outcome in {"unreadable", "disappeared"}:
+        with pytest.raises(model.GarrisonError, match="待核对"):
+            worker.choose_strategy(game)
+    else:
+        assert worker.choose_strategy(game).screen == "prep"
+    expect_faint = outcome in {"faint", "unreadable"}
+    assert len(opened) == 15 + int(expect_faint)
+    assert opened[14][0] == 1
+    assert not any(x == blank[0] and y > 950 for _, x, y in opened)
+    assert sum(x == target[0] and y > 950 for _, x, y in opened) == int(expect_faint)
+
+
 def test_verified_clipped_card_is_opened_once_across_three_scroll_positions(
     monkeypatch,
 ):
