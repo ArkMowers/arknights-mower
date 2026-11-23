@@ -288,14 +288,14 @@ pycparser==2.22
     # via
     #   -r requirements.txt
     #   cffi
-pydantic==2.8.2
+pydantic==2.14.4
     # via
     #   -r requirements.txt
     #   langchain-core
     #   langgraph
     #   langsmith
     #   openai
-pydantic-core==2.20.1
+pydantic-core==2.50.5
     # via
     #   -r requirements.txt
     #   pydantic
@@ -432,7 +432,7 @@ tqdm==4.67.1
     #   -r requirements.txt
     #   openai
     #   rapidocr
-typing-extensions==4.12.2
+typing-extensions==4.16.0
     # via
     #   -r requirements.txt
     #   aiohttp
@@ -444,6 +444,11 @@ typing-extensions==4.12.2
     #   pydantic-core
     #   pywebview
     #   qrcode
+    #   typing-inspection
+typing-inspection==0.4.5
+    # via
+    #   -r requirements.txt
+    #   pydantic
 tzdata==2024.1
     # via
     #   -r requirements.txt
