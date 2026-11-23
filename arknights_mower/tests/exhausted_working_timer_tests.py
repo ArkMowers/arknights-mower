@@ -605,7 +605,7 @@ def test_fiammetta_arrangement_requests_both_mood_indexes(already_arranged):
         solver.choose_agent.assert_not_called()
     else:
         assert solver.get_agent_from_room.call_args_list == [
-            call("dormitory_1", departing_plan=expected),
+            call("dormitory_1", departing_plan=expected, expected_agents=expected),
             call("dormitory_1", [0, 1], {1: "伊内丝"}, expected_agents=expected),
         ]
     assert restored == {

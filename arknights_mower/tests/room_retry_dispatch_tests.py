@@ -152,7 +152,7 @@ def test_room_recovery_does_not_back_through_pending_submission(solver, outcome)
         assert solver.task is original_task
         assert solver.task.time == original_time
         # 返回动作只用于结束已读回确认的房间流程。
-        assert solver.back.call_args_list == [call(0.5)]
+        solver.back.assert_called_once()
     else:
         expected = (
             base.MowerExit if outcome == "cancelled" else base.RoomArrangementDeferred
@@ -201,6 +201,7 @@ def test_single_recovery_submission_timeout_restarts_reads_and_restores_roster(
         "login": base.Scene.LOGIN_START,
     }[state["page"]]
     solver.enter_room.side_effect = lambda room: state.update(page="details")
+    solver.detect_room = MagicMock(return_value=ROOM)
     solver.back.side_effect = lambda *args, **kwargs: state.update(page="infra")
     solver.find.side_effect = lambda name, **kwargs: (
         (100, 100)
@@ -259,8 +260,10 @@ def test_single_recovery_submission_timeout_restarts_reads_and_restores_roster(
     assert any(task is original_task for task in solver.tasks)
     assert not hasattr(original_task, "execution_failure")
     assert solver.choose_agent.call_count == solver.tap_confirm.call_count == 2
-    solver.waiting_solver.assert_called_once_with()
-    assert solver.sleep.call_args_list == [call(1)] * 3
+    solver.waiting_solver.assert_called_once_with(first_check=0.5)
+    first, remaining, *later = solver.sleep.call_args_list
+    assert first == call(0.5) and 0 <= remaining.args[0] <= 0.5
+    assert later == [call(1), call(1)]
     solver.device.exit.assert_called_once_with()
     solver.check_current_focus.assert_called_once_with()
     solver.back_to_infrastructure.assert_called_once_with()

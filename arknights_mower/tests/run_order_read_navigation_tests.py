@@ -320,8 +320,9 @@ def test_blocked_order_allows_independent_final_refresh(order_navigation):
 
 
 @pytest.mark.parametrize("next_room", ["room_2_2", "dormitory_1"])
+@pytest.mark.parametrize("failed_stage", ["countdown", "return_to_map"])
 def test_failed_final_order_read_restores_navigation_before_next_task(
-    order_navigation, monkeypatch, next_room
+    order_navigation, monkeypatch, next_room, failed_stage
 ):
     from arknights_mower.solvers import base_mixin
 
@@ -343,7 +344,16 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
     solver.op_data.products["room_2_2"] = "orundum"
     solver.op_data.refresh_run_order_rooms()
     ui.states["room_1_1"] = "active"
-    solver.read_time.side_effect = ui.base.RecognizeError("订单数字未确认")
+    original_time = refresh.time
+    if failed_stage == "countdown":
+        solver.read_time.side_effect = ui.base.RecognizeError("订单数字未确认")
+    else:
+        working_back = solver.back
+        solver.back = MagicMock()
+        started_at = ui.clock.now()
+        monkeypatch.setattr(
+            ui.base, "monotonic", lambda: (ui.clock.now() - started_at).total_seconds()
+        )
 
     def return_to_base(*args, **kwargs):
         page.update(room=None, open=False)
@@ -354,6 +364,19 @@ def test_failed_final_order_read_restores_navigation_before_next_task(
     solver._read_arrangement_order_times("room_1_1")
 
     assert refresh.execution_failure
+    assert refresh.time == original_time
+    if failed_stage == "return_to_map":
+        assert "返回键未生效" in refresh.execution_failure["reason"]
+        assert solver.back.call_count == 2
+        solver.read_time.assert_called_once()
+        with pytest.raises(ui.base.OrderReturnUnresolved):
+            solver.transition()
+        assert solver.back.call_count == 2
+        solver.back_to_infrastructure.assert_not_called()
+        page["open"] = False
+        solver.back = working_back
+        solver.transition()
+        assert page == {"room": None, "open": False}
     assert arrangement.plan == {}
     assert arrangement in solver.tasks and refresh in solver.tasks
 

@@ -237,7 +237,8 @@ def test_amiya_selection_clears_a_preexisting_profession_filter():
     BaseSchedulerSolver.choose_train_ope(solver, "阿米娅")
     solver.profession_filter.assert_called_once_with("ALL")
     solver.scan_agent.assert_called_once()
-    assert solver.swipe_left.call_args.kwargs["special_filter"] == "ALL"
+    solver.verify_agent.assert_called_once_with(["阿米娅"], "train", train=True)
+    solver.swipe_left.assert_not_called()
 
 
 @pytest.mark.parametrize(

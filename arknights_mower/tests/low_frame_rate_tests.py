@@ -106,6 +106,15 @@ def test_sort_waits_only_for_required_feedback(monkeypatch, enabled):
     assert solver.sleep.call_count == (1 if enabled else 0)
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_search_keeps_existing_room_sort_once_arrow_is_read(monkeypatch, enabled):
+    monkeypatch.setattr(config.conf, "low_frame_rate_mode", enabled)
+    solver = sort_reader([None, ("心情", False)])
+    solver.switch_arrange_order("心情", "room_2_2", refresh=False)
+    solver.tap.assert_not_called()
+    assert solver.detect_arrange_order.call_count == 2
+
+
 def test_disabled_reset_without_scroll_neither_taps_nor_captures(monkeypatch):
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", False)
     solver = BaseMixin()
@@ -249,11 +258,13 @@ def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch, opened):
 
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", False)
     solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(profession_filter={"砾"})
+    solver.detect_arrange_order = MagicMock(return_value=("等级", False))
     solver.profession_filter = MagicMock()
     solver.scan_agent = MagicMock(
         return_value=([], page(("杜林", "芬", "苍苔", "炎熔")))
     )
-    solver.recog = SimpleNamespace(_img=None)
+    solver.recog = SimpleNamespace(_img=None, img=None)
     solver.sleep = MagicMock()
     sidebar = configure_real_filter(
         solver, monkeypatch, initial="SPECIAL", opened=opened, train=True

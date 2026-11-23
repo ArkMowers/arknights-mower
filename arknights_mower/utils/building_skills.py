@@ -59,20 +59,17 @@ def _requirement(skill):
     return (int(match[1]), int(match[2])) if match else None
 
 
-def _operator_skills(name, progress):
-    catalog = skill_index().get(name, ())
+def skill_statuses(skills, progress):
+    requirements = [(skill, _requirement(skill)) for skill in skills]
     active = {}
     if progress is not None:
-        for skill in catalog:
-            requirement = _requirement(skill)
+        for skill, requirement in requirements:
             if requirement is not None and requirement <= progress:
                 key = skill["skill_key"]
                 version = (*requirement, skill["skill_level"])
                 if key not in active or version > active[key][0]:
                     active[key] = (version, skill)
-    result = []
-    for skill in catalog:
-        requirement = _requirement(skill)
+    for skill, requirement in requirements:
         if progress is None or requirement is None:
             status = "unknown"
         elif requirement > progress:
@@ -81,14 +78,18 @@ def _operator_skills(name, progress):
             status = "active"
         else:
             status = "replaced"
-        result.append(
-            {
-                "skill_key": skill["skill_key"],
-                "skill_level": skill["skill_level"],
-                "status": status,
-            }
-        )
-    return result
+        yield skill, status
+
+
+def _operator_skills(name, progress):
+    return [
+        {
+            "skill_key": skill["skill_key"],
+            "skill_level": skill["skill_level"],
+            "status": status,
+        }
+        for skill, status in skill_statuses(skill_index().get(name, ()), progress)
+    ]
 
 
 def parse_base_conditions(building):

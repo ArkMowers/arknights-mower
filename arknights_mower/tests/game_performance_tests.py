@@ -40,7 +40,12 @@ def solver(monkeypatch):
     result.check_current_focus = MagicMock()
     result.sleep = MagicMock()
     result.checkpoint = MagicMock()
-    result.wait_for_cleared_selection = MagicMock()
+    result.wait_for_cleared_selection = MagicMock(
+        return_value=[
+            ("斯卡蒂", ((630, 488), (818, 520))),
+            ("安哲拉", ((630, 909), (818, 941))),
+        ]
+    )
     result.open_selection = MagicMock()
     result.prepare_round = MagicMock(return_value=([], ["安哲拉", "斯卡蒂"]))
     result.trial = MagicMock()
@@ -175,7 +180,7 @@ def test_trial_uses_shared_selection_reorder_and_actual_roster(
         interval,
         interval,
     ]
-    assert solver.tap.call_args_list[1].args == ((1920 * 0.35, 1080 * 0.75),)
+    assert solver.tap.call_args_list[1].args == (((630, 909), (818, 941)),)
     assert solver.wait_for_arranged_agents.call_count == 2
 
 

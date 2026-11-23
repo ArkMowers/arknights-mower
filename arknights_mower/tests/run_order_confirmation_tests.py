@@ -106,7 +106,7 @@ def test_submission_feedback_preserves_a_new_secondary_confirmation():
     solver.sleep = MagicMock()
     solver.back = MagicMock()
     solver.waiting_solver = MagicMock(
-        side_effect=lambda: state.update(page="secondary") or True
+        side_effect=lambda **_: state.update(page="secondary") or True
     )
 
     solver.tap_confirm(ROOM)

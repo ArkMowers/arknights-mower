@@ -66,6 +66,33 @@ class ArrayRecognizer:
         return self._img
 
 
+@pytest.mark.parametrize("delayed", [False, True])
+def test_confirmed_profession_frame_supplies_new_target_or_reads_again(
+    monkeypatch, delayed
+):
+    monkeypatch.setattr(config.conf, "performance_mode", "xhigh")
+    old = page(("酒神", "结城理", "弑君者", "食铁兽"))
+    changed = page(("结城理", "弑君者", "食铁兽", "槐琥"))
+    images = [np.full((1080, 1920, 3), i, np.uint8) for i in (0, 1)]
+    solver = solver_for(monkeypatch, [])
+    solver.recog = ArrayRecognizer([images[1]])
+    solver.recog._img = images[0 if delayed else 1]
+    solver.find = MagicMock(return_value=None)
+    read = MagicMock(side_effect=lambda img, **_: (old, changed)[img[0, 0, 0]])
+    monkeypatch.setattr(base_mixin, "operator_list", read)
+    targets = ["槐琥"]
+    observed = solver.current_search_page(
+        full_scan=False, before=old, profession="SPECIAL"
+    )
+    selected, _ = solver.scan_agent(
+        targets, full_scan=False, exclude_sidebar=True, observation=observed
+    )
+    assert selected == ["槐琥"] and targets == []
+    solver.tap.assert_called_once_with(changed[-1][1], interval=0)
+    assert solver.recog.captures == int(delayed)
+    assert read.call_count == 1 + int(delayed)
+
+
 def solver_for(monkeypatch, frames):
     solver = BaseMixin()
     solver._observation_remaining = BaseSolver._observation_remaining.__get__(solver)
@@ -79,6 +106,46 @@ def solver_for(monkeypatch, frames):
     monkeypatch.setattr(base_mixin, "operator_list", lambda img, **kwargs: img)
     monkeypatch.setattr(base_mixin, "operator_list_train", lambda img: img)
     return solver
+
+
+@pytest.mark.parametrize("mode", ["high", "low"])
+@pytest.mark.parametrize("connecting", [False, True])
+def test_profession_target_coordinates_after_network_wait(
+    monkeypatch, mode, connecting
+):
+    monkeypatch.setattr(config.conf, "performance_mode", mode)
+    before = page(("酒神", "结城理", "弑君者", "食铁兽"))
+    initial = page(("槐琥", "结城理", "弑君者", "食铁兽"))
+    swapped = page(("弑君者", "结城理", "槐琥", "食铁兽"))
+    first = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    fresh = np.ones_like(first) if connecting else first
+    frames = [first] if mode == "low" and connecting else []
+    solver = solver_for(monkeypatch, [])
+    solver.recog = ArrayRecognizer(frames + [fresh] * 3)
+    solver.recog._img = first
+    solver.find.side_effect = lambda key: (
+        key == "connecting" and solver.recog.img is first and connecting
+    )
+    names = MagicMock(side_effect=lambda img, **_: swapped if img[0, 0, 0] else initial)
+    monkeypatch.setattr(base_mixin, "operator_list", names)
+
+    observed = solver.current_search_page(
+        full_scan=False, before=before, profession="SPECIAL", visible_target="槐琥"
+    )
+    assert observed is not None
+    selected, _ = solver.scan_agent(
+        ["槐琥"], full_scan=False, exclude_sidebar=True, observation=observed
+    )
+
+    assert selected == ["槐琥"]
+    scope = swapped[2][1] if connecting else initial[0][1]
+    solver.tap.assert_called_once_with(scope, interval=0.2 if mode == "low" else 0)
+    assert names.call_count == 1 + int(connecting)
+    if mode == "high":
+        assert solver.recog.captures == int(connecting)
+    else:
+        stable_matches = solver.performance_profile.stable_page_matches
+        assert solver.recog.captures == stable_matches + 2 * int(connecting)
 
 
 @pytest.mark.parametrize(

@@ -177,6 +177,7 @@ def test_selected_legacy_package_does_not_borrow_bundled_catalog(tmp_path, monke
         resource_pkg, "_selection", lambda: SimpleNamespace(root=selected)
     )
     assert data._agent_views() == (["旧干员"], {"旧干员": "MEDIC"})
+    assert data._selection_branches() == {}
     stray = folder / "riic/operators.json"
     stray.parent.mkdir()
     stray.write_text('{"schemaVersion":99}', encoding="utf-8")
@@ -204,6 +205,31 @@ def test_bundled_catalog_supplies_profiles_and_invalid_data_does_not_use_exports
         data._agent_views()
 
 
+def test_older_package_uses_its_own_operator_branches_with_bundled_labels(
+    tmp_path, monkeypatch
+):
+    folder = tmp_path / "arknights_mower/data"
+    folder.mkdir(parents=True)
+    (folder / "skill_data.json").write_text(
+        json.dumps(
+            {
+                "training": {
+                    "operators": {
+                        "new": {"name": "仅本期可见", "subProfessionId": "librator"},
+                        "form": {"name": "阿米娅", "subProfessionId": "corecaster"},
+                        "unknown": {"name": "未知分支", "subProfessionId": "future"},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        resource_pkg, "_selection", lambda: SimpleNamespace(root=tmp_path)
+    )
+    assert data._selection_branches() == {"仅本期可见": "解放者"}
+
+
 def test_catalog_reload_updates_existing_references_and_rejects_invalid_data(
     tmp_path, monkeypatch
 ):
@@ -217,6 +243,7 @@ def test_catalog_reload_updates_existing_references_and_rejects_invalid_data(
             "_stage_data_base",
             "agent_list",
             "agent_profession",
+            "agent_branch",
             "workshop_formula",
             "stage_order",
             "recruit_agent",
@@ -272,6 +299,7 @@ def test_external_profile_type_error_preserves_loaded_resource_data(
             "_stage_data_base",
             "agent_list",
             "agent_profession",
+            "agent_branch",
             "workshop_formula",
             "stage_order",
             "recruit_agent",

@@ -43,6 +43,8 @@ The authenticated `/resource-version` response includes `current_metadata` from 
 
 The bundled catalog records its game-table version in `sourceVersion`; `source`, when present, identifies the upstream repository, immutable revision and input-file SHA-256 digests. Updating the catalog includes reviewing changed skills of existing operators as well as newly added identities.
 
+The building-skill resource records the game table's integer `sortId` for each skill stage that supplies one. For Manufacturing Station and Trading Post skills, it also preserves the supplied `efficiency` and `targets` fields, including zero efficiency and an empty target list. Older packages can omit these fields. [Operator selection](base-scheduler.md#28-operator-selection-verification) uses the active resource generation and falls back to its normal search when a ranking lacks the data it needs.
+
 The backend derives bundled operator names and professions from the catalog. Selected external resource generations use their own historical exports; no individual file is borrowed from the bundled data. Resource changes refresh the existing imported containers in place at the task boundary. A malformed present bundled catalog fails loading rather than silently substituting its exports.
 
 The shared catalog is a software asset outside `RES_PACKAGE_DATA` and `RES_PACKAGE_OPTIONAL_DATA`. Clients predating unknown-file filtering reject it in resource archives; current clients discard it as unregistered. Resource publication retains the historical exports and content-hash identity. The calculator and native mood engine use their software-bundled catalog together with their matching rules. Resource OTA does not replace that calculation input. The native runtime verifies the code and catalog digests, and its saved-state identity covers both. Desktop and Android packages include the catalog independently of frontend sources; Android packaging rejects missing or blank catalog input.
@@ -61,6 +63,8 @@ The frontend calculator derives maximum-stage skills as separate objects from th
 **Operator Avatar Completeness** governs this behavior. [Complete operator avatars](../../.agents/notes/implemented/bug-fix/2026-10-09-resource-avatar-completeness.md) records the source repair and verification.
 
 Every bundled catalog entry has a decoded 96×96 WEBP avatar, and every referenced building-skill icon has a decoded WEBP resource. Room, selection and training name models cover all bundled operator names. The [bundled operator resource tests](../../arknights_mower/tests/bundled_operator_resources_tests.py) check these files independently of the resource-version digest; a matching digest alone does not establish coverage.
+
+The [production-room selector](base-scheduler.md#28-operator-selection-verification) reads operator names and branch identifiers from the active package’s training metadata in `skill_data.json`. The same file includes Chinese branch labels from the equipment table. Older packages use the bundled labels for their known branch identifiers. Operators with shared names across forms or unknown branch identifiers retain name search.
 
 ### Activity Shop Resources
 

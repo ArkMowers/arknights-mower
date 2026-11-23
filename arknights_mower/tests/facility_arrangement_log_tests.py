@@ -55,7 +55,7 @@ def test_room_summary_is_completed_only_after_real_arrangement(
     assert "_active_facility_log" not in solver.__dict__
 
 
-def test_matching_cached_roster_skips_selection_without_confirming_the_room(
+def test_matching_cached_roster_confirms_actual_positions_without_selection(
     solver, caplog, monkeypatch
 ):
     capture(caplog, monkeypatch)
@@ -65,52 +65,88 @@ def test_matching_cached_roster_skips_selection_without_confirming_the_room(
         operator = solver.op_data.operators[name]
         operator._current_room, operator.current_index = room, index
     solver.task.plan = {room: agents}
+    solver.physical = agents.copy()
 
     solver.agent_arrange_room({}, room, solver.task.plan)
 
     solver.choose_agent.assert_not_called()
-    solver.get_agent_from_room.assert_not_called()
+    solver.get_agent_from_room.assert_called_once()
     assert not solver.task.plan
     progress = events(caplog)
-    assert [event["phase"] for event in progress] == ["started", "failed"]
+    assert [event["phase"] for event in progress] == ["started", "completed"]
     assert progress[1]["id"] == progress[0]["id"]
-    assert progress[1]["summary"] == "会客室：缓存名单与安排一致，跳过选人"
 
 
-@pytest.mark.parametrize(
-    ("readback", "summary"),
-    [
-        ("partial", "宿舍1：驻员名单未读全，尚未确认安排"),
-        ("different", "宿舍1：实际驻员与安排不同，尚未确认安排"),
-        ("matching", None),
-    ],
-)
-def test_cached_dorm_roster_uses_fresh_readback_for_completion(
-    solver, caplog, monkeypatch, readback, summary
-):
-    capture(caplog, monkeypatch)
-    solver.task.plan = {ROOM: solver.physical.copy()}
-    observed = [{"agent": name} for name in solver.physical]
-    if readback == "partial":
-        observed[-1] = {"agent": "", "observed": False}
-    elif readback == "different":
-        observed[-1] = {"agent": "黑角"}
-    solver.get_agent_from_room.side_effect = None
-    solver.get_agent_from_room.return_value = observed
+def test_current_position_uses_the_resident_read_in_the_room(solver):
+    room = "meeting"
+    solver.physical = ["银灰", "陈"]
+    solver.get_agent_from_room(room)
+    solver.get_agent_from_room.reset_mock()
+    solver.physical = ["黑角", "陈"]
+    solver.task.plan = {room: ["Current", "红"]}
+    solver.tap_confirm.side_effect = lambda *args: setattr(
+        solver, "physical", solver.selected.copy()
+    )
 
-    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+    solver.agent_arrange_room({}, room, solver.task.plan)
+
+    assert solver.physical == ["黑角", "红"]
+    assert solver.get_agent_from_room.call_count == 2
+    assert not solver.task.plan
+
+
+def test_stale_cache_does_not_reselect_a_matching_room(solver):
+    room = "meeting"
+    solver.physical = ["银灰", "陈"]
+    solver.get_agent_from_room(room)
+    solver.get_agent_from_room.reset_mock()
+    solver.physical = ["黑角", "红"]
+    solver.task.plan = {room: solver.physical.copy()}
+
+    solver.agent_arrange_room({}, room, solver.task.plan)
 
     solver.get_agent_from_room.assert_called_once()
     solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    assert not solver.task.plan
+
+
+@pytest.mark.parametrize("readback", ["partial", "duplicate", "different", "matching"])
+def test_cached_dorm_roster_uses_fresh_readback_for_completion(
+    solver, caplog, monkeypatch, readback
+):
+    capture(caplog, monkeypatch)
+    target = solver.physical.copy()
+    solver.task.plan = {ROOM: target.copy()}
+    if readback in ("partial", "duplicate"):
+        solver.get_agent_from_room.side_effect = None
+        solver.get_agent_from_room.return_value = [
+            *({"agent": name} for name in target[:-1]),
+            {"agent": "", "observed": False}
+            if readback == "partial"
+            else {"agent": target[0]},
+        ]
+        original_time = solver.task.time
+        with pytest.raises(base.RoomArrangementDeferred):
+            solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+        assert solver.task.plan == {ROOM: target}
+        assert solver.task.time == original_time
+        solver.choose_agent.assert_not_called()
+        assert events(caplog)[-1]["phase"] == "failed"
+        return
+    if readback == "different":
+        solver.physical[-1] = "黑角"
+
+    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+
+    assert solver.choose_agent.call_count == int(readback == "different")
+    if readback == "matching":
+        solver.get_agent_from_room.assert_called_once()
+    assert solver.physical == target
     assert not solver.task.plan
     progress = events(caplog)
     assert progress[1]["id"] == progress[0]["id"]
-    assert [event["phase"] for event in progress] == [
-        "started",
-        "failed" if summary else "completed",
-    ]
-    if summary:
-        assert progress[1]["summary"] == summary
+    assert [event["phase"] for event in progress] == ["started", "completed"]
 
 
 def test_retained_recycling_resident_updates_progress_before_confirmation(
@@ -295,6 +331,17 @@ def test_confirmed_idle_result_uses_final_room_observation(
 
     solver.get_agent_from_room.side_effect = read_room
     solver._read_arrangement_order_times = MagicMock()
+    if evidence == "partial":
+        expected = deepcopy(solver.task.plan)
+        with pytest.raises(base.RoomArrangementDeferred):
+            solver.agent_arrange(solver.task.plan)
+        assert solver.task.plan == expected
+        assert events(caplog)[-1]["phase"] == "failed"
+        assert not any(
+            getattr(record, "log_event", {}).get("type") == "facility-idle"
+            for record in caplog.records
+        )
+        return
     solver.agent_arrange(solver.task.plan)
     assert solver.physical == FINAL
     completed = events(caplog)[-1]
@@ -386,7 +433,8 @@ def test_fiammetta_scopes_each_facility_attempt_and_its_details(
 
 
 @pytest.mark.parametrize(
-    "result", ["confirmed", "partial", "restoration", "interrupted"]
+    "result",
+    ["confirmed", "unread_unused_bed", "partial", "restoration", "interrupted"],
 )
 def test_fiammetta_charge_summary_requires_confirmed_charging_arrangement(
     solver, caplog, monkeypatch, result
@@ -414,6 +462,8 @@ def test_fiammetta_charge_summary_requires_confirmed_charging_arrangement(
             assert related_operators == {1: target}
             if result == "partial":
                 rows[0]["observed"] = False
+            if result == "unread_unused_bed":
+                rows[3]["observed"] = False
         return rows
 
     def confirm_room(room, new_plan):
@@ -432,12 +482,19 @@ def test_fiammetta_charge_summary_requires_confirmed_charging_arrangement(
     if result == "interrupted":
         with pytest.raises(base.MowerExit):
             solver.agent_arrange_room({}, ROOM, solver.task.plan)
+    elif result == "partial":
+        with pytest.raises(base.RecognizeError, match="驻员名单未读全"):
+            solver.agent_arrange_room({}, ROOM, solver.task.plan)
+        assert solver.task.plan == {ROOM: roster}
+        solver.tap_confirm.assert_called_once()
     else:
         solver.agent_arrange_room({}, ROOM, solver.task.plan)
 
     started, terminal = events(caplog)
     assert started["id"] == terminal["id"]
-    assert terminal["phase"] == ("failed" if result == "interrupted" else "completed")
+    assert terminal["phase"] == (
+        "failed" if result in ("partial", "interrupted") else "completed"
+    )
     assert terminal["agents"] == roster
     if result == "restoration":
         assert "summary" not in started
@@ -447,7 +504,7 @@ def test_fiammetta_charge_summary_requires_confirmed_charging_arrangement(
             sum(record.getMessage() == started_summary for record in caplog.records)
             == 1
         )
-    if result == "confirmed":
+    if result in ("confirmed", "unread_unused_bed"):
         assert terminal["summary"] == summary
         assert sum(record.getMessage() == summary for record in caplog.records) == 1
     else:

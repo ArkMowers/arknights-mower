@@ -232,8 +232,8 @@ def test_arrangement_uses_residence_list_and_reads_actual_mood(staff, initial):
 
     solver.find.side_effect = find
     solver.tap.side_effect = tap
-    solver.back.side_effect = lambda *args: state.__setitem__(
-        0, "map" if args == (0.5,) else "room"
+    solver.back.side_effect = lambda interval=1: state.__setitem__(
+        0, "room" if state[0] == "dashboard" else "map"
     )
     solver.turn_on_room_detail.side_effect = MethodType(
         BaseSchedulerSolver.turn_on_room_detail, solver

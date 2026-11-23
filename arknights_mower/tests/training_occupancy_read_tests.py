@@ -2,6 +2,7 @@
 
 import copy
 from datetime import datetime, timedelta
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -13,7 +14,7 @@ from arknights_mower.tests import shift_backup_convergence_tests as backup
 from arknights_mower.utils import config, mastery_db, resting_priority
 from arknights_mower.utils.dorm_candidates import dorm_candidates
 from arknights_mower.utils.operators import Operator, Operators
-from arknights_mower.utils.recognize import RecognizeError
+from arknights_mower.utils.recognize import RecognizeError, Recognizer
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.scheduler_task import (
     SchedulerTask,
@@ -22,6 +23,27 @@ from arknights_mower.utils.scheduler_task import (
 )
 
 solver = backup.solver
+
+
+def test_training_room_reads_the_transition_and_both_settled_captures(
+    solver, monkeypatch
+):
+    fixtures = Path(__file__).parent / "fixtures" / "selection"
+    del solver.find
+    monkeypatch.setattr(Operators, "current_room_changed_callback", None)
+    monkeypatch.setattr(record, "save_agent_action", MagicMock())
+    monkeypatch.setattr(base, "save_agent_action", MagicMock())
+
+    for frame, trainee in (("transition", ""), ("settled", "余"), ("pre_reopen", "余")):
+        image = fixtures / f"training_trainee_{frame}_20261123.jpg"
+        solver.recog = Recognizer(None, image.read_bytes())
+        observed = solver.get_agent_from_room("train", force_mood=True)
+
+        assert [(slot["agent"], slot["mood"]) for slot in observed] == [
+            ("望", 24),
+            (trainee, 24 if trainee else -1),
+        ]
+        assert solver.op_data.get_current_room("train", True) == ["望", trainee]
 
 
 @pytest.fixture
@@ -137,6 +159,53 @@ def test_second_unknown_does_not_register_a_new_first_occupant(training_reader):
     assert "红" not in s.op_data.operators
     s.history.assert_not_called()
     s.op_data.add.assert_not_called()
+
+
+def test_trainee_name_retry_reads_both_slots_on_the_new_frame(training_reader):
+    s = training_reader
+    names = ("艾丽妮", "")
+    s.recog.gray[369:424] = 1
+    s.read_screen.side_effect = lambda img, **_kwargs: names[img[0, 0]]
+
+    def next_frame(_interval):
+        nonlocal names
+        names = ("望", "余")
+        s.recog.gray = s.recog.gray.copy()
+
+    s.sleep.side_effect = next_frame
+    result = s.get_agent_from_room("train")
+
+    assert [row["agent"] for row in result] == ["望", "余"]
+    assert s.op_data.get_current_room("train", True) == ["望", "余"]
+
+
+@pytest.mark.parametrize("replaced", [False, True])
+def test_timer_belongs_to_both_occupants_seen_on_its_frame(training_reader, replaced):
+    s = training_reader
+    names = ("艾丽妮", "克莱门莎")
+    s.recog.gray[369:424] = 1
+    s.read_screen.side_effect = lambda img, **_kwargs: names[img[0, 0]]
+
+    deadline = datetime.now() + timedelta(hours=1)
+
+    def read_timer(*_args):
+        nonlocal names
+        if replaced:
+            names = ("望", "余")
+        s.recog.gray = s.recog.gray.copy()
+        return deadline
+
+    s.read_operator_time.side_effect = read_timer
+    before = snapshot(s)
+    if replaced:
+        with pytest.raises(RecognizeError):
+            s.get_agent_from_room("train", read_time_index=[0])
+        assert snapshot(s) == before
+        s.history.assert_not_called()
+    else:
+        observed = s.get_agent_from_room("train", read_time_index=[0])
+        assert [row["agent"] for row in observed] == list(names)
+        assert observed[0]["time"] == deadline
 
 
 @pytest.mark.parametrize(

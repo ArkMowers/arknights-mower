@@ -1,5 +1,6 @@
 """职业筛选复位列表，保留稳定观察与最终校验，不发送反向拖动。"""
 
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
@@ -9,9 +10,53 @@ from arknights_mower.solvers.base_mixin import AgentSelectionNotReady, BaseMixin
 from arknights_mower.tests.agent_page_observation_tests import observe, page, solver_for
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.image import bytes2img
 from arknights_mower.utils.solver import BaseSolver
 
 pytestmark = pytest.mark.usefixtures("low_frame_rate")
+
+
+@pytest.mark.parametrize(
+    "filename,button",
+    [
+        ("purestream_badge_20261007.jpg", ("confirm_blue", 1724, 990)),
+        ("page_held_20261010.jpg", ("confirm_blue", 1609, 990)),
+        ("training_ulpianus_first_20261009.jpg", ("confirm_train", 1554, 997)),
+    ],
+)
+def test_sidebar_button_matches_real_selection_frames(filename, button):
+    fixture = Path(__file__).parent / "fixtures/selection" / filename
+    image = bytes2img(fixture.read_bytes())
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(_img=image)
+    solver.find = MagicMock()
+    assert solver._profession_filter_buttons() == (button,)
+    if button[0] == "confirm_train":
+        image[997:1054, 1669:1851] = image[997:1054, 1554:1736].copy()
+        image[997:1054, 1554:1669] = 0
+        assert solver._profession_filter_buttons() == (("confirm_train", 1669, 997),)
+    solver.find.assert_not_called()
+
+
+def test_sidebar_conflict_waits_for_next_frame_and_hidden_buttons_use_fallback():
+    fixture = Path(__file__).parent / "fixtures/selection/purestream_badge_20261007.jpg"
+    closed = bytes2img(fixture.read_bytes())
+    conflict = closed.copy()
+    conflict[990:1041, 1609:1698] = closed[990:1041, 1724:1813]
+    solver = BaseMixin()
+    solver.recog = SimpleNamespace(_img=conflict)
+    solver.find = MagicMock(return_value=None)
+    solver.tap = MagicMock()
+    solver.sleep = MagicMock(
+        side_effect=lambda _: setattr(solver.recog, "_img", closed)
+    )
+    solver._set_profession_filter_open(False)
+    solver.sleep.assert_called_once()
+    solver.tap.assert_not_called()
+    solver.find.reset_mock()
+    closed[950:] = 0
+    assert solver._profession_filter_buttons() == ()
+    assert solver.find.call_args_list == [call("confirm_blue"), call("confirm_train")]
 
 
 # 适配模式不按翻页次数分支：职业×布局跑一遍，再单独覆盖非零次数。
@@ -138,7 +183,7 @@ def test_real_filter_restores_panel_and_invalidates_pre_reset_observation(
     monkeypatch, profession, opened, train
 ):
     old, new = page(offset=160), page()
-    solver = solver_for(monkeypatch, [old] * 2 + [new] * 3)
+    solver = solver_for(monkeypatch, [old] * 2 + [new] * 4)
     old_observation = observe(solver, full_scan=profession == "ALL", train=train)
     old_image = solver.recog._img
     active = configure_real_filter(

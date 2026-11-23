@@ -2,6 +2,7 @@
 
 import sys
 from datetime import datetime
+from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -291,7 +292,6 @@ def test_failed_training_selection_retries_the_named_trainee(arrangement_solver)
     solver.choose_train.side_effect = [AgentSelectionNotReady("选人失败"), None]
     solver.get_agent_from_room.side_effect = [
         [{"agent": "褐果"}, {"agent": "黍"}],
-        [{"agent": "褐果"}, {"agent": "黍"}],
         [{"agent": "褐果"}, {"agent": "桃金娘"}],
     ]
 
@@ -301,7 +301,7 @@ def test_failed_training_selection_retries_the_named_trainee(arrangement_solver)
     solver.choose_train.assert_called_with(
         ["褐果", "桃金娘"], fast_mode=False, choose_error=1
     )
-    assert solver.get_agent_from_room.call_count == 3
+    assert solver.get_agent_from_room.call_count == 2
     solver.record_selection_failure.assert_called_once()
     solver.record_selection_success.assert_called_once()
     assert plan == {}
@@ -338,8 +338,8 @@ def test_unfinished_training_arrangement_keeps_bounded_retry(
         solver.agent_arrange_room({}, "train", plan)
 
     assert plan == {"train": ["褐果", "桃金娘"]}
-    assert solver.choose_train.call_count == 3
-    assert solver.record_selection_failure.call_count == 3
+    solver.choose_train.assert_called_once()
+    solver.record_selection_failure.assert_called_once()
     solver.record_selection_success.assert_not_called()
 
 
@@ -398,15 +398,32 @@ def test_training_retry_skips_only_owned_positions(
 
 
 @pytest.mark.parametrize("requested", ["桃金娘", "Free"])
+@pytest.mark.parametrize(
+    ("initial_order", "ascending"),
+    [("等级", False), ("稀有度", False), ("信赖值", False), ("信赖值", True)],
+)
 def test_training_search_can_select_the_target_behind_profession_sidebar(
-    arrangement_solver, monkeypatch, requested
+    arrangement_solver, monkeypatch, requested, initial_order, ascending
 ):
     from arknights_mower.solvers import base_mixin
+    from arknights_mower.utils.image import loadimg
 
     solver, _ = arrangement_solver
     config.conf.performance_mode = "high"
     scope = ((584, 479), (759, 506))
     frame = np.full((1080, 1920, 3), 50, dtype=np.uint8)
+    source = (
+        Path(__file__).parent
+        / "fixtures/selection/training_ulpianus_first_20261009.jpg"
+    )
+    level_header = loadimg(str(source))[:95]
+    frame[:95] = level_header
+    if initial_order != "等级":
+        # 平移截图中实际的排序箭头，模拟沿用另一列的状态。
+        shift = 147 if initial_order == "稀有度" else 294
+        arrow = level_header[63:81, 1260:1301]
+        frame[63:81, 1260 + shift : 1301 + shift] = arrow[::-1] if ascending else arrow
+        frame[63:81, 1260:1301] = level_header[63:81, 1320:1321]
     sidebar = {"open": True}
     solver.recog = SimpleNamespace(img=frame, update=MagicMock())
     solver.profession_filter = MagicMock()
@@ -416,7 +433,15 @@ def test_training_search_can_select_the_target_behind_profession_sidebar(
     )
     solver.get_free_list = MagicMock(return_value=["桃金娘"])
     solver.ctap = MagicMock()
-    solver.sleep = MagicMock()
+    pending_sort = False
+
+    def refresh(*args):
+        nonlocal pending_sort
+        if pending_sort:
+            frame[:95] = level_header
+            pending_sort = False
+
+    solver.sleep = MagicMock(side_effect=refresh)
 
     def find(resource, *args, **kwargs):
         if resource == "confirm_train":
@@ -425,9 +450,14 @@ def test_training_search_can_select_the_target_behind_profession_sidebar(
         return None
 
     def tap(position, *args, **kwargs):
+        nonlocal pending_sort
         if position == (1860, 60):
             sidebar["open"] = False
+        elif position == (1291, 60):
+            assert solver.detect_arrange_order("train_trainee") == ("信赖值", ascending)
+            pending_sort = True
         else:
+            assert solver.detect_arrange_order("train_trainee")[0] in ("等级", "稀有度")
             assert not sidebar["open"] and position == scope
             cv2.rectangle(frame, (565, 113), (766, 522), (0, 180, 230), 7)
 
@@ -442,8 +472,161 @@ def test_training_search_can_select_the_target_behind_profession_sidebar(
     solver.choose_train_ope(requested)
 
     assert not sidebar["open"]
-    assert solver.tap.call_count == 2
+    assert solver.tap.call_count == 2 + int(initial_order == "信赖值")
     solver.tap.assert_any_call((1860, 60), interval=0.1)
     solver.tap.assert_any_call(scope, interval=0)
     solver.swipe_agent_page.assert_not_called()
     assert solver.last_room == "train"
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "visible",
+        "second",
+        "third",
+        "early_end",
+        "branch",
+        "branch_next",
+        "two_gestures",
+        "stale_first",
+        "rebound",
+        "branch_end",
+        "wrong_blue",
+        "unknown_page",
+        "verify_exit",
+        "unreadable",
+        "unsupported",
+        "disabled",
+        "retry",
+        "page_exit",
+    ],
+)
+def test_trainee_search_falls_back_to_the_whole_profession(
+    arrangement_solver, monkeypatch, scenario
+):
+    from arknights_mower.solvers.base_mixin import (
+        AgentCardObservationNotReady,
+        AgentPageNotAdvanced,
+        AgentSelectionPageChanged,
+    )
+    from arknights_mower.tests.selection_branch_tests import frame
+
+    solver, _ = arrangement_solver
+    solver.op_data.profession_filter = set() if scenario == "disabled" else {"余"}
+    solver.recog.img = frame("tank_all_closed")
+    solver.detect_arrange_order = MagicMock(return_value=("等级", False))
+    solver.choose_error = set()
+    solver.ctap = MagicMock()
+    solver.verify_agent = MagicMock(return_value=True)
+    if scenario in ("wrong_blue", "unknown_page"):
+        solver.verify_agent.side_effect = [False, True]
+    if scenario == "verify_exit":
+        solver.verify_agent.side_effect = AgentSelectionPageChanged()
+    solver.find = MagicMock(
+        return_value=None if scenario == "unknown_page" else ((1669, 990), (1758, 1041))
+    )
+    solver.require_agent_selection_page = MagicMock()
+    solver.swipe_left = MagicMock(return_value=0)
+    opens = []
+    state = {"branch": False, "sidebar": True, "page": 0, "gestures": 0}
+    scans = []
+
+    def profession(name):
+        assert name in ("ALL", "TANK")
+        state.update(branch=False, sidebar=True, page=0)
+
+    def set_open(value):
+        state["sidebar"] = value
+
+    def narrow(instance, name, branch):
+        assert instance is solver and state["sidebar"]
+        assert (name, branch) == ("TANK", "本源铁卫")
+        assert state["page"] == 2 and not opens
+        opens.append(branch)
+        state["branch"] = scenario != "unsupported"
+        state["page"] = 0
+        return state["branch"]
+
+    def scan(names, *, max_agent_count, train, observation, respect_train_selection):
+        assert not state["sidebar"] and names == ["余"]
+        assert train and respect_train_selection and max_agent_count == 1
+        scans.append((state["branch"], state["page"]))
+        if state["page"] == 0 and scenario not in ("stale_first", "rebound"):
+            assert observation is None
+        if state["branch"]:
+            if scenario == "unreadable":
+                raise AgentCardObservationNotReady()
+            if scenario == "page_exit":
+                raise AgentSelectionPageChanged()
+        if state["branch"]:
+            visible = (
+                scenario not in ("branch_end", "branch_next") or state["page"] == 1
+            )
+        else:
+            wanted_page = {
+                "visible": 0,
+                "second": 1,
+                "third": 2,
+                "disabled": 3,
+                "retry": 3,
+            }
+            visible = bool(opens) or state["page"] == wanted_page.get(scenario)
+        return (names if visible else []), (
+            (str(state["page"]), ((584, 479), (759, 506))),
+        )
+
+    def swipe(*args, **kwargs):
+        if state["branch"] and scenario == "branch_end" or scenario == "early_end":
+            raise AgentPageNotAdvanced()
+        state["gestures"] += 1
+        if scenario == "rebound" and state["gestures"] == 2:
+            state["page"] = 0
+        elif not (scenario == "stale_first" and state["gestures"] == 1):
+            state["page"] += 1
+        return (2 if scenario == "two_gestures" else 1), object()
+
+    solver.profession_filter = MagicMock(side_effect=profession)
+    solver._set_profession_filter_open = set_open
+    solver._close_profession_filter = lambda: set_open(False)
+    solver.scan_agent = scan
+    solver.swipe_agent_page = MagicMock(side_effect=swipe)
+    monkeypatch.setattr(base_schedule, "select_visible_branch", narrow)
+    if scenario == "early_end":
+        with pytest.raises(AgentPageNotAdvanced):
+            solver.choose_train_ope("余")
+        assert not opens and scans == [(False, 0)]
+        return
+    if scenario in ("page_exit", "verify_exit"):
+        with pytest.raises(AgentSelectionPageChanged):
+            solver.choose_train_ope("余")
+        assert solver.profession_filter.call_count == 1
+        assert solver.verify_agent.call_count == int(scenario == "verify_exit")
+        solver.ctap.assert_not_called()
+        return
+    if scenario == "unknown_page":
+        with pytest.raises(AgentSelectionNotReady, match="选人页尚未确认"):
+            solver.choose_train_ope("余")
+        assert solver.profession_filter.call_count == 1
+        solver.ctap.assert_not_called()
+        return
+    solver.choose_train_ope("余", choose_error=int(scenario == "retry"))
+    assert opens == (
+        []
+        if scenario in ("visible", "second", "third", "disabled", "retry")
+        else ["本源铁卫"]
+    )
+    if scenario in ("branch_end", "unreadable"):
+        assert scans == [(False, 0), (False, 1), (False, 2), (True, 0), (False, 0)]
+        assert not solver.choose_error
+    assert not state["sidebar"]
+    if scenario == "wrong_blue":
+        assert not state["branch"] and solver.verify_agent.call_count == 2
+        assert solver.ctap.call_count == 2
+    else:
+        assert state["branch"] == (
+            scenario
+            in ("branch", "branch_next", "two_gestures", "stale_first", "rebound")
+        )
+        solver.ctap.assert_not_called()
+        solver.verify_agent.assert_called_once_with(["余"], "train", train=True)

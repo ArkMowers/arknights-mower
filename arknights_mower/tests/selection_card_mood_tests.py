@@ -286,8 +286,9 @@ def test_room_readback_overrides_estimate_and_new_search_clears_it(solver):
     assert dorm_candidate_mood(data, "红") == 24
     data.update_detail("红", 8, "", -1, True)
     assert "红" not in data.dorm_mood_estimates
-    data.dorm_mood_estimates["红"] = (24, datetime.now())
-    assert dorm_candidate_mood(data, "红") == 24
+    newer = data.operators["红"].time_stamp + timedelta(seconds=1)
+    data.dorm_mood_estimates["红"] = (24, newer)
+    assert dorm_candidate_mood(data, "红", now=newer) == 24
     assert data.operators["红"].mood == 8
     data.refresh_idle_dorm_search(reason="干员下班")
     assert data.dorm_mood_estimates == {}

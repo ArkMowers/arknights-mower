@@ -32,7 +32,7 @@ from arknights_mower.utils.recognize import (
     captcha_panel_scope,
 )
 from arknights_mower.utils.scene_recovery import claim_scene_restart
-from arknights_mower.utils.swipe import noinertia_path
+from arknights_mower.utils.swipe import DEFAULT_SWIPE_MS_PER_100PX, noinertia_path
 from arknights_mower.utils.traceback import caller_info
 
 
@@ -402,7 +402,7 @@ class BaseSolver:
         self,
         start: tp.Coordinate,
         movement: tp.Coordinate,
-        duration: int = 20,
+        duration: int = DEFAULT_SWIPE_MS_PER_100PX,
         interval: float = 0.2,
         *,
         retry: bool = False,
@@ -1009,7 +1009,7 @@ class BaseSolver:
                     logger.warning(f"RelaunchAnchor 导航第{attempt + 1}次失败，重试")
             raise Exception("无法找到指定的 RelaunchAnchor 模式")
 
-    def waiting_solver(self, *, restart_on_timeout: bool = True):
+    def waiting_solver(self, *, restart_on_timeout: bool = True, first_check=None):
         """等待当前场景变化；超时返回 False，可由调用方禁止重启。"""
         self._observation_remaining()
         scene = self.scene()
@@ -1019,6 +1019,12 @@ class BaseSolver:
         sleep_time, wait_count = getattr(
             config.conf.waiting_scene, scene_list[str(scene)]["label"]
         )
+        if (
+            scene != Scene.CONNECTING
+            or first_check is None
+            or not 0 < first_check < sleep_time
+        ):
+            first_check = None
         run_allowance = 0
         if scene in (Scene.CONNECTING, Scene.LOADING):
             from arknights_mower.utils.run_order_network import (
@@ -1044,12 +1050,21 @@ class BaseSolver:
                 wait_count,
                 adaptive=adaptive_wait,
                 run_allowance=run_allowance,
+                first_check=first_check,
             ):
                 return True
         else:
             self.recog.__dict__.pop("_network_wait_episode", None)
-            for _ in range(wait_count):
-                self.sleep(sleep_time)
+            for index in range(wait_count):
+                interval = sleep_time
+                if index == 0 and first_check is not None:
+                    started = time.monotonic()
+                    self.sleep(first_check)
+                    if self.scene() != scene:
+                        return True
+                    elapsed = max(first_check, time.monotonic() - started)
+                    interval = max(0, sleep_time - elapsed)
+                self.sleep(interval)
                 if self.scene() != scene:
                     return True
         self._observation_remaining()
@@ -1069,10 +1084,18 @@ class BaseSolver:
         return None
 
     def _wait_for_network_scene(
-        self, scene, sleep_time, wait_count, *, adaptive, run_allowance
+        self,
+        scene,
+        sleep_time,
+        wait_count,
+        *,
+        adaptive,
+        run_allowance,
+        first_check=None,
     ):
         observations = get_network_adaptation(self.recog)
         started = time.monotonic()
+        first_regular_check = started + sleep_time if first_check is not None else None
         label = scene_list[str(scene)]["label"]
         base_seconds = sleep_time * wait_count
         network_source = self._network_wait_source(scene)
@@ -1150,7 +1173,13 @@ class BaseSolver:
             ) > 0:
                 sample_started = time.monotonic()
                 try:
-                    self.sleep(min(sleep_time, remaining))
+                    interval = sleep_time
+                    if first_check is not None:
+                        interval, first_check = first_check, None
+                    elif first_regular_check is not None:
+                        interval = max(0, first_regular_check - sample_started)
+                        first_regular_check = None
+                    self.sleep(min(interval, remaining))
                     current_scene = self.scene()
                 finally:
                     elapsed = max(0, time.monotonic() - sample_started)

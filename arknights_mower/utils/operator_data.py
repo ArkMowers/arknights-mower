@@ -127,3 +127,15 @@ def write_operator_catalog(catalog, root=Path(".")):
         path = Path(root) / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
+
+
+def selection_branches(training, labels):
+    """同名形态共用一张进驻卡片，只为姓名唯一的干员指定分支。"""
+    names = {}
+    for record in training.get("operators", {}).values():
+        name = record.get("name")
+        if name and name != "阿米娅":
+            names[name] = (
+                None if name in names else labels.get(record.get("subProfessionId"))
+            )
+    return {name: label for name, label in names.items() if label}
