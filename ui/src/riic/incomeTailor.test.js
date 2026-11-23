@@ -551,24 +551,6 @@ it('replaces the tailor when the runner is configured in a group binding', () =>
   )
 })
 
-it.each([true, false])(
-  'rejects a runner selected for two slots in one trading room (expected=%s)',
-  (expectationMode) => {
-    const source = plan()
-    source.facility_levels = { room_1_1: 3 }
-    source.conf.workaholic = '巫恋,柏喙,芬'
-    source.plan1.room_1_1.plans = [
-      { agent: '巫恋', replacement: ['但书'] },
-      { agent: '柏喙', replacement: ['但书'] },
-      { agent: '芬', replacement: [] }
-    ]
-    const result = calculateIncome(source, { ...settings(), expectationMode, fixedSeed: 42 })
-    expect(result.success).toBe(false)
-    expect(result.error).toMatch(/(?:room_1_1|B101).*第 1、2 个工位同时选择了跑单干员但书/)
-    expect(result).not.toHaveProperty('summary')
-  }
-)
-
 it('allows two trading rooms to share one runner', () => {
   const source = plan()
   source.facility_levels = { room_1_1: 3, room_1_2: 3 }
@@ -592,76 +574,6 @@ it('allows two trading rooms to share one runner', () => {
   )
   expect(new Set(events.map((event) => event.roomId))).toEqual(new Set(['room_1_1', 'room_1_2']))
 })
-
-it.each([false, true])(
-  'checks inherited run-order slots when a backup activates (active=%s)',
-  (active) => {
-    const source = plan()
-    source.facility_levels = { room_1_1: 3 }
-    source.conf.workaholic = '巫恋,柏喙,芬'
-    source.plan1.room_1_1.plans = [
-      { agent: '巫恋', replacement: ['但书'] },
-      { agent: '柏喙', replacement: ['龙舌兰'] },
-      { agent: '芬', replacement: [] }
-    ]
-    source.backup_plans = [
-      {
-        name: '贸易',
-        trigger: active ? 'True' : 'False',
-        plan: {
-          room_1_1: {
-            plans: [
-              { agent: 'Current' },
-              { agent: '柏喙', replacement: ['但书'] },
-              { agent: 'Current' }
-            ]
-          }
-        }
-      }
-    ]
-    const result = calculateIncome(source, settings())
-    expect(result.success, result.error).toBe(!active)
-    if (active)
-      expect(result.error).toMatch(/(?:room_1_1|B101).*第 1、2 个工位同时选择了跑单干员但书/)
-  }
-)
-
-it.each([true, false])(
-  'rejects runners in orundum trading slots (expectationMode=%s)',
-  (expectationMode) => {
-    for (const [role, runner] of [
-      ['primary', '但书'],
-      ['replacement', '龙舌兰'],
-      ['group', '佩佩'],
-      ['product-only backup', '可露希尔'],
-      ['backup task', '但书']
-    ]) {
-      const source = plan()
-      source.facility_levels = { room_1_1: 3 }
-      const facility = source.plan1.room_1_1
-      facility.product = role === 'product-only backup' ? 'lmd' : 'orundum'
-      facility.plans = ['巫恋', '柏喙', '芬'].map((agent) => ({ agent, replacement: [] }))
-      source.conf.workaholic = '巫恋,柏喙,芬'
-      const slot = facility.plans[1]
-      if (role === 'primary') slot.agent = runner
-      if (role === 'replacement' || role === 'product-only backup') slot.replacement = [runner]
-      if (role === 'group') slot.group_bindings = [{ group: '贸易', replacement: [runner] }]
-      if (role === 'product-only backup')
-        source.backup_plans = [
-          { name: '卖玉', trigger: 'True', plan: { room_1_1: { product: 'orundum', plans: [] } } }
-        ]
-      if (role === 'backup task')
-        source.backup_plans = [
-          { name: '贸易', trigger: 'True', task: { room_1_1: ['Current', runner] } }
-        ]
-      const result = calculateIncome(source, { ...settings(), expectationMode, fixedSeed: 42 })
-      expect(result.success, role).toBe(false)
-      expect(result.error, role).toMatch(
-        new RegExp(`(?:room_1_1|B101).*第 2 个工位卖玉时不能安排跑单干员${runner}`)
-      )
-    }
-  }
-)
 
 it.each([true, false])(
   'accepts a backup that removes its runner when switching to orundum (expected=%s)',

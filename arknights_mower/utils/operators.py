@@ -74,7 +74,7 @@ _NUMERIC_EXPRESSION_CALLS = {
 
 def validate_orundum_staff(room, slots):
     for index, names in enumerate(slots, start=1):
-        runner = next((name for name in names if name in TRADE_ORDER_AGENTS), None)
+        runner = first_run_order_agent(names)
         if runner:
             raise ValueError(
                 f"{room} 的第 {index} 个工位卖玉时不能安排跑单干员{runner}"
@@ -95,23 +95,29 @@ def trade_run_order_roster_error(plan, products, entry_tasks=()):
                         room, ((name,) for name in task.get(room, ()))
                     )
             elif room.startswith("room_") and slots[0].facility in ("", "贸易站"):
-                select_run_order_agents(room, (slot.all_replacements for slot in slots))
+                validate_run_order_slots(
+                    room, (slot.all_replacements for slot in slots)
+                )
     except ValueError as error:
         return str(error)
     return None
 
 
-def select_run_order_agents(room, replacements):
-    targets = []
+def first_run_order_agent(choices):
+    return next((name for name in choices if name in TRADE_ORDER_AGENTS), None)
+
+
+def validate_run_order_slots(room, replacements):
+    selected = {}
     for index, choices in enumerate(replacements, start=1):
-        runner = next((name for name in choices if name in TRADE_ORDER_AGENTS), None)
-        if runner is not None and runner in targets:
-            first = targets.index(runner) + 1
+        runner = first_run_order_agent(choices)
+        if runner is None:
+            continue
+        if runner in selected:
             raise ValueError(
-                f"{room} 的第 {first}、{index} 个工位同时选择了跑单干员{runner}"
+                f"{room} 的第 {selected[runner]}、{index} 个工位同时选择了跑单干员{runner}"
             )
-        targets.append(runner or "Current")
-    return targets
+        selected[runner] = index
 
 
 def _integer_literal(node: ast.AST) -> int | None:
@@ -551,42 +557,30 @@ class Operators:
             ),
         ):
             return error
-        plan = copy.deepcopy(self.global_plan["default_plan"].plan)
-        products = copy.deepcopy(self.global_plan["default_plan"].products)
-        plan_config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
-        maintenance_slots = set()
+        self.emergency_run_order_replacements = None
+        self.emergency_dorm_agents.clear()
+        self.plan = copy.deepcopy(self.global_plan["default_plan"].plan)
+        self.products = copy.deepcopy(self.global_plan["default_plan"].products)
+        self.config: PlanConfig = copy.deepcopy(self.global_plan["default_plan"].config)
+        self.maintenance_primary_slots = set()
         for index, success in enumerate(condition):
             if success:
-                plan, plan_config = self.merge_plan(index, plan_config, plan)
+                self.plan, self.config = self.merge_plan(index, self.config, self.plan)
                 backup = self.global_plan["backup_plans"][index]
-                products.update(backup.products)
+                self.products.update(backup.products)
                 maintenance = backup.uses_condition(
                     "major_maintenance_remaining_hours",
                     backup_group or self.backup_group,
                 )
                 for room, slots in backup.plan.items():
-                    if room not in plan:
+                    if room not in self.plan:
                         continue
                     for slot_index, slot in enumerate(slots):
                         if slot.agent == "Current":
                             continue
-                        maintenance_slots.discard((room, slot_index))
+                        self.maintenance_primary_slots.discard((room, slot_index))
                         if maintenance and slot.agent in TRADE_ORDER_AGENTS:
-                            maintenance_slots.add((room, slot_index))
-        if self.plan is not None:
-            entry_tasks = [
-                backup.task
-                for backup, enabled, previous in zip(
-                    self.backup_plans, condition, self.plan_condition
-                )
-                if enabled and not previous and backup.task
-            ]
-            if error := trade_run_order_roster_error(plan, products, entry_tasks):
-                return error
-        self.plan, self.products, self.config = plan, products, plan_config
-        self.maintenance_primary_slots = maintenance_slots
-        self.emergency_run_order_replacements = None
-        self.emergency_dorm_agents.clear()
+                            self.maintenance_primary_slots.add((room, slot_index))
         self.plan_condition = condition
         if backup_group is not None:
             self.backup_group = backup_group
@@ -631,7 +625,9 @@ class Operators:
             primary.plan, primary.products, label="主表"
         ):
             return error
-        if error := trade_run_order_roster_error(self.plan, self.products):
+        if not update and (
+            error := trade_run_order_roster_error(self.plan, self.products)
+        ):
             return error
         for name in self.config.operator_mood_limits:
             if name not in agent_list:
@@ -1940,7 +1936,10 @@ class Operators:
     def run_order_plan(self, room: str) -> list[str]:
         if self.is_order_collection_room(room):
             return ["Current"] * len(self.plan[room])
-        return select_run_order_agents(room, self.run_order_replacements(room))
+        return [
+            first_run_order_agent(choices) or "Current"
+            for choices in self.run_order_replacements(room)
+        ]
 
     def refresh_run_order_rooms(self):
         self.run_order_rooms = {
@@ -3671,6 +3670,15 @@ class Operators:
                 simulation.operators, simulation.dorm = {}, []
                 error = simulation.swap_plan(condition)
                 if error is None:
+                    entry_tasks = [
+                        backup.task
+                        for backup, active in zip(self.backup_plans, flags)
+                        if active and backup.task
+                    ]
+                    error = trade_run_order_roster_error(
+                        simulation.plan, simulation.products, entry_tasks
+                    )
+                if error is None:
                     key = simulation._schedule_validation_key()
                     if key in validated:
                         check_validation_deadline(deadline)
@@ -3707,7 +3715,7 @@ class Operators:
                 "success": False,
                 "status": "incomplete",
                 "reason": str(error),
-                "message": f"{error}，已验证 {tested_count} 次。主表已通过检查，允许启动；实际生效的副表组合由运行时检查。",
+                "message": f"{error}，已验证 {tested_count} 次。主表已通过检查，允许启动。尚未检查全部副表组合，可在排班编辑器中重新校验。",
             }
         if backup_count == 0:
             return {

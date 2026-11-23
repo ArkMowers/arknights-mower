@@ -357,8 +357,8 @@
       "reason": "Allow the Mower wrapper to host the existing overview scrubber at the bottom without changing time-window state. Release overview drag listeners on collapse and unmount. Keep operator and event inspectors beside the pointer within viewport bounds under CSS zoom, and reserve cursor-info space to avoid hover-induced layout shifts. Remove four initial assignments whose values are replaced in every branch before use; retain the existing cycle labels and ruler steps."
     },
     "scheduler/compileRosterSchedule.ts": {
-      "sha256": "4b7d781e767752af40eda9615ab689b02ce13a2e80ef877bba471cb62f51e1ec",
-      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Restore the default group recovery spread threshold to 60 minutes from calculator b77478801e825fc5cbaf152e27c3511b5f0d518c; preserve explicitly saved thresholds. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 校验显式总停止时长假设为非负有限小时数。 Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings. Restore automatic recovery spread thresholds to 90 minutes with two power plants and 60 minutes otherwise; preserve explicit saved thresholds and verify compile-to-runtime defaults and recovery boundaries. Recognize the internal merged free_room policy during backup recompilation. Select the first trade runner for each physical slot across its configured replacements and group bindings. Report conflicting slot numbers when a trading post selects the same runner twice. Reject trade runners among primary and replacement operators in Orundum trading posts."
+      "sha256": "a3fff8eda5587d806fb3f8c98ade5f1f65c3d2edd5853b645741ad502f880605",
+      "reason": "Apply strict grouped full-recovery timing, observed return confirmation, and the 75-minute default from calculator ebb743c11964898046d2d00dddf8e96bcf09a522. Preserve this bundle's existing scheduling baseline. Carry group recovery spread exclusions through advanced settings and simulation policy, cancel selected groups' spread waits while preserving explicit full recovery, and verify isolated selections and dispatch. Restore the default group recovery spread threshold to 60 minutes from calculator b77478801e825fc5cbaf152e27c3511b5f0d518c; preserve explicitly saved thresholds. Preserve the saved mood-calculation setting and shared physiological mood integration; ordinary departures follow normal mood thresholds without proactive coverage forecasts. 校验显式总停止时长假设为非负有限小时数。 Apply saved per-group resting thresholds to ordinary shifts, rescue lines and planning wakes; retain the global fallback for ungrouped and shared primaries and isolate policy mappings. Restore automatic recovery spread thresholds to 90 minutes with two power plants and 60 minutes otherwise; preserve explicit saved thresholds and verify compile-to-runtime defaults and recovery boundaries. Recognize the internal merged free_room policy during backup recompilation. Select the first trade runner for each physical slot across its configured replacements and group bindings."
     },
     "scheduler/mowerAlphaMetadata.ts": {
       "sha256": "b171c80e899ca22742ce4fd17bf9f3d05d26aa91ba86c69dc79165787431b3c6",
@@ -971,14 +971,6 @@
     "scheduler/mowerParkedCoordinationCompletion.spec.ts": {
       "sha256": "9a71beb182d0a1fd2f78a758748c48f49d09c01a8423fe36708a5e2755219266",
       "reason": "Add focused local regressions for ordinary completion across dispatch and parked storage, working standby peers, explicit origins, actual observations and protected task variants."
-    },
-    "domain/shiftRunPolicy.ts": {
-      "sha256": "4da290bb22bb1876439570234c918be862865e14a73ed1be4cf524b02ce0491e",
-      "reason": "Retain the four native trade runners used since Mower 3dafe224f. Identify prohibited Orundum trade runners by operator ID or name and report the room and slot."
-    },
-    "domain/mowerBackupFacilities.ts": {
-      "sha256": "6ba2de480df1598a752d785f23978f57b865f5aba5a3a77e82271b4350222daf",
-      "reason": "Check explicit backup task targets against the effective Orundum order type."
     }
   },
   "upstreamRepository": "https://github.com/Panda-Panta/R.I.I.C-Calculator",

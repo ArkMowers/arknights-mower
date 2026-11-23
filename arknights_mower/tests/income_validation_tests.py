@@ -258,3 +258,48 @@ def test_income_combination_validation_has_no_elapsed_time_cutoff(client, monkey
     ).json
     assert result["success"], result
     assert result["status"] == "passed"
+
+
+@pytest.mark.parametrize("product", ["lmd", "orundum"])
+def test_income_preflight_rejects_invalid_trade_runners(client, product):
+    snapshot = simple_plan()
+    snapshot["conf"]["workaholic"] = "巫恋,柏喙,芬"
+    room = "room_1_2"
+    slots = [{"agent": name} for name in ("巫恋", "柏喙", "芬")]
+    slots[0]["replacement"] = ["但书"]
+    snapshot["plan1"] = {room: {"name": "贸易站", "product": "lmd", "plans": slots}}
+    snapshot["advanced_settings"] = {"product_switching": {"enable": True}}
+    overlay = (
+        []
+        if product == "orundum"
+        else [
+            {"agent": "Current"},
+            {"agent": "柏喙", "replacement": ["但书"]},
+            {"agent": "Current"},
+        ]
+    )
+    snapshot["backup_plans"] = [
+        {
+            "name": "贸易",
+            "trigger": {"left": "1", "operator": "==", "right": "1"},
+            "conf": {},
+            "task": {},
+            "plan": {room: {"name": "贸易站", "product": product, "plans": overlay}},
+        }
+    ]
+
+    def validate():
+        return client.post(
+            "/validate-plan", json={"plan": snapshot, "operatorMode": "maximum"}
+        ).json
+
+    result = validate()
+    assert result["status"] == "failed"
+    assert room in result["message"]
+    assert (
+        "第 1 个工位卖玉时不能安排跑单干员但书"
+        if product == "orundum"
+        else "第 1、2 个工位同时选择了跑单干员但书"
+    ) in result["message"]
+    slots[0]["replacement"] = []
+    assert validate()["success"]

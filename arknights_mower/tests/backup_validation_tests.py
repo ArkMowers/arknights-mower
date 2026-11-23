@@ -1090,8 +1090,6 @@ def test_trade_run_order_rejects_two_slots_selecting_the_same_runner():
     error = "room_1_1 的第 1、2 个工位同时选择了跑单干员但书"
     assert data.init_and_validate() == error
     assert error in data.validate_backup_plans()["message"]
-    with pytest.raises(ValueError, match=error):
-        data.run_order_plan(room)
 
     primary.plan[room][1].replacement = ["龙舌兰"]
     primary.plan["room_2_1"] = [Room("红", "", ["但书", "砾"], "贸易站", "lmd")]
@@ -1153,14 +1151,12 @@ def test_orundum_product_only_backup_rejects_runner_before_activation(role):
     data = initialize(plan)
     error = "room_1_1 的第 2 个工位卖玉时不能安排跑单干员佩佩"
     assert error in data.validate_backup_plans()["message"]
-    original = data.plan
-    assert data.swap_plan([True], refresh=True) == error
-    assert data.plan is original
     assert data.products["room_1_1"] == "lmd"
     assert data.plan_condition == [False]
     if role == "inherited":
         del plan["default_plan"].plan["room_1_1"][1].replacement[0]
     else:
         backup.task = {}
+    assert data.validate_backup_plans()["success"]
     assert data.swap_plan([True], refresh=True) is None
     assert data.products["room_1_1"] == "orundum"

@@ -1015,7 +1015,7 @@ def test_drone_cap_applies_to_product_switch(monkeypatch):
     assert solver._product_switch_drone_plan(2160, 4320, 30) == (3, 1620)
 
 
-def test_duplicate_runner_blocks_another_rooms_order_switch(monkeypatch, caplog):
+def test_backup_run_order_conflict_is_checked_before_scheduling(monkeypatch):
     trade, switch = "room_1_1", "room_1_2"
     conf = PlanConfig("", "", "")
     conf.workaholic = ["巫恋", "柏喙", "能天使", "银灰", "陈"]
@@ -1049,22 +1049,26 @@ def test_duplicate_runner_blocks_another_rooms_order_switch(monkeypatch, caplog)
     data.update_facility_state(switch, "trade", "lmd")
     unrelated = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
     solver.tasks = [unrelated]
-    monkeypatch.setattr(base, "save_exception", lambda error: None)
-
-    for _ in range(2):
-        solver.backup_plan_solver()
-        assert solver.tasks == [unrelated]
-        assert data.plan_condition == [False]
-        assert data.products[switch] == "lmd"
-        assert data.run_order_plan(trade) == ["但书", "Current"]
-    assert f"{trade} 的第 1、2 个工位同时选择了跑单干员但书" in caplog.text
+    result = data.validate_backup_plans(check_owned=False)
+    assert not result["success"]
+    assert f"{trade} 的第 1、2 个工位同时选择了跑单干员但书" in result["message"]
+    assert solver.tasks == [unrelated]
+    assert data.plan_condition == [False]
 
     backup.plan[trade][1].replacement = ["龙舌兰"]
+    assert data.validate_backup_plans(check_owned=False)["success"]
+    recheck = MagicMock(side_effect=AssertionError("运行时重复校验跑单人选"))
+    monkeypatch.setattr(
+        "arknights_mower.utils.operators.trade_run_order_roster_error", recheck
+    )
     solver.backup_plan_solver()
     retained, queued = solver.tasks
     assert retained is unrelated
     assert queued.type == TaskTypes.SWITCH_PRODUCT
     assert queued.pending_product_targets == {switch: "orundum"}
+    assert data.swap_plan([True], refresh=True) is None
+    assert data.run_order_plan(trade) == ["但书", "龙舌兰"]
+    recheck.assert_not_called()
 
 
 def test_independent_backup_keeps_old_table_until_product_switch_succeeds(
