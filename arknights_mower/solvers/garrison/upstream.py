@@ -66,9 +66,9 @@ def strategy_grid_shift(before, after):
 
 
 def framed_strategy_cells(image, columns):
-    """Locate card centers from the two vertical sides of each 192 px tile."""
+    """Map tap points to the visible vertical extent of each framed card."""
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    cells = []
+    cells = {}
     for x in columns:
         sides = []
         for direction in (-1, 1):
@@ -84,8 +84,8 @@ def framed_strategy_cells(image, columns):
         ends = np.flatnonzero(np.diff(np.r_[0, vertical, 0]))
         for top, bottom in zip(ends[::2], ends[1::2]):
             if 125 <= bottom - top <= 205:
-                cells.append((x, int((top + bottom) // 2)))
-    return sorted(cells, key=lambda cell: (cell[1], cell[0]))
+                cells[x, int((top + bottom) // 2)] = (int(top), int(bottom - 1))
+    return cells
 
 
 def strategy_portrait_present(image, x, y):

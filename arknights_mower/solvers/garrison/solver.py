@@ -438,7 +438,11 @@ class GarrisonSolver:
     @staticmethod
     def strategy_cells(game, page, *, initial=False):
         top, bottom = game.GRID_TOP + 60, game.GRID_BOTTOM - 40
-        cells = [(x, y) for x, y in game.framed_cells(page) if top <= y <= bottom]
+        cells = {
+            (x, y): span
+            for (x, y), span in game.framed_cells(page).items()
+            if top <= y <= bottom
+        }
         framed_rows = {y for _, y in cells}
         fallback = game.GRID_Y if initial else game.detect_rows(page)
         rows = framed_rows.union(
@@ -451,8 +455,9 @@ class GarrisonSolver:
                 if any(cx == x and abs(cy - y) <= 96 for cx, cy in cells):
                     continue
                 if game.has_portrait(page, x, y):
-                    cells.append((x, y))
-        return sorted(cells, key=lambda cell: (cell[1], cell[0]))
+                    # Two portrait estimates still match within 40 pixels.
+                    cells[x, y] = (y - 20, y + 20)
+        return dict(sorted(cells.items(), key=lambda item: (item[0][1], item[0][0])))
 
     def choose_strategy(self, game):
         strategies = {
@@ -468,8 +473,9 @@ class GarrisonSolver:
             if recheck_panels and not skipped_badges:
                 break
             for page_index in range(8):
-                for x, y in cells:
-                    if any(abs(y + offset - row) <= 40 for row in checked_rows[x]):
+                for (x, y), (top, bottom) in cells.items():
+                    start, end = top + offset, bottom + offset
+                    if any(start <= hi and lo <= end for lo, hi in checked_rows[x]):
                         continue
                     if (
                         not recheck_panels
@@ -488,7 +494,7 @@ class GarrisonSolver:
                     game.tap(x, y, 0.7)
                     action = self.read_strategy_action(game, strategies)
                     if action == "verified":
-                        checked_rows[x].append(y + offset)
+                        checked_rows[x].append((start, end))
                     if action == "completed":
                         return None
                     if action == "play":
