@@ -6,6 +6,7 @@ from itertools import product
 from time import monotonic
 
 from arknights_mower.data import base_room_list
+from arknights_mower.utils.logic_expression import MAX_INTEGER_LITERAL_BITS
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
@@ -366,6 +367,18 @@ def _ungrouped_backup_conditions(
             return lambda state: False
         if isinstance(node, ast.Compare) and len(node.ops) == 1:
             left, right, comparison = node.left, node.comparators[0], type(node.ops[0])
+            if comparison in (ast.Eq, ast.NotEq) and all(
+                isinstance(side, ast.Constant)
+                and type(side.value) is int
+                and side.value.bit_length() <= MAX_INTEGER_LITERAL_BITS
+                for side in (left, right)
+            ):
+                result = (
+                    left.value == right.value
+                    if comparison is ast.Eq
+                    else left.value != right.value
+                )
+                return lambda state: result
             # 支持将常量写在等式左侧。
             if (
                 isinstance(left, ast.Constant) or _string_literal(left) is not None

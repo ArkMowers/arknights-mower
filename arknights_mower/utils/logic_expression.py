@@ -1,5 +1,7 @@
 from typing import Optional, Self
 
+MAX_INTEGER_LITERAL_BITS = 256
+
 
 class LogicExpression:
     def __init__(

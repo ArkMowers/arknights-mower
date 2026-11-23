@@ -4,7 +4,7 @@ import json
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta
-from functools import lru_cache
+from functools import lru_cache, partial
 from time import monotonic
 from typing import Any, Literal, overload
 
@@ -16,6 +16,7 @@ from arknights_mower.utils.calculated_mood import (
     measure_mood_calculation,
 )
 from arknights_mower.utils.config.plan_advanced import export_advanced_settings
+from arknights_mower.utils.logic_expression import MAX_INTEGER_LITERAL_BITS
 from arknights_mower.utils.manufacture_product import (
     MANUFACTURE_PRODUCTS,
     TRADE_PRODUCTS,
@@ -55,7 +56,6 @@ FACILITY_TYPE_IDS = {
 
 _MAX_EXPRESSION_LENGTH = 2048
 _MAX_EXPRESSION_NODES = 128
-_MAX_INTEGER_LITERAL_BITS = 256
 _MAX_STRING_LITERAL_LENGTH = 512
 _MAX_POWER_EXPONENT = 64
 _MAX_NUMERIC_RESULT_BITS = 4096
@@ -81,7 +81,7 @@ def validate_orundum_staff(room, slots):
             )
 
 
-def trade_run_order_roster_error(plan, products, entry_tasks=()):
+def trade_run_order_roster_error(plan, products, *, entry_targets=None):
     try:
         for room, slots in plan.items():
             if not slots:
@@ -90,10 +90,8 @@ def trade_run_order_roster_error(plan, products, entry_tasks=()):
                 validate_orundum_staff(
                     room, ((slot.agent, *slot.all_replacements) for slot in slots)
                 )
-                for task in entry_tasks:
-                    validate_orundum_staff(
-                        room, ((name,) for name in task.get(room, ()))
-                    )
+                if entry_targets is not None:
+                    validate_orundum_staff(room, entry_targets(room, len(slots)))
             elif room.startswith("room_") and slots[0].facility in ("", "贸易站"):
                 validate_run_order_slots(
                     room, (slot.all_replacements for slot in slots)
@@ -214,7 +212,7 @@ def _validate_expression_resources(expression: str) -> None:
         if isinstance(node, ast.Constant):
             if (
                 isinstance(node.value, int)
-                and node.value.bit_length() > _MAX_INTEGER_LITERAL_BITS
+                and node.value.bit_length() > MAX_INTEGER_LITERAL_BITS
             ):
                 raise ValueError("整数常量过大")
             if (
@@ -3662,6 +3660,38 @@ class Operators:
                 deadline=deadline,
                 groups=self.backup_groups,
             )
+
+            @lru_cache
+            def entry_runner(layers):
+                if not any(name in TRADE_ORDER_AGENTS for _, name in layers):
+                    return None
+                # 从主表同时切入时，最后一个显式目标生效。
+                if layers[-1][1] in TRADE_ORDER_AGENTS:
+                    return layers[-1][1]
+                # 后表可能早已生效。只合并本轮新切入的任务，已执行的任务不再覆盖。
+                for previous in combinations:
+                    check_validation_deadline(deadline)
+                    target = next(
+                        (
+                            name
+                            for index, name in reversed(layers)
+                            if not previous[index]
+                        ),
+                        None,
+                    )
+                    if target in TRADE_ORDER_AGENTS:
+                        return target
+                return None
+
+            def entry_targets(flags, room, slot_count):
+                targets = [[] for _ in range(slot_count)]
+                for index, backup in enumerate(self.backup_plans):
+                    if flags[index] and backup.task:
+                        for slot, name in enumerate(backup.task.get(room, ())):
+                            if name != "Current":
+                                targets[slot].append((index, name))
+                return ((entry_runner(tuple(layers)),) for layers in targets)
+
             for flags in combinations:
                 check_validation_deadline(deadline)
                 condition = list(flags)
@@ -3670,13 +3700,10 @@ class Operators:
                 simulation.operators, simulation.dorm = {}, []
                 error = simulation.swap_plan(condition)
                 if error is None:
-                    entry_tasks = [
-                        backup.task
-                        for backup, active in zip(self.backup_plans, flags)
-                        if active and backup.task
-                    ]
                     error = trade_run_order_roster_error(
-                        simulation.plan, simulation.products, entry_tasks
+                        simulation.plan,
+                        simulation.products,
+                        entry_targets=partial(entry_targets, flags),
                     )
                 if error is None:
                     key = simulation._schedule_validation_key()

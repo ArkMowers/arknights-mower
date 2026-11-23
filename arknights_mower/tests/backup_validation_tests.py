@@ -1160,3 +1160,46 @@ def test_orundum_product_only_backup_rejects_runner_before_activation(role):
     assert data.validate_backup_plans()["success"]
     assert data.swap_plan([True], refresh=True) is None
     assert data.products["room_1_1"] == "orundum"
+
+
+@pytest.mark.parametrize(
+    "later_targets, later_trigger, expected_error",
+    [
+        (["Current", "砾"], "True", False),
+        (["Current", "Current"], "True", True),
+        (["砾"], "True", True),
+        (["Current", "砾"], "op_data.operators['银灰'].is_working()", True),
+    ],
+)
+def test_orundum_entry_checks_final_explicit_slot(
+    later_targets, later_trigger, expected_error
+):
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    conf = plan["default_plan"].config
+    plan["backup_plans"] = [
+        Plan({}, conf, trigger="True", task={room: ["Current", "但书"]}),
+        Plan({}, conf, trigger=later_trigger, task={room: later_targets}),
+    ]
+    result = initialize(plan).validate_backup_plans(check_owned=False)
+    assert result["success"] == (not expected_error), result
+    if expected_error:
+        assert f"{room} 的第 2 个工位卖玉时不能安排跑单干员但书" in result["message"]
+
+
+def test_active_backup_does_not_reissue_its_overriding_entry_task():
+    room = "room_1_1"
+    plan = trade_schedule(3, primary="orundum", backup="orundum")
+    conf = plan["default_plan"].config
+    plan["backup_plans"] = [
+        Plan(
+            {},
+            conf,
+            trigger="op_data.operators['银灰'].is_working()",
+            task={room: ["但书"]},
+        ),
+        Plan({}, conf, trigger="True", task={room: ["砾"]}),
+    ]
+    result = initialize(plan).validate_backup_plans(check_owned=False)
+    assert not result["success"]
+    assert f"{room} 的第 1 个工位卖玉时不能安排跑单干员但书" in result["message"]

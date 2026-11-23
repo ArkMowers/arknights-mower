@@ -303,3 +303,37 @@ def test_income_preflight_rejects_invalid_trade_runners(client, product):
     ) in result["message"]
     slots[0]["replacement"] = []
     assert validate()["success"]
+
+
+@pytest.mark.parametrize(
+    "later_target,expected_success", [("砾", True), ("Current", False)]
+)
+def test_orundum_preflight_merges_simultaneous_entry_tasks(
+    client, later_target, expected_success
+):
+    room = "room_1_1"
+    snapshot = simple_plan()
+    snapshot["conf"]["workaholic"] = "巫恋,柏喙,芬"
+    snapshot["plan1"] = {
+        room: {
+            "name": "贸易站",
+            "product": "orundum",
+            "plans": [{"agent": name} for name in ("巫恋", "柏喙", "芬")],
+        }
+    }
+    snapshot["backup_plans"] = [
+        {
+            "name": name,
+            "trigger": {"left": "1", "operator": "==", "right": "1"},
+            "conf": {},
+            "plan": {},
+            "task": {room: ["Current", target]},
+        }
+        for name, target in [("先切入", "但书"), ("后切入", later_target)]
+    ]
+    result = client.post(
+        "/validate-plan", json={"plan": snapshot, "operatorMode": "maximum"}
+    ).json
+    assert result["success"] == expected_success, result
+    if not expected_success:
+        assert f"{room} 的第 2 个工位卖玉时不能安排跑单干员但书" in result["message"]
