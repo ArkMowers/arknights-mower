@@ -1015,6 +1015,58 @@ def test_drone_cap_applies_to_product_switch(monkeypatch):
     assert solver._product_switch_drone_plan(2160, 4320, 30) == (3, 1620)
 
 
+def test_duplicate_runner_blocks_another_rooms_order_switch(monkeypatch, caplog):
+    trade, switch = "room_1_1", "room_1_2"
+    conf = PlanConfig("", "", "")
+    conf.workaholic = ["巫恋", "柏喙", "能天使", "银灰", "陈"]
+    primary = Plan(
+        {
+            trade: [
+                Room("巫恋", "", ["但书"], "贸易站"),
+                Room("柏喙", "", [], "贸易站"),
+            ],
+            switch: [Room(name, "", [], "贸易站") for name in ("能天使", "银灰", "陈")],
+        },
+        conf,
+        products={trade: "lmd", switch: "lmd"},
+    )
+    backup = Plan(
+        {
+            trade: [
+                Room("Current", "", [], "贸易站"),
+                Room("柏喙", "", ["但书"], "贸易站"),
+            ]
+        },
+        conf,
+        trigger=LogicExpression("True", "==", "True"),
+        products={switch: "orundum"},
+    )
+    solver = object.__new__(base.BaseSchedulerSolver)
+    data = solver.op_data = Operators(
+        {"default_plan": primary, "backup_plans": [backup]}
+    )
+    assert data.init_and_validate() is None
+    data.update_facility_state(switch, "trade", "lmd")
+    unrelated = SchedulerTask(task_type=TaskTypes.SKILL_UPGRADE)
+    solver.tasks = [unrelated]
+    monkeypatch.setattr(base, "save_exception", lambda error: None)
+
+    for _ in range(2):
+        solver.backup_plan_solver()
+        assert solver.tasks == [unrelated]
+        assert data.plan_condition == [False]
+        assert data.products[switch] == "lmd"
+        assert data.run_order_plan(trade) == ["但书", "Current"]
+    assert f"{trade} 的第 1、2 个工位同时选择了跑单干员但书" in caplog.text
+
+    backup.plan[trade][1].replacement = ["龙舌兰"]
+    solver.backup_plan_solver()
+    retained, queued = solver.tasks
+    assert retained is unrelated
+    assert queued.type == TaskTypes.SWITCH_PRODUCT
+    assert queued.pending_product_targets == {switch: "orundum"}
+
+
 def test_independent_backup_keeps_old_table_until_product_switch_succeeds(
     monkeypatch,
 ):

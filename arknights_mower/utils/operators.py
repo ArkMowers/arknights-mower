@@ -81,16 +81,21 @@ def validate_orundum_staff(room, slots):
             )
 
 
-def orundum_roster_error(plan, products, entry_tasks=()):
+def trade_run_order_roster_error(plan, products, entry_tasks=()):
     try:
         for room, slots in plan.items():
-            if not slots or products.get(room, slots[0].product) != "orundum":
+            if not slots:
                 continue
-            validate_orundum_staff(
-                room, ((slot.agent, *slot.all_replacements) for slot in slots)
-            )
-            for task in entry_tasks:
-                validate_orundum_staff(room, ((name,) for name in task.get(room, ())))
+            if products.get(room, slots[0].product) == "orundum":
+                validate_orundum_staff(
+                    room, ((slot.agent, *slot.all_replacements) for slot in slots)
+                )
+                for task in entry_tasks:
+                    validate_orundum_staff(
+                        room, ((name,) for name in task.get(room, ()))
+                    )
+            elif room.startswith("room_") and slots[0].facility in ("", "贸易站"):
+                select_run_order_agents(room, (slot.all_replacements for slot in slots))
     except ValueError as error:
         return str(error)
     return None
@@ -576,7 +581,7 @@ class Operators:
                 )
                 if enabled and not previous and backup.task
             ]
-            if error := orundum_roster_error(plan, products, entry_tasks):
+            if error := trade_run_order_roster_error(plan, products, entry_tasks):
                 return error
         self.plan, self.products, self.config = plan, products, plan_config
         self.maintenance_primary_slots = maintenance_slots
@@ -626,7 +631,7 @@ class Operators:
             primary.plan, primary.products, label="主表"
         ):
             return error
-        if error := orundum_roster_error(self.plan, self.products):
+        if error := trade_run_order_roster_error(self.plan, self.products):
             return error
         for name in self.config.operator_mood_limits:
             if name not in agent_list:
@@ -634,18 +639,6 @@ class Operators:
         for name in self.config.free_room_exclusions:
             if name and name not in agent_list:
                 return f"宿舍保留中的干员名无效：{name}"
-        for room, slots in self.plan.items():
-            if (
-                slots
-                and room.startswith("room_")
-                and slots[0].facility in ("", "贸易站")
-            ):
-                try:
-                    select_run_order_agents(
-                        room, (slot.all_replacements for slot in slots)
-                    )
-                except ValueError as error:
-                    return str(error)
         saved_dorms = copy.deepcopy(self.all_dorms()) if (update) else []
         self.displaced_dorms = []
         self.groups = {}
