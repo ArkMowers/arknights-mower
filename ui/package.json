@@ -40,7 +40,7 @@
     "markdown-it-external-link": "^1.1.0",
     "pinia": "^4.1.0",
     "pinyin-pro": "^3.29.5",
-    "prettier": "^3.9.9",
+    "prettier": "^3.10.1",
     "reconnecting-websocket": "^4.4.0",
     "vue": "^3.5.44",
     "vue-chartjs": "^5.3.4",
