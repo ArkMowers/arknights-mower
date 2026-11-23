@@ -279,19 +279,23 @@ def test_startup_navigation_exhaustion_keeps_confirmed_near_order(
     solver.back_to_infrastructure.assert_not_called()
 
 
-@pytest.mark.parametrize("minutes, retained", [(6, True), (30, False)])
+@pytest.mark.parametrize("existing_refresh", [False, True])
+@pytest.mark.parametrize("minutes, urgent", [(6, True), (30, False)])
 def test_countdown_read_before_room_return_exhaustion_keeps_urgent_order_only(
-    staffed_order, minutes, retained, caplog, monkeypatch
+    staffed_order, minutes, urgent, existing_refresh, caplog, monkeypatch
 ):
     ui = staffed_order
     solver = prepare(ui)
+    room = "room_2_2"
     started_at = ui.clock.now()
     ui.deadlines["room_1_1"] = started_at + timedelta(minutes=8)
-    ui.deadlines["room_2_2"] = started_at + timedelta(minutes=minutes)
+    ui.deadlines[room] = started_at + timedelta(minutes=minutes)
+    previous_refresh = solver._queue_order_refresh(room) if existing_refresh else None
+    original_time = previous_refresh.time if previous_refresh is not None else None
     room_scene = solver.scene.side_effect
     solver.scene.side_effect = lambda: (
         ui.base.Scene.UNKNOWN
-        if solver._page == {"room": "room_2_2", "open": True}
+        if solver._page == {"room": room, "open": True}
         else room_scene()
     )
     monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
@@ -302,12 +306,25 @@ def test_countdown_read_before_room_return_exhaustion_keeps_urgent_order_only(
         solver._check_startup_run_orders()
     solver._check_startup_run_orders()
 
-    expected = {"room_1_1": started_at + timedelta(minutes=5)}
-    if retained:
-        expected["room_2_2"] = started_at + timedelta(minutes=minutes - 3)
-    assert {task.meta_data: task.time for task in orders(ui)} == expected
+    expected_queue = []
+    if existing_refresh or not urgent:
+        refresh = solver.tasks[0]
+        assert refresh.execution_failure["reason"] == str(error.value)
+        if previous_refresh is not None:
+            assert refresh is previous_refresh and refresh.time == original_time
+        expected_queue.append((ui.task_type.REFRESH_TIME, room, refresh.time))
+    expected_queue.append(
+        (ui.task_type.RUN_ORDER, "room_1_1", started_at + timedelta(minutes=5))
+    )
+    if urgent:
+        expected_queue.append(
+            (ui.task_type.RUN_ORDER, room, started_at + timedelta(minutes=minutes - 3))
+        )
+    assert [(task.type, task.meta_data, task.time) for task in solver.tasks] == (
+        expected_queue
+    )
     assert error.value.execute_time == started_at + timedelta(minutes=minutes - 3)
-    assert len(admission.reads(ui, "room_2_2")) == 1
+    assert len(admission.reads(ui, room)) == 1
     solver._adjust_run_orders.assert_not_called()
     solver.back_to_infrastructure.assert_not_called()
     assert any(

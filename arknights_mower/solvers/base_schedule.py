@@ -553,6 +553,7 @@ class OrderReturnUnresolved(RecognizeError):
     def __init__(self, message: str, *, execute_time: datetime | None = None):
         super().__init__(message)
         self.execute_time = execute_time
+        self.created_refresh: SchedulerTask | None = None
 
 
 class TrainingSubmissionUnconfirmed(AgentSelectionNotReady):
@@ -7001,6 +7002,11 @@ class BaseSchedulerSolver(
         deadline = datetime.now() + timedelta(
             minutes=max(10, config.conf.run_order_delay * 2)
         )
+        created_refresh = (
+            return_error.created_refresh
+            if isinstance(return_error, OrderReturnUnresolved)
+            else None
+        )
         for task in provisional:
             if task.time <= deadline and task.meta_data in self.op_data.run_order_rooms:
                 if self.task is not None and self._can_defer_arrangement():
@@ -7012,7 +7018,10 @@ class BaseSchedulerSolver(
                     if not (
                         pending.type == TaskTypes.REFRESH_TIME
                         and pending.meta_data == task.meta_data
-                        and not getattr(pending, "execution_failure", None)
+                        and (
+                            pending is created_refresh
+                            or not getattr(pending, "execution_failure", None)
+                        )
                     )
                 ]
 
@@ -12671,8 +12680,11 @@ class BaseSchedulerSolver(
                 self._publish_order_read_log(cohort, "failed", str(error))
             self._reset_order_read_log_attempt(cohort)
             if isinstance(error, OrderReturnUnresolved):
+                previous_tasks = tuple(self.tasks)
                 refresh = self._queue_order_refresh(room)
                 if refresh is not None:
+                    if not any(task is refresh for task in previous_tasks):
+                        error.created_refresh = refresh
                     self._retain_failed_task(refresh, str(error), [room])
             raise
         finally:
