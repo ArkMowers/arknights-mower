@@ -36,7 +36,7 @@ COPY --from=node-base /arknights-mower/ui/dist ./ui/dist
 # 安装 Python 依赖
 RUN python3 -m venv venv && \
     . venv/bin/activate && \
-    pip install -r requirements.in && \
+    pip install -r requirements.in "$(grep '^onnxruntime==' requirements.txt)" && \
     python -m pip check && \
     python scripts/prune_opencv.py && \
     pip install pyinstaller && \

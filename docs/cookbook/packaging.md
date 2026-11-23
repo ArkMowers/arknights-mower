@@ -8,6 +8,8 @@ macOS 和 Linux 虽提供独立包，仍建议优先使用 [源码部署](../../
 
 先完成 [README 源码部署](../../README.md#源码部署) 中的源码获取、前端构建和当前平台 Python 依赖安装，确认源码可以启动。以下命令在仓库根目录执行，使用同一个 `.venv` 环境。
 
+Linux 和 macOS 的打包命令从 `requirements.txt` 读取官方构建使用的 ONNX Runtime 版本。如果当前平台没有该版本的 wheel（例如 Intel Mac），且源码环境已能正常运行 OCR，本地打包可以沿用已安装的兼容版本。在安装打包工具时只执行 `./.venv/bin/python -m pip install pyinstaller==6.22.2`，再继续后续构建步骤。
+
 ## 2. Windows
 
 Windows x64 独立包使用 CPython 提供的 OpenSSL 3.5.9。打包时会下载两个 DLL 和许可证并校验各自的 SHA-256。离线打包时，预先解压[固定版本的 Windows 二进制文件](https://github.com/python/cpython-bin-deps/archive/ddb46a415b4995440723183e644f8d2c346567a2.zip)，在 PowerShell 中将 `$env:MOWER_OPENSSL_SOURCE` 设为解压目录下 `amd64` 子目录的绝对路径。
@@ -78,7 +80,7 @@ Windows x64 独立包使用 CPython 提供的 OpenSSL 3.5.9。打包时会下载
 2. 安装打包工具并构建：
 
    ```bash
-   ./.venv/bin/python -m pip install pyinstaller==6.22.2
+   ./.venv/bin/python -m pip install pyinstaller==6.22.2 "$(grep '^onnxruntime==' requirements.txt)"
    ./.venv/bin/python scripts/prune_opencv.py
    ./.venv/bin/python -m PyInstaller webui_zip_for_linux.spec
    ```
@@ -95,7 +97,7 @@ Linux 独立包仍依赖宿主提供兼容的 glibc、二维码识别及 GTK/Web
 2. 安装打包工具并构建：
 
    ```bash
-   ./.venv/bin/python -m pip install pyinstaller==6.22.2
+   ./.venv/bin/python -m pip install pyinstaller==6.22.2 "$(grep '^onnxruntime==' requirements.txt)"
    ./.venv/bin/python scripts/prune_opencv.py
    ./.venv/bin/python -m PyInstaller webui_zip_for_macos.spec
    ```
