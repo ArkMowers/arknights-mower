@@ -665,6 +665,7 @@ def test_choose_strategy_from_count_even_with_unreadable_name(
     s.capture = Mock(return_value=current)
     s.wait = Mock(return_value=frame("prep"))
     game = Mock(GRID_Y=[400], GRID_X=[700], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.framed_cells.return_value = []
     game.has_color_badge.return_value = game.has_badge.return_value = False
     game.grid_shift.return_value = 0
     game.ocr.return_value = [
@@ -711,6 +712,7 @@ def test_marked_cards_do_not_cost_panel_reads(
         GRID_TOP=250,
         GRID_BOTTOM=1050,
     )
+    game.framed_cells.return_value = []
     game.has_color_badge.side_effect = lambda page, x, y: y != 610 and x == 700
     game.has_badge.side_effect = lambda page, x, y: y != 610 and x != 700
     game.grid_shift.side_effect = [0, None, 210]
@@ -721,6 +723,59 @@ def test_marked_cards_do_not_cost_panel_reads(
     game.tap.assert_called_once_with(*expected, 0.7)
     assert game.ocr.call_count == 1
     assert game.scroll_grid.call_count == int(scrolled)
+    game.swipe.assert_not_called()
+
+
+def test_scroll_opens_unmarked_low_contrast_card_before_reverse_scan(monkeypatch):
+    from arknights_mower.solvers.garrison.upstream import FarmSession
+
+    worker = solver.GarrisonSolver(Mock(), Mock(), {"wins": {}}, Mock(), vision=Mock())
+    game = FarmSession(worker).game
+    current = Frame(None, [Text("确认选择", 1650, 920, 50, 40)], "strategy", True)
+    replay_unchanged_lobby(monkeypatch, worker, current)
+    worker.click = Mock()
+    worker.wait = Mock(return_value=frame("prep"))
+    first = np.zeros((1080, 1920, 3), np.uint8)
+    bottom = first.copy()
+
+    def draw_card(image, x, y, marked):
+        image[y - 96 : y + 97, x - 96 : x + 97] = 64
+        image[y - 90 : y + 91, x - 90 : x + 91] = 25
+        if marked:
+            image[y - 92 : y - 49, x + 36 : x + 89] = (0, 180, 255)
+
+    for x in game.GRID_X:
+        draw_card(first, x, 370, True)
+    for x in game.GRID_X[:2]:
+        draw_card(bottom, x, 441, False)
+    for x in game.GRID_X[:3]:
+        draw_card(bottom, x, 777, True)
+    assert game.detect_rows(bottom) == []
+    assert worker.strategy_cells(game, bottom) == [
+        (680, 441),
+        (890, 441),
+        (680, 777),
+        (890, 777),
+        (1100, 777),
+    ]
+    game.shot = Mock(side_effect=[first, first, bottom, bottom, bottom])
+    game.scroll_grid = Mock()
+    game.swipe = Mock()
+    game.tap = Mock()
+    game.ocr = Mock(
+        side_effect=[
+            [
+                (1600, 200, "已通过模拟3次"),
+                (1650, 497, "初始生命值"),
+                (1523, 576, "陈"),
+            ],
+            [(1650, 497, "初始生命值"), (1523, 576, "铃兰")],
+        ]
+    )
+
+    assert worker.choose_strategy(game).screen == "prep"
+    assert [c.args[:2] for c in game.tap.call_args_list] == [(680, 441), (890, 441)]
+    game.scroll_grid.assert_called_once()
     game.swipe.assert_not_called()
 
 
@@ -759,6 +814,7 @@ def test_overlapping_pages_keep_unread_cards_eligible(monkeypatch, overlap_read)
     game.shot.side_effect = lambda: page
     game.grid_shift.side_effect = lambda before, after: (after - before) * 210
     game.detect_rows.return_value = [390, 600]
+    game.framed_cells.return_value = []
     game.has_color_badge.side_effect = lambda image, x, y: (
         image == 0 and (x != 680 or y != 580)
     )
@@ -778,9 +834,12 @@ def test_reverse_scan_skips_read_panels_but_opens_badge_only_card(monkeypatch):
     worker.click = Mock()
     worker.wait = Mock(return_value=frame("prep"))
     game = Mock(GRID_X=[680, 890], GRID_Y=[370], GRID_TOP=250, GRID_BOTTOM=1050)
-    pages = iter([(1, [600], 210), None, (0, [390], -210)])
+    pages = iter(
+        [(1, [(680, 600), (890, 600)], 210), None, (0, [(680, 390), (890, 390)], -210)]
+    )
     worker.scroll_strategy_page = Mock(side_effect=pages)
     game.shot.return_value = 0
+    game.framed_cells.return_value = []
     game.has_color_badge.side_effect = lambda page, x, y: page == 0 and x == 890
     game.has_badge.return_value = False
     worker.read_strategy_action = Mock(
@@ -806,6 +865,7 @@ def test_return_scan_records_target_when_strategy_name_appears(monkeypatch, targ
     worker.click = Mock()
     worker.scroll_strategy_page = Mock(return_value=None)
     game = Mock(GRID_X=[680, 890], GRID_Y=[370], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.framed_cells.return_value = []
     game.has_color_badge.side_effect = lambda page, x, y: x == 890
     game.has_badge.return_value = False
 
@@ -843,6 +903,7 @@ def test_badge_fallback_reads_panels_after_row_centers_shift(
     worker.click = Mock()
     worker.wait = Mock(return_value=frame("prep"))
     game = Mock(GRID_X=[680], GRID_Y=[370], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.framed_cells.return_value = []
     game.has_color_badge.return_value = False
     game.has_badge.side_effect = lambda page, x, y: y in (370, 610)
     page = 0
@@ -906,6 +967,26 @@ def test_strategy_uses_first_readable_count_and_preserves_wins(
     assert game.shot.call_count == len(readings) + 1
     assert action == ("verified" if expected >= 3 else "play")
     assert p["wins"]["band_amiya"] == expected
+
+
+def test_mulberry_panel_records_three_wins_with_observed_ocr_spelling(monkeypatch):
+    progress = {"wins": {}}
+    worker = solver.GarrisonSolver(Mock(), Mock(), progress, Mock())
+    replay_unchanged_lobby(monkeypatch, worker, frame("prep"))
+    game = Mock()
+    game.ocr.return_value = [
+        (1720, 200, "已通过模拟3次"),
+        (1660, 497, "初始生命值"),
+        (1524, 535, "ERD"),
+        (1523, 576, "桑甚"),
+        (1523, 627, "130"),
+    ]
+    strategies = {
+        model.normal_name(s["name"]): s["id"] for s in model.catalogue()["strategies"]
+    }
+    assert worker.read_strategy_action(game, strategies) == "verified"
+    assert progress["wins"] == {"band_shield": 3}
+    worker.save.assert_called_once_with(progress)
 
 
 def test_ioleta_panel_records_zero_wins_with_observed_ocr_spelling(monkeypatch):
@@ -976,6 +1057,7 @@ def test_last_confirmed_medal_stops_scan_and_future_dispatch(
     s.capture = Mock(return_value=frame("prep"))
     s.capture.return_value.screen = "strategy"
     game = Mock(GRID_Y=[400], GRID_X=[700, 900], GRID_TOP=250, GRID_BOTTOM=1050)
+    game.framed_cells.return_value = []
     game.has_color_badge.return_value = game.has_badge.return_value = False
     game.ocr.return_value = [
         (1600, 250, f"已通过模拟{target}次"),

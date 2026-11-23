@@ -65,6 +65,29 @@ def strategy_grid_shift(before, after):
     return None
 
 
+def framed_strategy_cells(image, columns):
+    """Locate card centers from the two vertical sides of each 192 px tile."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    cells = []
+    for x in columns:
+        sides = []
+        for direction in (-1, 1):
+            edge = x + direction * 94
+            outer = edge + direction * 9
+            rim = gray[:, edge - 3 : edge + 4].max(axis=1)
+            background = gray[:, outer - 3 : outer + 4].mean(axis=1)
+            sides.append(rim - background > 17)
+        vertical = (sides[0] & sides[1]).astype(np.uint8)
+        vertical = cv2.morphologyEx(
+            vertical[:, None], cv2.MORPH_CLOSE, np.ones((7, 1), np.uint8)
+        ).ravel()
+        ends = np.flatnonzero(np.diff(np.r_[0, vertical, 0]))
+        for top, bottom in zip(ends[::2], ends[1::2]):
+            if 125 <= bottom - top <= 205:
+                cells.append((x, int((top + bottom) // 2)))
+    return sorted(cells, key=lambda cell: (cell[1], cell[0]))
+
+
 class FarmSession:
     def __init__(self, owner):
         self.owner = owner
@@ -85,6 +108,7 @@ class FarmSession:
         farm = ModuleType("garrison_farm")
         farm.cv2, farm.np = cv2, np
         exec(compile(script[start:end], "garrison_farm.py", "exec"), vars(farm))
+        farm.framed_cells = lambda page: framed_strategy_cells(page, farm.GRID_X)
         farm.grid_shift = strategy_grid_shift
         farm.shot = self.shot
         farm.ocr_engine = owner.vision.engine

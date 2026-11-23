@@ -435,12 +435,22 @@ class GarrisonSolver:
             return "play"
         return "verified" if key is not None else "skip"
 
+    @staticmethod
+    def strategy_cells(game, page, *, initial=False):
+        top, bottom = game.GRID_TOP + 60, game.GRID_BOTTOM - 40
+        cells = [(x, y) for x, y in game.framed_cells(page) if top <= y <= bottom]
+        if cells:
+            return cells
+        rows = game.GRID_Y if initial else game.detect_rows(page)
+        return [(x, y) for y in rows if top <= y <= bottom for x in game.GRID_X]
+
     def choose_strategy(self, game):
         strategies = {
             normal_name(s["name"]): s["id"] for s in catalogue()["strategies"]
         }
         self.click((1500, 580))
-        page, rows = game.shot(), game.GRID_Y
+        page = game.shot()
+        cells = self.strategy_cells(game, page, initial=True)
         offset = 0
         checked_rows = {x: [] for x in game.GRID_X}
         skipped_badges = False
@@ -448,40 +458,37 @@ class GarrisonSolver:
             if recheck_panels and not skipped_badges:
                 break
             for page_index in range(8):
-                for y in rows:
-                    if not game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40:
+                for x, y in cells:
+                    if any(abs(y + offset - row) <= 40 for row in checked_rows[x]):
                         continue
-                    for x in game.GRID_X:
-                        if any(abs(y + offset - row) <= 40 for row in checked_rows[x]):
-                            continue
-                        if (
-                            not recheck_panels
-                            and self.match_limit is None
-                            and (
-                                game.has_color_badge(page, x, y)
-                                or self.target_wins == 3
-                                and game.has_badge(page, x, y)
-                            )
-                        ):
-                            skipped_badges = True
-                            continue
+                    if (
+                        not recheck_panels
+                        and self.match_limit is None
+                        and (
+                            game.has_color_badge(page, x, y)
+                            or self.target_wins == 3
+                            and game.has_badge(page, x, y)
+                        )
+                    ):
+                        skipped_badges = True
+                        continue
+                    frame = self.capture()
+                    if frame.screen != "strategy":
+                        return frame
+                    game.tap(x, y, 0.7)
+                    action = self.read_strategy_action(game, strategies)
+                    if action == "verified":
+                        checked_rows[x].append(y + offset)
+                    if action == "completed":
+                        return None
+                    if action == "play":
                         frame = self.capture()
                         if frame.screen != "strategy":
                             return frame
-                        game.tap(x, y, 0.7)
-                        action = self.read_strategy_action(game, strategies)
-                        if action == "verified":
-                            checked_rows[x].append(y + offset)
-                        if action == "completed":
-                            return None
-                        if action == "play":
-                            frame = self.capture()
-                            if frame.screen != "strategy":
-                                return frame
-                            self.text_click(frame, "确认选择|准备就绪|淮备就绪")
-                            return self.wait(
-                                lambda f: f.screen not in {"strategy", "unknown"}, 20
-                            )
+                        self.text_click(frame, "确认选择|准备就绪|淮备就绪")
+                        return self.wait(
+                            lambda f: f.screen not in {"strategy", "unknown"}, 20
+                        )
                 if page_index == 7:
                     break
                 frame = self.capture()
@@ -490,7 +497,7 @@ class GarrisonSolver:
                 next_page = self.scroll_strategy_page(game, backwards=recheck_panels)
                 if next_page is None:
                     break
-                page, rows, shift = next_page
+                page, cells, shift = next_page
                 if shift is None:
                     # Unknown page alignment cannot identify previously opened cards.
                     checked_rows = {x: [] for x in game.GRID_X}
@@ -511,9 +518,9 @@ class GarrisonSolver:
             shift = game.grid_shift(before, after)
             if shift is not None and abs(shift) < 20:
                 return None
-            rows = game.detect_rows(after)
-            if any(game.GRID_TOP + 60 <= y <= game.GRID_BOTTOM - 40 for y in rows):
-                return after, rows, shift
+            cells = self.strategy_cells(game, after)
+            if cells:
+                return after, cells, shift
             return None
 
         return self.wait_for_observation(read, bool, 4)
