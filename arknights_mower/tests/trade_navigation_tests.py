@@ -97,6 +97,33 @@ def test_room_return_requires_two_frames_without_order_page():
     solver.back.assert_not_called()
 
 
+def test_trade_return_waits_for_arrow_without_spending_an_input_attempt():
+    solver = returning_solver([Scene.ORDER_LIST] * 4 + [Scene.INFRA_DETAILS] * 2)
+    solver.find.side_effect = lambda key: (
+        NAV_BAR if key == "nav_button" and solver.scene.call_count >= 4 else None
+    )
+
+    solver.scene_graph_navigation(Scene.INFRA_DETAILS)
+
+    assert solver.scene.call_count == 6
+    solver.tap.assert_called_once_with(NAV_BAR, x_rate=0.08)
+    solver.back.assert_not_called()
+
+
+def test_trade_return_without_arrow_uses_only_the_observation_limit():
+    solver = returning_solver([Scene.ORDER_LIST] * 13)
+    solver.find.side_effect = None
+    solver.find.return_value = None
+
+    with pytest.raises(graph.TradeNavigationError):
+        solver.scene_graph_navigation(Scene.INFRA_MAIN)
+
+    assert solver.scene.call_count == 13
+    assert solver.sleep.call_args_list == [call(0.3)] * 12
+    solver.tap.assert_not_called()
+    solver.back.assert_not_called()
+
+
 def test_other_facility_keeps_normal_back_action():
     solver = returning_solver([Scene.INFRA_DETAILS, Scene.INFRA_MAIN])
     solver.detect_room_type.return_value = "制造站"

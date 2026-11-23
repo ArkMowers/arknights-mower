@@ -137,6 +137,42 @@ def test_startup_navigation_exhaustion_keeps_confirmed_near_order(
     solver.back_to_infrastructure.assert_not_called()
 
 
+@pytest.mark.parametrize("minutes, retained", [(6, True), (30, False)])
+def test_countdown_read_before_room_return_exhaustion_keeps_urgent_order_only(
+    staffed_order, minutes, retained, caplog
+):
+    from arknights_mower.utils.graph import TradeNavigationError
+
+    ui = staffed_order
+    solver = prepare(ui)
+    started_at = ui.clock.now()
+    ui.deadlines["room_1_1"] = started_at + timedelta(minutes=8)
+    ui.deadlines["room_2_2"] = started_at + timedelta(minutes=minutes)
+    navigate = solver.scene_graph_navigation.side_effect
+
+    def fail_second_room_return(target):
+        if target == ui.base.Scene.INFRA_MAIN and solver._page["room"] == "room_2_2":
+            assert admission.reads(ui, "room_2_2")
+            raise TradeNavigationError("返回未确认")
+        return navigate(target)
+
+    solver.scene_graph_navigation.side_effect = fail_second_room_return
+    solver._adjust_run_orders = MagicMock()
+    solver.back_to_infrastructure = MagicMock()
+
+    solver._check_startup_run_orders()
+    solver._check_startup_run_orders()
+
+    expected = {"room_1_1": started_at + timedelta(minutes=5)}
+    if retained:
+        expected["room_2_2"] = started_at + timedelta(minutes=minutes - 3)
+    assert {task.meta_data: task.time for task in orders(ui)} == expected
+    assert len(admission.reads(ui, "room_2_2")) == 1
+    solver._adjust_run_orders.assert_not_called()
+    solver.back_to_infrastructure.assert_not_called()
+    assert "已读取B202 的订单倒计时：返回未确认" in caplog.messages
+
+
 @pytest.mark.parametrize("shortage", [False, True])
 def test_shared_drone_adjustment_uses_temporary_tasks_and_returns_to_main(
     staffed_order, shortage

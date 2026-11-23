@@ -463,8 +463,10 @@ def infra_back(solver: BaseSolver):
 
 
 @edge(Scene.ORDER_LIST, Scene.INFRA_DETAILS)
-def trade_view_back(solver: BaseSolver):
-    if arrow_bar := solver.find("nav_button"):
+def trade_view_back(solver: BaseSolver, arrow_bar=None):
+    if arrow_bar is None:
+        arrow_bar = solver.find("nav_button")
+    if arrow_bar:
         solver.tap(arrow_bar, x_rate=0.08)
     else:
         solver.sleep(0.3)
@@ -581,23 +583,24 @@ class SceneGraphSolver(BaseSolver):
             ):
                 returning_from_trade = True
 
+            trade_arrow = None
             if returning_from_trade:
                 if current == Scene.INFRA_DETAILS:
-                    confirmed = (
-                        self.find("nav_button")
-                        and not self.find("order_label")
-                        and (detect_room_type is None or detect_room_type() == "贸易站")
-                    )
-                    if confirmed and trade_detail_seen and scene == current:
+                    if not self.find("order_label") and (
+                        detect_room_type is None or detect_room_type() == "贸易站"
+                    ):
+                        trade_arrow = self.find("nav_button")
+                    ready = bool(trade_arrow) and trade_detail_seen
+                    if ready and scene == current:
                         return
-                    ready = confirmed and trade_detail_seen
-                    trade_detail_seen = bool(confirmed)
+                    trade_detail_seen = bool(trade_arrow)
                 else:
                     trade_detail_seen = False
-                    ready = current == Scene.ORDER_LIST
-                if (
-                    trade_return_checks >= 12
-                    or trade_return_actions.get(current, 0) >= 3
+                    if current == Scene.ORDER_LIST:
+                        trade_arrow = self.find("nav_button")
+                    ready = bool(trade_arrow)
+                if trade_return_checks >= 12 or (
+                    ready and trade_return_actions.get(current, 0) >= 3
                 ):
                     message = f"贸易站返回未确认，当前场景 {current}，目标场景 {scene}"
                     logger.warning(message, extra={"archive_screenshots": True})
@@ -676,10 +679,7 @@ class SceneGraphSolver(BaseSolver):
 
             next_scene = sp[1]
             transition = DG.transition(current, next_scene)
-            if returning_from_trade and (current, next_scene) == (
-                Scene.INFRA_DETAILS,
-                Scene.INFRA_MAIN,
-            ):
+            if returning_from_trade:
                 transition = trade_view_back
 
             try:
@@ -690,7 +690,11 @@ class SceneGraphSolver(BaseSolver):
                     else "task"
                 )
                 with input_reconciliation_scope(mode):
-                    completed = transition(self)
+                    completed = (
+                        transition(self, trade_arrow)
+                        if returning_from_trade
+                        else transition(self)
+                    )
                     if current == Scene.CLUE_ACCESS_RECORD and completed is False:
                         return
                 error_count = 0

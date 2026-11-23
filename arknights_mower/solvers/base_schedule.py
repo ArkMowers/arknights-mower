@@ -515,6 +515,14 @@ class RunOrderConfirmationUnresolved(RecognizeError):
         self.room = room
 
 
+class RunOrderMapReturnError(TradeNavigationError):
+    """订单倒计时已读取，但未确认返回基建地图。"""
+
+    def __init__(self, execute_time: datetime, error: TradeNavigationError):
+        super().__init__(str(error))
+        self.execute_time = execute_time
+
+
 class RoomArrangementDeferred(RuntimeError):
     """房间重试暂未成功，保留剩余任务并把调度权交回队列。"""
 
@@ -6847,10 +6855,9 @@ class BaseSchedulerSolver(
                 continue
             try:
                 execute_time = self.get_run_order_time(room, read_mood=True)
-                self._sync_run_order_tasks()
-                if execute_time is None or room not in self.op_data.run_order_rooms:
-                    continue
-                provisional.append(self._new_run_order_task(room, execute_time))
+            except RunOrderMapReturnError as error:
+                execute_time = error.execute_time
+                navigation_exhausted = True
             except TradeNavigationError:
                 navigation_exhausted = True
                 break
@@ -6863,6 +6870,12 @@ class BaseSchedulerSolver(
                 except TradeNavigationError:
                     navigation_exhausted = True
                     break
+                continue
+            self._sync_run_order_tasks()
+            if execute_time is not None and room in self.op_data.run_order_rooms:
+                provisional.append(self._new_run_order_task(room, execute_time))
+            if navigation_exhausted:
+                break
         if not navigation_exhausted:
             # scheduling 会改写任务，启动的远期读数不能进入持久化任务队列。
             temporary_tasks = copy.deepcopy(self.tasks) + provisional
@@ -12484,12 +12497,15 @@ class BaseSchedulerSolver(
         if phase in ("completed", "failed"):
             cohort["closed"] = True
 
-    def _resolve_order_read_log(self, cohort, room, status):
+    def _resolve_order_read_log(self, cohort, room, status, *, error=None):
         if cohort.get("closed", False):
             return
         for item in cohort["rooms"]:
             if item["room"] == room:
                 item["status"] = status
+        if error is not None:
+            self._publish_order_read_log(cohort, "failed", str(error))
+            return
         complete = all(item["status"] != "pending" for item in cohort["rooms"])
         self._publish_order_read_log(cohort, "completed" if complete else "updated")
         if complete:
@@ -12521,6 +12537,10 @@ class BaseSchedulerSolver(
         try:
             with scope:
                 return self._read_run_order_time(room, read_mood=read_mood)
+        except RunOrderMapReturnError as error:
+            self._resolve_order_read_log(cohort, room, "read", error=error)
+            self._reset_order_read_log_attempt(cohort)
+            raise
         except BaseException as error:
             self._publish_order_read_log(cohort, "failed", str(error))
             self._reset_order_read_log_attempt(cohort)
@@ -12585,7 +12605,10 @@ class BaseSchedulerSolver(
             if not self.op_data.is_order_collection_room(room):
                 execute_time -= timedelta(minutes=config.conf.run_order_delay)
             logger.info("下一次进行插拔的时间为：" + execute_time.strftime("%H:%M:%S"))
-            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            try:
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
+            except TradeNavigationError as error:
+                raise RunOrderMapReturnError(execute_time, error) from error
             self._resolve_order_read_log(cohort, room, "read")
             return execute_time
 

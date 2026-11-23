@@ -43,6 +43,7 @@ def solver_for(frames):
         ),
     )
     solver.find = MagicMock(side_effect=find)
+    solver.detect_room_type = MagicMock(return_value="制造站")
     solver.tap = MagicMock(side_effect=advance)
     solver.sleep = MagicMock(side_effect=advance)
     return solver
