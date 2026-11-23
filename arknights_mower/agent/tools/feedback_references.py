@@ -3,6 +3,7 @@
 import hashlib
 import json
 import re
+from collections import Counter
 from pathlib import Path, PurePosixPath
 from zipfile import ZipFile
 
@@ -65,6 +66,14 @@ def _priority(record):
     return (0 if record.get("focus_matched") else 1), rank
 
 
+def _member_priority_key(record, counts):
+    priority = _priority(record)
+    group = (record["member"], priority)
+    order = counts[group]
+    counts[group] += 1
+    return priority, order
+
+
 def _selection_key(record):
     return _priority(record), record["_priority_order"], record["_order"]
 
@@ -110,7 +119,7 @@ def _scan_member(bundle, info, remaining, retained, position, focus_terms):
     digest = hashlib.sha256()
     current = None
     history = info.filename.endswith(".jsonl")
-    priority_counts = {}
+    priority_counts = Counter()
 
     def finish():
         if current is None:
@@ -136,9 +145,7 @@ def _scan_member(bundle, info, remaining, retained, position, focus_terms):
         current["focus_matched"] = any(
             term in current["text"].casefold() for term in focus_terms
         )
-        priority = _priority(current)
-        current["_priority_order"] = priority_counts.get(priority, 0)
-        priority_counts[priority] = current["_priority_order"] + 1
+        _, current["_priority_order"] = _member_priority_key(current, priority_counts)
         current["_order"] = position[0]
         position[0] += 1
         # 同级按每个成员中的出现次数交错保留，再按附件顺序输出。
@@ -448,6 +455,70 @@ def build_feedback_references(bundle_path: Path, focus_terms=None) -> dict:
         else:
             raise ValueError("反馈索引元数据超过读取上限")
     return index
+
+
+def format_feedback_inspection(details: dict, max_chars: int) -> str:
+    report = {key: value for key, value in details.items() if key != "generated"}
+
+    def encode():
+        return json.dumps(report, ensure_ascii=False, separators=(",", ":"))
+
+    encoded = encode()
+    if len(encoded) <= max_chars:
+        return encoded
+
+    index = report["references"]
+    records = {record["id"]: record for record in index["records"]}
+    sources = index["sources"]
+    coverage = {
+        key: value
+        for key, value in index["coverage"].items()
+        if key != "source_omissions"
+    }
+    coverage["omitted_source_omissions"] += len(index["coverage"]["source_omissions"])
+    coverage["inspection_omitted_records"] = len(records)
+    coverage["inspection_omitted_sources"] = len(sources)
+    report = {key: report[key] for key in ("context", "coverage", "screenshot_count")}
+    report["current_state"] = {
+        key: details["current_state"][key]
+        for key in ("current_snapshot_not_historical", "scheduler_runtime")
+    }
+    preview = {**index, "coverage": coverage, "records": [], "sources": []}
+    report["references"] = preview
+    if len(encode()) > max_chars:
+        raise ValueError("反馈证据元数据超过工具结果上限")
+
+    shown_records = set()
+    for source in sources:
+        record_id = source["record_id"]
+        new_record = record_id not in shown_records
+        if new_record:
+            preview["records"].append(records[record_id])
+        preview["sources"].append(source)
+        if len(encode()) > max_chars:
+            preview["sources"].pop()
+            if new_record:
+                preview["records"].pop()
+        else:
+            shown_records.add(record_id)
+
+    priority_counts = Counter()
+    ranked_records = [
+        (_member_priority_key(record, priority_counts), record)
+        for record in records.values()
+    ]
+    for _, record in sorted(ranked_records, key=lambda item: item[0]):
+        if record["id"] not in shown_records:
+            preview["records"].append(record)
+            if len(encode()) > max_chars:
+                preview["records"].pop()
+            else:
+                shown_records.add(record["id"])
+
+    preview["records"] = [row for key, row in records.items() if key in shown_records]
+    coverage["inspection_omitted_records"] -= len(shown_records)
+    coverage["inspection_omitted_sources"] -= len(preview["sources"])
+    return encode()
 
 
 def validate_feedback_analysis(analysis: dict, index: dict) -> dict:

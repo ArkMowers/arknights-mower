@@ -12,9 +12,11 @@ from tempfile import TemporaryDirectory
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 from arknights_mower import __version__
+from arknights_mower.agent.execution import MAX_RESULT_CHARS
 from arknights_mower.agent.tools.feedback_records import collect_feedback_records
 from arknights_mower.agent.tools.feedback_references import (
     build_feedback_references,
+    format_feedback_inspection,
     validate_feedback_analysis,
 )
 from arknights_mower.agent.tools.feedback_state import collect_feedback_state
@@ -324,10 +326,7 @@ def inspect_feedback(
                 evidence_windows,
                 focus_terms,
             )
-            return json.dumps(
-                {key: value for key, value in details.items() if key != "generated"},
-                ensure_ascii=False,
-            )
+            return format_feedback_inspection(details, MAX_RESULT_CHARS)
     except (ValueError, TypeError) as exc:
         return json.dumps({"error": str(exc), "sent": False}, ensure_ascii=False)
     except Exception:
@@ -593,6 +592,7 @@ inspect_feedback_tool_def = {
         "description": (
             "发送Bug反馈前或只读排查时检查所选时段原始材料，不发送邮件。"
             "返回日志、干员历史和当前专精状态的原文引用ID、包内文件与行号，并按日志位置附有限当前安装源码。"
+            "结果较长时优先保留源码及对应日志，并列出预览省略的记录和源码数量。"
             "用 focus_terms 优先查看用户涉及的干员、房间和任务；关键词匹配与时间关联不能证明因果。"
             "逐条核对原文再分析代码，不能将任务名称当执行结果，不能将当前快照当历史；缺少材料列入unknowns。"
             "补查前因或后续时使用 evidence_windows，每段至多15分钟、至多3段且不得重叠；各段间隔未收集。"
