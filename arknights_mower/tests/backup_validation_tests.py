@@ -1073,3 +1073,50 @@ def test_default_and_custom_group_overlays_are_validated_together():
     assert "替班变更" in result["message"]
     assert "替换组不可用高效组干员" in result["message"]
     assert (repr(data.plan), data.plan_condition, data.backup_group) == previous
+
+
+def test_trade_run_order_rejects_two_slots_selecting_the_same_runner():
+    plan = trade_schedule(3)
+    plan["backup_plans"] = []
+    primary = plan["default_plan"]
+    room = "room_1_1"
+    primary.config.workaholic = ["巫恋", "柏喙", "芬"]
+    primary.plan[room] = [
+        Room("巫恋", "", ["但书"], "贸易站", "lmd"),
+        Room("柏喙", "", ["但书"], "贸易站", "lmd"),
+        Room("芬", "", [], "贸易站", "lmd"),
+    ]
+    data = Operators(plan)
+    error = "room_1_1 的第 1、2 个工位同时选择了跑单干员但书"
+    assert data.init_and_validate() == error
+    assert error in data.validate_backup_plans()["message"]
+    with pytest.raises(ValueError, match=error):
+        data.run_order_plan(room)
+
+    primary.plan[room][1].replacement = ["龙舌兰"]
+    primary.plan["room_2_1"] = [Room("红", "", ["但书", "砾"], "贸易站", "lmd")]
+    primary.products["room_2_1"] = "lmd"
+    data = initialize(plan)
+    assert data.validate_backup_plans()["success"]
+    assert data.run_order_plan(room) == ["但书", "龙舌兰", "Current"]
+    assert data.run_order_plan("room_2_1") == ["但书"]
+
+
+def test_trade_run_order_validates_slots_after_merging_current_and_group_bindings():
+    plan = trade_schedule(3)
+    room = "room_1_1"
+    primary = plan["default_plan"]
+    primary.config.workaholic = ["能天使", "银灰", "陈"]
+    primary.plan[room][0].replacement = ["但书"]
+    primary.plan[room][0].group_bindings = [{"group": "贸易", "replacement": ["但书"]}]
+    backup = plan["backup_plans"][0]
+    backup.plan[room] = [
+        Room("Current", "", [], "贸易站"),
+        Room("银灰", "", ["角峰", "但书"], "贸易站"),
+        Room("Current", "", [], "贸易站"),
+    ]
+    data = initialize(plan)
+    assert data.run_order_plan(room) == ["但书", "Current", "Current"]
+    result = data.validate_backup_plans()
+    assert not result["success"]
+    assert "room_1_1 的第 1、2 个工位同时选择了跑单干员但书" in result["message"]

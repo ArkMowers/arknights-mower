@@ -72,6 +72,19 @@ _NUMERIC_EXPRESSION_CALLS = {
 }
 
 
+def select_run_order_agents(room, replacements):
+    targets = []
+    for index, choices in enumerate(replacements, start=1):
+        runner = next((name for name in choices if name in TRADE_ORDER_AGENTS), None)
+        if runner is not None and runner in targets:
+            first = targets.index(runner) + 1
+            raise ValueError(
+                f"{room} 的第 {first}、{index} 个工位同时选择了跑单干员{runner}"
+            )
+        targets.append(runner or "Current")
+    return targets
+
+
 def _integer_literal(node: ast.AST) -> int | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, int):
         return node.value
@@ -583,6 +596,18 @@ class Operators:
         for name in self.config.free_room_exclusions:
             if name and name not in agent_list:
                 return f"宿舍保留中的干员名无效：{name}"
+        for room, slots in self.plan.items():
+            if (
+                slots
+                and room.startswith("room_")
+                and slots[0].facility in ("", "贸易站")
+            ):
+                try:
+                    select_run_order_agents(
+                        room, (slot.all_replacements for slot in slots)
+                    )
+                except ValueError as error:
+                    return str(error)
         saved_dorms = copy.deepcopy(self.all_dorms()) if (update) else []
         self.displaced_dorms = []
         self.groups = {}
@@ -1884,10 +1909,7 @@ class Operators:
     def run_order_plan(self, room: str) -> list[str]:
         if self.is_order_collection_room(room):
             return ["Current"] * len(self.plan[room])
-        return [
-            next((name for name in choices if name in TRADE_ORDER_AGENTS), "Current")
-            for choices in self.run_order_replacements(room)
-        ]
+        return select_run_order_agents(room, self.run_order_replacements(room))
 
     def refresh_run_order_rooms(self):
         self.run_order_rooms = {

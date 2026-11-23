@@ -550,3 +550,78 @@ it('replaces the tailor when the runner is configured in a group binding', () =>
     })
   )
 })
+
+it.each([true, false])(
+  'rejects a runner selected for two slots in one trading room (expected=%s)',
+  (expectationMode) => {
+    const source = plan()
+    source.facility_levels = { room_1_1: 3 }
+    source.conf.workaholic = '巫恋,柏喙,芬'
+    source.plan1.room_1_1.plans = [
+      { agent: '巫恋', replacement: ['但书'] },
+      { agent: '柏喙', replacement: ['但书'] },
+      { agent: '芬', replacement: [] }
+    ]
+    const result = calculateIncome(source, { ...settings(), expectationMode, fixedSeed: 42 })
+    expect(result.success).toBe(false)
+    expect(result.error).toMatch(/(?:room_1_1|B101).*第 1、2 个工位同时选择了跑单干员但书/)
+    expect(result).not.toHaveProperty('summary')
+  }
+)
+
+it('allows two trading rooms to share one runner', () => {
+  const source = plan()
+  source.facility_levels = { room_1_1: 3, room_1_2: 3 }
+  source.conf.workaholic = '巫恋,柏喙'
+  source.plan1.room_1_1.plans = [
+    {
+      agent: '巫恋',
+      replacement: ['但书'],
+      group_bindings: [{ group: '贸易', replacement: ['但书'] }]
+    }
+  ]
+  source.plan1.room_1_2 = {
+    name: '贸易站',
+    product: 'lmd',
+    plans: [{ agent: '柏喙', replacement: ['但书'] }]
+  }
+  const result = calculateIncome(source, settings())
+  expect(result.success, result.error).toBe(true)
+  const events = result.simulationReport.production.events.filter(
+    (event) => event.type === 'run-order-ideal'
+  )
+  expect(new Set(events.map((event) => event.roomId))).toEqual(new Set(['room_1_1', 'room_1_2']))
+})
+
+it.each([false, true])(
+  'checks inherited run-order slots when a backup activates (active=%s)',
+  (active) => {
+    const source = plan()
+    source.facility_levels = { room_1_1: 3 }
+    source.conf.workaholic = '巫恋,柏喙,芬'
+    source.plan1.room_1_1.plans = [
+      { agent: '巫恋', replacement: ['但书'] },
+      { agent: '柏喙', replacement: ['龙舌兰'] },
+      { agent: '芬', replacement: [] }
+    ]
+    source.backup_plans = [
+      {
+        name: '贸易',
+        trigger: active ? 'True' : 'False',
+        plan: {
+          room_1_1: {
+            plans: [
+              { agent: 'Current' },
+              { agent: '柏喙', replacement: ['但书'] },
+              { agent: 'Current' }
+            ]
+          }
+        }
+      }
+    ]
+    const result = calculateIncome(source, settings())
+    expect(result.success, result.error).toBe(!active)
+    if (active)
+      expect(result.error).toMatch(/(?:room_1_1|B101).*第 1、2 个工位同时选择了跑单干员但书/)
+  }
+)

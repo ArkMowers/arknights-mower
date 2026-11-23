@@ -759,3 +759,41 @@ def test_complete_saved_rescue_ignores_retired_room_exclusions(solver):
     solver._emergency_sync_reservations()
     assert solver.op_data.emergency_reserved_agents == set()
     assert set(state["targets"]) == set(PRIMARY)
+
+
+def test_rescue_run_order_conflict_after_backup_keeps_current_slot():
+    room = "room_1_1"
+    slots = [{"agent": "巫恋", "replacement": ["但书"]}, {"agent": "柏喙"}]
+    document = PlanModel(
+        plan1={room: {"name": "贸易站", "product": "lmd", "plans": slots}},
+        backup_plans=[
+            {
+                "name": "贸易",
+                "conf": {},
+                "task": {},
+                "trigger": {"left": "1", "operator": "==", "right": "1"},
+                "plan": {
+                    room: {
+                        "name": "贸易站",
+                        "plans": [
+                            {"agent": "Current"},
+                            {"agent": "柏喙", "replacement": ["但书"]},
+                        ],
+                    }
+                },
+            }
+        ],
+    )
+    data = SimpleNamespace(
+        plan={room: [Room(n, "", [], "贸易站", "lmd") for n in ("红", "砾")]},
+        evaluate_expression=lambda _: False,
+    )
+    assert effective_rescue_plan(data, document)["run_order_replacements"][room] == [
+        ["但书"],
+        [],
+    ]
+    data.evaluate_expression = lambda _: True
+    with pytest.raises(
+        ValueError, match="room_1_1 的第 1、2 个工位同时选择了跑单干员但书"
+    ):
+        effective_rescue_plan(data, document)

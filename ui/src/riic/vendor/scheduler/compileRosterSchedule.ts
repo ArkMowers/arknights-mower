@@ -122,8 +122,18 @@ export function compileRosterSchedule(workspace: RosterWorkspace, options: Parti
       return { roomId: facility.roomId, slotIndex, occupant: structuredClone(slot.occupant), primaryOperatorId, orderedCandidates, groupId: slot.groupId, groupBindings, role, metadata: slotMeta ? structuredClone(slotMeta) : undefined }
     })
     if (freeSlotIndices.length) restPools.push({ roomId: facility.roomId, capacity: freeSlotIndices.length, freeSlotIndices })
-    const runCandidates = facility.type === 'trading' ? tradeRunOrderSlots(slots).map(slot => slot.operatorId) : []
-    if (runCandidates.length) runOrderPolicies.push({ roomId: facility.roomId, orderedOperatorIds: runCandidates })
+    if (facility.type === 'trading') {
+      const runners = tradeRunOrderSlots(slots)
+      for (const slot of runners) {
+        const first = runners.find(other => other.operatorId === slot.operatorId)!
+        if (first === slot) continue
+        diagnostics.push({
+          code: 'DUPLICATE_RUN_ORDER_OPERATOR', severity: 'error', path: `${facility.roomId}.slots.${slot.slotIndex}`,
+          message: `${facility.roomId} 的第 ${first.slotIndex + 1}、${slot.slotIndex + 1} 个工位同时选择了跑单干员${OPERATOR_MAP.get(slot.operatorId)!.name}`,
+        })
+      }
+      if (runners.length) runOrderPolicies.push({ roomId: facility.roomId, orderedOperatorIds: runners.map(slot => slot.operatorId) })
+    }
     return { roomId: facility.roomId, type: facility.type, level: facility.level, product: facility.product, capacity: facility.slots.length, slots }
   })
   if(typeof assumptions.dormOrder!=='string')invalid('assumptions.dormOrder','dorm_order must be a string')
