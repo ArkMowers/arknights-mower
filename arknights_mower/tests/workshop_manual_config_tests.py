@@ -91,9 +91,9 @@ def test_edit_when_idle_updates_runtime_and_cannot_be_replaced_by_old_tab(next_s
     assert config.conf.drone_interval == 9
 
 
-@pytest.mark.parametrize("rarity", [4, 5])
+@pytest.mark.parametrize(("rarity", "cost"), [(2, 1), (3, 2), (4, 4), (5, 8)])
 def test_saved_material_tier_admits_recipes_from_refreshed_resources(
-    next_skill, monkeypatch, rarity
+    next_skill, monkeypatch, rarity, cost
 ):
     from types import SimpleNamespace
 
@@ -130,7 +130,7 @@ def test_saved_material_tier_admits_recipes_from_refreshed_resources(
     monkeypatch.setattr(
         config, "conf", config.Conf.model_validate_json(config.conf.model_dump_json())
     )
-    inventory = {"碳素": 3, "碳": 10, "新配方成品": 0, "新增材料原料": 10}
+    inventory = {"碳素": 3, "碳": 10, "新配方成品": 0, "新增材料原料": 200}
     monkeypatch.setattr(scheduler_task, "get_inventory_counts", lambda: inventory)
     op_data = SimpleNamespace(operators={operator: SimpleNamespace(mood=24)})
     tasks = []
@@ -141,7 +141,7 @@ def test_saved_material_tier_admits_recipes_from_refreshed_resources(
         {
             "新配方": {
                 "tab": "精英材料",
-                "apCost": 4 if rarity == 4 else 8,
+                "apCost": cost,
                 "output_name": "新配方成品",
                 "output_count": 1,
                 "items": ["新增材料原料"],

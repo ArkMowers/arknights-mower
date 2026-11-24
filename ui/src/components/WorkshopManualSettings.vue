@@ -6,40 +6,39 @@ import { render_op_option, render_op_label } from '@/utils/op_select'
 const props = defineProps({ operators: Array, item_list: Array, migrationWarning: String })
 const settings = defineModel({ type: Array, default: () => [] })
 const mobile = inject('mobile', ref(false))
-const materialTiers = [
-  { rarity: 5, key: 'gold', label: '金材料' },
-  { rarity: 4, key: 'purple', label: '紫材料' }
-]
-const hasMaterialRarities = computed(() => props.item_list?.some((option) => 'rarity' in option))
+const materialTiers = [5, 4, 3, 2]
+const tierOptions = materialTiers.map((value) => ({ value, label: `T${value} 材料` }))
 
-const materialGroups = computed(() => {
-  const [gold, purple] = materialTiers.map(({ key, label }) => ({
-    type: 'group',
-    key,
-    label,
-    children: []
-  }))
+const materialOptions = computed(() => {
+  const tiers = new Map(
+    materialTiers.map((rarity) => [
+      rarity,
+      { type: 'group', key: `tier-${rarity}`, label: `T${rarity} 配方`, children: [] }
+    ])
+  )
   const other = { type: 'group', key: 'other', label: '其他材料', children: [] }
-  for (const option of props.item_list ?? []) {
-    if (option.rarity === 5) gold.children.push(option)
-    else if (option.rarity === 4) purple.children.push(option)
-    else other.children.push(option)
+  const options = props.item_list ?? []
+  for (const option of options) {
+    const group = tiers.get(option.rarity) ?? other
+    group.children.push(option)
   }
-  return [gold, purple, other].filter((group) => group.children.length)
+  return [
+    ...(options.some((option) => 'rarity' in option) ? tierOptions : []),
+    ...[...tiers.values(), other].filter((group) => group.children.length)
+  ]
 })
 
 function materialSummary(item) {
-  const tiers = materialTiers
-    .filter(({ rarity }) => item.material_rarities?.includes(rarity))
-    .map(({ rarity }) => `T${rarity} 材料`)
-  return [...tiers, ...item.item_names].join('、') || '未选择材料'
+  return (
+    selectedMaterials(item)
+      .map((value) => materialFallback(value).label)
+      .join('、') || '未选择材料'
+  )
 }
 
 function selectedMaterials(item) {
   return [
-    ...materialTiers
-      .filter(({ rarity }) => item.material_rarities?.includes(rarity))
-      .map(({ rarity }) => rarity),
+    ...materialTiers.filter((rarity) => item.material_rarities?.includes(rarity)),
     ...item.item_names
   ]
 }
@@ -53,11 +52,21 @@ function materialFallback(value) {
   return { value, label: typeof value === 'number' ? `T${value} 材料` : value }
 }
 
+const normalizeTierSearch = (text) => text.replace(/\s+/g, '').toLowerCase()
+
 function createMaterialOption(name) {
   const option = { label: name, value: name }
-  return props.item_list?.some(({ value }) => value === name)
+  return props.item_list?.some(({ value }) => value === name) ||
+    tierOptions.some(({ label }) => normalizeTierSearch(label) === normalizeTierSearch(name))
     ? { ...option, type: 'ignored' }
     : option
+}
+
+function filterMaterial(pattern, option) {
+  if (typeof option.value === 'number') {
+    return normalizeTierSearch(option.label).includes(normalizeTierSearch(pattern))
+  }
+  return pinyin_match(option.label, pattern)
 }
 
 const showSettingModal = ref(false)
@@ -159,34 +168,23 @@ function createNewItem() {
         <template #default="{ value }">
           <div class="workshop-material-setting">
             <div class="workshop-material-picker">
-              <div class="workshop-material-toolbar">
-                <div class="workshop-material-label">
-                  <span>合成材料</span>
-                  <help-text
-                    >勾选整档后，资源更新新增的同档配方会自动纳入。也可在下方逐项选择材料。</help-text
-                  >
-                </div>
-                <n-checkbox-group
-                  v-if="hasMaterialRarities || value.material_rarities?.length"
-                  :value="value.material_rarities ?? []"
-                  @update:value="value.material_rarities = $event"
-                  class="workshop-material-actions"
+              <div class="workshop-material-label">
+                <span>合成材料</span>
+                <help-text
+                  >选择 T5 至 T2
+                  材料档位后，资源更新新增的同档配方会自动纳入。也可逐项选择配方。</help-text
                 >
-                  <n-checkbox v-for="tier in materialTiers" :key="tier.rarity" :value="tier.rarity">
-                    全部{{ tier.label }}
-                  </n-checkbox>
-                </n-checkbox-group>
               </div>
               <n-select
                 multiple
                 tag
                 :on-create="createMaterialOption"
-                :options="materialGroups"
+                :options="materialOptions"
                 :fallback-option="materialFallback"
                 :max-tag-count="mobile ? 3 : 8"
                 :value="selectedMaterials(value)"
                 @update:value="updateSelectedMaterials(value, $event)"
-                :filter="(p, o) => pinyin_match(o.label, p)"
+                :filter="filterMaterial"
                 filterable
                 placeholder="选择合成材料"
                 :input-props="{ 'aria-label': '合成材料' }"
@@ -241,22 +239,9 @@ function createNewItem() {
   min-width: 0;
 }
 
-.workshop-material-toolbar,
-.workshop-material-label,
-.workshop-material-actions {
+.workshop-material-label {
   display: flex;
   align-items: center;
-}
-
-.workshop-material-toolbar {
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 6px 12px;
-}
-
-.workshop-material-actions {
-  flex-wrap: wrap;
-  gap: 8px 12px;
 }
 
 .workshop-material-limits {

@@ -692,16 +692,13 @@ class WorkShopItem(ConfModel):
     "子项下限"
     self_upper_limit: int = 30
     "自己上限"
-
-
-class WorkshopRecipeGroup(WorkShopItem):
-    material_rarities: list[Literal[4, 5]] = Field(default_factory=list)
+    material_rarities: list[Literal[2, 3, 4, 5]] = Field(default_factory=list)
     "整档选择的精英材料稀有度"
 
     @model_serializer(mode="wrap")
-    def serialize_workshop_recipe_group(self, handler):
+    def serialize_workshop_item(self, handler):
         data = handler(self)
-        if not self.material_rarities:
+        if not data.get("material_rarities"):
             data.pop("material_rarities", None)
         return data
 
@@ -765,7 +762,7 @@ class RIICPart(ConfModel):
         "制造计划取消确认前的缓冲时间"
 
     class WorkShopSetting(ConfModel):
-        items: list[WorkshopRecipeGroup] = []
+        items: list[WorkShopItem] = []
         "材料列表"
         operator: str = ""
         "干员"
@@ -773,19 +770,6 @@ class RIICPart(ConfModel):
         "启用"
         source: Literal["manual", "mastery", "stockpile"] = "manual"
         "配置来源；旧配置按手动配置保留"
-
-        @field_validator("items", mode="before")
-        @classmethod
-        def validate_workshop_items(cls, items):
-            if isinstance(items, (list, tuple)):
-                return [
-                    item.model_dump()
-                    if isinstance(item, WorkShopItem)
-                    and not isinstance(item, WorkshopRecipeGroup)
-                    else item
-                    for item in items
-                ]
-            return items
 
     performance_mode: Literal["auto", "xhigh", "high", "medium", "low"] = Field(
         default_factory=default_performance_mode
