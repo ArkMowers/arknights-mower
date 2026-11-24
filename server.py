@@ -1428,12 +1428,10 @@ def device_operation_request():
 @app.route("/device/preflight", methods=["POST"])
 @app.route("/device/discover", methods=["POST"])
 @app.route("/device/start", methods=["POST"])
-@app.route("/device/avd/start", methods=["POST"])
-@app.route("/device/redroid/start", methods=["POST"])
-@app.route("/device/genymotion/start", methods=["POST"])
+@app.post("/device/<any(avd,redroid,genymotion):provider>/start")
 @require_token
 @device_operation_request()
-def device_preflight():
+def device_preflight(provider=None):
     from arknights_mower.__main__ import device_control
     from arknights_mower.utils.csleep import MowerExit
     from arknights_mower.utils.device.preflight import (
@@ -1445,14 +1443,10 @@ def device_preflight():
     payload = request.get_json(silent=True)
     discovery = request.path == "/device/discover"
     start_bound = request.path == "/device/start"
-    start_avd = request.path == "/device/avd/start"
-    start_redroid = request.path == "/device/redroid/start"
-    start_genymotion = request.path == "/device/genymotion/start"
-    start_confirmed = start_avd or start_redroid or start_genymotion
     allowed = {"device"} if discovery else {"device", "confirmed_package"}
     if discovery or request.path == "/device/preflight":
         allowed.add("start_manager")
-    if start_confirmed:
+    if provider is not None:
         allowed.add("confirmed_instance")
     if not isinstance(payload, dict) or set(payload) - allowed:
         return {
@@ -1465,7 +1459,7 @@ def device_preflight():
             "message": "管理服务启动参数必须是布尔值",
         }, 400
     device = payload.get("device", {})
-    if start_confirmed and (
+    if provider is not None and (
         not isinstance(payload.get("confirmed_instance"), str)
         or not payload["confirmed_instance"].strip()
     ):
@@ -1536,14 +1530,12 @@ def device_preflight():
             return device_control.start_bound(
                 configuration, confirmed_package=confirmed
             ).to_dict()
-        if start_confirmed:
-            launch = (
-                device_control.start_avd
-                if start_avd
-                else device_control.start_redroid
-                if start_redroid
-                else device_control.start_genymotion
-            )
+        if provider is not None:
+            launch = {
+                "avd": device_control.start_avd,
+                "redroid": device_control.start_redroid,
+                "genymotion": device_control.start_genymotion,
+            }[provider]
             return launch(
                 configuration,
                 confirmed_instance=payload["confirmed_instance"],
