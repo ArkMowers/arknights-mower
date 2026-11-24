@@ -1977,8 +1977,10 @@ class EmergencyRecoveryMixin:
                     current = self.op_data.get_current_operator(room, index)
                     if current is None or current.name != name:
                         plan.setdefault(room, ["Current"] * len(original))[index] = name
+        self._resolve_emergency_dorm_manager_moves(plan, state, reserved, slots)
         compact_dorm_vacancies(self.op_data, plan)
         if not plan:
+            state.pop("dorm_replan_plan", None)
             if reallocate:
                 state["dorm_replan_pending"] = False
             return
@@ -1987,6 +1989,44 @@ class EmergencyRecoveryMixin:
         task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan=plan)
         task.emergency_dorm = True
         self.tasks.append(task)
+
+    def _resolve_emergency_dorm_manager_moves(self, plan, state, reserved, slots):
+        data = self.op_data
+        assigned = {name for row in plan.values() for name in row}
+        for room, original in state.get("dorm_layout", {}).items():
+            if room not in plan:
+                continue
+            row = plan[room]
+            for index, name in enumerate(original):
+                if index >= len(row) or row[index] != name:
+                    continue
+                manager = data.operators.get(name)
+                if manager is None or manager.current_room != room:
+                    continue
+                source = manager.current_index
+                if not 0 <= source < len(row) or row[source] != "Current":
+                    continue
+                # 在本房调换床位时明确写入原位置，避免 Current 保留同一名宿管。
+                resident = data.get_current_operator(room, index)
+                if (
+                    name not in reserved
+                    and (room, index) not in slots
+                    and (room, source) not in slots
+                    and data.plan[room][index].agent == name
+                    and data.plan[room][source].agent == "Free"
+                    and resident is not None
+                    and resident.name not in reserved
+                    and resident.name not in assigned
+                    and data.dorm_capacity_allows(
+                        resident.name, (room, source), plan=plan
+                    )
+                ):
+                    row[source] = resident.name
+                    assigned.add(resident.name)
+                else:
+                    row[index] = "Current"
+            if all(name == "Current" for name in row):
+                del plan[room]
 
     def _emergency_release_ready(self):
         """个人实测达标后只清空宿舍位置，待命主班不改变临时工作组合。"""

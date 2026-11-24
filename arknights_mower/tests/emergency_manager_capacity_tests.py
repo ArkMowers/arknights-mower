@@ -59,6 +59,59 @@ def setup_episode(solver, count, *, fiammetta=False):
     return data, state
 
 
+@pytest.mark.parametrize("saved_plan", [False, True])
+def test_rescue_returns_manager_from_another_slot_without_losing_resident(
+    solver, saved_plan
+):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 0)
+    sleeper = COVERS[0]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", sleeper, "Current", "Current", "Current"]}]
+    )
+    data.plan[room][0].agent = "Free"
+    if saved_plan:
+        state["dorm_replan_pending"] = True
+        state["dorm_replan_plan"] = {room: ["Current", "闪灵", *["Current"] * 3]}
+
+    solver._emergency_plan_beds(state)
+
+    task = solver.tasks.pop()
+    assert task.emergency_dorm
+    assert task.plan[room] == [sleeper, "闪灵", *["Current"] * 3]
+    solver.op_data = data.project_arrangements([task.plan])
+    solver._emergency_plan_beds(state)
+    assert not solver.tasks
+    assert not state.get("dorm_replan_pending")
+    assert "dorm_replan_plan" not in state
+
+
+def test_saved_manager_return_waits_for_reserved_source_slot(solver):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 0)
+    sleeper = COVERS[0]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", sleeper, "Current", "Current", "Current"]}]
+    )
+    data.plan[room][0].agent = "Free"
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {room: ["Current", "闪灵", *["Current"] * 3]}
+    reservation = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER, task_plan={room: ["Free"]}
+    )
+    solver.tasks.append(reservation)
+
+    solver._emergency_plan_beds(state)
+    solver._emergency_plan_beds(state)
+
+    assert len(solver.tasks) == 1 and solver.tasks[0] is reservation
+    assert "dorm_replan_plan" not in state
+    assert data.get_current_room(room, True)[:2] == ["闪灵", sleeper]
+    solver.tasks.remove(reservation)
+    solver._emergency_plan_beds(state)
+    assert solver.tasks[0].plan[room] == [sleeper, "闪灵", *["Current"] * 3]
+
+
 def test_high_need_opens_every_slot_and_produces_full_capacity_plan(solver):
     data, state = setup_episode(solver, 10)
 
