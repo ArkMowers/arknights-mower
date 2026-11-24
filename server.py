@@ -2075,6 +2075,17 @@ def item_list():
     return list(workshop_formula.keys())
 
 
+@app.route("/workshop-material-options")
+@require_token
+def workshop_material_options():
+    from arknights_mower.data import workshop_formula
+
+    return [
+        {"name": name, "tab": recipe["tab"], "apCost": recipe["apCost"]}
+        for name, recipe in list(workshop_formula.items())
+    ]
+
+
 @app.route("/depot/readdepot")
 @require_token
 def read_depot():

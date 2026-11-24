@@ -1,5 +1,7 @@
 """Independent Deer fodder: saved limits survive automatic crafting and restore."""
 
+from unittest.mock import Mock
+
 import pytest
 
 from arknights_mower.tests.workshop_plan_fixtures import next_skill as next_skill
@@ -38,6 +40,36 @@ def test_options_include_books_t2_t3_and_carbon_but_not_t4(next_skill):
         for recipe in (workshop_formula[name] for name in response.json)
     )
     assert set(response.json) < set(client.get("/item").json)
+
+
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_workshop_material_options_require_token_before_reading_recipes(
+    method, next_skill, monkeypatch
+):
+    import server
+    from arknights_mower import data
+
+    formulas = Mock(wraps=data.workshop_formula)
+    monkeypatch.setattr(data, "workshop_formula", formulas)
+    monkeypatch.setattr(server.app, "token", "workshop-options-test", raising=False)
+    client = server.app.test_client()
+    endpoint = "/workshop-material-options"
+
+    assert client.open(endpoint, method=method).status_code == 403
+    assert (
+        client.open(endpoint, method=method, headers={"token": "wrong"}).status_code
+        == 403
+    )
+    formulas.items.assert_not_called()
+
+    response = client.open(endpoint, method=method, headers={"token": server.app.token})
+    assert response.status_code == 200
+    formulas.items.assert_called_once_with()
+    if method == "GET":
+        options = {option["name"]: option for option in response.json}
+        assert options["聚合剂"] == {"name": "聚合剂", "tab": "精英材料", "apCost": 8}
+        assert options["糖聚块"] == {"name": "糖聚块", "tab": "精英材料", "apCost": 4}
+        assert options["碳素组"] == {"name": "碳素组", "tab": "基建材料", "apCost": 4}
 
 
 def test_default_materials_are_retained_and_empty_selection_stays_empty(next_skill):

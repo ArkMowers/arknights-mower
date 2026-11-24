@@ -1545,7 +1545,7 @@ describe('desktop page startup', () => {
       if (url.endsWith('/plan')) return plan.promise
       if (url.endsWith('/weekly-plans')) return weeklyPlan.promise
       if (url.endsWith('/shop')) return shop.promise
-      if (url.endsWith('/item')) return items.promise
+      if (url.endsWith('/workshop-material-options')) return items.promise
       if (url.endsWith('/operator')) return Promise.resolve({ data: ['阿米娅', '红'] })
       throw new Error(`Unexpected request: ${url}`)
     })
@@ -1590,7 +1590,7 @@ describe('desktop page startup', () => {
       plan.resolve({ data: planData })
       weeklyPlan.resolve({ data: { plans: ['默认'] } })
       shop.resolve({ data: ['招聘许可', '家具零件'] })
-      items.resolve({ data: ['固源岩'] })
+      items.resolve({ data: [{ name: '固源岩', tab: '精英材料', apCost: 1 }] })
       await mounting
     }
     await state.config.flush_config_saves()
@@ -1598,7 +1598,9 @@ describe('desktop page startup', () => {
       { value: '招聘许可', label: '招聘许可' },
       { value: '家具零件', label: '家具零件' }
     ])
-    expect(state.config.item_list).toEqual([{ value: '固源岩', label: '固源岩' }])
+    expect(state.config.item_list).toEqual([
+      { value: '固源岩', label: '固源岩', tab: '精英材料', apCost: 1 }
+    ])
     expect(state.client.patch).not.toHaveBeenCalled()
   })
 

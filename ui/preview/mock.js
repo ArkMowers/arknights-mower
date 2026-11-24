@@ -1,5 +1,6 @@
 import { defaultSettingsFavorites, validSettingsFavorites } from '../src/task-workflow/model'
 import axios, { AxiosError } from 'axios'
+import workshopFormula from '../../arknights_mower/data/workshop_formula.json'
 import screenshot from './screenshot.svg?raw'
 import { DEFAULT_SKLAND_PREFERENCES } from '../src/stores/sklandPreferences.js'
 import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '../src/utils/depot_inventory.js'
@@ -989,6 +990,8 @@ export function createPreviewAdapter(data, requests = []) {
       '/config-profiles': profileList,
       '/shop': () => ['龙门币', '招聘许可', '赤金'],
       '/item': () => ['龙门币', '赤金', '源岩'],
+      '/workshop-material-options': () =>
+        Object.entries(workshopFormula).map(([name, { tab, apCost }]) => ({ name, tab, apCost })),
       '/report/getReportData': () => clone(data.baseReport.report),
       '/report/getOrundumData': () => clone(data.baseReport.orundum),
       '/report/trading_history': () => clone(data.baseReport.trading),
