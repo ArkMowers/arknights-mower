@@ -126,6 +126,35 @@ describe('基报读取 Mower 收益设置', () => {
     vi.useRealTimers()
   })
 
+  it('限制旧缓存的柱数，刷新或读取失败时保留已经读到的空报表', async () => {
+    const setItem = vi.fn()
+    vi.stubGlobal('localStorage', {
+      getItem: () => JSON.stringify({ days: 61, hasData: true }),
+      setItem
+    })
+    const scope = effectScope()
+    try {
+      const page = scope.run(() => Report.setup({}, { expose: vi.fn() }))
+      expect(page.initialLoading.value).toBe(true)
+      expect(page.skeletonShape.days).toBe(60)
+      state.report = []
+      await page.load()
+      await nextTick()
+      expect(JSON.parse(setItem.mock.lastCall[1])).toEqual({ hasData: false, days: 0 })
+      const writes = setItem.mock.calls.length
+      state.client.get.mockRejectedValueOnce(new Error('offline'))
+      const refresh = page.load()
+      expect(page.initialLoading.value).toBe(false)
+      await refresh
+      await nextTick()
+      expect(page.loadError.value).toBeTruthy()
+      expect(page.valuation.value).toBeTruthy()
+      expect(setItem).toHaveBeenCalledTimes(writes)
+    } finally {
+      scope.stop()
+    }
+  })
+
   it('仅选择订单指标时查询含当前游戏日的小时记录，并保留四小时默认周期', async () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-10-28T10:00:00+08:00'))

@@ -12,6 +12,7 @@ vi.mock('axios', () => ({ default: { get: vi.fn(), put: vi.fn(), delete: vi.fn()
 vi.mock('reconnecting-websocket', () => ({
   default: vi.fn(function MockSocket() {
     this.send = vi.fn()
+    this.close = vi.fn()
   })
 }))
 
@@ -454,6 +455,32 @@ describe('worker status', () => {
 const logAt = (value) => Date.parse(value.replace(' ', 'T'))
 
 describe('log WebSocket access', () => {
+  it('waits for the current subscription snapshot and retains records across a disconnect', () => {
+    vi.stubGlobal('window', { location: { search: '' } })
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:58000' })
+    const store = useMowerStore(createPinia())
+    store.listen_ws()
+    const socket = store.ws
+    const send = (payload) =>
+      socket.onmessage({ data: JSON.stringify({ type: 'log', ...payload }) })
+    socket.onopen()
+    send({ stream_id: 'run', snapshot: true, records: [{ seq: 1, msg: '已有记录' }] })
+    expect(store.log_history_ready).toBe(true)
+    socket.onclose()
+    expect(store.log_history_ready).toBe(false)
+    expect(store.log).toBe('已有记录')
+    socket.onopen()
+    send({})
+    send({ stream_id: 'run', snapshot: false, records: [], evicted: [] })
+    expect(store.log_history_ready).toBe(false)
+    expect(store.log).toBe('已有记录')
+    send({ stream_id: 'run', snapshot: true, records: [] })
+    expect(store.log_history_ready).toBe(true)
+    expect(store.log_lines).toEqual([])
+    store.$dispose()
+    expect(socket.close).toHaveBeenCalledOnce()
+  })
+
   it('marks the log history as received on the first log message, even when it is empty', () => {
     vi.stubGlobal('window', { location: { search: '' } })
     vi.stubGlobal('location', { origin: 'http://127.0.0.1:58000' })

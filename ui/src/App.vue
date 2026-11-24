@@ -96,7 +96,7 @@
           </n-space>
         </n-modal>
         <n-dialog-provider>
-          <ConfigProfilesController :controller="configProfiles" />
+          <ConfigProfilesController v-if="loaded || !startupError" :controller="configProfiles" />
           <component
             :is="SidebarEditor"
             v-if="SidebarEditor"
@@ -184,6 +184,10 @@
                     :y-offset="60"
                     :rotate="-15"
                   />
+                  <n-alert v-if="startupError && bootRevealed" type="error" role="alert">
+                    {{ startupError }}
+                    <n-button @click="reloadPage">重新加载</n-button>
+                  </n-alert>
                   <ConfigSaveNotice />
                   <CrashRecoveryNotice v-if="loaded" />
                   <router-view
@@ -192,7 +196,7 @@
                     :route="contentRoute"
                   >
                     <keep-alive include="TaskSettings">
-                      <component :is="Component" />
+                      <component :is="Component" @vue:mounted="releaseBoot('first-page')" />
                     </keep-alive>
                   </router-view>
                   <SettingsDialog
@@ -312,7 +316,6 @@ import {
   computed,
   defineAsyncComponent,
   inject,
-  nextTick,
   onBeforeUnmount,
   onMounted,
   provide,
@@ -322,7 +325,7 @@ import {
   watchPostEffect
 } from 'vue'
 import AppSidebar from '@/components/AppSidebar.vue'
-import { bootScreenActive, failBoot, releaseBoot } from '@/boot/bootScreen'
+import { bootRevealed, bootScreenActive, failBoot, holdBoot, releaseBoot } from '@/boot/bootScreen'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
@@ -478,6 +481,23 @@ function handleViewAction(action) {
     changeZoom(action)
   }
 }
+const props = defineProps({ firstPageFailed: Boolean })
+const startupError = ref('')
+function showStartupError(message) {
+  if (startupError.value) return
+  startupError.value = message
+  failBoot(message)
+}
+function reloadPage() {
+  window.location.reload()
+}
+watch(
+  () => props.firstPageFailed,
+  (failed) => {
+    if (failed) showStartupError('首个页面加载失败，请重新加载。')
+  },
+  { immediate: true }
+)
 const route = useRoute()
 const router = useRouter()
 const settingsDirectoryMode = computed(() => route.meta.settingsSidebar === true)
@@ -986,16 +1006,14 @@ onMounted(async () => {
   disposeModalDrag = installModalDragging()
   actions_on_resize()
   document.addEventListener('visibilitychange', handleLogVisibilityChange)
-  window.addEventListener('resize', () => {
-    actions_on_resize()
-  })
+  window.addEventListener('resize', actions_on_resize)
 
   const token = instanceToken()
   provide('token', token)
   axios.defaults.headers.common['token'] = token
   void guiStore.load()
   if (!(await configProfiles.bootstrap())) {
-    failBoot(
+    showStartupError(
       configProfiles.error.value
         ? `无法读取配置档案：${configProfiles.error.value}`
         : '无法读取配置档案，请确认 Mower 仍在运行后重新加载。'
@@ -1026,7 +1044,8 @@ onMounted(async () => {
     ])
   } catch (error) {
     console.error('failed to load startup configuration', error)
-    failBoot('无法读取 Mower 配置，请确认 Mower 仍在运行后重新加载。')
+    const reason = error?.response?.data?.message || error?.message
+    showStartupError(reason ? `读取启动数据失败：${reason}` : '读取启动数据失败，请重新加载。')
     return
   }
 
@@ -1074,13 +1093,10 @@ onMounted(async () => {
     }
   })()
 
+  // 配置已就绪，首个路由组件和它的背景图共用页面的等待上限。
+  holdBoot('first-page')
   loaded.value = true
-  // 内容页的代码按需载入；等它画进启动画面下面再释放，由页面决定是否还要等待。
-  if (bootScreenActive)
-    Promise.resolve(router.isReady?.())
-      .catch(() => {})
-      .then(() => nextTick())
-      .then(() => releaseBoot('app'))
+  releaseBoot('app')
   void loadStartupUpdateNotice()
 
   const r = RegExp(operators_with_free_current.value.map((x) => "'" + x.value).join('|'))
@@ -1141,6 +1157,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   clearTimeout(closePollTimer)
+  window.removeEventListener('resize', actions_on_resize)
   document.removeEventListener('visibilitychange', handleLogVisibilityChange)
   disposeModalDrag?.()
   windowShell.dispose()

@@ -97,7 +97,7 @@
             class="skill-list"
           >
             <template #default="{ item }">
-              <BasementSkillRows :key="item.key" :item="item" :placeholder="rowPlaceholder(item)" />
+              <BasementSkillRows :key="item.key" :item="item" :placeholder="rowPlaceholder" />
             </template>
           </n-virtual-list>
         </n-tab-pane>
@@ -121,7 +121,7 @@ import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useBasementSkill } from '@/stores/basementSkill'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape } from '@/utils/skeletonShape'
 import { usePlanStore } from '@/stores/plan'
 import { planRecommendationConditions } from '@/utils/baseRecommendationConditions'
 import {
@@ -199,23 +199,14 @@ function resetFilters() {
   status_select.value = null
 }
 
-// 首次读取练度快照时，持有标签、技能状态和练度一行先画成占位块。没读过或上次没有练度数据
-// （没有同步森空岛练度）时不占位；上次有练度时，没有持有标签的干员不画标签占位，上次有练度
-// 的干员才画练度一行。
-const skeletonShape = readSkeletonShape('basement-skill', {
-  known: false,
-  progressed: [],
-  untagged: []
-})
-const progressed = new Set(skeletonShape.progressed)
-const untagged = new Set(skeletonShape.untagged)
-const skillPlaceholder = computed(
-  () => (loading.value || !snapshotRequested.value) && !snapshot.value && skeletonShape.known
+// 冷启动只复用整张表共有的行布局，逐个干员的标签和练度等本次快照返回后再显示。
+const shapeCache = createSkeletonShape('basement-skill', { allTagged: false, allProgressed: false })
+const skeletonShape = shapeCache.read()
+const rowPlaceholder = computed(() =>
+  !snapshot.value && (loading.value || !snapshotRequested.value) && skeletonShape.allTagged
+    ? { progression: skeletonShape.allProgressed }
+    : null
 )
-function rowPlaceholder(item) {
-  if (!skillPlaceholder.value || untagged.has(item.avatar)) return null
-  return { progression: progressed.has(item.avatar) }
-}
 
 async function loadOwnedOperators() {
   loading.value = true
@@ -223,12 +214,11 @@ async function loadOwnedOperators() {
   error.value = ''
   try {
     await readOwnedOperators()
-    saveSkeletonShape('basement-skill', {
-      known: Boolean(snapshot.value?.has_data),
-      progressed: skill_items.value.filter((item) => item.progression).map((item) => item.avatar),
-      untagged: skill_items.value
-        .filter((item) => !ownershipLabels[item.ownership])
-        .map((item) => item.avatar)
+    const rows = skill_items.value
+    const known = Boolean(snapshot.value?.has_data && rows.length)
+    shapeCache.save({
+      allTagged: known && rows.every((item) => Boolean(ownershipLabels[item.ownership])),
+      allProgressed: known && rows.every((item) => Boolean(item.progression))
     })
   } catch (e) {
     error.value = `读取森空岛练度失败：${e.message || e}`

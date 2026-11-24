@@ -113,6 +113,33 @@ describe('mood card loading skeleton', () => {
   const render = (props) =>
     renderToString(createSSRApp({ render: () => h(MoodCardGrid, props, { default: () => [] }) }))
 
+  it('bounds both the number of cached cards and the badges inside a card', async () => {
+    vi.stubGlobal('localStorage', {
+      getItem: () => JSON.stringify({ cards: 13, operators: [Array(17).fill(20)] }),
+      setItem: vi.fn()
+    })
+    try {
+      const html = await renderToString(
+        createSSRApp({
+          render: () =>
+            h(
+              MoodCardGrid,
+              { groups: [], loading: true, shapeKey: 'record-line' },
+              {
+                placeholder: ({ operators }) =>
+                  operators.map((width) => h('span', { 'data-width': width }))
+              }
+            )
+        })
+      )
+      expect(html.match(/mood-card-skeleton"/g)).toHaveLength(12)
+      expect(html.match(/data-width="16"/g)).toHaveLength(16)
+      expect(html.match(/data-width="3"/g)).toHaveLength(33)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('draws card placeholders only while the first read has no cards', async () => {
     const loading = await render({ groups: [], loading: true, loadingLabel: '正在读取心情记录' })
     expect(loading).toContain('<span class="loading-skeleton__label">正在读取心情记录</span>')

@@ -17,9 +17,6 @@
     }
     root.dataset.mowerTheme = theme === 'dark' ? 'dark' : 'light'
     if (params.get('window_shell') === '1') root.dataset.mowerBootShell = ''
-    document.addEventListener('click', (event) => {
-      if (event.target.closest?.('[data-boot-retry]')) location.reload()
-    })
   })()
 </script>
 <style>
@@ -315,7 +312,9 @@
   .mower-boot--failed .mower-boot__skeleton {
     opacity: 0.5;
   }
-  .mower-boot--failed .mower-boot__skeleton :is(*, ::before, ::after) {
+  .mower-boot--failed .mower-boot__skeleton *,
+  .mower-boot--failed .mower-boot__skeleton *::before,
+  .mower-boot--failed .mower-boot__skeleton *::after {
     animation: none;
     background-image: none;
   }
@@ -490,3 +489,20 @@
     </div>
   </div>
 </div>
+<script>
+  ;(() => {
+    const screen = document.getElementById('mower-boot')
+    screen.querySelector('[data-boot-retry]').addEventListener('click', () => location.reload())
+    // 入口模块下载失败时 Vue 尚未挂载，由静态页面显示重试按钮。
+    function entryFailed(event) {
+      if (!event.target?.matches?.('script[type="module"][src]')) return
+      screen.querySelector('[data-boot-error]').textContent = '界面脚本加载失败，请重新加载。'
+      screen.setAttribute('aria-busy', 'false')
+      screen.classList.add('mower-boot--failed')
+    }
+    window.addEventListener('error', entryFailed, true)
+    window.addEventListener('load', () => window.removeEventListener('error', entryFailed, true), {
+      once: true
+    })
+  })()
+</script>

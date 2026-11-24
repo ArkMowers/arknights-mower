@@ -107,6 +107,25 @@ describe('startup screen', () => {
     expect(screen.revealed.value).toBe(false)
   })
 
+  it('does not start waiting again for a late page after the shared page deadline', () => {
+    const { flushFrames, screen } = setup()
+    screen.hold('first-page')
+    vi.advanceTimersByTime(BOOT_PAGE_LIMIT)
+    screen.hold('log')
+    screen.release('app')
+    flushFrames()
+    expect(screen.revealed.value).toBe(true)
+  })
+
+  it('cancels the frame fallback when startup fails before the next paint', () => {
+    const { screen, flushFrames } = setup()
+    screen.release('app')
+    screen.fail('首个页面加载失败')
+    expect(vi.getTimerCount()).toBe(0)
+    flushFrames()
+    expect(screen.revealed.value).toBe(false)
+  })
+
   it('still fades out when animation frames are paused', () => {
     const { frames, screen } = setup()
     screen.release('app')

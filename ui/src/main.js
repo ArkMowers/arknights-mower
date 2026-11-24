@@ -15,16 +15,21 @@ if (isRelayPage()) {
     return Promise.reject(error)
   })
 }
+// 首次导航从 app.use(router) 开始。配置或中转登录结束后再订阅会错过已经发生的加载错误。
+const firstPageFailed = ref(false)
+router.isReady().catch(() => {
+  firstPageFailed.value = true
+})
 const ready = ref(!isRelayPage())
 const app = createApp({
   render: () =>
     ready.value
-      ? h(App)
+      ? h(App, { firstPageFailed: firstPageFailed.value })
       : h(RelayInstanceToken, {
           onReady: () => {
             ready.value = true
           },
-          // 中继页先要输入实例 Token，启动画面不能挡住表单。
+          // 中转登录表单挂载后即可输入实例 Token。
           onVnodeMounted: () => releaseBoot('app')
         })
 })

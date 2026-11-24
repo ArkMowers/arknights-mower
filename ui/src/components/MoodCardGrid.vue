@@ -2,7 +2,7 @@
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { createDragPreview } from '@/utils/dragPreview'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape, skeletonCount, skeletonList } from '@/utils/skeletonShape'
 
 const props = defineProps({
   groups: { type: Array, required: true },
@@ -17,27 +17,32 @@ const props = defineProps({
   loadFailed: { type: Boolean, default: false }
 })
 const MAX_SKELETON_CARDS = 12
-const skeletonShape = props.shapeKey
-  ? readSkeletonShape(props.shapeKey, { cards: 6, operators: [] })
-  : { cards: 6, operators: [] }
 const DEFAULT_OPERATORS = [3, 3, 3]
+const MAX_OPERATORS_PER_CARD = 16
+const shapeCache = createSkeletonShape(props.shapeKey, {
+  cards: skeletonCount(MAX_SKELETON_CARDS, 6),
+  operators: skeletonList(
+    MAX_SKELETON_CARDS,
+    skeletonList(MAX_OPERATORS_PER_CARD, skeletonCount(16, 3), DEFAULT_OPERATORS)
+  )
+})
+const skeletonShape = props.shapeKey ? shapeCache.read() : { cards: 6, operators: [] }
 const skeletonCards = Array.from(
-  { length: Math.min(Number(skeletonShape.cards) || 0, MAX_SKELETON_CARDS) },
-  (_, index) => {
-    const names = skeletonShape.operators?.[index]
-    return Array.isArray(names) ? names.map((length) => Number(length) || 0) : DEFAULT_OPERATORS
-  }
+  { length: skeletonShape.cards },
+  (_, index) => skeletonShape.operators[index] ?? DEFAULT_OPERATORS
 )
 watch(
   () => !props.loading && props.groups.length,
   (cards) => {
     if (!props.shapeKey || cards === false || props.loadFailed) return
-    saveSkeletonShape(props.shapeKey, {
+    shapeCache.save({
       cards,
       operators: props.groups
         .slice(0, MAX_SKELETON_CARDS)
         .map((group) =>
-          (group.moodData?.datasets ?? []).map((dataset) => [...String(dataset.label ?? '')].length)
+          (group.moodData?.datasets ?? [])
+            .slice(0, MAX_OPERATORS_PER_CARD)
+            .map((dataset) => [...String(dataset.label ?? '')].length)
         )
     })
   }

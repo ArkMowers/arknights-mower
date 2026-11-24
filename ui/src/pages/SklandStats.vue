@@ -20,7 +20,7 @@ import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import { buildRewardDistribution, buildRewardReport } from '@/skland/rewardReport'
 import { useSklandPreferencesStore } from '@/stores/sklandPreferences'
 import { isRelayPage } from '@/utils/instanceToken'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape, skeletonCount, skeletonList } from '@/utils/skeletonShape'
 import {
   addDays,
   buildCalendar,
@@ -65,6 +65,7 @@ const failureSelection = ref(null)
 const retry = ref({ busy: false, message: '', error: false })
 const data = shallowRef(null)
 const loading = ref(!relayPage)
+const monthlyRewardsSettled = ref(false)
 const error = ref('')
 const account = computed({
   get: () => preferences.value.account,
@@ -160,6 +161,8 @@ async function loadMonthlyRewards(version, target, refreshProgress, inFlight) {
     if (version === requestVersion) {
       monthlyRewardsError.value = failure.response?.data?.error || '所选月份的奖励读取失败'
     }
+  } finally {
+    if (version === requestVersion) monthlyRewardsSettled.value = true
   }
 }
 
@@ -672,22 +675,36 @@ const summary = computed(
       today: today.value
     })
 )
-const sklandSkeleton = computed(() => !data.value && loading.value)
+const sklandSkeleton = computed(
+  () =>
+    loading.value &&
+    !monthlyRewardsSettled.value &&
+    !selectedChannel.value &&
+    !failureLog.value.entries.length
+)
 // 记下上次读完后的版面，读取中按此占位：有没有签到日历（没有任何渠道时只显示提示）、账号
 // 选择框和渠道数、森空岛进度和本机记录两项读数、本机连续签到一行、奖励统计面板，以及各区服的
 // 奖励数。没有用 Mower 签到时本机记录、连续签到和统计面板都不出现，骨架也不画。
-const skeletonShape = readSkeletonShape('skland', {
+const chipWidths = skeletonList(
+  8,
+  (width) => (Number.isFinite(width) ? Math.min(16, Math.max(1, width)) : 5.6),
+  [5.6, 5.6]
+)
+const shapeCache = createSkeletonShape('skland', {
   calendar: true,
   select: false,
-  chips: 2,
+  // 旧版按渠道数占位，新版保留每个渠道名占用的宽度。
+  chips: (value) =>
+    typeof value === 'number' ? Array(skeletonCount(8, 2)(value)).fill(5.6) : chipWidths(value),
   skland: true,
   local: true,
   streak: false,
   stats: true,
   game: true,
-  groups: [6],
-  months: 0
+  groups: skeletonList(4, skeletonCount(24), [6]),
+  months: skeletonCount(12)
 })
+const skeletonShape = shapeCache.read()
 watch(
   () => [
     loading.value,
@@ -699,10 +716,18 @@ watch(
     rewardReport.value
   ],
   () => {
-    if (!data.value || loading.value || statsLoading.value) return
+    if (
+      !monthLoaded.value ||
+      loading.value ||
+      statsLoading.value ||
+      error.value ||
+      monthlyRewardsError.value ||
+      statsError.value
+    )
+      return
     const channel = selectedChannel.value
     const report = rewardReport.value
-    saveSkeletonShape('skland', {
+    shapeCache.save({
       calendar: Boolean(channel),
       select: new Set(channels.value.map((item) => item.account)).size > 1,
       chips: channels.value
@@ -1158,7 +1183,7 @@ onUnmounted(() => {
         v-if="sklandSkeleton && skeletonShape.stats"
         loading
         :placeholder-groups="skeletonShape.groups"
-        :placeholder-months="Number(skeletonShape.months) || 0"
+        :placeholder-months="skeletonShape.months"
       >
         <template #controls>
           <div class="stats-controls" inert>

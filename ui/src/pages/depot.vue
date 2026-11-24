@@ -1214,6 +1214,7 @@ import {
   computeDrawCount,
   countByTier,
   DEFAULT_BASELINE_CONFIG,
+  DEPOT_TIERS,
   DRAW_TIERS,
   filterItems,
   flattenItems,
@@ -1233,7 +1234,7 @@ import {
   TRAINING_TARGETS,
   usableSnapshots
 } from '@/utils/depot_inventory'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape, skeletonCount, skeletonList } from '@/utils/skeletonShape'
 import { itemIconUrl } from '@/utils/itemIconUrl'
 
 use([
@@ -1612,20 +1613,26 @@ const groupedItems = computed(() => {
 // 每次读到仓库数据后记下一次；这是浏览器里的版面缓存，不是实例偏好。
 // 读取在挂载后才开始：还没读到也没有失败时都算读取中，第一帧不会先闪出“尚未检测到”。
 const depotSkeleton = computed(() => !reportLoaded.value && !reportError.value)
-const skeletonShape = computed(() =>
-  depotSkeleton.value
-    ? readSkeletonShape('depot', {
-        draws: DRAW_TIERS.length,
-        currencies: ['龙门币', '至纯源石', '合成玉', '高级凭证', '资质凭证', '招聘许可'],
-        exp: true,
-        groups: [
-          ['A', 12],
-          ['B', 4],
-          ['C', 12]
-        ]
-      })
-    : null
-)
+const coreCurrencies = ['龙门币', '至纯源石', '合成玉', '高级凭证', '资质凭证', '招聘许可']
+const shapeCache = createSkeletonShape('depot', {
+  draws: skeletonCount(DRAW_TIERS.length, DRAW_TIERS.length),
+  currencies: (value) =>
+    Array.isArray(value) ? coreCurrencies.filter((name) => value.includes(name)) : coreCurrencies,
+  exp: true,
+  groups: skeletonList(
+    DEPOT_TIERS.length,
+    (row) => {
+      if (!Array.isArray(row) || !DEPOT_TIERS.some((tier) => tier.key === row[0])) return undefined
+      return [row[0], skeletonCount(24)(row[1])]
+    },
+    [
+      ['A', 12],
+      ['B', 4],
+      ['C', 12]
+    ]
+  )
+})
+const skeletonShape = computed(() => (depotSkeleton.value ? shapeCache.read() : null))
 const skeletonGroups = computed(() =>
   (skeletonShape.value?.groups ?? []).map(([key, count]) => ({ ...tierOf(key), count }))
 )
@@ -1633,7 +1640,7 @@ watch(
   () => depotStore.report,
   () => {
     if (!reportLoaded.value) return
-    saveSkeletonShape('depot', {
+    shapeCache.save({
       draws: highlights.value.draws.length,
       currencies: highlights.value.currencies.map((item) => item.name),
       exp: Boolean(highlights.value.exp),

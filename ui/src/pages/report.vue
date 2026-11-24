@@ -7,7 +7,7 @@ import PageHeader from '@/components/PageHeader.vue'
 import BaseReportHelp from '@/components/report/BaseReportHelp.vue'
 import StockReport from '@/components/report/StockReport.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape, skeletonCount } from '@/utils/skeletonShape'
 import SkeletonBarChart from '@/components/SkeletonBarChart.vue'
 import { registerTheme, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -305,17 +305,20 @@ const allDays = computed(() =>
 const days = computed(() => selectRange(allDays.value, range.value))
 const summary = computed(() => summarize(days.value))
 const ready = computed(() => !loading.value && !loadError.value && Boolean(valuation.value))
+const initialLoading = computed(() => loading.value && !valuation.value)
 const hasData = computed(() => days.value.length > 0)
 // 上次读完没有基报记录时，读取中不画骨架，保持空白，读完直接显示空状态。
-const skeletonShape = readSkeletonShape('report', { hasData: true, days: 14 })
-const skeletonDays = Math.min(Math.max(Number(skeletonShape.days) || 14, 1), 60)
+const shapeCache = createSkeletonShape('report', { hasData: true, days: skeletonCount(60, 14) })
+const skeletonShape = shapeCache.read()
 watch(
   ready,
   (value) =>
-    value && saveSkeletonShape('report', { hasData: hasData.value, days: days.value.length })
+    value &&
+    !partialWarning.value &&
+    shapeCache.save({ hasData: hasData.value, days: days.value.length })
 )
 // 读取完成后即提供终端指标切换，允许没有基报的实例查看已记录订单。
-const stockFill = computed(() => isStock.value && (hasData.value || ready.value))
+const stockFill = computed(() => isStock.value && Boolean(valuation.value))
 
 // ---- 订单分布：按贸易订单记录拆分的龙门币订单金额 ----
 const orderRows = computed(() =>
@@ -1115,7 +1118,7 @@ function cell(day, key) {
       </n-modal>
 
       <!-- 骨架与读完后的标准布局用同一套 class：标题、标签、图标照常显示，只有数据处是占位块。 -->
-      <LoadingSkeleton v-if="loading && !hasData && !isStock" class="skeleton" label="正在读取基报">
+      <LoadingSkeleton v-if="initialLoading && !isStock" class="skeleton" label="正在读取基报">
         <template v-if="skeletonShape.hasData">
           <section class="overview">
             <div class="overview__day">
@@ -1175,7 +1178,7 @@ function cell(day, key) {
               </header>
               <SkeletonBarChart
                 class="chart chart--main"
-                :bars="skeletonDays"
+                :bars="skeletonShape.days"
                 :legend="[24, 48, 60, 24, 24]"
                 :plot="{ top: 61, right: 12, bottom: 23, left: 27 }"
               />
@@ -1262,7 +1265,7 @@ function cell(day, key) {
               </header>
               <SkeletonBarChart
                 class="chart"
-                :bars="skeletonDays"
+                :bars="skeletonShape.days"
                 :legend="[60, 60]"
                 :plot="{ top: 53, right: 42, bottom: 23, left: 49 }"
                 right-axis
@@ -1277,7 +1280,7 @@ function cell(day, key) {
               </header>
               <SkeletonBarChart
                 class="chart"
-                :bars="skeletonDays"
+                :bars="skeletonShape.days"
                 :plot="{ top: 21, right: 4, bottom: 23, left: 33 }"
               />
             </section>
@@ -1285,14 +1288,14 @@ function cell(day, key) {
         </template>
       </LoadingSkeleton>
 
-      <section v-else-if="ready && !hasData && !isStock" class="empty skeleton-reveal">
+      <section v-else-if="valuation && !hasData && !isStock" class="empty skeleton-reveal">
         <h2>还没有基报记录</h2>
         <p>在每日任务中启用「读取基报」，Mower 每天会读取一次基建报告。</p>
         <p>读取后即可查看每天的产出和收益。</p>
       </section>
 
       <!-- 股票模式在读取时也直接显示终端布局，由它自己在图表处提示行情加载中。 -->
-      <template v-else-if="hasData || (isStock && (ready || loading))">
+      <template v-else-if="hasData || (isStock && (valuation || loading))">
         <StockReport
           v-if="isStock"
           :days="days"

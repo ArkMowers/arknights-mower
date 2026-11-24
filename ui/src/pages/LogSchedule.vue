@@ -3,7 +3,7 @@ import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import { routeLocationKey } from 'vue-router'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape, skeletonCount } from '@/utils/skeletonShape'
 
 // 读取时骨架各行正文的宽度（百分比）依次取用；行数按上次读到的条数（列表可见部分为止），上次没有记录时不画行。
 const SKELETON_WIDTHS = [72, 54, 86, 62, 78, 46, 68, 58]
@@ -28,8 +28,12 @@ const logLoading = ref(false)
 // 打开页面就会读取异常记录和日志：第一次读取开始之前也画占位，第一帧不会先闪出“没有日志”。
 const eventsRequested = ref(false)
 const logsRequested = ref(false)
-const eventsBusy = computed(() => eventLoading.value || !eventsRequested.value)
-const logsBusy = computed(() => logLoading.value || !logsRequested.value)
+const eventsLoaded = ref(false)
+const windowLoaded = ref(false)
+const eventsBusy = computed(
+  () => !eventsLoaded.value && (eventLoading.value || !eventsRequested.value)
+)
+const logsBusy = computed(() => !windowLoaded.value && (logLoading.value || !logsRequested.value))
 const eventError = ref('')
 const logError = ref('')
 const activeEventId = ref('')
@@ -114,31 +118,22 @@ const windowLabel = computed(() => {
   const format = (value) => new Date(value).toLocaleString('zh-CN', { hour12: false })
   return `${format(first - 300000)} — ${format(last + 300000)}`
 })
-const skeletonShape = ref(
-  readSkeletonShape('log-schedule', { events: 4, logs: 8, screenshots: true })
-)
-// 读取日志时，上次的时段有截图就先画出截图区的序号、翻页和原图入口。
+const shapeCache = createSkeletonShape('log-schedule', {
+  events: skeletonCount(SKELETON_LIMIT.events, 4),
+  logs: skeletonCount(SKELETON_LIMIT.logs, 8),
+  screenshots: true
+})
+const skeletonShape = ref(shapeCache.read())
 const screenshotSkeleton = computed(() => logsBusy.value && skeletonShape.value.screenshots)
 const skeletonRows = (key) =>
   Array.from(
-    { length: Math.min(skeletonShape.value[key], SKELETON_LIMIT[key]) },
+    { length: skeletonShape.value[key] },
     (_, index) => SKELETON_WIDTHS[index % SKELETON_WIDTHS.length]
   )
 function rememberSkeletonShape(changes) {
   skeletonShape.value = { ...skeletonShape.value, ...changes }
-  saveSkeletonShape('log-schedule', skeletonShape.value)
+  shapeCache.save(skeletonShape.value)
 }
-watch(eventLoading, (loading, wasLoading) => {
-  if (wasLoading && !loading && !eventError.value)
-    rememberSkeletonShape({ events: Math.min(events.value.length, SKELETON_LIMIT.events) })
-})
-watch(logLoading, (loading, wasLoading) => {
-  if (wasLoading && !loading && !logError.value)
-    rememberSkeletonShape({
-      logs: Math.min(logs.value.length, SKELETON_LIMIT.logs),
-      screenshots: screenshots.value.length > 0
-    })
-})
 const visibleLogs = computed(() => {
   const search = searchText.value.trim().toLocaleLowerCase()
   return logs.value
@@ -208,6 +203,8 @@ async function loadEvents() {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors`)
     if (version !== eventRequestVersion) return
     events.value = response.data.events || []
+    eventsLoaded.value = true
+    rememberSkeletonShape({ events: Math.min(events.value.length, SKELETON_LIMIT.events) })
     selectedEventIds.value = selectedEvents.value.map((event) => event.id)
     if (browseMode.value === 'archives') {
       if (events.value.length) selectEvent(activeEvent.value || events.value[0])
@@ -226,6 +223,7 @@ async function loadEvents() {
 }
 
 function clearEvidence() {
+  windowLoaded.value = false
   showExportDialog.value = false
   logs.value = []
   screenshots.value = []
@@ -240,7 +238,8 @@ function clearEvidence() {
 
 async function loadLogs(center, event = null) {
   const version = ++requestVersion
-  clearEvidence()
+  if (loadedAt.value !== center || activeEventId.value !== (event?.id || '')) clearEvidence()
+  logError.value = ''
   activeEventId.value = event?.id || ''
   loadedAt.value = center
   logLoading.value = true
@@ -259,6 +258,11 @@ async function loadLogs(center, event = null) {
         ]
     imageIndex.value = imageNearest(center)
     truncated.value = !!response.data.truncated
+    windowLoaded.value = true
+    rememberSkeletonShape({
+      logs: Math.min(logs.value.length, SKELETON_LIMIT.logs),
+      screenshots: screenshots.value.length > 0
+    })
   } catch {
     if (version === requestVersion) logError.value = '日志读取失败，请点击刷新重试'
   } finally {
@@ -753,7 +757,7 @@ onMounted(() => {
         </div>
         <p class="panel-intro">选择记录，查看对应日志和留存画面。</p>
         <div v-if="eventError" class="state-message error" role="alert">{{ eventError }}</div>
-        <LoadingSkeleton v-else-if="eventsBusy" class="event-list" label="正在读取异常记录">
+        <LoadingSkeleton v-if="eventsBusy" class="event-list" label="正在读取异常记录">
           <template v-if="skeletonShape.events">
             <n-checkbox>
               全选（已选 0 /
@@ -778,8 +782,8 @@ onMounted(() => {
             </div>
           </template>
         </LoadingSkeleton>
-        <div v-else-if="!events.length" class="state-message">暂无异常记录</div>
-        <div v-else class="event-list">
+        <div v-else-if="!events.length && !eventError" class="state-message">暂无异常记录</div>
+        <div v-else-if="events.length" class="event-list">
           <n-checkbox
             :checked="allEventsSelected"
             :indeterminate="selectedEvents.length > 0 && !allEventsSelected"
@@ -859,7 +863,7 @@ onMounted(() => {
           当前显示此时段最近 1000 条日志，导出可获取完整日志。
         </p>
         <div v-if="logError" class="state-message error" role="alert">{{ logError }}</div>
-        <LoadingSkeleton v-else-if="logsBusy" class="log-list" label="正在读取日志">
+        <LoadingSkeleton v-if="logsBusy" class="log-list" label="正在读取日志">
           <article v-for="(width, index) in skeletonRows('logs')" :key="index" class="log-entry">
             <div class="log-meta">
               <time><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4.6em" /></time>
@@ -877,7 +881,7 @@ onMounted(() => {
             </div>
           </article>
         </LoadingSkeleton>
-        <div v-else-if="!visibleLogs.length" class="state-message">
+        <div v-else-if="!visibleLogs.length && !logError" class="state-message">
           {{
             logs.length
               ? '没有符合筛选条件的日志'
@@ -886,7 +890,7 @@ onMounted(() => {
                 : '这个时间段没有日志，可查看前后时段或跳到现在'
           }}
         </div>
-        <div v-else class="log-list">
+        <div v-else-if="visibleLogs.length" class="log-list">
           <article v-for="entry in visibleLogs" :key="entry.index" class="log-entry">
             <div class="log-meta">
               <time :title="entry.time">{{ entry.time.slice(11) }}</time>

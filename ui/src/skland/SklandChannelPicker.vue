@@ -13,13 +13,7 @@ const props = defineProps({
 })
 const placeholderShape = computed(() => {
   if (!props.placeholder) return null
-  const chips = props.placeholder === true ? 2 : props.placeholder.chips
-  return {
-    select: props.placeholder === true || Boolean(props.placeholder.select),
-    chips: (Array.isArray(chips) ? chips : Array(Math.max(Number(chips) || 0, 0)).fill(5.6))
-      .slice(0, 8)
-      .map((width) => Math.min(Math.max(Number(width) || 0, 1), 16))
-  }
+  return props.placeholder === true ? { select: true, chips: [5.6, 5.6] } : props.placeholder
 })
 const emit = defineEmits(['select'])
 

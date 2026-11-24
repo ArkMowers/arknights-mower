@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { runInNewContext } from 'node:vm'
+import { describe, expect, it, vi } from 'vitest'
 import { BOOT_SCREEN_PLACEHOLDER, bootScreen, injectBootScreen } from './bootScreen.js'
 
 const root = resolve(import.meta.dirname, '..')
@@ -42,6 +43,33 @@ describe('startup screen injection', () => {
     expect(status).not.toContain('data-boot-text')
     expect(status).toContain('<p class="mower-boot__message" data-boot-error></p>')
     expect(status).toMatch(/<button type="button" class="mower-boot__retry" data-boot-retry>/)
+  })
+
+  it('offers a working reload when the entry module cannot load', () => {
+    const markup = readFileSync(resolve(root, 'src/boot/boot-screen.html'), 'utf8')
+    const { Event, EventTarget, URLSearchParams } = globalThis
+    const retry = new EventTarget()
+    const reason = { textContent: '' }
+    const screen = {
+      querySelector: (selector) => (selector === '[data-boot-retry]' ? retry : reason),
+      classList: { add: vi.fn() },
+      setAttribute: vi.fn()
+    }
+    const window = { addEventListener: vi.fn(), removeEventListener: vi.fn() }
+    const location = { search: '', reload: vi.fn() }
+    const document = { documentElement: { dataset: {} }, getElementById: () => screen }
+    for (const [, script] of markup.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
+      runInNewContext(script, { document, window, location, URLSearchParams })
+    }
+    const onError = window.addEventListener.mock.calls.find(([name]) => name === 'error')[1]
+    onError({ target: { matches: () => false } })
+    expect(reason.textContent).toBe('')
+    onError({ target: { matches: (selector) => selector === 'script[type="module"][src]' } })
+    expect(reason.textContent).toContain('界面脚本加载失败')
+    expect(screen.classList.add).toHaveBeenCalledWith('mower-boot--failed')
+    expect(screen.setAttribute).toHaveBeenCalledWith('aria-busy', 'false')
+    retry.dispatchEvent(new Event('click'))
+    expect(location.reload).toHaveBeenCalledOnce()
   })
 
   it('leaves pages without the placeholder unchanged', async () => {

@@ -67,6 +67,7 @@
         <GrowthOperatorGrid
           v-if="activeView === 'operators'"
           :cards="[]"
+          :has-data="false"
           loading
           :search="searchQuery"
           :rarities="filterRarity"
@@ -671,7 +672,7 @@ import {
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import GrowthCraftingOrder from '@/components/GrowthCraftingOrder.vue'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape, skeletonCount } from '@/utils/skeletonShape'
 import { NAlert, NButton, NCheckbox, NDynamicInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import axios from 'axios'
 import { useMasteryStore } from '@/stores/mastery'
@@ -2242,13 +2243,14 @@ const pickSort = ref('mastery')
 
 // 首次读取时的骨架按上次读到的版面占位：有没有进行中的训练和养成目标、已拥有干员条里的头像数、
 // 总览里的队列行数和推荐卡片数。
-const skeletonShape = readSkeletonShape('growth', {
+const shapeCache = createSkeletonShape('growth', {
   training: true,
   goals: true,
-  roster: 24,
-  queue: 5,
-  cards: 4
+  roster: skeletonCount(24, 24),
+  queue: skeletonCount(5, 5),
+  cards: skeletonCount(4, 4)
 })
+const skeletonShape = shapeCache.read()
 // 打开页面时先读养成计划，再读干员数据；在干员数据读完之前都保持骨架，不先显示空状态。
 const recommendationsSettled = ref(false)
 const growthPlaceholder = computed(() =>
@@ -2257,13 +2259,12 @@ const growthPlaceholder = computed(() =>
     : null
 )
 watch(
-  () => store.hasData && !store.loading,
-  (ready) => {
-    if (!ready) return
-    saveSkeletonShape('growth', {
+  () => store.recommendations,
+  () => {
+    shapeCache.save({
       training: Boolean(trainingCard.value),
       goals: totalGoalCount.value > 0,
-      roster: Math.min(store.recommendations.filter((op) => op?.name).length, 24),
+      roster: store.recommendations.filter((op) => op?.name).length,
       queue: Math.min(queueItems.value.length, 5),
       cards: Math.min(recommendedCards.value.length, 4)
     })

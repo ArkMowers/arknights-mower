@@ -22,9 +22,19 @@ export function createBootScreen({
   let scheduled = false
   let failed = false
   let pageTimer
+  let pageExpired = false
+  let frameTimer
+  let frameId
+
+  function cancelFrames() {
+    scheduled = false
+    clearTimeout(frameTimer)
+    if (frameId !== undefined) windowObject.cancelAnimationFrame?.(frameId)
+    frameId = undefined
+  }
 
   function reveal() {
-    scheduled = false
+    cancelFrames()
     if (revealed.value || failed || holds.size) return
     revealed.value = true
     clearTimeout(pageTimer)
@@ -42,25 +52,22 @@ export function createBootScreen({
     scheduled = true
     // 等界面在启动画面下面画完一帧再淡出；窗口隐藏时浏览器不推进动画帧，直接移除。
     // 窗口被遮挡时动画帧也可能暂停，由计时器兜底，启动画面不会因此一直不淡出。
-    const frame = windowObject?.requestAnimationFrame
-    if (documentObject?.hidden || typeof frame !== 'function') {
+    if (documentObject?.hidden || !windowObject?.requestAnimationFrame) {
       reveal()
       return
     }
-    const fallback = setTimeout(reveal, BOOT_FRAME_FALLBACK)
-    frame(() =>
-      frame(() => {
-        clearTimeout(fallback)
-        reveal()
-      })
-    )
+    frameTimer = setTimeout(reveal, BOOT_FRAME_FALLBACK)
+    frameId = windowObject.requestAnimationFrame(() => {
+      frameId = windowObject.requestAnimationFrame(reveal)
+    })
   }
 
   function hold(key) {
-    if (revealed.value || failed) return () => {}
+    if (revealed.value || failed || (pageExpired && key !== 'app')) return () => {}
     holds.add(key)
     if (key !== 'app' && pageTimer === undefined) {
       pageTimer = setTimeout(() => {
+        pageExpired = true
         for (const name of [...holds]) if (name !== 'app') holds.delete(name)
         schedule()
       }, BOOT_PAGE_LIMIT)
@@ -76,6 +83,7 @@ export function createBootScreen({
   function fail(message) {
     if (revealed.value || failed) return
     failed = true
+    cancelFrames()
     clearTimeout(pageTimer)
     const reason = element.querySelector('[data-boot-error]')
     if (reason) reason.textContent = message

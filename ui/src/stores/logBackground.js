@@ -16,6 +16,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
   // 避免先闪过默认图再换成自定义图，或图片边下载边显示。
   const readyUrl = ref('')
   let loading = null
+  let preparingUrl
   let disposed = false
 
   function replace(blob) {
@@ -27,16 +28,25 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
 
   async function prepare() {
     const target = url.value
-    if (readyUrl.value === target) return
+    if (disposed || readyUrl.value === target || preparingUrl === target) return
+    preparingUrl = target
     if (typeof Image === 'function') {
       const image = new Image()
-      image.src = target
       try {
-        await image.decode?.()
+        if (image.decode) {
+          image.src = target
+          await image.decode()
+        } else {
+          await new Promise((done) => {
+            image.onload = image.onerror = done
+            image.src = target
+          })
+        }
       } catch {
         // 解码失败时照常交给 CSS 背景显示，不让背景一直隐藏。
       }
     }
+    if (preparingUrl === target) preparingUrl = undefined
     if (!disposed && url.value === target) readyUrl.value = target
   }
 

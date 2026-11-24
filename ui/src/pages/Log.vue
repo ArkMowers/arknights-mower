@@ -1047,12 +1047,18 @@ function start(value) {
   get_tasks()
 }
 
-function stop() {
+async function stop() {
+  if (waiting.value) return
   waiting.value = true
-  axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`).then((response) => {
-    running.value = !response.data
+  try {
+    const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/stop`, { timeout: 30000 })
+    if (data === true || data === 'true') running.value = false
+    else db_message.error('任务尚未停止，请稍后重试')
+  } catch (error) {
+    db_message.error(error.response?.data?.error || '无法确认任务已停止，请检查运行状态后重试')
+  } finally {
     waiting.value = false
-  })
+  }
 }
 
 import StopIcon from '@vicons/ionicons5/es/StopCircleOutline'

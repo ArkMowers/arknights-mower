@@ -291,7 +291,7 @@ const rangeText = computed(() => {
       </div>
     </div>
 
-    <div v-if="error" class="gp-empty">
+    <div v-if="error" class="gp-empty" role="alert">
       <p class="gp-empty__title">干员数据读取失败</p>
       <p class="gp-muted">{{ error }}</p>
       <div class="gp-empty__actions">
@@ -300,14 +300,14 @@ const rangeText = computed(() => {
     </div>
 
     <LoadingSkeleton
-      v-else-if="loading && !cards.length"
+      v-if="loading && !hasData && !error && !cards.length"
       class="growth-grid"
       label="正在读取干员数据"
     >
       <GrowthOperatorCard v-for="index in 8" :key="index" placeholder />
     </LoadingSkeleton>
 
-    <div v-else-if="!cards.length" class="gp-empty">
+    <div v-else-if="!cards.length && !error" class="gp-empty">
       <p class="gp-empty__title">{{ hasData ? '没有符合筛选的干员' : '还没有干员数据' }}</p>
       <p class="gp-muted">{{ emptyDescription }}</p>
       <div class="gp-empty__actions">
@@ -319,7 +319,7 @@ const rangeText = computed(() => {
       </div>
     </div>
 
-    <div v-else class="growth-grid">
+    <div v-else-if="cards.length" class="growth-grid">
       <GrowthOperatorCard
         v-for="(card, index) in cards"
         :key="card.operator.char_id"

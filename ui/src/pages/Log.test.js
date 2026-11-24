@@ -593,6 +593,26 @@ describe('log page', () => {
     }
   )
 
+  it('releases the stop button after a failed request and accepts a subsequent confirmation', async () => {
+    const { refs } = state.mower
+    refs.running.value = true
+    const stopped = Promise.withResolvers()
+    state.client.get.mockReturnValueOnce(stopped.promise).mockResolvedValueOnce({ data: true })
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    const pending = component.stop()
+    expect(refs.waiting.value).toBe(true)
+    component.stop()
+    expect(callsTo('/stop')).toHaveLength(1)
+    stopped.reject(new Error('offline'))
+    await pending
+    expect(refs.waiting.value).toBe(false)
+    expect(refs.running.value).toBe(true)
+    expect(state.error).toHaveBeenCalledOnce()
+    await component.stop()
+    expect(refs.running.value).toBe(false)
+    expect(refs.waiting.value).toBe(false)
+  })
+
   it('preserves manual Start and Stop after returning from a hidden page', async () => {
     let status = 'stopped'
     state.client.get.mockImplementation(async (url) => {
@@ -1835,7 +1855,7 @@ describe('log page', () => {
       component.stop()
       expect(component.waiting.value).toBe(true)
       await nextTick()
-      expect(state.client.get).toHaveBeenCalledWith('/stop')
+      expect(state.client.get).toHaveBeenCalledWith('/stop', { timeout: 30000 })
       expect(component.running.value).toBe(true)
       expect(component.waiting.value).toBe(false)
 

@@ -1,6 +1,7 @@
 import { createApp, ref } from 'vue'
 import { createPinia } from 'pinia'
 import axios from 'axios'
+import { failBoot } from '@/boot/bootScreen'
 import { useConfigStore } from '@/stores/config'
 import { createPreviewConfiguration, installPreviewBackend } from './mock.js'
 
@@ -49,4 +50,9 @@ const previewData = installPreviewBackend(config, window, {
 // 离线截图 / 评审可用 ?watermark=0 关闭示例水印，仅影响预览会话。
 if (params.get('watermark') === '0') previewData.appearance.watermark_visible = false
 localStorage.setItem('sc_preview', 'true')
-await import('../src/main.js')
+try {
+  await import('../src/main.js')
+} catch (error) {
+  console.error('离线预览界面加载失败', error)
+  failBoot('界面脚本加载失败，请重新加载。')
+}

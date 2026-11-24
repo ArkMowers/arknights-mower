@@ -4,7 +4,7 @@ import { NCard, useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import SkeletonField from '@/components/SkeletonField.vue'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape } from '@/utils/skeletonShape'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import {
   confirmForceUpdate,
@@ -27,13 +27,15 @@ const base = `${import.meta.env.VITE_HTTP_URL || ''}/software-update`
 const headers = { 'X-Mower-Update': '1' }
 const card = ref(null)
 const info = ref(null)
+const initialInfoPending = ref(true)
 const channel = ref('beta')
 const background = ref(false)
 const autoCheck = ref(false)
 const autoUpdate = ref(false)
 const checked = ref(null)
 // 读取中的检查结果一行：上次读到过检查结果时先占好“可更新/已与渠道一致”标签的位置。
-const skeletonShape = readSkeletonShape('software-update', { checked: true })
+const shapeCache = createSkeletonShape('software-update', { checked: true })
+const skeletonShape = shapeCache.read()
 const rollbackOptions = ref([])
 const rollbackVersion = ref(null)
 const rollbackLoading = ref(false)
@@ -157,18 +159,33 @@ function dropSoftwarePackage(event) {
 }
 
 async function loadInfo() {
-  const { data } = await axios.get(`${base}/info`)
-  if (!data.ok) throw new Error(data.message)
-  if (!info.value) {
-    channel.value = data.settings.channel
-    background.value = data.settings.background
-    autoCheck.value = data.settings.auto_check
-    autoUpdate.value = data.settings.auto_update
+  if (!info.value) initialInfoPending.value = true
+  try {
+    const { data } = await axios.get(`${base}/info`)
+    if (!data.ok) throw new Error(data.message)
+    if (!info.value) {
+      channel.value = data.settings.channel
+      background.value = data.settings.background
+      autoCheck.value = data.settings.auto_check
+      autoUpdate.value = data.settings.auto_update
+    }
+    const firstRead = !info.value
+    info.value = data
+    showLastCheck(data.last_check)
+    if (firstRead) shapeCache.save({ checked: Boolean(checked.value) })
+  } finally {
+    initialInfoPending.value = false
   }
-  const firstRead = !info.value
-  info.value = data
-  showLastCheck(data.last_check)
-  if (firstRead) saveSkeletonShape('software-update', { checked: Boolean(checked.value) })
+}
+
+async function retryInfo() {
+  if (initialInfoPending.value || info.value) return
+  error.value = ''
+  try {
+    await loadInfo()
+  } catch (err) {
+    error.value = errorMessage(err)
+  }
 }
 
 async function poll() {
@@ -217,6 +234,7 @@ async function checkUpdate() {
     await loadInfo()
     const data = await requestSoftwareUpdateCheck(axios, channel.value)
     checked.value = data
+    shapeCache.save({ checked: true })
     lastCheckAt = data.checked_at || Date.now() / 1000
   } catch (err) {
     error.value = errorMessage(err)
@@ -457,16 +475,23 @@ onUnmounted(() => {
         <span class="update-caption" data-settings-label="当前版本">当前版本</span>
         <strong v-if="info?.version" class="update-version">{{ info.version }}</strong>
         <!-- 读取中版本号、安装方式、检查结果和各项设置画成同样大小的占位块。 -->
-        <LoadingSkeleton v-else class="update-version" label="正在读取当前版本">
+        <LoadingSkeleton
+          v-else-if="initialInfoPending"
+          class="update-version"
+          label="正在读取当前版本"
+        >
           <span class="skeleton-bone skeleton-text" style="--skeleton-w: 6.5em" />
         </LoadingSkeleton>
+        <strong v-else class="update-version">未读取</strong>
         <span v-if="info" class="update-caption">{{ source ? '源码部署' : 'Release 独立包' }}</span>
-        <span v-else class="update-caption"
+        <span v-else-if="initialInfoPending" class="update-caption"
           ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 7em"
         /></span>
       </div>
       <div class="update-actions">
-        <n-button :loading="checking" :disabled="running" @click="checkUpdate"> 检查更新 </n-button>
+        <n-button :loading="checking" :disabled="running || !info" @click="checkUpdate">
+          检查更新
+        </n-button>
         <n-button
           v-if="checked?.available"
           type="primary"
@@ -479,7 +504,7 @@ onUnmounted(() => {
       </div>
     </div>
     <div v-if="!compact" class="update-status" role="status" data-settings-label="最新版本">
-      <template v-if="!info">
+      <template v-if="initialInfoPending">
         <span v-if="skeletonShape.checked" class="skeleton-bone update-tag-placeholder" />
         <span><span class="skeleton-bone skeleton-text" style="--skeleton-w: 14em" /></span>
       </template>
@@ -497,7 +522,12 @@ onUnmounted(() => {
       <span v-else class="update-caption">检查更新以获取所选渠道的最新版本。</span>
     </div>
 
-    <n-alert v-if="error" type="error" title="操作未完成" role="alert">{{ error }}</n-alert>
+    <n-alert v-if="error" type="error" title="操作未完成" role="alert">
+      {{ error }}
+      <n-button v-if="!info && !initialInfoPending" size="small" secondary @click="retryInfo"
+        >重新读取软件信息</n-button
+      >
+    </n-alert>
     <n-alert v-if="info?.blockers.length" type="warning" title="当前安装需要先处理">
       <p v-for="message in info.blockers" :key="message">{{ message }}</p>
     </n-alert>
@@ -548,7 +578,7 @@ onUnmounted(() => {
     </div>
 
     <n-form
-      v-if="!compact"
+      v-if="!compact && (initialInfoPending || info)"
       class="update-preferences"
       :show-feedback="false"
       label-placement="left"

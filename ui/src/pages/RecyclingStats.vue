@@ -5,7 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useResolvedTheme } from '@/composables/theme'
 import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape, skeletonCount, skeletonList } from '@/utils/skeletonShape'
 import { format, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { CustomChart, PieChart } from 'echarts/charts'
@@ -28,21 +28,25 @@ since.setDate(today.getDate() - 29)
 const range = ref([since.getTime(), today.getTime()])
 const page = ref(1)
 const loading = ref(false)
-// 第一次读取结束前页面还没有任何数字，显示骨架屏；之后切换日期或翻页只在原内容上转圈。
-const loaded = ref(false)
 // 骨架按上次读到的收取明细条数、品质行和材料种数占位；明细和汇总只画列表可见的部分。
-const skeletonShape = readSkeletonShape('recycling', {
-  records: 3,
-  qualities: [2, 3, 4],
-  materials: 4
+const shapeCache = createSkeletonShape('recycling', {
+  records: skeletonCount(5, 3),
+  qualities: skeletonList(
+    5,
+    (rarity) => ([0, 2, 3, 4, 5].includes(rarity) ? rarity : undefined),
+    [2, 3, 4]
+  ),
+  materials: skeletonCount(6, 4)
 })
+const skeletonShape = shapeCache.read()
 const error = ref('')
 const exporting = ref(false)
 const exportError = ref('')
 const retrying = ref('')
 const retryError = ref('')
-const emptyData = () => ({ total: 0, materials: [], qualities: [], records: [], comparison: null })
-const data = ref(emptyData())
+const data = ref({ total: 0, materials: [], qualities: [], records: [], comparison: null })
+const displayedQuery = ref(null)
+const initialLoading = computed(() => !displayedQuery.value && !error.value)
 const qualityChart = ref(null)
 const failedIcons = reactive(new Set())
 let requestVersion = 0
@@ -211,15 +215,17 @@ async function load(resetRefresh = true) {
   const version = ++requestVersion
   loading.value = Boolean(resetRefresh)
   error.value = ''
+  const params = {
+    startDate: localDate(range.value[0]),
+    endDate: localDate(range.value[1]),
+    page: page.value
+  }
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/report/recycling_history`, {
-      params: {
-        startDate: localDate(range.value[0]),
-        endDate: localDate(range.value[1]),
-        page: page.value
-      }
+      params
     })
     if (version === requestVersion) {
+      displayedQuery.value = params
       data.value = response.data
       if (
         refreshesRemaining > 0 &&
@@ -233,15 +239,13 @@ async function load(resetRefresh = true) {
     }
   } catch {
     if (version === requestVersion) {
-      if (resetRefresh) data.value = emptyData()
       error.value = '回收站统计读取失败，请重试'
     }
   } finally {
     if (version === requestVersion) {
       loading.value = false
-      loaded.value = true
       if (!error.value)
-        saveSkeletonShape('recycling', {
+        shapeCache.save({
           records: Math.min(data.value.records.length, 5),
           qualities: qualityRows.value.map((row) => row.rarity),
           materials: Math.min(data.value.materials.length, 6)
@@ -340,10 +344,16 @@ onUnmounted(() => {
         >
       </div>
     </header>
-    <n-alert v-if="error" type="error" class="notice">{{ error }}</n-alert>
+    <n-alert v-if="error" type="error" class="notice"
+      >{{ error
+      }}<template v-if="displayedQuery"
+        >。当前显示 {{ displayedQuery.startDate }} 至 {{ displayedQuery.endDate }} 的第
+        {{ displayedQuery.page }} 页。</template
+      ></n-alert
+    >
     <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
     <section class="valuation-panel valuation-source">
-      <span v-if="!loaded"
+      <span v-if="initialLoading"
         ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 14em"
       /></span>
       <span v-else>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
@@ -366,7 +376,7 @@ onUnmounted(() => {
     </n-alert>
     <!-- 骨架用读完后的同一套卡片和标题，数据处是占位块；收取明细、品质行和材料汇总的行数
          按上次读到的结果。 -->
-    <LoadingSkeleton v-if="!loaded" label="正在读取回收站统计">
+    <LoadingSkeleton v-if="initialLoading" label="正在读取回收站统计">
       <div class="metrics">
         <section class="metric">
           <span class="metric-label">累计获得材料</span>
@@ -509,7 +519,7 @@ onUnmounted(() => {
         </div>
       </div>
     </LoadingSkeleton>
-    <n-spin v-else :show="loading">
+    <n-spin v-else-if="displayedQuery" :show="loading">
       <div class="metrics">
         <section class="metric">
           <span class="metric-label">累计获得材料</span>

@@ -87,43 +87,45 @@ watch([theme, guideColors], syncTheme, { flush: 'post' })
         ref="guideFrame"
         title="Mower 一条龙入门说明"
         :src="docSrc"
+        :inert="!guideLoaded"
+        :tabindex="guideLoaded ? undefined : -1"
         @load="onGuideLoad"
         sandbox="allow-popups allow-popups-to-escape-sandbox allow-scripts allow-same-origin allow-forms"
         class="doc-frame"
       />
-      <LoadingSkeleton
-        class="doc-skeleton"
-        :class="{ 'doc-skeleton--done': guideLoaded }"
-        label="正在打开帮助文档"
-        :aria-hidden="guideLoaded || null"
-      >
-        <span class="doc-skeleton__nav">
-          <span class="doc-skeleton__nav-title">
-            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 7em" />
-          </span>
-          <span
-            v-for="(width, index) in GUIDE_SKELETON_NAV"
-            :key="index"
-            class="doc-skeleton__link"
-          >
-            <span class="skeleton-bone skeleton-text" :style="{ '--skeleton-w': `${width}%` }" />
-          </span>
-        </span>
-        <span class="doc-skeleton__main">
-          <span class="doc-skeleton__card">
-            <span class="doc-skeleton__title">
-              <span class="skeleton-bone skeleton-text" style="--skeleton-w: 11em" />
+      <Transition name="doc-skeleton">
+        <LoadingSkeleton v-if="!guideLoaded" class="doc-skeleton" label="正在打开帮助文档">
+          <span class="doc-skeleton__nav">
+            <span class="doc-skeleton__nav-title">
+              <span class="skeleton-bone skeleton-text" style="--skeleton-w: 7em" />
             </span>
             <span
-              v-for="(width, index) in GUIDE_SKELETON_LINES"
+              v-for="(width, index) in GUIDE_SKELETON_NAV"
               :key="index"
-              class="doc-skeleton__line"
+              class="doc-skeleton__link"
             >
               <span class="skeleton-bone skeleton-text" :style="{ '--skeleton-w': `${width}%` }" />
             </span>
           </span>
-        </span>
-      </LoadingSkeleton>
+          <span class="doc-skeleton__main">
+            <span class="doc-skeleton__card">
+              <span class="doc-skeleton__title">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 11em" />
+              </span>
+              <span
+                v-for="(width, index) in GUIDE_SKELETON_LINES"
+                :key="index"
+                class="doc-skeleton__line"
+              >
+                <span
+                  class="skeleton-bone skeleton-text"
+                  :style="{ '--skeleton-w': `${width}%` }"
+                />
+              </span>
+            </span>
+          </span>
+        </LoadingSkeleton>
+      </Transition>
     </div>
   </PageLayout>
 </template>
@@ -163,15 +165,15 @@ watch([theme, guideColors], syncTheme, { flush: 'post' })
   background: var(--mower-surface);
   font-size: 14px;
   line-height: 1.8;
-  transition:
-    opacity 180ms ease-out,
-    visibility 0s linear 180ms;
 }
 
-.doc-skeleton--done {
-  opacity: 0;
-  visibility: hidden;
+.doc-skeleton-leave-active {
+  transition: opacity 180ms ease-out;
   pointer-events: none;
+}
+
+.doc-skeleton-leave-to {
+  opacity: 0;
 }
 
 .doc-skeleton__nav {

@@ -2,7 +2,7 @@
 import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { incomeAlgorithms, incomeSettingsUrl, loadIncomeSettings } from '@/utils/incomeSettings'
 import SkeletonField from './SkeletonField.vue'
-import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import { createSkeletonShape } from '@/utils/skeletonShape'
 const axios = inject('axios')
 const valuation = ref(null)
 const ratios = reactive({ experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1 })
@@ -12,7 +12,8 @@ const settingsError = ref('')
 // 首次读取：还没有读到材料价值，也没有读取失败。比例输入框只在自定义算法下可编辑，读取中按
 // 上次读到的算法画成可编辑或禁用的外框，读完后不变色。
 const placeholder = computed(() => !valuation.value && !settingsError.value)
-const skeletonShape = readSkeletonShape('income-settings', { custom: false })
+const shapeCache = createSkeletonShape('income-settings', { custom: false })
+const skeletonShape = shapeCache.read()
 const settingsMessage = ref('')
 const importInput = ref(null)
 const settingsUrl = incomeSettingsUrl
@@ -25,7 +26,7 @@ function applySettings(value) {
   valuation.value = value
   Object.assign(ratios, value.ratios)
   algorithm.value = value.base_algorithm
-  saveSkeletonShape('income-settings', { custom: value.base_algorithm === -1 })
+  shapeCache.save({ custom: value.base_algorithm === -1 })
 }
 async function loadSettings() {
   if (settingsLoading.value || settingsBusy.value) return
