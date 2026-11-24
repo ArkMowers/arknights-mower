@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   compile,
   computed,
+  createApp,
   createRenderer,
   createSSRApp,
   defineComponent,
@@ -18,6 +19,7 @@ import { renderToString } from 'vue/server-renderer'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import App from './App.vue'
+import { failBoot, releaseBoot } from '@/boot/bootScreen'
 import { configProfilesKey } from '@/composables/configProfiles'
 import { themeSelectionKey } from '@/composables/themeSelection'
 import { logViewMenuKey } from '@/stores/logWorkspace'
@@ -58,9 +60,19 @@ const state = vi.hoisted(() => ({
   settingsDialogClose: null,
   navigated: []
 }))
+vi.mock('./router.js', () => ({
+  get default() {
+    return state.router
+  }
+}))
+vi.mock('@/boot/bootScreen', async (original) => {
+  const boot = await original()
+  return { ...boot, failBoot: vi.fn(boot.failBoot), releaseBoot: vi.fn(boot.releaseBoot) }
+})
 vi.mock('axios', () => ({ default: state.client }))
 vi.mock('vue', async (original) => ({
   ...(await original()),
+  createApp: vi.fn(),
   useSSRContext: () => ({ modules: new Set() }),
   inject: (key) => (key === 'axios' ? state.client : state.loaded),
   provide: vi.fn(),
@@ -395,10 +407,10 @@ describe('desktop page startup', () => {
     state.unmounted = []
     scope?.stop()
   }
-  async function mount() {
+  async function mount(props = {}) {
     state.mounted = []
     scope = effectScope()
-    component = scope.run(() => App.setup({}, { expose: () => {} }))
+    component = scope.run(() => App.setup(props, { expose: () => {} }))
     for (const callback of state.mounted) await callback()
     return component
   }
@@ -555,6 +567,12 @@ describe('desktop page startup', () => {
     expect(savePreference).not.toHaveBeenCalled()
     expect(state.client.post).not.toHaveBeenCalled()
   })
+
+  // 侧栏版本按钮的可见文字：版本号、类型名和资源版本名排版时拆成多段，文字整体保持完整。
+  function badgeText(html, className) {
+    const button = new RegExp(`<button\\b[^>]*class="${className}[ "][^>]*>([\\s\\S]*?)</button>`)
+    return button.exec(html)?.[1].replace(/<[^>]+>/g, '')
+  }
 
   async function renderShell(component) {
     const app = createSSRApp({ ...App, setup: () => component })
@@ -1293,6 +1311,111 @@ describe('desktop page startup', () => {
     expect(component.sidebarCollapsed.value).toBe(false)
   })
 
+  async function openEntry(loadPage) {
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/', component: loadPage }]
+    })
+    router.onError(() => {})
+    state.router = router
+    // 内存路由从插件安装时开始导航。入口仍负责选择 Token 表单或 App。
+    let root, navigation
+    createApp.mockImplementationOnce((options) => {
+      root = options
+      return {
+        use(plugin) {
+          if (plugin === router) navigation = router.push('/').catch((error) => error)
+        },
+        provide() {},
+        mount() {}
+      }
+    })
+    vi.resetModules()
+    await import('./main.js')
+    return { root, navigation }
+  }
+
+  it.each(['before', 'after'])(
+    'offers reload when the first route import rejects %s configuration finishes',
+    async (order) => {
+      const page = deferred()
+      const config = deferred()
+      state.config.load_config.mockReturnValue(config.promise)
+      window.location.reload = vi.fn()
+      const { root, navigation } = await openEntry(() => page.promise)
+      const mounting = mount({
+        get firstPageFailed() {
+          return root.render().props.firstPageFailed
+        }
+      })
+      await vi.waitFor(() => expect(state.config.load_config).toHaveBeenCalledOnce())
+      if (order === 'after') {
+        config.resolve()
+        await mounting
+      }
+      const failure = new Error('page chunk unavailable')
+      page.reject(failure)
+      expect(await navigation).toBe(failure)
+      await nextTick()
+      expect(state.loaded.value).toBe(order === 'after')
+      expect(failBoot).toHaveBeenCalledExactlyOnceWith('首个页面加载失败，请重新加载。')
+      expect(component.startupError.value).toContain('首个页面加载失败')
+      config.resolve()
+      await mounting
+      const html = await renderShell(component)
+      expect(html).toContain('首个页面加载失败')
+      expect(html).toMatch(/<button[^>]*>[\s\S]*?重新加载[\s\S]*?<\/button>/)
+      component.reloadPage()
+      expect(window.location.reload).toHaveBeenCalledOnce()
+    }
+  )
+
+  it('offers reload on a configuration failure after the relay token form has released the screen', async () => {
+    Object.assign(window.location, {
+      protocol: 'https:',
+      hostname: 'example.free.mower.work',
+      port: '58000'
+    })
+    const stored = new Map()
+    window.sessionStorage = {
+      getItem: (key) => stored.get(key),
+      setItem: (key, value) => stored.set(key, value)
+    }
+    document.querySelector = () => ({ content: 'test-build' })
+    const { root, navigation } = await openEntry(async () => ({ render: () => null }))
+    await navigation
+    const tokenPage = root.render()
+    tokenPage.props.onVnodeMounted()
+    expect(releaseBoot).toHaveBeenCalledExactlyOnceWith('app')
+    const form = tokenPage.type.setup({}, { expose() {}, emit: tokenPage.props.onReady })
+    form.value.value = 'test-token'
+    state.client.get.mockRejectedValueOnce({ response: { status: 403 } })
+    await form.verify()
+    expect(root.render().type).toBe(tokenPage.type)
+    expect(form.error.value).toBe('实例 Token 不正确')
+    await form.verify()
+    expect(state.client.get).toHaveBeenLastCalledWith('/getwatermark', {
+      headers: { token: 'test-token' },
+      timeout: 10000
+    })
+    expect(root.render().type).not.toBe(tokenPage.type)
+    state.config.load_config.mockRejectedValue(new Error('读取超时'))
+    window.location.reload = vi.fn()
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const component = await mount(root.render().props)
+      expect(state.client.defaults.headers.common.token).toBe('test-token')
+      const html = await renderShell(component)
+      expect(html).toContain('读取超时')
+      expect(html).toContain('重新加载')
+      expect(state.loaded.value).toBe(false)
+      component.reloadPage()
+      expect(window.location.reload).toHaveBeenCalledOnce()
+    } finally {
+      logged.mockRestore()
+    }
+  })
+
   it('leaves the application unloaded when profile bootstrap fails', async () => {
     state.client.get.mockRejectedValueOnce(new Error('配置服务不可用'))
     const component = await mount()
@@ -1795,7 +1918,11 @@ describe('desktop page startup', () => {
       }
     })
     const app = renderer.createApp({
-      setup: () => ({ loaded: true, contentRoute: computed(() => router.currentRoute.value) }),
+      setup: () => ({
+        loaded: true,
+        contentRoute: computed(() => router.currentRoute.value),
+        releaseBoot
+      }),
       render: compile(contentView.loc.source)
     })
     app.use(router)
@@ -1804,6 +1931,7 @@ describe('desktop page startup', () => {
     const find = (key) => all().find((target) => target.props[key])
     app.mount(root)
     try {
+      expect(releaseBoot).toHaveBeenCalledWith('first-page')
       expect(drafts).toHaveLength(1)
       const taskElement = find('data-task-settings')
       drafts[0].address = '127.0.0.1:16384'
@@ -2002,14 +2130,12 @@ describe('desktop page startup', () => {
       component.isMobileNav.value = mobile
       component.mobileMenuOpen.value = mobile
       const channel = await renderShell(component)
-      expect(channel).toMatch(/<button\b[^>]*class="sidebar-brand-channel[^>]*>source<\/button>/)
+      expect(badgeText(channel, 'sidebar-brand-channel')).toBe('source')
       expect(channel).toContain('点击检查软件更新')
       expect(channel).not.toContain('aria-pressed=')
       state.gui.softwareVersionDisplay = 'version'
       const version = await renderShell(component)
-      expect(version).toMatch(
-        /<button\b[^>]*class="sidebar-brand-channel[^>]*>4\.1\.6-alpha\.12\.gdeadbeef\+deadbee<\/button>/
-      )
+      expect(badgeText(version, 'sidebar-brand-channel')).toBe('4.1.6-alpha.12.gdeadbeef+deadbee')
       expect(version).toContain('点击检查软件更新')
       expect(state.gui.setSoftwareVersionDisplay).not.toHaveBeenCalled()
       expect(state.gui.load).toHaveBeenCalledOnce()
@@ -2052,7 +2178,7 @@ describe('desktop page startup', () => {
       }
       const active = await renderShell(component)
       expect(active).toContain('--resource-badge-hue:70')
-      expect(active).toContain('>卫戍协议:规程#1111</button>')
+      expect(badgeText(active, 'sidebar-brand-resource')).toBe('卫戍协议:规程#1111')
       expect(active).toContain('活动「先关闭活动」作战关闭')
       expect(active).toContain('活动「卫戍协议:规程」长期开放')
       expect(active).not.toContain('2099')

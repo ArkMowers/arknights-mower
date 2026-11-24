@@ -15,7 +15,51 @@
     <p v-if="board.saveError" role="alert" class="history-note">{{ board.saveError }}</p>
     <p v-if="formError" role="alert" class="history-note">{{ formError }}</p>
 
-    <mood-card-grid :groups="orderedReportData" @reorder="reorderCards">
+    <mood-card-grid
+      :groups="orderedReportData"
+      :loading="loading"
+      shape-key="record-line"
+      :load-failed="!!loadError"
+      loading-label="正在读取心情记录"
+      @reorder="reorderCards"
+    >
+      <!-- 读取中的卡片：按钮和说明照常显示，标题、图例和坐标轴的刻度先占位，
+           折线图只画出与图表相同位置的横向网格线。 -->
+      <template #placeholder="{ operators }">
+        <header class="group-head">
+          <h2><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4.5em" /></h2>
+          <div class="group-head-actions">
+            <n-button size="tiny" secondary>隐藏</n-button>
+            <n-button size="tiny" secondary>全屏</n-button>
+          </div>
+        </header>
+        <div class="card-controls">
+          <span>点击彩色标签可显隐曲线</span>
+          <n-button size="tiny" secondary>显示全部</n-button>
+          <n-button size="tiny" secondary>隐藏全部</n-button>
+          <n-button size="tiny" secondary>↔</n-button>
+        </div>
+        <mood-rate-legend :placeholder="operators" />
+        <div class="line-outer-container">
+          <div class="line-inner-container">
+            <div class="chart-placeholder">
+              <span class="chart-placeholder__grid" />
+              <span
+                v-for="tick in 7"
+                :key="'y' + tick"
+                class="skeleton-bone chart-placeholder__y"
+                :style="{ '--tick': tick - 1 }"
+              />
+              <span
+                v-for="tick in CHART_PLACEHOLDER_X"
+                :key="'x' + tick"
+                class="skeleton-bone chart-placeholder__x"
+                :style="{ '--tick': tick }"
+              />
+            </div>
+          </div>
+        </div>
+      </template>
       <template #default="{ group }">
         <header class="group-head">
           <h2 :title="group.groupName">{{ group.groupName }}</h2>
@@ -178,6 +222,8 @@ const viewHistory = useMoodGroups(board, reportData, getMoodSeries)
 const { groups, historyLimited } = viewHistory
 const catalogLimited = ref(false)
 const loadError = ref('')
+// 心情报表第一次读到之前，卡片区显示骨架屏。
+const loading = ref(true)
 const formError = ref('')
 const editorShow = ref(false)
 const editingId = ref('')
@@ -186,6 +232,8 @@ const expandChart = ref({})
 const hiddenLines = computed(() => board.hiddenLines)
 const chartRefs = new Map()
 const chartIntervalCache = new WeakMap()
+// 横轴刻度在绘图区里的大致位置（比例），图表读完后换成按时间排的真实刻度。
+const CHART_PLACEHOLDER_X = [0.29, 0.62, 0.96]
 
 const fullCatalog = computed(() => mergeOperatorCatalog(catalog.value, reportData.value))
 const editingView = computed(() => board.views.find((view) => view.id === editingId.value) || null)
@@ -305,6 +353,8 @@ onMounted(async () => {
   } catch {
     loadError.value = '心情报表读取失败，请检查本地 Mower 后端。'
     return
+  } finally {
+    loading.value = false
   }
   try {
     catalog.value = await getMoodCatalog()
@@ -355,7 +405,10 @@ const chartOptions = {
 </script>
 
 <style scoped>
+/* 页面铺满内容区，卡片的宽度不随读取中或读完后的卡片内容变化。 */
 .mood-page {
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   padding: var(--page-padding);
   padding-bottom: 20px;
@@ -452,6 +505,48 @@ const chartOptions = {
   height: 100%;
   padding: 0 3px 12px;
   min-width: 100%;
+}
+
+/* 折线图占位：绘图区与图表的绘图区重合（左侧 27px 是纵轴刻度，下方 28px 是横轴刻度），
+   纵轴 0 到 24 每 4 点一条网格线，颜色与图表的网格线相同。 */
+.chart-placeholder {
+  --plot-top: 10px;
+  --plot-right: 16px;
+  --plot-bottom: 28px;
+  --plot-left: 27px;
+  position: relative;
+  height: 100%;
+}
+
+.chart-placeholder__grid {
+  position: absolute;
+  inset: var(--plot-top) var(--plot-right) var(--plot-bottom) var(--plot-left);
+  background: repeating-linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 0.1) 0 1px,
+    transparent 1px calc((100% - 1px) / 6)
+  );
+}
+
+.chart-placeholder__y,
+.chart-placeholder__x {
+  position: absolute;
+  height: 7px;
+  border-radius: 3px;
+}
+
+.chart-placeholder__y {
+  right: calc(100% - var(--plot-left) + 6px);
+  top: calc(
+    var(--plot-top) + (100% - var(--plot-top) - var(--plot-bottom)) * (6 - var(--tick)) / 6 - 3px
+  );
+  width: 12px;
+}
+
+.chart-placeholder__x {
+  top: calc(100% - var(--plot-bottom) + 10px);
+  left: calc(var(--plot-left) + (100% - var(--plot-left) - var(--plot-right)) * var(--tick) - 18px);
+  width: 36px;
 }
 
 .fullscreen-chart {

@@ -11,6 +11,27 @@ export function softwareVersionBadge(version, deployment = null) {
   return ''
 }
 
+// 版本号拆成 [发布号, 预发布后缀, 构建后缀]，三段拼接后仍是原版本号。发布号是开头的数字段
+// （可带 v）；构建后缀从 nightly 的 `.g<提交>` 或第一个 `+` 开始；其余归入预发布后缀。
+// 不以数字发布号开头的版本发布号为空，侧边栏按普通文字整段显示。
+export function softwareVersionParts(version) {
+  const text = version || ''
+  const release = /^v?\d+(?:\.\d+)*/.exec(text)?.[0] || ''
+  const rest = text.slice(release.length)
+  const build = /\.g[0-9a-f]{7,}|\+/.exec(rest)
+  return build
+    ? [release, rest.slice(0, build.index), rest.slice(build.index)]
+    : [release, rest, '']
+}
+
+// 资源版本名拆成 [名称, 构建日期]，两段拼接后仍是原文。构建日期是后端追加在末尾的 `#MMDD`；
+// 末尾没有这一段时整段都是名称。
+export function resourceVersionParts(display) {
+  const text = display || ''
+  const date = /#\d{4}$/.exec(text)
+  return date ? [text.slice(0, date.index), date[0]] : [text, '']
+}
+
 function timestamp(value) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null
   const milliseconds = value * 1000

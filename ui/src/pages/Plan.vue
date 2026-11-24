@@ -29,6 +29,8 @@ const { rescue = false } = defineProps({ rescue: Boolean })
 const plan_store = rescue ? useRescuePlanStore() : usePlanStore()
 provide('planStore', plan_store)
 const rescue_ready = ref(!rescue)
+// 救急排班第一次读取期间显示骨架屏；读取失败时只提示错误，不再显示骨架。
+const rescue_loading = ref(rescue)
 const mower_store = useMowerStore()
 const { running } = storeToRefs(mower_store)
 const import_saves = createSaveCoordinator(config_store, plan_store)
@@ -217,6 +219,8 @@ onMounted(async () => {
       rescue_ready.value = true
     } catch (error) {
       message.error('救急排班加载失败：' + error.message)
+    } finally {
+      rescue_loading.value = false
     }
   }
   void refreshRunningStatus()
@@ -721,11 +725,18 @@ function movePlanForward() {
 </script>
 
 <template>
-  <template v-if="rescue_ready">
-    <trigger-dialog />
-    <task-dialog />
-    <rename-dialog />
-    <div class="plan-toolbar-viewport mx-auto mt-12" aria-label="排班操作栏">
+  <!-- 救急排班第一次读取时，操作栏照常显示但不可操作，下方的基建平面图画出房间框并占位。 -->
+  <template v-if="rescue_ready || rescue_loading">
+    <template v-if="rescue_ready">
+      <trigger-dialog />
+      <task-dialog />
+      <rename-dialog />
+    </template>
+    <div
+      class="plan-toolbar-viewport mx-auto mt-12"
+      aria-label="排班操作栏"
+      :inert="!rescue_ready || undefined"
+    >
       <div class="plan-bar">
         <n-button-group class="plan-restore-group">
           <n-tooltip trigger="hover" placement="top">
@@ -899,6 +910,8 @@ function movePlanForward() {
         </drop-down>
       </div>
     </div>
+  </template>
+  <template v-if="rescue_ready">
     <PlanIncomeDialog
       v-if="income_open"
       :snapshot="income_snapshot"
@@ -1284,6 +1297,7 @@ function movePlanForward() {
       </template>
     </n-modal>
   </template>
+  <plan-editor v-else-if="rescue_loading" placeholder class="w-980 mx-auto mw-980 px-12" />
 </template>
 
 <style scoped lang="scss">
@@ -1333,14 +1347,17 @@ function movePlanForward() {
   flex-shrink: 0;
 }
 
+/* 操作栏固定 52px 高：页面放在纵向 flex 的滚动容器里，内容比窗口长时操作栏原本会被压到
+   最小高度，内容短时（如救急排班读取中只有平面图）又会撑高，下面的平面图随之上下移动。 */
 .plan-toolbar-viewport {
   box-sizing: border-box;
   position: sticky;
   top: 0;
   z-index: 10;
+  flex: none;
   width: calc(100% - 16px);
   max-width: 1180px;
-  min-height: 52px;
+  height: 52px;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 8px 0 12px;

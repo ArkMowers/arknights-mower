@@ -203,7 +203,8 @@ const selectMenuProps = { class: 'settings-select-menu' }
 .ai-service-note {
   margin-top: 20px;
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
 }
 

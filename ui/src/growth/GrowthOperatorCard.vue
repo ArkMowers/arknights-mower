@@ -14,7 +14,9 @@ import {
 } from './growthRecommendation'
 
 const props = defineProps({
-  operator: { type: Object, required: true },
+  operator: { type: Object, default: () => ({}) },
+  // 干员列表读到之前画出卡片的框和固定文字，头像、名字、等级和专精进度先占位。
+  placeholder: Boolean,
   survey: { type: Object, default: null },
   planned: Boolean,
   plannedCount: { type: Number, default: 0 },
@@ -204,6 +206,38 @@ function stopKeydownPropagation(event) {
 
 <template>
   <article
+    v-if="placeholder"
+    class="growth-opcard growth-opcard--placeholder"
+    :class="'growth-opcard--' + layout"
+  >
+    <div class="growth-opcard__head">
+      <span class="skeleton-bone growth-opcard__avatar-placeholder" />
+      <div class="growth-opcard__id">
+        <div class="growth-opcard__identity">
+          <h3 class="growth-opcard__name">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 3.4em" />
+          </h3>
+        </div>
+        <p class="growth-opcard__meta">
+          <span class="skeleton-bone skeleton-text" style="--skeleton-w: 4.5em" />
+        </p>
+      </div>
+    </div>
+    <p class="growth-opcard__skill">
+      <span class="skeleton-bone skeleton-text" style="--skeleton-w: 9em" />
+    </p>
+    <div class="growth-opcard__progress">
+      <span v-for="index in 3" :key="index" class="skeleton-bone growth-opcard__seg-placeholder" />
+    </div>
+    <footer class="growth-opcard__foot">
+      <span class="growth-opcard__probe gp-mono">
+        <span class="skeleton-bone skeleton-text" style="--skeleton-w: 6em" />
+      </span>
+      <span class="growth-opcard__enter" aria-hidden="true">档案 →</span>
+    </footer>
+  </article>
+  <article
+    v-else
     class="growth-opcard"
     :class="[
       'growth-opcard--' + layout,
@@ -368,7 +402,8 @@ function stopKeydownPropagation(event) {
   min-width: 0;
   overflow: hidden;
   padding: 14px 15px 12px;
-  border-radius: 16px;
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--opcard-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
   text-align: left;
@@ -540,7 +575,8 @@ function stopKeydownPropagation(event) {
   height: 34px;
   padding: 3px 3px 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--gp-muted);
   background: transparent;
   cursor: pointer;
@@ -603,6 +639,19 @@ function stopKeydownPropagation(event) {
 .growth-opcard__progress-note {
   color: var(--gp-muted);
   font-size: 10.5px;
+}
+.growth-opcard--placeholder {
+  cursor: default;
+}
+.growth-opcard__avatar-placeholder {
+  width: var(--opcard-avatar-size, 58px);
+  height: var(--opcard-avatar-size, 58px);
+  border-radius: calc(12px * var(--mower-corner-scale));
+}
+.growth-opcard__seg-placeholder {
+  width: 30px;
+  height: 34px;
+  border-radius: calc(6px * var(--mower-corner-scale));
 }
 .growth-opcard__foot {
   display: flex;

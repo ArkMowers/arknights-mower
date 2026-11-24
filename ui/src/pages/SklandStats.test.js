@@ -16,7 +16,7 @@ vi.mock('naive-ui', () => {
         slots.default?.()
   }
   return Object.fromEntries(
-    ['NButton', 'NDatePicker', 'NIcon', 'NSelect'].map((name) => [name, wrapper])
+    ['NButton', 'NDatePicker', 'NIcon', 'NInput', 'NSelect'].map((name) => [name, wrapper])
   )
 })
 
@@ -115,6 +115,7 @@ async function render({
   pastRewards,
   preferences,
   interact,
+  initialOnly = false,
   failure,
   taskResult = '添加任务成功！'
 } = {}) {
@@ -152,7 +153,7 @@ async function render({
     ...SklandStats,
     async setup(props, context) {
       page = SklandStats.setup(props, context)
-      await page.initialize()
+      if (!initialOnly) await page.initialize()
       await interact?.(page, axios)
       return page
     }
@@ -235,6 +236,54 @@ describe('森空岛签到统计页面', () => {
   afterEach(() => {
     vi.useRealTimers()
     vi.unstubAllGlobals()
+  })
+
+  it('本机没有记录时等待本月奖励返回再显示空状态', async () => {
+    const { html } = await render({
+      payload: { ...history(), accounts: [], games: [], pairs: [], records: [] },
+      initialOnly: true,
+      interact: async (page, axios) => {
+        const get = axios.get.getMockImplementation()
+        let complete, started
+        const requestStarted = new Promise((resolve) => {
+          started = resolve
+        })
+        axios.get.mockImplementation((url, options) => {
+          if (!url.endsWith('/skland/rewards')) return get(url, options)
+          started()
+          return new Promise((resolve) => {
+            complete = resolve
+          })
+        })
+        const load = page.initialize()
+        await requestStarted
+        expect(page.data.value).toBeTruthy()
+        expect(page.sklandSkeleton.value).toBe(true)
+        complete({ data: { month: '2026-11', cached: true, pairs: [], warnings: [] } })
+        await load
+        expect(page.sklandSkeleton.value).toBe(false)
+      }
+    })
+    expect(html).toContain('还没有签到记录')
+  })
+
+  it('按上限绘制旧版渠道数和奖励分组，同时保留空布局', async () => {
+    let raw = JSON.stringify({ chips: 10, groups: [25, 2], months: 13 })
+    vi.stubGlobal('localStorage', {
+      getItem: (key) => (key === 'mower_skeleton_shape:skland' ? raw : null),
+      setItem: vi.fn()
+    })
+    try {
+      const { html } = await render({ initialOnly: true })
+      expect(html.match(/class="channel-chip"/g)).toHaveLength(8)
+      expect(html.match(/class="reward-tile"/g)).toHaveLength(26)
+      expect(html).toContain('正在读取签到记录')
+      raw = JSON.stringify({ calendar: false, stats: false, groups: [], chips: [] })
+      const empty = await render({ initialOnly: true })
+      expect(empty.html).not.toMatch(/class="channel-chip"|class="reward-tile"|data-slot=/)
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it('通过中转打开时提示使用桌面窗口或直接连接实例的 Web UI', async () => {

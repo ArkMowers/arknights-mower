@@ -14,6 +14,7 @@ import { NaiveUiResolver } from 'unplugin-vue-components/resolvers'
 import { relayBuildMetadata } from './scripts/relayBuild.js'
 import { incrementalPublicAssets } from './scripts/publicAssets.js'
 import { mockPreview } from './preview/vite-plugin.js'
+import { bootScreen } from './scripts/bootScreen.js'
 
 // unplugin-vue-components 用单引号拼接自动导入路径且不转义，检出目录含单引号时
 // 生成的 import 语句会因引号提前闭合而无法解析。这里把组件路径换成 `@/` 别名，
@@ -51,6 +52,7 @@ export default defineConfig(({ command, mode }) => ({
     hmr: mode === 'mock-preview' ? false : undefined
   },
   plugins: [
+    bootScreen(fileURLToPath(new URL('./src/boot/boot-screen.html', import.meta.url))),
     incrementalPublicAssets(),
     mowerChangelog(),
     mode === 'production'

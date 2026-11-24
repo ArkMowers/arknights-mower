@@ -7,6 +7,7 @@ import {
   mowerLightCssVariables,
   mowerLightThemeOverrides
 } from './mower'
+import { corner } from './corner'
 
 const nativeCommonTokens = [
   'primaryColor',
@@ -135,11 +136,15 @@ describe.each(themes)('Mower %s theme', (_mode, naiveTheme, mowerTheme, cssVaria
 
   it('uses progressively larger radii for larger components', () => {
     expect(mowerTheme.Checkbox.borderRadius).toBe('3px')
-    expect(mowerTheme.Button.borderRadiusSmall).toBe('6px')
-    expect(mowerTheme.Input.borderRadius).toBe('8px')
-    expect(mowerTheme.Alert.borderRadius).toBe('8px')
-    expect(mowerTheme.Popover.borderRadius).toBe('16px')
-    expect(mowerTheme.Card.borderRadius).toBe('16px')
+    expect(mowerTheme.Button.borderRadiusSmall).toBe(corner(6))
+    expect(mowerTheme.Input.borderRadius).toBe(corner(8))
+    expect(mowerTheme.Alert.borderRadius).toBe(corner(8))
+    expect(mowerTheme.Popover.borderRadius).toBe(corner(16))
+    expect(mowerTheme.Card.borderRadius).toBe(corner(16))
+  })
+
+  it('scales curvature-corner radii through the shared root variable', () => {
+    expect(corner(8)).toBe('calc(8px * var(--mower-corner-scale, 1))')
   })
 
   it('keeps tooltip text legible against its floating surface', () => {

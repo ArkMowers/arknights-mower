@@ -678,11 +678,13 @@ function cancelCopyDialogLongPress() {
   justify-content: center;
   min-width: 48px;
   padding: 4px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 
 .today-pill {
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid #d03050;
   color: #d03050;
   background: rgba(208, 48, 80, 0.05);

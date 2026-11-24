@@ -135,7 +135,14 @@
 
           <div class="draw-hero-value">
             <span class="draw-number">
-              {{ activeDrawTier ? formatNumber(activeDrawTier.value) : '—' }}
+              <span
+                v-if="depotSkeleton"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1.6em"
+              />
+              <template v-else>{{
+                activeDrawTier ? formatNumber(activeDrawTier.value) : '—'
+              }}</template>
             </span>
             <span class="draw-unit">抽</span>
           </div>
@@ -152,6 +159,20 @@
             >
               <span class="draw-tier-name">{{ tier.name || tier.key }}</span>
               <span class="draw-tier-val">{{ formatCompact(tier.value) }} 抽</span>
+            </button>
+          </div>
+          <div v-else-if="depotSkeleton && skeletonShape.draws" class="draw-tiers-selector">
+            <button
+              v-for="tier in DRAW_TIERS.slice(0, skeletonShape.draws)"
+              :key="tier.key"
+              type="button"
+              class="draw-tier-pill"
+              inert
+            >
+              <span class="draw-tier-name">{{ tier.name }}</span>
+              <span class="draw-tier-val"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.8em" /> 抽</span
+              >
             </button>
           </div>
         </div>
@@ -201,6 +222,30 @@
 
           <!-- Tab 1: 核心资产栅格 -->
           <div v-if="showcaseTab === 'core'" class="assets-grid">
+            <template v-if="depotSkeleton">
+              <div v-for="name in skeletonShape.currencies" :key="name" class="asset-card">
+                <img class="asset-icon" :src="itemIconUrl(name)" alt="" @error="handleImageError" />
+                <div class="asset-info">
+                  <div class="asset-top-row">
+                    <span class="asset-name">{{ name }}</span>
+                  </div>
+                  <div class="asset-number">
+                    <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.8em" />
+                  </div>
+                </div>
+              </div>
+              <div v-if="skeletonShape.exp" class="asset-card asset-card-exp">
+                <span class="skeleton-bone asset-icon" />
+                <div class="asset-info">
+                  <div class="asset-top-row">
+                    <span class="asset-name">全部经验（折算）</span>
+                  </div>
+                  <div class="asset-number">
+                    <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.8em" />
+                  </div>
+                </div>
+              </div>
+            </template>
             <div
               v-for="currency in highlights.currencies"
               :key="currency.name"
@@ -320,20 +365,33 @@
       </div>
 
       <!-- 顶部总览：经验与龙门币共同结算，两项都够才计入 -->
-      <div v-if="expForecast" class="exp-training-strip hero-exp-forecast">
+      <div
+        v-if="expForecast || (depotSkeleton && skeletonShape.exp)"
+        class="exp-training-strip hero-exp-forecast"
+      >
         <div class="exp-training-head">
           <span class="exp-training-title">预计可培养</span>
           <div class="exp-training-aside">
-            <span class="exp-training-total">{{ targetCostText }}</span>
+            <span class="exp-training-total">
+              <template v-if="expForecast">{{ targetCostText }}</template>
+              <span v-else class="skeleton-bone skeleton-text" style="--skeleton-w: 16em" />
+            </span>
             <button type="button" class="exp-training-toggle" @click="toggleTrainingMode">
               {{ trainingMode === 'max' ? '拉满练度' : '模组练度' }}
             </button>
           </div>
         </div>
         <div class="exp-training-list">
-          <div v-for="tier in expForecast.rows" :key="tier.key" class="exp-training-item">
+          <div
+            v-for="tier in expForecast?.rows ?? trainingTargets"
+            :key="tier.key"
+            class="exp-training-item"
+          >
             <span class="exp-training-label">{{ tier.label }}</span>
-            <span class="exp-training-count">{{ tier.joint === null ? '—' : tier.joint }}</span>
+            <span class="exp-training-count">
+              <template v-if="expForecast">{{ tier.joint === null ? '—' : tier.joint }}</template>
+              <span v-else class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em" />
+            </span>
             <span class="exp-training-sub">{{ tier.target }}</span>
           </div>
         </div>
@@ -345,7 +403,10 @@
           <div class="status-item">
             <span class="status-dot" :class="freshness.class" />
             <span class="status-label">最近扫描：</span>
-            <span class="status-val">{{ parsed.scannedAt || '尚未开始过扫描' }}</span>
+            <span v-if="depotSkeleton" class="status-val"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 9em"
+            /></span>
+            <span v-else class="status-val">{{ parsed.scannedAt || '尚未开始过扫描' }}</span>
             <span v-if="freshness.relative" class="status-dim">（{{ freshness.relative }}）</span>
           </div>
 
@@ -354,7 +415,9 @@
           <div class="status-item">
             <span class="status-label">扫描历史快照：</span>
             <span class="status-val"
-              ><b>{{ history.length }}</b> 次</span
+              ><b v-if="depotSkeleton"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1em" /></b
+              ><b v-else>{{ history.length }}</b> 次</span
             >
             <help-text label="关于历史快照与环比">
               <p>数据源自 <code>@app/tmp/depotresult.csv</code>，每次扫描均记录全量快照。</p>
@@ -456,7 +519,11 @@
             </n-button>
           </div>
 
-          <div class="toolbar-stat-tag">
+          <div v-if="depotSkeleton" class="toolbar-stat-tag">
+            显示 <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em" /> / 共
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em" /> 项
+          </div>
+          <div v-else class="toolbar-stat-tag">
             显示 <b>{{ sortedItems.length }}</b> / 共 {{ allItems.length }} 项
           </div>
         </div>
@@ -569,6 +636,23 @@
       <aside class="depot-nav-rail desktop-only">
         <div class="rail-header">分类导航</div>
         <div class="rail-items-container">
+          <template v-if="depotSkeleton">
+            <button
+              v-for="group in skeletonGroups"
+              :key="group.key"
+              type="button"
+              class="rail-nav-btn"
+              inert
+            >
+              <span class="rail-badge" :style="{ background: group.color }">
+                {{ group.badge || group.short || group.key }}
+              </span>
+              <span class="rail-label">{{ group.name }}</span>
+              <span class="rail-counts"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em"
+              /></span>
+            </button>
+          </template>
           <button
             v-for="tier in presentTiers"
             :key="tier.key"
@@ -588,17 +672,45 @@
             </span>
           </button>
         </div>
-        <div class="rail-empty-tip" v-if="!presentTiers.length">无匹配分类</div>
+        <div class="rail-empty-tip" v-if="!depotSkeleton && !presentTiers.length">无匹配分类</div>
       </aside>
 
       <!-- 物品卡片展示区 -->
       <main class="depot-items-area">
         <!-- 空状态与加载状态 -->
-        <n-empty
-          v-if="loading && !reportLoaded"
-          description="正在读取仓库数据…"
-          class="area-empty-state"
-        />
+        <!-- 骨架按上次读到的分组和物品数排列，分类徽标和名称照常显示。上次没有扫描数据时保持空白。 -->
+        <LoadingSkeleton v-if="depotSkeleton" class="tier-groups-list" label="正在读取仓库数据">
+          <section v-for="group in skeletonGroups" :key="group.key" class="tier-group-section">
+            <div class="tier-group-header">
+              <div class="tier-group-title">
+                <span class="tier-pill-badge" :style="{ background: group.color }">
+                  {{ group.badge || group.short || group.key }}
+                </span>
+                <span class="tier-group-heading">{{ group.name }}</span>
+              </div>
+              <div class="tier-group-meta-info">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 11em" />
+              </div>
+            </div>
+            <div class="items-card-grid">
+              <div v-for="card in group.count" :key="card" class="inventory-card">
+                <span class="skeleton-bone card-icon-box" />
+                <div class="card-details">
+                  <div class="card-title-row">
+                    <span class="card-item-name"
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4.5em"
+                    /></span>
+                  </div>
+                  <div class="card-stock-row">
+                    <span class="card-stock-number"
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.6em"
+                    /></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </LoadingSkeleton>
         <n-empty
           v-else-if="!parsed.ok"
           description="尚未检测到仓库扫描数据，请先让 Mower 在游戏内执行一次仓库扫描"
@@ -1087,6 +1199,7 @@ import { useConfigStore } from '@/stores/config'
 import { useResolvedTheme } from '@/composables/theme'
 import { mowerDarkCssVariables, mowerLightCssVariables } from '@/theme/mower'
 import HelpText from '@/components/HelpText.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import DepotBaselinePicker from '@/components/DepotBaselinePicker.vue'
 import {
   SORT_MODES,
@@ -1101,6 +1214,8 @@ import {
   computeDrawCount,
   countByTier,
   DEFAULT_BASELINE_CONFIG,
+  DEPOT_TIERS,
+  DRAW_TIERS,
   filterItems,
   flattenItems,
   formatCompact,
@@ -1115,9 +1230,11 @@ import {
   resolveCopyText,
   sortItems,
   summarizeItemHistory,
+  tierOf,
   TRAINING_TARGETS,
   usableSnapshots
 } from '@/utils/depot_inventory'
+import { createSkeletonShape, skeletonCount, skeletonList } from '@/utils/skeletonShape'
 import { itemIconUrl } from '@/utils/itemIconUrl'
 
 use([
@@ -1490,6 +1607,47 @@ const tierCounts = computed(() => countByTier(allItems.value))
 const groupedItems = computed(() => {
   return groupItemsByTier(sortedItems.value, tierCounts.value)
 })
+
+// 首次读取时的骨架：按上次读到的版面占位，包括寻访档位数、核心物资、有没有经验折算，
+// 以及每个分类显示的物品数。从未读到过时按常见的完整仓库占位。只在需要骨架时读取，
+// 每次读到仓库数据后记下一次；这是浏览器里的版面缓存，不是实例偏好。
+// 读取在挂载后才开始：还没读到也没有失败时都算读取中，第一帧不会先闪出“尚未检测到”。
+const depotSkeleton = computed(() => !reportLoaded.value && !reportError.value)
+const coreCurrencies = ['龙门币', '至纯源石', '合成玉', '高级凭证', '资质凭证', '招聘许可']
+const shapeCache = createSkeletonShape('depot', {
+  draws: skeletonCount(DRAW_TIERS.length, DRAW_TIERS.length),
+  currencies: (value) =>
+    Array.isArray(value) ? coreCurrencies.filter((name) => value.includes(name)) : coreCurrencies,
+  exp: true,
+  groups: skeletonList(
+    DEPOT_TIERS.length,
+    (row) => {
+      if (!Array.isArray(row) || !DEPOT_TIERS.some((tier) => tier.key === row[0])) return undefined
+      return [row[0], skeletonCount(24)(row[1])]
+    },
+    [
+      ['A', 12],
+      ['B', 4],
+      ['C', 12]
+    ]
+  )
+})
+const skeletonShape = computed(() => (depotSkeleton.value ? shapeCache.read() : null))
+const skeletonGroups = computed(() =>
+  (skeletonShape.value?.groups ?? []).map(([key, count]) => ({ ...tierOf(key), count }))
+)
+watch(
+  () => depotStore.report,
+  () => {
+    if (!reportLoaded.value) return
+    shapeCache.save({
+      draws: highlights.value.draws.length,
+      currencies: highlights.value.currencies.map((item) => item.name),
+      exp: Boolean(highlights.value.exp),
+      groups: groupedItems.value.map((group) => [group.key, group.rows.length])
+    })
+  }
+)
 
 const presentTiers = computed(() => {
   return groupedItems.value.map((group) => {
@@ -2022,8 +2180,8 @@ onUnmounted(() => {
 }
 
 .depot-detail-drawer.n-drawer--bottom-placement {
-  border-top-left-radius: 16px;
-  border-top-right-radius: 16px;
+  border-top-left-radius: calc(16px * var(--mower-corner-scale));
+  border-top-right-radius: calc(16px * var(--mower-corner-scale));
   box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.16);
   overflow: hidden;
 }
@@ -2056,7 +2214,8 @@ onUnmounted(() => {
    ① 顶部总览看板 (Hero)
    ========================================================================= */
 .depot-hero {
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background:
     radial-gradient(
       120% 140% at 0% 0%,
@@ -2117,7 +2276,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: 14px 16px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   border: var(--depot-hairline);
 }
@@ -2153,7 +2313,8 @@ onUnmounted(() => {
   gap: 3px;
   background: var(--mower-surface);
   padding: 2px;
-  border-radius: 7px;
+  border-radius: calc(7px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: var(--depot-hairline);
 }
 
@@ -2162,7 +2323,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 5px;
   padding: 3px 9px;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: none;
   background: transparent;
   color: var(--mower-segment-muted);
@@ -2221,7 +2383,8 @@ onUnmounted(() => {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: var(--depot-hairline);
   background: var(--mower-surface);
   color: inherit;
@@ -2252,7 +2415,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   padding: 14px 14px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   border: 1px dashed var(--mower-divider);
 }
@@ -2298,7 +2462,8 @@ onUnmounted(() => {
   opacity: 0;
   display: grid;
   place-items: center;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   transition: all 0.15s ease;
 }
 
@@ -2353,7 +2518,8 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 6px;
   padding: 6px 10px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: var(--depot-hairline);
   background: var(--mower-surface);
   color: inherit;
@@ -2401,7 +2567,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 9px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   border: var(--depot-hairline);
   cursor: pointer;
@@ -2429,7 +2596,8 @@ onUnmounted(() => {
   height: 30px;
   display: grid;
   place-items: center;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: rgba(176, 125, 59, 0.16);
   color: #b07d3b;
   font-size: 10px;
@@ -2475,7 +2643,8 @@ onUnmounted(() => {
 /* 「全部经验（计算）」详情里的可培养数量 */
 .exp-training-strip {
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   border: var(--depot-hairline);
   margin-bottom: 16px;
@@ -2524,7 +2693,8 @@ onUnmounted(() => {
   font-size: 11px;
   line-height: 1.4;
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid color-mix(in srgb, var(--mower-primary) 45%, transparent);
   background: color-mix(in srgb, var(--mower-primary) 10%, transparent);
   color: var(--mower-primary);
@@ -2583,7 +2753,8 @@ onUnmounted(() => {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   padding: 1px 4px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   white-space: nowrap;
   flex-shrink: 0;
   line-height: 1.2;
@@ -2678,7 +2849,8 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 8px;
   padding: 10px 14px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   border: var(--depot-hairline);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
@@ -2859,7 +3031,8 @@ onUnmounted(() => {
   gap: 5px;
   padding: 4px 8px;
   font-size: 11px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
@@ -2901,7 +3074,8 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 4px;
   padding: 10px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   border: var(--depot-hairline);
   max-height: calc(100vh - var(--depot-sticky-top, 104px) - 24px);
@@ -2931,7 +3105,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
@@ -2960,7 +3135,8 @@ onUnmounted(() => {
   height: 20px;
   padding: 0 4px;
   box-sizing: border-box;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: #fff;
   font-size: 11px;
   font-weight: 700;
@@ -3064,7 +3240,8 @@ onUnmounted(() => {
   .depot-toolbar {
     padding: 8px 10px;
     gap: 6px;
-    border-radius: 8px;
+    border-radius: calc(8px * var(--mower-corner-scale));
+    corner-shape: var(--mower-corner-shape);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   }
 
@@ -3210,7 +3387,8 @@ onUnmounted(() => {
 
 .area-empty-state {
   padding: 48px 0;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   border: var(--depot-hairline);
 }
@@ -3252,7 +3430,8 @@ onUnmounted(() => {
   height: 22px;
   padding: 0 6px;
   box-sizing: border-box;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -3294,7 +3473,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 10px;
   padding: 9px 11px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   border: var(--depot-hairline);
   cursor: pointer;
@@ -3330,7 +3510,8 @@ onUnmounted(() => {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   overflow: hidden;
   z-index: 1;
@@ -3412,7 +3593,8 @@ onUnmounted(() => {
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   padding: 1px 4px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   white-space: nowrap;
   flex-shrink: 0;
   line-height: 1.2;
@@ -3469,7 +3651,8 @@ onUnmounted(() => {
   display: grid;
   place-items: center;
   padding: 0;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--mower-segment-muted);
   opacity: 0;
   z-index: 2;
@@ -3511,7 +3694,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 14px;
   padding: 12px 14px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   border: var(--depot-hairline);
   margin-bottom: 16px;
@@ -3523,7 +3707,8 @@ onUnmounted(() => {
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   border: var(--depot-hairline);
 }
@@ -3587,7 +3772,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   border: var(--depot-hairline);
 }
@@ -3624,7 +3810,8 @@ onUnmounted(() => {
 }
 
 .detail-chart-wrapper {
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   border: var(--depot-hairline);
   padding: 10px;
@@ -3708,7 +3895,8 @@ onUnmounted(() => {
   padding: 16px 20px;
   background: var(--exp-hero-bg);
   border: 1px solid var(--exp-panel-border);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 
 .export-header-left {
@@ -3744,7 +3932,8 @@ onUnmounted(() => {
 .export-badge-scope {
   display: inline-flex;
   padding: 2px 8px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: rgba(24, 160, 88, 0.16);
   color: #18a058;
   font-size: 11px;
@@ -3790,7 +3979,8 @@ onUnmounted(() => {
 .export-draw-panel,
 .export-assets-panel {
   padding: 14px 18px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--exp-panel-bg);
   border: 1px solid var(--exp-panel-border);
   display: flex;
@@ -3828,7 +4018,8 @@ onUnmounted(() => {
 .export-delta-tag {
   font-size: 11px;
   padding: 2px 7px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   margin-left: 6px;
   font-weight: 600;
 }
@@ -3855,7 +4046,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 6px;
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--exp-pill-bg);
   font-size: 11px;
 }
@@ -3890,7 +4082,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--exp-card-bg);
   border: 1px solid var(--exp-card-border);
 }
@@ -3974,7 +4167,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 2px 7px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
@@ -4001,7 +4195,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--exp-card-bg);
   border: 1px solid var(--exp-card-border);
   box-sizing: border-box;

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { NButton, NIcon } from 'naive-ui'
 import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
 import MasteryMaterials from '@/components/MasteryMaterials.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import {
   formatMaterialAmount as formatAmount,
   materialStatus,
@@ -116,9 +117,46 @@ const missingList = computed(() =>
         </div>
       </header>
 
-      <div v-if="loading && !summary" class="growth-materials__loading">
-        <div class="gp-skeleton" style="height: 150px" />
-      </div>
+      <!-- 第一次计算时按读完后的版面占位：备齐数、状态、重点材料和明细标题照常显示。 -->
+      <LoadingSkeleton v-if="loading && !summary" label="正在计算养成材料">
+        <div class="growth-materials__headline">
+          <div class="growth-materials__readiness">
+            <span class="gp-kicker">Readiness</span>
+            <strong class="gp-num"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em" /><small
+                >/<span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em" /></small
+            ></strong>
+            <span class="gp-muted">种材料已备齐</span>
+          </div>
+          <div class="growth-materials__status">
+            <span class="skeleton-bone growth-materials__stamp-placeholder" />
+            <p><span class="skeleton-bone skeleton-text" style="--skeleton-w: 16em" /></p>
+          </div>
+        </div>
+        <div class="growth-materials__tiles">
+          <div v-for="index in 5" :key="index" class="growth-materials__tile">
+            <span class="skeleton-bone growth-materials__icon-placeholder" />
+            <div class="growth-materials__tile-body">
+              <span class="growth-materials__tile-name"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em"
+              /></span>
+              <span class="growth-materials__tile-value gp-mono"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 5em"
+              /></span>
+              <span class="gp-meter growth-materials__tile-meter" aria-hidden="true" />
+            </div>
+          </div>
+        </div>
+        <section class="growth-materials__detail">
+          <header class="gp-section-head growth-materials__detail-head">
+            <div>
+              <h3 class="growth-materials__detail-title">材料明细</h3>
+              <p class="gp-muted">成品按当前库存列出；展开可看逐级合成链与技巧概要。</p>
+            </div>
+            <span class="gp-muted gp-mono">{{ planCount }} 项计划</span>
+          </header>
+        </section>
+      </LoadingSkeleton>
 
       <div v-else-if="error" class="gp-empty">
         <p class="gp-empty__title">材料计算失败</p>
@@ -280,8 +318,16 @@ const missingList = computed(() =>
   flex-wrap: wrap;
 }
 
-.growth-materials__loading {
-  display: flex;
+.growth-materials__stamp-placeholder {
+  width: 64px;
+  height: 22px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+}
+
+.growth-materials__icon-placeholder {
+  width: 38px;
+  height: 38px;
+  border-radius: calc(8px * var(--mower-corner-scale));
 }
 
 .growth-materials__headline {
@@ -339,7 +385,8 @@ const missingList = computed(() =>
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -385,7 +432,8 @@ const missingList = computed(() =>
 
 .growth-materials__missing {
   padding: 14px 16px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 

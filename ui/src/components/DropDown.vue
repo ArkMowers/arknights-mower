@@ -14,13 +14,14 @@ import DropDownIcon from '@vicons/ionicons5/es/ChevronDownOutline'
 
 import { inject, ref } from 'vue'
 import '@/styles/logGlassSurface.css'
+import { corner } from '@/theme/corner'
 
 const mobile = inject('mobile', ref(false))
 const menuOpen = ref(false)
 const buttonGroup = ref(null)
 const menuWidth = ref(undefined)
 const glassMenuProps = () => ({ class: 'mower-log-glass-menu' })
-const glassMenuTheme = { color: 'transparent', borderRadius: '12px' }
+const glassMenuTheme = { color: 'transparent', borderRadius: corner(12) }
 
 function updateMenuOpen(show) {
   if (show && props.glassMenu) {

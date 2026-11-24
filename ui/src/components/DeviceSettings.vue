@@ -927,7 +927,8 @@ onUnmounted(() => {
 .device-card {
   padding: 12px 14px;
   background-color: rgba(128, 128, 128, 0.08);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   margin-bottom: 14px;
 }
 .device-title-row {

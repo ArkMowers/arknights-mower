@@ -10,6 +10,7 @@ const state = vi.hoisted(() => ({
   mounted: [],
   unmounted: [],
   switches: new Map(),
+  buttons: new Map(),
   client: null,
   config: null,
   resource: null,
@@ -59,6 +60,19 @@ vi.mock('naive-ui', async (original) => {
         .filter((name) => /^N[A-Z]/.test(name))
         .map((name) => [name, container])
     ),
+    NButton: {
+      setup:
+        (_, { attrs, slots }) =>
+        () => {
+          const children = slots.default?.() || []
+          const label = children
+            .map((child) => (typeof child.children === 'string' ? child.children : ''))
+            .join('')
+            .trim()
+          state.buttons.set(label, attrs)
+          return h('button', attrs, children)
+        }
+    },
     NSwitch: Switch,
     useDialog: () => ({ warning: state.warning }),
     useMessage: () => ({ error: vi.fn(), info: vi.fn() })
@@ -94,6 +108,7 @@ describe('offline software package installation', () => {
     state.mounted = []
     state.unmounted = []
     state.switches.clear()
+    state.buttons.clear()
     state.warning.mockClear()
     vi.mocked(showSoftwareUpdateDialog).mockClear()
     vi.mocked(showResourceUpdateDialog).mockClear()
@@ -148,6 +163,35 @@ describe('offline software package installation', () => {
     component.dropSoftwarePackage({ dataTransfer: { files: [file] } })
     await nextTick()
   }
+
+  it('首次读取软件信息失败后结束占位，支持从错误提示重试', async () => {
+    component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))
+    const render = () => renderToString(createSSRApp({ ...SoftwareUpdate, setup: () => component }))
+    const pending = await render()
+    expect(pending).toContain('正在读取当前版本')
+    expect(pending).toContain('aria-busy="true"')
+    state.client.get.mockRejectedValueOnce(new Error('软件信息暂时不可用'))
+    await state.mounted[0]()
+    const failed = await render()
+    expect(failed).toContain('role="alert"')
+    expect(failed).toContain('软件信息暂时不可用')
+    expect(failed).toContain('重新读取软件信息')
+    expect(failed).not.toMatch(/aria-busy="true"|正在读取当前版本|skeleton-bone/)
+    const retry = state.buttons.get('重新读取软件信息').onClick
+    state.client.get.mockRejectedValueOnce(new Error('连接仍未恢复'))
+    await retry()
+    expect(await render()).toContain('连接仍未恢复')
+    const restored = state.buttons.get('重新读取软件信息').onClick()
+    expect(component.initialInfoPending.value).toBe(true)
+    await retry()
+    await restored
+    const html = await render()
+    expect(html).toContain('4.1.6-alpha.4')
+    expect(html).toContain('role="switch"')
+    expect(html).not.toMatch(/重新读取软件信息|连接仍未恢复|aria-busy="true"|正在读取当前版本/)
+    expect(state.client.get.mock.calls.filter(([url]) => url.endsWith('/info'))).toHaveLength(3)
+    expect(state.client.post).not.toHaveBeenCalled()
+  })
 
   it('installs a confirmed sidebar target with the saved restart preference and no second check', async () => {
     component = scope.run(() => SoftwareUpdate.setup({}, { expose: () => {} }))

@@ -417,6 +417,32 @@ describe('回收站上传状态与手动重试', () => {
     expect(html).toContain('重试上传')
   })
 
+  it('切换页码时保留上次的收取记录，失败时标明记录所属页码', async () => {
+    const html = await render(undefined, {
+      records: [row('shown', 'submitted')],
+      act: async (page, axios) => {
+        let reject
+        axios.get.mockImplementationOnce(
+          () =>
+            new Promise((_, fail) => {
+              reject = fail
+            })
+        )
+        page.page.value = 2
+        const refresh = page.load()
+        expect(page.loading.value).toBe(true)
+        expect(page.data.value.records[0].id).toBe('shown')
+        reject(new Error('offline'))
+        await refresh
+        expect(page.displayedQuery.value.page).toBe(1)
+      }
+    })
+    expect(html).toContain('回收站统计读取失败')
+    expect(html).toContain('第 1 页')
+    expect(html).toContain('已上传')
+    expect(html).not.toContain('正在读取回收站统计')
+  })
+
   it('待上传记录的状态刷新有次数上限，不重复触发上传', async () => {
     const html = await render(undefined, {
       records: [row('pending', 'pending')],

@@ -97,7 +97,7 @@
             class="skill-list"
           >
             <template #default="{ item }">
-              <BasementSkillRows :key="item.key" :item="item" />
+              <BasementSkillRows :key="item.key" :item="item" :placeholder="rowPlaceholder" />
             </template>
           </n-virtual-list>
         </n-tab-pane>
@@ -121,6 +121,7 @@ import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useBasementSkill } from '@/stores/basementSkill'
+import { createSkeletonShape } from '@/utils/skeletonShape'
 import { usePlanStore } from '@/stores/plan'
 import { planRecommendationConditions } from '@/utils/baseRecommendationConditions'
 import {
@@ -153,6 +154,8 @@ const conditionSource = computed(() =>
 const activePane = ref('skills')
 const showFilters = ref(false)
 const loading = ref(false)
+// 还没有练度快照时，第一次读取开始之前也画占位，骨架不会晚一帧才出现。
+const snapshotRequested = ref(false)
 const syncing = ref(false)
 const error = ref('')
 const name_select = ref('')
@@ -196,11 +199,27 @@ function resetFilters() {
   status_select.value = null
 }
 
+// 冷启动只复用整张表共有的行布局，逐个干员的标签和练度等本次快照返回后再显示。
+const shapeCache = createSkeletonShape('basement-skill', { allTagged: false, allProgressed: false })
+const skeletonShape = shapeCache.read()
+const rowPlaceholder = computed(() =>
+  !snapshot.value && (loading.value || !snapshotRequested.value) && skeletonShape.allTagged
+    ? { progression: skeletonShape.allProgressed }
+    : null
+)
+
 async function loadOwnedOperators() {
   loading.value = true
+  snapshotRequested.value = true
   error.value = ''
   try {
     await readOwnedOperators()
+    const rows = skill_items.value
+    const known = Boolean(snapshot.value?.has_data && rows.length)
+    shapeCache.save({
+      allTagged: known && rows.every((item) => Boolean(ownershipLabels[item.ownership])),
+      allProgressed: known && rows.every((item) => Boolean(item.progression))
+    })
   } catch (e) {
     error.value = `读取森空岛练度失败：${e.message || e}`
   } finally {

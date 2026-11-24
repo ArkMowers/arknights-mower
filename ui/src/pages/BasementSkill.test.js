@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { effectScope, reactive } from 'vue'
 import axios from 'axios'
 import BasementSkill from './BasementSkill.vue'
@@ -46,7 +46,36 @@ beforeEach(() => {
   planState.plan = {}
   planState.facility_levels = {}
 })
+afterEach(() => vi.unstubAllGlobals())
 describe('基建技能森空岛数据读取', () => {
+  it('清除旧缓存中的干员名单，只保留表格共有的布局', async () => {
+    const key = 'mower_skeleton_shape:basement-skill'
+    const entries = new Map([
+      [key, JSON.stringify({ known: true, progressed: {}, untagged: ['旧干员'] })]
+    ])
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => entries.get(k),
+      setItem: (k, value) => entries.set(k, value)
+    })
+    const page = setup()
+    expect(page.rowPlaceholder.value).toBeNull()
+    expect(JSON.parse(entries.get(key))).toEqual({ allTagged: false, allProgressed: false })
+    state.skill.value = [...catalog, { ...catalog[0], name: '另一位干员' }]
+    axios.get.mockResolvedValue({
+      data: { ...owned, operators: [...owned.operators, { name: '另一位干员', owned: false }] }
+    })
+    await page.loadOwnedOperators()
+    expect(page.skill_items.value[0].progression).toBe('精0 1级')
+    expect(JSON.parse(entries.get(key))).toEqual({ allTagged: true, allProgressed: false })
+    expect(setup().rowPlaceholder.value).toBeNull()
+    state.snapshot.value = null
+    const cold = setup()
+    expect(cold.rowPlaceholder.value).toEqual({ progression: false })
+    axios.get.mockRejectedValue(new Error('快照读取失败'))
+    await cold.loadOwnedOperators()
+    expect(cold.rowPlaceholder.value).toBeNull()
+    expect(JSON.parse(entries.get(key))).toEqual({ allTagged: true, allProgressed: false })
+  })
   it('默认不显示持有标签，进入读取只请求本地快照', async () => {
     const page = setup()
     expect(page.skill_items.value[0].ownership).toBe('unknown')

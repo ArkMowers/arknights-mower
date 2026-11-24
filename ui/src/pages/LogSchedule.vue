@@ -2,7 +2,12 @@
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useThemeVars } from 'naive-ui'
 import { routeLocationKey } from 'vue-router'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { createSkeletonShape, skeletonCount } from '@/utils/skeletonShape'
 
+// 读取时骨架各行正文的宽度（百分比）依次取用；行数按上次读到的条数（列表可见部分为止），上次没有记录时不画行。
+const SKELETON_WIDTHS = [72, 54, 86, 62, 78, 46, 68, 58]
+const SKELETON_LIMIT = { events: 8, logs: 14 }
 const axios = inject('axios')
 const route = inject(routeLocationKey, null)
 const themeVars = useThemeVars()
@@ -20,6 +25,15 @@ const events = ref([])
 const logs = ref([])
 const eventLoading = ref(false)
 const logLoading = ref(false)
+// 打开页面就会读取异常记录和日志：第一次读取开始之前也画占位，第一帧不会先闪出“没有日志”。
+const eventsRequested = ref(false)
+const logsRequested = ref(false)
+const eventsLoaded = ref(false)
+const windowLoaded = ref(false)
+const eventsBusy = computed(
+  () => !eventsLoaded.value && (eventLoading.value || !eventsRequested.value)
+)
+const logsBusy = computed(() => !windowLoaded.value && (logLoading.value || !logsRequested.value))
 const eventError = ref('')
 const logError = ref('')
 const activeEventId = ref('')
@@ -104,6 +118,22 @@ const windowLabel = computed(() => {
   const format = (value) => new Date(value).toLocaleString('zh-CN', { hour12: false })
   return `${format(first - 300000)} — ${format(last + 300000)}`
 })
+const shapeCache = createSkeletonShape('log-schedule', {
+  events: skeletonCount(SKELETON_LIMIT.events, 4),
+  logs: skeletonCount(SKELETON_LIMIT.logs, 8),
+  screenshots: true
+})
+const skeletonShape = ref(shapeCache.read())
+const screenshotSkeleton = computed(() => logsBusy.value && skeletonShape.value.screenshots)
+const skeletonRows = (key) =>
+  Array.from(
+    { length: skeletonShape.value[key] },
+    (_, index) => SKELETON_WIDTHS[index % SKELETON_WIDTHS.length]
+  )
+function rememberSkeletonShape(changes) {
+  skeletonShape.value = { ...skeletonShape.value, ...changes }
+  shapeCache.save(skeletonShape.value)
+}
 const visibleLogs = computed(() => {
   const search = searchText.value.trim().toLocaleLowerCase()
   return logs.value
@@ -167,11 +197,14 @@ async function loadEvents() {
   if (archiveBusy.value) return
   const version = ++eventRequestVersion
   eventLoading.value = true
+  eventsRequested.value = true
   eventError.value = ''
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/diagnostics/errors`)
     if (version !== eventRequestVersion) return
     events.value = response.data.events || []
+    eventsLoaded.value = true
+    rememberSkeletonShape({ events: Math.min(events.value.length, SKELETON_LIMIT.events) })
     selectedEventIds.value = selectedEvents.value.map((event) => event.id)
     if (browseMode.value === 'archives') {
       if (events.value.length) selectEvent(activeEvent.value || events.value[0])
@@ -190,6 +223,7 @@ async function loadEvents() {
 }
 
 function clearEvidence() {
+  windowLoaded.value = false
   showExportDialog.value = false
   logs.value = []
   screenshots.value = []
@@ -204,10 +238,12 @@ function clearEvidence() {
 
 async function loadLogs(center, event = null) {
   const version = ++requestVersion
-  clearEvidence()
+  if (loadedAt.value !== center || activeEventId.value !== (event?.id || '')) clearEvidence()
+  logError.value = ''
   activeEventId.value = event?.id || ''
   loadedAt.value = center
   logLoading.value = true
+  logsRequested.value = true
   const path = event ? `/diagnostics/errors/${event.id}/logs` : '/diagnostics/timeline'
   try {
     const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}${path}`, {
@@ -222,6 +258,11 @@ async function loadLogs(center, event = null) {
         ]
     imageIndex.value = imageNearest(center)
     truncated.value = !!response.data.truncated
+    windowLoaded.value = true
+    rememberSkeletonShape({
+      logs: Math.min(logs.value.length, SKELETON_LIMIT.logs),
+      screenshots: screenshots.value.length > 0
+    })
   } catch {
     if (version === requestVersion) logError.value = '日志读取失败，请点击刷新重试'
   } finally {
@@ -716,9 +757,33 @@ onMounted(() => {
         </div>
         <p class="panel-intro">选择记录，查看对应日志和留存画面。</p>
         <div v-if="eventError" class="state-message error" role="alert">{{ eventError }}</div>
-        <div v-else-if="eventLoading" class="state-message">正在读取异常记录…</div>
-        <div v-else-if="!events.length" class="state-message">暂无异常记录</div>
-        <div v-else class="event-list">
+        <LoadingSkeleton v-if="eventsBusy" class="event-list" label="正在读取异常记录">
+          <template v-if="skeletonShape.events">
+            <n-checkbox>
+              全选（已选 0 /
+              <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1em" />）
+            </n-checkbox>
+            <div v-for="(width, index) in skeletonRows('events')" :key="index" class="event-row">
+              <n-checkbox />
+              <button type="button" class="event-card">
+                <span class="event-time"
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 9em"
+                /></span>
+                <span class="event-message"
+                  ><span
+                    class="skeleton-bone skeleton-text"
+                    :style="{ '--skeleton-w': `${width}%` }"
+                /></span>
+                <span class="event-foot"
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em"
+                /></span>
+                <span class="event-arrow">查看记录 →</span>
+              </button>
+            </div>
+          </template>
+        </LoadingSkeleton>
+        <div v-else-if="!events.length && !eventError" class="state-message">暂无异常记录</div>
+        <div v-else-if="events.length" class="event-list">
           <n-checkbox
             :checked="allEventsSelected"
             :indeterminate="selectedEvents.length > 0 && !allEventsSelected"
@@ -759,7 +824,10 @@ onMounted(() => {
             <span class="section-kicker">{{ activeEvent ? '异常窗口' : '时间窗口' }}</span>
             <h2>日志时间线</h2>
           </div>
-          <span class="count-pill">{{ visibleLogs.length }}</span>
+          <span class="count-pill">
+            <span v-if="logsBusy" class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em" />
+            <template v-else>{{ visibleLogs.length }}</template>
+          </span>
         </div>
         <p class="panel-intro">
           {{
@@ -795,8 +863,25 @@ onMounted(() => {
           当前显示此时段最近 1000 条日志，导出可获取完整日志。
         </p>
         <div v-if="logError" class="state-message error" role="alert">{{ logError }}</div>
-        <div v-else-if="logLoading" class="state-message">正在读取日志…</div>
-        <div v-else-if="!visibleLogs.length" class="state-message">
+        <LoadingSkeleton v-if="logsBusy" class="log-list" label="正在读取日志">
+          <article v-for="(width, index) in skeletonRows('logs')" :key="index" class="log-entry">
+            <div class="log-meta">
+              <time><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4.6em" /></time>
+              <span class="level"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em"
+              /></span>
+            </div>
+            <div class="log-body">
+              <p>
+                <span
+                  class="skeleton-bone skeleton-text"
+                  :style="{ '--skeleton-w': `${width}%` }"
+                />
+              </p>
+            </div>
+          </article>
+        </LoadingSkeleton>
+        <div v-else-if="!visibleLogs.length && !logError" class="state-message">
           {{
             logs.length
               ? '没有符合筛选条件的日志'
@@ -805,7 +890,7 @@ onMounted(() => {
                 : '这个时间段没有日志，可查看前后时段或跳到现在'
           }}
         </div>
-        <div v-else class="log-list">
+        <div v-else-if="visibleLogs.length" class="log-list">
           <article v-for="entry in visibleLogs" :key="entry.index" class="log-entry">
             <div class="log-meta">
               <time :title="entry.time">{{ entry.time.slice(11) }}</time>
@@ -836,13 +921,20 @@ onMounted(() => {
             <span class="section-kicker">画面证据</span>
             <h2>关联截图</h2>
           </div>
-          <span v-if="screenshots.length" class="count-pill">
+          <span v-if="screenshotSkeleton" class="count-pill">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em" />
+          </span>
+          <span v-else-if="screenshots.length" class="count-pill">
             {{ imageIndex + 1 }} / {{ screenshots.length }}
           </span>
         </div>
-        <p class="panel-intro">{{ imageCaption }}</p>
+        <p v-if="screenshotSkeleton" class="panel-intro">
+          <span class="skeleton-bone skeleton-text" style="--skeleton-w: 9em" />
+        </p>
+        <p v-else class="panel-intro">{{ imageCaption }}</p>
         <div class="image-stage">
-          <div v-if="!imagePath" class="image-empty">
+          <span v-if="screenshotSkeleton" class="skeleton-bone image-placeholder" />
+          <div v-else-if="!imagePath" class="image-empty">
             <strong>{{ logLoading ? '正在读取画面…' : '暂无截图' }}</strong>
             <span>普通截图可能已过期清理，异常归档单独保留。</span>
           </div>
@@ -860,7 +952,12 @@ onMounted(() => {
             @error="imageFailed = true"
           />
         </div>
-        <div v-if="screenshots.length" class="image-navigation">
+        <div v-if="screenshotSkeleton" class="image-navigation" inert>
+          <n-button secondary>上一张</n-button>
+          <span class="skeleton-bone image-navigation__placeholder" />
+          <n-button secondary>下一张</n-button>
+        </div>
+        <div v-else-if="screenshots.length" class="image-navigation">
           <n-button secondary :disabled="imageIndex === 0" @click="moveImage(-1)">上一张</n-button>
           <input
             v-model.number="imageIndex"
@@ -878,7 +975,8 @@ onMounted(() => {
             下一张
           </n-button>
         </div>
-        <button v-if="imageUrl" type="button" class="open-image" @click="openImagePreview">
+        <span v-if="screenshotSkeleton" class="open-image" aria-hidden="true">打开原图 ↗</span>
+        <button v-else-if="imageUrl" type="button" class="open-image" @click="openImagePreview">
           打开原图 ↗
         </button>
       </section>
@@ -1022,7 +1120,8 @@ h2 {
   gap: 10px;
   padding: 14px 16px;
   margin-bottom: 16px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .time-field {
   display: flex;
@@ -1045,7 +1144,8 @@ h2 {
   min-height: 40px;
   padding: 8px 16px;
   border: 0;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -1095,7 +1195,8 @@ h2 {
 .panel {
   min-width: 0;
   padding: 18px;
-  border-radius: 16px;
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.035);
 }
 .panel-heading {
@@ -1269,7 +1370,8 @@ h2 {
   min-height: 40px;
   padding: 0 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: none;
   color: var(--mower-primary);
   font: inherit;
@@ -1281,7 +1383,8 @@ h2 {
 }
 .state-message {
   padding: 28px 12px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   text-align: center;
   opacity: 0.7;
@@ -1297,8 +1400,23 @@ h2 {
   max-height: min(56vh, 600px);
   place-items: center;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
+}
+.image-placeholder {
+  align-self: stretch;
+  justify-self: stretch;
+  min-height: 250px;
+  border-radius: inherit;
+}
+/* 与滑块同高：滑块至少 40px，上下各有 2px 外边距。 */
+.image-navigation__placeholder {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  margin: 19px 0;
+  border-radius: 3px;
 }
 .image-empty {
   display: grid;
@@ -1328,7 +1446,8 @@ h2 {
   width: auto;
   height: auto;
   object-fit: contain;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   outline: 1px solid rgba(0, 0, 0, 0.1);
 }
 :global(html[data-mower-theme='dark']) .shot-image :deep(img) {

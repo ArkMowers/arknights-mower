@@ -78,6 +78,9 @@ export const useMowerStore = defineStore('mower', () => {
   const deployment = ref(null)
   const plan_condition = ref([])
   const waiting = ref(false)
+  // 运行日志页分别等待首次运行状态和本次日志连接的历史记录。
+  const status_ready = ref(false)
+  const log_history_ready = ref(false)
 
   const first_load = ref(true)
 
@@ -103,16 +106,18 @@ export const useMowerStore = defineStore('mower', () => {
     }
     const ws_url = backend_url.replace(/^http/, 'ws') + '/log'
     ws.value = new ReconnectingWebSocket(relaySocketUrl(ws_url))
-    let awaitingHistory = true
+    ws.value.onclose = () => {
+      log_history_ready.value = false
+    }
     ws.value.onopen = () => {
-      awaitingHistory = true
+      log_history_ready.value = false
       if (token) ws.value.send(JSON.stringify({ token }))
     }
     ws.value.onmessage = (event) => {
       const data = JSON.parse(event.data)
       if (data.type === 'log') {
-        const firstMessage = awaitingHistory
-        awaitingHistory = false
+        if (!Array.isArray(data.records) && typeof data.data !== 'string') return
+        const firstMessage = !log_history_ready.value
         const synchronized =
           typeof data.stream_id === 'string' &&
           data.stream_id.length > 0 &&
@@ -122,6 +127,7 @@ export const useMowerStore = defineStore('mower', () => {
         if (streamChanged) {
           logStreamId = data.stream_id
           lastLogSequence = 0
+          log_history_ready.value = false
         }
         const seen = new Set()
         const records = synchronized
@@ -211,6 +217,7 @@ export const useMowerStore = defineStore('mower', () => {
           lastLogSequence = 0
           log_lines.value = boundLegacyLogLines(retained.concat(lines))
         }
+        if (!synchronized || data.snapshot) log_history_ready.value = true
       } else if (data.type === 'resource_updated') {
         // 资源包在别处被更新（安装/共享资源/手动上传）时，让标题栏的资源版本实时刷新
         import('@/stores/resourceVersion')
@@ -246,6 +253,7 @@ export const useMowerStore = defineStore('mower', () => {
             ? response.data.ai_assistant_enabled
             : null
         plan_condition.value = response.data['plan_condition']
+        status_ready.value = true
       })
       .finally(() => {
         statusRequest = null
@@ -338,7 +346,10 @@ export const useMowerStore = defineStore('mower', () => {
     },
     { flush: 'sync' }
   )
-  onScopeDispose(stop_task_polling)
+  onScopeDispose(() => {
+    stop_task_polling()
+    ws.value?.close()
+  })
 
   return {
     log,
@@ -360,6 +371,8 @@ export const useMowerStore = defineStore('mower', () => {
     deployment,
     plan_condition,
     waiting,
+    status_ready,
+    log_history_ready,
     listen_ws,
     clear_legacy_logs,
     get_running,

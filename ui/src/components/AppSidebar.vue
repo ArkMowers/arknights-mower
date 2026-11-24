@@ -268,6 +268,7 @@ import HalloweenDecor from './HalloweenDecor.vue'
 import { useHalloweenSeason } from '@/composables/halloween'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import { useCollapsedTips } from '@/composables/useCollapsedTips'
+import { corner } from '@/theme/corner'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
 import '@/styles/sidebar.css'
 import '@/styles/drag.css'
@@ -294,7 +295,7 @@ const {
 const addingGroup = ref(null)
 const openMenu = ref(null)
 const dropdownTheme = {
-  borderRadius: '8px',
+  borderRadius: corner(8),
   fontSizeSmall: '12px',
   optionHeightSmall: '28px',
   padding: '4px 0',
@@ -718,7 +719,8 @@ const { tipKey, setTip, focusTip, blurTip } = useCollapsedTips(() => props.colla
   gap: 4px;
   padding: 4px;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -758,7 +760,8 @@ const { tipKey, setTip, focusTip, blurTip } = useCollapsedTips(() => props.colla
   align-items: center;
   min-height: 28px;
   margin-inline: -8px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 
 .app-sidebar__heading {
@@ -773,7 +776,8 @@ const { tipKey, setTip, focusTip, blurTip } = useCollapsedTips(() => props.colla
   padding: 0 40px 0 8px;
   overflow: hidden;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   font: inherit;
   font-size: 12px;
@@ -852,7 +856,8 @@ button.app-sidebar__heading:not(:disabled) {
 .app-sidebar__row.mower-drag-fallback,
 .app-sidebar__section.mower-drag-fallback {
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--sidebar-surface);
   color: var(--sidebar-text);
 }
@@ -886,7 +891,8 @@ button.app-sidebar__heading:not(:disabled) {
   padding: 0 24px 0 10px;
   overflow: hidden;
   border: 0;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -907,7 +913,8 @@ button.app-sidebar__heading:not(:disabled) {
   height: 28px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--sidebar-muted);
   font-size: 16px;
@@ -924,7 +931,8 @@ button.app-sidebar__heading:not(:disabled) {
   top: 2px;
   right: 12px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 
 .app-sidebar--mobile .app-sidebar__menu {

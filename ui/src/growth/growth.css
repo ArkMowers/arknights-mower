@@ -251,7 +251,8 @@ html[data-mower-theme='dark'] {
   gap: 5px;
   padding: 2px 8px;
   border: 1.5px solid currentColor;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--gp-accent-ink);
   font-size: 10.5px;
   font-weight: 800;
@@ -358,22 +359,6 @@ html[data-mower-theme='dark'] {
   margin-top: 6px;
 }
 
-.gp-skeleton {
-  border-radius: var(--gp-r);
-  background: var(--gp-surface-2);
-  animation: gp-pulse 1.6s ease-in-out infinite;
-}
-
-@keyframes gp-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.55;
-  }
-}
-
 /* ── 页面固定装饰 ──────────────────────────────────────── */
 .gp-crop {
   position: relative;
@@ -421,7 +406,7 @@ html[data-mower-theme='dark'] {
 
 /* ── naive-ui 局部外观 ─────────────────────────────────── */
 .growth-workspace .n-card {
-  --n-border-radius: 18px;
+  --n-border-radius: calc(18px * var(--mower-corner-scale));
   --n-color: var(--gp-surface);
   --n-color-embedded: var(--gp-surface-2);
   --n-border-color: transparent;
@@ -437,11 +422,11 @@ html[data-mower-theme='dark'] {
 
 .growth-workspace .n-input,
 .growth-workspace .n-base-selection {
-  --n-border-radius: 10px;
+  --n-border-radius: calc(10px * var(--mower-corner-scale));
 }
 
 .growth-workspace .n-button {
-  --n-border-radius: 9px;
+  --n-border-radius: calc(9px * var(--mower-corner-scale));
   font-weight: 600;
 }
 
@@ -510,7 +495,8 @@ html[data-mower-theme='dark'] {
   .gp-panel,
   .gp-sheet {
     padding: 16px;
-    border-radius: 18px;
+    border-radius: calc(18px * var(--mower-corner-scale));
+    corner-shape: var(--mower-corner-shape);
   }
   .gp-section-head__title {
     font-size: 18px;

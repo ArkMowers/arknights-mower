@@ -4,8 +4,12 @@ import { moodBadgeBackground } from '@/utils/mood_colors'
 
 defineProps({
   entries: { type: Array, default: () => [] },
-  groupName: { type: String, default: '' }
+  groupName: { type: String, default: '' },
+  // 读取中按上次读到的干员名字数画出与标签同宽的占位块，换行位置与读完后相同。
+  placeholder: { type: Array, default: () => [] }
 })
+// 标签宽度：边框、内边距、色条、间距和两个速率共约 98px，名字每字约 11px。
+const placeholderWidth = (length) => `${98 + 11 * length}px`
 const emit = defineEmits(['toggle'])
 </script>
 
@@ -47,7 +51,15 @@ const emit = defineEmits(['toggle'])
         <span class="mood-badge-rate">↑{{ formatMoodRate(entry.recovery) }}</span>
       </span>
     </button>
-    <span v-if="!entries.length" class="mood-rate-empty">暂无可用心情记录</span>
+    <span
+      v-for="(length, index) in placeholder"
+      :key="'placeholder:' + index"
+      class="skeleton-bone mood-rate-placeholder"
+      :style="{ width: placeholderWidth(length) }"
+    />
+    <span v-if="!entries.length && !placeholder.length" class="mood-rate-empty">
+      暂无可用心情记录
+    </span>
   </div>
 </template>
 
@@ -76,7 +88,8 @@ const emit = defineEmits(['toggle'])
   color: var(--n-text-color, #202830);
   padding: 4px 7px;
   border: 1px solid;
-  border-radius: 7px;
+  border-radius: calc(7px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 11px;
   line-height: 1.25;
   cursor: pointer;
@@ -94,6 +107,12 @@ const emit = defineEmits(['toggle'])
 .mood-rate-hidden {
   opacity: 0.43;
   text-decoration: line-through;
+}
+.mood-rate-placeholder {
+  max-width: 100%;
+  /* 与标签同高：11px 字号的行高 1.25 加上下内边距和边框。 */
+  height: calc(11px * 1.25 + 10px);
+  border-radius: calc(7px * var(--mower-corner-scale));
 }
 .mood-badge-stroke {
   display: block;

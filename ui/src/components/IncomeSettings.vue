@@ -1,12 +1,19 @@
 <script setup>
-import { inject, onMounted, reactive, ref } from 'vue'
+import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { incomeAlgorithms, incomeSettingsUrl, loadIncomeSettings } from '@/utils/incomeSettings'
+import SkeletonField from './SkeletonField.vue'
+import { createSkeletonShape } from '@/utils/skeletonShape'
 const axios = inject('axios')
 const valuation = ref(null)
 const ratios = reactive({ experience: 0.9568, gold: 0.76544, order: 0.23456, efficiency: 1 })
 const settingsLoading = ref(false)
 const settingsBusy = ref(false)
 const settingsError = ref('')
+// 首次读取：还没有读到材料价值，也没有读取失败。比例输入框只在自定义算法下可编辑，读取中按
+// 上次读到的算法画成可编辑或禁用的外框，读完后不变色。
+const placeholder = computed(() => !valuation.value && !settingsError.value)
+const shapeCache = createSkeletonShape('income-settings', { custom: false })
+const skeletonShape = shapeCache.read()
 const settingsMessage = ref('')
 const importInput = ref(null)
 const settingsUrl = incomeSettingsUrl
@@ -19,6 +26,7 @@ function applySettings(value) {
   valuation.value = value
   Object.assign(ratios, value.ratios)
   algorithm.value = value.base_algorithm
+  shapeCache.save({ custom: value.base_algorithm === -1 })
 }
 async function loadSettings() {
   if (settingsLoading.value || settingsBusy.value) return
@@ -84,31 +92,45 @@ onMounted(loadSettings)
 </script>
 <template>
   <n-card title="材料价值与基报算法">
-    <n-spin :show="settingsLoading || settingsBusy">
+    <!-- 第一次读到设置之前画出骨架屏；之后重新读取或保存时在原内容上转圈。 -->
+    <!-- 首次读取时说明、按钮和字段标签照常显示，读到的数值和输入框画成同样大小的占位块。 -->
+    <n-spin
+      :show="(settingsLoading && !placeholder) || settingsBusy"
+      :aria-busy="placeholder || null"
+    >
       <p class="settings-description">
         默认采用所提供计算表的材料价值、CE6 / 0.23456 算法与 SS
         活动计价（含代币折币）。导入“物品价值表”Excel
         可更新价值或添加新材料，未提供的项目保留原值。回收站与养成统计共用此设置。
       </p>
-      <div v-if="valuation" class="valuation-source">
+      <div v-if="placeholder" class="valuation-source">
+        <span><span class="skeleton-bone skeleton-text" style="--skeleton-w: 9em" /></span>
+        <span><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2em" /> 项价值</span>
+        <span><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" /></span>
+      </div>
+      <div v-else-if="valuation" class="valuation-source">
         <span>{{ valuation.source }}</span>
         <span>{{ Object.keys(valuation.prices).length }} 项价值</span>
         <span>{{ valuation.imported_at ? formatTime(valuation.imported_at) : '内置快照' }}</span>
       </div>
-      <div class="valuation-actions">
+      <!-- 第一次读取时按钮照常显示，只是不可操作，读完后不会从灰色变亮。 -->
+      <div class="valuation-actions" :inert="placeholder || undefined">
         <input ref="importInput" type="file" accept=".xlsx" hidden @change="importValues" />
         <n-button
           secondary
-          :disabled="!valuation || settingsBusy || settingsLoading"
+          :disabled="!placeholder && (!valuation || settingsBusy || settingsLoading)"
           @click="importInput.click()"
           >导入一图流材料价值</n-button
         >
-        <n-button quaternary :disabled="settingsBusy || settingsLoading" @click="loadSettings"
+        <n-button
+          quaternary
+          :disabled="!placeholder && (settingsBusy || settingsLoading)"
+          @click="loadSettings"
           >重新读取</n-button
         >
         <n-button
           quaternary
-          :disabled="!valuation || settingsBusy || settingsLoading"
+          :disabled="!placeholder && (!valuation || settingsBusy || settingsLoading)"
           @click="updateSettings('reset')"
           >恢复全部默认值</n-button
         >
@@ -138,7 +160,8 @@ onMounted(loadSettings)
       <n-divider />
       <label class="algorithm-field"
         ><span>基报收益算法</span
-        ><n-select
+        ><SkeletonField v-if="placeholder" kind="select" width="12em" /><n-select
+          v-else
           v-model:value="algorithm"
           :options="incomeAlgorithms"
           :disabled="!valuation || settingsBusy || settingsLoading"
@@ -157,7 +180,9 @@ onMounted(loadSettings)
           :key="field.key"
         >
           <span>{{ field.label }}</span>
+          <SkeletonField v-if="placeholder" width="3.5em" :disabled="!skeletonShape.custom" />
           <n-input-number
+            v-else
             v-model:value="ratios[field.key]"
             :min="field.key === 'experience' ? 0.000001 : 0"
             :max="1000"
@@ -169,7 +194,8 @@ onMounted(loadSettings)
       <n-button
         type="primary"
         :loading="settingsBusy"
-        :disabled="!valuation || settingsLoading"
+        :disabled="!placeholder && (!valuation || settingsLoading)"
+        :inert="placeholder || undefined"
         @click="updateSettings('ratios')"
         >保存收益设置</n-button
       >

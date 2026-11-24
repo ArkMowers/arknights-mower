@@ -207,6 +207,34 @@ afterEach(() => {
 })
 
 describe('depot page preference persistence', () => {
+  it.each([
+    [
+      [null],
+      [
+        ['A', 12],
+        ['B', 4],
+        ['C', 12]
+      ]
+    ],
+    [[['C', 25]], [['C', 24]]],
+    [[], []]
+  ])('首次打开仓库时按已知分类和有限的卡片数占位', async (groups, expected) => {
+    storage.getItem.mockImplementation((key) =>
+      key === 'mower_skeleton_shape:depot'
+        ? JSON.stringify({ groups, currencies: ['龙门币', '旧物资名'], exp: 'false' })
+        : null
+    )
+    state.depot.reportLoaded = false
+    state.depot.report = null
+    mount()
+    await settle()
+    const page = app._instance.setupState
+    expect(page.skeletonGroups.map(({ key, count }) => [key, count])).toEqual(expected)
+    expect(page.skeletonShape.currencies).toEqual(['龙门币'])
+    expect(content(root)).not.toContain('旧物资名')
+    expect(page.depotSkeleton).toBe(true)
+  })
+
   it('loads saved instance preferences on mount and displays them in the actual page controls', async () => {
     const preferences = mount()
     await settle()

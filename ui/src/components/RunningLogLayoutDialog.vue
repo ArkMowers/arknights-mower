@@ -6,6 +6,7 @@ import draggable from 'vuedraggable'
 import Draggable from '@vicons/carbon/es/Draggable'
 import { useGuiStore } from '@/stores/gui'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import {
   DEFAULT_RUNNING_LOG_LAYOUT,
   LOG_LAYOUT_MODULES,
@@ -14,6 +15,12 @@ import {
 } from '@/utils/logLayoutConfig'
 import '@/styles/drag.css'
 
+// 读取布局时骨架屏左右两栏里模块卡片的高度（像素）。
+// 读取中每栏的模块卡片：每张卡片画出示意线的行数，与读完后的模块卡片同样排布。
+const LAYOUT_SKELETON = [
+  [6, 3],
+  [3, 3]
+]
 const gui = useGuiStore()
 const theme = useThemeVars()
 const dialogStyle = computed(() => ({
@@ -276,10 +283,25 @@ async function save() {
         {{ error }}
       </n-alert>
     </div>
-    <div v-else-if="loading" class="layout-editor__loading" role="status">
-      <n-spin size="small" />
-      正在读取布局…
-    </div>
+    <!-- 读到布局之前画出左右两栏的模块卡片：卡片框、拖动图标和示意线照常显示，模块名先占位。 -->
+    <LoadingSkeleton
+      v-else-if="loading"
+      class="layout-board"
+      data-mode="split"
+      label="正在读取布局"
+    >
+      <div v-for="(column, side) in LAYOUT_SKELETON" :key="side" class="layout-column__list">
+        <div v-for="(lines, index) in column" :key="index" class="layout-module">
+          <div class="layout-module__title">
+            <n-icon :component="Draggable" size="16" aria-hidden="true" />
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" />
+          </div>
+          <div class="layout-module__lines" aria-hidden="true">
+            <div v-for="line in lines" :key="line"><span></span><span></span></div>
+          </div>
+        </div>
+      </div>
+    </LoadingSkeleton>
     <n-alert v-else-if="error" role="alert" type="error">
       {{ error }}
       <template #action>
@@ -316,14 +338,9 @@ async function save() {
   gap: 10px;
 }
 
-.layout-editor__footer,
-.layout-editor__loading {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .layout-editor__footer {
+  width: 100%;
+  border-radius: calc(8px * var(--mower-corner-scale));
   justify-content: flex-end;
 }
 
@@ -348,7 +365,8 @@ async function save() {
   min-width: 0;
   padding: 12px;
   border: 1px solid var(--mower-border);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-primary) 4%, var(--layout-canvas));
 }
 
@@ -387,7 +405,8 @@ async function save() {
   min-width: 0;
   padding: 6px 10px 10px;
   border: 1px solid var(--mower-border);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--module-tint);
   color: var(--mower-text);
   cursor: grab;
@@ -500,7 +519,8 @@ async function save() {
   aspect-ratio: 16 / 9;
   box-sizing: border-box;
   padding: 8px;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: linear-gradient(145deg, #1b2d3e, #14232c);
 }
 
@@ -540,7 +560,8 @@ async function save() {
   width: clamp(28px, 9%, 46px);
   padding: 4px;
   border: 1px dashed var(--mower-primary);
-  border-radius: 7px;
+  border-radius: calc(7px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-primary) 17%, var(--mower-surface));
   color: var(--mower-text);
   font-size: 11px;

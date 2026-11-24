@@ -334,7 +334,8 @@ const mailboxType = computed({
 .email-test-result {
   margin: 16px 0 0;
   padding: 12px 14px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   font-size: 13px;
   line-height: 1.65;

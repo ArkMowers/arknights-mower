@@ -201,13 +201,30 @@ describe('sidebar version badges', () => {
     )
     expect(html).toContain('sidebar-brand-channel--alpha')
     expect(html).toContain('4.1.6-alpha.12+unknown')
-    expect(html).toContain('>昨日海 · 当前资源</button>')
+    // 名称原样显示；没有 #MMDD 时不拆出日期。进度条只是装饰，跟在名称后面且不进入可读文字。
+    expect(html).toMatch(
+      />昨日海 · 当前资源(?:<!--v-if-->)?<span class="sidebar-brand-resource-meter" aria-hidden="true"[^>]*><\/span><\/button>/
+    )
     expect(html).toContain('sidebar-brand-resource--dated')
     expect(html).toContain('--resource-badge-hue:70')
+    expect(html).toContain('--resource-remaining:0.5')
     expect(html).toContain('tabindex="0"')
     expect(html).toContain('活动「昨日海」作战关闭')
     expect(html).not.toContain('sidebar-brand-version-label')
+    expect(html).not.toContain('sidebar-brand-resource-date')
     expect(vi.getTimerCount()).toBe(0)
+
+    // 末尾的 #MMDD 单独成段以便排版，按钮文字仍是完整的资源版本名。只有 # 单独调淡，
+    // 四位日期整段同一亮度。
+    const dated = await renderToString(
+      createSSRApp(SidebarBrand, {
+        resourceVersion: '直到大地变成一颗酸橙#1114',
+        resourceMetadata: metadata
+      })
+    )
+    expect(dated).toMatch(
+      />直到大地变成一颗酸橙<span class="sidebar-brand-resource-date"[^>]*><span class="sidebar-brand-resource-date-mark"[^>]*>#<\/span>1114<\/span><span class="sidebar-brand-resource-meter"/
+    )
   })
 
   it('shows nightly only for the installed nightly format and leaves unknown resource dates neutral', async () => {
@@ -219,6 +236,7 @@ describe('sidebar version badges', () => {
     )
     expect(html).toContain('sidebar-brand-channel--nightly')
     expect(html).not.toContain('sidebar-brand-resource--dated')
+    expect(html).not.toContain('sidebar-brand-resource-meter')
     expect(html).toContain('当前资源中没有未结束的活动')
   })
 
@@ -229,6 +247,7 @@ describe('sidebar version badges', () => {
         createSSRApp(SidebarBrand, { version, deployment: 'source' })
       )
       expect(html).toContain('sidebar-brand-channel--source')
+      expect(html).not.toContain('sidebar-brand-light')
       expect(html).toContain('源码启动')
       expect(html).toContain(`软件版本 ${version}`)
       expect(html.match(/class="sidebar-brand-channel\b/g)).toHaveLength(1)
@@ -269,14 +288,28 @@ describe('sidebar version badges', () => {
     expect(collapsed).toContain('tabindex="-1"')
   })
 
+  it('applies the version header style when either version is available', async () => {
+    const unclassified = await renderToString(
+      createSSRApp(SidebarBrand, { version: '4.1.6-preview', deployment: 'release' })
+    )
+    expect(unclassified).toContain('4.1.6')
+    expect(unclassified).toContain('sidebar-brand--versioned')
+    const resourceOnly = await renderToString(
+      createSSRApp(SidebarBrand, { resourceVersion: '当前资源' })
+    )
+    expect(resourceOnly).toContain('sidebar-brand--versioned')
+    const empty = await renderToString(createSSRApp(SidebarBrand, {}))
+    expect(empty).not.toContain('sidebar-brand--versioned')
+  })
+
   it.each([
-    ['4.1.6-alpha.12.gdeadbeef+deadbee', 'source', 'source'],
-    ['4.1.6-alpha.12.gdeadbeef', 'release', 'nightly'],
-    ['4.1.6-alpha.12+unknown', 'release', 'alpha'],
-    ['v4.1.6+build.42-foo', 'release', 'stable']
+    ['4.1.6-alpha.12.gdeadbeef+deadbee', 'source', 'source', '4.1.6', '.gdeadbeef+deadbee'],
+    ['4.1.6-alpha.12.gdeadbeef', 'release', 'nightly', '4.1.6', '.gdeadbeef'],
+    ['4.1.6-alpha.12+unknown', 'release', 'alpha', '4.1.6', '+unknown'],
+    ['v4.1.6+build.42-foo', 'release', 'stable', 'v4.1.6', '+build.42-foo']
   ])(
     'uses a native button to check software updates while preserving the display mode for %s',
-    async (version, deployment, channel) => {
+    async (version, deployment, channel, release, buildSuffix) => {
       const update = vi.fn()
       const check = vi.fn()
       const props = reactive({
@@ -288,8 +321,11 @@ describe('sidebar version badges', () => {
         'onUpdate:displayMode': update
       })
       const view = mountClock(props, ClientBrand)
+      const part = (name) => all(view.button()).find((element) => element.props.class === name)
       expect(view.button().props.type).toBe('button')
       expect(textContent(view.button())).toBe(version)
+      expect(textContent(part('version-badge-release'))).toBe(release)
+      expect(textContent(part('version-badge-build'))).toBe(buildSuffix)
       expect(view.button().props['aria-pressed']).toBeUndefined()
       expect(view.button().props.class).toContain(`sidebar-brand-channel--${channel}`)
       expect(view.button().props.title).toContain(`软件版本 ${version}`)
@@ -301,6 +337,8 @@ describe('sidebar version badges', () => {
       props.displayMode = 'channel'
       await nextTick()
       expect(textContent(view.button())).toBe(channel)
+      expect(textContent(part('version-badge-release'))).toBe(channel)
+      expect(part('version-badge-build')).toBeUndefined()
       expect(view.button().props.title).toContain('点击检查软件更新')
       view.button().props.onClick()
       expect(check).toHaveBeenCalledTimes(2)
@@ -449,6 +487,13 @@ describe('sidebar version badges', () => {
     view.resourceButton().props.onClick()
     expect(software).toHaveBeenCalledOnce()
     expect(resource).toHaveBeenCalledOnce()
+    props.softwareChecking = false
+    await nextTick()
+    expect(view.button().props.disabled).toBe(false)
+    expect(view.resourceButton().props.disabled).toBe(true)
+    props.resourceChecking = false
+    await nextTick()
+    expect(view.resourceButton().props.disabled).toBe(false)
   })
 
   it.each([true, false])(
@@ -810,13 +855,16 @@ describe('sidebar version badges', () => {
     )
     expect(textContent(view.resourceButton())).toBe('卫戍协议:规程#1111')
     expect(view.resourceButton().props.style['--resource-badge-hue']).toBe(70)
+    expect(view.resourceButton().props.style['--resource-remaining']).toBe(0.5)
     expect(view.resourceButton().props['aria-label']).toContain('长期开放')
     expect(view.resourceButton().props['aria-label']).not.toContain('2099')
     await vi.advanceTimersByTimeAsync(60000)
     expect(view.resourceButton().props.style['--resource-badge-hue']).toBe(35)
+    expect(view.resourceButton().props.style['--resource-remaining']).toBe(0.25)
     expect(view.resourceButton().props['aria-label']).not.toContain('先关闭')
     await vi.advanceTimersByTimeAsync(60000)
     expect(view.resourceButton().props.class).not.toContain('sidebar-brand-resource--dated')
+    expect(view.resourceButton().props.style['--resource-remaining']).toBeUndefined()
     expect(view.resourceButton().props['aria-label']).toContain('长期开放')
     expect(vi.getTimerCount()).toBe(0)
   })

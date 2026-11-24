@@ -150,7 +150,8 @@ const colors = computed(() => ({
 }
 .income-gantt .income-gantt-navigation :deep(.overview-track .overview-window-viewport) {
   box-sizing: border-box;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--timeline-muted);
 }
 .income-timeline :deep(.time-window-info) {

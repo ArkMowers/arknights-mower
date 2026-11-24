@@ -6,6 +6,7 @@ import CloseOutline from '@vicons/ionicons5/es/CloseOutline'
 import { useThemeVars } from 'naive-ui'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import SidebarCustomize from './SidebarCustomize.vue'
+import LoadingSkeleton from './LoadingSkeleton.vue'
 import { normalizeSortablePreview } from '@/utils/sortablePreview'
 import '@/styles/drag.css'
 
@@ -153,8 +154,34 @@ function retry() {
       {{ initialized ? '侧边栏尚未保存，当前修改仍保留在页面中。' : '暂时无法读取侧边栏布局。' }}
       <n-button text type="primary" @click="retry">重试</n-button>
     </p>
-    <p v-else-if="!initialized" role="status">正在读取侧边栏布局…</p>
-    <fieldset :disabled="!initialized" class="sidebar-editor__fields">
+    <!-- 第一次读到布局之前画出骨架屏：两个按钮和分组标题旁的“添加页面”照常显示，
+         分组名和页面行先占位。 -->
+    <LoadingSkeleton
+      v-if="!initialized && !persistenceError"
+      class="sidebar-editor__fields sidebar-editor__skeleton"
+      label="正在读取侧边栏布局"
+    >
+      <div class="sidebar-editor__toolbar">
+        <n-button>添加页面</n-button>
+        <n-button>新建分组</n-button>
+      </div>
+      <div class="sidebar-editor__layout">
+        <section v-for="group in [5, 4]" :key="group" class="sidebar-editor__section">
+          <div class="sidebar-editor__heading">
+            <strong><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" /></strong>
+            <n-button text>添加页面</n-button>
+          </div>
+          <span v-for="row in group" :key="row" class="sidebar-editor__page">
+            <span class="skeleton-bone sidebar-editor__skeleton-icon" />
+            <span
+              class="skeleton-bone skeleton-line"
+              :style="{ '--skeleton-w': `${36 + row * 9}%` }"
+            />
+          </span>
+        </section>
+      </div>
+    </LoadingSkeleton>
+    <fieldset v-else :disabled="!initialized" class="sidebar-editor__fields">
       <div class="sidebar-editor__toolbar">
         <n-button :disabled="!initialized" @click="pickerGroup = 'ungrouped'">添加页面</n-button>
         <n-button :disabled="!initialized" @click="startNaming()">新建分组</n-button>
@@ -339,6 +366,20 @@ function retry() {
 .sidebar-editor__naming {
   flex: none;
 }
+.sidebar-editor__skeleton .sidebar-editor__section,
+.sidebar-editor__skeleton .sidebar-editor__layout {
+  display: block;
+}
+.sidebar-editor__skeleton .sidebar-editor__layout {
+  overflow: hidden;
+}
+.sidebar-editor__skeleton .sidebar-editor__page {
+  cursor: default;
+}
+.sidebar-editor__skeleton-icon {
+  width: 16px;
+  height: 16px;
+}
 .sidebar-editor__layout {
   flex: 1 1 auto;
   min-height: 0;
@@ -385,7 +426,8 @@ function retry() {
   min-width: 0;
   padding: 5px 7px;
   border: 1px solid var(--mower-border);
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   color: inherit;
   font: inherit;
@@ -398,7 +440,8 @@ function retry() {
   padding: 0;
   place-items: center;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--mower-text-muted);
   cursor: pointer;

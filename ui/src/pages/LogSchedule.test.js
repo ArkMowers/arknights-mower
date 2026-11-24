@@ -418,6 +418,33 @@ describe('log schedule browsing', () => {
     expect(page.activeEventId.value).toBe('')
   })
 
+  it('刷新同一时间段失败时保留已读日志、截图和布局', async () => {
+    const setItem = vi.fn()
+    vi.stubGlobal('localStorage', { getItem: () => null, setItem })
+    try {
+      state.client.get.mockResolvedValueOnce({
+        data: { logs: [row('上次读取')], screenshots: ['frame.jpg'] }
+      })
+      await page.loadWindow(1791604800000)
+      const writes = setItem.mock.calls.length
+      const request = deferred()
+      state.client.get.mockReturnValueOnce(request.promise)
+      const reload = page.refreshLogs()
+      expect(page.logLoading.value).toBe(true)
+      expect(page.logsBusy.value).toBe(false)
+      expect(page.screenshotSkeleton.value).toBe(false)
+      expect(page.visibleLogs.value[0].summary).toBe('上次读取')
+      request.reject(new Error('offline'))
+      await reload
+      expect(page.logError.value).toContain('日志读取失败')
+      expect(page.imagePath.value).toBe('frame.jpg')
+      expect(page.visibleLogs.value[0].summary).toBe('上次读取')
+      expect(setItem).toHaveBeenCalledTimes(writes)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it('clears old evidence on a failed source change and blocks export until a successful retry', async () => {
     state.client.get.mockResolvedValueOnce({
       data: { logs: [row('旧窗口')], screenshots: ['old.jpg'] }

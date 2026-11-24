@@ -7,6 +7,7 @@ import FunnelOutline from '@vicons/ionicons5/es/FunnelOutline'
 import ChevronBackOutline from '@vicons/ionicons5/es/ChevronBackOutline'
 import ChevronForwardOutline from '@vicons/ionicons5/es/ChevronForwardOutline'
 import GrowthOperatorCard from './GrowthOperatorCard.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import GrowthSurveyFilters from '@/components/GrowthSurveyFilters.vue'
 
 const props = defineProps({
@@ -205,7 +206,14 @@ const rangeText = computed(() => {
           </div>
         </n-popover>
         <button type="button" class="growth-filters__reset" @click="resetAll">重置</button>
-        <span class="growth-filters__count gp-mono">{{ filteredCount }} / {{ total }} 位</span>
+        <span class="growth-filters__count gp-mono">
+          <span
+            v-if="loading && !total"
+            class="skeleton-bone skeleton-text"
+            style="--skeleton-w: 5em"
+          />
+          <template v-else>{{ filteredCount }} / {{ total }} 位</template>
+        </span>
         <div class="growth-filters__spacer" />
         <n-tooltip>
           <template #trigger>
@@ -283,7 +291,7 @@ const rangeText = computed(() => {
       </div>
     </div>
 
-    <div v-if="error" class="gp-empty">
+    <div v-if="error" class="gp-empty" role="alert">
       <p class="gp-empty__title">干员数据读取失败</p>
       <p class="gp-muted">{{ error }}</p>
       <div class="gp-empty__actions">
@@ -291,11 +299,15 @@ const rangeText = computed(() => {
       </div>
     </div>
 
-    <div v-else-if="loading && !cards.length" class="growth-grid" aria-busy="true">
-      <div v-for="index in 8" :key="index" class="growth-grid__skeleton gp-skeleton" />
-    </div>
+    <LoadingSkeleton
+      v-if="loading && !hasData && !error && !cards.length"
+      class="growth-grid"
+      label="正在读取干员数据"
+    >
+      <GrowthOperatorCard v-for="index in 8" :key="index" placeholder />
+    </LoadingSkeleton>
 
-    <div v-else-if="!cards.length" class="gp-empty">
+    <div v-else-if="!cards.length && !error" class="gp-empty">
       <p class="gp-empty__title">{{ hasData ? '没有符合筛选的干员' : '还没有干员数据' }}</p>
       <p class="gp-muted">{{ emptyDescription }}</p>
       <div class="gp-empty__actions">
@@ -307,7 +319,7 @@ const rangeText = computed(() => {
       </div>
     </div>
 
-    <div v-else class="growth-grid">
+    <div v-else-if="cards.length" class="growth-grid">
       <GrowthOperatorCard
         v-for="(card, index) in cards"
         :key="card.operator.char_id"
@@ -370,7 +382,8 @@ const rangeText = computed(() => {
   flex-direction: column;
   gap: 10px;
   padding: 14px 16px;
-  border-radius: 18px;
+  border-radius: calc(18px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
 }
@@ -395,7 +408,8 @@ const rangeText = computed(() => {
   height: 36px;
   padding: 0 13px;
   border: 1px solid var(--gp-hair-soft);
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
   color: var(--gp-ink-2);
   font: inherit;
@@ -528,7 +542,8 @@ const rangeText = computed(() => {
   height: 25px;
   padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   font: inherit;
@@ -604,11 +619,6 @@ const rangeText = computed(() => {
   gap: 10px;
 }
 
-.growth-grid__skeleton {
-  height: 156px;
-  border-radius: 16px;
-}
-
 .growth-grid__count {
   color: var(--gp-faint);
   font-size: 11px;
@@ -631,7 +641,8 @@ const rangeText = computed(() => {
   height: 30px;
   padding: 0 8px;
   border: 0;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   font: inherit;

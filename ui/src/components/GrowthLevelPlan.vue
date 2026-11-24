@@ -402,7 +402,8 @@ async function commitDraft() {
   gap: 7px;
   padding: 0;
   border: 0;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   font: inherit;

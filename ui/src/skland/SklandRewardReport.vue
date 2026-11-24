@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref, useTemplateRef, watch } from 'vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import SklandRewardArt from './SklandRewardArt.vue'
 import SklandRewardDistribution from './SklandRewardDistribution.vue'
 import { groupRewardTotals, number, percent } from './statistics'
@@ -10,7 +11,11 @@ const props = defineProps({
   distribution: { type: Object, default: null },
   selectedItem: { type: String, default: '' },
   loading: { type: Boolean, default: false },
-  error: { type: String, default: '' }
+  error: { type: String, default: '' },
+  // 读取中还没有统计时，按这些分组的奖励数画出同样排布的占位卡片。
+  placeholderGroups: { type: Array, default: () => [6] },
+  // 上次读到的出现情况表的月份行数；为 0 时不画这张表的占位。
+  placeholderMonths: { type: Number, default: 0 }
 })
 const emit = defineEmits(['select-item', 'retry'])
 const groups = computed(() => groupRewardTotals(props.report?.items))
@@ -58,7 +63,41 @@ function itemKey(item) {
       class="reward-report__results"
       :style="{ minBlockSize: minResultsHeight ? `${minResultsHeight}px` : undefined }"
     >
-      <p v-if="loading" class="reward-note" role="status">正在读取奖励记录…</p>
+      <LoadingSkeleton v-if="loading && !report" label="正在读取奖励记录">
+        <p class="reward-report__summary">
+          <span
+            >本机签到记录率
+            <strong><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.6em" /></strong
+          ></span>
+          <span
+            >本机记录到
+            <strong
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
+            /></strong>
+            天签到</span
+          >
+        </p>
+        <div class="reward-groups">
+          <section v-for="(count, index) in placeholderGroups" :key="index" class="reward-group">
+            <h3><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" /></h3>
+            <ul class="reward-tiles">
+              <li v-for="tile in count" :key="tile" class="reward-tile">
+                <span class="reward-tile__button">
+                  <span class="skeleton-bone reward-tile__placeholder" />
+                  <span class="reward-tile__name"
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em"
+                  /></span>
+                  <span class="reward-tile__days"
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3.5em"
+                  /></span>
+                </span>
+              </li>
+            </ul>
+          </section>
+        </div>
+        <SklandRewardDistribution v-if="placeholderMonths" :placeholder="placeholderMonths" />
+      </LoadingSkeleton>
+      <p v-else-if="loading" class="reward-note" role="status">正在读取奖励记录…</p>
       <div v-if="error" class="reward-note" role="alert">
         {{ error }}
         <n-button v-if="!report" text @click="emit('retry')">重试</n-button>
@@ -191,7 +230,8 @@ function itemKey(item) {
 .reward-tile__button:focus-visible {
   outline: 2px solid var(--mower-primary);
   outline-offset: 3px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .reward-tile__button:hover .reward-tile__art {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mower-text) 28%, transparent);
@@ -200,11 +240,16 @@ function itemKey(item) {
   box-shadow: inset 0 0 0 2px var(--mower-primary);
 }
 .reward-tile__art {
-  --reward-art-radius: 8px;
+  --reward-art-radius: calc(8px * var(--mower-corner-scale));
   --reward-art-icon: 70%;
   --reward-art-count: 13px;
   --reward-art-ratio: 5 / 4;
   margin-bottom: 4px;
+}
+.reward-tile__placeholder {
+  aspect-ratio: 5 / 4;
+  margin-bottom: 4px;
+  border-radius: calc(8px * var(--mower-corner-scale));
 }
 .reward-tile__name {
   overflow: hidden;

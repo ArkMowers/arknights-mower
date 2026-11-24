@@ -86,11 +86,12 @@ import { NDropdown } from 'naive-ui'
 import { computed, h, ref, useId, watch } from 'vue'
 import HalloweenDecor from '@/components/HalloweenDecor.vue'
 import { useHalloweenSeason } from '@/composables/halloween'
+import { corner } from '@/theme/corner'
 
 const halloweenActive = useHalloweenSeason()
 
 const titlebarDropdownTheme = {
-  borderRadius: '10px',
+  borderRadius: corner(10),
   fontSizeMedium: '12px',
   optionHeightMedium: '32px',
   padding: '4px 0'
@@ -496,7 +497,8 @@ watch(
   height: 22px;
   padding: 0 9px;
   border: 0;
-  border-radius: 9px;
+  border-radius: calc(9px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--window-titlebar-muted);
   background: transparent;
   font: inherit;
@@ -540,7 +542,8 @@ watch(
   margin-left: -8px;
   padding: 2px 8px;
   border: 0;
-  border-radius: 7px;
+  border-radius: calc(7px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--window-titlebar-text);
   font-family: inherit;
@@ -618,7 +621,9 @@ watch(
 :global(.window-titlebar__dropdown.n-dropdown-menu) {
   box-sizing: border-box;
   border: 1px solid rgba(65, 61, 57, 0.14);
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  box-shadow: var(--mower-shadow-3);
 }
 
 :global(.window-titlebar__dropdown--dark.n-dropdown-menu) {

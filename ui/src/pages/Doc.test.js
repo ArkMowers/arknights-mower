@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { createSSRApp, effectScope, nextTick, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import { darkTheme, lightTheme } from 'naive-ui'
 import { mowerDarkThemeOverrides, mowerLightThemeOverrides } from '@/theme/mower'
 import DocPage from './Doc.vue'
@@ -142,6 +143,22 @@ describe('embedded guide theme', () => {
   afterEach(() => {
     scope?.stop()
     vi.unstubAllGlobals()
+  })
+
+  it('文档被占位层遮挡时跳过框内焦点，载入后恢复键盘访问', async () => {
+    state.config = { refs: { theme: ref('light') } }
+    state.colors = ref(palettes.light)
+    vi.stubGlobal('window', { location: new URL('https://mower.local/') })
+    scope = effectScope()
+    const page = scope.run(() => DocPage.setup({}, { expose: vi.fn() }))
+    const render = () => renderToString(createSSRApp({ ...DocPage, setup: () => page }))
+    const loading = await render()
+    expect(loading.match(/<iframe[^>]*>/)[0]).toMatch(/ inert[^>]*tabindex="-1"/)
+    expect(loading).toContain('正在打开帮助文档')
+    page.onGuideLoad()
+    const loaded = await render()
+    expect(loaded.match(/<iframe[^>]*>/)[0]).not.toMatch(/inert|tabindex="-1"/)
+    expect(loaded).not.toContain('正在打开帮助文档')
   })
 
   it('follows system changes without rewriting the preference or reloading the iframe', async () => {

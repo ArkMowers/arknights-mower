@@ -1,5 +1,5 @@
 import { createPinia, disposePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import axios from 'axios'
 import { useLogBackgroundStore, MAX_BACKGROUND_BYTES } from './logBackground'
 
@@ -23,6 +23,77 @@ describe('running log background', () => {
     axios.get.mockResolvedValue({ status: 204 })
     axios.put.mockResolvedValue(imageResponse())
     axios.delete.mockResolvedValue({ status: 204 })
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('marks an image ready only after it decodes and keeps the previous one until a new image decodes', async () => {
+    const decodes = []
+    const sources = []
+    vi.stubGlobal(
+      'Image',
+      class {
+        set src(value) {
+          sources.push(value)
+        }
+        decode() {
+          const pending = deferred()
+          decodes.push(pending)
+          return pending.promise
+        }
+      }
+    )
+    const settle = () => new Promise((done) => setTimeout(done, 0))
+    const store = useLogBackgroundStore(createPinia())
+    axios.get.mockResolvedValueOnce(imageResponse())
+    await store.load()
+    await store.load()
+    expect(sources).toEqual(['blob:background-1'])
+    expect(store.readyUrl).toBe('')
+    decodes[0].resolve()
+    await settle()
+    expect(store.readyUrl).toBe('blob:background-1')
+
+    expect(await store.upload(picture())).toBe(true)
+    expect(store.url).toBe('blob:background-2')
+    expect(store.readyUrl).toBe('blob:background-1')
+    decodes[1].resolve()
+    await settle()
+    expect(store.readyUrl).toBe('blob:background-2')
+  })
+
+  it('waits for the image load event when the browser has no decode method', async () => {
+    const image = {}
+    vi.stubGlobal(
+      'Image',
+      vi.fn(function () {
+        return image
+      })
+    )
+    const store = useLogBackgroundStore(createPinia())
+    await store.load()
+    expect(store.readyUrl).toBe('')
+    image.onload()
+    await Promise.resolve()
+    expect(store.readyUrl).toBe('/bg.webp')
+  })
+
+  it('shows the default image when the saved image cannot be read or decoded', async () => {
+    vi.stubGlobal(
+      'Image',
+      class {
+        decode() {
+          return Promise.reject(new Error('无法解码'))
+        }
+      }
+    )
+    const store = useLogBackgroundStore(createPinia())
+    axios.get.mockRejectedValueOnce(new Error('offline'))
+    expect(await store.load()).toBe(false)
+    await new Promise((done) => setTimeout(done, 0))
+    expect(store.readyUrl).toBe('/bg.webp')
   })
 
   it('shares one initial read, blocks edits until it finishes and loads the saved image', async () => {
@@ -129,7 +200,8 @@ describe('running log background', () => {
     expect(URL.revokeObjectURL).not.toHaveBeenCalled()
   })
 
-  it('does not allocate an object URL when a pending read finishes after disposal', async () => {
+  it('does not allocate an object URL or load an image when a read finishes after disposal', async () => {
+    vi.stubGlobal('Image', vi.fn())
     const pinia = createPinia()
     const store = useLogBackgroundStore(pinia)
     const response = deferred()
@@ -139,5 +211,6 @@ describe('running log background', () => {
     response.resolve(imageResponse())
     await pending
     expect(URL.createObjectURL).not.toHaveBeenCalled()
+    expect(Image).not.toHaveBeenCalled()
   })
 })

@@ -1,9 +1,16 @@
 <script setup>
+import { computed } from 'vue'
 import { formatMonthDayCN, number } from './statistics'
 
-defineProps({
-  distribution: { type: Object, required: true }
+const props = defineProps({
+  distribution: { type: Object, default: null },
+  // 读取中按上次读到的月份行数占位：图例、日期表头和合计列照常显示，奖励名、获得数和每天的
+  // 格子先占位或留空。
+  placeholder: { type: Number, default: 0 }
 })
+const placeholderMonths = computed(() =>
+  Array.from({ length: Math.min(Math.max(props.placeholder, 0), 12) }, (_, index) => index)
+)
 
 const DAYS = Array.from({ length: 31 }, (_, index) => index + 1)
 const LABELED_DAYS = new Set([1, 5, 10, 15, 20, 25, 30])
@@ -36,7 +43,51 @@ function visible(cell) {
 </script>
 
 <template>
-  <section class="reward-distribution" :aria-label="`${distribution.item}的出现情况`">
+  <section v-if="!distribution && placeholder" class="reward-distribution">
+    <header class="reward-distribution__header">
+      <h3><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" />的出现情况</h3>
+      <p><span class="skeleton-bone skeleton-text" style="--skeleton-w: 12em" /></p>
+    </header>
+    <ul class="reward-distribution__legend">
+      <li>
+        <span class="day-cell is-got" aria-hidden="true" />获得<span
+          class="skeleton-bone skeleton-text"
+          style="--skeleton-w: 4em"
+        />
+      </li>
+      <li><span class="day-cell is-signed" aria-hidden="true" />领到其他奖励</li>
+      <li><span class="day-cell is-unknown" aria-hidden="true" />已签到，奖励未知</li>
+      <li><span class="day-cell is-failed" aria-hidden="true" />签到失败</li>
+      <li><span class="day-cell is-none" aria-hidden="true" />无记录</li>
+    </ul>
+    <div class="reward-distribution__scroll">
+      <table class="reward-distribution__table">
+        <thead>
+          <tr>
+            <th scope="col" />
+            <th v-for="day in DAYS" :key="day" :class="{ 'is-quiet': !LABELED_DAYS.has(day) }">
+              {{ day }}
+            </th>
+            <th class="reward-distribution__total">合计</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="month in placeholderMonths" :key="month">
+            <th><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em" /></th>
+            <td v-for="day in DAYS" :key="day" />
+            <td class="reward-distribution__total">
+              <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2em" />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <section
+    v-else-if="distribution"
+    class="reward-distribution"
+    :aria-label="`${distribution.item}的出现情况`"
+  >
     <header class="reward-distribution__header">
       <h3>{{ distribution.item }}的出现情况</h3>
       <p v-if="distribution.days">

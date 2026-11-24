@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { effectScope, nextTick, ref } from 'vue'
+import { createSSRApp, effectScope, nextTick, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import { createPinia, defineStore, setActivePinia } from 'pinia'
 import axios from 'axios'
 import MasteryRecommendation from './MasteryRecommendation.vue'
@@ -17,6 +18,10 @@ vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => state.plan }))
 vi.mock('naive-ui', async (original) => ({
   ...(await original()),
+  NPopover: { render: () => null },
+  NTooltip: { render: () => null },
+  NSelect: { render: () => null },
+  NModal: { render: () => null },
   useMessage: () => state.feedback,
   useThemeVars: () => ref({})
 }))
@@ -69,6 +74,61 @@ afterEach(() => {
   scope?.stop()
   vi.clearAllTimers()
   vi.useRealTimers()
+})
+
+describe('养成首页加载', () => {
+  it('按可见行数读取旧布局，刷新失败后保留已读总览和布局', async () => {
+    const setItem = vi.fn()
+    vi.stubGlobal('localStorage', {
+      getItem: (key) =>
+        key === 'mower_skeleton_shape:growth'
+          ? JSON.stringify({ roster: 50, queue: 6, cards: 6, goals: 'false' })
+          : null,
+      setItem
+    })
+    try {
+      const page = setup()
+      expect(page.growthPlaceholder.value).toEqual({
+        roster: 24,
+        queue: 5,
+        cards: 4,
+        goals: true,
+        training: true
+      })
+      page.activeView.value = 'operators'
+      const render = () =>
+        renderToString(createSSRApp({ ...MasteryRecommendation, setup: () => page }))
+      const initial = await render()
+      expect(initial.match(/growth-opcard--placeholder/g)).toHaveLength(8)
+      expect(initial).not.toContain('没有符合筛选的干员')
+      const store = useMasteryStore()
+      axios.get.mockResolvedValueOnce({
+        data: {
+          has_data: true,
+          operators: [
+            { char_id: 'char_test', name: '样例干员', rarity: 5, recommendations: [], modules: [] }
+          ]
+        }
+      })
+      await store.fetchRecommendations()
+      await nextTick()
+      expect(page.growthPlaceholder.value).toBeNull()
+      expect(JSON.parse(setItem.mock.lastCall[1]).roster).toBe(1)
+      const writes = setItem.mock.calls.length
+      axios.get.mockRejectedValueOnce(new Error('读取失败'))
+      await store.fetchRecommendations()
+      await nextTick()
+      expect(store.recommendations[0].name).toBe('样例干员')
+      const failed = await render()
+      expect(failed).toContain('干员数据读取失败')
+      expect(failed).toMatch(/class="growth-opcard[ "]/)
+      expect(failed).not.toContain('growth-opcard--placeholder')
+      expect(page.growthPlaceholder.value).toBeNull()
+      expect(setItem).toHaveBeenCalledTimes(writes)
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
 
 describe('阿米娅专精升变提示', () => {

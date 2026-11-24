@@ -1,6 +1,6 @@
 /* 设置目录由侧栏承载，右侧按分类展示设置组。 */
 .settings-page {
-  --settings-radius: 16px;
+  --settings-radius: calc(16px * var(--mower-corner-scale));
   --settings-control-width: 28rem;
   --settings-number-width: 14rem;
   --settings-card-border: color-mix(in srgb, var(--mower-border) 85%, transparent);
@@ -67,7 +67,8 @@
   padding: 4px;
   box-sizing: border-box;
   border: 1px solid var(--settings-card-border);
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   box-shadow: var(--settings-card-shadow-hover);
 }
@@ -79,7 +80,8 @@
   width: 100%;
   padding: 7px 10px;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font: inherit;
   text-align: left;
   color: var(--mower-text);
@@ -111,7 +113,8 @@
 
 /* 搜索定位后短暂高亮目标设置项 */
 .settings-search-hit {
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   animation: settings-search-hit 1.6s ease-out;
 }
 
@@ -139,7 +142,8 @@
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 14px;
   line-height: 20px;
   color: var(--mower-text-muted);
@@ -278,6 +282,7 @@
   padding: 20px 24px;
   border: 1px solid var(--settings-card-border);
   border-radius: var(--settings-radius);
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
 }
 
@@ -444,7 +449,8 @@
 }
 
 .settings-page .n-alert {
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 
 .settings-page a[href^='#']:not(.settings-nav-item) {

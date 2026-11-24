@@ -14,6 +14,9 @@ import {
 import { plan_facility_type_options } from '@/utils/base_facilities'
 import { createDragPreview } from '@/utils/dragPreview'
 import { ref, computed, h, watch, inject, onBeforeUnmount } from 'vue'
+// 排班读到之前（救急排班第一次读取）只画基建平面图的房间框：控制中枢、宿舍和右侧房间照常显示
+// 房间名和空的头像格，左侧九个房间的设施名和头像先占位。这时不访问排班数据。
+const props = defineProps({ placeholder: Boolean })
 const config_store = useConfigStore()
 const plan_store = inject('planStore', null) || usePlanStore()
 const { operators, group_colors, current_plan, workaholic, sub_plan } = storeToRefs(plan_store)
@@ -211,6 +214,20 @@ const avatar_bg = computed(() => {
   return theme.value == 'light' ? 'lightgrey' : 'grey'
 })
 
+const placeholder_mid_rooms = ['控制中枢', '宿舍1', '宿舍2', '宿舍3', '宿舍4']
+const placeholder_right_rooms = computed(() =>
+  props.placeholder
+    ? [
+        { key: 'meeting', name: '会客室' },
+        { key: 'factory', name: '加工站' },
+        ...(right_side_room_order.value || ['contact', 'train', 'recycle']).map((key) => ({
+          key,
+          name: right_room_names[key]
+        }))
+      ].map((room) => ({ ...room, slots: facility_operator_limit[room.key] || 1 }))
+    : []
+)
+
 defineExpose({
   outer
 })
@@ -284,7 +301,56 @@ function set_facility(e) {
 </script>
 
 <template>
-  <div class="plan-container" ref="outer">
+  <div v-if="placeholder" class="plan-container" aria-busy="true">
+    <span class="loading-skeleton__label">正在读取救急排班</span>
+    <div class="outer" inert>
+      <div class="left_box">
+        <div v-for="row in 3" :key="row" class="left_contain">
+          <div v-for="column in 3" :key="column" class="room-placeholder">
+            <div class="draggable">
+              <div class="facility-name">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em" />
+              </div>
+              <div class="avatars">
+                <span v-for="slot in 3" :key="slot" class="skeleton-bone avatar-placeholder" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="mid_box">
+        <div v-for="name in placeholder_mid_rooms" :key="name" class="mid_contain">
+          <n-button secondary class="facility-5">
+            <div>
+              <div class="facility-name">{{ name }}</div>
+              <div class="avatars">
+                <span v-for="slot in 5" :key="slot" class="avatar-slot" />
+              </div>
+            </div>
+          </n-button>
+        </div>
+      </div>
+      <div class="right_box">
+        <div v-for="room in placeholder_right_rooms" :key="room.key" class="right_contain">
+          <n-button secondary class="facility-2">
+            <div>
+              <div class="facility-name">
+                <template v-if="room.key === 'train'">
+                  <div>协助位</div>
+                  <div>训练位</div>
+                </template>
+                <template v-else>{{ room.name }}</template>
+              </div>
+              <div class="avatars">
+                <span v-for="slot in room.slots" :key="slot" class="avatar-slot" />
+              </div>
+            </div>
+          </n-button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div v-else class="plan-container" ref="outer">
     <div class="outer" data-no-update-drop>
       <!-- 左 -->
       <div class="left_box">
@@ -788,7 +854,7 @@ function set_facility(e) {
 
   :deep(.n-button) {
     height: 36px;
-    --n-border-radius: 6px !important;
+    --n-border-radius: calc(6px * var(--mower-corner-scale)) !important;
     --n-border: 1px solid currentColor !important;
     --n-border-hover: 1px solid currentColor !important;
     --n-border-focus: 1px solid currentColor !important;
@@ -900,6 +966,24 @@ function set_facility(e) {
     border-radius: 2px;
     background: v-bind(avatar_bg);
   }
+}
+
+/* 读取中的房间框：左侧设施是浅色底，头像位置与读完后的头像同样 45px 见方。 */
+.room-placeholder {
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--mower-text, #333639) 4%, transparent);
+}
+
+.avatar-slot,
+.avatar-placeholder {
+  flex: none;
+  width: 45px;
+  height: 45px;
+  border-radius: 2px;
+}
+
+.avatar-slot {
+  background: v-bind(avatar_bg);
 }
 
 .facility-name {
@@ -1062,7 +1146,8 @@ function set_facility(e) {
 .facility-drag-target {
   outline: 2px solid var(--mower-primary, #18a058);
   outline-offset: 2px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   box-shadow: 0 0 0 5px color-mix(in srgb, var(--mower-primary, #18a058) 12%, transparent);
 }
 

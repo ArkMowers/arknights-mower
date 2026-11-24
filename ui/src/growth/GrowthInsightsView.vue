@@ -11,7 +11,9 @@ const props = defineProps({
   history: { type: Array, default: () => [] },
   survey: { type: Object, default: () => ({ operators: [] }) },
   operatorCount: { type: Number, default: 0 },
-  surveyLoading: Boolean
+  surveyLoading: Boolean,
+  // 养成数据第一次读到之前，练度统计按读完后的版面占位，不显示“还没有可统计的练度”。
+  placeholder: Boolean
 })
 const emit = defineEmits(['refresh-survey'])
 
@@ -46,7 +48,12 @@ const surveyNote = computed(() => {
           <h2 class="gp-section-head__title">养成统计</h2>
         </div>
       </header>
-      <OperatorStatistics v-if="statistics" :statistics="statistics" :history="history" />
+      <OperatorStatistics
+        v-if="statistics || placeholder"
+        :statistics="statistics"
+        :history="history"
+        :placeholder="placeholder"
+      />
       <div v-else class="gp-empty">
         <p class="gp-empty__title">还没有可统计的练度</p>
         <p class="gp-muted">从森空岛同步一次干员数据后，这里会显示招募、精英化、专精与材料消耗。</p>

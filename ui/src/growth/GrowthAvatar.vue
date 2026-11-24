@@ -43,7 +43,8 @@ const rarityClass = computed(() => (props.rarity ? 'growth-avatar--rarity-' + pr
   display: inline-flex;
   flex: none;
   overflow: hidden;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-3);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
 }

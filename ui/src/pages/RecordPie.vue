@@ -30,7 +30,29 @@
     <p v-if="historyLimited" class="order-note">
       当前历史查询接口不可用：自选表暂时只能使用默认报表中已有的干员记录。
     </p>
-    <mood-card-grid :groups="orderedReportData" @reorder="reorderCards">
+    <mood-card-grid
+      :groups="orderedReportData"
+      :loading="loading"
+      shape-key="record-pie"
+      :load-failed="!!loadError"
+      loading-label="正在读取工休比数据"
+      @reorder="reorderCards"
+    >
+      <!-- 读取中的卡片：编组按钮和隐藏按钮照常显示，编组名、饼图和当前干员先占位。 -->
+      <template #placeholder>
+        <header class="group-head">
+          <n-button type="info" secondary class="group-title">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" />
+          </n-button>
+          <n-button size="tiny" secondary>隐藏</n-button>
+        </header>
+        <div class="pie-area pie-area--placeholder">
+          <span class="skeleton-bone pie-placeholder" />
+        </div>
+        <p class="card-hint">
+          当前干员：<span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em" />
+        </p>
+      </template>
       <template #default="{ group }">
         <header class="group-head">
           <n-button
@@ -182,6 +204,8 @@ const reportData = ref([])
 const viewHistory = useMoodGroups(board, reportData, getMoodSeries)
 const { groups, historyLimited } = viewHistory
 const loadError = ref('')
+// 工休比数据第一次读到之前，卡片区显示骨架屏。
+const loading = ref(true)
 const showCard = ref({})
 const selectedTime = ref(Date.now())
 const showConfirm = ref(false)
@@ -224,6 +248,8 @@ onMounted(async () => {
     reportData.value = await getMoodRatios({ includeWorkRest: false })
   } catch {
     loadError.value = '工休比数据读取失败，请检查本地 Mower 后端。'
+  } finally {
+    loading.value = false
   }
 })
 
@@ -241,7 +267,10 @@ const pieOptions = {
 </script>
 
 <style scoped>
+/* 页面铺满内容区，卡片的宽度不随读取中或读完后的卡片内容变化。 */
 .mood-page {
+  box-sizing: border-box;
+  width: 100%;
   min-width: 0;
   padding: var(--page-padding);
   padding-bottom: 18px;
@@ -292,6 +321,21 @@ const pieOptions = {
   box-sizing: border-box;
 }
 
+/* 饼图占位：与饼图同样大小的圆，饼图的直径是绘图区宽高中较小的一边减去 2px。 */
+.pie-area--placeholder {
+  container-type: size;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pie-placeholder {
+  width: calc(min(100cqw, 100cqh) - 2px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  corner-shape: round;
+}
+
 .agent-details {
   overflow: auto;
   flex: 1;
@@ -310,7 +354,8 @@ const pieOptions = {
   background: transparent;
   color: inherit;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-family: inherit;
 }
 .agent-detail:hover,

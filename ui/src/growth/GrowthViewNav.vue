@@ -13,7 +13,9 @@ const props = defineProps({
   operatorCount: { type: Number, default: 0 },
   missingKinds: { type: Number, default: 0 },
   readyCount: { type: Number, default: 0 },
-  goalCount: { type: Number, default: 0 }
+  goalCount: { type: Number, default: 0 },
+  // 首次读取时干员数和材料状态先画成占位块，读完后数字落在原处。
+  placeholder: Boolean
 })
 const emit = defineEmits(['update:modelValue', 'open-route', 'open-workshop'])
 
@@ -23,7 +25,8 @@ const views = computed(() => [
     key: 'operators',
     label: '干员',
     icon: PeopleOutline,
-    meta: props.operatorCount ? String(props.operatorCount) : ''
+    meta: props.operatorCount ? String(props.operatorCount) : '',
+    placeholder: props.placeholder && '1.4em'
   },
   {
     key: 'materials',
@@ -33,7 +36,8 @@ const views = computed(() => [
       ? '缺 ' + props.missingKinds
       : props.readyCount
         ? '备齐 ' + props.readyCount
-        : ''
+        : '',
+    placeholder: props.placeholder && '2.6em'
   },
   { key: 'insights', label: '统计', icon: BarChartOutline, meta: '' }
 ])
@@ -54,7 +58,10 @@ const views = computed(() => [
       >
         <n-icon :component="view.icon" :size="15" aria-hidden="true" />
         <span>{{ view.label }}</span>
-        <span v-if="view.meta" class="growth-viewnav__meta gp-mono">{{ view.meta }}</span>
+        <span v-if="view.placeholder" class="growth-viewnav__meta gp-mono"
+          ><span class="skeleton-bone skeleton-text" :style="{ '--skeleton-w': view.placeholder }"
+        /></span>
+        <span v-else-if="view.meta" class="growth-viewnav__meta gp-mono">{{ view.meta }}</span>
       </button>
     </div>
     <div class="growth-viewnav__tools">
@@ -129,7 +136,8 @@ const views = computed(() => [
 
 .growth-viewnav__meta {
   padding: 0 5px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface);
   color: var(--gp-ink-2);
   font-size: 10.5px;

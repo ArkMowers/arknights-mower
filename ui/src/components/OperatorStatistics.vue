@@ -1,5 +1,43 @@
 <template>
-  <section v-if="statistics" class="operator-statistics">
+  <!-- 练度读到之前：标题、星级筛选、分页和读数标签照常显示，数字和表格行先占位。 -->
+  <section v-if="!statistics && placeholder" class="operator-statistics" inert>
+    <div class="stat-toolbar">
+      <div class="stat-toolbar__title">
+        <h3>本地练度档案</h3>
+      </div>
+      <n-checkbox-group :value="rarities">
+        <n-space :size="12">
+          <n-checkbox
+            v-for="rarity in [6, 5, 4, 3, 2, 1]"
+            :key="rarity"
+            :value="rarity"
+            :label="rarity + ' 星'"
+          />
+        </n-space>
+      </n-checkbox-group>
+    </div>
+    <n-tabs type="line" class="stat-tabs" default-value="roster">
+      <n-tab-pane v-for="tab in STAT_TABS" :key="tab.name" :name="tab.name" :tab="tab.label">
+        <div class="stat-kpis">
+          <div v-for="label in STAT_KPI_LABELS" :key="label" class="stat-kpi">
+            <span>{{ label }}</span>
+            <strong class="gp-num"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.8em"
+            /></strong>
+          </div>
+        </div>
+        <div class="stat-placeholder-rows">
+          <span
+            v-for="width in [96, 82, 90, 74, 88]"
+            :key="width"
+            class="skeleton-bone skeleton-line"
+            :style="{ '--skeleton-w': width + '%' }"
+          />
+        </div>
+      </n-tab-pane>
+    </n-tabs>
+  </section>
+  <section v-else-if="statistics" class="operator-statistics">
     <div class="stat-toolbar">
       <div class="stat-toolbar__title">
         <h3>本地练度档案</h3>
@@ -234,7 +272,17 @@ import { growthMetrics, growthHistoryPoints } from '@/utils/growthPlanning'
 import { materialIcon } from '@/growth/growthFormatters'
 
 use([LineChart, CanvasRenderer, GridComponent, TooltipComponent, LegendComponent])
-const props = defineProps({ statistics: Object, history: { type: Array, default: () => [] } })
+const props = defineProps({
+  statistics: Object,
+  history: { type: Array, default: () => [] },
+  placeholder: Boolean
+})
+const STAT_TABS = [
+  { name: 'roster', label: '干员统计' },
+  { name: 'materials', label: '材料消耗' },
+  { name: 'ranking', label: '理智排行' }
+]
+const STAT_KPI_LABELS = ['已招募', '精二干员', '专三技能', '已开启模组']
 const theme = useThemeVars()
 const rarities = ref([6, 5, 4, 3, 2, 1])
 const materialQuery = ref('')
@@ -468,7 +516,8 @@ const historyChart = computed(() => ({
   flex-direction: column;
   gap: 4px;
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -489,8 +538,16 @@ const historyChart = computed(() => ({
   font-weight: 500;
 }
 
+.stat-placeholder-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 10px 4px;
+}
+
 .stat-table {
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   overflow: hidden;
 }
 
@@ -514,7 +571,8 @@ const historyChart = computed(() => ({
   width: 22px;
   height: 22px;
   flex: none;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   object-fit: contain;
   background: var(--gp-surface-2);
 }
@@ -584,7 +642,8 @@ const historyChart = computed(() => ({
   grid-template-columns: 1fr 1.4fr;
   gap: 20px;
   padding: 16px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -666,7 +725,8 @@ const historyChart = computed(() => ({
   align-items: center;
   gap: 12px;
   padding: 14px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -680,7 +740,8 @@ const historyChart = computed(() => ({
   width: 40px;
   height: 40px;
   flex: none;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   object-fit: cover;
   object-position: 50% 22%;
   background: var(--gp-surface-3);

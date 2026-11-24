@@ -105,7 +105,8 @@ function message(entry) {
 .failure-log__today {
   margin: 0 0 8px;
   padding: 8px 10px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-error) 9%, var(--mower-surface));
   color: var(--mower-error-text, var(--mower-error));
   font-size: 12px;
@@ -127,7 +128,8 @@ function message(entry) {
   gap: 5px;
   max-width: 100%;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-error) 10%, var(--mower-surface));
   color: var(--mower-error-text, var(--mower-error));
   font-size: 12px;
@@ -169,7 +171,8 @@ function message(entry) {
   padding: 7px 6px 7px 9px;
   border: 0;
   border-left: 3px solid var(--mower-error);
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 calc(4px * var(--mower-corner-scale)) calc(4px * var(--mower-corner-scale)) 0;
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--mower-text);
   text-align: left;

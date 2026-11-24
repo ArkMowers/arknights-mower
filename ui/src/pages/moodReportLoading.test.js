@@ -55,6 +55,19 @@ describe('current mood pages load curves without monthly work/rest data', () => 
     expect(state.getMoodRatios).toHaveBeenCalledExactlyOnceWith({ includeWorkRest: false })
   })
 
+  it.each([
+    ['curve', RecordLine],
+    ['pie', RecordPie]
+  ])('%s page shows the card skeleton until the first read ends', async (_name, component) => {
+    state.getMoodRatios.mockRejectedValue(new Error('offline'))
+    const page = scope.run(() => component.setup({}, { expose: vi.fn() }))
+    expect(page.loading.value).toBe(true)
+    await Promise.all(state.mounted.map((callback) => callback()))
+    // 读取失败时也结束骨架屏，改为显示错误说明。
+    expect(page.loading.value).toBe(false)
+    expect(page.loadError.value).not.toBe('')
+  })
+
   it('pie page also opts out when reloading after a history deletion', async () => {
     const page = scope.run(() => RecordPie.setup({}, { expose: vi.fn() }))
 
