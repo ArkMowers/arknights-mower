@@ -32,7 +32,7 @@ def public_origin(subdomain):
     return f"https://{subdomain}.{DOMAIN}:{PORT}"
 
 
-HTTP_METHODS = {"GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"}
+HTTP_METHODS = {"GET", "POST", "PATCH", "PUT", "DELETE"}
 # The gateway owns its control and static URLs. The instance owns native management.
 LOCAL_NAMESPACES = {
     "__mower",
@@ -87,7 +87,7 @@ def allowed_request(method, target):
         return False
     if path.startswith("/software-update/source/"):
         return False
-    if namespace in MAINTENANCE_NAMESPACES and method not in {"GET", "HEAD"}:
+    if namespace in MAINTENANCE_NAMESPACES and method != "GET":
         return False
     return True
 
@@ -117,7 +117,7 @@ def response_kind(path):
     return "data"
 
 
-def validate_response(path, status, mime, data, *, method=None):
+def validate_response(path, status, mime, data):
     if (
         type(status) is not int
         or not 200 <= status <= 599
@@ -126,10 +126,6 @@ def validate_response(path, status, mime, data, *, method=None):
         or len(mime) > 128
     ):
         raise ValueError("中转响应无效")
-    if method == "HEAD":
-        if data or not re.fullmatch(r"[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+", mime):
-            raise ValueError("中转 HEAD 响应无效")
-        return
     if status == 204 and not data:
         return
     if urlsplit(path).path == "/gui/log-background" and status == 200:

@@ -130,9 +130,24 @@ def test_business_status_and_static_fallback_use_instance_routes(relay):
         )
 
     assert request("GET", "/maa-long-task-status")["status"] == 200
-    assert request("HEAD", "/getwatermark")["body"] == ""
     assert request("GET", "/index.html")["status"] == 404
     assert request("GET", "/unknown-feature")["status"] == 404
+
+
+def test_relay_head_cannot_stop_maa(relay, monkeypatch):
+    import server
+
+    stop = Mock(return_value=True)
+    monkeypatch.setattr(server.maa_control, "request_stop", stop)
+    message = {"id": "stop", "path": "/stop-maa", "headers": {"token": relay.app.token}}
+    with pytest.raises(ValueError, match="不支持该 Mower 操作"):
+        relay.dispatch({**message, "method": "HEAD"}, public_origin("example"))
+    stop.assert_not_called()
+    assert (
+        relay.dispatch({**message, "method": "GET"}, public_origin("example"))["status"]
+        == 200
+    )
+    stop.assert_called_once_with()
 
 
 def test_relay_conversation_operations_require_the_instance_token(relay, monkeypatch):
@@ -353,7 +368,7 @@ def test_enable_requires_active_configured_token(
         ("PATCH", "/stage/event-rerun", True),
         ("POST", "/maa-copilot", True),
         ("DELETE", "/weekly-plans/%E5%91%A8%E4%B8%80", True),
-        ("HEAD", "/process-control/info", True),
+        ("HEAD", "/process-control/info", False),
         ("GET", "/config-backup/export", True),
         ("GET", "/maa-resource-update/status", True),
         ("POST", "/maa-update/start", False),
@@ -382,12 +397,7 @@ def test_relay_forwards_business_paths_and_excludes_local_management(
     assert allowed_request(method, path) is expected
 
 
-def test_relay_validates_head_and_download_responses():
-    validate_response("/stage/event-rerun", 200, "application/json", b"", method="HEAD")
-    with pytest.raises(ValueError):
-        validate_response(
-            "/stage/event-rerun", 200, "application/json", b"{}", method="HEAD"
-        )
+def test_relay_validates_download_responses():
     validate_response("/config-backup/export", 200, "application/zip", b"PK\x03\x04")
     with pytest.raises(ValueError):
         validate_response("/future-feature/export", 200, "text/html", b"<html></html>")

@@ -189,9 +189,7 @@ class RelayClient:
                     and b">" not in data
                 ):
                     mime = "text/plain"
-                if method == "HEAD":
-                    data = b""
-                validate_response(path, response.status_code, mime, data, method=method)
+                validate_response(path, response.status_code, mime, data)
                 return {
                     "op": "response",
                     "id": message["id"],
