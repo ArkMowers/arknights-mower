@@ -163,8 +163,19 @@ def retained_task_reservations(
     returning_names=(),
     recovering_name=None,
 ):
-    """保留执行预约目标、当前驻员和整组成员，规划与纠错共用。"""
+    """为保留执行和已启用副表的换班预约目标、当前驻员和整组成员。"""
     tasks = [task for task in tasks if not unstarted_product_wait(task)]
+    reserved_tasks = [
+        task
+        for task in tasks
+        if task is not None
+        and task is not current_task
+        and not run_order_waits_for_staffing(task)
+        and (
+            getattr(task, "retains_execution", False)
+            or getattr(task, "backup_shift_active", False)
+        )
+    ]
     if returning_groups or returning_names or recovering_name:
         from arknights_mower.utils.retained_recovery import (
             pending_return_allows_recovery,
@@ -174,14 +185,7 @@ def retained_task_reservations(
         )
 
         names, slots = set(), set()
-        for task in tasks:
-            if (
-                task is None
-                or task is current_task
-                or run_order_waits_for_staffing(task)
-                or not getattr(task, "retains_execution", False)
-            ):
-                continue
+        for task in reserved_tasks:
             task_names, task_slots = retained_task_reservations(op_data, [task])
             released = {
                 name
@@ -215,14 +219,7 @@ def retained_task_reservations(
             slots.update(task_slots)
         return names, slots
     names, slots = set(), set()
-    for task in tasks:
-        if (
-            task is None
-            or task is current_task
-            or run_order_waits_for_staffing(task)
-            or not getattr(task, "retains_execution", False)
-        ):
-            continue
+    for task in reserved_tasks:
         for room, row in (
             *task.plan.items(),
             *getattr(task, "run_order_dorm_plan", {}).items(),

@@ -1,10 +1,16 @@
 """副表已指定替班时，离岗成员的恢复安排与工作岗位一起提交。"""
 
 import copy
+from datetime import datetime, timedelta
 
 import pytest
 
+from arknights_mower.solvers.base_schedule import GroupShiftBlocked
 from arknights_mower.tests import shift_cycle_projection_state_tests as fixtures
+from arknights_mower.tests.native_recovery_execution_tests import prepare_dispatch
+from arknights_mower.utils.logic_expression import LogicExpression
+from arknights_mower.utils.operators import Operators
+from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 pytestmark = pytest.mark.usefixtures("offline_maintenance")
@@ -276,6 +282,102 @@ def test_released_bed_wait_yields_to_confirmation_then_resumes_without_new_read(
     assert not solver.waiting_group_shifts
     assert task in solver.tasks
     assert task.time == original_time
+
+
+def test_due_return_releases_bed_for_waiting_backup_correction(solver, monkeypatch):
+    solver.op_data = data = Operators(
+        {
+            "default_plan": Plan(
+                {
+                    "factory": [Room("至简", "赤金组", ["乌尔比安"])],
+                    "recycle": [Room("旅骨", "", ["行铃"])],
+                    "meeting": [Room("泰拉大陆调查团", "怪猎组", ["伺夜"])],
+                    "dormitory_1": [
+                        Room(name, "", [])
+                        for name in ("杜林", "芬", "梓兰", "Free", "Free")
+                    ],
+                },
+                PlanConfig("", "", ""),
+            ),
+            "backup_plans": [
+                Plan(
+                    {},
+                    PlanConfig("", "", ""),
+                    trigger=LogicExpression("False", "==", "True"),
+                )
+            ],
+        }
+    )
+    assert data.init_and_validate() is None
+    now = datetime.now()
+    for op in data.operators.values():
+        op.mood, op.time_stamp = 24, now
+    data._apply_projected_arrangements(
+        [
+            {
+                "factory": ["至简"],
+                "recycle": ["行铃"],
+                "meeting": ["泰拉大陆调查团"],
+                "dormitory_1": ["杜林", "芬", "梓兰", "旅骨", "Current"],
+            }
+        ]
+    )
+    data.first_init = False
+    data.operators["旅骨"].mood = 22
+    data.operators["泰拉大陆调查团"].mood = 0
+    waiting = SchedulerTask(
+        time=now - timedelta(minutes=2),
+        task_type=TaskTypes.SELF_CORRECTION,
+        task_plan={
+            "factory": ["乌尔比安"],
+            "meeting": ["伺夜"],
+            "dormitory_1": [
+                "Current",
+                "Current",
+                "Current",
+                "Current",
+                "泰拉大陆调查团",
+            ],
+        },
+    )
+    waiting.backup_shift_active = True
+    solver.tasks, solver.task = [waiting], waiting
+    with pytest.raises(GroupShiftBlocked) as blocked:
+        solver._prepare_group_shift(waiting)
+    solver._suspend_group_shift(waiting, blocked.value.groups)
+    waiting_time = waiting.time
+    returning = SchedulerTask(
+        time=now - timedelta(minutes=1),
+        task_type=TaskTypes.SHIFT_ON,
+        task_plan={"recycle": ["旅骨"]},
+    )
+    solver.tasks, solver.task = [returning], returning
+    prepare_dispatch(solver, monkeypatch)
+    before = positions(data)
+    return_time = returning.time
+    for _ in range(2):
+        solver._prepare_shift_cycle(returning)
+        assert returning.plan == {"recycle": ["旅骨"]}
+        assert returning.time == return_time
+        assert positions(data) == before
+        assert solver.waiting_group_shifts == [waiting]
+
+    solver.infra_main()
+
+    assert data.get_current_operator("recycle", 0).name == "旅骨"
+    assert data.get_current_operator("dormitory_1", 3) is None
+    assert not solver.waiting_group_shifts
+    assert sum(task is waiting for task in solver.tasks) == 1
+    assert waiting.time == waiting_time
+    assert waiting.plan["dormitory_1"][3:] == ["至简", "泰拉大陆调查团"]
+    solver.total_agent = list(data.operators.values())
+    assert not solver.resting()
+    solver.task = waiting
+    solver.infra_main()
+    assert data.get_current_operator("dormitory_1", 3).name == "至简"
+    assert data.get_current_operator("dormitory_1", 4).name == "泰拉大陆调查团"
+    assert all(task is not waiting for task in solver.tasks)
+    solver.enter_room.assert_not_called()
 
 
 @pytest.mark.parametrize("reading", ["fresh", "stale", "unknown"])

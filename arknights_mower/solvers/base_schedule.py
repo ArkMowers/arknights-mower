@@ -10451,6 +10451,55 @@ class BaseSchedulerSolver(
             for index, name in enumerate(row)
         )
 
+    def _return_releases_waiting_recovery(self, task, plan, *, now):
+        """预演回班腾床后，核对挂起任务能否恢复并使用该床位。"""
+        returning_names = _assigned_operator_names(
+            {room: row for room, row in plan.items() if not room.startswith("dorm")}
+        )
+        source_beds = {
+            bed.position
+            for bed in self.op_data.dorm
+            if (op := self.op_data.get_current_operator(*bed.position)) is not None
+            and op.name in returning_names
+        }
+        if not source_beds:
+            return False
+        admissible = copy.deepcopy(plan)
+        self._suppress_retained_arrangements(
+            admissible, returning_groups=self._returning_groups_releasing_waits(task)
+        )
+        if admissible != plan:
+            return False
+        simulation = copy.copy(self)
+        simulation.op_data = self.op_data.project_arrangements([plan], now=now)
+        vacancies = {
+            slot
+            for slot in source_beds
+            if simulation.op_data.get_current_operator(*slot) is None
+        }
+        if not vacancies:
+            return False
+        simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
+            (
+                [pending for pending in self.tasks if pending is not task],
+                self.waiting_group_shifts,
+            )
+        )
+        simulation.task = None
+        waiting = {id(pending) for pending in simulation.waiting_group_shifts}
+        simulation._resume_waiting_group_shifts()
+        return any(
+            id(pending) in waiting
+            and not getattr(pending, "execution_failure", None)
+            and any(
+                (room, index) in vacancies and name in simulation.op_data.operators
+                for room, row in pending.plan.items()
+                if room.startswith("dorm")
+                for index, name in enumerate(row)
+            )
+            for pending in simulation.tasks
+        )
+
     @log_mood_calculation("完整换班")
     @_log_backup_calculation("完整换班")
     def _prepare_shift_cycle(self, task):
@@ -10491,7 +10540,18 @@ class BaseSchedulerSolver(
         projection_now = getattr(self.op_data, "_projection_now", None)
         if projection_now is None and self.op_data.mood_calculation_enabled:
             projection_now = datetime.now()
-        if self._waiting_return_can_progress(task):
+        waiting_shifts = task.type == TaskTypes.SHIFT_ON and getattr(
+            self, "waiting_group_shifts", ()
+        )
+        agreed_return = self._waiting_return_can_progress(task)
+        releases_bed = (
+            not agreed_return
+            and waiting_shifts
+            and self._return_releases_waiting_recovery(
+                task, task.plan, now=projection_now
+            )
+        )
+        if agreed_return or releases_bed:
             prepared = copy.copy(task)
             prepared.plan = copy.deepcopy(task.plan)
             self._prepare_shift_backup(prepared, now=projection_now)
@@ -10502,7 +10562,16 @@ class BaseSchedulerSolver(
                 == self.op_data.plan_condition
                 and getattr(prepared, "backup_group", self.op_data.backup_group)
                 == self.op_data.backup_group
-                and self._waiting_return_can_progress(prepared)
+                and (
+                    self._waiting_return_can_progress(prepared)
+                    or releases_bed
+                    and (
+                        prepared.plan == task.plan
+                        or self._return_releases_waiting_recovery(
+                            task, prepared.plan, now=projection_now
+                        )
+                    )
+                )
             ):
                 # 先完成这份回班，实际释放床位后再重验挂起的整批换班。
                 # 不把其他普通轮休并入前置回班，避免重新占用刚释放的床位。
