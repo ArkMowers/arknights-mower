@@ -309,16 +309,23 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
     def test_enabled_maa_routes_keep_token_checks_and_reach_handlers(self):
         config.conf.extra_settings_visible = True
         routes = [
-            (rule.rule, method, rule.endpoint)
-            for rule in self.server.app.url_map.iter_rules()
-            if rule.rule.startswith(("/maa-update/", "/maa-resource-update/"))
-            for method in sorted(rule.methods - {"OPTIONS"})
+            (f"/{target}/{operation}", method)
+            for target in ("maa-update", "maa-resource-update")
+            for operation, methods in (
+                ("info", ("GET", "HEAD")),
+                ("status", ("GET", "HEAD")),
+                ("check", ("POST",)),
+                ("start", ("POST",)),
+            )
+            for method in methods
         ]
+        routes.append(("/maa-update/mirrorchyan-status", "POST"))
+        adapter = self.server.app.url_map.bind("localhost")
         before = self.path.read_bytes()
         with patch.object(
             Request, "get_json", side_effect=AssertionError("must not parse")
         ):
-            for path, method, endpoint in routes:
+            for path, method in routes:
                 for token in (None, "wrong"):
                     with self.subTest(path=path, method=method, token=token):
                         response = self.client.open(
@@ -327,15 +334,16 @@ class ManagedHttpBoundaryTests(unittest.TestCase):
                             headers={"token": token} if token else {},
                         )
                         self.assertEqual(response.status_code, 403)
-        for path, method, endpoint in routes:
+        for path, method in routes:
             with self.subTest(path=path, method=method):
+                endpoint, arguments = adapter.match(path, method)
                 handler = Mock(return_value={"ok": True})
                 with patch.dict(self.server.app.view_functions, {endpoint: handler}):
                     response = self.client.open(
                         path, method=method, headers=self.headers
                     )
                 self.assertEqual(response.status_code, 200)
-                handler.assert_called_once_with()
+                handler.assert_called_once_with(**arguments)
         self.assertEqual(self.path.read_bytes(), before)
 
     def test_local_version_and_normal_task_reads_remain_available(self):

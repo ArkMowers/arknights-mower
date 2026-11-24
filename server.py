@@ -3631,9 +3631,15 @@ def get_maa_check_status():
     }
 
 
-@app.route("/maa-update/info")
+MAA_UPDATE_ROUTE = "/<any('maa-update','maa-resource-update'):target>"
+
+
+@app.get(MAA_UPDATE_ROUTE + "/info")
 @require_token
-def get_maa_update_info():
+def get_maa_update_info(target):
+    if target == "maa-resource-update":
+        return _get_maa_resource_update_info()
+
     from arknights_mower.utils.maa_update import (
         MaaUpdateError,
         backup_path_for,
@@ -3719,9 +3725,12 @@ def get_maa_update_info():
     return result
 
 
-@app.route("/maa-update/check", methods=["POST"])
+@app.post(MAA_UPDATE_ROUTE + "/check")
 @require_token
-def check_maa_update():
+def check_maa_update(target):
+    if target == "maa-resource-update":
+        return _check_maa_resource_update()
+
     from arknights_mower.utils.maa_update import (
         MaaUpdateError,
         get_latest_release,
@@ -3812,9 +3821,12 @@ def check_maa_update():
     }
 
 
-@app.route("/maa-update/start", methods=["POST"])
+@app.post(MAA_UPDATE_ROUTE + "/start")
 @require_token
-def start_maa_update():
+def start_maa_update(target):
+    if target == "maa-resource-update":
+        return _start_maa_resource_update()
+
     from arknights_mower.utils.maa_update import (
         MaaUpdateError,
         has_maa_installation,
@@ -3967,15 +3979,15 @@ def get_maa_mirrorchyan_status():
     return {"ok": status.valid, **status.as_dict()}
 
 
-@app.route("/maa-update/status")
+@app.get(MAA_UPDATE_ROUTE + "/status")
 @require_token
-def get_maa_update_status():
+def get_maa_update_status(target):
+    if target == "maa-resource-update":
+        return {"ok": True, "job": _maa_resource_update_snapshot()}
     return {"ok": True, "job": _maa_update_snapshot()}
 
 
-@app.route("/maa-resource-update/info")
-@require_token
-def get_maa_resource_update_info():
+def _get_maa_resource_update_info():
     from arknights_mower.utils.maa_resource_update import (
         read_maa_resource_info,
         resource_backup_path,
@@ -4036,9 +4048,7 @@ def get_maa_resource_update_info():
     return result
 
 
-@app.route("/maa-resource-update/check", methods=["POST"])
-@require_token
-def check_maa_resource_update():
+def _check_maa_resource_update():
     from arknights_mower.utils.maa_resource_update import (
         get_maa_resource_release,
         read_maa_resource_info,
@@ -4099,9 +4109,7 @@ def check_maa_resource_update():
     }
 
 
-@app.route("/maa-resource-update/start", methods=["POST"])
-@require_token
-def start_maa_resource_update():
+def _start_maa_resource_update():
     from arknights_mower.utils.maa_resource_update import (
         parse_resource_version,
         read_maa_resource_info,
@@ -4187,12 +4195,6 @@ def start_maa_resource_update():
                 }
             )
             thread.start()
-    return {"ok": True, "job": _maa_resource_update_snapshot()}
-
-
-@app.route("/maa-resource-update/status")
-@require_token
-def get_maa_resource_update_status():
     return {"ok": True, "job": _maa_resource_update_snapshot()}
 
 

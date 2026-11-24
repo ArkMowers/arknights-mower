@@ -136,6 +136,15 @@ UPDATE_ROUTES = [
     )
     or rule.rule in {"/resource/install", "/resource/status", "/resource-version"}
     for method in sorted(rule.methods - {"HEAD", "OPTIONS"})
+] + [
+    (f"/{target}/{operation}", method, endpoint)
+    for target in ("maa-update", "maa-resource-update")
+    for operation, method, endpoint in (
+        ("info", "GET", "get_maa_update_info"),
+        ("status", "GET", "get_maa_update_status"),
+        ("check", "POST", "check_maa_update"),
+        ("start", "POST", "start_maa_update"),
+    )
 ]
 
 
@@ -163,7 +172,7 @@ def test_disabled_update_routes_never_dispatch_handlers(
     [
         ("/software-update/start", "POST", "software_update.start"),
         ("/maa-update/start", "POST", "start_maa_update"),
-        ("/maa-resource-update/start", "POST", "start_maa_resource_update"),
+        ("/maa-resource-update/start", "POST", "start_maa_update"),
         ("/resource/install", "POST", "install_resource"),
         ("/resource-update/manual", "POST", "resource_update_manual"),
     ],
@@ -177,7 +186,10 @@ def test_enabled_updates_reach_existing_handlers(monkeypatch, path, method, endp
         path, method=method, headers={"token": "fixture-token", "X-Mower-Update": "1"}
     )
     assert response.status_code == 200
-    handler.assert_called_once_with()
+    if endpoint == "start_maa_update":
+        handler.assert_called_once_with(target=path.split("/")[1])
+    else:
+        handler.assert_called_once_with()
 
 
 def test_disabled_instance_keeps_local_resource_version_reads(monkeypatch):
@@ -262,3 +274,26 @@ def test_ordinary_configuration_saves_preserve_update_choice(
     assert "updates_enabled" not in yaml.safe_load(
         config.conf_path.read_text(encoding="utf-8")
     )
+
+
+def test_relay_maa_update_operation_methods():
+    from arknights_mower.utils.mower_relay.protocol import allowed_request
+
+    routes = {
+        "/maa-update/info": {"GET"},
+        "/maa-update/status": {"GET"},
+        "/maa-update/check": set(),
+        "/maa-update/start": set(),
+        "/maa-resource-update/info": {"GET"},
+        "/maa-resource-update/status": {"GET"},
+        "/maa-resource-update/check": set(),
+        "/maa-resource-update/start": set(),
+        "/maa-other-update/info": set(),
+        "/maa-update/mirrorchyan-status": set(),
+    }
+    for path, expected in routes.items():
+        assert {
+            method
+            for method in ("HEAD", "GET", "POST", "PUT", "PATCH", "DELETE")
+            if allowed_request(method, path)
+        } == expected
