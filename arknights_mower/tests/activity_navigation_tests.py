@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import cv2
 import numpy as np
@@ -208,6 +208,40 @@ def test_shop_click_uses_detected_currency_location_without_coordinates(
     monkeypatch.setattr(navigator, "confirm_shop", lambda: True)
     assert navigator.open_shop()
     solver.tap.assert_called_once_with((1300, 350))
+
+
+@pytest.mark.parametrize("score, taps", [(0.8, [call((136, 216))]), (0.799, [])])
+def test_shop_has_its_own_currency_match_threshold(
+    activity, tmp_path, monkeypatch, score, taps
+):
+    root = tmp_path / "resource/template/items"
+    root.mkdir(parents=True)
+    template = np.random.default_rng(123).integers(0, 256, (64, 64, 3), dtype=np.uint8)
+    cv2.imwrite(str(root / "test_token.png"), template)
+    monkeypatch.setattr(nav.config.conf, "maa_path", str(tmp_path))
+
+    scores = np.zeros((201, 121), dtype=np.float32)
+    scores[200, 120] = score
+    monkeypatch.setattr(
+        cv2,
+        "matchTemplate",
+        lambda frame, template, method: (
+            scores
+            if template.shape[:2] == (32, 32)
+            else np.zeros((1, 1), dtype=np.float32)
+        ),
+    )
+    solver = MagicMock(stage_meta=activity[0][0])
+    solver.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    navigator = nav.ActivityNavigation(solver, activity[1])
+    monkeypatch.setattr(navigator, "open_page", lambda: True)
+    monkeypatch.setattr(
+        navigator, "read", lambda: [[[], "关闭时间", 0.99], [[], "剩余10", 0.99]]
+    )
+
+    assert navigator.token_entry() is None
+    assert navigator.open_shop() is bool(taps)
+    assert solver.tap.call_args_list == taps
 
 
 @pytest.mark.parametrize(

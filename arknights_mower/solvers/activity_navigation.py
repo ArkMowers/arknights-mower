@@ -92,9 +92,9 @@ class ActivityNavigation:
         return self.currency_entry(((0, 100), (800, 950)))
 
     def shop_entry(self):
-        return self.currency_entry(((0, 0), (1920, 1080)), min_scale=0.3)
+        return self.currency_entry(((0, 0), (1920, 1080)), min_scale=0.3, min_score=0.8)
 
-    def currency_entry(self, scope, min_scale=0.8):
+    def currency_entry(self, scope, min_scale=0.8, *, min_score=0.9):
         tokens = set(self.shop.get("token_ids", [])) | {
             drop["id"]
             for stage in stage_data_full
@@ -152,7 +152,7 @@ class ActivityNavigation:
                             point[1] + scaled.shape[0] // 2 + y0,
                         ),
                     )
-            if best[0] >= 0.9:
+            if best[0] >= min_score:
                 matches.append(best)
         return matches[0][1] if len(matches) == 1 else None
 
