@@ -65,7 +65,7 @@ def crafting_projects(plans, goals, order=(), *, box=None, skills=None):
 
 
 def _finished_material_shortages(
-    box, skills, group_key, target, budget, reserved, earlier_prerequisites
+    box, skills, group_key, target, budget, reserved, added_prerequisites
 ):
     plans, goals = ([target], []) if group_key == "plans" else ([], [target])
     ((_, before, own),) = material_entries(
@@ -76,13 +76,14 @@ def _finished_material_shortages(
         separate_prerequisites=True,
         crafting_only=True,
     )
-    shared = Counter()
+    standalone_prerequisites = Counter()
     required = Counter()
     for material in before:
-        shared[material["id"]] += material["count"]
+        standalone_prerequisites[material["id"]] += material["count"]
     for material in before + own:
         required[material["id"]] += material["count"]
-    other_projects = reserved - (shared & earlier_prerequisites)
+    shared = standalone_prerequisites - added_prerequisites
+    other_projects = reserved - shared
     shortages = []
     for iid, count in required.items():
         available = max(0, budget.inventory.get(iid, 0) - other_projects[iid])
@@ -137,9 +138,9 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
             budget, [row for row in materials if row["id"] in crafting_ids]
         )
         eligible = summary["craftable"] and not active_shortage
-        earlier_prerequisites = prerequisite_costs.get(cid, Counter())
+        added_prerequisites = prerequisites - prerequisite_costs.get(cid, Counter())
         finished_shortages = _finished_material_shortages(
-            box, skills, group_key, target, budget, reserved, earlier_prerequisites
+            box, skills, group_key, target, budget, reserved, added_prerequisites
         )
         state = {
             **project,
@@ -173,9 +174,8 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
         groups[cid] = group
         accounted[cid] = cumulative
         reserved = total
-        before = prerequisites - earlier_prerequisites
         prerequisite_costs[cid] = prerequisites
-        for costs in (before, extra - before):
+        for costs in (added_prerequisites, extra - added_prerequisites):
             if costs:
                 entries.append(
                     (

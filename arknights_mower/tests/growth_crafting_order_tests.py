@@ -5,6 +5,7 @@ import json
 import sqlite3
 from collections import Counter
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -511,6 +512,47 @@ def reminders(case):
     states, entries = prepared(case)
     return growth_order.prepared_project_reminders(
         case.box, case.skills, states, entries, case.goals, case.stock, case.formulas
+    )
+
+
+@pytest.mark.parametrize("oriron, missing", [(14, 3), (16, 1), (17, 0)])
+def test_astesia_promotion_and_skill_seven_spend_separate_oriron(oriron, missing):
+    from arknights_mower.data import workshop_formula
+
+    skills = growth.growth_resources(
+        json.loads(
+            (Path(__file__).parents[1] / "data/skill_data.json").read_text("utf-8")
+        )
+    )
+    cid = "char_274_astesi"
+    case = SimpleNamespace(
+        box={
+            "characters": [
+                {"id": cid, "evolvePhase": 1, "level": 70, "mainSkillLevel": 6}
+            ]
+        },
+        skills=skills,
+        plans=[],
+        goals=[{"char_id": cid, "module_id": goal} for goal in ("elite2", "skill7")],
+        stock={
+            "30043": oriron,
+            "30042": 200,
+            "3223": 3,
+            "30034": 7,
+            "3303": 6,
+            "30023": 3,
+            "4001": 200000,
+        },
+        formulas=workshop_formula,
+    )
+    states, _ = prepared(case)
+    promotion, skill = states
+    assert promotion["materials_prepared"]
+    assert skill["materials_prepared"] == (missing == 0)
+    if missing:
+        assert skill["reason"] == f"缺少 异铁组 ×{missing}"
+    assert [row["module_id"] for row in reminders(case)] == (
+        ["elite2"] if missing else ["elite2", "skill7"]
     )
 
 
