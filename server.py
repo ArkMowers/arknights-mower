@@ -3365,16 +3365,28 @@ def maa_copilot_library():
 @app.delete("/maa-copilot/<script_id>")
 @require_token
 def delete_maa_copilot(script_id):
+    from arknights_mower.utils.event_rerun import current_rerun
     from arknights_mower.utils.maa_copilot import script_path
 
     with backup_lock, maa_maintenance_lock:
-        rerun = getattr(config.conf, "event_rerun", None)
-        if getattr(rerun, "script_id", None) == script_id:
-            return {"message": "请先取消复刻SS活动的作业选择"}, 409
         if any(item.id == script_id for item in config.conf.copilot.scripts):
             return {"message": "请先将作业移出执行队列"}, 409
         if _maa_busy_response():
             return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
+        rerun = getattr(config.conf, "event_rerun", None)
+        if getattr(rerun, "raid_enabled", False) and rerun.script_id == script_id:
+            try:
+                event = current_rerun()
+            except (OSError, ValueError):
+                logger.exception("删除作业前无法读取复刻SS活动资源")
+                return {"message": "无法确认复刻SS活动的作业引用"}, 503
+            if (
+                event is not None
+                and event["key"] == rerun.event_key
+                and event["raid"] is not None
+                and event["now"] < event["raid"]["end_ts"]
+            ):
+                return {"message": "请先取消本期复刻SS活动的作业选择"}, 409
         try:
             script_path(script_id).unlink(missing_ok=True)
         except ValueError:

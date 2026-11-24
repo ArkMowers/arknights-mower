@@ -589,6 +589,15 @@ def claim_event_rerun_stage(event_key, stage):
         )
 
 
+def release_event_rerun_stage(event_key, stage):
+    with _conn() as connection, connection:
+        connection.execute(
+            "DELETE FROM event_rerun_progress "
+            "WHERE event_key = ? AND stage = ? AND status = 'attempted'",
+            (event_key, stage),
+        )
+
+
 def complete_event_rerun_stage(event_key, stage):
     with _conn() as connection, connection:
         connection.execute(

@@ -18,6 +18,7 @@ from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.event_rerun import STAGE_SECONDS, current_rerun
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.long_task_windows import long_task_schedule
+from arknights_mower.utils.maa_backup import MaaCallError
 from arknights_mower.utils.maa_copilot import (
     MAX_SCRIPT_BYTES,
     build_copilot_params,
@@ -162,7 +163,13 @@ def _play_raid(scheduler, stage, script_id, prepare, claim, complete):
         if scheduler._maa_refresh_deadline() is not None or not claim():
             return "defer"
         start_called = True
-        scheduler.MAA.start()
+        try:
+            scheduler.MAA.start()
+        except MaaCallError as exc:
+            if exc.operation != "start":
+                raise
+            logger.warning("复刻SS活动突袭未能启动：%s", exc)
+            return "rejected"
         while scheduler.MAA.running():
             if config.stop_maa.is_set():
                 return "defer"
@@ -226,9 +233,8 @@ def run_event_rerun(scheduler):
             claimed = False
 
             def claim():
-                nonlocal claimed, started_any
+                nonlocal claimed
                 claimed = can_start() and record.claim_event_rerun_stage(key, code)
-                started_any |= claimed
                 return claimed
 
             def complete(key=key, code=code):
@@ -249,10 +255,16 @@ def run_event_rerun(scheduler):
             except (MowerExit, SharedADBError, DeviceRecoveryError):
                 raise
             except InterruptedError:
+                started_any |= claimed
                 break
             except Exception:
                 logger.exception("复刻SS活动关卡 %s 未完成", code)
                 outcome = "blocked"
+            if outcome == "rejected":
+                record.release_event_rerun_stage(key, code)
+                blocked.add(code)
+                claimed = False
+            started_any |= claimed
             if outcome == "defer" or not can_start():
                 break
             if outcome == "blocked" and not claimed:
