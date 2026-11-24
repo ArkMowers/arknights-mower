@@ -286,22 +286,35 @@ def test_status_api_is_additive_and_requires_authentication(case, monkeypatch):
     assert client.get("/workshop-status").status_code in (401, 403)
 
 
-def test_saved_operator_policy_requests_refresh_after_success_only(case, monkeypatch):
+@pytest.mark.parametrize(
+    ("field", "changed"),
+    [
+        ("book_operators", ["空爆"]),
+        ("workshop_deer_fodder", []),
+        ("workshop_t1_reserve", 20),
+        ("enable_crafting", False),
+    ],
+)
+def test_saved_workshop_policy_requests_refresh_after_success_only(
+    case, monkeypatch, field, changed
+):
     from arknights_mower.utils import workshop_config
 
     wake = MagicMock()
     monkeypatch.setattr(workshop_config, "_wake_scheduler_if_running", wake)
-    workshop_config.save_user_config({"book_operators": ["空爆"]})
+    original = getattr(config.conf, field)
+    workshop_config.save_user_config({field: changed})
     assert case.signal.is_set()
-    wake.assert_called_once()
+    wake.assert_not_called()
     case.signal.clear()
     monkeypatch.setattr(
         config, "save_conf", MagicMock(side_effect=OSError("disk full"))
     )
     with pytest.raises(OSError):
-        workshop_config.save_user_config({"book_operators": ["赫拉格"]})
+        workshop_config.save_user_config({field: original})
     assert not case.signal.is_set()
-    assert config.conf.book_operators == ["空爆"]
+    assert getattr(config.conf, field) == changed
+    wake.assert_not_called()
 
 
 def test_scheduler_start_requests_reconciliation_without_changing_config(
