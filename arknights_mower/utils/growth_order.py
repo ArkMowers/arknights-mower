@@ -64,6 +64,39 @@ def crafting_projects(plans, goals, order=(), *, box=None, skills=None):
     )
 
 
+def _finished_material_shortages(
+    box, skills, group_key, target, budget, reserved, added_prerequisites
+):
+    plans, goals = ([target], []) if group_key == "plans" else ([], [target])
+    ((_, before, own),) = material_entries(
+        box,
+        skills,
+        plans,
+        goals,
+        separate_prerequisites=True,
+        crafting_only=True,
+    )
+    standalone_prerequisites = Counter()
+    required = Counter()
+    for material in before:
+        standalone_prerequisites[material["id"]] += material["count"]
+    for material in before + own:
+        required[material["id"]] += material["count"]
+    shared = standalone_prerequisites - added_prerequisites
+    other_projects = reserved - shared
+    shortages = []
+    for iid, count in required.items():
+        available = max(0, budget.inventory.get(iid, 0) - other_projects[iid])
+        if available < count:
+            shortages.append(
+                {
+                    "name": budget.items.get(iid, {}).get("name", iid),
+                    "count": count - available,
+                }
+            )
+    return shortages
+
+
 def prepare_project_materials(box, skills, projects, inventory, formulas, blocked=()):
     """Skip shortages without reserving them; keep confirmed training protected."""
     from arknights_mower.utils.growth_workshop import calculate_crafting_materials
@@ -84,12 +117,12 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
     states = []
     for project in projects:
         cid = project["char_id"]
+        kind = project["kind"]
+        group_key = "plans" if kind == "skill" else "goals"
+        target = project["plan"] if kind == "skill" else project["goal"]
         previous = groups.get(cid, {"plans": [], "goals": []})
         group = {key: list(values) for key, values in previous.items()}
-        if project["kind"] == "skill":
-            group["plans"].append(project["plan"])
-        else:
-            group["goals"].append(project["goal"])
+        group[group_key].append(target)
         cumulative, prerequisites = Counter(), Counter()
         for _, before, materials in material_entries(
             box, skills, **group, separate_prerequisites=True, crafting_only=True
@@ -105,12 +138,15 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
             budget, [row for row in materials if row["id"] in crafting_ids]
         )
         eligible = summary["craftable"] and not active_shortage
+        added_prerequisites = prerequisites - prerequisite_costs.get(cid, Counter())
+        finished_shortages = _finished_material_shortages(
+            box, skills, group_key, target, budget, reserved, added_prerequisites
+        )
         state = {
             **project,
             "status": "ready",
             "reason": "",
-            "materials_prepared": eligible
-            and calculate_growth_materials(budget, materials)["available"],
+            "materials_prepared": eligible and not finished_shortages,
             "shortages": summary["missing"],
         }
         if project["locked"]:
@@ -121,20 +157,25 @@ def prepare_project_materials(box, skills, projects, inventory, formulas, blocke
         elif active_shortage:
             state.update(status="waiting", reason="等待当前训练材料补齐")
         elif not eligible:
-            state.update(status="waiting", reason="材料不足，本轮跳过")
+            state.update(status="waiting", reason="本轮跳过")
         elif not prerequisites_ready(box, skills, project):
             state.update(status="preparing", reason="仅准备材料，前置未完成")
         elif state["materials_prepared"]:
             state["reason"] = "材料已备齐"
+        if shortages := finished_shortages or state["shortages"]:
+            missing = "、".join(f"{row['name']} ×{row['count']}" for row in shortages)
+            reason = f"缺少 {missing}"
+            if state["reason"]:
+                reason += f"。{state['reason']}"
+            state["reason"] = reason
         states.append(state)
         if not eligible:
             continue
         groups[cid] = group
         accounted[cid] = cumulative
         reserved = total
-        before = prerequisites - prerequisite_costs.get(cid, Counter())
         prerequisite_costs[cid] = prerequisites
-        for costs in (before, extra - before):
+        for costs in (added_prerequisites, extra - added_prerequisites):
             if costs:
                 entries.append(
                     (

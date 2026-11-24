@@ -393,8 +393,11 @@ describe('统一养成计划编辑', () => {
 
   it('备齐项可从顶部草稿移除，取消恢复并不误删排序中的项目', async () => {
     current.data.prepared_items = [{ ...current.data.planning_items[2], reason: '待开启模组' }]
+    current.data.planning_items[1].reason = '缺少 近卫双芯片 ×4'
     const { page, stop } = setup()
     await open(page)
+    const pending = page.sortableItems.value.find((item) => item.key === 'skill:next')
+    expect(page.projectStatus(pending)).toBe('缺少 近卫双芯片 ×4')
     page.keyboardMove(2, -1)
     expect(keys(page)).toEqual(['skill:active', 'goal:level', 'goal:module', 'skill:next'])
     page.remove(page.draftPreparedItems.value[0])

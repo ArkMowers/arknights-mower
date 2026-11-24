@@ -5,6 +5,7 @@ import json
 import sqlite3
 from collections import Counter
 from contextlib import contextmanager
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -514,6 +515,47 @@ def reminders(case):
     )
 
 
+@pytest.mark.parametrize("oriron, missing", [(14, 3), (16, 1), (17, 0)])
+def test_astesia_promotion_and_skill_seven_spend_separate_oriron(oriron, missing):
+    from arknights_mower.data import workshop_formula
+
+    skills = growth.growth_resources(
+        json.loads(
+            (Path(__file__).parents[1] / "data/skill_data.json").read_text("utf-8")
+        )
+    )
+    cid = "char_274_astesi"
+    case = SimpleNamespace(
+        box={
+            "characters": [
+                {"id": cid, "evolvePhase": 1, "level": 70, "mainSkillLevel": 6}
+            ]
+        },
+        skills=skills,
+        plans=[],
+        goals=[{"char_id": cid, "module_id": goal} for goal in ("elite2", "skill7")],
+        stock={
+            "30043": oriron,
+            "30042": 200,
+            "3223": 3,
+            "30034": 7,
+            "3303": 6,
+            "30023": 3,
+            "4001": 200000,
+        },
+        formulas=workshop_formula,
+    )
+    states, _ = prepared(case)
+    promotion, skill = states
+    assert promotion["materials_prepared"]
+    assert skill["materials_prepared"] == (missing == 0)
+    if missing:
+        assert skill["reason"] == f"缺少 异铁组 ×{missing}"
+    assert [row["module_id"] for row in reminders(case)] == (
+        ["elite2"] if missing else ["elite2", "skill7"]
+    )
+
+
 def test_duplicate_idle_row_cannot_hide_confirmed_training_waiting_for_materials(
     order_case,
 ):
@@ -640,7 +682,14 @@ def test_two_modules_cannot_both_claim_the_same_prepared_materials(order_case):
     case.stock.update(raw=0, t4=2)
     states, _ = prepared(case)
     assert [row["materials_prepared"] for row in states] == [True, False]
+    assert "缺少 t4 ×2" in states[1]["reason"]
     assert [row["key"] for row in reminders(case)] == ["goal:char_test:module"]
+
+    states, _ = prepared(case, ["goal:char_next:module", "goal:char_test:module"])
+    assert states[0]["key"] == "goal:char_next:module"
+    assert states[0]["materials_prepared"]
+    assert states[1]["key"] == "goal:char_test:module"
+    assert "缺少 t4 ×2" in states[1]["reason"]
 
 
 def test_pure_level_targets_reserve_experience_and_gold_only_once(order_case):
@@ -708,6 +757,27 @@ def test_order_api_exposes_prepared_reminders_without_adding_them_to_sortable_pr
     assert [row["key"] for row in response.json["prepared_items"]] == [
         "goal:char_test:elite2_max"
     ]
+    api.save.assert_not_called()
+
+
+def test_order_api_reports_promotion_shortage_without_hiding_prepared_module(order_api):
+    api = order_api
+    case = api.case
+    case.plans.clear()
+    case.goals.insert(0, {"char_id": "char_next", "module_id": "elite2"})
+    case.box["characters"][1].update(evolvePhase=1, level=2)
+    case.stock.update({"3213": 0, "t4": 2})
+    api.box_path.write_text(json.dumps({"data": case.box}))
+
+    response = api.client.get("/growth-crafting-order", headers=api.headers)
+
+    assert response.status_code == 200
+    promotion, module = response.json["planning_items"]
+    assert promotion["key"] == "goal:char_next:elite2"
+    assert "缺少 3213 ×4" in promotion["reason"]
+    assert module["key"] == "goal:char_test:module"
+    assert module["reason"] == "材料已备齐"
+    assert [row["key"] for row in response.json["prepared_items"]] == [module["key"]]
     api.save.assert_not_called()
 
 
