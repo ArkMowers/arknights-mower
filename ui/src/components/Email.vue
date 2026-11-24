@@ -8,6 +8,7 @@ const store = useConfigStore()
 import { computed, inject, ref } from 'vue'
 
 const axios = inject('axios')
+const mobile = inject('mobile', false)
 
 const test_result = ref('')
 const testing = ref(false)
@@ -147,6 +148,20 @@ const mailboxType = computed({
           :show-feedback="false"
         >
           <n-form-item label="通知等级" class="email-field-wide">
+            <template #label>
+              <span class="email-field-label">
+                通知等级
+                <help-text label="查看通知等级说明" :clickable="mobile">
+                  <div class="email-level-help">
+                    <div><strong>通知</strong> · 基建报告、公招汇总、MAA 作战掉落汇总</div>
+                    <div><strong>警告</strong> · 公招稀有标签、月卡即将到期、贸易站漏单</div>
+                    <div>
+                      <strong>错误</strong> · Mower 启动失败、专精训练安排失败、MAA 调用出错
+                    </div>
+                  </div>
+                </help-text>
+              </span>
+            </template>
             <n-select
               v-model:value="notification_level"
               class="settings-select-wrap"
@@ -301,6 +316,11 @@ const mailboxType = computed({
 .email-field-label {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
+}
+
+.email-level-help {
+  display: grid;
   gap: 6px;
 }
 
