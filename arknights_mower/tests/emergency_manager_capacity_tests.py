@@ -162,7 +162,7 @@ def test_saved_manager_swap_leaves_reserved_former_bed_alone(solver):
     solver._emergency_plan_beds(state)
     solver._emergency_plan_beds(state)
 
-    assert solver.tasks == [reservation]
+    assert solver.tasks == [reservation], [task.plan for task in solver.tasks]
     assert "dorm_replan_plan" not in state
     assert data.get_current_room(room, True)[:2] == [current_resident, "闪灵"]
 
@@ -197,6 +197,58 @@ def test_saved_manager_swap_uses_new_target_bed_resident(solver):
     solver._emergency_plan_beds(state)
     assert not solver.tasks
     assert "dorm_replan_plan" not in state
+
+
+def test_saved_manager_swap_preserves_restored_fixed_bed(solver):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 0)
+    sleeper = COVERS[0]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", sleeper, *["Current"] * 3]}]
+    )
+    data.plan[room][0].agent = "Free"
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {room: [sleeper, "闪灵", *["Current"] * 3]}
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["冰酿", "闪灵", *["Current"] * 3]}]
+    )
+    data.plan[room][0].agent = "冰酿"
+
+    solver._emergency_plan_beds(state)
+
+    assert not solver.tasks
+    assert "dorm_replan_plan" not in state
+    assert data.get_current_room(room, True)[:2] == ["冰酿", "闪灵"]
+
+
+def test_conflicting_saved_plan_preserves_reallocation_for_other_rooms(solver):
+    reserved_room, other_room = "dormitory_1", "dormitory_2"
+    data, state = setup_episode(solver, 1)
+    resting = PRIMARY[0]
+    solver.op_data = data = data.project_arrangements(
+        [{other_room: ["Current", "Current", "", "", resting]}]
+    )
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {
+        reserved_room: ["Current", "Current", COVERS[0], "Current", "Current"],
+        other_room: ["Current", "Current", resting, "", ""],
+    }
+    reservation = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER,
+        task_plan={reserved_room: ["Current", "Current", *["Free"] * 3]},
+    )
+    solver.tasks.append(reservation)
+
+    solver._emergency_plan_beds(state)
+
+    assert solver.tasks == [reservation]
+    assert "dorm_replan_plan" not in state
+    assert state["dorm_replan_pending"]
+    solver._emergency_plan_beds(state)
+    assert solver.tasks[0] is reservation
+    task = solver.tasks[1]
+    assert reserved_room not in task.plan
+    assert task.plan[other_room][2] == resting
 
 
 def test_high_need_opens_every_slot_and_produces_full_capacity_plan(solver):

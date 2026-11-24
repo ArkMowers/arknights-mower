@@ -1941,16 +1941,7 @@ class EmergencyRecoveryMixin:
         ):
             return
         previous = state.get("dorm_replan_plan")
-        if previous and all(
-            (actual := self.op_data.get_current_room(room, True)) is not None
-            and all(
-                name in ("Current", "Free")
-                or index < len(actual)
-                and actual[index] == name
-                for index, name in enumerate(row)
-            )
-            for room, row in previous.items()
-        ):
+        if previous and self._emergency_dorm_plan_is_current(previous, saved=True):
             state.pop("dorm_replan_plan", None)
             state["dorm_replan_pending"] = False
             return
@@ -1981,10 +1972,12 @@ class EmergencyRecoveryMixin:
             plan, state, reserved, slots, saved=bool(previous)
         )
         compact_dorm_vacancies(self.op_data, plan)
-        if not plan or (
-            previous
-            and self._emergency_saved_dorm_plan_conflicts(plan, reserved, slots)
+        if previous and self._emergency_saved_dorm_plan_conflicts(
+            plan, reserved, slots
         ):
+            state.pop("dorm_replan_plan", None)
+            return
+        if self._emergency_dorm_plan_is_current(plan):
             state.pop("dorm_replan_plan", None)
             if reallocate:
                 state["dorm_replan_pending"] = False
@@ -1995,19 +1988,30 @@ class EmergencyRecoveryMixin:
         task.emergency_dorm = True
         self.tasks.append(task)
 
+    def _emergency_dorm_plan_is_current(self, plan, *, saved=False):
+        placeholders = ("Current", "Free") if saved else ("Current",)
+        return all(
+            (actual := self.op_data.get_current_room(room, True)) is not None
+            and all(
+                name in placeholders or index < len(actual) and actual[index] == name
+                for index, name in enumerate(row)
+            )
+            for room, row in plan.items()
+        )
+
     def _emergency_saved_dorm_plan_conflicts(self, plan, reserved, slots):
         for room, row in plan.items():
             actual = self.op_data.get_current_room(room, True) or ()
             for index, name in enumerate(row):
                 current = actual[index] if index < len(actual) else None
+                if name in ("Current", current):
+                    continue
                 if (
-                    name != "Current"
-                    and name != current
-                    and (
-                        (room, index) in slots
-                        or name in reserved
-                        or current in reserved
-                    )
+                    (room, index) in slots
+                    or name in reserved
+                    or current in reserved
+                    or current
+                    and self.op_data.plan[room][index].agent == current
                 ):
                     return True
         return False
