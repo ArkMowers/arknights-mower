@@ -1,3 +1,4 @@
+from contextlib import ExitStack
 from datetime import datetime
 from time import monotonic
 
@@ -132,10 +133,14 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
             return min(spare, navigation_left)
 
         claimed = False
+        already_claimed = False
 
         def claim():
-            nonlocal claimed
-            if not can_start() or not record.claim_event_rerun_stage(key, code):
+            nonlocal claimed, already_claimed
+            if not can_start():
+                return False
+            if not battle.enter_context(record.event_rerun_battle(key, code)):
+                already_claimed = True
                 return False
             try:
                 claimed = can_start()
@@ -148,9 +153,10 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
             record.complete_event_rerun_stage(key, code)
 
         try:
-            outcome = _play_ordinary(
-                scheduler, stage, settings, prepare, claim, complete
-            )
+            with ExitStack() as battle:
+                outcome = _play_ordinary(
+                    scheduler, stage, settings, prepare, claim, complete
+                )
         except (MowerExit, SharedADBError, DeviceRecoveryError):
             raise
         except InterruptedError:
@@ -162,7 +168,7 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
         started_any |= claimed
         if outcome == "defer" or not can_start():
             break
-        if outcome == "blocked" and not claimed:
+        if outcome == "blocked" and not claimed and not already_claimed:
             logger.warning("复刻SS活动关卡 %s 未能开始", code)
             blocked.add(code)
         pending = pending_rerun(scheduler, deadline)

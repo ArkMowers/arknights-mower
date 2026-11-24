@@ -46,6 +46,8 @@ def allowed_request(method, target):
         return False
     if any(part in {".", ".."} for part in path.split("/")):
         return False
+    if path == "/maa-long-task-status":
+        return url.query == "kind=event_rerun" and method in {"GET", "PATCH"}
     return any(
         method in methods and re.fullmatch(pattern, path)
         for methods, pattern in HTTP_OPERATIONS

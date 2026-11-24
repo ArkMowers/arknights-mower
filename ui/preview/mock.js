@@ -764,6 +764,15 @@ function unavailableDevicePreview() {
 }
 
 export function createPreviewAdapter(data, requests = []) {
+  const rerunStatus = {
+    event: {
+      key: 'act46sre:1795291200',
+      name: '雪山降临1101 · 复刻',
+      stages: Array.from({ length: 10 }, (_, i) => ({ code: `OS-${i + 1}` }))
+    },
+    progress: { 'OS-1': 'completed', 'OS-3': 'attempted' },
+    stage_seconds: 240
+  }
   const previousMonthEnd = previewSklandDate(`${data.skland.today.slice(0, 7)}-01`, -1)
   const previousMonth = previousMonthEnd.slice(0, 7)
   const previousSklandRewards = {
@@ -980,6 +989,23 @@ export function createPreviewAdapter(data, requests = []) {
         data: logBackground || '',
         headers: { 'cache-control': 'no-store' },
         config
+      }
+    }
+    if (path === '/maa-long-task-status' && requestUrl.searchParams.get('kind') === 'event_rerun') {
+      if (method === 'PATCH') {
+        if (
+          body?.event_key !== rerunStatus.event.key ||
+          !rerunStatus.event.stages.some(({ code }) => code === body.stage) ||
+          typeof body.completed !== 'boolean'
+        )
+          fail(config, '关卡状态无效')
+        if ((rerunStatus.progress[body.stage] || 'pending') !== body.expected)
+          fail(config, '关卡状态已变更，请刷新后重试', 409)
+        if (body.completed) rerunStatus.progress[body.stage] = 'completed'
+        else delete rerunStatus.progress[body.stage]
+      }
+      if (method === 'GET' || method === 'PATCH') {
+        return { status: 200, statusText: 'OK', data: clone(rerunStatus), headers: {}, config }
       }
     }
     const reads = {

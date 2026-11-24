@@ -51,3 +51,30 @@ it('reads the current opening and displays each ordinary stage outcome', async (
   expect(panel.statusLabel('OS-10')).toBe('已启动，结算待确认')
   expect(panel.statusLabel('OS-3')).toBe('待执行')
 })
+
+it('saves and clears a completion for the displayed opening', async () => {
+  await panel.refreshStatus()
+  state.client.patch = vi
+    .fn()
+    .mockResolvedValueOnce({ data: { ...live, progress: {} } })
+    .mockResolvedValueOnce({ data: live })
+  await panel.setCompleted('OS-1', false)
+  expect(panel.statusLabel('OS-1')).toBe('待执行')
+  await panel.setCompleted('OS-1', true)
+  expect(panel.statusLabel('OS-1')).toBe('已完成')
+  expect(state.client.patch.mock.calls.map(([, body]) => body)).toEqual([
+    { event_key: live.event.key, stage: 'OS-1', expected: 'completed', completed: false },
+    { event_key: live.event.key, stage: 'OS-1', expected: 'pending', completed: true }
+  ])
+})
+
+it('refreshes conflicting edits and prevents changes during a battle', async () => {
+  await panel.refreshStatus()
+  state.client.patch = vi.fn().mockRejectedValue({ response: { data: { message: '状态已变更' } } })
+  state.client.get.mockResolvedValue({ data: { ...live, progress: { 'OS-10': 'running' } } })
+  await panel.setCompleted('OS-10', false)
+  expect(panel.saveError.value).toBe('状态已变更')
+  expect(panel.statusLabel('OS-10')).toBe('正在执行')
+  await panel.setCompleted('OS-10', true)
+  expect(state.client.patch).toHaveBeenCalledTimes(1)
+})

@@ -400,3 +400,107 @@ def test_next_opening_runs_all_ordinary_stages_with_previous_opening_complete(
             "OS-1": "completed",
             "OS-10": "completed",
         }
+
+
+RERUN_URL = "/maa-long-task-status?kind=event_rerun"
+STAGE_CHANGE = {
+    "event_key": "act46sre:100",
+    "stage": "OS-1",
+    "expected": "pending",
+    "completed": True,
+}
+
+
+@pytest.mark.parametrize("token", [None, "invalid"])
+def test_progress_edit_auth_before_reads_or_writes(
+    client, database, monkeypatch, token
+):
+    read = MagicMock()
+    monkeypatch.setattr(event_rerun, "current_rerun", read)
+    headers = {"token": token} if token else {}
+    assert (
+        client.patch(RERUN_URL, json=STAGE_CHANGE, headers=headers).status_code == 403
+    )
+    read.assert_not_called()
+    assert not database.exists()
+
+
+@pytest.mark.parametrize(
+    "url,fields,status",
+    [
+        ("/maa-long-task-status", {}, 400),
+        (RERUN_URL, {"completed": 1}, 400),
+        (RERUN_URL, {"event_key": "act46sre:99"}, 409),
+        (RERUN_URL, {"stage": "OS-EX-8"}, 400),
+        (RERUN_URL, {"expected": "running"}, 400),
+    ],
+)
+def test_invalid_stage_edits_leave_progress_untouched(
+    client, database, monkeypatch, url, fields, status
+):
+    monkeypatch.setattr(event_rerun, "current_rerun", event)
+    response = client.patch(
+        url, json={**STAGE_CHANGE, **fields}, headers={"token": "copilot-test-token"}
+    )
+    assert response.status_code == status
+    assert not database.exists()
+
+
+def test_manual_completion_skips_stage_and_reset_allows_another_battle(
+    client, scheduler, monkeypatch
+):
+    import arknights_mower.__main__ as main
+
+    owner, _ = scheduler
+    monkeypatch.setattr(main, "base_scheduler", owner)
+    monkeypatch.setattr(event_rerun, "current_rerun", event)
+    headers = {"token": "copilot-test-token"}
+
+    def change(expected, completed):
+        return client.patch(
+            RERUN_URL,
+            json=dict(STAGE_CHANGE, expected=expected, completed=completed),
+            headers=headers,
+        )
+
+    assert change("pending", True).json["progress"] == {"OS-1": "completed"}
+    assert change("pending", True).status_code == 200
+    assert runner.pending_rerun(owner, lambda: owner.deadline)[1]["code"] == "OS-10"
+    owner.event_rerun_blocked[1].add("OS-1")
+    assert change("completed", False).json["progress"] == {}
+    assert runner.pending_rerun(owner, lambda: owner.deadline)[1]["code"] == "OS-1"
+
+    with record.event_rerun_battle(STAGE_CHANGE["event_key"], "OS-1") as admitted:
+        assert admitted
+        assert client.get(RERUN_URL, headers=headers).json["progress"] == {
+            "OS-1": "running"
+        }
+        for completed in (True, False):
+            assert change("attempted", completed).status_code == 409
+        assert (
+            client.patch(
+                RERUN_URL, json=dict(STAGE_CHANGE, stage="OS-10"), headers=headers
+            ).status_code
+            == 200
+        )
+    assert change("pending", True).status_code == 409
+    assert change("attempted", False).json["progress"] == {"OS-10": "completed"}
+    assert record.claim_event_rerun_stage(STAGE_CHANGE["event_key"], "OS-1")
+    assert change("attempted", True).json["progress"]["OS-1"] == "completed"
+
+
+def test_relay_only_forwards_event_rerun_progress_reads_and_edits():
+    from arknights_mower.utils.mower_relay.protocol import allowed_request
+
+    base = "/maa-long-task-status"
+    for query, methods in [
+        ("?kind=event_rerun", {"GET", "PATCH"}),
+        ("", set()),
+        ("?kind=copilot", set()),
+        ("?kind=event_rerun&kind=copilot", set()),
+    ]:
+        assert {
+            method
+            for method in ("GET", "HEAD", "POST", "PATCH", "DELETE", "PUT")
+            if allowed_request(method, base + query)
+        } == methods

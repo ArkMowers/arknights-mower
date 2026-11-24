@@ -3312,6 +3312,24 @@ def import_from_image():
     return "排班已加载"
 
 
+def _event_rerun_status(event):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.event_rerun import STAGE_SECONDS
+
+    progress = record.event_rerun_status(event["key"]) if event else {}
+    return {
+        "event": event,
+        "stage_seconds": STAGE_SECONDS,
+        "progress": {
+            stage["code"]: progress[stage["code"]]
+            for stage in event["stages"]
+            if stage["code"] in progress
+        }
+        if event
+        else {},
+    }
+
+
 @app.route("/maa-long-task-status")
 @require_token
 def maa_long_task_status():
@@ -3320,29 +3338,52 @@ def maa_long_task_status():
     with backup_lock:
         try:
             if request.args.get("kind") == "event_rerun":
-                from arknights_mower.solvers.record import load_event_rerun_progress
-                from arknights_mower.utils.event_rerun import (
-                    STAGE_SECONDS,
-                    current_rerun,
-                )
+                from arknights_mower.utils.event_rerun import current_rerun
 
-                event = current_rerun()
-                progress = load_event_rerun_progress(event["key"]) if event else {}
-                return {
-                    "event": event,
-                    "stage_seconds": STAGE_SECONDS,
-                    "progress": {
-                        stage["code"]: progress[stage["code"]]
-                        for stage in event["stages"]
-                        if stage["code"] in progress
-                    }
-                    if event
-                    else {},
-                }
+                return _event_rerun_status(current_rerun())
             return completion_status(config.conf)
         except Exception:
             logger.exception("读取 MAA 大型任务完成状态失败")
             return {"message": "读取大型任务状态失败"}, 500
+
+
+@app.patch("/maa-long-task-status")
+@require_token
+def update_event_rerun_stage():
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.event_rerun import current_rerun
+
+    if request.args.getlist("kind") != ["event_rerun"]:
+        return {"message": "请选择复刻活动关卡"}, 400
+    data = request.get_json(silent=True)
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("event_key"), str)
+        or not isinstance(data.get("stage"), str)
+        or data.get("expected") not in ("pending", "attempted", "completed")
+        or type(data.get("completed")) is not bool
+    ):
+        return {"message": "关卡状态无效"}, 400
+    with backup_lock:
+        event = current_rerun()
+        if not event or data["event_key"] != event["key"]:
+            return {"message": "活动期次已变更，请刷新后重试"}, 409
+        code = data["stage"]
+        if not any(stage["code"] == code for stage in event["stages"]):
+            return {"message": "请选择本期普通战斗关"}, 400
+        if not record.set_event_rerun_completion(
+            event["key"], code, data["expected"], data["completed"]
+        ):
+            return {"message": "关卡正在执行或状态已变更，请刷新后重试"}, 409
+        if not data["completed"]:
+            from arknights_mower.__main__ import base_scheduler
+
+            fingerprint, blocked = getattr(
+                base_scheduler, "event_rerun_blocked", (None, None)
+            )
+            if fingerprint and fingerprint[0] == event["key"]:
+                blocked.discard(code)
+        return _event_rerun_status(event)
 
 
 COPILOT_LIBRARY_ROUTE = "/<any('maa-copilot','maa-paradox','sss-copilot'):library>"
