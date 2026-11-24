@@ -25,7 +25,9 @@
         <div class="plan-head__main">
           <span class="gp-kicker">Growth plan</span>
           <h2 class="plan-head__title">养成计划</h2>
-          <p class="plan-head__sub">拖动排序；保存后同步到专精优先级与材料合成。</p>
+          <p class="plan-head__sub">
+            拖动排序并保存，更新专精优先级和备料顺序。材料优先分配给排在前面的计划。
+          </p>
         </div>
         <div class="plan-head__stats">
           <span class="gp-mono">{{ draftItems.length }} 项</span>
@@ -168,7 +170,7 @@
                     <em>{{ projectText(item).name }}</em>
                   </span>
                   <span
-                    class="plan-row__status"
+                    class="plan-row__status plan-row__status--project"
                     :class="{ 'is-waiting': item.status === 'waiting' }"
                   >
                     <template v-if="projectText(item).target"
@@ -792,6 +794,11 @@ defineExpose({ open })
   font-size: 10.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.plan-row__status--project {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .plan-row__status.is-waiting {
