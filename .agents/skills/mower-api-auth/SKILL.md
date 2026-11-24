@@ -9,6 +9,12 @@ description: Use when adding, changing or reviewing an Arknights Mower HTTP rout
 
 Apply this skill to every new or changed remotely callable backend interface, even when the requested change does not mention authentication. Read the affected subtree instructions and the [Web Access contract](../../../docs/subsystems/web-access.md) before choosing the boundary. Existing sibling routes are evidence of project intent, not a substitute for evaluating the new interface.
 
+## Route scope and relay compatibility
+
+Check the existing resource and its callers before adding a route. Reuse an operation when its input, side effects, access rules and response fit. Where several routes differ only by a supported type, a finite set of path values can preserve published URLs and simplify dispatch. Keep per-type validation and distinguish reads from actions that change state. Check desktop and Android callers, preview data and path-based middleware when changing a published URL.
+
+Compare the [instance protocol](../../../arknights_mower/utils/mower_relay/protocol.py) and the [gateway protocol](https://github.com/ArkMowers/mower-relay-server/blob/main/mower_relay_server/protocol.py) at their target revisions. Record which method and path combinations should work through the relay. A shared route may contain both local-only and remote operations. Keep the remote subset explicit in each protocol and check allowed and denied examples, including unsupported types and methods. When the wire contract changes, coordinate the two PRs and verify compatibility with independently released clients and gateways. A local-only change needs no gateway edit if the existing rules already enforce its scope.
+
 ## Authentication Decision
 
 For each interface, identify its methods, callers, network exposure, returned data, accepted input, side effects and work it can trigger. Record one of these decisions in the task evidence before implementation or review completes:
