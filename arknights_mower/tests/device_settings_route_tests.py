@@ -893,3 +893,21 @@ class DeviceSettingsRouteTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_relay_confirmed_device_start_methods():
+    from arknights_mower.utils.mower_relay.protocol import allowed_request
+
+    routes = {
+        "/device/avd/start": {"POST"},
+        "/device/redroid/start": {"POST"},
+        "/device/genymotion/start": {"POST"},
+        "/device/other/start": set(),
+        "/device/avd/stop": set(),
+    }
+    for path, expected in routes.items():
+        assert {
+            method
+            for method in ("HEAD", "GET", "POST", "PUT", "PATCH", "DELETE")
+            if allowed_request(method, path)
+        } == expected
