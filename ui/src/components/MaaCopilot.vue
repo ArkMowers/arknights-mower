@@ -48,12 +48,27 @@ async function refresh() {
 }
 onMounted(refresh)
 
-function queue_item(id) {
-  return props.paradox ? { id } : { id, nav_name_override: '', is_raid: false }
+function append_scripts(scripts) {
+  const items = scripts.flatMap(({ id, difficulty }) => {
+    if (props.paradox) return [{ id }]
+    const modes = difficulty === 3 ? [false, true] : [difficulty === 2]
+    return modes.map((is_raid) => ({ id, nav_name_override: '', is_raid }))
+  })
+  if (copilot.value.scripts.length + items.length > 32) {
+    throw new Error(
+      `队列最多 32 项，本次需加入 ${items.length} 项，剩余容量不足。已入库作业可从已有作业中选择`
+    )
+  }
+  copilot.value.scripts.push(...items)
 }
 function add_script(id) {
-  if (!id || copilot.value.scripts.length >= 32) return
-  copilot.value.scripts.push(queue_item(id))
+  const script = library.value.find((item) => item.id === id)
+  if (!script) return
+  try {
+    append_scripts([script])
+  } catch (error) {
+    message.error(error.message)
+  }
 }
 async function upload_blob(blob) {
   const form = new FormData()
@@ -61,7 +76,7 @@ async function upload_blob(blob) {
   const { data } = await axios.post(endpoint, form)
   await refresh()
   selected.value = data.id
-  add_script(data.id)
+  append_scripts([data])
   message.success('作业已导入并加入队列')
 }
 async function upload({ file, onFinish, onError }) {
@@ -70,7 +85,7 @@ async function upload({ file, onFinish, onError }) {
     await upload_blob(file.file)
     onFinish()
   } catch (error) {
-    message.error(error.response?.data?.message || '作业导入失败')
+    message.error(error.response?.data?.message || error.message || '作业导入失败')
     onError()
   } finally {
     loading.value = false
@@ -87,10 +102,7 @@ async function download() {
       32 - copilot.value.scripts.length
     )
     await refresh()
-    if (copilot.value.scripts.length + scripts.length > 32) {
-      throw new Error('队列已变更且剩余容量不足。队列未改变，已入库作业可从已有作业中选择')
-    }
-    copilot.value.scripts.push(...scripts.map(({ id }) => queue_item(id)))
+    append_scripts(scripts)
     selected.value = scripts.at(-1).id
     code.value = ''
     message.success(`已导入 ${scripts.length} 份作业并加入队列`)
@@ -223,7 +235,8 @@ async function restart_queue() {
           </n-flex>
         </n-card>
         <n-text v-if="!paradox" depth="3"
-          >按队列顺序执行，最多 32 项。Mower 先进入每份作业对应的关卡地图，MAA
+          >按队列顺序执行，最多 32 项。作业同时支持普通和突袭时，依次加入普通、突袭两项。Mower
+          先进入每份作业对应的关卡地图，MAA
           再定位关卡并执行作业；无法识别作业内部关卡标识时，请填写导航关卡名。请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
         >
         <n-text v-else depth="3">

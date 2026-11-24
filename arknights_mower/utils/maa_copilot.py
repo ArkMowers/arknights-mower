@@ -80,7 +80,7 @@ def parse_script(raw, *, sss=False, paradox=False):
     return data
 
 
-def script_info(script_id, data, *, sss=False):
+def script_info(script_id, data, *, sss=False, paradox=False):
     doc = data.get("doc")
     doc = doc if isinstance(doc, dict) else {}
     info = {
@@ -95,6 +95,11 @@ def script_info(script_id, data, *, sss=False):
             {"name": str(item.get("name", ""))[:256], "skill": item.get("skill", 0)}
             for item in data.get("opers", [])[:64]
         ]
+    elif not paradox:
+        difficulty = data.get("difficulty")
+        info["difficulty"] = (
+            difficulty if type(difficulty) is int and difficulty in (1, 2, 3) else 0
+        )
     return info
 
 
@@ -113,7 +118,7 @@ def list_scripts(*, sss=False, paradox=False):
             data = parse_script(
                 stream.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
             )
-        result.append(script_info(script_id, data, sss=sss))
+        result.append(script_info(script_id, data, sss=sss, paradox=paradox))
     return result
 
 
@@ -131,7 +136,7 @@ def store_script(raw, *, sss=False, paradox=False):
     ):
         raise ValueError("作业存储已满，请先删除不再使用的作业")
     write_json(path, data)
-    return script_info(script_id, data, sss=sss)
+    return script_info(script_id, data, sss=sss, paradox=paradox)
 
 
 def build_copilot_params(conf):
