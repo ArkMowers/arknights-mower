@@ -64,12 +64,12 @@ async function setup(overrides = {}) {
   return { loaded, data, pinia }
 }
 
-async function renderSettings(component, { loaded, pinia }) {
+async function renderSettings(component, { loaded, pinia, mobile = false }) {
   const app = createSSRApp(component)
   setupCssRenderSsr(app)
   app.use(pinia)
   app.provide('loaded', loaded)
-  app.provide('mobile', false)
+  app.provide('mobile', mobile)
   app.provide('axios', axios)
   return renderToString(app)
 }
@@ -215,12 +215,24 @@ describe('partial configuration saves', () => {
       })
       const html = await renderSettings(Email, context)
       expect(selectedLabels(html)).toEqual(['QQ邮箱', label])
+      expect(html).toContain('aria-label="查看通知等级说明"')
       expect(html).toContain('settings-select-wrap')
       expect(html).not.toContain('email-level-description')
       expect(store.notification_level).toBe(level)
       expect(axios.patch).not.toHaveBeenCalled()
     }
   )
+
+  it('provides a tappable notification help trigger on mobile', async () => {
+    const context = await setup({
+      custom_smtp_server: { enable: false },
+      notification_level: 'WARNING'
+    })
+    const html = await renderSettings(Email, { ...context, mobile: true })
+    expect(html).toMatch(
+      /<button(?=[^>]*aria-label="查看通知等级说明")(?=[^>]*aria-expanded="false")/
+    )
+  })
 
   it.each([
     ['deepseek-flash', 'DeepSeek Flash（deepseek-flash）'],
