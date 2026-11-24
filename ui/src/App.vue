@@ -312,6 +312,7 @@ import {
   computed,
   defineAsyncComponent,
   inject,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   provide,
@@ -321,6 +322,7 @@ import {
   watchPostEffect
 } from 'vue'
 import AppSidebar from '@/components/AppSidebar.vue'
+import { bootScreenActive, failBoot, releaseBoot } from '@/boot/bootScreen'
 import SettingsDialog from '@/components/SettingsDialog.vue'
 import GlobalUpdateDrop from '@/components/GlobalUpdateDrop.vue'
 import CrashRecoveryNotice from '@/components/CrashRecoveryNotice.vue'
@@ -348,6 +350,7 @@ import {
 } from '@/theme/mower'
 import '@/theme/mower.css'
 import '@/styles/breakpoints.css'
+import '@/styles/skeleton.css'
 import '@/styles/halloween.css'
 import {
   createWindowShellAdapter,
@@ -583,7 +586,17 @@ const zoomAvailability = computed(() => ({
 const zoomShortcuts = computed(() =>
   windowShell.connected.value ? interfaceZoomShortcuts(windowShell.platform.value) : null
 )
-const theme = useResolvedTheme(themePreference)
+// 启动画面按窗口地址或上次的主题着色；配置读到之前界面沿用这个主题，避免深色主题
+// 先以浅色画出侧栏和标题栏，读到配置后再变暗。
+const bootTheme = bootScreenActive
+  ? document.documentElement.dataset.mowerTheme === 'dark'
+    ? 'dark'
+    : 'light'
+  : null
+const configThemeReady = ref(false)
+const theme = useResolvedTheme(
+  computed(() => (configThemeReady.value || !bootTheme ? themePreference.value : bootTheme))
+)
 const setTheme = useThemeSelection(themePreference, theme)
 provide(themeSelectionKey, setTheme)
 // Also applied to the page drawer, which teleports out of the provider element.
@@ -981,7 +994,14 @@ onMounted(async () => {
   provide('token', token)
   axios.defaults.headers.common['token'] = token
   void guiStore.load()
-  if (!(await configProfiles.bootstrap())) return
+  if (!(await configProfiles.bootstrap())) {
+    failBoot(
+      configProfiles.error.value
+        ? `无法读取配置档案：${configProfiles.error.value}`
+        : '无法读取配置档案，请确认 Mower 仍在运行后重新加载。'
+    )
+    return
+  }
   void sidebarPreferences.initialize()
   // getwatermarkinfo 独立并行，失败不影响主流程（watermark 仅装饰用途）
   getwatermarkinfo()
@@ -995,7 +1015,20 @@ onMounted(async () => {
         console.error('failed to load setting options', result.reason)
     }
   })
-  await Promise.all([load_config(), load_plan(), load_operators(), get_running()])
+  try {
+    await Promise.all([
+      load_config().then(() => {
+        configThemeReady.value = true
+      }),
+      load_plan(),
+      load_operators(),
+      get_running()
+    ])
+  } catch (error) {
+    console.error('failed to load startup configuration', error)
+    failBoot('无法读取 Mower 配置，请确认 Mower 仍在运行后重新加载。')
+    return
+  }
 
   const instanceName = authenticatedInstanceName.value
   document.title = instanceName
@@ -1042,6 +1075,12 @@ onMounted(async () => {
   })()
 
   loaded.value = true
+  // 内容页的代码按需载入；等它画进启动画面下面再释放，由页面决定是否还要等待。
+  if (bootScreenActive)
+    Promise.resolve(router.isReady?.())
+      .catch(() => {})
+      .then(() => nextTick())
+      .then(() => releaseBoot('app'))
   void loadStartupUpdateNotice()
 
   const r = RegExp(operators_with_free_current.value.map((x) => "'" + x.value).join('|'))
@@ -1114,7 +1153,16 @@ watch(
   [theme, loaded, windowShellActive],
   ([currentTheme, appLoaded, shellActive]) => {
     document.documentElement.dataset.mowerTheme = currentTheme === 'dark' ? 'dark' : 'light'
-    if (appLoaded && shellActive) {
+    // 浏览器访问时下次启动画面按这次的主题着色。
+    if (configThemeReady.value) {
+      try {
+        localStorage.setItem('mower-theme', currentTheme === 'dark' ? 'dark' : 'light')
+      } catch {
+        // 无法写入本地存储时，下次启动画面按浅色主题着色。
+      }
+    }
+    // 启动画面期间主题已按窗口地址确定，标题栏和窗框立即用这个主题，不先以浅色画出。
+    if ((appLoaded || bootScreenActive) && shellActive) {
       document.documentElement.dataset.windowShellTheme = currentTheme === 'dark' ? 'dark' : 'light'
       window.scrollTo(0, 0)
     }
@@ -1283,7 +1331,8 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
   overflow: hidden;
   background: var(--window-shell-content-surface);
   box-sizing: border-box;
-  border-radius: 10px 0 0 0;
+  border-radius: calc(10px * var(--mower-corner-scale)) 0 0 0;
+  corner-shape: var(--mower-corner-shape);
   box-shadow:
     -7px 0 18px -14px var(--window-shell-content-shadow-left),
     0 -6px 16px -14px var(--window-shell-content-shadow-top),
@@ -1294,7 +1343,7 @@ html[data-window-shell-theme='dark'] .provider--window-shell {
    聚焦时直接高亮边框并添加 2px 贴身高亮环，杜绝过大外扩（4px）被子窗口边框/overflow 裁剪 */
 .n-input {
   --n-height: 36px !important;
-  --n-border-radius: 8px !important;
+  --n-border-radius: calc(8px * var(--mower-corner-scale)) !important;
   --n-border: 1px solid #e4e4e7 !important;
   --n-border-hover: 1px solid #36ad6a !important;
   --n-border-focus: 1px solid #18a058 !important;
@@ -1320,10 +1369,15 @@ html[data-mower-theme='dark'] .n-input {
   --n-box-shadow-focus: 0 0 0 2px rgba(99, 226, 183, 0.25) !important;
 }
 
+/* 输入组里的按钮与 36px 的输入框取齐；按钮默认 34px，底边会差 2px。 */
+.n-input-group > .n-button {
+  --n-height: 36px !important;
+}
+
 /* 下拉选择框（n-select）的触发器沿用输入框外观。 */
 .n-base-selection {
   --n-height: 36px !important;
-  --n-border-radius: 8px !important;
+  --n-border-radius: calc(8px * var(--mower-corner-scale)) !important;
   --n-border: 1px solid #e4e4e7 !important;
   --n-border-hover: 1px solid #36ad6a !important;
   --n-border-focus: 1px solid #18a058 !important;

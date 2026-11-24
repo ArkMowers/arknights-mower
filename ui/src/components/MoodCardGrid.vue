@@ -1,10 +1,47 @@
 <script setup>
-import { onBeforeUnmount, ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { createDragPreview } from '@/utils/dragPreview'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
 
-defineProps({
-  groups: { type: Array, required: true }
+const props = defineProps({
+  groups: { type: Array, required: true },
+  // 第一次读取还没有卡片时画出骨架屏，loadingLabel 是读屏软件读到的说明。卡片框和拖动把手
+  // 由这里画，卡片里的内容由页面的 placeholder 插槽按真实卡片画出。
+  loading: { type: Boolean, default: false },
+  loadingLabel: { type: String, default: '正在读取' },
+  // 给出时骨架按这个页面上次读到的卡片数和每张卡片里干员名的字数占位，上次没有卡片时骨架
+  // 保持空白。
+  shapeKey: { type: String, default: '' },
+  // 读取失败时不改记下的形状，下次读取仍按上次读到的卡片占位。
+  loadFailed: { type: Boolean, default: false }
 })
+const MAX_SKELETON_CARDS = 12
+const skeletonShape = props.shapeKey
+  ? readSkeletonShape(props.shapeKey, { cards: 6, operators: [] })
+  : { cards: 6, operators: [] }
+const DEFAULT_OPERATORS = [3, 3, 3]
+const skeletonCards = Array.from(
+  { length: Math.min(Number(skeletonShape.cards) || 0, MAX_SKELETON_CARDS) },
+  (_, index) => {
+    const names = skeletonShape.operators?.[index]
+    return Array.isArray(names) ? names.map((length) => Number(length) || 0) : DEFAULT_OPERATORS
+  }
+)
+watch(
+  () => !props.loading && props.groups.length,
+  (cards) => {
+    if (!props.shapeKey || cards === false || props.loadFailed) return
+    saveSkeletonShape(props.shapeKey, {
+      cards,
+      operators: props.groups
+        .slice(0, MAX_SKELETON_CARDS)
+        .map((group) =>
+          (group.moodData?.datasets ?? []).map((dataset) => [...String(dataset.label ?? '')].length)
+        )
+    })
+  }
+)
 const emit = defineEmits(['reorder'])
 const root = ref(null)
 const dragged = ref('')
@@ -108,7 +145,19 @@ onBeforeUnmount(pointerCancel)
 
 <template>
   <div ref="root">
-    <transition-group name="mood-move" tag="div" class="mood-card-grid">
+    <LoadingSkeleton v-if="loading && !groups.length" class="mood-card-grid" :label="loadingLabel">
+      <div
+        v-for="(operators, index) in skeletonCards"
+        :key="index"
+        class="mood-grid-card mood-card-skeleton"
+      >
+        <button class="mood-drag-handle" type="button" tabindex="-1">
+          <span aria-hidden="true">⠿</span>
+        </button>
+        <slot name="placeholder" :operators="operators" />
+      </div>
+    </LoadingSkeleton>
+    <transition-group v-else name="mood-move" tag="div" class="mood-card-grid">
       <section
         v-for="(group, index) in groups"
         :key="keyOf(group)"
@@ -164,7 +213,8 @@ onBeforeUnmount(pointerCancel)
   min-width: 0;
   height: 365px;
   border: 1px solid var(--n-border-color);
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   padding: 10px 12px 12px;
   background: var(--n-color, #fff);
   display: flex;
@@ -176,6 +226,9 @@ onBeforeUnmount(pointerCancel)
     border-color 0.16s,
     box-shadow 0.16s,
     opacity 0.16s;
+}
+.mood-card-skeleton .mood-drag-handle {
+  cursor: default;
 }
 .mood-card-dragging {
   opacity: 0.32;
@@ -202,7 +255,8 @@ onBeforeUnmount(pointerCancel)
   left: 9px;
   top: 8px;
   border: 1px solid var(--n-border-color, #ddd);
-  border-radius: 7px;
+  border-radius: calc(7px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--n-color, white);
   color: var(--n-text-color, #26343b);
   width: 35px;

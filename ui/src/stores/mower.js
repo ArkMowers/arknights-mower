@@ -78,6 +78,9 @@ export const useMowerStore = defineStore('mower', () => {
   const deployment = ref(null)
   const plan_condition = ref([])
   const waiting = ref(false)
+  // 运行日志页据此判断页面是否真的没有内容：读到过一次运行状态，并收到过日志连接的首条历史记录。
+  const status_ready = ref(false)
+  const log_history_ready = ref(false)
 
   const first_load = ref(true)
 
@@ -113,6 +116,7 @@ export const useMowerStore = defineStore('mower', () => {
       if (data.type === 'log') {
         const firstMessage = awaitingHistory
         awaitingHistory = false
+        log_history_ready.value = true
         const synchronized =
           typeof data.stream_id === 'string' &&
           data.stream_id.length > 0 &&
@@ -246,6 +250,7 @@ export const useMowerStore = defineStore('mower', () => {
             ? response.data.ai_assistant_enabled
             : null
         plan_condition.value = response.data['plan_condition']
+        status_ready.value = true
       })
       .finally(() => {
         statusRequest = null
@@ -360,6 +365,8 @@ export const useMowerStore = defineStore('mower', () => {
     deployment,
     plan_condition,
     waiting,
+    status_ready,
+    log_history_ready,
     listen_ws,
     clear_legacy_logs,
     get_running,

@@ -27,6 +27,7 @@ import { useLogBackgroundStore } from '@/stores/logBackground'
 import { useGuiStore } from '@/stores/gui'
 import { logViewMenuKey } from '@/stores/logWorkspace'
 import { windowMinimizedKey } from '@/window-shell/context.js'
+import { bootRevealed, holdBoot } from '@/boot/bootScreen'
 
 const { descriptor } = parse(readFileSync(new URL('./Log.vue', import.meta.url), 'utf8'))
 const script = compileScript(descriptor, { id: 'task-dialog-loading-test' })
@@ -106,6 +107,10 @@ vi.mock('naive-ui', () => ({
   useMessage: () => ({ error: state.error, success: vi.fn() })
 }))
 vi.mock('@/stores/mower', () => ({ useMowerStore: () => state.mower }))
+vi.mock('@/boot/bootScreen', async () => {
+  const { ref } = await vi.importActual('vue')
+  return { bootRevealed: ref(true), holdBoot: vi.fn(() => vi.fn()) }
+})
 vi.mock('@/stores/plan', () => ({ usePlanStore: () => state.plan }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => state.config }))
 vi.mock('@/components/TaskDialog.vue', () => ({
@@ -220,7 +225,8 @@ describe('log page', () => {
     onMounted.mock.lastCall[0]()
     expect(state.mower.start_task_polling).toHaveBeenCalledOnce()
     expect(state.mower.get_tasks).not.toHaveBeenCalled()
-    expect(vi.getTimerCount()).toBe(1)
+    // 运行状态的轮询，以及运行状态和日志历史都未读到时加载中的等待上限。
+    expect(vi.getTimerCount()).toBe(2)
 
     component.start()
     expect(state.mower.clear_legacy_logs).toHaveBeenCalledOnce()
@@ -229,6 +235,154 @@ describe('log page', () => {
     expect(state.mower.stop_task_polling).toHaveBeenCalledOnce()
     expect(vi.getTimerCount()).toBe(0)
     await nextTick()
+  })
+
+  it('switches to the not-started layout only after status and log history load with nothing to show', () => {
+    Object.assign(state.mower.refs, { status_ready: ref(false), log_history_ready: ref(false) })
+    const { refs } = state.mower
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    expect(component.log_idle.value).toBe(false)
+    refs.status_ready.value = true
+    expect(component.log_idle.value).toBe(false)
+    refs.log_history_ready.value = true
+    expect(component.log_idle.value).toBe(true)
+
+    refs.log_lines.value = [{ id: 1, text: '开始运行' }]
+    expect(component.log_idle.value).toBe(false)
+    refs.log_lines.value = []
+    component.sc_blob.value = 'blob:frame'
+    expect(component.log_idle.value).toBe(false)
+    component.sc_blob.value = ''
+    refs.waiting.value = true
+    expect(component.log_idle.value).toBe(false)
+    refs.waiting.value = false
+    refs.running.value = true
+    expect(component.log_idle.value).toBe(false)
+    refs.running.value = false
+    expect(component.log_idle.value).toBe(true)
+  })
+
+  it('closes the narrow-screen view options when the page becomes not started', async () => {
+    Object.assign(state.mower.refs, { status_ready: ref(true), log_history_ready: ref(true) })
+    state.mower.refs.log_lines.value = [{ id: 1, text: '开始运行' }]
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    component.show_view_controls.value = true
+    expect(component.log_idle.value).toBe(false)
+
+    state.mower.refs.log_lines.value = []
+    await nextTick()
+    expect(component.log_idle.value).toBe(true)
+    expect(component.show_view_controls.value).toBe(false)
+  })
+
+  it('stays loading until status and log history arrive and shows the background once its image is ready', () => {
+    Object.assign(state.mower.refs, { status_ready: ref(false), log_history_ready: ref(false) })
+    const { refs } = state.mower
+    const background = useLogBackgroundStore()
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    expect(component.log_pending.value).toBe(true)
+    expect(component.bg_shown.value).toBe(false)
+    expect(component.bg_entering.value).toBe(true)
+
+    refs.status_ready.value = true
+    expect(component.log_pending.value).toBe(true)
+    refs.log_history_ready.value = true
+    expect(component.log_pending.value).toBe(false)
+    expect(component.log_idle.value).toBe(true)
+    expect(component.bg_shown.value).toBe(false)
+
+    background.readyUrl = background.url
+    expect(component.bg_shown.value).toBe(true)
+    component.finish_bg_entry({ animationName: 'reveal-log-rail-x1' })
+    expect(component.bg_entering.value).toBe(true)
+    component.finish_bg_entry({ animationName: 'log-bg-enter-x1' })
+    expect(component.bg_entering.value).toBe(false)
+  })
+
+  it('keeps the startup screen until the log and background are ready and shows the background after it fades', async () => {
+    const release = vi.fn()
+    bootRevealed.value = false
+    holdBoot.mockClear().mockReturnValueOnce(release)
+    try {
+      Object.assign(state.mower.refs, { status_ready: ref(false), log_history_ready: ref(false) })
+      const { refs } = state.mower
+      const background = useLogBackgroundStore()
+      const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+      expect(holdBoot).toHaveBeenCalledWith('log')
+
+      refs.status_ready.value = true
+      refs.log_history_ready.value = true
+      await nextTick()
+      expect(release).not.toHaveBeenCalled()
+
+      background.readyUrl = background.url
+      await nextTick()
+      expect(release).toHaveBeenCalledTimes(1)
+      // 启动画面淡出前背景保持隐藏，淡出后才开始入场。
+      expect(component.bg_shown.value).toBe(false)
+      bootRevealed.value = true
+      expect(component.bg_shown.value).toBe(true)
+      expect(component.bg_entering.value).toBe(true)
+      onUnmounted.mock.lastCall[0]()
+      expect(release).toHaveBeenCalledTimes(1)
+    } finally {
+      bootRevealed.value = true
+    }
+  })
+
+  it('does not hold the startup screen once it has faded', () => {
+    holdBoot.mockClear()
+    scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    expect(holdBoot).not.toHaveBeenCalled()
+  })
+
+  it('ends loading as soon as content arrives and does not return to it when the content clears', () => {
+    Object.assign(state.mower.refs, { status_ready: ref(false), log_history_ready: ref(false) })
+    const { refs } = state.mower
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    refs.log_lines.value = [{ id: 1, text: '开始运行' }]
+    expect(component.log_pending.value).toBe(false)
+    refs.log_lines.value = []
+    expect(component.log_pending.value).toBe(false)
+    expect(component.log_idle.value).toBe(false)
+  })
+
+  it('stops waiting after the loading limit and shows the regular layout', () => {
+    state.client.get.mockResolvedValue({ data: {} })
+    Object.assign(state.mower.refs, { status_ready: ref(false), log_history_ready: ref(false) })
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    onMounted.mock.lastCall[0]()
+    vi.advanceTimersByTime(2999)
+    expect(component.log_pending.value).toBe(true)
+    vi.advanceTimersByTime(1)
+    expect(component.log_pending.value).toBe(false)
+    expect(component.log_idle.value).toBe(false)
+    onUnmounted.mock.lastCall[0]()
+  })
+
+  it('shows the buttons in place when loading ends and slides them only between later layouts', async () => {
+    Object.assign(state.mower.refs, { status_ready: ref(true), log_history_ready: ref(false) })
+    const { refs } = state.mower
+    const component = scope.run(() => LogPage.setup({}, { expose: vi.fn() }))
+    const element = { animate: vi.fn(), getBoundingClientRect: vi.fn() }
+    component.action_group.value = element
+    refs.log_history_ready.value = true
+    await nextTick()
+    await nextTick()
+    expect(component.log_idle.value).toBe(true)
+    expect(element.getBoundingClientRect).not.toHaveBeenCalled()
+    expect(element.animate).not.toHaveBeenCalled()
+
+    element.getBoundingClientRect
+      .mockReturnValueOnce({ left: 300, top: 360, width: 240, height: 40 })
+      .mockReturnValueOnce({ left: 0, top: 620, width: 240, height: 40 })
+    refs.log_lines.value = [{ id: 1, text: '开始运行' }]
+    await nextTick()
+    await nextTick()
+    expect(element.animate).toHaveBeenCalledWith(
+      [{ transform: 'translate(300px, -260px)' }, { transform: 'none' }],
+      expect.objectContaining({ duration: 560 })
+    )
   })
 
   async function mountWithStore({ hidden = false } = {}) {
@@ -639,6 +793,23 @@ describe('log page', () => {
     background.customUrl = ''
     await nextTick()
     expect(layer.props.style.backgroundImage).toBe("url('/bg.webp')")
+  })
+
+  it('keeps the run actions in the toolbar on the not-started page', async () => {
+    Object.assign(state.mower.refs, { status_ready: ref(true), log_history_ready: ref(true) })
+    const { find } = mountWorkspace()
+    const page = find((target) => target.props.class?.split(' ').includes('home-container'))
+    const classes = () => page.props.class.split(' ')
+    const toolbar = find((target) => target.props.class === 'log-toolbar')
+    const actions = find((target) => target.props.class?.split(' ').includes('action-container'))
+    // 未开始时只由样式把按钮排到底部中央，按钮仍在工具栏里，开始运行后平移回原位。
+    expect(classes()).toContain('home-container--idle')
+    expect(actions.parent).toBe(toolbar)
+
+    state.mower.refs.log_lines.value = [{ id: 1, text: '开始运行' }]
+    await nextTick()
+    expect(classes()).not.toContain('home-container--idle')
+    expect(actions.parent).toBe(toolbar)
   })
 
   it('keeps an empty queue compact without mounting task preparation or editors', () => {

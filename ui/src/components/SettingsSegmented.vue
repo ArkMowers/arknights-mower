@@ -69,7 +69,8 @@ defineEmits(['update:value'])
   min-width: 0;
   padding: 7px 8px;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: inherit;
   font: inherit;

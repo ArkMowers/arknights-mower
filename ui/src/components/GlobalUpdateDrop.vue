@@ -211,7 +211,8 @@ onUnmounted(() => {
   place-items: center;
   padding: 24px;
   border: 2px dashed #36ad6a;
-  border-radius: 16px;
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: rgba(24, 80, 49, 0.94);
   color: white;
   pointer-events: none;

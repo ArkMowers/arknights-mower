@@ -1579,7 +1579,8 @@ onBeforeUnmount(() => {
 }
 .tool-events details {
   border: 1px solid var(--mower-divider);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   padding: 8px;
   margin-bottom: 6px;
 }
@@ -1628,7 +1629,8 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--mower-divider);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .conversation-item.selected {
   background: var(--mower-primary-block);
@@ -1672,7 +1674,8 @@ onBeforeUnmount(() => {
   box-sizing: border-box;
   overflow: hidden;
   border: 1px solid var(--mower-border);
-  border-radius: 16px;
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   color: var(--mower-text);
   box-shadow:
@@ -1796,7 +1799,8 @@ onBeforeUnmount(() => {
 .assistant-mark {
   width: 40px;
   height: 40px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 26px;
 }
 .assistant-heading {
@@ -1877,7 +1881,8 @@ onBeforeUnmount(() => {
   gap: 7px 8px;
   padding: 10px;
   border: 1px solid var(--mower-divider);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   color: inherit;
   font: inherit;
@@ -1953,7 +1958,9 @@ onBeforeUnmount(() => {
   max-width: 88%;
   margin-left: auto;
   padding: 10px 14px;
-  border-radius: 14px 14px 4px 14px;
+  border-radius: calc(14px * var(--mower-corner-scale)) calc(14px * var(--mower-corner-scale))
+    calc(4px * var(--mower-corner-scale)) calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-primary-block);
   white-space: pre-wrap;
 }
@@ -1962,7 +1969,8 @@ onBeforeUnmount(() => {
 }
 .message-error .assistant-content {
   padding: 12px 14px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--mower-error-text);
   background: var(--mower-error-block);
 }
@@ -2000,13 +2008,15 @@ onBeforeUnmount(() => {
   overflow-x: auto;
   padding: 12px 14px;
   border: 1px solid var(--mower-divider);
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   line-height: 1.6;
 }
 .message-markdown :deep(code) {
   padding: 2px 5px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   font-size: 12px;
 }
@@ -2042,7 +2052,8 @@ onBeforeUnmount(() => {
 .message-markdown :deep(img) {
   max-width: 100%;
   height: auto;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .thinking-indicator {
   display: flex;
@@ -2091,7 +2102,8 @@ onBeforeUnmount(() => {
   max-width: 200px;
   padding: 4px 6px;
   border: 1px solid var(--mower-border);
-  border-radius: 9px;
+  border-radius: calc(9px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--mower-text);
   font-size: 12px;
 }
@@ -2104,7 +2116,8 @@ onBeforeUnmount(() => {
   width: 32px;
   height: 32px;
   object-fit: cover;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .sent-attachments {
   display: flex;
@@ -2129,7 +2142,8 @@ onBeforeUnmount(() => {
 .composer {
   padding: 6px;
   border: 1px solid var(--mower-border);
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   transition:
     border-color 0.15s,

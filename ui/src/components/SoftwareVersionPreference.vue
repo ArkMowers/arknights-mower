@@ -127,7 +127,8 @@ onMounted(() => void gui.load())
   box-sizing: border-box;
   padding: 12px;
   border: 1px solid var(--mower-border);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
 }
 .version-preview-header {
@@ -158,11 +159,15 @@ onMounted(() => void gui.load())
   height: 192px;
 }
 .version-build-workflow :deep(.sidebar-brand-channel) {
-  padding-inline: 4px;
-  font-size: 10px;
-  line-height: 15px;
-  white-space: normal;
-  overflow-wrap: anywhere;
+  /* 预览节点较窄：沿用侧边栏的排法整体缩小并居中，后缀放不下时换到发布号下方。 */
+  --badge-release-size: 18px;
+  --badge-tag-size: 9px;
+  --badge-plain-size: 11px;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px 5px;
+  padding: 2px 4px;
+  text-align: center;
 }
 .version-workflow-source,
 .version-workflow-target {
@@ -185,7 +190,8 @@ onMounted(() => void gui.load())
   padding: 4px 8px;
   box-sizing: border-box;
   border: 1px solid var(--mower-border);
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
 }
 .version-workflow-job::before,

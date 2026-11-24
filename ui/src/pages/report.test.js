@@ -742,7 +742,9 @@ describe('基报读取 Mower 收益设置', () => {
     expect(html).not.toContain('page--fill')
     expect(html).toContain('基建报表显示模式')
     expect(html).toContain('page-header')
-    expect(html).toContain('正在读取基报')
+    // 读取中直接显示终端布局，由终端在图表处提示，不画标准模式的卡片骨架。
+    expect(html).toContain('行情加载中')
+    expect(html).not.toContain('正在读取基报')
     const scope = effectScope()
     try {
       const page = scope.run(() => Report.setup({}, { expose: vi.fn() }))

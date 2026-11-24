@@ -16,6 +16,7 @@
         :missing-kinds="planMaterialStats.missing"
         :ready-goals="planMaterialStats.ready"
         :compact="activeView !== 'overview'"
+        :placeholder="growthPlaceholder"
         @update:auto-crafting="configStore.enable_crafting = $event"
         @update:auto-mastery="configStore.enable_mastery = $event"
         @update:maa-growth="configStore.maa_growth_enable = $event"
@@ -36,6 +37,7 @@
         :missing-kinds="planMaterialStats.missing"
         :ready-count="planMaterialStats.ready"
         :goal-count="totalGoalCount"
+        :placeholder="Boolean(growthPlaceholder)"
         @open-route="openSettings"
         @open-workshop="openWorkshopSettings"
       />
@@ -52,10 +54,41 @@
         </div>
       </div>
 
-      <div v-else-if="!store.hasData && store.loading" class="growth-loading" aria-busy="true">
-        <div class="gp-skeleton" style="height: 220px" />
-        <div class="gp-skeleton" style="height: 160px" />
-      </div>
+      <!-- 首次读取时总览按上次的队列行数和推荐卡片数占位，标题和读数标签照常显示。 -->
+      <LoadingSkeleton
+        v-else-if="growthPlaceholder && activeView === 'overview'"
+        label="正在读取养成数据"
+      >
+        <GrowthOverview :goal-count="0" :placeholder="growthPlaceholder" />
+      </LoadingSkeleton>
+      <!-- 其他视图首次读取时画出各自读取中的版面：筛选栏和干员卡、材料备齐数和重点材料、
+           练度统计的标签，数据处先占位。 -->
+      <LoadingSkeleton v-else-if="growthPlaceholder" label="正在读取养成数据">
+        <GrowthOperatorGrid
+          v-if="activeView === 'operators'"
+          :cards="[]"
+          loading
+          :search="searchQuery"
+          :rarities="filterRarity"
+          :professions="filterProfession"
+          :idle-filter="idleFilter"
+          :idle-options="idleFilterOptions"
+          :rarity-options="rarityOptions"
+          :profession-options="professionOptions"
+          :survey-filters="surveyFilters"
+          :survey="survey"
+          :page="1"
+          :page-size="operatorPageSize"
+        />
+        <GrowthMaterialsView
+          v-else-if="activeView === 'materials'"
+          :summary="null"
+          loading
+          :total-goals="totalGoalCount"
+          :plan-count="planEntries.length"
+        />
+        <GrowthInsightsView v-else placeholder :survey="survey" />
+      </LoadingSkeleton>
 
       <template v-else>
         <GrowthOverview
@@ -637,6 +670,8 @@ import {
 } from '@/utils/masterySupport'
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, shallowRef, watch } from 'vue'
 import GrowthCraftingOrder from '@/components/GrowthCraftingOrder.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
 import { NAlert, NButton, NCheckbox, NDynamicInput, NSelect, NSwitch, useMessage } from 'naive-ui'
 import axios from 'axios'
 import { useMasteryStore } from '@/stores/mastery'
@@ -2205,6 +2240,36 @@ const rosterStats = computed(() => {
 // 值得练排序条件：默认按剩余专三率，可切剩余模组解锁率、稀有度、等级。
 const pickSort = ref('mastery')
 
+// 首次读取时的骨架按上次读到的版面占位：有没有进行中的训练和养成目标、已拥有干员条里的头像数、
+// 总览里的队列行数和推荐卡片数。
+const skeletonShape = readSkeletonShape('growth', {
+  training: true,
+  goals: true,
+  roster: 24,
+  queue: 5,
+  cards: 4
+})
+// 打开页面时先读养成计划，再读干员数据；在干员数据读完之前都保持骨架，不先显示空状态。
+const recommendationsSettled = ref(false)
+const growthPlaceholder = computed(() =>
+  !store.hasData && !store.error && (store.loading || !recommendationsSettled.value)
+    ? skeletonShape
+    : null
+)
+watch(
+  () => store.hasData && !store.loading,
+  (ready) => {
+    if (!ready) return
+    saveSkeletonShape('growth', {
+      training: Boolean(trainingCard.value),
+      goals: totalGoalCount.value > 0,
+      roster: Math.min(store.recommendations.filter((op) => op?.name).length, 24),
+      queue: Math.min(queueItems.value.length, 5),
+      cards: Math.min(recommendedCards.value.length, 4)
+    })
+  }
+)
+
 const recommendedCards = computed(() => {
   const cards = store.recommendations
     .map((op) => {
@@ -2385,9 +2450,13 @@ function toggleSelectedBasic(value) {
 // ─── 初始化 ───
 onMounted(async () => {
   const params = readQuery()
-  await refreshPlanFromServer()
-  void loadSurvey()
-  await Promise.all([loadOperators(), store.fetchRecommendations()])
+  try {
+    await refreshPlanFromServer()
+    void loadSurvey()
+    await Promise.all([loadOperators(), store.fetchRecommendations()])
+  } finally {
+    recommendationsSettled.value = true
+  }
   const requestedOperator = params.get('op')
   if (requestedOperator && activeView.value === 'operators') {
     expandedOperator.value = [requestedOperator]
@@ -2419,7 +2488,8 @@ async function loadOperators() {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 16px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-warn-block);
   color: var(--gp-ink-2);
 }
@@ -2461,12 +2531,6 @@ async function loadOperators() {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 6px;
-}
-
-.growth-loading {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
 }
 
 .growth-operators {
@@ -2584,7 +2648,8 @@ async function loadOperators() {
   flex-direction: column;
   gap: 2px;
   padding: 4px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -2592,7 +2657,8 @@ async function loadOperators() {
   height: 32px;
   padding: 0 10px;
   border: 0;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   font: inherit;
@@ -2650,7 +2716,8 @@ async function loadOperators() {
   gap: 7px;
   padding: 10px 12px;
   margin-bottom: 8px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
 }
@@ -2666,7 +2733,8 @@ async function loadOperators() {
   display: grid;
   place-items: center;
   height: 40px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
   color: var(--gp-ink);
   font-size: 11px;
@@ -2748,7 +2816,8 @@ async function loadOperators() {
   justify-content: space-between;
   gap: 10px;
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
   font-size: 11.5px;
 }
@@ -2766,7 +2835,8 @@ async function loadOperators() {
   gap: 16px;
   flex-wrap: wrap;
   padding: 14px 16px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
 }

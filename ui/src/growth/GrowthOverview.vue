@@ -31,7 +31,9 @@ const props = defineProps({
   },
   workshopStatusRevision: { type: Number, default: 0 },
   workshopLoading: Boolean,
-  chipFarmingLoading: Boolean
+  chipFarmingLoading: Boolean,
+  // 首次读取时上次的版面：{ queue, cards }。给出时队列行、读数和推荐卡片都画成占位块。
+  placeholder: { type: Object, default: null }
 })
 const emit = defineEmits([
   'open-plan',
@@ -102,7 +104,14 @@ function formatCount(value) {
             <h2 id="growth-queue-title" class="gp-section-head__title">训练队列</h2>
           </div>
           <div class="gp-section-head__meta">
-            <span class="gp-mono">{{ goalCount }} 项</span>
+            <span class="gp-mono"
+              ><span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1.2em"
+              />
+              <template v-else>{{ goalCount }}</template> 项</span
+            >
             <button type="button" class="gp-link" @click="emit('open-plan')">
               调整顺序
               <n-icon :component="ArrowForwardOutline" :size="14" />
@@ -111,7 +120,23 @@ function formatCount(value) {
         </header>
 
         <p v-if="queueError" class="gp-muted" role="status">{{ queueError }}</p>
-        <ol v-if="queueRows.length" class="gp-queue">
+        <ol v-if="placeholder?.queue" class="gp-queue">
+          <li v-for="index in placeholder.queue" :key="index" class="gp-queue__row">
+            <span class="gp-queue__index gp-mono">{{ String(index).padStart(2, '0') }}</span>
+            <span class="skeleton-bone gp-queue__avatar" />
+            <div class="gp-queue__text">
+              <b><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3.5em" /></b>
+              <span class="gp-queue__label"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 7em"
+              /></span>
+            </div>
+            <span class="gp-overview__status gp-mono"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em"
+            /></span>
+          </li>
+        </ol>
+        <div v-else-if="placeholder" />
+        <ol v-else-if="queueRows.length" class="gp-queue">
           <li v-for="(item, index) in queueRows" :key="item.key" class="gp-queue__row">
             <span class="gp-queue__index gp-mono">{{ String(index + 1).padStart(2, '0') }}</span>
             <span class="gp-queue__avatar">
@@ -159,7 +184,13 @@ function formatCount(value) {
           </div>
         </div>
 
-        <footer v-if="queueRows.length" class="gp-overview__queue-foot">
+        <footer v-if="placeholder?.queue" class="gp-overview__queue-foot">
+          <span class="gp-muted"
+            ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 10em"
+          /></span>
+          <span class="gp-link">打开完整计划</span>
+        </footer>
+        <footer v-else-if="!placeholder && queueRows.length" class="gp-overview__queue-foot">
           <span v-if="overflowCount" class="gp-muted">还有 {{ overflowCount }} 项在计划中</span>
           <span v-else class="gp-muted">进行中的训练固定在队列最前。</span>
           <button type="button" class="gp-link" @click="emit('open-plan')">打开完整计划</button>
@@ -172,11 +203,38 @@ function formatCount(value) {
           <button type="button" class="gp-link" @click="emit('open-materials')">查看明细</button>
         </header>
 
-        <div v-if="materialsLoading && !materials" class="gp-overview__loading">
-          <div class="gp-skeleton" style="height: 64px" />
-          <div class="gp-skeleton" style="height: 26px" />
-        </div>
-
+        <!-- 首次读取和材料第一次计算时，备齐率、统计标签和操作照常显示，数字先占位。 -->
+        <template v-if="placeholder || (materialsLoading && !materials)">
+          <div class="gp-overview__readiness">
+            <div class="gp-overview__readiness-value gp-num">
+              <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em" /><small
+                >%</small
+              >
+            </div>
+            <div class="gp-overview__readiness-meta">
+              <span>材料种类备齐</span>
+              <span class="gp-mono"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em"
+              /></span>
+            </div>
+          </div>
+          <div class="gp-meter gp-overview__meter"><span style="width: 0" /></div>
+          <dl class="gp-overview__material-stats">
+            <div v-for="label in ['材料缺口', '可合成', '已备齐']" :key="label">
+              <dt>{{ label }}</dt>
+              <dd class="gp-mono">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em" /> 种
+              </dd>
+            </div>
+          </dl>
+          <div class="gp-overview__material-actions" inert>
+            <n-button size="small" secondary type="primary">生成合成任务</n-button>
+            <span class="gp-link">芯片刷取</span>
+          </div>
+          <div class="gp-overview__workshop">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 14em" />
+          </div>
+        </template>
         <div v-else-if="materialsError" class="gp-overview__material-error">
           <p>{{ materialsError }}</p>
           <button type="button" class="gp-link" @click="emit('refresh-materials')">
@@ -277,25 +335,60 @@ function formatCount(value) {
         <dl class="gp-overview__roster-grid">
           <div>
             <dt>已拥有</dt>
-            <dd class="gp-num">{{ rosterStats.owned }}</dd>
+            <dd class="gp-num">
+              <span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1.4em"
+              />
+              <template v-else>{{ rosterStats.owned }}</template>
+            </dd>
           </div>
           <div>
             <dt>精二</dt>
-            <dd class="gp-num">{{ rosterStats.elite2 }}</dd>
+            <dd class="gp-num">
+              <span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1.4em"
+              />
+              <template v-else>{{ rosterStats.elite2 }}</template>
+            </dd>
           </div>
           <div>
             <dt>专三技能</dt>
-            <dd class="gp-num">{{ rosterStats.masteries }}</dd>
+            <dd class="gp-num">
+              <span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1.4em"
+              />
+              <template v-else>{{ rosterStats.masteries }}</template>
+            </dd>
           </div>
           <div>
             <dt>已开模组</dt>
-            <dd class="gp-num">{{ rosterStats.modules }}</dd>
+            <dd class="gp-num">
+              <span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1.4em"
+              />
+              <template v-else>{{ rosterStats.modules }}</template>
+            </dd>
           </div>
         </dl>
         <div class="gp-overview__roster-meter">
           <div class="gp-overview__roster-meter-head">
             <span>精二率</span>
-            <span class="gp-mono">{{ elitePercent }}%</span>
+            <span class="gp-mono"
+              ><span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1.4em"
+              />
+              <template v-else>{{ elitePercent }}</template>%</span
+            >
           </div>
           <div class="gp-meter">
             <span :style="{ width: elitePercent + '%' }" />
@@ -308,7 +401,10 @@ function formatCount(value) {
           <div class="gp-overview__pick-head">
             <span class="gp-kicker">Suggested next</span>
             <h2 id="growth-pick-title" class="gp-section-head__title">值得练</h2>
-            <p class="gp-overview__pick-sub">{{ pickDescription }}</p>
+            <p v-if="placeholder" class="gp-overview__pick-sub">
+              <span class="skeleton-bone skeleton-text" style="--skeleton-w: 14em" />
+            </p>
+            <p v-else class="gp-overview__pick-sub">{{ pickDescription }}</p>
           </div>
           <div class="gp-overview__pick-actions">
             <n-select
@@ -326,8 +422,16 @@ function formatCount(value) {
           </div>
         </header>
 
+        <div v-if="placeholder?.cards" class="gp-overview__cards">
+          <span
+            v-for="index in placeholder.cards"
+            :key="index"
+            class="skeleton-bone gp-overview__card-placeholder"
+          />
+        </div>
+        <div v-else-if="placeholder" />
         <div
-          v-if="recommended.length"
+          v-else-if="recommended.length"
           class="gp-overview__cards"
           role="region"
           aria-labelledby="growth-pick-title"
@@ -402,7 +506,8 @@ function formatCount(value) {
   gap: 12px;
   min-height: 62px;
   padding: 8px 6px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   transition: background 160ms var(--gp-ease);
 }
 
@@ -423,7 +528,8 @@ function formatCount(value) {
   height: 38px;
   flex: none;
   overflow: hidden;
-  border-radius: 9px;
+  border-radius: calc(9px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-3);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
 }
@@ -502,12 +608,6 @@ function formatCount(value) {
 
 .gp-overview__materials-head {
   margin-bottom: 10px;
-}
-
-.gp-overview__loading {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 .gp-overview__material-error {
@@ -590,7 +690,8 @@ function formatCount(value) {
   gap: 8px;
   margin-top: 12px;
   padding: 9px 10px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -618,7 +719,8 @@ function formatCount(value) {
   flex-wrap: wrap;
   margin-top: 8px;
   padding: 7px 10px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-signal-block);
 }
 
@@ -746,6 +848,11 @@ function formatCount(value) {
 
 .gp-overview__pick-sort {
   width: 148px;
+}
+
+.gp-overview__card-placeholder {
+  height: 168px;
+  border-radius: var(--gp-r, calc(12px * var(--mower-corner-scale)));
 }
 
 .gp-overview__cards {

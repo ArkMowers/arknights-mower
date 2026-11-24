@@ -97,7 +97,7 @@
             class="skill-list"
           >
             <template #default="{ item }">
-              <BasementSkillRows :key="item.key" :item="item" />
+              <BasementSkillRows :key="item.key" :item="item" :placeholder="rowPlaceholder(item)" />
             </template>
           </n-virtual-list>
         </n-tab-pane>
@@ -121,6 +121,7 @@ import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import { ref, computed, onMounted } from 'vue'
 import { useBasementSkill } from '@/stores/basementSkill'
+import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
 import { usePlanStore } from '@/stores/plan'
 import { planRecommendationConditions } from '@/utils/baseRecommendationConditions'
 import {
@@ -153,6 +154,8 @@ const conditionSource = computed(() =>
 const activePane = ref('skills')
 const showFilters = ref(false)
 const loading = ref(false)
+// 还没有练度快照时，第一次读取开始之前也画占位，骨架不会晚一帧才出现。
+const snapshotRequested = ref(false)
 const syncing = ref(false)
 const error = ref('')
 const name_select = ref('')
@@ -196,11 +199,37 @@ function resetFilters() {
   status_select.value = null
 }
 
+// 首次读取练度快照时，持有标签、技能状态和练度一行先画成占位块。没读过或上次没有练度数据
+// （没有同步森空岛练度）时不占位；上次有练度时，没有持有标签的干员不画标签占位，上次有练度
+// 的干员才画练度一行。
+const skeletonShape = readSkeletonShape('basement-skill', {
+  known: false,
+  progressed: [],
+  untagged: []
+})
+const progressed = new Set(skeletonShape.progressed)
+const untagged = new Set(skeletonShape.untagged)
+const skillPlaceholder = computed(
+  () => (loading.value || !snapshotRequested.value) && !snapshot.value && skeletonShape.known
+)
+function rowPlaceholder(item) {
+  if (!skillPlaceholder.value || untagged.has(item.avatar)) return null
+  return { progression: progressed.has(item.avatar) }
+}
+
 async function loadOwnedOperators() {
   loading.value = true
+  snapshotRequested.value = true
   error.value = ''
   try {
     await readOwnedOperators()
+    saveSkeletonShape('basement-skill', {
+      known: Boolean(snapshot.value?.has_data),
+      progressed: skill_items.value.filter((item) => item.progression).map((item) => item.avatar),
+      untagged: skill_items.value
+        .filter((item) => !ownershipLabels[item.ownership])
+        .map((item) => item.avatar)
+    })
   } catch (e) {
     error.value = `读取森空岛练度失败：${e.message || e}`
   } finally {

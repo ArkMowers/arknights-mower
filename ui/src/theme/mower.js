@@ -1,4 +1,5 @@
 import { darkTheme, lightTheme } from 'naive-ui'
+import { corner } from './corner'
 
 const transparentBorder = '1px solid transparent'
 
@@ -66,10 +67,10 @@ function createMowerTheme(palette) {
       footerBorderColor: 'transparent'
     },
     Button: {
-      borderRadiusTiny: '4px',
-      borderRadiusSmall: '6px',
-      borderRadiusMedium: '8px',
-      borderRadiusLarge: '10px',
+      borderRadiusTiny: corner(4),
+      borderRadiusSmall: corner(6),
+      borderRadiusMedium: corner(8),
+      borderRadiusLarge: corner(10),
       border: defaultBorder,
       borderFocus: defaultBorder,
       borderHover: defaultBorder,
@@ -98,13 +99,13 @@ function createMowerTheme(palette) {
       colorEmbedded: palette.control,
       actionColor: palette.control,
       borderColor: 'transparent',
-      borderRadius: '16px',
+      borderRadius: corner(16),
       closeBorderRadius: '6px',
       boxShadow: 'none'
     },
     Dialog: {
       border: transparentBorder,
-      borderRadius: '16px',
+      borderRadius: corner(16),
       closeBorderRadius: '6px',
       color: palette.surfaceRaised
     },
@@ -112,7 +113,7 @@ function createMowerTheme(palette) {
       boxShadow: sharedCommon.boxShadow3
     },
     Drawer: {
-      borderRadius: '16px',
+      borderRadius: corner(16),
       closeBorderRadius: '6px',
       boxShadow: sharedCommon.boxShadow3
     },
@@ -121,7 +122,7 @@ function createMowerTheme(palette) {
       borderDisabled: transparentBorder,
       borderFocus: transparentBorder,
       borderHover: transparentBorder,
-      borderRadius: '8px',
+      borderRadius: corner(8),
       boxShadowFocus: palette.focusShadow,
       color: palette.control,
       colorDisabled: palette.controlDisabled,
@@ -146,7 +147,7 @@ function createMowerTheme(palette) {
       checkMarkColor: palette.accentText
     },
     Radio: {
-      buttonBorderRadius: '6px',
+      buttonBorderRadius: corner(6),
       color: palette.control,
       colorActive: palette.accent,
       dotColorActive: palette.accentText,
@@ -173,7 +174,7 @@ function createMowerTheme(palette) {
       menuBoxShadow: palette.shadowMedium,
       peers: {
         InternalSelectMenu: {
-          borderRadius: '12px',
+          borderRadius: corner(12),
           color: palette.popover,
           optionColorPending: palette.controlHover,
           optionColorActive: 'transparent',
@@ -213,22 +214,22 @@ function createMowerTheme(palette) {
     },
     Popover: {
       color: palette.popover,
-      borderRadius: '16px',
+      borderRadius: corner(16),
       boxShadow: palette.shadowMedium
     },
     Dropdown: {
-      borderRadius: '12px',
+      borderRadius: corner(12),
       color: palette.popover,
       dividerColor: palette.divider
     },
     Tooltip: {
-      borderRadius: '6px',
+      borderRadius: corner(6),
       boxShadow: palette.shadowSmall,
       color: palette.tooltip,
       textColor: palette.tooltipText,
       peers: {
         Popover: {
-          borderRadius: '6px',
+          borderRadius: corner(6),
           boxShadow: palette.shadowSmall,
           color: palette.tooltip,
           textColor: palette.tooltipText
@@ -236,7 +237,7 @@ function createMowerTheme(palette) {
       }
     },
     Message: {
-      borderRadius: '8px',
+      borderRadius: corner(8),
       closeBorderRadius: '5px',
       boxShadow: palette.shadowMedium,
       boxShadowInfo: palette.shadowMedium,
@@ -246,7 +247,7 @@ function createMowerTheme(palette) {
       boxShadowLoading: palette.shadowMedium
     },
     Notification: {
-      borderRadius: '14px',
+      borderRadius: corner(14),
       closeBorderRadius: '5px',
       boxShadow: palette.shadowMedium
     },
@@ -256,7 +257,7 @@ function createMowerTheme(palette) {
       borderSuccess: transparentBorder,
       borderWarning: transparentBorder,
       borderError: transparentBorder,
-      borderRadius: '8px',
+      borderRadius: corner(8),
       closeBorderRadius: '5px',
       color: palette.control,
       colorInfo: palette.alertInfoBlock,
@@ -276,7 +277,7 @@ function createMowerTheme(palette) {
       titleFontWeight: '600'
     },
     DataTable: {
-      borderRadius: '10px',
+      borderRadius: corner(10),
       borderColor: palette.divider,
       thColor: palette.tableHeader,
       tdColor: palette.surface,
@@ -285,7 +286,7 @@ function createMowerTheme(palette) {
     DatePicker: {
       itemBorderRadius: '4px',
       scrollItemBorderRadius: '4px',
-      panelBorderRadius: '10px',
+      panelBorderRadius: corner(10),
       panelBoxShadow: palette.shadowMedium,
       panelColor: palette.surfaceRaised,
       panelHeaderDividerColor: palette.divider,
@@ -294,7 +295,7 @@ function createMowerTheme(palette) {
       panelActionDividerColor: palette.divider
     },
     List: {
-      borderRadius: '10px',
+      borderRadius: corner(10),
       borderColor: palette.divider,
       color: palette.surface,
       colorHover: palette.controlHover
@@ -307,14 +308,14 @@ function createMowerTheme(palette) {
       indicatorBoxShadow: palette.shadowSmall
     },
     Table: {
-      borderRadius: '10px',
+      borderRadius: corner(10),
       borderColor: palette.divider,
       thColor: palette.tableHeader,
       tdColor: palette.surface,
       tdColorStriped: palette.tableStriped
     },
     Tabs: {
-      tabBorderRadius: '8px',
+      tabBorderRadius: corner(8),
       closeBorderRadius: '4px',
       tabColor: palette.control,
       tabColorSegment: palette.surfaceRaised,
@@ -322,13 +323,13 @@ function createMowerTheme(palette) {
     },
     TimePicker: {
       itemBorderRadius: '4px',
-      borderRadius: '10px',
+      borderRadius: corner(10),
       panelBoxShadow: palette.shadowMedium,
       panelColor: palette.surfaceRaised,
       panelDividerColor: palette.divider
     },
     Upload: {
-      borderRadius: '8px',
+      borderRadius: corner(8),
       draggerColor: palette.control,
       draggerBorder: transparentBorder,
       draggerBorderHover: transparentBorder,

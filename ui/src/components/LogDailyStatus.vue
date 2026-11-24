@@ -76,7 +76,8 @@ const dailyState = (state) =>
   gap: 4px;
   margin-inline: auto;
   padding: 6px 24px 8px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 12px;
   line-height: 18px;
 }

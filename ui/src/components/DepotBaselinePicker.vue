@@ -456,7 +456,8 @@ const activeTriggerLabel = computed(() => {
   gap: 6px;
   height: 32px;
   padding: 0 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.12));
   background: var(--mower-control-surface, #ffffff);
   color: var(--mower-text, #1f1e1c);
@@ -525,7 +526,8 @@ const activeTriggerLabel = computed(() => {
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   padding: 14px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface, #ffffff);
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.12));
   box-shadow:
@@ -547,7 +549,8 @@ const activeTriggerLabel = computed(() => {
 .preset-pill-btn {
   height: 30px;
   padding: 0 4px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.1));
   background: var(--mower-control-surface, #f7f7f5);
   color: var(--mower-text, #333333);
@@ -610,7 +613,8 @@ const activeTriggerLabel = computed(() => {
 
 .time-input-card {
   padding: 6px 10px 8px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid var(--mower-border, rgba(0, 0, 0, 0.12));
   background: var(--mower-control-surface, #fafaf9);
   display: flex;
@@ -642,7 +646,8 @@ const activeTriggerLabel = computed(() => {
 /* 匹配摘要卡片 */
 .match-summary-card {
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-segment-rail, #f2f2f0);
   font-size: 12px;
   line-height: 1.4;

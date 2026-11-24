@@ -2,6 +2,9 @@
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { NCard, useDialog, useMessage } from 'naive-ui'
 import { pendingSoftwarePackage } from '@/stores/updateUpload'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import SkeletonField from '@/components/SkeletonField.vue'
+import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
 import { droppedUpdateFile } from '@/utils/manualUpdate'
 import {
   confirmForceUpdate,
@@ -29,6 +32,8 @@ const background = ref(false)
 const autoCheck = ref(false)
 const autoUpdate = ref(false)
 const checked = ref(null)
+// 读取中的检查结果一行：上次读到过检查结果时先占好“可更新/已与渠道一致”标签的位置。
+const skeletonShape = readSkeletonShape('software-update', { checked: true })
 const rollbackOptions = ref([])
 const rollbackVersion = ref(null)
 const rollbackLoading = ref(false)
@@ -160,8 +165,10 @@ async function loadInfo() {
     autoCheck.value = data.settings.auto_check
     autoUpdate.value = data.settings.auto_update
   }
+  const firstRead = !info.value
   info.value = data
   showLastCheck(data.last_check)
+  if (firstRead) saveSkeletonShape('software-update', { checked: Boolean(checked.value) })
 }
 
 async function poll() {
@@ -448,8 +455,15 @@ onUnmounted(() => {
     <div v-if="!compact" class="update-overview">
       <div class="update-installed">
         <span class="update-caption" data-settings-label="当前版本">当前版本</span>
-        <strong class="update-version">{{ info?.version || '正在读取…' }}</strong>
+        <strong v-if="info?.version" class="update-version">{{ info.version }}</strong>
+        <!-- 读取中版本号、安装方式、检查结果和各项设置画成同样大小的占位块。 -->
+        <LoadingSkeleton v-else class="update-version" label="正在读取当前版本">
+          <span class="skeleton-bone skeleton-text" style="--skeleton-w: 6.5em" />
+        </LoadingSkeleton>
         <span v-if="info" class="update-caption">{{ source ? '源码部署' : 'Release 独立包' }}</span>
+        <span v-else class="update-caption"
+          ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 7em"
+        /></span>
       </div>
       <div class="update-actions">
         <n-button :loading="checking" :disabled="running" @click="checkUpdate"> 检查更新 </n-button>
@@ -465,7 +479,11 @@ onUnmounted(() => {
       </div>
     </div>
     <div v-if="!compact" class="update-status" role="status" data-settings-label="最新版本">
-      <template v-if="checking">正在检查所选渠道的最新版本…</template>
+      <template v-if="!info">
+        <span v-if="skeletonShape.checked" class="skeleton-bone update-tag-placeholder" />
+        <span><span class="skeleton-bone skeleton-text" style="--skeleton-w: 14em" /></span>
+      </template>
+      <template v-else-if="checking">正在检查所选渠道的最新版本…</template>
       <template v-else-if="checked">
         <n-tag v-if="checked.available" size="small" :bordered="false" type="warning">
           可更新
@@ -539,12 +557,17 @@ onUnmounted(() => {
         <template #label>
           <span class="settings-row-copy">
             <span>更新渠道</span>
-            <span v-if="selectedChannel" class="settings-row-description">{{
+            <span v-if="!info" class="settings-row-description"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 16em"
+            /></span>
+            <span v-else-if="selectedChannel" class="settings-row-description">{{
               selectedChannel.description
             }}</span>
           </span>
         </template>
+        <SkeletonField v-if="!info" kind="select" size="small" width="4em" />
         <n-select
+          v-else
           v-model:value="channel"
           :consistent-menu-width="false"
           size="small"
@@ -561,7 +584,9 @@ onUnmounted(() => {
             <span class="settings-row-description">打开 Mower 时检查所选渠道的软件更新</span>
           </span>
         </template>
+        <span v-if="!info" class="skeleton-bone update-switch-placeholder" />
         <n-switch
+          v-else
           :value="autoCheck"
           :disabled="!info || running"
           aria-label="自动检查更新"
@@ -577,7 +602,9 @@ onUnmounted(() => {
             >
           </span>
         </template>
+        <span v-if="!info" class="skeleton-bone update-switch-placeholder" />
         <n-switch
+          v-else
           :value="autoUpdate"
           :disabled="!info || running"
           aria-label="自动更新"
@@ -588,12 +615,17 @@ onUnmounted(() => {
         <template #label>
           <span class="settings-row-copy">
             <span>更新后后台静默重启</span>
-            <span class="settings-row-description">{{
+            <span v-if="!info" class="settings-row-description"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 9em"
+            /></span>
+            <span v-else class="settings-row-description">{{
               background ? '不打开窗口，在后台运行' : '重启后正常打开窗口'
             }}</span>
           </span>
         </template>
+        <span v-if="!info" class="skeleton-bone update-switch-placeholder" />
         <n-switch
+          v-else
           v-model:value="background"
           :disabled="running || !info"
           aria-label="更新后后台静默重启"

@@ -148,9 +148,28 @@ describe('GitHub Token settings', () => {
 })
 
 describe('GitHub Token input', () => {
-  it('renders the password field and public-repository token instructions', async () => {
+  it('keeps the labels and descriptions and shows input placeholders until the settings are read', async () => {
     state.client = { get: vi.fn() }
     const html = await renderToString(createSSRApp(Component))
+    expect(html).toContain('aria-busy="true"')
+    expect(html.match(/network-input-placeholder/g)).toHaveLength(3)
+    expect(html).toContain('全局网络代理')
+    expect(html).toContain('不经过下载代理站点')
+    expect(html).not.toContain('aria-label="GitHub Token"')
+  })
+
+  it('renders the password field and public-repository token instructions', async () => {
+    state.client = { get: vi.fn() }
+    // 输入框在读到设置后才显示，读取中是同样大小的占位块。
+    const loaded = {
+      ...Component,
+      setup(props, context) {
+        const bindings = Component.setup(props, context)
+        bindings.loading.value = false
+        return bindings
+      }
+    }
+    const html = await renderToString(createSSRApp(loaded))
     expect(html).toContain('aria-label="GitHub Token"')
     expect(html).toContain('type="password"')
     expect(html).toContain('https://github.com/settings/personal-access-tokens/new')

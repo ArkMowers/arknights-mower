@@ -172,7 +172,8 @@ function quantityClass(material) {
 
 .mm__status {
   padding: 1px 7px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
   color: var(--gp-muted);
   font-size: 10px;
@@ -218,7 +219,8 @@ function quantityClass(material) {
   gap: 7px;
   min-width: 0;
   padding: 5px 6px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -359,7 +361,8 @@ function quantityClass(material) {
 
 .mm__tag {
   padding: 1px 7px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 10.5px;
   font-weight: 600;
 }

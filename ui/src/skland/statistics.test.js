@@ -5,6 +5,7 @@ import {
   buildDayMap,
   buildFailureLog,
   buildSignInSlots,
+  channelChipLabel,
   dateList,
   daysBetween,
   failureReasons,
@@ -23,6 +24,7 @@ import {
   shiftMonth,
   sumRewardEntries,
   summarize,
+  textWidthEm,
   weekStart
 } from './statistics'
 
@@ -727,5 +729,19 @@ describe('里程碑与格式化', () => {
     expect(percent(null)).toBe('—')
     expect(number(12000)).toBe('12,000')
     expect(number(null)).toBe('—')
+  })
+})
+
+describe('channel chip placeholders', () => {
+  it('labels channels and estimates their width for the next read', () => {
+    const official = { game_group: '明日方舟', channel: '官服' }
+    expect(channelChipLabel(official)).toBe('明日方舟 官服')
+    expect(channelChipLabel({ game_group: '明日方舟', channel: 'bilibili服' })).toBe('明日方舟 B服')
+    expect(channelChipLabel({ ...official, shared: true, role_index: 2 })).toBe(
+      '明日方舟 官服 · 角色 2'
+    )
+    expect(textWidthEm('明日方舟 官服')).toBe(6.3)
+    expect(textWidthEm('终末地 B服')).toBe(4.9)
+    expect(textWidthEm('')).toBe(0)
   })
 })

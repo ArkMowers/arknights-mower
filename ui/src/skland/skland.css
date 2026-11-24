@@ -3,8 +3,8 @@
   /* 10–11px 的中文说明文字需要比 naive-ui 的 textColor3 更高的对比度。 */
   --skland-muted: color-mix(in srgb, var(--mower-text) 64%, transparent);
   --skland-link: color-mix(in srgb, var(--mower-primary) 62%, var(--mower-text));
-  --skland-radius: 18px;
-  --skland-inner-radius: 12px;
+  --skland-radius: calc(18px * var(--mower-corner-scale));
+  --skland-inner-radius: calc(12px * var(--mower-corner-scale));
 }
 
 .skland-panel {
@@ -12,6 +12,7 @@
   min-width: 0;
   padding: 20px;
   border-radius: var(--skland-radius, 18px);
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   box-shadow: 0 0 0 1px var(--mower-divider);
 }

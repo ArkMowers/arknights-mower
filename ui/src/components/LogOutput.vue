@@ -1792,7 +1792,8 @@ function lineClasses(row) {
   position: relative;
   min-height: 1.6em;
   padding-inline: 4px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-wrap: anywhere;

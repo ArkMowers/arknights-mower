@@ -43,6 +43,7 @@ import {
 import { latestLogDate } from '@/utils/logSource'
 import { createScreenshotPreview } from '@/utils/screenshotPreview'
 import { windowMinimizedKey } from '@/window-shell/context.js'
+import { bootRevealed, holdBoot } from '@/boot/bootScreen'
 import StartSchedule from '@/components/StartSchedule.vue'
 import LogOutput from '@/components/LogOutput.vue'
 import LogDailyStatus from '@/components/LogDailyStatus.vue'
@@ -76,7 +77,9 @@ const {
   task_list,
   waiting,
   stop_after_round,
-  maintenance_pause
+  maintenance_pause,
+  status_ready,
+  log_history_ready
 } = storeToRefs(mower_store)
 const show_task_names = computed(() => taskQueueDisplay.value === 'names')
 const task_rows = computed(() =>
@@ -156,8 +159,76 @@ const plan_condition_visible = computed(
   () => show_task_table.value && plan_condition.value.length > 0
 )
 const daily_overview = shallowRef({ items: [], gameDay: null })
+const log_has_content = computed(
+  () =>
+    running.value ||
+    waiting.value ||
+    log_lines.value.length > 0 ||
+    has_screenshot.value ||
+    task_table_visible.value ||
+    plan_condition_visible.value ||
+    daily_overview.value.items.length > 0
+)
+const log_ready = computed(() => Boolean(status_ready?.value && log_history_ready?.value))
+// 未开始：页面已读到运行状态和日志历史，且没有运行，也没有日志、截图、任务列表、副表或今日任务
+// 可以显示。此时操作按钮移到页面底部居中，日志区和右下角的显示选项隐去。
+const log_idle = computed(() => log_ready.value && !log_has_content.value)
+// 加载中：首次打开时运行状态和日志历史还没读到，也没有其他内容可以显示，页面还不能确定用哪种布局。
+// 此时背景、日志区和按钮都先隐去，页面保持空白，不画并不存在的日志行；确定后各部分在最终位置淡入。
+// 最多等待 LOG_STARTUP_WAIT，仍读不到时按有内容的布局显示，让按钮可用。结束后不再回到加载中。
+const LOG_STARTUP_WAIT = 3000
+const log_startup_settled = ref(false)
+const log_pending = computed(
+  () => !log_startup_settled.value && !log_ready.value && !log_has_content.value
+)
+let log_startup_timer
+function settle_log_startup() {
+  log_startup_settled.value = true
+  clearTimeout(log_startup_timer)
+  log_startup_timer = undefined
+}
+watch(
+  log_pending,
+  (pending) => {
+    if (!pending) settle_log_startup()
+  },
+  { immediate: true, flush: 'sync' }
+)
 const log_layout = ref(null)
 const action_bar = ref(null)
+const action_group = ref(null)
+const IDLE_MOTION = { duration: 560, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' }
+let idle_motion
+// 进出未开始状态时按钮组换了位置：先记下旧位置，布局更新后从旧位置平移到新位置。
+// 上一段动画还没播完时，从它当前所在的位置接着移动。显示选项隐去时一并收起窄屏的弹出层。
+// 刚结束加载中或启动画面还在时按钮组此前是隐藏的，直接在新位置淡入，不做平移。
+watch([log_idle, log_pending], ([idle], [, was_pending]) => {
+  if (idle) show_view_controls.value = false
+  const element = action_group.value
+  if (
+    was_pending ||
+    !bootRevealed.value ||
+    !element?.animate ||
+    document.hidden ||
+    reduced_log_motion()
+  )
+    return
+  const before = element.getBoundingClientRect()
+  idle_motion?.cancel()
+  idle_motion = undefined
+  nextTick(() => {
+    if (action_group.value !== element) return
+    const after = element.getBoundingClientRect()
+    const zoom = logLayoutZoom(element)
+    const dx = (before.left + before.width / 2 - after.left - after.width / 2) / zoom
+    const dy = (before.top + before.height / 2 - after.top - after.height / 2) / zoom
+    if (Math.abs(dx) < 1 && Math.abs(dy) < 1) return
+    idle_motion = element.animate(
+      [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+      IDLE_MOTION
+    )
+  })
+})
 const show_view_controls = ref(false)
 function dismiss_view_controls(event) {
   show_view_controls.value = false
@@ -220,6 +291,8 @@ function use_panel_entry(visible) {
 function cancel_log_entry_animations() {
   railWidthReveal?.cancel()
   railWidthReveal = undefined
+  idle_motion?.cancel()
+  idle_motion = undefined
   for (const animation of queueRevealAnimations) animation?.cancel()
   queueRevealAnimations = []
 }
@@ -927,6 +1000,8 @@ function updatePageVisibility(event) {
 
 onMounted(() => {
   workspace.visited = true
+  if (!log_startup_settled.value)
+    log_startup_timer = setTimeout(settle_log_startup, LOG_STARTUP_WAIT)
   void logBackground.load()
   const savedPreviewState = localStorage.getItem('sc_preview')
   if (savedPreviewState !== null) {
@@ -950,6 +1025,8 @@ onUnmounted(() => {
   workspace.dailyView = daily_view_visible.value
   if (!daily_status_enabled.value) daily_status.value = null
   task_dialog_active = false
+  clearTimeout(log_startup_timer)
+  release_log_boot()
   cancel_layout_resize?.()
   cancel_log_entry_animations()
   stop_task_polling()
@@ -1160,6 +1237,28 @@ const bg_opacity = computed(() => {
   const opacity = theme.value === 'light' ? 0.2 : 0.16
   return mobile.value ? opacity * 0.6 : opacity
 })
+// 背景图下载解码完成、页面也确定布局、启动画面也已淡出后才显示。打开页面时背景还不能显示，
+// 或本次运行首次进入运行日志页时，背景从透明较缓地淡入；淡入结束前不叠加透明度过渡。
+const bg_ready = computed(() => logBackground.readyUrl === logBackground.url)
+const bg_shown = computed(() => !log_pending.value && bg_ready.value && bootRevealed.value)
+const bg_entering = ref(!bg_shown.value || (startup_reveal.value && !mobile.value))
+function finish_bg_entry(event) {
+  if (event.animationName.startsWith('log-bg-enter')) bg_entering.value = false
+}
+// 启动画面在运行日志确定布局、背景图解码完成之前不淡出；等待上限由启动画面统一控制。
+// 淡出后背景和按钮才开始入场。
+let release_boot = bootRevealed.value ? null : holdBoot('log')
+function release_log_boot() {
+  release_boot?.()
+  release_boot = null
+}
+watch(
+  [log_pending, bg_ready],
+  ([pending, ready]) => {
+    if (release_boot && !pending && ready) release_log_boot()
+  },
+  { immediate: true }
+)
 
 function stop_maa() {
   axios.get(`${import.meta.env.VITE_HTTP_URL}/stop-maa`)
@@ -1394,19 +1493,25 @@ async function db_delete(keys) {
     class="home-container"
     :class="{
       'home-container--mobile': mobile,
+      'home-container--pending': log_pending,
+      'home-container--booting': !bootRevealed,
+      'home-container--idle': log_idle,
       'home-container--rail': rail_mode,
       'home-container--log-right': rail_mode && log_column_on_right,
       'home-container--log-in-rail': rail_mode && screenshot_column_on_left !== log_column_on_right
     }"
+    :aria-busy="log_pending || null"
   >
     <div
       class="log-bg"
       :class="{
-        'log-bg--reveal': startup_reveal && !mobile,
+        'log-bg--waiting': !bg_shown,
+        'log-bg--entering': bg_entering,
         'log-bg--expand-rail': rail_entry === 'expand'
       }"
       :style="{ backgroundImage: `url('${logBackground.url}')` }"
       aria-hidden="true"
+      @animationend.self="finish_bg_entry"
     ></div>
     <section
       ref="log_layout"
@@ -1786,7 +1891,7 @@ async function db_delete(keys) {
         class="action-container"
         :class="{ 'action-container--paused': running && maintenance_pause }"
       >
-        <div class="action-buttons" role="group" aria-label="运行操作">
+        <div ref="action_group" class="action-buttons" role="group" aria-label="运行操作">
           <div class="execution-control">
             <drop-down
               v-if="running"
@@ -1874,7 +1979,12 @@ async function db_delete(keys) {
           <ProcessControl ref="process_control" compact :running="running" />
         </div>
       </div>
-      <div class="log-view-controls" role="group" aria-label="日志显示选项">
+      <div
+        class="log-view-controls"
+        role="group"
+        aria-label="日志显示选项"
+        :inert="log_idle || null"
+      >
         <div v-if="!mobile" class="view-toggle-island">
           <n-button
             v-for="option in log_view_options"
@@ -2083,7 +2193,8 @@ async function db_delete(keys) {
   height: 20px;
   margin-inline-start: 4px;
   vertical-align: middle;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: currentColor;
   opacity: 0.74;
   text-decoration: none;
@@ -2178,8 +2289,10 @@ async function db_delete(keys) {
   --log-mono-font:
     'Cascadia Mono', Consolas, 'Microsoft YaHei', 'SF Mono', 'Menlo', 'PingFang SC', monospace;
   --log-rule: rgb(128 128 128 / 18%);
-  --log-shot-shadow: drop-shadow(0 5px 8px rgba(24, 25, 28, 0.24));
-  --log-bottom-shot-shadow: drop-shadow(0 2px 4px rgba(24, 25, 28, 0.22));
+  --log-shot-shadow: var(--mower-shadow-2);
+  /* 截图位于列底时，阴影只能用 --log-bottom-shot-shadow-space 预留的余量：
+     同一组阴影缩小到向下不超过 8px，两侧仍收在画面内。 */
+  --log-bottom-shot-shadow: 0 1px 1px rgb(24 25 28 / 12%), 0 4px 8px -4px rgb(24 25 28 / 24%);
   --log-bottom-shot-shadow-space: 8px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2360,7 +2473,8 @@ async function db_delete(keys) {
   height: var(--log-screenshot-size);
   min-height: 0;
   max-height: var(--log-stack-shot-max-height);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   z-index: 15;
 
   :deep(img) {
@@ -2372,7 +2486,8 @@ async function db_delete(keys) {
     max-width: 100%;
     max-height: min(var(--log-sc-h, 270px), var(--log-stack-shot-max-height));
     border-radius: inherit;
-    filter: var(--log-shot-shadow);
+    corner-shape: inherit;
+    box-shadow: var(--log-shot-shadow);
   }
 }
 
@@ -2581,7 +2696,8 @@ async function db_delete(keys) {
 
 .task-heading .task-operator-button--named {
   margin-inline-start: 4px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 
 .task-subject {
@@ -2727,7 +2843,8 @@ async function db_delete(keys) {
   min-height: 24px;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -2878,7 +2995,7 @@ async function db_delete(keys) {
   border: var(--log-hairline) solid rgba(24, 25, 28, 0.08);
   border-radius: 999px;
   background: linear-gradient(145deg, var(--lg-surface-top), var(--lg-surface-bottom));
-  box-shadow: 0 3px 12px -4px rgba(24, 25, 28, 0.16);
+  box-shadow: var(--mower-shadow-1);
 }
 
 html[data-mower-theme='dark'] .log-view-controls,
@@ -2896,7 +3013,6 @@ html[data-window-shell-theme='dark'] .view-toggle-island,
 html[data-mower-theme='dark'] .view-options-anchor::before,
 html[data-window-shell-theme='dark'] .view-options-anchor::before {
   border-color: rgba(244, 240, 229, 0.1);
-  box-shadow: 0 3px 12px -4px rgba(0, 0, 0, 0.4);
 }
 
 .view-toggle-icon {
@@ -2991,7 +3107,7 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
 
   .log-screenshot {
     max-height: none;
-    border-radius: 6px;
+    border-radius: calc(6px * var(--mower-corner-scale));
 
     :deep(img) {
       max-height: var(--log-sc-h, 270px);
@@ -3095,7 +3211,8 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   &:not(:empty) {
     padding: 10px 12px;
     border: 1px solid var(--mower-border);
-    border-radius: 8px;
+    border-radius: calc(8px * var(--mower-corner-scale));
+    corner-shape: var(--mower-corner-shape);
     color: var(--mower-text);
     background: var(--mower-surface);
   }
@@ -3133,26 +3250,57 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   background-position: calc(65% - 15% * var(--log-rail-entry)) 50%;
   -webkit-mask-image: var(--log-bg-mask);
   mask-image: var(--log-bg-mask);
-  animation: var(--log-bg-reveal, none), var(--log-bg-rail, none);
   pointer-events: none;
 }
 
+/* 背景显示前用 visibility 隐藏，显示时从透明淡入到当前透明度。透明度不设过渡：重新打开页面时
+   v-bind 的透明度变量晚于首次样式计算写入，有过渡会先以不透明显示再暗下去。
+   只改变透明度、不含位移，减弱动效时也保留，避免整张图突然亮起。 */
+.log-bg--waiting {
+  visibility: hidden;
+}
+
+.home-container .log-bg.log-bg--entering:not(.log-bg--waiting) {
+  animation: log-bg-enter 800ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes log-bg-enter {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 不减弱动效时，背景淡入的同时从略大的尺寸缓缓落定，像镜头对焦后静止。 */
+@keyframes log-bg-enter-settle {
+  from {
+    opacity: 0;
+    transform: scale(1.04);
+  }
+}
+
 @media (prefers-reduced-motion: no-preference) {
-  .log-bg {
-    transition: --log-rail-entry 180ms cubic-bezier(0.32, 0.72, 0, 1);
+  .home-container .log-bg.log-bg--entering:not(.log-bg--waiting) {
+    animation: log-bg-enter-settle 1100ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  .log-bg--reveal {
-    --log-bg-reveal: reveal-log-layer var(--log-startup-reveal);
+  .log-bg {
+    transition: --log-rail-entry 180ms cubic-bezier(0.32, 0.72, 0, 1);
   }
 
   .home-container--rail .log-bg {
     transition: --log-rail-entry var(--log-startup-reveal);
   }
 
+  /* 动画名直接写在 animation 里：作用域样式会给关键帧名加后缀，经自定义属性引用的旧名找不到关键帧。 */
   .home-container--rail .log-bg--expand-rail {
-    --log-bg-rail: reveal-log-rail var(--log-startup-reveal);
+    animation: reveal-log-rail var(--log-startup-reveal);
     transition: none;
+
+    &.log-bg--entering:not(.log-bg--waiting) {
+      animation:
+        log-bg-enter-settle 1100ms cubic-bezier(0.22, 1, 0.36, 1),
+        reveal-log-rail var(--log-startup-reveal);
+    }
   }
 }
 
@@ -3170,6 +3318,99 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
 
 .home-container--log-in-rail .log-bg {
   width: calc(100% - 50% * var(--log-rail-entry));
+}
+
+/* 未开始：背景保持运行时的透明度；日志区隐去；操作按钮在页面底部居中；右下角的显示选项淡出
+   且不可操作。离开时按钮组由脚本从底部中央平移回左下角，其余部分淡入。 */
+.home-container--idle {
+  .log-pane {
+    grid-column: 1;
+    opacity: 0;
+    visibility: hidden;
+  }
+
+  /* 工具栏与日志区重叠在第 1 列：只写跨行时，自动布局为避开重叠会新增第 2 列。 */
+  .log-toolbar {
+    grid-row: 1 / -1;
+    grid-column: 1;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+
+    &::before,
+    &::after {
+      content: '';
+    }
+
+    &::before {
+      flex: 1 1 0;
+    }
+
+    &::after {
+      flex: 0 0 clamp(20px, 6vh, 56px);
+    }
+
+    .action-container {
+      flex: 0 0 auto;
+    }
+  }
+
+  .log-view-controls {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(6px);
+    pointer-events: none;
+  }
+}
+
+.home-container--idle.home-container--mobile .log-view-controls {
+  right: 16px;
+  bottom: 12px;
+}
+
+/* 加载中或启动画面还在时：日志区、按钮和显示选项都先隐去，确定布局且启动画面淡出后
+   在最终位置淡入。 */
+.home-container--pending :is(.log-pane, .log-toolbar, .log-view-controls),
+.home-container--booting :is(.log-pane, .log-toolbar, .log-view-controls) {
+  opacity: 0;
+  visibility: hidden;
+}
+
+/* 先让按钮组开始移动，日志区和显示选项稍后淡入；进入未开始状态时它们较快淡出。
+   加载结束时按钮和显示选项从下方 6px 处升起淡入。 */
+@media (prefers-reduced-motion: no-preference) {
+  .log-pane,
+  .log-view-controls {
+    transition:
+      opacity 320ms cubic-bezier(0.22, 1, 0.36, 1) 160ms,
+      transform 320ms cubic-bezier(0.22, 1, 0.36, 1) 160ms,
+      visibility 0s linear 160ms;
+  }
+
+  .home-container--idle :is(.log-pane, .log-view-controls) {
+    transition:
+      opacity 200ms ease-out,
+      transform 200ms ease-out,
+      visibility 0s linear 200ms;
+  }
+
+  .log-toolbar {
+    transition:
+      opacity 360ms cubic-bezier(0.22, 1, 0.36, 1) 80ms,
+      transform 360ms cubic-bezier(0.22, 1, 0.36, 1) 80ms;
+  }
+
+  .home-container--pending .log-toolbar {
+    transform: translateY(6px);
+  }
+
+  /* 启动画面淡出时按钮和日志区从稍低处升起，比加载中结束时的位移略大，与背景的入场相衬。 */
+  .home-container--booting :is(.log-toolbar, .log-pane) {
+    transform: translateY(10px);
+  }
 }
 
 .db-admin-body {
@@ -3256,8 +3497,7 @@ html[data-window-shell-theme='dark'] .view-options-anchor::before {
   --lg-error: #d03050;
   --lg-warning: #f0a020;
   --lg-info: #2080f0;
-  --lg-btn-shadow:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.55), 0 4px 12px -8px rgba(24, 25, 28, 0.24);
+  --lg-btn-shadow: inset 0 0.5px 0 rgba(255, 255, 255, 0.55), var(--mower-shadow-1);
   --lg-btn-sheen: linear-gradient(
     115deg,
     rgba(255, 255, 255, 0) 30%,
@@ -3298,7 +3538,7 @@ html[data-window-shell-theme='dark'] .home-container {
   --lg-error: #ffb3c2;
   --lg-warning: #f8d794;
   --lg-info: #b3def7;
-  --lg-btn-shadow: inset 0 0.5px 0 rgba(244, 240, 229, 0.08), 0 4px 12px -8px rgba(0, 0, 0, 0.45);
+  --lg-btn-shadow: inset 0 0.5px 0 rgba(244, 240, 229, 0.08), var(--mower-shadow-1);
   --lg-btn-sheen: linear-gradient(
     115deg,
     rgba(244, 240, 229, 0) 30%,
@@ -3313,8 +3553,7 @@ html[data-window-shell-theme='dark'] .home-container {
   --lg-btn-info-label: #b3def7;
   --log-label-weight: 500;
   --log-rule: rgb(244 240 229 / 12%);
-  --log-shot-shadow: drop-shadow(0 6px 9px rgba(0, 0, 0, 0.55));
-  --log-bottom-shot-shadow: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.42));
+  --log-bottom-shot-shadow: 0 1px 1px rgb(0 0 0 / 35%), 0 4px 8px -4px rgb(0 0 0 / 55%);
 }
 
 .execution-control :deep(.n-button),
@@ -3340,14 +3579,15 @@ html[data-window-shell-theme='dark'] .home-container {
   --n-border-pressed: var(--n-border);
   --n-border-focus: var(--n-border);
   --n-border-disabled: var(--log-hairline) solid var(--lg-btn-neutral-line);
-  --n-border-radius: 10px;
+  --n-border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   --n-height: 34px;
   --n-ripple-color: transparent;
   --n-opacity-disabled: 0.5;
   --lg-btn-label: var(--lg-btn-neutral-label);
   --lg-btn-line: var(--lg-btn-neutral-line);
   font-weight: var(--log-label-weight);
-  box-shadow: none;
+  box-shadow: var(--mower-shadow-1);
   transition:
     transform var(--log-feedback-time) var(--log-feedback-ease),
     background-color var(--log-feedback-time) var(--log-feedback-ease),
@@ -3366,7 +3606,8 @@ html[data-window-shell-theme='dark'] .home-container {
   height: 32px;
   padding-inline: 0;
   box-shadow: none !important;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 
   .n-button__icon {
     margin: 0;
@@ -3451,11 +3692,42 @@ html[data-window-shell-theme='dark'] .home-container {
 }
 
 .execution-control :deep(.split-dropdown > .n-button:first-child) {
-  border-radius: 10px 0 0 10px;
+  border-radius: calc(10px * var(--mower-corner-scale)) 0 0 calc(10px * var(--mower-corner-scale));
 }
 
 .execution-control :deep(.split-dropdown > .n-button:last-child) {
-  border-radius: 0 10px 10px 0;
+  border-radius: 0 calc(10px * var(--mower-corner-scale)) calc(10px * var(--mower-corner-scale)) 0;
+}
+
+/* 分体按钮由按钮组整体投影，避免右半边的阴影落在左半边上。 */
+.execution-control :deep(.split-dropdown) {
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  box-shadow: var(--mower-shadow-1);
+}
+
+.execution-control :deep(.split-dropdown > .n-button) {
+  box-shadow: none;
+}
+
+/* 前置图标的 SVG 四周自带约 1px 透明边，按盒子居中时图标和文字整体偏右；
+   图标一侧少留 1px、文字一侧多留 1px，按钮宽度不变。 */
+.execution-control :deep(.n-button:has(> .n-button__icon + .n-button__content)),
+.action-container
+  :deep(
+    .n-button:is(.add-task-action, .database-action):has(> .n-button__icon + .n-button__content)
+  ) {
+  --n-padding: 0 15px 0 13px;
+}
+
+/* Naive 按钮的描边层和状态层用 border-radius: inherit 画边，形状也要随按钮本体。 */
+.execution-control :deep(.n-button :is(.n-button__border, .n-button__state-border, .n-base-wave)),
+.action-container
+  :deep(
+    .n-button:is(.add-task-action, .database-action)
+      :is(.n-button__border, .n-button__state-border, .n-base-wave)
+  ) {
+  corner-shape: inherit;
 }
 
 .execution-control :deep(.split-dropdown > .n-button:first-child .n-button__border),

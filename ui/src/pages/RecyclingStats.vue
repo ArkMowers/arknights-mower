@@ -4,6 +4,8 @@ import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
 import { useResolvedTheme } from '@/composables/theme'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
 import { format, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { CustomChart, PieChart } from 'echarts/charts'
@@ -26,6 +28,14 @@ since.setDate(today.getDate() - 29)
 const range = ref([since.getTime(), today.getTime()])
 const page = ref(1)
 const loading = ref(false)
+// 第一次读取结束前页面还没有任何数字，显示骨架屏；之后切换日期或翻页只在原内容上转圈。
+const loaded = ref(false)
+// 骨架按上次读到的收取明细条数、品质行和材料种数占位；明细和汇总只画列表可见的部分。
+const skeletonShape = readSkeletonShape('recycling', {
+  records: 3,
+  qualities: [2, 3, 4],
+  materials: 4
+})
 const error = ref('')
 const exporting = ref(false)
 const exportError = ref('')
@@ -227,7 +237,16 @@ async function load(resetRefresh = true) {
       error.value = '回收站统计读取失败，请重试'
     }
   } finally {
-    if (version === requestVersion) loading.value = false
+    if (version === requestVersion) {
+      loading.value = false
+      loaded.value = true
+      if (!error.value)
+        saveSkeletonShape('recycling', {
+          records: Math.min(data.value.records.length, 5),
+          qualities: qualityRows.value.map((row) => row.rarity),
+          materials: Math.min(data.value.materials.length, 6)
+        })
+    }
   }
 }
 async function retryUpload(row) {
@@ -324,7 +343,10 @@ onUnmounted(() => {
     <n-alert v-if="error" type="error" class="notice">{{ error }}</n-alert>
     <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
     <section class="valuation-panel valuation-source">
-      <span>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
+      <span v-if="!loaded"
+        ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 14em"
+      /></span>
+      <span v-else>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
       <SessionLink to="/settings#task-accounts">管理材料价值与基报算法</SessionLink>
     </section>
     <n-alert
@@ -342,7 +364,152 @@ onUnmounted(() => {
         comparison.unmodeled_materials.join('、')
       }}。已导入价格可用于实际收益；期望收益对比暂不计算，等待概率表更新。
     </n-alert>
-    <n-spin :show="loading">
+    <!-- 骨架用读完后的同一套卡片和标题，数据处是占位块；收取明细、品质行和材料汇总的行数
+         按上次读到的结果。 -->
+    <LoadingSkeleton v-if="!loaded" label="正在读取回收站统计">
+      <div class="metrics">
+        <section class="metric">
+          <span class="metric-label">累计获得材料</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.6em" /><small
+              >个</small
+            >
+          </div>
+          <span class="metric-note"
+            ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em" /> 次收取 ·
+            所选日期</span
+          >
+        </section>
+        <section class="metric">
+          <span class="metric-label">总理智收益</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.2em" /><small
+              >理智</small
+            >
+          </div>
+          <span class="metric-note">按实际材料及当前保存价值折算</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">理论期望收益</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.2em" /><small
+              >理智</small
+            >
+          </div>
+          <span class="metric-note">与实际相同材料总数的长期期望</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">与期望的差额</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.2em" /><small
+              >理智</small
+            >
+          </div>
+          <span class="metric-note"
+            ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 6em"
+          /></span>
+        </section>
+      </div>
+      <div class="statistics">
+        <section class="surface history-panel">
+          <div class="section-heading">
+            <div>
+              <h2>收取明细</h2>
+              <p>收取时刻、进驻干员与实际获得材料</p>
+            </div>
+            <span class="count-badge"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em" /> 条记录</span
+            >
+          </div>
+          <div class="history recycling-skeleton__history">
+            <article v-for="row in skeletonShape.records" :key="row" class="collection">
+              <div class="timeline-dot"></div>
+              <div class="collection-body">
+                <time
+                  ><n-icon :component="TimeOutline" /><span
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 8em" /></span
+                ></time>
+                <div class="operators">
+                  <n-icon :component="PersonOutline" /><span class="operator-label">进驻干员</span
+                  ><span v-for="name in 2" :key="name" class="operator-name"
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em"
+                  /></span>
+                </div>
+                <div class="materials">
+                  <div v-for="chip in 2" :key="chip" class="material-chip">
+                    <span class="skeleton-bone material-icon" />
+                    <span
+                      ><span
+                        class="skeleton-bone skeleton-text"
+                        style="--skeleton-w: 3.5em" /></span
+                    ><strong
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.6em"
+                    /></strong>
+                  </div>
+                </div>
+                <div class="upload-state">
+                  <span class="upload-label"
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em"
+                  /></span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+        <div class="right-column">
+          <section class="surface">
+            <div class="section-heading">
+              <div>
+                <h2>材料品质分布</h2>
+                <p>悬停扇区或下方品质行，查看材料明细</p>
+              </div>
+              <n-icon :component="LeafOutline" class="section-icon" />
+            </div>
+            <div v-if="skeletonShape.records" class="donut-wrap">
+              <span class="skeleton-bone recycling-skeleton__donut" />
+            </div>
+            <div class="quality-table">
+              <div class="quality-table-head">
+                <span>材料品质</span><span>实际数量 / 占比</span><span>理论占比</span>
+              </div>
+              <div v-for="rarity in skeletonShape.qualities" :key="rarity" class="quality-row">
+                <span
+                  ><i :style="{ background: qualityColors[rarity] || qualityColors[0] }"></i
+                  >{{ qualityLabels[rarity] || qualityLabels[0] }}</span
+                ><span
+                  ><strong
+                    ><span
+                      class="skeleton-bone skeleton-text"
+                      style="--skeleton-w: 3.6em" /></strong
+                ></span>
+                <span class="muted"
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.6em"
+                /></span>
+              </div>
+            </div>
+          </section>
+          <section class="surface totals-panel">
+            <div class="section-heading">
+              <div>
+                <h2>材料汇总</h2>
+                <p><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1em" /> 种材料</p>
+              </div>
+            </div>
+            <div class="material-totals">
+              <div v-for="row in skeletonShape.materials" :key="row" class="total-row">
+                <span
+                  ><i class="recycling-skeleton__dot"></i
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" /></span
+                ><strong
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2em"
+                /></strong>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </LoadingSkeleton>
+    <n-spin v-else :show="loading">
       <div class="metrics">
         <section class="metric">
           <span class="metric-label">累计获得材料</span>
@@ -599,7 +766,8 @@ onUnmounted(() => {
   padding: 18px 22px;
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .valuation-source,
 .calculator-results span {
@@ -685,7 +853,8 @@ onUnmounted(() => {
   place-items: center;
   width: 42px;
   height: 42px;
-  border-radius: 13px;
+  border-radius: calc(13px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--soft);
   color: var(--accent);
   font-size: 25px;
@@ -727,7 +896,8 @@ h1 {
 .metric,
 .surface {
   background: var(--surface);
-  border-radius: 16px;
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.025),
     0 0 0 1px var(--line);
@@ -762,6 +932,21 @@ h1 {
 .accent {
   color: var(--accent);
 }
+/* 第一次读取时的骨架：收取明细与读完后同样限高，品质图是圆形占位。 */
+.recycling-skeleton__history {
+  max-height: 600px;
+  overflow: hidden;
+}
+.recycling-skeleton__donut {
+  width: min(220px, 70%);
+  aspect-ratio: 1;
+  margin: 18px auto 0;
+  border-radius: 50%;
+  corner-shape: round;
+}
+.recycling-skeleton__dot {
+  background: color-mix(in srgb, var(--mower-text) 12%, transparent);
+}
 .statistics {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
@@ -794,7 +979,8 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   padding: 5px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   white-space: nowrap;
 }
 .section-icon {
@@ -859,7 +1045,8 @@ time .n-icon {
 .operator-name {
   padding: 3px 8px;
   background: var(--soft);
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .materials {
   display: flex;
@@ -890,7 +1077,8 @@ time .n-icon {
   display: flex;
   align-items: center;
   gap: 7px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--soft);
   padding: 5px 10px 5px 5px;
   font-size: 12px;
@@ -901,7 +1089,8 @@ time .n-icon {
   place-items: center;
   width: 34px;
   height: 34px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--surface);
 }
 .material-icon img {
@@ -909,7 +1098,8 @@ time .n-icon {
   height: 32px;
   object-fit: contain;
   outline: 1px solid rgba(0, 0, 0, 0.1);
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .dark .material-icon img {
   outline-color: rgba(255, 255, 255, 0.1);
@@ -970,7 +1160,8 @@ time .n-icon {
 .quality-row:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .donut-center {
   position: absolute;
@@ -1074,7 +1265,8 @@ time .n-icon {
   gap: 20px 28px;
   padding: 18px;
   background: var(--soft);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .model-details section {
   min-width: 0;

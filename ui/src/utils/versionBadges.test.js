@@ -4,7 +4,9 @@ import {
   resourceActivityHint,
   resourceVersionBadge,
   resourceVersionHint,
-  softwareVersionBadge
+  resourceVersionParts,
+  softwareVersionBadge,
+  softwareVersionParts
 } from './versionBadges'
 
 const start = Date.parse('2026-10-10T00:00:00+08:00')
@@ -50,6 +52,43 @@ describe('software version badges', () => {
     'keeps release deployment classification for %s without treating a SHA as source',
     (version, badge) => {
       expect(softwareVersionBadge(version, 'release')).toBe(badge)
+    }
+  )
+
+  it.each([
+    ['4.1.6-alpha.12.g8c3f2a19', ['4.1.6', '-alpha.12', '.g8c3f2a19']],
+    ['4.1.6-alpha.12.gdeadbeef+windows', ['4.1.6', '-alpha.12', '.gdeadbeef+windows']],
+    ['4.1.6-alpha.12+8c3f2a1', ['4.1.6', '-alpha.12', '+8c3f2a1']],
+    ['v4.1.6+build.42-foo', ['v4.1.6', '', '+build.42-foo']],
+    ['4.1.6', ['4.1.6', '', '']],
+    ['4.1.6-rc.2', ['4.1.6', '-rc.2', '']],
+    ['4.1.6.1', ['4.1.6.1', '', '']],
+    ['4.1.6 suffix', ['4.1.6', ' suffix', '']],
+    ['custom-developer-build', ['', 'custom-developer-build', '']],
+    ['prefix4.1.6', ['', 'prefix4.1.6', '']],
+    ['+deadbee', ['', '', '+deadbee']],
+    ['', ['', '', '']]
+  ])(
+    'splits %s into release, prerelease and build parts without changing the text',
+    (version, parts) => {
+      expect(softwareVersionParts(version)).toEqual(parts)
+      expect(parts.join('')).toBe(version)
+    }
+  )
+
+  it.each([
+    ['直到大地变成一颗酸橙#1114', ['直到大地变成一颗酸橙', '#1114']],
+    ['卫戍协议:规程#1111', ['卫戍协议:规程', '#1111']],
+    ['资源#0904#1114', ['资源#0904', '#1114']],
+    ['昨日海 · 当前资源', ['昨日海 · 当前资源', '']],
+    ['资源#114', ['资源#114', '']],
+    ['#1114', ['', '#1114']],
+    ['', ['', '']]
+  ])(
+    'splits the resource label %s into its name and build date without changing the text',
+    (label, parts) => {
+      expect(resourceVersionParts(label)).toEqual(parts)
+      expect(parts.join('')).toBe(label)
     }
   )
 

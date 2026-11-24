@@ -6,6 +6,9 @@ import PageLayout from '@/components/PageLayout.vue'
 import PageHeader from '@/components/PageHeader.vue'
 import BaseReportHelp from '@/components/report/BaseReportHelp.vue'
 import StockReport from '@/components/report/StockReport.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
+import SkeletonBarChart from '@/components/SkeletonBarChart.vue'
 import { registerTheme, use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
@@ -157,6 +160,9 @@ async function saveAlgorithm(algorithm, ratios) {
 }
 
 // ---- 数据读取 ----
+// 读取中且还没有数据时，骨架屏右侧列表各行的宽度（百分比）。
+// 骨架里各项收益条的长度，依次对应赤金、特殊赤金、龙门币订单、经验。
+const REPORT_SKELETON_BARS = [92, 18, 64, 38]
 const loading = ref(true)
 const loadError = ref('')
 const partialWarning = ref('')
@@ -300,6 +306,14 @@ const days = computed(() => selectRange(allDays.value, range.value))
 const summary = computed(() => summarize(days.value))
 const ready = computed(() => !loading.value && !loadError.value && Boolean(valuation.value))
 const hasData = computed(() => days.value.length > 0)
+// 上次读完没有基报记录时，读取中不画骨架，保持空白，读完直接显示空状态。
+const skeletonShape = readSkeletonShape('report', { hasData: true, days: 14 })
+const skeletonDays = Math.min(Math.max(Number(skeletonShape.days) || 14, 1), 60)
+watch(
+  ready,
+  (value) =>
+    value && saveSkeletonShape('report', { hasData: hasData.value, days: days.value.length })
+)
 // 读取完成后即提供终端指标切换，允许没有基报的实例查看已记录订单。
 const stockFill = computed(() => isStock.value && (hasData.value || ready.value))
 
@@ -1005,7 +1019,11 @@ function cell(day, key) {
               @select="selectAlgorithm"
             >
               <n-button secondary size="small" :disabled="!valuation" :loading="algorithmBusy">
-                收益算法：{{ algorithmShortLabel }}
+                收益算法：<span
+                  v-if="!valuation && loading"
+                  class="skeleton-bone skeleton-text"
+                  style="--skeleton-w: 7em"
+                /><template v-else>{{ algorithmShortLabel }}</template>
               </n-button>
             </n-dropdown>
             <n-button
@@ -1096,21 +1114,185 @@ function cell(day, key) {
         <BaseReportHelp />
       </n-modal>
 
-      <div v-if="loading && !hasData" class="skeleton" aria-busy="true" aria-label="正在读取基报">
-        <n-skeleton class="skeleton__overview" />
-        <div class="skeleton__grid">
-          <n-skeleton class="skeleton__chart" />
-          <n-skeleton class="skeleton__chart" />
-        </div>
-      </div>
+      <!-- 骨架与读完后的标准布局用同一套 class：标题、标签、图标照常显示，只有数据处是占位块。 -->
+      <LoadingSkeleton v-if="loading && !hasData && !isStock" class="skeleton" label="正在读取基报">
+        <template v-if="skeletonShape.hasData">
+          <section class="overview">
+            <div class="overview__day">
+              <div class="overview__label">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 5.6em" />
+                收益
+              </div>
+              <div class="overview__value">
+                <span class="overview__number"
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.2em"
+                /></span>
+                <span class="overview__unit">万</span>
+              </div>
+              <p class="overview__caption">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 17em" />
+              </p>
+            </div>
+            <dl class="overview__facts">
+              <div>
+                <dt>日均收益</dt>
+                <dd>
+                  <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em" /><small
+                    >万</small
+                  >
+                </dd>
+              </div>
+              <div>
+                <dt>总收益</dt>
+                <dd>
+                  <span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em" /><small
+                    >万</small
+                  >
+                </dd>
+              </div>
+              <div>
+                <dt><n-icon :component="TrophyOutline" aria-hidden="true" /> 收益最高</dt>
+                <dd><span class="skeleton-bone skeleton-text" style="--skeleton-w: 8em" /></dd>
+              </div>
+            </dl>
+          </section>
 
-      <section v-else-if="ready && !hasData && !isStock" class="empty reveal">
+          <div class="main-grid">
+            <section class="panel">
+              <header class="panel__head panel__head--chart">
+                <div>
+                  <h2>{{ chartView === 'production' ? '每日产出' : '每日收益' }}</h2>
+                  <p v-if="chartView === 'income'">
+                    按<span class="skeleton-bone skeleton-text" style="--skeleton-w: 7em" />计算，
+                    虚线表示平均收益。点击柱子查看当天详情。
+                  </p>
+                  <p v-else>赤金按基报制造价值显示，作战记录按经验值显示。点击柱子查看当天详情。</p>
+                </div>
+                <n-radio-group :value="chartView" size="small" name="report-chart-skeleton">
+                  <n-radio-button value="income">折算收益</n-radio-button>
+                  <n-radio-button value="production">基报产出</n-radio-button>
+                </n-radio-group>
+              </header>
+              <SkeletonBarChart
+                class="chart chart--main"
+                :bars="skeletonDays"
+                :legend="[24, 48, 60, 24, 24]"
+                :plot="{ top: 61, right: 12, bottom: 23, left: 27 }"
+              />
+            </section>
+
+            <section class="panel day">
+              <header class="day__head">
+                <n-button quaternary circle size="small">
+                  <template #icon><n-icon :component="ChevronBackOutline" /></template>
+                </n-button>
+                <div class="day__title">
+                  <h2><span class="skeleton-bone skeleton-text" style="--skeleton-w: 5.6em" /></h2>
+                  <p><span class="skeleton-bone skeleton-text" style="--skeleton-w: 8em" /></p>
+                </div>
+                <n-button quaternary circle size="small" disabled>
+                  <template #icon><n-icon :component="ChevronForwardOutline" /></template>
+                </n-button>
+              </header>
+
+              <ul class="items">
+                <li v-for="item in detailItems" :key="item.key" class="item">
+                  <span class="item__icon">
+                    <img
+                      v-if="!failedIcons.has(item.icon)"
+                      :src="publicAsset(`/depot/${encodeURIComponent(item.icon)}.webp`)"
+                      alt=""
+                    />
+                  </span>
+                  <span class="item__body">
+                    <span class="item__label">{{ item.label }}</span>
+                    <span v-if="item.note" class="item__note"
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 6em"
+                    /></span>
+                  </span>
+                  <span class="item__figures">
+                    <strong
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3.2em"
+                    /></strong>
+                    <span class="delta"
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.6em"
+                    /></span>
+                  </span>
+                </li>
+              </ul>
+
+              <div class="split">
+                <div class="split__head">
+                  <h3>各项收益（万）</h3>
+                </div>
+                <ul>
+                  <li v-for="(part, index) in compositionParts" :key="part.key" class="split__row">
+                    <span class="split__label">{{ part.label }}</span>
+                    <span class="split__bars">
+                      <span
+                        class="skeleton-bone split__bar"
+                        :style="{ width: `${REPORT_SKELETON_BARS[index]}%` }"
+                      />
+                    </span>
+                    <span class="split__value"
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3.4em"
+                    /></span>
+                    <span />
+                  </li>
+                </ul>
+                <div class="split__row split__row--total">
+                  <span class="split__label">合计</span>
+                  <span />
+                  <span class="split__value"
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3.4em"
+                  /></span>
+                  <span />
+                </div>
+              </div>
+            </section>
+          </div>
+
+          <div class="panels">
+            <section class="panel">
+              <header class="panel__head">
+                <div>
+                  <h2>贸易订单</h2>
+                  <p>订单收入和平均每单收入</p>
+                </div>
+              </header>
+              <SkeletonBarChart
+                class="chart"
+                :bars="skeletonDays"
+                :legend="[60, 60]"
+                :plot="{ top: 53, right: 42, bottom: 23, left: 49 }"
+                right-axis
+              />
+            </section>
+            <section class="panel">
+              <header class="panel__head">
+                <div>
+                  <h2>合成玉</h2>
+                  <p>每天获得的合成玉</p>
+                </div>
+              </header>
+              <SkeletonBarChart
+                class="chart"
+                :bars="skeletonDays"
+                :plot="{ top: 21, right: 4, bottom: 23, left: 33 }"
+              />
+            </section>
+          </div>
+        </template>
+      </LoadingSkeleton>
+
+      <section v-else-if="ready && !hasData && !isStock" class="empty skeleton-reveal">
         <h2>还没有基报记录</h2>
         <p>在每日任务中启用「读取基报」，Mower 每天会读取一次基建报告。</p>
         <p>读取后即可查看每天的产出和收益。</p>
       </section>
 
-      <template v-else-if="hasData || (isStock && ready)">
+      <!-- 股票模式在读取时也直接显示终端布局，由它自己在图表处提示行情加载中。 -->
+      <template v-else-if="hasData || (isStock && (ready || loading))">
         <StockReport
           v-if="isStock"
           :days="days"
@@ -1157,7 +1339,7 @@ function cell(day, key) {
           </template>
         </StockReport>
         <template v-else>
-          <section class="overview reveal" :aria-busy="loading">
+          <section class="overview" :aria-busy="loading">
             <div class="overview__day">
               <div class="overview__label">
                 {{ formatDay(selectedDay.date) }} 收益
@@ -1214,7 +1396,7 @@ function cell(day, key) {
           </section>
 
           <div class="main-grid">
-            <section class="panel reveal" style="--delay: 60ms">
+            <section class="panel">
               <header class="panel__head panel__head--chart">
                 <div>
                   <h2>{{ chartView === 'production' ? '每日产出' : '每日收益' }}</h2>
@@ -1241,12 +1423,7 @@ function cell(day, key) {
               />
             </section>
 
-            <section
-              ref="detailPanel"
-              class="panel day reveal"
-              style="--delay: 120ms"
-              aria-labelledby="report-day-title"
-            >
+            <section ref="detailPanel" class="panel day" aria-labelledby="report-day-title">
               <header class="day__head">
                 <n-button
                   quaternary
@@ -1338,7 +1515,7 @@ function cell(day, key) {
           </div>
 
           <div class="panels">
-            <section class="panel reveal" style="--delay: 180ms">
+            <section class="panel">
               <header class="panel__head">
                 <div>
                   <h2>贸易订单</h2>
@@ -1350,7 +1527,7 @@ function cell(day, key) {
               </header>
               <v-chart class="chart" :option="tradingOption" autoresize @click="onChartClick" />
             </section>
-            <section class="panel reveal" style="--delay: 220ms">
+            <section class="panel">
               <header class="panel__head">
                 <div>
                   <h2>合成玉</h2>
@@ -1371,7 +1548,7 @@ function cell(day, key) {
             </section>
           </div>
 
-          <section class="panel reveal" style="--delay: 260ms">
+          <section class="panel skeleton-reveal">
             <header class="panel__head">
               <div>
                 <h2>订单分布</h2>
@@ -1391,7 +1568,7 @@ function cell(day, key) {
             <div v-else class="panel__empty">没有可用的贸易订单记录</div>
           </section>
 
-          <section class="panel reveal" style="--delay: 300ms">
+          <section class="panel skeleton-reveal">
             <header class="panel__head">
               <div>
                 <h2>逐日明细</h2>
@@ -1540,23 +1717,12 @@ function cell(day, key) {
   margin-top: 8px;
 }
 
-.reveal {
-  animation: report-rise 0.4s ease-out both;
-  animation-delay: var(--delay, 0ms);
-}
-
-@keyframes report-rise {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-  }
-}
-
 .overview,
 .panel,
 .empty {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--surface);
 }
 
@@ -1592,7 +1758,8 @@ function cell(day, key) {
 
 .tag {
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 11px;
   line-height: 18px;
   color: var(--muted);
@@ -1843,7 +2010,8 @@ function cell(day, key) {
   flex-shrink: 0;
   width: 34px;
   height: 34px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-hover, rgba(0, 0, 0, 0.04));
 }
 
@@ -1985,7 +2153,8 @@ function cell(day, key) {
 .table-wrap {
   max-height: 440px;
   overflow: auto;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   border: 1px solid var(--line);
 }
 
@@ -2089,29 +2258,12 @@ function cell(day, key) {
   gap: 16px;
 }
 
-.skeleton__overview {
-  height: 128px;
-  border-radius: 12px;
-}
-
-.skeleton__grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1.65fr) minmax(320px, 1fr);
-  gap: 16px;
-}
-
-.skeleton__chart {
-  height: 480px;
-  border-radius: 12px;
-}
-
 @media (max-width: 1100px) {
   .overview {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   }
 
-  .main-grid,
-  .skeleton__grid {
+  .main-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
@@ -2161,10 +2313,6 @@ function cell(day, key) {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal {
-    animation: none;
-  }
-
   .split__bar {
     transition: none;
   }

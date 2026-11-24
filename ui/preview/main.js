@@ -30,13 +30,22 @@ function defaultConfiguration() {
 
 const params = new URLSearchParams(location.search)
 if (!params.has('window_shell')) params.set('window_shell', '1')
-params.set('mower_version', '4.1.6-preview')
+// 预览地址可通过 mower_version 指定显示的软件版本。
+if (!params.has('mower_version')) params.set('mower_version', '4.1.6-preview')
 params.set('instance_name', '离线预览')
+// 桌面窗口在地址里带上配置的主题，页面在读到配置前按它绘制；预览照此模拟。
+if (!params.has('window_theme')) params.set('window_theme', params.get('theme') || 'light')
 const initialPath = location.pathname.startsWith('/preview') ? '/' : location.pathname
 history.replaceState(history.state, '', `${initialPath}?${params}${location.hash}`)
 
 const config = createPreviewConfiguration(defaultConfiguration(), params.get('theme'))
-const previewData = installPreviewBackend(config)
+// ?latency=800 让每个接口晚 800 毫秒响应，用来查看启动过程。
+const latency = Math.min(Math.max(Number(params.get('latency')) || 0, 0), 10000)
+// ?run=idle 以已停止、没有日志和截图的实例打开，用来查看未开始的运行日志页。
+const previewData = installPreviewBackend(config, window, {
+  latency,
+  idle: params.get('run') === 'idle'
+})
 // 离线截图 / 评审可用 ?watermark=0 关闭示例水印，仅影响预览会话。
 if (params.get('watermark') === '0') previewData.appearance.watermark_visible = false
 localStorage.setItem('sc_preview', 'true')

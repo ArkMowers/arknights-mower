@@ -1,6 +1,6 @@
 <script setup>
 import { storeToRefs } from 'pinia'
-import { computed, inject, onMounted, onUnmounted, ref, shallowRef } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import AlertCircleOutline from '@vicons/ionicons5/es/AlertCircleOutline'
 import ChevronBackOutline from '@vicons/ionicons5/es/ChevronBackOutline'
 import ChevronForwardOutline from '@vicons/ionicons5/es/ChevronForwardOutline'
@@ -11,25 +11,29 @@ import PageHeader from '@/components/PageHeader.vue'
 import SessionLink from '@/components/SessionLink.vue'
 import SklandCalendar from '@/skland/SklandCalendar.vue'
 import SklandChannelPicker from '@/skland/SklandChannelPicker.vue'
+import SkeletonField from '@/components/SkeletonField.vue'
 import SklandFailures from '@/skland/SklandFailures.vue'
 import SklandRewardReport from '@/skland/SklandRewardReport.vue'
 import SklandRetry from '@/skland/SklandRetry.vue'
 import SklandRewards from '@/skland/SklandRewards.vue'
-import SklandSkeleton from '@/skland/SklandSkeleton.vue'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
 import { buildRewardDistribution, buildRewardReport } from '@/skland/rewardReport'
 import { useSklandPreferencesStore } from '@/stores/sklandPreferences'
 import { isRelayPage } from '@/utils/instanceToken'
+import { readSkeletonShape, saveSkeletonShape } from '@/utils/skeletonShape'
 import {
   addDays,
   buildCalendar,
   buildDayMap,
   buildFailureLog,
   buildSignInSlots,
+  channelChipLabel,
   daysBetween,
   formatDateLong,
   formatDateShort,
   GAME_GROUPS,
   gameGroupOf,
+  groupRewardTotals,
   isAccountFailure,
   monthEnd,
   monthStart,
@@ -38,6 +42,7 @@ import {
   SIGNED_OUTCOMES,
   sumRewardEntries,
   summarize,
+  textWidthEm,
   weekStart
 } from '@/skland/statistics'
 import '@/skland/skland.css'
@@ -667,6 +672,56 @@ const summary = computed(
       today: today.value
     })
 )
+const sklandSkeleton = computed(() => !data.value && loading.value)
+// 记下上次读完后的版面，读取中按此占位：有没有签到日历（没有任何渠道时只显示提示）、账号
+// 选择框和渠道数、森空岛进度和本机记录两项读数、本机连续签到一行、奖励统计面板，以及各区服的
+// 奖励数。没有用 Mower 签到时本机记录、连续签到和统计面板都不出现，骨架也不画。
+const skeletonShape = readSkeletonShape('skland', {
+  calendar: true,
+  select: false,
+  chips: 2,
+  skland: true,
+  local: true,
+  streak: false,
+  stats: true,
+  game: true,
+  groups: [6],
+  months: 0
+})
+watch(
+  () => [
+    loading.value,
+    statsLoading.value,
+    selectedChannel.value,
+    sklandProgress.value,
+    recordedDays.value,
+    summary.value,
+    rewardReport.value
+  ],
+  () => {
+    if (!data.value || loading.value || statsLoading.value) return
+    const channel = selectedChannel.value
+    const report = rewardReport.value
+    saveSkeletonShape('skland', {
+      calendar: Boolean(channel),
+      select: new Set(channels.value.map((item) => item.account)).size > 1,
+      chips: channels.value
+        .filter((item) => item.account === channel?.account)
+        .map((item) => textWidthEm(channelChipLabel(item))),
+      skland: Boolean(sklandProgress.value),
+      local: recordedDays.value != null,
+      streak: Boolean(
+        month.value === currentMonth.value &&
+        !channel?.shared &&
+        summary.value?.streakPair.current_streak
+      ),
+      stats: Boolean(statsOptionsSource.value?.pairs.length),
+      game: statsGameOptions.value.length > 0,
+      groups: report ? groupRewardTotals(report.items).map((group) => group.items.length) : [6],
+      months: rewardDistribution.value?.months?.length ?? 0
+    })
+  }
+)
 
 function slotRewards(filter) {
   const game = selectedChannel.value?.game
@@ -892,12 +947,9 @@ onUnmounted(() => {
       }}）。这些账号的本机签到记录无法区分，未纳入统计。
     </div>
 
-    <template v-if="!data && loading">
-      <p class="sr-only" role="status">正在读取签到记录…</p>
-      <SklandSkeleton />
-    </template>
-
-    <template v-else-if="data || rewardPairs.length">
+    <!-- 首次读取时页面照常显示月份工具栏，日历按本月天数画出占位格，右栏的账号、渠道和明细
+         是占位块；上次读到过奖励统计时，统计面板也先占好位置。 -->
+    <template v-if="sklandSkeleton || data || rewardPairs.length">
       <section class="skland-panel calendar-workspace" aria-label="按月查看签到">
         <div class="calendar-toolbar">
           <div class="month-navigation">
@@ -957,8 +1009,46 @@ onUnmounted(() => {
           <span v-if="monthlyRewardsError">{{ monthlyRewardsError }}</span>
           <span v-for="warning in rewardWarnings" :key="warning">{{ warning }}</span>
         </div>
+        <LoadingSkeleton v-if="sklandSkeleton" label="正在读取签到记录">
+          <SklandCalendar v-if="skeletonShape.calendar" :month="month" :today="today" loading>
+            <template #channels>
+              <SklandChannelPicker
+                :channels="[]"
+                :placeholder="{ select: skeletonShape.select, chips: skeletonShape.chips }"
+              />
+              <p v-if="skeletonShape.skland || skeletonShape.local" class="month-progress">
+                <span v-if="skeletonShape.skland"
+                  >森空岛已签到
+                  <strong
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
+                  /></strong>
+                  天</span
+                >
+                <span v-if="skeletonShape.local"
+                  >本机有签到记录
+                  <strong
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
+                  /></strong>
+                  天</span
+                >
+              </p>
+              <p v-if="skeletonShape.streak" class="month-summary">
+                本机连续签到
+                <strong
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
+                /></strong>
+                天
+              </p>
+            </template>
+          </SklandCalendar>
+          <!-- 上次没有任何签到渠道：不画日历，只先占好“还没有签到记录”提示的位置。 -->
+          <div v-else class="no-history no-history--reserved">
+            <h2>还没有签到记录</h2>
+            <a>管理森空岛账号</a>
+          </div>
+        </LoadingSkeleton>
         <SklandCalendar
-          v-if="selectedChannel"
+          v-else-if="selectedChannel"
           :month="month"
           :today="today"
           :sign-in="signIn"
@@ -1065,7 +1155,43 @@ onUnmounted(() => {
       </section>
 
       <SklandRewardReport
-        v-if="statsOptionsSource?.pairs.length"
+        v-if="sklandSkeleton && skeletonShape.stats"
+        loading
+        :placeholder-groups="skeletonShape.groups"
+        :placeholder-months="Number(skeletonShape.months) || 0"
+      >
+        <template #controls>
+          <div class="stats-controls" inert>
+            <SkeletonField kind="select" size="small" class="account-filter" width="6em" />
+            <SkeletonField
+              v-if="skeletonShape.game"
+              kind="select"
+              size="small"
+              class="game-filter"
+              width="6em"
+            />
+            <n-button class="stats-mode-button" size="small">
+              <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2em" />
+              <n-icon
+                class="stats-mode-icon"
+                :component="SwapHorizontalOutline"
+                aria-hidden="true"
+              />
+            </n-button>
+            <div class="stats-period">
+              <n-button quaternary circle size="small">
+                <template #icon><n-icon :component="ChevronBackOutline" /></template>
+              </n-button>
+              <SkeletonField size="small" class="stats-period__range" width="13em" />
+              <n-button quaternary circle size="small">
+                <template #icon><n-icon :component="ChevronForwardOutline" /></template>
+              </n-button>
+            </div>
+          </div>
+        </template>
+      </SklandRewardReport>
+      <SklandRewardReport
+        v-else-if="statsOptionsSource?.pairs.length"
         :report="rewardReport"
         :coverage="statsCoverage"
         :distribution="rewardDistribution"
@@ -1174,7 +1300,8 @@ onUnmounted(() => {
   align-items: center;
   gap: 3px;
 }
-.stats-period .n-date-picker {
+.stats-period .n-date-picker,
+.stats-period .stats-period__range {
   flex: 1;
   min-width: 0;
   font-variant-numeric: tabular-nums;
@@ -1242,6 +1369,9 @@ onUnmounted(() => {
   color: var(--mower-error-text, var(--mower-error));
   font-size: 13px;
 }
+.no-history--reserved {
+  visibility: hidden;
+}
 .no-history h2 {
   margin: 0;
   font-size: 18px;
@@ -1250,17 +1380,6 @@ onUnmounted(() => {
   display: inline-block;
   margin-top: 8px;
   color: var(--skland-link);
-}
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
 }
 @container main-content (max-width: 640px) {
   .calendar-page-header :deep(.page-header__actions) {

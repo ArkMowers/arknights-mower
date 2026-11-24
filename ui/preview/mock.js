@@ -1110,19 +1110,22 @@ export function createPreviewAdapter(data, requests = []) {
         game_day: new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Dubai' }),
         source: data.status === 'running' ? 'live' : 'saved',
         activities: clone(data.activities),
-        records: {
-          skland: 'pending',
-          mail: 'done',
-          event_sign_in: 'pending',
-          report: 'done',
-          visit_friend: 'attempted',
-          maa_credit_fight: 'pending',
-          maa_recruit: 'done',
-          maa_orundum: 'done',
-          maa_mining: 'pending',
-          maa_specialaccess: 'pending',
-          maa_signinevent: 'pending'
-        }
+        records:
+          data.status === 'stopped'
+            ? {}
+            : {
+                skland: 'pending',
+                mail: 'done',
+                event_sign_in: 'pending',
+                report: 'done',
+                visit_friend: 'attempted',
+                maa_credit_fight: 'pending',
+                maa_recruit: 'done',
+                maa_orundum: 'done',
+                maa_mining: 'pending',
+                maa_specialaccess: 'pending',
+                maa_signinevent: 'pending'
+              }
       }),
       '/software-update/info': () => ({
         ok: true,
@@ -1216,7 +1219,8 @@ export function createPreviewAdapter(data, requests = []) {
           truncated: false
         }
       },
-      '/screenshot/latest': () => new Blob([screenshot], { type: 'image/svg+xml' })
+      '/screenshot/latest': () =>
+        data.status === 'stopped' ? new Blob([]) : new Blob([screenshot], { type: 'image/svg+xml' })
     }
     if (path.startsWith('/config-profiles') && method !== 'GET' && data.status === 'running')
       fail(config, '请先停止 Mower 后操作示例配置', 423)
@@ -1426,7 +1430,7 @@ export function createPreviewAdapter(data, requests = []) {
   }
 }
 
-export function previewWebSocket(logs) {
+export function previewWebSocket(logs, latency = 0) {
   const entries = Array.isArray(logs) ? logs : []
   const textOf = (entry) =>
     typeof entry === 'string' ? entry : [entry.t, entry.level, entry.msg].filter(Boolean).join(' ')
@@ -1455,7 +1459,7 @@ export function previewWebSocket(logs) {
           this.dispatchEvent(message)
           this.onmessage?.(message)
         }
-      }, 10)
+      }, 10 + latency)
     }
     send() {}
     close() {
@@ -1468,11 +1472,24 @@ export function previewWebSocket(logs) {
   }
 }
 
-export function installPreviewBackend(config, target = window) {
+// latency 让每个接口和日志连接都晚这么多毫秒才响应，用来查看启动各阶段的样子。
+export function installPreviewBackend(config, target = window, { latency = 0, idle = false } = {}) {
   const data = createPreviewData(config)
+  // 未开始示例：已停止，没有日志、截图、任务列表和今日任务记录，用来查看未开始的运行日志页。
+  if (idle) {
+    data.status = 'stopped'
+    data.logs.length = 0
+  }
   const requests = []
-  axios.defaults.adapter = createPreviewAdapter(data, requests)
-  target.WebSocket = previewWebSocket(data.logs)
+  const adapter = createPreviewAdapter(data, requests)
+  axios.defaults.adapter =
+    latency > 0
+      ? async (request) => {
+          await new Promise((resolve) => setTimeout(resolve, latency))
+          return adapter(request)
+        }
+      : adapter
+  target.WebSocket = previewWebSocket(data.logs, latency)
   target.fetch = async () => {
     throw new Error('离线预览已停用网络请求')
   }

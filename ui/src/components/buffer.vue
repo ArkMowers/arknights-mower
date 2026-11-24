@@ -7,7 +7,11 @@ import BufferInfo from '@/components/bufferinfo.vue'
 
 const { buffer } = useBasementSkill()
 defineOptions({ name: 'BasementSkillRows' })
-defineProps({ item: { type: Object, required: true } })
+defineProps({
+  item: { type: Object, required: true },
+  // 读取练度快照时：{ progression }。持有标签、技能状态和（上次有练度时的）练度一行画成占位块。
+  placeholder: { type: Object, default: null }
+})
 </script>
 
 <template>
@@ -55,14 +59,20 @@ defineProps({ item: { type: Object, required: true } })
             </n-avatar>
             <span>{{ item.avatar }}</span>
           </a>
+          <span v-if="placeholder" class="skeleton-bone skill-tag-placeholder" />
           <n-tag
-            v-if="ownershipLabels[item.ownership]"
+            v-else-if="ownershipLabels[item.ownership]"
             :type="item.ownership === 'owned' ? 'success' : 'default'"
             :bordered="false"
             size="small"
             >{{ ownershipLabels[item.ownership] }}</n-tag
           >
-          <div v-if="item.progression" class="operator-growth">{{ item.progression }}</div>
+          <div v-if="placeholder?.progression" class="operator-growth">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" />
+          </div>
+          <div v-else-if="!placeholder && item.progression" class="operator-growth">
+            {{ item.progression }}
+          </div>
         </td>
         <td
           class="skill-number"
@@ -72,8 +82,9 @@ defineProps({ item: { type: Object, required: true } })
         </td>
         <td class="skill-condition">{{ skill.phase_level }}</td>
         <td class="skill-status">
+          <span v-if="placeholder" class="skeleton-bone skill-tag-placeholder" />
           <n-tag
-            v-if="skillStatusLabels[skill.status]"
+            v-else-if="skillStatusLabels[skill.status]"
             :type="skill.status === 'active' ? 'success' : 'default'"
             :bordered="false"
             size="small"
@@ -151,6 +162,13 @@ td {
 }
 :global(.provider--dark) .operator-link :deep(.n-avatar) {
   outline-color: rgb(255 255 255 / 10%);
+}
+.skill-tag-placeholder {
+  display: inline-block;
+  width: 50px;
+  height: 22px;
+  vertical-align: middle;
+  border-radius: calc(2px * var(--mower-corner-scale));
 }
 .operator-growth {
   margin-top: 4px;

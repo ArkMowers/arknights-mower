@@ -439,7 +439,8 @@ onBeforeUnmount(stopWatchingDrag)
   left: 50%;
   width: 24px;
   height: 24px;
-  border-radius: 9px;
+  border-radius: calc(9px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   transform: translate(-50%, -50%);
   pointer-events: none;
 }

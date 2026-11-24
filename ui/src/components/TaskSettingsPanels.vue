@@ -861,7 +861,7 @@ const idleOptions = computed(() => [
 }
 
 .task-settings-panels {
-  --settings-radius: 12px;
+  --settings-radius: calc(12px * var(--mower-corner-scale));
   --settings-card-border: var(--mower-border);
   --settings-control-width: 440px;
   --settings-number-width: 180px;
@@ -982,7 +982,8 @@ const idleOptions = computed(() => [
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 
 .task-waiting-scroll:focus-visible {
@@ -1074,7 +1075,8 @@ const idleOptions = computed(() => [
   box-sizing: border-box;
   margin: 0;
   border: 1px solid var(--settings-card-border, var(--mower-border));
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   box-shadow: none;
   background: var(--mower-surface);
   transition:

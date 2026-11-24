@@ -12,6 +12,9 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
   const busy = ref(false)
   const error = ref('')
   const url = computed(() => customUrl.value || publicAsset('/bg.webp'))
+  // 已下载并解码完成的背景图地址。运行日志页在它与 url 相同后才显示背景，
+  // 避免先闪过默认图再换成自定义图，或图片边下载边显示。
+  const readyUrl = ref('')
   let loading = null
   let disposed = false
 
@@ -20,6 +23,21 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
     const previous = customUrl.value
     customUrl.value = blob ? URL.createObjectURL(blob) : ''
     if (previous) URL.revokeObjectURL(previous)
+  }
+
+  async function prepare() {
+    const target = url.value
+    if (readyUrl.value === target) return
+    if (typeof Image === 'function') {
+      const image = new Image()
+      image.src = target
+      try {
+        await image.decode?.()
+      } catch {
+        // 解码失败时照常交给 CSS 背景显示，不让背景一直隐藏。
+      }
+    }
+    if (!disposed && url.value === target) readyUrl.value = target
   }
 
   function accept(response) {
@@ -31,7 +49,10 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
 
   async function load() {
     if (loading) return loading
-    if (loaded.value) return true
+    if (loaded.value) {
+      void prepare()
+      return true
+    }
     busy.value = true
     error.value = ''
     loading = (async () => {
@@ -45,6 +66,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
       } finally {
         busy.value = false
         loading = null
+        void prepare()
       }
     })()
     return loading
@@ -70,6 +92,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
           timeout: 30000
         })
       )
+      void prepare()
       return true
     } catch (failure) {
       const blob = failure?.response?.data
@@ -96,6 +119,7 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
       const response = await axios.delete(endpoint, { timeout: 10000 })
       if (response.status !== 204) throw new Error()
       replace(null)
+      void prepare()
       return true
     } catch {
       error.value = '运行日志背景图恢复默认失败，请重试。'
@@ -110,5 +134,5 @@ export const useLogBackgroundStore = defineStore('log-background', () => {
     if (customUrl.value) URL.revokeObjectURL(customUrl.value)
   })
 
-  return { customUrl, url, loaded, busy, error, load, upload, reset }
+  return { customUrl, url, readyUrl, loaded, busy, error, load, upload, reset }
 })

@@ -2,6 +2,7 @@
 import { computed, inject, onBeforeUnmount, ref } from 'vue'
 import { onFirstPanelVisit } from '@/composables/firstPanelVisit'
 import { copyMowerTestText } from '../utils/copyMowerTestText'
+import SkeletonField from './SkeletonField.vue'
 
 const axios = inject('axios')
 const base = `${import.meta.env.VITE_HTTP_URL || ''}/network`
@@ -171,17 +172,24 @@ onBeforeUnmount(() => {
     <div class="network-summary">
       <p>全部实例共享，用于后续连接。</p>
       <span class="network-save-status" role="status">
-        <template v-if="loading">正在读取…</template>
-        <template v-else-if="saving">正在保存…</template>
+        <template v-if="saving">正在保存…</template>
         <template v-else-if="dirty && !error">等待保存…</template>
         <span v-else-if="saved && !dirty && !error" class="network-saved">已应用到后续连接</span>
         <template v-else>修改后自动保存</template>
       </span>
     </div>
     <n-alert v-if="error" type="error" class="network-error" role="alert">{{ error }}</n-alert>
-    <n-form class="network-form" label-placement="top" :show-feedback="false">
+    <!-- 读取中表单照常显示标签、说明和输入框的外框，框里的值先占位，读完后在原处换成输入框。 -->
+    <n-form
+      class="network-form"
+      label-placement="top"
+      :show-feedback="false"
+      :aria-busy="loading || null"
+    >
       <n-form-item label="全局网络代理">
+        <SkeletonField v-if="loading" class="network-input-placeholder" width="14em" />
         <n-input
+          v-else
           v-model:value="httpProxy"
           :input-props="{
             'aria-label': '全局网络代理',
@@ -199,7 +207,9 @@ onBeforeUnmount(() => {
         </p>
       </n-form-item>
       <n-form-item label="GitHub 下载代理站点">
+        <SkeletonField v-if="loading" class="network-input-placeholder" width="12em" />
         <n-input
+          v-else
           v-model:value="githubProxy"
           :input-props="{
             'aria-label': 'GitHub 下载代理站点',
@@ -219,7 +229,9 @@ onBeforeUnmount(() => {
         </p>
       </n-form-item>
       <n-form-item label="GitHub Token">
+        <SkeletonField v-if="loading" class="network-input-placeholder" width="10em" />
         <n-input
+          v-else
           v-model:value="githubToken"
           type="password"
           show-password-on="click"
@@ -450,7 +462,8 @@ onBeforeUnmount(() => {
   display: grid;
   gap: 12px;
   padding: 14px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
 }
 

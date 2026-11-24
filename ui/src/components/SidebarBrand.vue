@@ -1,7 +1,11 @@
 <script setup>
 import { publicAsset } from '@/utils/publicAsset'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { resourceVersionBadge, resourceVersionHint } from '@/utils/versionBadges'
+import {
+  resourceVersionBadge,
+  resourceVersionHint,
+  resourceVersionParts
+} from '@/utils/versionBadges'
 import SoftwareVersionBadge from '@/components/SoftwareVersionBadge.vue'
 import HalloweenDecor from '@/components/HalloweenDecor.vue'
 import { useHalloweenSeason } from '@/composables/halloween'
@@ -27,6 +31,17 @@ const emit = defineEmits(['toggle', 'check-software', 'check-resource'])
 const now = ref(Date.now())
 const resourceBadge = computed(() => resourceVersionBadge(props.resourceMetadata, now.value))
 const resourceHint = computed(() => resourceVersionHint(props.resourceVersion, resourceBadge.value))
+const resourceParts = computed(() => resourceVersionParts(props.resourceVersion))
+// 资源进度条与资源徽标同源：取决定颜色的那项活动的剩余比例。
+const resourceStyle = computed(() => {
+  const badge = resourceBadge.value
+  if (badge.state === 'unknown') return {}
+  const remaining = Math.max(0, Math.min(1, badge.remaining / (badge.end - badge.start)))
+  return {
+    '--resource-badge-hue': badge.hue,
+    '--resource-remaining': Math.round(remaining * 1000) / 1000
+  }
+})
 const resourceActionHint = computed(() => {
   if (props.resourceChecking) return `${resourceHint.value}\n正在检查资源更新…`
   if (!props.updatesEnabled || props.resourceDisabled) return resourceHint.value
@@ -78,7 +93,9 @@ onUnmounted(() => {
     :class="{
       'sidebar-brand--collapsed': collapsed,
       'sidebar-brand--collapsible': collapsible,
-      'sidebar-brand--text-only': !showLogo
+      'sidebar-brand--text-only': !showLogo,
+      'sidebar-brand--versioned': version || resourceVersion,
+      'sidebar-brand--seasonal': halloweenActive
     }"
     aria-label="Mower"
   >
@@ -137,11 +154,7 @@ onUnmounted(() => {
                 type="button"
                 class="sidebar-brand-resource"
                 :class="{ 'sidebar-brand-resource--dated': resourceBadge.state !== 'unknown' }"
-                :style="
-                  resourceBadge.state === 'unknown'
-                    ? {}
-                    : { '--resource-badge-hue': resourceBadge.hue }
-                "
+                :style="resourceStyle"
                 :tabindex="collapsed ? -1 : 0"
                 :aria-label="resourceActionHint"
                 :aria-busy="resourceChecking"
@@ -151,7 +164,15 @@ onUnmounted(() => {
                 @keydown.esc="resourceTooltipOpen = resourceTooltipFocused = false"
                 @click="checkResource"
               >
-                {{ resourceVersion }}
+                {{ resourceParts[0]
+                }}<span v-if="resourceParts[1]" class="sidebar-brand-resource-date"
+                  ><span class="sidebar-brand-resource-date-mark">#</span
+                  >{{ resourceParts[1].slice(1) }}</span
+                ><span
+                  v-if="resourceBadge.state !== 'unknown'"
+                  class="sidebar-brand-resource-meter"
+                  aria-hidden="true"
+                />
               </button>
             </template>
             <span class="sidebar-brand-resource-hint">{{ resourceActionHint }}</span>
@@ -165,7 +186,6 @@ onUnmounted(() => {
 <style scoped>
 .sidebar-brand {
   position: relative;
-  z-index: 2;
   flex: none;
   min-height: 48px;
   padding: 10px 10px 4px;
@@ -189,7 +209,8 @@ onUnmounted(() => {
   overflow: hidden;
   color: inherit;
   text-decoration: none;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .sidebar-brand-home img {
   flex: none;
@@ -207,10 +228,7 @@ onUnmounted(() => {
 }
 .sidebar-brand-resource-slot {
   display: flex;
-  flex: 0 1 auto;
-  align-items: center;
   min-width: 0;
-  max-width: 100%;
 }
 .sidebar-brand-name {
   position: relative;
@@ -231,7 +249,8 @@ onUnmounted(() => {
   height: 36px;
   padding: 0;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--mower-text-muted);
   cursor: pointer;
@@ -254,97 +273,185 @@ onUnmounted(() => {
   outline: 2px solid var(--mower-primary);
   outline-offset: -2px;
 }
+/* 有版本信息时 Mower 与版本号组成刊头：Mower 用粗体墨色字，与发光的细体版本号一实一虚；
+   万圣节期间的字标装饰按原字号排布，不改变名称样式。 */
+.sidebar-brand--versioned:not(.sidebar-brand--collapsed, .sidebar-brand--seasonal)
+  .sidebar-brand-name,
+.sidebar-brand--versioned:not(.sidebar-brand--collapsed, .sidebar-brand--seasonal)
+  :deep(.app-menu-bar__brand-trigger) {
+  font-family: Bahnschrift, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 26px;
+}
+.sidebar-brand--versioned.sidebar-brand--text-only:not(.sidebar-brand--collapsed)
+  .sidebar-brand-row,
+.sidebar-brand--versioned.sidebar-brand--text-only:not(.sidebar-brand--collapsed)
+  .sidebar-brand-home {
+  min-height: 26px;
+}
 .sidebar-brand-versions {
   /* WKWebView can retain narrow-width grid row heights after the sider expands.
-     Let this block follow the wrapped version badges' intrinsic height. */
-  overflow: hidden;
-  margin: 8px 0 0 38px;
+     Let this block follow the version lines' intrinsic height. */
+  margin: 4px -2px 0;
 }
 .sidebar-brand-version-lines {
   display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
-  align-items: flex-start;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   min-height: 0;
-  overflow: hidden;
 }
 .sidebar-brand-version-item {
+  position: relative;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
+  width: fit-content;
   max-width: 100%;
-  overflow: hidden;
+  min-width: 0;
 }
+/* 悬停底色只包住版本号的实际内容，左右留白相同。支持裁去行高余量的内核把发布号的行框裁到
+   大写字母高度与基线之间，上下留白相同，数字在底色里上下居中；其他内核用不对称的留白补偿
+   数字下方的行高余量。 */
+.sidebar-brand-version-item > :deep(.sidebar-brand-channel) {
+  flex: 0 1 auto;
+  justify-content: center;
+  padding: 3px 8px 4px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+}
+@supports (text-box: trim-both cap alphabetic) {
+  .sidebar-brand-version-item > :deep(.sidebar-brand-channel:not(.sidebar-brand-channel--plain)) {
+    padding: 8px;
+  }
+  .sidebar-brand-version-item :deep(.version-badge-release) {
+    text-box: trim-both cap alphabetic;
+  }
+}
+/* 版本号自身发出类型色的光：浅色主题下是一层带色的柔影，深色主题下是贴字的辉光。 */
+.sidebar-brand-version-item :deep(.version-badge-release) {
+  filter: drop-shadow(0 2px 8px color-mix(in srgb, var(--badge-tone) 30%, transparent));
+}
+:global(html[data-mower-theme='dark'] .sidebar-brand-version-item .version-badge-release) {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--badge-tone) 50%, transparent))
+    drop-shadow(0 0 14px color-mix(in srgb, var(--badge-tone) 40%, transparent));
+}
+/* 资源版本是刊头的说明行，下方一道细线表示剩余时间：整条淡轨是活动的全程，亮线从文字起点
+   铺到剩余比例处，越近末端越亮，末端一点亮芯带着淡淡的辉光，颜色随剩余时间由绿经黄到红。
+   亮线出现时从文字起点生长到当前位置一次，之后保持静止。进度条不占文字的位置，名称再长也
+   照常换行；无进行中的限时活动时为中性色且没有进度条。 */
 .sidebar-brand-resource {
+  --badge-tone: var(--mower-text-muted);
+  position: relative;
   display: block;
-  max-width: 100%;
+  width: 100%;
   min-width: 0;
-  min-height: 24px;
   box-sizing: border-box;
-  padding: 2px 8px;
-  border: 1px solid var(--mower-border);
-  border-radius: 6px;
-  background: var(--mower-control-surface);
+  padding: 4px 8px 6px;
+  border: 0;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  background: transparent;
   color: var(--mower-text-muted);
   font: inherit;
-  font-size: 11px;
-  font-weight: 500;
+  font-size: 12px;
   line-height: 18px;
-  font-variant-numeric: tabular-nums;
-  white-space: normal;
+  text-align: left;
   overflow-wrap: anywhere;
   cursor: pointer;
   transition:
-    border-color 0.16s ease,
-    opacity 0.16s ease;
+    background-color 0.16s ease,
+    color 0.16s ease;
+}
+.sidebar-brand-resource--dated {
+  --badge-tone: hsl(var(--resource-badge-hue) 62% 42%);
+  --meter-core: color-mix(in oklab, var(--badge-tone), #000 12%);
+  --meter-glow: drop-shadow(0 0 1.5px color-mix(in srgb, var(--badge-tone) 25%, transparent));
+  /* 进度条画在按钮自己的层里：悬停底色之上、文字之下。 */
+  isolation: isolate;
+  padding-bottom: 10px;
+  color: color-mix(in srgb, var(--badge-tone) 45%, var(--mower-text-muted));
+}
+:global(html[data-mower-theme='dark'] .sidebar-brand-resource--dated) {
+  --badge-tone: hsl(var(--resource-badge-hue) 58% 62%);
+  --meter-core: color-mix(in oklab, var(--badge-tone), #fff 40%);
+  --meter-glow: drop-shadow(0 0 2px color-mix(in srgb, var(--badge-tone) 40%, transparent));
+}
+/* 资源版本名末尾的 #MMDD 是资源构建日期：用软件版本号的数字字形，字号略小、颜色更淡，
+   与名称隔开一点；日期整体换行，不从中间断开。 */
+.sidebar-brand-resource-date {
+  display: inline-block;
+  margin-left: 3px;
+  font-family: Bahnschrift, 'Segoe UI Variable Display', 'Segoe UI', system-ui, sans-serif;
+  font-size: 11.5px;
+  font-variant-numeric: lining-nums tabular-nums;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  opacity: 0.72;
+}
+/* # 单独成段再调淡：::first-letter 会把开头的标点和其后的第一个数字算作同一个首字母，
+   日期的第一位数字会跟着变淡。 */
+.sidebar-brand-resource-date-mark {
+  color: color-mix(in srgb, currentColor 60%, transparent);
+}
+.sidebar-brand-resource-meter {
+  --meter-end: calc(var(--resource-remaining, 0) * 100%);
+  position: absolute;
+  z-index: -1;
+  right: 8px;
+  bottom: 4px;
+  left: 8px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--mower-text) 7%, transparent);
+  pointer-events: none;
+}
+.sidebar-brand-resource-meter::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--meter-end);
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, transparent calc(100% - 3px), var(--meter-core)),
+    linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--badge-tone) 22%, transparent),
+      color-mix(in oklab, var(--badge-tone) 70%, transparent) 62%,
+      var(--badge-tone)
+    );
+  filter: var(--meter-glow);
+  animation: sidebar-brand-meter-fill 1.1s cubic-bezier(0.22, 0.8, 0.24, 1) 0.15s both;
+  content: '';
+}
+@keyframes sidebar-brand-meter-fill {
+  from {
+    width: 0;
+  }
 }
 .sidebar-brand-resource:enabled:hover {
-  opacity: 0.94;
-}
-.sidebar-brand-resource:not(.sidebar-brand-resource--dated):enabled:hover {
-  border-color: var(--mower-text-muted);
-}
-.sidebar-brand-resource--dated:enabled:hover {
-  border-color: hsl(var(--resource-badge-hue) 45% 68%);
-}
-:global(html[data-mower-theme='dark'] .sidebar-brand-resource--dated:enabled:hover) {
-  border-color: hsl(var(--resource-badge-hue) 35% 42%);
+  background: color-mix(in srgb, var(--mower-text) 6%, transparent);
+  color: color-mix(in srgb, var(--badge-tone) 45%, var(--mower-text));
 }
 .sidebar-brand-resource:enabled:active {
-  opacity: 0.86;
+  background: color-mix(in srgb, var(--mower-text) 10%, transparent);
 }
 .sidebar-brand-resource:disabled {
   cursor: default;
 }
-.sidebar-brand-resource[aria-busy='true']::before {
-  content: '';
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  margin-right: 4px;
-  box-sizing: border-box;
-  border: 1.5px solid currentColor;
-  border-right-color: transparent;
-  border-radius: 50%;
-  vertical-align: -1px;
-  animation: resource-badge-spin 0.8s linear infinite;
+/* 检查更新期间资源名称与进度条缓慢明暗往复；进度与结果仍由全局消息提示。 */
+.sidebar-brand-resource[aria-busy='true'] {
+  cursor: progress;
+  animation: sidebar-brand-version-busy 0.9s ease-in-out infinite alternate;
 }
-@keyframes resource-badge-spin {
-  to {
-    transform: rotate(360deg);
+@keyframes sidebar-brand-version-busy {
+  from {
+    opacity: 1;
   }
-}
-.sidebar-brand-resource--dated {
-  color: hsl(var(--resource-badge-hue) 65% 28%);
-  border-color: hsl(var(--resource-badge-hue) 35% 79%);
-  background: hsl(var(--resource-badge-hue) 55% 93%);
-}
-:global(html[data-mower-theme='dark'] .sidebar-brand-resource--dated) {
-  color: hsl(var(--resource-badge-hue) 64% 74%);
-  border-color: hsl(var(--resource-badge-hue) 28% 31%);
-  background: hsl(var(--resource-badge-hue) 35% 19%);
+  to {
+    opacity: 0.4;
+  }
 }
 .sidebar-brand-resource:focus-visible {
   outline: 2px solid var(--mower-primary);
@@ -361,7 +468,7 @@ onUnmounted(() => {
   min-height: 28px;
 }
 .sidebar-brand--text-only .sidebar-brand-versions {
-  margin: 6px 0 0;
+  margin: 4px -2px 0 -8px;
 }
 .sidebar-brand--collapsed {
   padding-left: calc((var(--shell-rail-size, 64px) - 28px) / 2);
@@ -396,7 +503,11 @@ onUnmounted(() => {
   opacity: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .sidebar-brand-resource[aria-busy='true']::before {
+  .sidebar-brand-resource[aria-busy='true'] {
+    animation: none;
+    opacity: 0.6;
+  }
+  .sidebar-brand-resource-meter::before {
     animation: none;
   }
   .sidebar-brand-home img,

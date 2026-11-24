@@ -556,6 +556,12 @@ describe('desktop page startup', () => {
     expect(state.client.post).not.toHaveBeenCalled()
   })
 
+  // 侧栏版本按钮的可见文字：版本号、类型名和资源版本名排版时拆成多段，文字整体保持完整。
+  function badgeText(html, className) {
+    const button = new RegExp(`<button\\b[^>]*class="${className}[ "][^>]*>([\\s\\S]*?)</button>`)
+    return button.exec(html)?.[1].replace(/<[^>]+>/g, '')
+  }
+
   async function renderShell(component) {
     const app = createSSRApp({ ...App, setup: () => component })
     app.use(createPinia())
@@ -2002,14 +2008,12 @@ describe('desktop page startup', () => {
       component.isMobileNav.value = mobile
       component.mobileMenuOpen.value = mobile
       const channel = await renderShell(component)
-      expect(channel).toMatch(/<button\b[^>]*class="sidebar-brand-channel[^>]*>source<\/button>/)
+      expect(badgeText(channel, 'sidebar-brand-channel')).toBe('source')
       expect(channel).toContain('点击检查软件更新')
       expect(channel).not.toContain('aria-pressed=')
       state.gui.softwareVersionDisplay = 'version'
       const version = await renderShell(component)
-      expect(version).toMatch(
-        /<button\b[^>]*class="sidebar-brand-channel[^>]*>4\.1\.6-alpha\.12\.gdeadbeef\+deadbee<\/button>/
-      )
+      expect(badgeText(version, 'sidebar-brand-channel')).toBe('4.1.6-alpha.12.gdeadbeef+deadbee')
       expect(version).toContain('点击检查软件更新')
       expect(state.gui.setSoftwareVersionDisplay).not.toHaveBeenCalled()
       expect(state.gui.load).toHaveBeenCalledOnce()
@@ -2052,7 +2056,7 @@ describe('desktop page startup', () => {
       }
       const active = await renderShell(component)
       expect(active).toContain('--resource-badge-hue:70')
-      expect(active).toContain('>卫戍协议:规程#1111</button>')
+      expect(badgeText(active, 'sidebar-brand-resource')).toBe('卫戍协议:规程#1111')
       expect(active).toContain('活动「先关闭活动」作战关闭')
       expect(active).toContain('活动「卫戍协议:规程」长期开放')
       expect(active).not.toContain('2099')

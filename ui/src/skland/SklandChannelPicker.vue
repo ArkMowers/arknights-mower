@@ -1,9 +1,25 @@
 <script setup>
 import { computed } from 'vue'
+import SkeletonField from '@/components/SkeletonField.vue'
+import { channelChipLabel } from './statistics'
 
 const props = defineProps({
   channels: { type: Array, required: true },
-  selected: { type: Object, default: null }
+  selected: { type: Object, default: null },
+  // 读取中按上次读到的版面占位：select 表示有多个账号、要显示账号选择框，chips 是所选账号各渠道
+  // 名称的宽度（em）。渠道按钮的框照常显示，账号和渠道名先占位。传 true 时按两个账号、两个渠道
+  // 占位。
+  placeholder: { type: [Boolean, Object], default: false }
+})
+const placeholderShape = computed(() => {
+  if (!props.placeholder) return null
+  const chips = props.placeholder === true ? 2 : props.placeholder.chips
+  return {
+    select: props.placeholder === true || Boolean(props.placeholder.select),
+    chips: (Array.isArray(chips) ? chips : Array(Math.max(Number(chips) || 0, 0)).fill(5.6))
+      .slice(0, 8)
+      .map((width) => Math.min(Math.max(Number(width) || 0, 1), 16))
+  }
 })
 const emit = defineEmits(['select'])
 
@@ -39,11 +55,7 @@ function pickAccount(account) {
   if (channel) emit('select', channel.key)
 }
 
-function chipLabel(channel) {
-  const region = channel.channel === 'bilibili服' ? 'B服' : channel.channel
-  const role = channel.shared ? ` · ${channel.display_name || `角色 ${channel.role_index}`}` : ''
-  return `${channel.game_group} ${region}${role}`
-}
+const chipLabel = channelChipLabel
 
 function chipTitle(channel) {
   return [channel.display_name, STATUS_LABELS[channel.status]].filter(Boolean).join(' · ')
@@ -53,8 +65,20 @@ function chipTitle(channel) {
 <template>
   <div class="channel-picker">
     <div class="channel-picker__account">
+      <template v-if="placeholderShape">
+        <SkeletonField
+          v-if="placeholderShape.select"
+          kind="select"
+          size="small"
+          class="channel-picker__select"
+          width="6em"
+        />
+        <strong v-else class="channel-picker__single"
+          ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 7em"
+        /></strong>
+      </template>
       <n-select
-        v-if="accounts.length > 1"
+        v-else-if="accounts.length > 1"
         :value="selected?.account"
         :options="accountOptions"
         class="channel-picker__select"
@@ -67,6 +91,11 @@ function chipTitle(channel) {
       <strong v-else class="channel-picker__single">{{ selected?.account }}</strong>
     </div>
     <div class="channel-picker__chips" role="group" aria-label="签到渠道">
+      <template v-if="placeholderShape">
+        <span v-for="(width, index) in placeholderShape.chips" :key="index" class="channel-chip">
+          <span class="skeleton-bone skeleton-text" :style="{ '--skeleton-w': `${width}em` }" />
+        </span>
+      </template>
       <button
         v-for="channel in accountChannels"
         :key="channel.key"
@@ -126,6 +155,7 @@ function chipTitle(channel) {
   gap: 5px;
 }
 .channel-chip {
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   gap: 5px;

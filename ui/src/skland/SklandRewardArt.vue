@@ -27,7 +27,8 @@ defineProps({
   aspect-ratio: var(--reward-art-ratio, 1);
   overflow: hidden;
   container-type: inline-size;
-  border-radius: var(--reward-art-radius, 7px);
+  border-radius: var(--reward-art-radius, calc(7px * var(--mower-corner-scale)));
+  corner-shape: var(--mower-corner-shape);
   background: linear-gradient(
     150deg,
     color-mix(in srgb, var(--mower-text) 5%, var(--mower-surface)),

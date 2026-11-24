@@ -36,7 +36,8 @@ const MowerSettings = defineAsyncComponent(() => import('@/pages/Settings.vue'))
   max-height: calc(100dvh / var(--mower-zoom, 1) - 32px);
   box-sizing: border-box;
   border: 1px solid var(--mower-border);
-  border-radius: 22px;
+  border-radius: calc(22px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   container: settings-dialog / inline-size;
   background: var(--mower-surface);
   box-shadow: 0 20px 80px -24px rgb(0 0 0 / 28%);
@@ -103,7 +104,8 @@ const MowerSettings = defineAsyncComponent(() => import('@/pages/Settings.vue'))
 .settings-dialog .settings-page .settings-card-grid .n-card > .n-card-content {
   padding: 16px;
   border: 1px solid var(--settings-card-border);
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
 }
 
@@ -251,7 +253,8 @@ const MowerSettings = defineAsyncComponent(() => import('@/pages/Settings.vue'))
     height: calc(100dvh / var(--mower-zoom, 1) - 24px);
     max-width: none;
     max-height: none;
-    border-radius: 20px;
+    border-radius: calc(20px * var(--mower-corner-scale));
+    corner-shape: var(--mower-corner-shape);
   }
 }
 

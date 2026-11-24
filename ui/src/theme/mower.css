@@ -5,6 +5,102 @@
   --mower-zoom-inverse: 1;
 }
 
+/* 曲率连续圆角：支持 corner-shape 的内核（Chromium 139 起）改用 squircle，并把半径放大，
+   让弯曲段更长、与直边衔接更柔和；同半径的 squircle 比圆弧更方，所以两者必须一起改。
+   其他内核保留原来的圆弧半径。接入的组件写 calc(原半径 * var(--mower-corner-scale))
+   与 corner-shape: var(--mower-corner-shape)。 */
+:root {
+  --mower-corner-scale: 1;
+  --mower-corner-shape: round;
+}
+
+@supports (corner-shape: squircle) {
+  :root {
+    --mower-corner-scale: 2;
+    --mower-corner-shape: squircle;
+  }
+}
+
+/* Naive UI 组件的半径由主题 corner() 放大，形状在这里统一切换。圆形和胶囊按钮的半径
+   等于自身高度，999px 是胶囊浮层，这两种保持圆弧，避免变成圆角方块。描边层和状态层用
+   border-radius: inherit 画边，形状也跟随外层；菜单选项的高亮单独切换。 */
+:is(
+  .n-button,
+  .n-input,
+  .n-input-group-label,
+  .n-base-selection,
+  .n-base-select-menu,
+  .n-card,
+  .n-dialog,
+  .n-drawer,
+  .n-popover,
+  .n-dropdown-menu,
+  .n-date-panel,
+  .n-time-picker-panel,
+  .n-message,
+  .n-notification,
+  .n-alert,
+  .n-tabs-rail,
+  .n-tabs-capsule,
+  .n-tabs-tab,
+  .n-radio-button,
+  .n-data-table,
+  .n-data-table-wrapper,
+  .n-data-table-base-table-header,
+  .n-table,
+  .n-list,
+  .n-upload-dragger,
+  .n-collapse-item,
+  .mower-surface-panel
+) {
+  corner-shape: if(
+    style(--n-border-radius: var(--n-height)): round; style(--n-border-radius: 999px): round;
+      else: var(--mower-corner-shape)
+  );
+}
+
+:is(
+  .n-button__border,
+  .n-button__state-border,
+  .n-base-wave,
+  .n-input__border,
+  .n-input__state-border,
+  .n-input-group-label__border,
+  .n-base-selection__border,
+  .n-base-selection__state-border,
+  .n-base-selection-label,
+  .n-base-selection-tags,
+  .n-card-cover,
+  .n-alert__border,
+  .n-radio-button__state-border
+) {
+  corner-shape: inherit;
+}
+
+.n-base-select-menu .n-base-select-option::before,
+.n-dropdown-menu .n-dropdown-option-body::before {
+  corner-shape: var(--mower-corner-shape);
+}
+
+/* 阴影层级：每级由一层贴近边缘的清晰阴影和一层更远、更淡的柔和阴影组成，同级元素共用。
+   浅色主题用接近正文颜色的深灰，深色主题用黑色并提高不透明度。
+   1 级：放在内容上的控件，例如日志底栏按钮、视图切换栏和今日任务胶囊。
+   2 级：内容上方的独立画面，例如截图预览。它常常贴着滚动列的两侧边缘，向两侧扩散的阴影会被
+   滚动列裁成平头，所以用负扩展把柔和阴影收在画面正下方。
+   3 级：浮在页面上的菜单和浮层。 */
+:root {
+  --mower-shadow-1: 0 1px 1px rgb(24 25 28 / 6%), 0 3px 8px -3px rgb(24 25 28 / 16%);
+  --mower-shadow-2: 0 1px 1px rgb(24 25 28 / 12%), 0 6px 10px -5px rgb(24 25 28 / 24%);
+  --mower-shadow-3: 0 2px 6px rgb(24 25 28 / 8%), 0 16px 36px -12px rgb(24 25 28 / 30%);
+}
+
+html[data-mower-theme='dark'],
+html[data-window-shell-theme='dark'] {
+  --mower-shadow-1: 0 1px 1px rgb(0 0 0 / 24%), 0 3px 8px -3px rgb(0 0 0 / 50%);
+  --mower-shadow-2: 0 1px 1px rgb(0 0 0 / 35%), 0 6px 10px -5px rgb(0 0 0 / 55%);
+  --mower-shadow-3: 0 2px 6px rgb(0 0 0 / 20%), 0 16px 36px -12px rgb(0 0 0 / 65%);
+}
+
 .provider,
 :root {
   --mower-segment-rail: #efefed;
@@ -16,6 +112,11 @@
   --mower-segment-capsule-shadow:
     inset 0 0 0 1px rgba(55, 49, 43, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.88),
     0 1px 3px rgba(55, 49, 43, 0.13), 0 4px 10px -7px rgba(55, 49, 43, 0.32);
+  /* 侧边栏版本号和设置页预览共用软件版本分类色。 */
+  --mower-version-source: #c08a0c;
+  --mower-version-alpha: #cf3448;
+  --mower-version-nightly: #2856a8;
+  --mower-version-stable: #188a4f;
 }
 
 html[data-mower-theme='dark'],
@@ -34,6 +135,10 @@ html[data-mower-theme='dark'] .provider {
   --mower-segment-capsule-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.07), inset 0 1px 0 rgba(255, 255, 255, 0.1),
     0 1px 3px rgba(0, 0, 0, 0.52), 0 4px 12px -7px rgba(0, 0, 0, 0.78);
+  --mower-version-source: #e6b94f;
+  --mower-version-alpha: #f07484;
+  --mower-version-nightly: #7ea4ec;
+  --mower-version-stable: #56c68e;
 }
 
 .provider .n-card:not(.n-card--embedded),
@@ -82,12 +187,12 @@ html[data-mower-theme='dark'] .n-checkbox-box {
 .provider .n-table,
 .provider .n-list,
 .provider .n-upload-dragger {
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
 }
 
 .provider .n-collapse-item {
   padding: 0 12px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
   background: var(--mower-control-surface);
 }
 
@@ -96,7 +201,7 @@ html[data-mower-theme='dark'] .n-checkbox-box {
 }
 
 .provider .mower-surface-panel {
-  border-radius: 16px;
+  border-radius: calc(16px * var(--mower-corner-scale));
   background: var(--mower-surface);
 }
 
@@ -108,7 +213,7 @@ html[data-mower-theme='dark'] .n-checkbox-box {
 
 #app .n-tabs.n-tabs--segment-type .n-tabs-rail {
   padding: 3px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
   background: var(--mower-segment-rail);
   box-shadow: var(--mower-segment-rail-shadow);
 }
@@ -149,7 +254,13 @@ html[data-mower-theme='dark'] .n-checkbox-box {
 .n-base-select-menu .n-base-select-option::before {
   top: 2px;
   bottom: 2px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+}
+
+/* 菜单圆角放大后，滚动条原来离上下边 2px，滑块端头会贴到弯曲的边框上，上下多留一些。 */
+.n-base-select-menu .n-scrollbar > .n-scrollbar-rail.n-scrollbar-rail--vertical--right {
+  top: 6px;
+  bottom: 6px;
 }
 
 .settings-select-menu {

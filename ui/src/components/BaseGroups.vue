@@ -583,7 +583,8 @@ function ownershipSummary(group) {
   margin: 0 0 12px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--mower-warning, #b46d19) 30%, transparent);
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-warning, #b46d19) 8%, var(--mower-surface));
   color: var(--mower-warning, #b46d19);
 }
@@ -598,7 +599,8 @@ function ownershipSummary(group) {
   color: var(--mower-text-muted);
   background: var(--mower-hover);
   padding: 2px 6px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 11px;
 }
 .recommendation-toolbar {
@@ -611,7 +613,8 @@ function ownershipSummary(group) {
   display: flex;
   gap: 4px;
   padding: 4px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface-raised, var(--mower-surface));
   box-shadow: 0 0 0 1px var(--mower-border);
 }
@@ -624,7 +627,8 @@ function ownershipSummary(group) {
   font-size: 12px;
   cursor: pointer;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   min-height: 40px;
   padding: 7px 12px;
   transition:
@@ -691,7 +695,8 @@ function ownershipSummary(group) {
 }
 .single-section {
   border: 1px solid var(--mower-border);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface);
   overflow: hidden;
 }
@@ -914,7 +919,8 @@ function ownershipSummary(group) {
   color: inherit;
   font: inherit;
   border: 1px solid var(--mower-border);
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   padding: 5px 6px;
   box-sizing: border-box;
   min-height: 30px;
@@ -959,7 +965,8 @@ h2 span {
 .group-detail {
   background: var(--mower-surface);
   border: 1px solid var(--mower-border);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   padding: 14px 16px;
 }
 .detail-heading {
@@ -1018,7 +1025,8 @@ h4 {
   max-width: 100%;
   padding: 0;
   border: 1px solid var(--mower-border);
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: inherit;
   font: inherit;
@@ -1033,7 +1041,8 @@ h4 {
   align-items: center;
   gap: 7px;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   padding: 4px 8px;
   min-height: 40px;
   min-width: 0;

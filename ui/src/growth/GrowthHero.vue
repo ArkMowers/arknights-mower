@@ -24,7 +24,10 @@ const props = defineProps({
   syncHint: { type: String, default: '' },
   missingKinds: { type: Number, default: 0 },
   readyGoals: { type: Number, default: 0 },
-  compact: Boolean
+  compact: Boolean,
+  // 首次读取时上次的版面：{ training, goals, roster }。给出时说明、当前训练、读数和已拥有干员
+  // 都画成同样大小的占位块，读完后内容落在原处。
+  placeholder: { type: Object, default: null }
 })
 const emit = defineEmits([
   'update:autoCrafting',
@@ -117,7 +120,10 @@ const syncLabel = computed(() => {
         <h1 id="growth-hero-title" class="growth-hero__title gp-display">
           养成规划<span class="growth-hero__title-mark" aria-hidden="true">/</span>
         </h1>
-        <p class="growth-hero__state">{{ stateLine }}</p>
+        <p v-if="placeholder" class="growth-hero__state">
+          <span class="skeleton-bone skeleton-text" style="--skeleton-w: 21em" />
+        </p>
+        <p v-else class="growth-hero__state">{{ stateLine }}</p>
 
         <div class="growth-hero__actions">
           <n-button class="gp-btn--paper" @click="emit('add-target')">
@@ -127,7 +133,12 @@ const syncLabel = computed(() => {
           <n-button class="gp-btn--ghost-ink" @click="emit('open-plan')">
             <template #icon><n-icon :component="ListOutline" /></template>
             养成计划
-            <span v-if="totalGoals" class="growth-hero__count gp-mono">{{ totalGoals }}</span>
+            <span v-if="placeholder?.goals" class="growth-hero__count gp-mono"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
+            /></span>
+            <span v-else-if="!placeholder && totalGoals" class="growth-hero__count gp-mono">{{
+              totalGoals
+            }}</span>
           </n-button>
         </div>
 
@@ -204,14 +215,54 @@ const syncLabel = computed(() => {
       <aside class="growth-hero__current" aria-label="当前训练">
         <div class="growth-hero__current-head">
           <span class="gp-kicker growth-hero__current-kicker">Current training</span>
+          <span v-if="placeholder" class="gp-stamp growth-hero__stamp gp-stamp--ink"
+            ><span><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em" /></span
+          ></span>
           <span
+            v-else
             class="gp-stamp growth-hero__stamp"
             :class="training ? 'gp-stamp--warn' : 'gp-stamp--ink'"
             >{{ trainingStatusLabel }}</span
           >
         </div>
 
-        <template v-if="training">
+        <template v-if="placeholder?.training">
+          <div class="growth-hero__current-body">
+            <span class="skeleton-bone growth-hero__avatar-placeholder" />
+            <div class="growth-hero__current-who">
+              <h2><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3.5em" /></h2>
+              <p class="growth-hero__current-skill">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 9em" />
+              </p>
+              <p class="growth-hero__current-sub">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" />
+              </p>
+            </div>
+          </div>
+          <div class="growth-hero__track">
+            <div v-for="label in ['专一', '专二', '专三']" :key="label" class="growth-hero__seg">
+              <i aria-hidden="true" />
+              <span>{{ label }}</span>
+            </div>
+          </div>
+        </template>
+
+        <template v-else-if="placeholder">
+          <div class="growth-hero__idle">
+            <div class="growth-hero__idle-mark gp-display" aria-hidden="true">W</div>
+            <div>
+              <h2><span class="skeleton-bone skeleton-text" style="--skeleton-w: 5em" /></h2>
+              <p class="growth-hero__current-sub">
+                <span class="skeleton-bone skeleton-text" style="--skeleton-w: 12em" />
+              </p>
+            </div>
+          </div>
+          <n-button class="gp-btn--ghost-ink growth-hero__idle-action" size="small" inert>
+            安排训练
+          </n-button>
+        </template>
+
+        <template v-else-if="training">
           <div class="growth-hero__current-body">
             <GrowthAvatar :name="training.op?.name" :rarity="training.op?.rarity" :size="76" />
             <div class="growth-hero__current-who">
@@ -269,21 +320,54 @@ const syncLabel = computed(() => {
         <dl class="growth-hero__readout">
           <div>
             <dt>目标</dt>
-            <dd class="gp-num">{{ totalGoals }}</dd>
+            <dd class="gp-num">
+              <span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1em"
+              />
+              <template v-else>{{ totalGoals }}</template>
+            </dd>
           </div>
           <div>
             <dt>材料备齐</dt>
-            <dd class="gp-num">{{ readyGoals }}</dd>
+            <dd class="gp-num">
+              <span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1em"
+              />
+              <template v-else>{{ readyGoals }}</template>
+            </dd>
           </div>
           <div>
             <dt>缺口</dt>
-            <dd class="gp-num" :class="{ 'is-signal': missingKinds > 0 }">{{ missingKinds }}</dd>
+            <dd class="gp-num" :class="{ 'is-signal': !placeholder && missingKinds > 0 }">
+              <span
+                v-if="placeholder"
+                class="skeleton-bone skeleton-text"
+                style="--skeleton-w: 1em"
+              />
+              <template v-else>{{ missingKinds }}</template>
+            </dd>
           </div>
         </dl>
       </aside>
     </div>
 
-    <div v-if="roster.length" class="growth-hero__roster" aria-label="已拥有的干员">
+    <div v-if="placeholder?.roster" class="growth-hero__roster" aria-hidden="true">
+      <span class="growth-hero__roster-label gp-mono"
+        >OWNED <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em"
+      /></span>
+      <div class="growth-hero__roster-strip">
+        <span
+          v-for="index in placeholder.roster"
+          :key="index"
+          class="skeleton-bone growth-hero__roster-placeholder"
+        />
+      </div>
+    </div>
+    <div v-else-if="roster.length" class="growth-hero__roster" aria-label="已拥有的干员">
       <span class="growth-hero__roster-label gp-mono">OWNED {{ operators.length }}</span>
       <div class="growth-hero__roster-strip" aria-hidden="true">
         <GrowthAvatar
@@ -337,7 +421,8 @@ const syncLabel = computed(() => {
   position: relative;
   overflow: hidden;
   isolation: isolate;
-  border-radius: 26px;
+  border-radius: calc(26px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-ink-panel);
   color: var(--gp-paper-on-ink);
   padding: 30px 32px 0;
@@ -428,7 +513,8 @@ const syncLabel = computed(() => {
 .growth-hero__count {
   margin-left: 8px;
   padding: 0 6px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: rgba(244, 240, 229, 0.14);
   font-size: 11px;
   line-height: 18px;
@@ -469,7 +555,8 @@ const syncLabel = computed(() => {
   color: var(--gp-muted-on-ink);
   font: inherit;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   transition: color 160ms var(--gp-ease);
 }
 
@@ -496,7 +583,8 @@ const syncLabel = computed(() => {
   min-height: 234px;
   padding: 18px 20px;
   border: 1px solid var(--gp-hair-on-ink);
-  border-radius: 18px;
+  border-radius: calc(18px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: linear-gradient(155deg, rgba(244, 240, 229, 0.075), rgba(244, 240, 229, 0.025));
   backdrop-filter: blur(2px);
 }
@@ -618,7 +706,8 @@ const syncLabel = computed(() => {
   height: 64px;
   flex: none;
   border: 1px dashed var(--gp-hair-on-ink);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--gp-muted-on-ink);
   font-size: 28px;
 }
@@ -671,6 +760,23 @@ const syncLabel = computed(() => {
   color: var(--gp-muted-on-ink);
 }
 
+.growth-hero {
+  --skeleton-color: color-mix(in srgb, var(--gp-paper-on-ink) 12%, transparent);
+  --skeleton-sheen: color-mix(in srgb, var(--gp-paper-on-ink) 10%, transparent);
+}
+
+.growth-hero__avatar-placeholder {
+  width: 76px;
+  height: 76px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+}
+
+.growth-hero__roster-placeholder {
+  width: 26px;
+  height: 26px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+}
+
 .growth-hero__roster-strip {
   display: flex;
   gap: 6px;
@@ -679,7 +785,8 @@ const syncLabel = computed(() => {
 }
 
 .growth-hero__roster-strip :deep(.growth-avatar) {
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   flex: none;
 }
 
@@ -705,7 +812,8 @@ const syncLabel = computed(() => {
 @media (max-width: 620px) {
   .growth-hero {
     padding: 18px 16px 0;
-    border-radius: 20px;
+    border-radius: calc(20px * var(--mower-corner-scale));
+    corner-shape: var(--mower-corner-shape);
   }
   .growth-hero__title {
     font-size: 40px;
@@ -716,7 +824,8 @@ const syncLabel = computed(() => {
   .growth-hero__current {
     padding: 14px 15px;
     gap: 12px;
-    border-radius: 14px;
+    border-radius: calc(14px * var(--mower-corner-scale));
+    corner-shape: var(--mower-corner-shape);
   }
   .growth-hero__readout dd {
     font-size: 22px;

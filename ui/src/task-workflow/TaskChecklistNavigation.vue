@@ -358,7 +358,8 @@ watch(
   height: calc(var(--settings-viewport-height, 100dvh / var(--mower-zoom, 1)) - 40px);
   max-height: calc(var(--settings-viewport-height, 100dvh / var(--mower-zoom, 1)) - 40px);
   border: 1px solid var(--mower-border);
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -400,7 +401,8 @@ watch(
   height: 44px;
   padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--mower-text-muted);
   cursor: pointer;
@@ -451,7 +453,8 @@ watch(
   display: flex;
   align-items: center;
   min-width: 0;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 .checklist-task-select {
   border: 0;

@@ -35,6 +35,12 @@ const STATE_LABELS = {
 }
 
 const slots = computed(() => props.signIn?.slots || [])
+// 读取中还没有签到格时，按本月天数画出带序号的占位格，奖励图标的位置是占位块，
+// 读完后图标出现在同样的位置。
+const placeholderDays = computed(() => {
+  const [year, month] = props.month.split('-').map(Number)
+  return new Date(year, month, 0).getDate() || 0
+})
 const selected = computed(() => slots.value.find((slot) => slot.index === props.selectedIndex))
 const todayFailed = computed(
   () => !props.signIn?.todaySigned && Boolean(props.signIn?.todayRecord?.hasFailure)
@@ -190,6 +196,16 @@ async function onGridKeydown(event) {
           </button>
         </li>
       </ol>
+      <ol v-else-if="loading" class="slot-grid" aria-hidden="true">
+        <li v-for="index in placeholderDays" :key="index">
+          <span class="sign-slot is-placeholder">
+            <span class="sign-slot__number">{{ index }}</span>
+            <span class="sign-slot__rewards"
+              ><span class="skeleton-bone sign-slot__placeholder"
+            /></span>
+          </span>
+        </li>
+      </ol>
     </div>
 
     <aside class="calendar-detail" aria-label="签到明细" :aria-busy="!signIn && loading">
@@ -260,6 +276,22 @@ async function onGridKeydown(event) {
           </p>
           <slot v-if="selected.state === 'today' && todayFailed" name="retry" />
         </template>
+        <template v-else-if="loading && !signIn">
+          <header class="slot-detail__header">
+            <h2><span class="skeleton-bone skeleton-text" style="--skeleton-w: 5.5em" /></h2>
+          </header>
+          <ul class="slot-detail__rewards" aria-hidden="true">
+            <li>
+              <span class="skeleton-bone slot-detail__art-placeholder" />
+              <span class="slot-detail__name"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em"
+              /></span>
+              <strong class="slot-detail__count"
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em"
+              /></strong>
+            </li>
+          </ul>
+        </template>
         <p v-else class="slot-detail__note" role="status">
           {{ loading ? '正在读取签到记录…' : '这个渠道本月还没有签到记录' }}
         </p>
@@ -304,6 +336,7 @@ async function onGridKeydown(event) {
   margin: 0;
   padding: 12px;
   border-radius: var(--skland-inner-radius, 12px);
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   color: var(--mower-text);
   list-style: none;
@@ -417,6 +450,17 @@ async function onGridKeydown(event) {
 .sign-slot.is-today .sign-slot__number {
   opacity: var(--stage-today-number-opacity, 0.78);
 }
+.sign-slot.is-placeholder {
+  cursor: default;
+}
+.sign-slot.is-placeholder::after {
+  display: none;
+}
+.sign-slot__placeholder {
+  width: var(--reward-size);
+  height: var(--reward-size);
+  border-radius: calc(8px * var(--mower-corner-scale));
+}
 .sign-slot__corner {
   position: absolute;
   z-index: 4;
@@ -490,7 +534,8 @@ async function onGridKeydown(event) {
   inset-inline-end: -3px;
   inset-block-start: -6px;
   padding: 0 4px;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-text) 14%, var(--mower-surface));
   color: var(--mower-text);
   font-size: 11px;
@@ -548,7 +593,8 @@ async function onGridKeydown(event) {
   flex-direction: column;
   min-width: 0;
   border: 1px solid var(--mower-divider);
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   contain: size;
 }
@@ -564,7 +610,8 @@ async function onGridKeydown(event) {
   min-height: 32px;
   padding: 5px 2px;
   border: 0;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--mower-text-muted);
   font: inherit;
@@ -606,7 +653,8 @@ async function onGridKeydown(event) {
 }
 .slot-detail__state {
   padding: 0 7px;
-  border-radius: 9px;
+  border-radius: calc(9px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-text) 8%, transparent);
   color: var(--mower-text-muted);
   font-size: 12px;
@@ -635,8 +683,13 @@ async function onGridKeydown(event) {
   align-items: center;
   gap: 10px;
   padding-right: 8px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: color-mix(in srgb, var(--mower-text) 5%, transparent);
+}
+.slot-detail__art-placeholder {
+  aspect-ratio: 1;
+  border-radius: calc(7px * var(--mower-corner-scale));
 }
 .slot-detail__name {
   overflow-wrap: anywhere;

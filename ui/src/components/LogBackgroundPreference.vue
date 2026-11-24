@@ -82,7 +82,8 @@ onMounted(() => void background.load())
   max-width: 340px;
   aspect-ratio: 16 / 9;
   border: 1px solid var(--mower-border);
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background-size: cover;
   background-position: 65% 50%;
 }

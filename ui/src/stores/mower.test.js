@@ -59,6 +59,12 @@ describe('worker status', () => {
     )
   })
 
+  it('marks the worker status as known only after a status response arrives', async () => {
+    expect(store.status_ready).toBe(false)
+    await store.get_running()
+    expect(store.status_ready).toBe(true)
+  })
+
   it('restores flash pause from status and clears it for older or stopped backends', async () => {
     const pause = { id: 'window', end: '2026-10-26T18:00:00+08:00' }
     axios.get.mockResolvedValueOnce({
@@ -448,6 +454,21 @@ describe('worker status', () => {
 const logAt = (value) => Date.parse(value.replace(' ', 'T'))
 
 describe('log WebSocket access', () => {
+  it('marks the log history as received on the first log message, even when it is empty', () => {
+    vi.stubGlobal('window', { location: { search: '' } })
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:58000' })
+    setActivePinia(createPinia())
+    const store = useMowerStore()
+    store.listen_ws()
+    expect(store.log_history_ready).toBe(false)
+    store.ws.onmessage({
+      data: JSON.stringify({ type: 'log', stream_id: 'run-a', snapshot: true, records: [] })
+    })
+    expect(store.log_history_ready).toBe(true)
+    expect(store.log_lines).toEqual([])
+    store.$dispose()
+  })
+
   it.each([
     [-8, 500, false],
     [8, 3000, true]

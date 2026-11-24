@@ -169,7 +169,8 @@ watch(
   min-height: 54px;
   padding: 3px 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--tab-text);
   font: inherit;
@@ -238,7 +239,8 @@ watch(
   gap: 10px;
   min-height: 44px;
   padding: 0 12px;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: var(--tab-text);
   font-size: 14px;
   text-decoration: none;

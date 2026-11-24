@@ -126,6 +126,7 @@ function imageFailed(event) {
 .log-operator:focus-visible {
   outline: 2px solid currentColor;
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
 }
 </style>

@@ -126,7 +126,8 @@ function searchKey(event) {
   min-height: 40px;
   padding: 8px 12px;
   border: 0;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   color: inherit;
   background: transparent;
   font: inherit;
@@ -161,7 +162,8 @@ function searchKey(event) {
 .settings-sidebar .settings-nav-item {
   min-height: 36px;
   box-sizing: border-box;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 13px;
 }
 .settings-sidebar .settings-nav-item.is-active::before {
@@ -191,7 +193,8 @@ function searchKey(event) {
   gap: 12px;
   min-height: 44px;
   padding: 10px 14px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   font-size: 15px;
   color: var(--mower-text);
 }

@@ -27,6 +27,19 @@
   letter-spacing: -0.02em;
 }
 
+/* 读取中：检查结果的标签和开关画成同样大小的占位块，更新渠道选择框画出外框（SkeletonField）。 */
+.update-tag-placeholder {
+  width: 3.6em;
+  height: 22px;
+  border-radius: calc(2px * var(--mower-corner-scale, 1));
+}
+
+.update-switch-placeholder {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+}
+
 .update-version,
 .update-version-value {
   overflow-wrap: anywhere;
@@ -132,7 +145,8 @@
   gap: 8px;
   margin-top: 16px;
   padding: 14px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
@@ -213,7 +227,8 @@
 
 .update-preview-notes {
   padding: 16px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-control-surface);
 }
 

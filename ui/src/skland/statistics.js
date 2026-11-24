@@ -263,6 +263,23 @@ export function buildSignInSlots({
   }
 }
 
+// 渠道按钮上的名称：游戏和区服（bilibili服简称 B服），多个角色共用一个渠道时再加角色名。
+export function channelChipLabel(channel) {
+  const region = channel.channel === 'bilibili服' ? 'B服' : channel.channel
+  const role = channel.shared ? ` · ${channel.display_name || `角色 ${channel.role_index}`}` : ''
+  return `${channel.game_group} ${region}${role}`
+}
+
+// 估算一段文字的宽度（em）：汉字按 1em、空格按 0.3em、其他字符按 0.6em。读取中按上次的名称
+// 长度画占位块时使用。
+export function textWidthEm(text) {
+  let width = 0
+  for (const char of String(text ?? '')) {
+    width += char === ' ' ? 0.3 : char.charCodeAt(0) > 0xff ? 1 : 0.6
+  }
+  return Math.round(width * 10) / 10
+}
+
 export function gameGroupOf(game) {
   return GAME_GROUPS.find((group) => game?.startsWith(group)) || game || '其他'
 }

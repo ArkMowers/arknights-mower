@@ -119,7 +119,8 @@ function update(key, value) {
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  border-radius: 18px;
+  border-radius: calc(18px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface);
 }
 
@@ -173,14 +174,16 @@ function update(key, value) {
   grid-template-columns: repeat(10, 1fr);
   gap: 2px;
   padding: 3px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
 .survey__node {
   height: 26px;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   font: inherit;
@@ -218,7 +221,8 @@ function update(key, value) {
   height: 26px;
   padding: 0 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   font: inherit;

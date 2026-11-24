@@ -612,7 +612,8 @@ defineExpose({ open })
 .plan-trigger__count {
   margin-left: 6px;
   padding: 0 5px;
-  border-radius: 4px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-3);
   color: var(--gp-muted);
   font-size: 10px;
@@ -660,7 +661,8 @@ defineExpose({ open })
   flex-direction: column;
   gap: 8px;
   padding: 12px 14px;
-  border-radius: 14px;
+  border-radius: calc(14px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-accent-block);
 }
 
@@ -736,7 +738,8 @@ defineExpose({ open })
   gap: 10px;
   min-height: 56px;
   padding: 7px 8px;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -845,7 +848,8 @@ defineExpose({ open })
   align-items: flex-start;
   gap: 4px;
   padding: 28px 16px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 

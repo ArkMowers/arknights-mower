@@ -6,6 +6,7 @@ import axios from 'axios'
 
 import RelayInstanceToken from './components/RelayInstanceToken.vue'
 import { isRelayPage, relayBuild } from './utils/instanceToken'
+import { releaseBoot } from './boot/bootScreen'
 
 if (isRelayPage()) {
   axios.defaults.headers.common['X-Mower-UI-Build'] = relayBuild()
@@ -22,7 +23,9 @@ const app = createApp({
       : h(RelayInstanceToken, {
           onReady: () => {
             ready.value = true
-          }
+          },
+          // 中继页先要输入实例 Token，启动画面不能挡住表单。
+          onVnodeMounted: () => releaseBoot('app')
         })
 })
 app.use(router)

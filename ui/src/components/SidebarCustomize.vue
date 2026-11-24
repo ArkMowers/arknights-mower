@@ -150,7 +150,8 @@ function confirm() {
   min-width: 0;
   padding: 8px 10px;
   border: 1px solid var(--mower-border, #dedee3);
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--mower-surface, #fff);
   color: inherit;
   font: inherit;
@@ -183,7 +184,8 @@ function confirm() {
   gap: 8px;
   min-width: 0;
   padding: 8px;
-  border-radius: 5px;
+  border-radius: calc(5px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: inherit;
   font: inherit;

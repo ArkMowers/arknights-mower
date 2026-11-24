@@ -103,6 +103,11 @@ const availableMastery = computed(
   () => (props.operator.max_phase ?? (props.operator.rarity >= 4 ? 2 : 0)) >= 2
 )
 const availableModules = computed(() => props.moduleRows.length > 0)
+// 详情读到之前：等级与精英化按列表里已有的干员数据直接画出，技能专精按尚未专三的技能名
+// 列出，只有专三率、目标和材料先占位。
+const placeholderSkills = computed(() =>
+  operatorSkillRows(props.operator).filter((row) => row.current < 3)
+)
 
 // 窄屏下档案改为底部抽屉。抽屉与遮罩 teleport 到 body，避免被窗口壳内容区
 // （position: relative; z-index: 1; overflow: hidden）裁剪或压在底部导航下面。
@@ -184,8 +189,39 @@ function skillStatusType(status) {
         </div>
       </header>
 
-      <div v-if="loading" class="growth-dossier__body">
-        <div v-for="index in 4" :key="index" class="gp-skeleton growth-dossier__skeleton" />
+      <div v-if="loading" class="growth-dossier__body" aria-busy="true">
+        <section class="growth-dossier__block" inert>
+          <GrowthLevelPlan
+            :operator="operator"
+            :selected-key="levelSelected"
+            :required-key="levelRequired"
+            :apply-target="() => {}"
+          />
+        </section>
+        <section v-if="placeholderSkills.length" class="growth-dossier__block" inert>
+          <header class="growth-dossier__block-head">
+            <h3>技能专精</h3>
+            <span class="growth-dossier__block-meta gp-mono"
+              >{{ placeholderSkills.length }} 项</span
+            >
+          </header>
+          <div v-for="row in placeholderSkills" :key="row.index" class="growth-dossier__skill">
+            <div class="growth-dossier__skill-head">
+              <div class="growth-dossier__skill-title">
+                <b>{{ row.name }}</b>
+                <span class="skeleton-bone growth-dossier__tag-placeholder" />
+              </div>
+            </div>
+            <div class="growth-dossier__skill-controls">
+              <span class="skeleton-bone growth-dossier__control-placeholder" />
+              <n-button size="small" quaternary>
+                <template #icon><n-icon :component="FlashOutline" /></template>
+                立即训练
+              </n-button>
+            </div>
+            <span class="skeleton-bone skeleton-line" style="--skeleton-w: 46%" />
+          </div>
+        </section>
       </div>
 
       <div v-else-if="error" class="gp-empty growth-dossier__error">
@@ -444,7 +480,8 @@ function skillStatusType(status) {
   flex-direction: column;
   max-height: calc(100dvh - 92px);
   min-width: 0;
-  border-radius: 22px;
+  border-radius: calc(22px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
   overflow: hidden;
@@ -505,7 +542,8 @@ function skillStatusType(status) {
   height: 30px;
   flex: none;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   cursor: pointer;
@@ -597,8 +635,16 @@ function skillStatusType(status) {
   background-color: var(--gp-muted);
 }
 
-.growth-dossier__skeleton {
-  height: 84px;
+.growth-dossier__tag-placeholder {
+  width: 76px;
+  height: 22px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+}
+
+.growth-dossier__control-placeholder {
+  width: 168px;
+  height: 28px;
+  border-radius: calc(8px * var(--mower-corner-scale));
 }
 
 .growth-dossier__block {
@@ -671,7 +717,8 @@ function skillStatusType(status) {
 .growth-dossier__warning {
   margin: 0;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-warn-block);
   color: var(--gp-warn);
   font-size: 11.5px;
@@ -684,7 +731,8 @@ function skillStatusType(status) {
   flex-direction: column;
   gap: 9px;
   padding: 12px;
-  border-radius: 12px;
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface-2);
 }
 
@@ -729,7 +777,8 @@ function skillStatusType(status) {
   display: inline-flex;
   padding: 2px;
   gap: 2px;
-  border-radius: 8px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: var(--gp-surface);
   box-shadow: inset 0 0 0 1px var(--gp-hair-soft);
 }
@@ -738,7 +787,8 @@ function skillStatusType(status) {
   height: 25px;
   padding: 0 8px;
   border: 0;
-  border-radius: 6px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   background: transparent;
   color: var(--gp-muted);
   font: inherit;
@@ -823,7 +873,8 @@ function skillStatusType(status) {
     bottom: 0;
     z-index: 901;
     max-height: 86dvh;
-    border-radius: 22px 22px 0 0;
+    border-radius: calc(22px * var(--mower-corner-scale)) calc(22px * var(--mower-corner-scale)) 0 0;
+    corner-shape: var(--mower-corner-shape);
     box-shadow: 0 -20px 60px -24px rgba(0, 0, 0, 0.45);
   }
 

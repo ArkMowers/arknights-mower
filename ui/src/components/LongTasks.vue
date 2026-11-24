@@ -329,7 +329,8 @@ function configureWindow(window) {
 
 .long-task-table-wrap {
   overflow-x: auto;
-  border-radius: 10px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.06),
     0 4px 12px rgba(0, 0, 0, 0.04);
