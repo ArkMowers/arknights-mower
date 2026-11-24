@@ -770,6 +770,12 @@ Failed rescue staffing does not block due recovery observations or independent r
 
 The [task retention decision](../../.agents/notes/implemented/bug-fix/2026-10-01-recovery-release-and-task-retention.md) records the failure regressions.
 
+### Monthly Card Expiry Reminder
+
+When the base scheduler observes the game home screen, it checks the existing frame for the monthly card badge near the store. It selects candidates by shape and by the dark left panel and pink text background, then reads the right side for the complete text `即将到期`. Mower checks once per visit to the home screen within a game day. An inconclusive reading can be checked again on a later visit. The check does not open the store or change the task queue.
+
+After confirming the badge, Mower records a reminder for the game day in the instance database. It logs `月卡即将到期` and uses the WARNING email level, which follows the same mail settings as a rare recruitment tag. The saved date prevents another reminder on the same game day after restarting Mower. The badge supplies neither the expiry date nor the remaining number of days. [Focused tests](../../arknights_mower/tests/monthly_card_tests.py) cover recognition and reminder delivery.
+
 ### Skland Sign-In Dispatch
 
 Automatic 森空岛签到 runs in the daily-task window when the global switch is on and at least one account has enabled both a game and one of its regions. A dispatch records completion for its starting game day once every enabled account has eligible roles and every targeted role has a saved successful or already-signed result for its Skland date. If an account cannot load its roles or a role's sign-in request fails, the solver continues with other accounts and roles. A dispatch with an unresolved role, request failure or unsaved result records only the attempt. The saved attempt prevents repeating the automatic task in that game day. Independent daily tasks continue, and an explicit manual run can try again. When no region is enabled, the task remains eligible once a region is enabled. Older snapshots with no attempt date remain readable. [Solver tests](../../arknights_mower/tests/skland_tests.py) and [scheduler tests](../../arknights_mower/tests/base_scheduler_tests.py) cover completion and dispatch.

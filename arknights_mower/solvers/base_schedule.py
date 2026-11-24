@@ -50,6 +50,7 @@ from arknights_mower.solvers.local_operation import (
 )
 from arknights_mower.solvers.local_operation_execution import run_local_operation
 from arknights_mower.solvers.mail import MailSolver
+from arknights_mower.solvers.monthly_card import MonthlyCardReminder
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
@@ -674,6 +675,7 @@ class BaseSchedulerSolver(
         *,
         connection_retries: int = 3,
     ) -> None:
+        self._monthly_card_reminder = MonthlyCardReminder()
         super().__init__(device, recog, connection_retries=connection_retries)
         self.op_data = None
         self.party_time = None
@@ -1863,6 +1865,12 @@ class BaseSchedulerSolver(
             reserved_slots=reserved_slots,
         )
         return len(self.tasks) > had_tasks
+
+    def scene(self) -> int:
+        scene = super().scene()
+        if reminder := getattr(self, "_monthly_card_reminder", None):
+            reminder.observe(scene, self.recog)
+        return scene
 
     def transition(self) -> None:
         if "_order_return_unresolved" in self.__dict__:

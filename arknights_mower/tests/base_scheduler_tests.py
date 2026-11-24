@@ -48,6 +48,29 @@ with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
     pass
 
 
+def test_scheduler_uses_the_already_recognized_home_frame_for_the_monthly_card(
+    income_db, monkeypatch
+):
+    from arknights_mower.solvers import monthly_card
+
+    mail = MagicMock()
+    confirmation = MagicMock(return_value=True)
+    monkeypatch.setattr(monthly_card, "send_message", mail)
+    monkeypatch.setattr(monthly_card, "expiry_visible", confirmation)
+    scheduler = object.__new__(BaseSchedulerSolver)
+    scheduler._monthly_card_reminder = monthly_card.MonthlyCardReminder()
+    frame = object()
+    scheduler.recog = MagicMock(img=frame)
+    scheduler.recog.get_scene.side_effect = [Scene.INFRA_MAIN, Scene.INDEX]
+
+    assert scheduler.scene() == Scene.INFRA_MAIN
+    confirmation.assert_not_called()
+    assert scheduler.scene() == Scene.INDEX
+    confirmation.assert_called_once_with(frame)
+    assert mail.call_args.kwargs["level"] == "WARNING"
+    scheduler.recog.update.assert_not_called()
+
+
 class TestSklandLogPrivacy(unittest.TestCase):
     def test_scheduled_sign_failure_does_not_log_raw_exception(self):
         solver = object.__new__(BaseSchedulerSolver)

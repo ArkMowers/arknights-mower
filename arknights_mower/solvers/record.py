@@ -39,6 +39,8 @@ _DB_TABLE_STMTS = (
     "mood_event TEXT"
     ")",
     "CREATE TABLE IF NOT EXISTS saved_state (time TEXT,state BLOB)",
+    "CREATE TABLE IF NOT EXISTS monthly_card_reminder ("
+    "id INTEGER PRIMARY KEY CHECK(id = 1), game_day TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_paradox_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_sss_progress ("
@@ -419,6 +421,18 @@ def save_state_to_db(saved_state):
 
 def save_current_state():
     return save_state_to_db(current_state())
+
+
+def claim_monthly_card_reminder(day: date) -> bool:
+    with _conn() as connection:
+        changed = connection.execute(
+            "INSERT INTO monthly_card_reminder VALUES (1, ?) "
+            "ON CONFLICT(id) DO UPDATE SET game_day = excluded.game_day "
+            "WHERE monthly_card_reminder.game_day < excluded.game_day",
+            (day.isoformat(),),
+        ).rowcount
+        connection.commit()
+    return changed == 1
 
 
 def maa_event_shop_completed(activity_id, start_ts):
