@@ -27,7 +27,7 @@ CONF_GROUPS = {
         "maa_auto_check_update maa_auto_update maa_conn_preset maa_mirrorchyan_token maa_path maa_resource_auto_check_update maa_resource_auto_update maa_restore_theme maa_restore_theme_enable maa_touch_option maa_update_channel".split()
     ),
     "long": set(
-        "garrison copilot paradox maa_long_task_extra_windows maa_long_task_type maa_long_task_weekly_windows maa_rcl_theme maa_rg_enable maa_rg_sleep_max maa_rg_sleep_min maa_rg_theme rcl reclamation_algorithm rogue secret_front sss".split()
+        "garrison copilot event_rerun paradox maa_long_task_extra_windows maa_long_task_type maa_long_task_weekly_windows maa_rcl_theme maa_rg_enable maa_rg_sleep_max maa_rg_sleep_min maa_rg_theme rcl reclamation_algorithm rogue secret_front sss".split()
     ),
     "accounts": {"skland_info"},
     "notifications": set(

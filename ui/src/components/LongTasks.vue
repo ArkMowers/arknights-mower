@@ -117,7 +117,8 @@ const taskOptions = [
   { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
   { label: '隐秘战线', value: 'sf' },
-  { label: '卫戍协议 · 个人极速模拟', value: 'garrison' }
+  { label: '卫戍协议 · 个人极速模拟', value: 'garrison' },
+  { label: '复刻SS活动', value: 'event_rerun' }
 ]
 const windowTaskOptions = [{ label: '跟随默认', value: 'default' }, ...taskOptions]
 const editingType = ref(null)

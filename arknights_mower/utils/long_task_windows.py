@@ -18,6 +18,7 @@ TASK_FLAGS = (
     ("RA", "ra"),
     ("SF", "sf"),
     ("GARRISON", "garrison"),
+    ("EVENT_RERUN", "event_rerun"),
 )
 TASK_TYPES = frozenset(kind for _, kind in TASK_FLAGS)
 

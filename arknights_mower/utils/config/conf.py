@@ -210,6 +210,15 @@ class CopilotConf(ConfModel):
     )
 
 
+class EventRerunConf(ConfModel):
+    event_key: str = Field(default="", max_length=48)
+    stages: list[Annotated[str, Field(pattern=r"^[A-Z0-9]+-\d+$", max_length=24)]] = Field(
+        default_factory=list, max_length=64
+    )
+    raid_enabled: bool = False
+    script_id: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
+
+
 class RogueRecruitConf(ConfModel):
     name: str = ""
     use_support: bool = False
@@ -223,7 +232,9 @@ class LongTaskWindow(ConfModel):
 class WeeklyLongTaskWindow(LongTaskWindow):
     weekdays: list[Annotated[int, Field(strict=True, ge=0, le=6)]]
     task_type: (
-        Literal["rogue", "copilot", "paradox", "sss", "rcl", "ra", "sf", "garrison"]
+        Literal[
+            "rogue", "copilot", "paradox", "sss", "rcl", "ra", "sf", "garrison", "event_rerun"
+        ]
         | None
     ) = None
 
@@ -424,6 +435,7 @@ class LongTaskPart(ConfModel):
         "签到活动开关"
 
     copilot: CopilotConf = Field(default_factory=CopilotConf)
+    event_rerun: EventRerunConf = Field(default_factory=EventRerunConf)
 
     maa_rg_enable: int = 0
     "大型任务"
@@ -1450,6 +1462,10 @@ class Conf(
     @property
     def SF(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sf"
+
+    @property
+    def EVENT_RERUN(self):
+        return self.maa_rg_enable == 1 and self.maa_long_task_type == "event_rerun"
 
     @property
     def GARRISON(self):

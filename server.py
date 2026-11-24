@@ -3318,6 +3318,25 @@ def maa_long_task_status():
             return {"message": "读取大型任务状态失败"}, 500
 
 
+@app.route("/event-rerun")
+@require_token
+def event_rerun_status():
+    from arknights_mower.solvers.record import load_event_rerun_progress
+    from arknights_mower.utils.event_rerun import STAGE_SECONDS, current_rerun
+
+    with backup_lock:
+        try:
+            event = current_rerun()
+            return {
+                "event": event,
+                "stage_seconds": STAGE_SECONDS,
+                "progress": load_event_rerun_progress(event["key"]) if event else {},
+            }
+        except Exception:
+            logger.exception("读取复刻SS活动关卡和进度失败")
+            return {"message": "读取复刻SS活动关卡和进度失败"}, 500
+
+
 @app.route("/maa-copilot", methods=["GET", "POST"])
 @require_token
 def maa_copilot_library():
@@ -3349,6 +3368,9 @@ def delete_maa_copilot(script_id):
     from arknights_mower.utils.maa_copilot import script_path
 
     with backup_lock, maa_maintenance_lock:
+        rerun = getattr(config.conf, "event_rerun", None)
+        if getattr(rerun, "script_id", None) == script_id:
+            return {"message": "请先取消复刻SS活动的作业选择"}, 409
         if any(item.id == script_id for item in config.conf.copilot.scripts):
             return {"message": "请先将作业移出执行队列"}, 409
         if _maa_busy_response():

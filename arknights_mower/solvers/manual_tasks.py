@@ -80,7 +80,12 @@ def run_long_task_if_dorm_pending(scheduler):
         return False
     garrison = kind == "garrison"
     window = long_task_deadline(scheduler, cutoff) - now
-    if garrison:
+    if kind == "event_rerun":
+        from arknights_mower.solvers.event_rerun import pending_rerun, run_event_rerun
+
+        if pending_rerun(scheduler) is None:
+            return False
+    elif garrison:
         from arknights_mower.solvers.garrison.runner import (
             eligible_progress,
             run_garrison,
@@ -103,6 +108,8 @@ def run_long_task_if_dorm_pending(scheduler):
         for task in scheduler.tasks
     ):
         return False
+    if kind == "event_rerun":
+        return run_event_rerun(scheduler)
     if garrison:
         return run_garrison(scheduler)
     now = datetime.now()

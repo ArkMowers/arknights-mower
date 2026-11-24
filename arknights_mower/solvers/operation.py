@@ -1,4 +1,6 @@
+from collections.abc import Callable
 from datetime import datetime
+from time import monotonic
 from typing import Optional
 
 import cv2
@@ -32,6 +34,9 @@ from arknights_mower.utils.recognize import Scene
 
 
 class OperationSolver(SceneGraphSolver):
+    before_single_battle: Callable[[], bool] | None = None
+    on_single_battle_settlement: Callable[[], None] | None = None
+
     def run(
         self,
         stop_time: datetime | None = None,
@@ -44,7 +49,15 @@ class OperationSolver(SceneGraphSolver):
         sanity_threshold: int | None = None,
         stage_duration_seconds: int | None = None,
         inventory_limit_rules=None,
+        before_single_battle: Callable[[], bool] | None = None,
+        on_single_battle_settlement: Callable[[], None] | None = None,
     ):
+        self.before_single_battle = before_single_battle
+        self.on_single_battle_settlement = on_single_battle_settlement
+        self.single_battle_started = False
+        self.single_battle_confirmed_at = None
+        if before_single_battle is not None:
+            target_total_runs = 1
         battle_inventory_active.set()
         try:
             logger.info("Start: 代理作战")
@@ -439,6 +452,8 @@ class OperationSolver(SceneGraphSolver):
 
     def transition(self):
         if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
+            if self.before_single_battle is not None and self.find("ope_agency_lock"):
+                return True
             if self.recog.gray[907][1600] < 127:
                 self.tap((1776, 908))
                 return
@@ -496,9 +511,27 @@ class OperationSolver(SceneGraphSolver):
                 )
                 self.auto_repeat = False
                 self.repeat_button_attempts = 0
+            if self.before_single_battle is not None:
+                if self.single_battle_started:
+                    return True
+                if self.number(((1515, 870), (1545, 910)), 28) != 1:
+                    logger.warning("无法确认单次代理，结束 %s 的准备", self.stage_id)
+                    return True
+                self.current_batch_repeat_count = 1
             self._mark_battle_started()
             self.tap_element("ope_start", interval=2)
         elif scene == Scene.OPERATOR_SELECT:
+            if self.before_single_battle is not None:
+                if self.single_battle_started:
+                    if monotonic() - self.single_battle_confirmed_at >= 15:
+                        logger.warning("%s 确认开战后仍停在编队界面", self.stage_id)
+                        return True
+                    self.sleep(0.5)
+                    return
+                if not self.before_single_battle():
+                    return True
+                self.single_battle_started = True
+                self.single_battle_confirmed_at = monotonic()
             self.tap((1655, 781))
         elif scene == Scene.OPERATOR_FINISH:
             if self.current_batch_started_at is None:
@@ -506,6 +539,11 @@ class OperationSolver(SceneGraphSolver):
                 logger.warning("跳过未由本批次启动的作战结算，不重复入库")
                 self.tap((310, 330))
                 return
+            if (
+                self.on_single_battle_settlement is not None
+                and self.single_battle_started
+            ):
+                self.on_single_battle_settlement()
             self._record_batch_drops()
             self._finish_batch(True)
             logger.debug(
