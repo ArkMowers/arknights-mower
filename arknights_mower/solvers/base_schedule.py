@@ -8334,17 +8334,32 @@ class BaseSchedulerSolver(
             names, slots = set(), set()
             for room, agents in plan.items():
                 for index, name in enumerate(agents):
-                    if name not in ("Current", ""):
+                    if name != "Current":
                         slots.add((room, index))
                     if name not in ("Current", "Free", ""):
                         names.add(name)
             return names, slots
 
-        transition = copy.deepcopy(transition)
-        self._suppress_retained_arrangements(transition)
-        names, slots = footprint(transition)
-        merged_tasks = []
-        remaining = [
+        def connected_tasks(transition, tasks):
+            names, slots = footprint(transition)
+            remaining = list(tasks)
+            connected = []
+            while remaining:
+                matched = []
+                for task in remaining:
+                    task_names, task_slots = footprint(task.plan)
+                    if names & task_names or slots & task_slots:
+                        matched.append(task)
+                        names.update(task_names)
+                        slots.update(task_slots)
+                if not matched:
+                    break
+                connected.extend(matched)
+                ids = {id(task) for task in matched}
+                remaining = [task for task in remaining if id(task) not in ids]
+            return connected
+
+        candidates = [
             task
             for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type in ordinary
@@ -8356,33 +8371,45 @@ class BaseSchedulerSolver(
             and not getattr(task, "strict_mood_limit", False)
             and not getattr(task, "dorm_recovery_restore", [])
         ]
-        # 同一批任务可能经由第三条安排互相重叠，按关联范围一次收齐。
-        while remaining:
-            matched = []
-            for task in remaining:
-                task_names, task_slots = footprint(task.plan)
-                if names & task_names or slots & task_slots:
-                    matched.append(task)
-                    names.update(task_names)
-                    slots.update(task_slots)
-            if not matched:
+        # 仅在当前候选确实接替旧安排时放开预约。每次重算至少移除一个
+        # 候选，未接替的任务重新保护其岗位及当前驻员。
+        source = transition
+        while True:
+            exempt = {
+                id(task)
+                for task in candidates
+                if getattr(task, "backup_shift_active", False)
+            }
+            reservations = [task for task in self.tasks if id(task) not in exempt]
+            transition = copy.deepcopy(source)
+            self._suppress_retained_arrangements(
+                transition, reservation_tasks=reservations
+            )
+            merged_tasks = connected_tasks(transition, candidates)
+            if exempt.difference(id(task) for task in merged_tasks):
+                candidates = merged_tasks
+                continue
+            if not merged_tasks:
+                return transition, []
+            merged = {}
+            for task in sorted(merged_tasks, key=lambda task: task.time):
+                planned = copy.deepcopy(task.plan)
+                self._filter_ordinary_exhaust_departures(task, planned, self.op_data)
+                _merge_shift_transition(merged, planned, self.op_data)
+            _merge_shift_transition(merged, transition, self.op_data)
+            # 旧任务也可能带入其他预约保护的调人操作。核对最终名单，
+            # 只保留仍能完整交接剩余安排的任务，再重验它们之间的关联。
+            _, slots = footprint(merged)
+            self._suppress_retained_arrangements(merged, reservation_tasks=reservations)
+            blocked = slots - footprint(merged)[1]
+            if not blocked:
                 break
-            merged_tasks.extend(matched)
-            ids = {id(task) for task in matched}
-            remaining = [task for task in remaining if id(task) not in ids]
-        if not merged_tasks:
-            return transition, []
-        merged = {}
-        for task in sorted(merged_tasks, key=lambda task: task.time):
-            planned = copy.deepcopy(task.plan)
-            self._filter_ordinary_exhaust_departures(task, planned, self.op_data)
-            _merge_shift_transition(merged, planned, self.op_data)
-        _merge_shift_transition(merged, transition, self.op_data)
-        merged = {
-            room: agents
-            for room, agents in merged.items()
-            if any(name != "Current" for name in agents)
-        }
+            candidates = [
+                task for task in merged_tasks if not footprint(task.plan)[1] & blocked
+            ]
+            if len(candidates) == len(merged_tasks):
+                # 合并后整组回班条件也可能改变新意图的准入，保留原任务。
+                candidates = []
         logger.debug(
             "副表收敛合并 %s 条旧安排，直接执行最终换班：%s", len(merged_tasks), merged
         )
@@ -10369,7 +10396,9 @@ class BaseSchedulerSolver(
         self._resume_waiting_group_shifts()
         return True
 
-    def _suppress_retained_arrangements(self, plan, *, returning_groups=()):
+    def _suppress_retained_arrangements(
+        self, plan, *, returning_groups=(), reservation_tasks=None
+    ):
         """派生安排不重做保留任务，也不挪用其目标和当前驻员。"""
         returning = [
             group
@@ -10385,7 +10414,7 @@ class BaseSchedulerSolver(
             )
             names, slots = retained_task_reservations(
                 self.op_data,
-                self.tasks,
+                self.tasks if reservation_tasks is None else reservation_tasks,
                 current_task=getattr(self, "task", None),
                 returning_groups=returning,
                 recovering_name=recovering_name,
@@ -10451,6 +10480,55 @@ class BaseSchedulerSolver(
             for index, name in enumerate(row)
         )
 
+    def _return_releases_waiting_recovery(self, task, plan, *, now):
+        """预演回班腾床后，核对挂起任务能否恢复并使用该床位。"""
+        returning_names = _assigned_operator_names(
+            {room: row for room, row in plan.items() if not room.startswith("dorm")}
+        )
+        source_beds = {
+            bed.position
+            for bed in self.op_data.dorm
+            if (op := self.op_data.get_current_operator(*bed.position)) is not None
+            and op.name in returning_names
+        }
+        if not source_beds:
+            return False
+        admissible = copy.deepcopy(plan)
+        self._suppress_retained_arrangements(
+            admissible, returning_groups=self._returning_groups_releasing_waits(task)
+        )
+        if admissible != plan:
+            return False
+        simulation = copy.copy(self)
+        simulation.op_data = self.op_data.project_arrangements([plan], now=now)
+        vacancies = {
+            slot
+            for slot in source_beds
+            if simulation.op_data.get_current_operator(*slot) is None
+        }
+        if not vacancies:
+            return False
+        simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
+            (
+                [pending for pending in self.tasks if pending is not task],
+                self.waiting_group_shifts,
+            )
+        )
+        simulation.task = None
+        waiting = {id(pending) for pending in simulation.waiting_group_shifts}
+        simulation._resume_waiting_group_shifts()
+        return any(
+            id(pending) in waiting
+            and not getattr(pending, "execution_failure", None)
+            and any(
+                (room, index) in vacancies and name in simulation.op_data.operators
+                for room, row in pending.plan.items()
+                if room.startswith("dorm")
+                for index, name in enumerate(row)
+            )
+            for pending in simulation.tasks
+        )
+
     @log_mood_calculation("完整换班")
     @_log_backup_calculation("完整换班")
     def _prepare_shift_cycle(self, task):
@@ -10491,7 +10569,18 @@ class BaseSchedulerSolver(
         projection_now = getattr(self.op_data, "_projection_now", None)
         if projection_now is None and self.op_data.mood_calculation_enabled:
             projection_now = datetime.now()
-        if self._waiting_return_can_progress(task):
+        waiting_shifts = task.type == TaskTypes.SHIFT_ON and getattr(
+            self, "waiting_group_shifts", ()
+        )
+        agreed_return = self._waiting_return_can_progress(task)
+        releases_bed = (
+            not agreed_return
+            and waiting_shifts
+            and self._return_releases_waiting_recovery(
+                task, task.plan, now=projection_now
+            )
+        )
+        if agreed_return or releases_bed:
             prepared = copy.copy(task)
             prepared.plan = copy.deepcopy(task.plan)
             self._prepare_shift_backup(prepared, now=projection_now)
@@ -10502,7 +10591,16 @@ class BaseSchedulerSolver(
                 == self.op_data.plan_condition
                 and getattr(prepared, "backup_group", self.op_data.backup_group)
                 == self.op_data.backup_group
-                and self._waiting_return_can_progress(prepared)
+                and (
+                    self._waiting_return_can_progress(prepared)
+                    or releases_bed
+                    and (
+                        prepared.plan == task.plan
+                        or self._return_releases_waiting_recovery(
+                            task, prepared.plan, now=projection_now
+                        )
+                    )
+                )
             ):
                 # 先完成这份回班，实际释放床位后再重验挂起的整批换班。
                 # 不把其他普通轮休并入前置回班，避免重新占用刚释放的床位。

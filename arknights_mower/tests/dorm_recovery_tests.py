@@ -203,6 +203,7 @@ def test_retention_change_still_completes_pending_roster_restoration(solver):
 
     arrange(solver)
 
+    solver.enter_room.assert_called_once_with(ROOM)
     assert solver.confirms == [["杜林", "琴柳", "黑角", "银灰", ""], FINAL]
     assert ROOM not in solver.task.dorm_recovery_restore
 
@@ -617,6 +618,7 @@ def test_dorm_without_single_manager_only_confirms_final_roster(solver, fixed):
         for index, name in enumerate(updated)
     ]
     arrange(solver, updated)
+    solver.enter_room.assert_called_once_with(ROOM)
     assert solver.confirms == [updated]
     assert all(not op.dorm_recovery_room for op in solver.op_data.operators.values())
 
