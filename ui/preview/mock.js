@@ -991,7 +991,7 @@ export function createPreviewAdapter(data, requests = []) {
         config
       }
     }
-    if (path === '/maa-long-task-status' && requestUrl.searchParams.get('kind') === 'event_rerun') {
+    if (path === '/stage/event-rerun') {
       if (method === 'PATCH') {
         if (
           body?.event_key !== rerunStatus.event.key ||

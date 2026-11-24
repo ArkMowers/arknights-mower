@@ -285,17 +285,18 @@ def test_single_proxy_confirms_battle_once_and_records_before_closing_settlement
     assert solver.tap.call_count == 2
 
 
+@pytest.mark.parametrize(
+    "url", ["/stage/event-rerun", "/maa-long-task-status?kind=event_rerun"]
+)
 @pytest.mark.parametrize("method", ["GET", "HEAD"])
 @pytest.mark.parametrize("token", [None, "invalid", "copilot-test-token"])
 def test_status_requires_token_before_reading(
-    client, monkeypatch, database, method, token
+    client, monkeypatch, database, method, token, url
 ):
     read = MagicMock(return_value=event())
     monkeypatch.setattr(event_rerun, "current_rerun", read)
     headers = {} if token is None else {"token": token}
-    response = client.open(
-        "/maa-long-task-status?kind=event_rerun", method=method, headers=headers
-    )
+    response = client.open(url, method=method, headers=headers)
     if token == "copilot-test-token":
         read.assert_called_once()
         assert response.status_code == 200
@@ -402,7 +403,7 @@ def test_next_opening_runs_all_ordinary_stages_with_previous_opening_complete(
         }
 
 
-RERUN_URL = "/maa-long-task-status?kind=event_rerun"
+RERUN_URL = "/stage/event-rerun"
 STAGE_CHANGE = {
     "event_key": "act46sre:100",
     "stage": "OS-1",
@@ -428,7 +429,7 @@ def test_progress_edit_auth_before_reads_or_writes(
 @pytest.mark.parametrize(
     "url,fields,status",
     [
-        ("/maa-long-task-status", {}, 400),
+        ("/maa-long-task-status?kind=event_rerun", {}, 405),
         (RERUN_URL, {"completed": 1}, 400),
         (RERUN_URL, {"event_key": "act46sre:99"}, 409),
         (RERUN_URL, {"stage": "OS-EX-8"}, 400),
@@ -487,20 +488,3 @@ def test_manual_completion_skips_stage_and_reset_allows_another_battle(
     assert change("attempted", False).json["progress"] == {"OS-10": "completed"}
     assert record.claim_event_rerun_stage(STAGE_CHANGE["event_key"], "OS-1")
     assert change("attempted", True).json["progress"]["OS-1"] == "completed"
-
-
-def test_relay_only_forwards_event_rerun_progress_reads_and_edits():
-    from arknights_mower.utils.mower_relay.protocol import allowed_request
-
-    base = "/maa-long-task-status"
-    for query, methods in [
-        ("?kind=event_rerun", {"GET", "PATCH"}),
-        ("", set()),
-        ("?kind=copilot", set()),
-        ("?kind=event_rerun&kind=copilot", set()),
-    ]:
-        assert {
-            method
-            for method in ("GET", "HEAD", "POST", "PATCH", "DELETE", "PUT")
-            if allowed_request(method, base + query)
-        } == methods

@@ -43,9 +43,7 @@ afterEach(() => {
 
 it('reads the current opening and displays each ordinary stage outcome', async () => {
   await panel.refreshStatus()
-  expect(state.client.get).toHaveBeenCalledWith(
-    expect.stringMatching(/\/maa-long-task-status\?kind=event_rerun$/)
-  )
+  expect(state.client.get).toHaveBeenCalledWith(expect.stringMatching(/\/stage\/event-rerun$/))
   expect(panel.event.value.key).toBe(live.event.key)
   expect(panel.statusLabel('OS-1')).toBe('已完成')
   expect(panel.statusLabel('OS-10')).toBe('结算待确认')

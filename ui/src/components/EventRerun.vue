@@ -4,7 +4,7 @@ import { useResourceVersionStore } from '@/stores/resourceVersion'
 
 const resourceVersion = useResourceVersionStore()
 const axios = inject('axios')
-const statusUrl = `${import.meta.env.VITE_HTTP_URL || ''}/maa-long-task-status?kind=event_rerun`
+const statusUrl = `${import.meta.env.VITE_HTTP_URL || ''}/stage/event-rerun`
 const event = ref(null)
 const progress = ref({})
 const loaded = ref(false)
