@@ -3,6 +3,9 @@
 import hashlib
 import json
 import re
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.update_runtime import write_json
@@ -13,8 +16,11 @@ MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
 
 def run_key(conf):
+    settings = conf.model_dump()
+    if settings.get("operbox_assist") is False:
+        del settings["operbox_assist"]  # Preserve pre-existing progress when disabled.
     return hashlib.sha256(
-        json.dumps(conf.model_dump(), sort_keys=True, ensure_ascii=False).encode()
+        json.dumps(settings, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
 
 
@@ -132,6 +138,95 @@ def store_script(raw, *, sss=False, paradox=False):
         raise ValueError("作业存储已满，请先删除不再使用的作业")
     write_json(path, data)
     return script_info(script_id, data, sss=sss)
+
+
+def _copilot_operators():
+    from arknights_mower.utils.mastery_recommendation import (
+        get_cultivate_snapshot,
+        get_skill_data,
+    )
+
+    snapshot = get_cultivate_snapshot()
+    error = "请先在「养成规划」中刷新森空岛干员练度，再使用辅助编队"
+
+    def integer(entry, key, low, high):
+        value = entry.get(key) if isinstance(entry, dict) else None
+        if type(value) is not int or not low <= value <= high:
+            raise ValueError(error)
+        return value
+
+    if snapshot is None:
+        raise ValueError(error)
+    definitions = get_skill_data().get("growth", {}).get("characters", {})
+    operators = []
+    seen = set()
+    for char in snapshot["data"]["characters"]:
+        if char["id"] in seen:
+            raise ValueError(error)
+        seen.add(char["id"])
+        definition = definitions.get(char["id"])
+        if not definition:
+            continue
+        skills = char.get("skills", [])
+        equips = char.get("equips", [])
+        if not isinstance(skills, list) or not isinstance(equips, list):
+            raise ValueError(error)
+
+        modules = {module["id"]: module["type"] for module in definition["modules"]}
+        equipped = []
+        for equip in equips:
+            level = integer(equip, "level", 0, 3)
+            equip_id = equip.get("id")
+            if not isinstance(equip_id, str):
+                raise ValueError(error)
+            if not level or equip_id.startswith("uniequip_001_"):
+                continue
+            branch = modules.get(equip_id, "").rsplit("-", 1)[-1]
+            if branch not in {"A", "B", "D", "X", "Y"}:
+                raise ValueError("缺少模组资源，请更新 Mower 资源后再使用辅助编队")
+            equipped.append({"id": equip_id, "type": branch, "level": level})
+        operators.append(
+            {
+                "id": char["id"],
+                "name": definition["name"],
+                "own": True,
+                "rarity": definition["rarity"],
+                "elite": integer(char, "evolvePhase", 0, 2),
+                "level": integer(char, "level", 1, 90),
+                "potential": integer(char, "potentialRank", 0, 5) + 1,
+                "mainSkillLevel": integer(char, "mainSkillLevel", 1, 7)
+                if skills
+                else 0,
+                "skills": [
+                    {"level": integer(skill, "level", 0, 3)} for skill in skills
+                ],
+                "equips": equipped,
+            }
+        )
+    if not any(oper["skills"] for oper in operators):
+        raise ValueError(error)
+    return operators
+
+
+@contextmanager
+def copilot_formation_params(params, conf, maa):
+    if not params.get("formation") or not conf.operbox_assist:
+        yield params
+        return
+
+    from arknights_mower.utils.maa_update import is_maa_version_newer
+
+    if is_maa_version_newer("v6.19.0", maa.get_version()):
+        raise ValueError("使用干员练度辅助编队需要 MAA v6.19.0 或更新版本")
+    operators = _copilot_operators()
+    root = get_path("@app/tmp")
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=root, prefix="copilot-") as directory:
+        path = Path(directory) / "OperBoxData.json"
+        path.write_text(
+            json.dumps({"own_opers": operators}, ensure_ascii=False), "utf-8"
+        )
+        yield {**params, "operbox_data_path": str(path.absolute())}
 
 
 def build_copilot_params(conf):

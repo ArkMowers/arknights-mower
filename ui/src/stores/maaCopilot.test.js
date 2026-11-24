@@ -31,6 +31,7 @@ describe('MAA ordinary Copilot config', () => {
     store.maa_long_task_type = 'copilot'
     store.copilot.scripts.push({ id: 'a'.repeat(64), is_raid: true, nav_name_override: '1-7' })
     store.copilot.formation = true
+    store.copilot.operbox_assist = true
     store.copilot.support_unit_usage = 2
     store.copilot.support_unit_name = '棘刺'
     store.copilot.run_id = 'manual-round'
@@ -41,6 +42,7 @@ describe('MAA ordinary Copilot config', () => {
         run_id: 'manual-round',
         scripts: store.copilot.scripts,
         formation: true,
+        operbox_assist: true,
         support_unit_usage: 2,
         support_unit_name: '棘刺'
       }
@@ -78,6 +80,7 @@ describe('MAA ordinary Copilot config', () => {
     expect(store.sss.scripts).toEqual([])
     expect(store.sss.run_id).toBe('')
     expect(store.copilot.scripts).toEqual([])
+    expect(store.copilot.operbox_assist).toBe(false)
     expect(store.copilot.formation).toBe(false)
     expect(store.copilot.support_unit_usage).toBe(0)
     expect(store.copilot.run_id).toBe('')

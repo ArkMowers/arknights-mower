@@ -79,6 +79,14 @@ describe('ordinary Copilot library and queue', () => {
     const paradox = await renderToString(createSSRApp(Component, { paradox: true }))
     expect(paradox).not.toContain('请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务')
   })
+  it('offers roster assistance only for ordinary automatic formation', async () => {
+    state.config.paradox = ref({ scripts: [] })
+    const render = (props = {}) => renderToString(createSSRApp(Component, props))
+    expect(await render()).not.toContain('使用干员练度辅助编队')
+    state.config.copilot.value.formation = true
+    expect(await render()).toContain('使用干员练度辅助编队')
+    expect(await render({ paradox: true })).not.toContain('使用干员练度辅助编队')
+  })
   it.each([
     'prts://123',
     '  prts://123  ',

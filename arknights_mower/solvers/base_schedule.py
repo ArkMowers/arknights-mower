@@ -23805,6 +23805,7 @@ class BaseSchedulerSolver(
                         from arknights_mower.utils.maa_copilot import (
                             build_copilot_params,
                             build_paradox_params,
+                            copilot_formation_params,
                         )
 
                         copilot_index = copilot_run["next"]
@@ -23818,11 +23819,14 @@ class BaseSchedulerSolver(
                                 params["copilot_list"][copilot_index]
                             ]
                             params["copilot_list"][0]["nav_name_override"] = target
-                        if not large_task_start_allowed():
-                            break
-                        task_id = self.MAA.append_task(
-                            "ParadoxCopilot" if paradox else "Copilot", params
-                        )
+                        with copilot_formation_params(
+                            params, copilot_conf, self.MAA
+                        ) as params:
+                            if not large_task_start_allowed():
+                                break
+                            task_id = self.MAA.append_task(
+                                "ParadoxCopilot" if paradox else "Copilot", params
+                            )
                         if not task_id:
                             raise ValueError("MAA 未接受作业，请检查核心版本和作业文件")
                         setattr(

@@ -1,9 +1,11 @@
+import hashlib
 import io
 import json
 import logging
 import sys
 import threading
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -282,6 +284,147 @@ def scheduler(monkeypatch, files, tmp_path):
     monkeypatch.setattr(base_schedule.config, "stop_maa", threading.Event())
     monkeypatch.setattr(base_schedule.config, "stop_mower", threading.Event())
     return solver
+
+
+@pytest.fixture
+def roster_cache(scheduler, tmp_path, monkeypatch):
+    from arknights_mower.utils import mastery_recommendation
+
+    root = tmp_path / "当前实例" / "tmp"
+    root.mkdir(parents=True)
+    cache = root / "cultivate.json"
+    monkeypatch.setattr(mastery_recommendation, "get_path", lambda _: cache)
+    original = library.get_path
+    monkeypatch.setattr(
+        library, "get_path", lambda key: root if key == "@app/tmp" else original(key)
+    )
+    settings = base_schedule.config.conf.copilot
+    settings.formation = settings.operbox_assist = True
+    scheduler.MAA.get_version.return_value = "v6.23.0"
+    roster = {
+        "id": "char_2012_typhon",
+        "evolvePhase": 2,
+        "level": 85,
+        "potentialRank": 2,
+        "mainSkillLevel": 7,
+        "private": "secret",
+        "skills": [{"level": 0}, {"level": 2}, {"level": 3}],
+        "equips": [
+            {"id": "uniequip_001_typhon", "level": 1},
+            {"id": "uniequip_002_typhon", "level": 2},
+            {"id": "uniequip_003_typhon", "level": 0},
+        ],
+    }
+    cache.write_text(
+        json.dumps(
+            {
+                "_mower_player": {"uid": "secret", "nickName": "secret"},
+                "data": {"characters": [roster], "items": [{"id": "secret"}]},
+            }
+        )
+    )
+    return cache
+
+
+@pytest.mark.parametrize("core_rejects", [True, False])
+def test_worker_receives_private_instance_formation_data_during_append(
+    scheduler, roster_cache, core_rejects
+):
+    received = []
+
+    def append(task, params):
+        assert task == "Copilot" and params["formation"]
+        path = Path(params["operbox_data_path"])
+        assert path.is_absolute() and path.parent.parent == roster_cache.parent
+        received.append(json.loads(path.read_text("utf-8")))
+        if core_rejects:
+            raise ValueError("MAA 拒绝编队")
+        return 1
+
+    scheduler.MAA.append_task.side_effect = append
+    scheduler.maa_plan_solver()
+    assert received == [
+        {
+            "own_opers": [
+                {
+                    "id": "char_2012_typhon",
+                    "name": "提丰",
+                    "elite": 2,
+                    "level": 85,
+                    "potential": 3,
+                    "mainSkillLevel": 7,
+                    "rarity": 6,
+                    "own": True,
+                    "skills": [{"level": 0}, {"level": 2}, {"level": 3}],
+                    "equips": [{"id": "uniequip_002_typhon", "type": "X", "level": 2}],
+                }
+            ]
+        }
+    ]
+    assert list(roster_cache.parent.iterdir()) == [roster_cache]
+    assert scheduler.MAA.start.called is not core_rejects
+
+
+@pytest.mark.parametrize(
+    "problem", ["inventory", "no_skills", "invalid", "duplicate", "old_core", "missing"]
+)
+def test_enabled_formation_assistance_requires_usable_roster_and_core(
+    scheduler, roster_cache, problem
+):
+    payload = json.loads(roster_cache.read_text())
+    if problem == "inventory":
+        del payload["data"]["characters"]
+    elif problem == "no_skills":
+        payload["data"]["characters"][0]["skills"] = []
+    elif problem == "invalid":
+        payload["data"]["characters"][0]["skills"][0]["level"] = "2"
+    elif problem == "duplicate":
+        payload["data"]["characters"] *= 2
+    elif problem == "old_core":
+        scheduler.MAA.get_version.return_value = "v6.18.0"
+    roster_cache.write_text(json.dumps(payload))
+    if problem == "missing":
+        roster_cache.unlink()
+    scheduler.maa_plan_solver()
+    scheduler.MAA.append_task.assert_not_called()
+    scheduler.MAA.start.assert_not_called()
+    assert scheduler.maa_copilot_progress["failed"]
+    assert scheduler.maa_copilot_progress["next"] == 0
+    assert not list(roster_cache.parent.glob("copilot-*"))
+
+
+def test_formation_deadline_still_checked_after_roster_preparation(
+    scheduler, roster_cache, monkeypatch
+):
+    read_roster = library._copilot_operators
+
+    def read_at_deadline():
+        rows = read_roster()
+        scheduler.tasks[0].time = datetime.now() + timedelta(seconds=10)
+        return rows
+
+    monkeypatch.setattr(library, "_copilot_operators", read_at_deadline)
+    scheduler.maa_plan_solver()
+    scheduler.MAA.append_task.assert_not_called()
+    scheduler.MAA.start.assert_not_called()
+    assert not scheduler.maa_copilot_progress["failed"]
+    assert scheduler.maa_copilot_progress["next"] == 0
+    assert list(roster_cache.parent.iterdir()) == [roster_cache]
+
+
+def test_formation_disabled_ignores_saved_assistance_and_legacy_key_is_preserved(
+    scheduler,
+):
+    conf = base_schedule.config.conf.copilot
+    old = conf.model_dump(exclude={"operbox_assist"})
+    old_key = hashlib.sha256(
+        json.dumps(old, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+    assert library.run_key(conf) == old_key
+    conf.operbox_assist = True
+    scheduler.maa_plan_solver()
+    scheduler.MAA.get_version.assert_not_called()
+    assert "operbox_data_path" not in scheduler.MAA.append_task.call_args.args[1]
 
 
 def emit(solver, event, taskid, **kwargs):
