@@ -1,10 +1,55 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, inject, ref } from 'vue'
 import { pinyin_match } from '@/utils/common'
+import {
+  filterMaterial,
+  materialFallback,
+  selectedMaterials,
+  updateSelectedMaterials,
+  normalizeTierSearch
+} from '@/utils/workshopMaterialSelection'
 import { render_op_option, render_op_label } from '@/utils/op_select'
 
-defineProps({ operators: Array, item_list: Array, migrationWarning: String })
+const props = defineProps({ operators: Array, item_list: Array, migrationWarning: String })
 const settings = defineModel({ type: Array, default: () => [] })
+const mobile = inject('mobile', ref(false))
+const materialTiers = [5, 4, 3, 2]
+const tierOptions = materialTiers.map(materialFallback)
+
+const materialOptions = computed(() => {
+  const tiers = new Map(
+    materialTiers.map((rarity) => [
+      rarity,
+      { type: 'group', key: `tier-${rarity}`, label: `T${rarity} 配方`, children: [] }
+    ])
+  )
+  const other = { type: 'group', key: 'other', label: '其他材料', children: [] }
+  const options = props.item_list ?? []
+  for (const option of options) {
+    const group = tiers.get(option.rarity) ?? other
+    group.children.push(option)
+  }
+  return [
+    ...(options.some((option) => 'rarity' in option) ? tierOptions : []),
+    ...[...tiers.values(), other].filter((group) => group.children.length)
+  ]
+})
+
+function materialSummary(item) {
+  return (
+    selectedMaterials(item, materialTiers)
+      .map((value) => materialFallback(value).label)
+      .join('、') || '未选择材料'
+  )
+}
+
+function createMaterialOption(name) {
+  const option = { label: name, value: name }
+  return props.item_list?.some(({ value }) => value === name) ||
+    tierOptions.some(({ label }) => normalizeTierSearch(label) === normalizeTierSearch(name))
+    ? { ...option, type: 'ignored' }
+    : option
+}
 
 const showSettingModal = ref(false)
 const editingIndex = ref(null)
@@ -32,6 +77,7 @@ const workshop_setting_close = () => {
 function createNewItem() {
   return {
     item_names: [],
+    material_rarities: [],
     children_lower_limit: 20,
     self_upper_limit: 20
   }
@@ -65,7 +111,7 @@ function createNewItem() {
             <strong>干员:</strong> {{ setting.operator }}, 启用: {{ setting.enabled }}<br />
             <ul>
               <li v-for="(item, i) in setting.items" :key="i">
-                {{ item.item_names }} - 子项下限: {{ item.children_lower_limit }}, 自身上限:
+                {{ materialSummary(item) }} · 子项下限: {{ item.children_lower_limit }}, 自身上限:
                 {{ item.self_upper_limit }}
               </li>
             </ul>
@@ -77,10 +123,11 @@ function createNewItem() {
     </n-list>
   </n-form-item>
   <n-modal
-    style="width: 500px"
+    style="width: min(560px, calc(100vw - 32px))"
     v-model:show="showSettingModal"
     preset="dialog"
-    title="新增干员设置"
+    :title="editingIndex === null ? '新增干员设置' : '编辑干员设置'"
+    positive-text="保存"
     :mask-closable="false"
     @update:show="workshop_setting_close"
   >
@@ -98,45 +145,56 @@ function createNewItem() {
       <span style="font-size: 12px; white-space: nowrap">启用：</span>
       <n-switch v-model:value="tempSetting.enabled" />
     </div>
-    <n-form :model="tempSetting">
+    <n-form :model="tempSetting" class="workshop-settings-form">
       <n-dynamic-input v-model:value="tempSetting.items" :on-create="createNewItem">
         <template #default="{ value }">
-          <div>
-            <div style="display: flex; flex-direction: row; align-self: center">
-              <span style="white-space: nowrap; margin-top: 5px">合成材料： </span>
+          <div class="workshop-material-setting">
+            <div class="workshop-material-picker">
+              <div class="workshop-material-label">
+                <span>合成材料</span>
+                <help-text
+                  >选择 T5 至 T2
+                  材料档位后，资源更新新增的同档配方会自动纳入。也可逐项选择配方。</help-text
+                >
+              </div>
               <n-select
                 multiple
                 tag
-                :options="item_list"
-                v-model:value="value.item_names"
-                :filter="(p, o) => pinyin_match(o.label, p)"
+                :on-create="createMaterialOption"
+                :options="materialOptions"
+                :fallback-option="materialFallback"
+                :max-tag-count="mobile ? 3 : 8"
+                :value="selectedMaterials(value, materialTiers)"
+                @update:value="updateSelectedMaterials(value, $event)"
+                :filter="filterMaterial"
                 filterable
+                placeholder="选择合成材料"
+                :input-props="{ 'aria-label': '合成材料' }"
               />
-              <help-text>
-                <div>加工站干员合成材料的白名单</div>
-              </help-text>
             </div>
-            <div style="display: flex; flex-direction: row; align-self: center">
-              <span style="white-space: nowrap; margin-top: 5px">合成数量上限： </span>
-              <mower-input-number
-                v-model:value="value.self_upper_limit"
-                :min="0"
-                placeholder="自身上限"
-              />
-              <help-text>
-                <div>成品库存达到此数量后停止合成</div>
-              </help-text>
-            </div>
-            <div style="display: flex; flex-direction: row; align-self: center">
-              <span style="white-space: nowrap; margin-top: 5px">子材料数量下限： </span>
-              <mower-input-number
-                v-model:value="value.children_lower_limit"
-                :min="0"
-                placeholder="子项下限"
-              />
-              <help-text>
-                <div>为每种子材料保留的最低库存，合成时不会消耗到低于此数量</div>
-              </help-text>
+            <div class="workshop-material-limits">
+              <div class="workshop-material-picker">
+                <div class="workshop-material-label">
+                  <span>成品库存上限</span>
+                  <help-text>成品库存达到此数量后停止合成</help-text>
+                </div>
+                <mower-input-number
+                  v-model:value="value.self_upper_limit"
+                  :min="0"
+                  :input-props="{ 'aria-label': '成品库存上限' }"
+                />
+              </div>
+              <div class="workshop-material-picker">
+                <div class="workshop-material-label">
+                  <span>子材料库存下限</span>
+                  <help-text>为每种子材料保留的最低库存，合成时不会消耗到低于此数量</help-text>
+                </div>
+                <mower-input-number
+                  v-model:value="value.children_lower_limit"
+                  :min="0"
+                  :input-props="{ 'aria-label': '子材料库存下限' }"
+                />
+              </div>
             </div>
           </div>
         </template>
@@ -144,3 +202,33 @@ function createNewItem() {
     </n-form>
   </n-modal>
 </template>
+
+<style scoped>
+.workshop-settings-form {
+  margin-block-start: 14px;
+}
+
+.workshop-material-setting {
+  display: grid;
+  flex: 1;
+  gap: 10px;
+  min-width: 0;
+}
+
+.workshop-material-picker {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.workshop-material-label {
+  display: flex;
+  align-items: center;
+}
+
+.workshop-material-limits {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 132px), 1fr));
+  gap: 10px 12px;
+}
+</style>

@@ -2058,13 +2058,28 @@ def shop_list():
 
 @app.route("/item")
 def item_list():
-    from arknights_mower.data import workshop_formula
-
-    if request.args.get("kind") == "deer-fodder":
+    kind = request.args.get("kind")
+    if kind == "workshop-materials":
+        return workshop_material_options()
+    if kind == "deer-fodder":
         from arknights_mower.utils.workshop_fodder import deer_fodder_materials
 
         return deer_fodder_materials()
+
+    from arknights_mower.data import workshop_formula
+
     return list(workshop_formula.keys())
+
+
+@require_token
+def workshop_material_options():
+    from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.workshop_recipes import workshop_material_rarities
+
+    return [
+        {"name": name, "rarity": rarity}
+        for name, rarity in workshop_material_rarities(workshop_formula).items()
+    ]
 
 
 @app.route("/depot/readdepot")

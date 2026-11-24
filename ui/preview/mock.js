@@ -1,5 +1,7 @@
 import { defaultSettingsFavorites, validSettingsFavorites } from '../src/task-workflow/model'
 import axios, { AxiosError } from 'axios'
+import { items as materialCatalog } from '../../arknights_mower/data/skill_data.json'
+import workshopFormula from '../../arknights_mower/data/workshop_formula.json'
 import screenshot from './screenshot.svg?raw'
 import { DEFAULT_SKLAND_PREFERENCES } from '../src/stores/sklandPreferences.js'
 import { DEFAULT_BASELINE_CONFIG, DEFAULT_VIEW_PREFS } from '../src/utils/depot_inventory.js'
@@ -15,6 +17,9 @@ import {
 } from '@zip.js/zip.js'
 
 const clone = (value) => JSON.parse(JSON.stringify(value))
+const materialRarities = new Map(
+  Object.values(materialCatalog).map(({ name, rarity }) => [name, rarity])
+)
 const previewGroups = [
   ['连接与运行', 'device', '设备与游戏连接', '示例设备身份、路径、截图与触控方式'],
   ['连接与运行', 'runtime', '运行参数', '示例性能与自动启动设置'],
@@ -988,7 +993,24 @@ export function createPreviewAdapter(data, requests = []) {
       '/network/settings': () => ({ ok: true, ...networkSettings }),
       '/config-profiles': profileList,
       '/shop': () => ['龙门币', '招聘许可', '赤金'],
-      '/item': () => ['龙门币', '赤金', '源岩'],
+      '/item': () => {
+        const kind = config.params?.kind ?? requestUrl.searchParams.get('kind')
+        if (kind === 'deer-fodder') {
+          return Object.entries(workshopFormula)
+            .filter(
+              ([, { tab, apCost }]) =>
+                tab === '基建材料' ||
+                tab === '技巧概要' ||
+                (tab === '精英材料' && [1, 2].includes(apCost))
+            )
+            .map(([name]) => name)
+        }
+        if (kind !== 'workshop-materials') return ['龙门币', '赤金', '源岩']
+        return Object.entries(workshopFormula).map(([name, { tab, output_name }]) => ({
+          name,
+          rarity: tab === '精英材料' ? (materialRarities.get(output_name) ?? null) : null
+        }))
+      },
       '/report/getReportData': () => clone(data.baseReport.report),
       '/report/getOrundumData': () => clone(data.baseReport.orundum),
       '/report/trading_history': () => clone(data.baseReport.trading),

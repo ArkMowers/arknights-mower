@@ -12,6 +12,7 @@ from pydantic import (
     TypeAdapter,
     field_serializer,
     field_validator,
+    model_serializer,
     model_validator,
 )
 
@@ -711,9 +712,19 @@ class WorkShopItem(ConfModel):
     "子项下限"
     self_upper_limit: int = 30
     "自己上限"
+    material_rarities: list[Literal[2, 3, 4, 5]] = Field(default_factory=list)
+    "整档选择的精英材料稀有度"
+
+    @model_serializer(mode="wrap")
+    def serialize_workshop_item(self, handler):
+        data = handler(self)
+        if not data.get("material_rarities"):
+            data.pop("material_rarities", None)
+        return data
 
 
 class WorkshopDeerFodderItem(WorkShopItem):
+    material_rarities: list[Literal[2, 3]] = Field(default_factory=list)
     children_lower_limit: int = Field(default=20, ge=0, le=999999)
     self_upper_limit: int = Field(default=9999, ge=0, le=999999)
 

@@ -181,6 +181,8 @@ describe('partial configuration saves', () => {
     'keeps the latest %s response when a background request finishes later',
     async (load, list) => {
       await setup({ maa_mall_buy: '招聘许可' })
+      const recipe = { rarity: 5 }
+      const response = (name) => ({ data: [load === 'load_item' ? { name, ...recipe } : name] })
       let finishInitial
       axios.get
         .mockImplementationOnce(
@@ -189,18 +191,30 @@ describe('partial configuration saves', () => {
               finishInitial = resolve
             })
         )
-        .mockResolvedValueOnce({ data: ['新资源'] })
+        .mockResolvedValueOnce(response('新资源'))
       const initial = store[load]()
       await store[load]()
-      finishInitial({ data: ['旧资源'] })
+      finishInitial(response('旧资源'))
       await initial
       await nextTick()
       await store.flush_config_saves()
-      expect(store[list]).toEqual([{ value: '新资源', label: '新资源' }])
+      expect(store[list]).toEqual([
+        { value: '新资源', label: '新资源', ...(load === 'load_item' ? recipe : {}) }
+      ])
       expect(store.maa_mall_buy).toEqual(['招聘许可'])
       expect(axios.patch).not.toHaveBeenCalled()
     }
   )
+
+  it('keeps legacy workshop names searchable when the item response has no rarity', async () => {
+    await setup()
+    axios.get.mockResolvedValueOnce({ data: ['聚合剂', '糖聚块'] })
+    await store.load_item()
+    expect(store.item_list).toEqual([
+      { value: '聚合剂', label: '聚合剂' },
+      { value: '糖聚块', label: '糖聚块' }
+    ])
+  })
 
   it.each([
     ['INFO', 'INFO - 接收正常通知、警告和错误'],

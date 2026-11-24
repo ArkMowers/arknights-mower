@@ -277,16 +277,15 @@ export const useConfigStore = defineStore('config', () => {
 
   async function load_item() {
     const revision = ++itemLoadRevision
-    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/item`)
+    const { data } = await axios.get(`${import.meta.env.VITE_HTTP_URL}/item`, {
+      params: { kind: 'workshop-materials' }
+    })
     if (revision !== itemLoadRevision) return
-    const mall_list = []
-    for (const i of response.data) {
-      mall_list.push({
-        value: i,
-        label: i
-      })
-    }
-    item_list.value = mall_list
+    item_list.value = data.map((option) =>
+      typeof option === 'string'
+        ? { value: option, label: option }
+        : { value: option.name, label: option.name, rarity: option.rarity }
+    )
   }
 
   function normalizeWeeklyPlan(rawPlan) {

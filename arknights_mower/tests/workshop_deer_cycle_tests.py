@@ -114,6 +114,54 @@ def test_completed_fodder_requires_t4_before_more_fodder(deer):
     update.assert_called_once()
 
 
+@pytest.mark.parametrize(("tier", "name"), [(2, "固源岩"), (3, "固源岩组")])
+@pytest.mark.parametrize("whole_tier", [False, True])
+def test_configured_t2_t3_fodder_runs_before_t4(
+    deer, inventory, tier, name, whole_tier
+):
+    from arknights_mower.utils.config.conf import WorkshopDeerFodderItem
+    from arknights_mower.utils.workshop_fodder import deer_fodder_items
+
+    solver, state, base, update, _ = deer
+    config.conf.workshop_deer_fodder = [
+        WorkshopDeerFodderItem(
+            item_names=[] if whole_tier else [name],
+            material_rarities=[tier] if whole_tier else [],
+            children_lower_limit=0,
+            self_upper_limit=1,
+        )
+    ]
+    setting = config.conf.workshop_settings[0]
+    setting.items = [WorkShopItem(**item) for item in deer_fodder_items()] + [
+        setting.items[-1]
+    ]
+    config.conf.workshop_protect_t2_device_rock = False
+    if tier == 2:
+        inventory.save_inventory_counts({"固源岩": 0, "源岩": 150})
+    state.causality = 35
+    solver.generate_product("九色鹿")
+
+    base.save_exception.assert_not_called()
+    assert state.crafts == [(name, 1), ("异铁块", 1)]
+    update.assert_called_once()
+
+
+def test_deer_can_execute_a_saved_purple_tier(deer):
+    solver, state, base, update, _ = deer
+    state.causality = 36
+    group = config.conf.workshop_settings[0].items[-1]
+    group.item_names = []
+    group.material_rarities = [4]
+
+    solver.generate_product("九色鹿")
+
+    base.save_exception.assert_not_called()
+    assert state.crafts == [("异铁块", 1)]
+    assert group.item_names == []
+    assert group.material_rarities == [4]
+    update.assert_called_once()
+
+
 def test_no_usable_t4_stops_without_more_fodder(deer, inventory):
     solver, state, base, update, _ = deer
     state.causality = 36

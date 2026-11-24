@@ -11,9 +11,11 @@ def deer_fodder_materials():
 
 
 def deer_fodder_items():
+    from arknights_mower.utils.workshop_recipes import expand_workshop_items
+
     allowed = set(deer_fodder_materials())
     result = []
-    for item in config.conf.workshop_deer_fodder:
+    for item in expand_workshop_items(config.conf.workshop_deer_fodder):
         data = item.model_dump()
         names = [name for name in data["item_names"] if name in allowed]
         if names:
@@ -29,12 +31,13 @@ def deer_manual_t4(inventory, reserved, formulas):
         batch_limit,
         blocked_workshop_recipes,
     )
+    from arknights_mower.utils.workshop_recipes import expand_workshop_items
 
     rejected = blocked_workshop_recipes(inventory, readonly=True)
     for entry in workshop_state(config.conf)["workshop_manual_settings"]:
         if entry["operator"] != "九色鹿" or not entry["enabled"]:
             continue
-        for item in entry["items"]:
+        for item in expand_workshop_items(entry["items"], formulas):
             for name in item["item_names"]:
                 recipe = formulas.get(name, {})
                 if (

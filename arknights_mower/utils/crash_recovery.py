@@ -665,12 +665,13 @@ def workshop_inventory_names():
     from arknights_mower.data import workshop_formula
     from arknights_mower.utils import config
     from arknights_mower.utils.workshop_limits import recipe_quantities
+    from arknights_mower.utils.workshop_recipes import expand_workshop_items
 
     names = set()
     for setting in config.conf.workshop_settings:
         if not setting.enabled:
             continue
-        for item in setting.items:
+        for item in expand_workshop_items(setting.items, workshop_formula):
             for name in item.item_names:
                 recipe = workshop_formula.get(name)
                 quantities = recipe_quantities(name, recipe) if recipe else None

@@ -1,6 +1,6 @@
 <template>
   <n-space vertical :size="12">
-    <n-text depth="3">选择九色鹿使用的垫刀素材，并设置库存上下限。</n-text>
+    <n-text depth="3">可按 T3、T2 档位或具体配方选择垫刀素材，并设置库存上下限。</n-text>
     <n-alert v-if="error" type="warning">
       {{ error }}
       <n-button text @click="loadOptions" class="fodder-button">重试</n-button>
@@ -10,7 +10,10 @@
         <div class="fodder-material">
           <n-select
             size="large"
-            v-model:value="item.item_names"
+            :value="selectedMaterials(item, fodderTiers)"
+            @update:value="updateSelectedMaterials(item, $event)"
+            :filter="filterMaterial"
+            :fallback-option="materialFallback"
             multiple
             filterable
             :options="options"
@@ -68,6 +71,16 @@
 <script setup>
 import { inject, onMounted, ref } from 'vue'
 
+import {
+  filterMaterial,
+  materialFallback,
+  selectedMaterials,
+  updateSelectedMaterials
+} from '@/utils/workshopMaterialSelection'
+
+const fodderTiers = [3, 2]
+const tierOptions = fodderTiers.map(materialFallback)
+
 defineProps({ disabled: Boolean })
 const items = defineModel({ type: Array, default: () => [] })
 const axios = inject('axios')
@@ -83,7 +96,7 @@ async function loadOptions() {
       params: { kind: 'deer-fodder' }
     })
     if (!Array.isArray(data)) throw new Error('素材列表格式错误')
-    options.value = data.map((name) => ({ label: name, value: name }))
+    options.value = [...tierOptions, ...data.map(materialFallback)]
   } catch (e) {
     error.value = `读取垫刀素材失败：${e.message}`
   } finally {

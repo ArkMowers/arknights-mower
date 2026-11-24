@@ -1,5 +1,7 @@
 """Independent Deer fodder: saved limits survive automatic crafting and restore."""
 
+from unittest.mock import Mock
+
 import pytest
 
 from arknights_mower.tests.workshop_plan_fixtures import next_skill as next_skill
@@ -40,6 +42,41 @@ def test_options_include_books_t2_t3_and_carbon_but_not_t4(next_skill):
     assert set(response.json) < set(client.get("/item").json)
 
 
+@pytest.mark.parametrize("method", ["GET", "HEAD"])
+def test_workshop_material_options_require_token_before_reading_recipes(
+    method, next_skill, monkeypatch
+):
+    import server
+    from arknights_mower import data
+
+    formulas = Mock(wraps=data.workshop_formula)
+    skill_data = Mock(wraps=rec.get_skill_data)
+    monkeypatch.setattr(data, "workshop_formula", formulas)
+    monkeypatch.setattr(rec, "get_skill_data", skill_data)
+    monkeypatch.setattr(server.app, "token", "workshop-options-test", raising=False)
+    client = server.app.test_client()
+    endpoint = "/item?kind=workshop-materials"
+
+    assert client.open(endpoint, method=method).status_code == 403
+    assert (
+        client.open(endpoint, method=method, headers={"token": "wrong"}).status_code
+        == 403
+    )
+    formulas.items.assert_not_called()
+    skill_data.assert_not_called()
+
+    response = client.open(endpoint, method=method, headers={"token": server.app.token})
+    assert response.status_code == 200
+    formulas.items.assert_called_once_with()
+    skill_data.assert_called_once_with()
+    if method == "GET":
+        options = {option["name"]: option for option in response.json}
+        assert options["聚合剂"] == {"name": "聚合剂", "rarity": 5}
+        assert options["糖聚块"] == {"name": "糖聚块", "rarity": 4}
+        assert options["碳素组"] == {"name": "碳素组", "rarity": None}
+        assert list(options) == client.get("/item").json == list(formulas.keys())
+
+
 def test_default_materials_are_retained_and_empty_selection_stays_empty(next_skill):
     assert len(deer_fodder_items()) == 1
     assert deer_fodder_items()[0]["item_names"] == [
@@ -55,9 +92,47 @@ def test_new_options_do_not_change_default_fodder_selection(next_skill):
     defaults = config.Conf().workshop_deer_fodder
     assert len(defaults) == 1
     assert defaults[0].item_names == ["碳素", "碳素组", "家具零件_碳素组"]
+    assert defaults[0].material_rarities == []
+    assert WorkshopDeerFodderItem().material_rarities == []
     assert defaults[0].children_lower_limit == 20
     assert WorkshopDeerFodderItem().children_lower_limit == 20
     assert WorkshopDeerFodderItem(children_lower_limit=0).children_lower_limit == 0
+
+
+@pytest.mark.parametrize(
+    ("tier", "name", "other", "cost"), [(2, "糖", "糖组", 1), (3, "糖组", "糖", 2)]
+)
+def test_saved_fodder_tier_picks_up_new_recipes_with_original_limits(
+    next_skill, monkeypatch, tier, name, other, cost
+):
+    from arknights_mower.data import workshop_formula
+
+    group = WorkshopDeerFodderItem(
+        material_rarities=[tier],
+        item_names=[name, "碳素组"],
+        children_lower_limit=7,
+        self_upper_limit=81,
+    )
+    config.conf.workshop_deer_fodder = [group]
+    assert other not in deer_fodder_items()[0]["item_names"]
+    monkeypatch.setitem(
+        workshop_formula,
+        "新增垫刀配方",
+        {
+            "tab": "精英材料",
+            "apCost": cost,
+            "output_name": name,
+        },
+    )
+    result = deer_fodder_items()[0]
+    assert result["item_names"][:2] == [name, "碳素组"]
+    assert result["item_names"].count(name) == 1
+    assert "新增垫刀配方" in result["item_names"]
+    assert "糖聚块" not in result["item_names"]
+    assert "技巧概要·卷3" not in result["item_names"]
+    assert (result["children_lower_limit"], result["self_upper_limit"]) == (7, 81)
+    assert group.item_names == [name, "碳素组"]
+    assert group.material_rarities == [tier]
 
 
 def test_custom_fodder_stays_manual_and_survives_backup_restore(
