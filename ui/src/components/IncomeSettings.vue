@@ -83,7 +83,7 @@ function formatTime(at) {
 onMounted(loadSettings)
 </script>
 <template>
-  <n-card id="income-settings" title="材料价值与基报算法">
+  <n-card title="材料价值与基报算法">
     <n-spin :show="settingsLoading || settingsBusy">
       <p class="settings-description">
         默认采用所提供计算表的材料价值、CE6 / 0.23456 算法与 SS

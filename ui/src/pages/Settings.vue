@@ -6,7 +6,7 @@ import { storeToRefs } from 'pinia'
 import { computed, inject, onMounted, onUnmounted, provide, ref, watch } from 'vue'
 import ChatBotSetting from '@/components/ChatBotSetting.vue'
 import SoftwareUpdate from '@/components/SoftwareUpdate.vue'
-import MaaUpdates from '@/components/MaaUpdates.vue'
+import DeferredSettingsPanel from '@/components/DeferredSettingsPanel.vue'
 import NetworkSettings from '@/components/NetworkSettings.vue'
 import { isRelayPage } from '@/utils/instanceToken'
 import RelaySettings from '@/components/RelaySettings.vue'
@@ -32,6 +32,7 @@ import MoonIcon from '@vicons/fluent/es/WeatherMoon24Regular'
 import SystemIcon from '@vicons/fluent/es/Desktop24Regular'
 
 defineOptions({ name: 'MowerSettings' })
+const loadMaaUpdates = () => import('@/components/MaaUpdates.vue')
 provide(settingsSectionKey, null)
 
 const sections = [
@@ -376,7 +377,20 @@ onUnmounted(() => window.removeEventListener('pywebviewready', loadDesktopPrefer
       <template v-if="updates_enabled === true && !isRelayPage()">
         <SoftwareUpdate />
         <ResourceUpdate />
-        <div class="settings-card-wide"><MaaUpdates /></div>
+        <DeferredSettingsPanel
+          id="maa-update"
+          title="MAA 更新"
+          :load="loadMaaUpdates"
+          :eager="
+            Boolean(
+              config_store.maa_auto_check_update ||
+              config_store.maa_resource_auto_check_update ||
+              config_store.maa_auto_update ||
+              config_store.maa_resource_auto_update
+            )
+          "
+          data-settings-keywords="MAA 更新 正式版 公测版 GitHub"
+        />
       </template>
       <div class="settings-card-wide"><NetworkSettings /></div>
       <n-card

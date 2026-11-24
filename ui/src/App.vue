@@ -97,8 +97,24 @@
         </n-modal>
         <n-dialog-provider>
           <ConfigProfilesController :controller="configProfiles" />
-          <SidebarEditor v-model:show="sidebarEditorOpen" :request="sidebarEditorRequest" />
-          <RunningLogLayoutDialog />
+          <component
+            :is="SidebarEditor"
+            v-if="SidebarEditor"
+            v-model:show="sidebarEditorOpen"
+            :request="sidebarEditorRequest"
+          />
+          <FormLoadNotice
+            :show="sidebarEditorFailed"
+            title="侧栏编辑器加载失败"
+            @retry="loadSidebarEditor"
+          />
+          <component :is="RunningLogLayoutDialog" v-if="RunningLogLayoutDialog" />
+          <FormLoadNotice
+            :show="layoutEditorFailed && guiStore.runningLogLayoutDialogOpen"
+            title="运行日志布局加载失败"
+            @retry="loadLayoutEditor"
+            @close="guiStore.closeRunningLogLayoutDialog"
+          />
           <HelpDialog
             v-model:section="helpSection"
             :version="softwareVersion"
@@ -317,8 +333,6 @@ import HelpDialog from '@/components/HelpDialog.vue'
 import HalloweenBackdrop from '@/components/HalloweenBackdrop.vue'
 import ConfigProfilesController from '@/components/ConfigProfilesController.vue'
 import SidebarUpdateChecks from '@/components/SidebarUpdateChecks.vue'
-import SidebarEditor from '@/components/SidebarEditor.vue'
-import RunningLogLayoutDialog from '@/components/RunningLogLayoutDialog.vue'
 import { useSidebarPreferences } from '@/composables/sidebarPreferences'
 import { useLazyForm } from '@/composables/lazyForm'
 import { interfaceZoomShortcuts, useInterfaceZoom } from '@/composables/interfaceZoom'
@@ -404,11 +418,16 @@ function openHelp(action) {
 const sidebarCollapsed = ref(false)
 const sidebarHidden = ref(false)
 const sidebarPreferences = useSidebarPreferences()
-const sidebarEditorOpen = ref(false)
+const {
+  component: SidebarEditor,
+  show: sidebarEditorOpen,
+  failed: sidebarEditorFailed,
+  open: loadSidebarEditor
+} = useLazyForm(() => import('@/components/SidebarEditor.vue'))
 const sidebarEditorRequest = ref({})
 function openSidebarEditor(request = {}) {
   sidebarEditorRequest.value = request
-  sidebarEditorOpen.value = true
+  return loadSidebarEditor()
 }
 const userToggledSidebar = ref(false)
 function toggleSidebar() {
@@ -447,7 +466,7 @@ function handleViewAction(action) {
     if (isMobileNav.value) mobileMenuOpen.value = !mobileMenuOpen.value
     else sidebarHidden.value = !sidebarHidden.value
   } else if (action === 'edit-sidebar') {
-    openSidebarEditor()
+    return openSidebarEditor()
   } else if (action === 'custom-log-layout') {
     guiStore.openRunningLogLayoutDialog()
   } else if (action?.startsWith('log-view-')) {
@@ -634,6 +653,18 @@ function handleLogVisibilityChange() {
 }
 
 const guiStore = useGuiStore()
+const {
+  component: RunningLogLayoutDialog,
+  failed: layoutEditorFailed,
+  open: loadLayoutEditor
+} = useLazyForm(() => import('@/components/RunningLogLayoutDialog.vue'))
+watch(
+  () => guiStore.runningLogLayoutDialogOpen,
+  (open) => {
+    if (open) void loadLayoutEditor()
+  },
+  { immediate: true }
+)
 const { softwareVersionDisplay, watermarkVisible, halloweenMode } = storeToRefs(guiStore)
 const halloweenActive = provideHalloweenSeason(halloweenMode)
 

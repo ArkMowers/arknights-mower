@@ -9,6 +9,7 @@ import {
   h,
   KeepAlive,
   nextTick,
+  onMounted,
   reactive,
   ref,
   ssrContextKey
@@ -20,6 +21,7 @@ import { useConfigStore } from '@/stores/config'
 import { useGuiStore } from '@/stores/gui'
 import TaskConfiguration from '@/task-workflow/TaskConfiguration.vue'
 import TaskSettingsPanels from './TaskSettingsPanels.vue'
+import DeferredSettingsPanel from './DeferredSettingsPanel.vue'
 import Clue from './Clue.vue'
 import DailyMission from './DailyMission.vue'
 import { createTaskWorkflow } from '@/task-workflow/model'
@@ -89,7 +91,9 @@ function clientComponent(component, path, setupComponents = {}) {
 }
 
 let panelInstance
+const ClientDeferred = clientComponent(DeferredSettingsPanel, './DeferredSettingsPanel.vue')
 const ClientPanels = clientComponent(TaskSettingsPanels, './TaskSettingsPanels.vue', {
+  DeferredSettingsPanel: ClientDeferred,
   ...Object.fromEntries(
     [
       'DeviceSettings',
@@ -325,6 +329,15 @@ beforeEach(() => {
   let nextFrame = 0
   viewport = node('window')
   viewport.innerHeight = 900
+  viewport.IntersectionObserver = class {
+    constructor(callback) {
+      this.callback = callback
+    }
+    observe(element) {
+      element.intersection = this
+    }
+    disconnect() {}
+  }
   viewport.requestAnimationFrame = vi.fn((callback) => {
     frames.set(++nextFrame, callback)
     return nextFrame
@@ -364,6 +377,65 @@ afterEach(() => {
 })
 
 describe('continuous settings directory and scroll selection', () => {
+  it('scrolls a cold income link to its own anchor before the form is imported', async () => {
+    const page = await mount('#income-settings')
+    const anchor = all(root).find((element) => element.id === 'income-settings')
+    expect(page.selected()).toBe('accounts')
+    expect(anchor.scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'instant' })
+    expect(anchor.children.some((child) => classes(child).includes('n-card'))).toBe(false)
+  })
+
+  it.each([false, true])(
+    'loads once, preserves the mount policy and retains a cached draft (eager=%s)',
+    async (eager) => {
+      const shown = ref(true)
+      const pending = Promise.withResolvers()
+      const load = vi.fn(() => pending.promise)
+      const fetchSettings = vi.fn()
+      let draft
+      const form = defineComponent({
+        setup() {
+          draft = ref('')
+          onMounted(fetchSettings)
+          return () => h('input', { value: draft.value })
+        }
+      })
+      app = renderer.createApp({
+        setup: () => () =>
+          h(KeepAlive, null, {
+            default: () => (shown.value ? h(ClientDeferred, { load, eager, title: '表单' }) : null)
+          })
+      })
+      app.provide(ssrContextKey, { modules: new Set() })
+      root = node('root')
+      app.mount(root)
+      await flush()
+      if (!eager) {
+        expect(load).not.toHaveBeenCalled()
+        const observer = all(root).find((el) => el.intersection).intersection
+        observer.callback([{ isIntersecting: true }], observer)
+      }
+      expect(load).toHaveBeenCalledOnce()
+      shown.value = false
+      await flush()
+      pending.resolve({ default: form })
+      await pending.promise
+      await flush()
+      expect(fetchSettings).toHaveBeenCalledTimes(eager ? 1 : 0)
+      shown.value = true
+      await flush()
+      expect(fetchSettings).toHaveBeenCalledOnce()
+      draft.value = '未保存'
+      shown.value = false
+      await flush()
+      shown.value = true
+      await flush()
+      expect(all(root).find((el) => el.tag === 'input').props.value).toBe('未保存')
+      expect(load).toHaveBeenCalledOnce()
+      expect(fetchSettings).toHaveBeenCalledOnce()
+    }
+  )
+
   it('uses the log scene names for waiting-setting input labels', async () => {
     const { config } = await mount()
     const scenes = JSON.parse(

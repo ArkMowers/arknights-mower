@@ -2,7 +2,7 @@
 import StatusNotification from './StatusNotification.vue'
 
 defineProps({ title: String, show: Boolean })
-const emit = defineEmits(['retry'])
+const emit = defineEmits(['retry', 'close'])
 
 function reload() {
   window.location.reload()
@@ -15,6 +15,7 @@ function reload() {
     :title="title"
     type="error"
     role="alert"
+    @close="emit('close')"
     content="请重新加载表单。若仍无法打开，请刷新页面。"
   >
     <template #action>

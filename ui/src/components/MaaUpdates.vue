@@ -874,7 +874,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <n-card v-if="updatesAllowed" id="maa-update" title="MAA 更新">
+  <n-card v-if="updatesAllowed" title="MAA 更新">
     <template v-if="updatesAllowed && maa_update_supported">
       <div class="maa-updater">
         <div class="update-title">

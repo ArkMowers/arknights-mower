@@ -132,10 +132,10 @@ describe('task configuration checklist', () => {
     expect(managed.editors.map(({ id }) => id)).toEqual(
       expect.arrayContaining(['mower-interface', 'mower-notifications', 'mower-profiles'])
     )
-    expect(managed.editors.find(({ id }) => id === 'maa')).toMatchObject({
-      description: '设置 MAA 恢复主题与目标主题。',
-      searchKeywords: 'MAA 恢复主题 目标主题'
-    })
+    const maa = managed.editors.find(({ id }) => id === 'maa')
+    expect(maa.description).toBe('设置 MAA 恢复主题与目标主题。')
+    expect(maa.searchKeywords).toContain('日常任务结束后恢复主题')
+    expect(maa.searchKeywords).not.toContain('MAA目录')
     expect(direct.editors.find(({ id }) => id === 'maa').searchKeywords).toContain('MAA目录')
   })
 
