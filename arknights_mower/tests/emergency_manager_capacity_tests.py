@@ -167,6 +167,38 @@ def test_saved_manager_swap_leaves_reserved_former_bed_alone(solver):
     assert data.get_current_room(room, True)[:2] == [current_resident, "闪灵"]
 
 
+def test_saved_manager_swap_uses_new_target_bed_resident(solver):
+    room, other_room = "dormitory_1", "dormitory_2"
+    data, state = setup_episode(solver, 0)
+    original_resident, current_resident = COVERS[:2]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", original_resident, "Current", "Current", "Current"]}]
+    )
+    data.plan[room][0].agent = "Free"
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {room: ["Current", "闪灵", *["Current"] * 3]}
+    solver._emergency_plan_beds(state)
+    assert solver.tasks.pop().plan[room][:2] == [original_resident, "闪灵"]
+    solver.op_data = data = data.project_arrangements(
+        [
+            {
+                room: ["Current", current_resident, *["Current"] * 3],
+                other_room: ["Current", "Current", original_resident],
+            }
+        ]
+    )
+
+    solver._emergency_plan_beds(state)
+
+    task = solver.tasks.pop()
+    assert task.plan == {room: [current_resident, "闪灵", *["Current"] * 3]}
+    solver.op_data = data.project_arrangements([task.plan])
+    assert solver.op_data.get_current_room(other_room, True)[2] == original_resident
+    solver._emergency_plan_beds(state)
+    assert not solver.tasks
+    assert "dorm_replan_plan" not in state
+
+
 def test_high_need_opens_every_slot_and_produces_full_capacity_plan(solver):
     data, state = setup_episode(solver, 10)
 

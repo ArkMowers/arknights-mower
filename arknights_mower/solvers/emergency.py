@@ -1977,7 +1977,9 @@ class EmergencyRecoveryMixin:
                     current = self.op_data.get_current_operator(room, index)
                     if current is None or current.name != name:
                         plan.setdefault(room, ["Current"] * len(original))[index] = name
-        self._resolve_emergency_dorm_manager_moves(plan, state, reserved, slots)
+        self._resolve_emergency_dorm_manager_moves(
+            plan, state, reserved, slots, saved=bool(previous)
+        )
         compact_dorm_vacancies(self.op_data, plan)
         if not plan or (
             previous
@@ -2010,9 +2012,10 @@ class EmergencyRecoveryMixin:
                     return True
         return False
 
-    def _resolve_emergency_dorm_manager_moves(self, plan, state, reserved, slots):
+    def _resolve_emergency_dorm_manager_moves(
+        self, plan, state, reserved, slots, *, saved
+    ):
         data = self.op_data
-        assigned = {name for row in plan.values() for name in row}
         for room, original in state.get("dorm_layout", {}).items():
             if room not in plan:
                 continue
@@ -2029,12 +2032,18 @@ class EmergencyRecoveryMixin:
                 # 新生成与已保存的同房换位都要服从本轮预约。
                 resident = data.get_current_operator(room, index)
                 source_role = data.plan[room][source].agent
+                if (
+                    saved
+                    and row[source] not in ("", "Free", "Current")
+                    and (resident is None or row[source] != resident.name)
+                ):
+                    row[source] = "Current"
                 fill_source = row[source] == "Current"
                 if fill_source:
                     if (
                         source_role != "Free"
                         or resident is None
-                        or resident.name in assigned
+                        or any(resident.name in names for names in plan.values())
                     ):
                         row[index] = "Current"
                         continue
@@ -2061,7 +2070,6 @@ class EmergencyRecoveryMixin:
                     row[source] = row[index] = "Current"
                 elif fill_source:
                     row[source] = replacement
-                    assigned.add(replacement)
             if all(name == "Current" for name in row):
                 del plan[room]
 
