@@ -327,7 +327,7 @@ function cancelCopyDialogLongPress() {
         <n-flex vertical :size="8">
           <n-flex align="center">
             <n-checkbox v-model:checked="event_rerun.enabled" :disabled="!stage_plan_enable">
-              复刻SS活动普通战斗关各打一遍
+              优先刷复刻SS活动普通战斗关（每关一次）
             </n-checkbox>
             <n-checkbox
               v-if="event_rerun.enabled"

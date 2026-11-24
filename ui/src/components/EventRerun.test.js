@@ -48,7 +48,7 @@ it('reads the current opening and displays each ordinary stage outcome', async (
   )
   expect(panel.event.value.key).toBe(live.event.key)
   expect(panel.statusLabel('OS-1')).toBe('已完成')
-  expect(panel.statusLabel('OS-10')).toBe('已启动，结算待确认')
+  expect(panel.statusLabel('OS-10')).toBe('结算待确认')
   expect(panel.statusLabel('OS-3')).toBe('待执行')
 })
 

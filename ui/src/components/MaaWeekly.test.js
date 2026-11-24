@@ -180,7 +180,7 @@ describe('周计划芯片按钮排序联动', () => {
     expect(header.includes('aria-label="启用周计划"')).toBe(showEnable)
     expect(html.split('aria-label="启用周计划"').length - 1).toBe(showEnable ? 1 : 0)
     expect(html).toContain('支持 MAA 支持的所有关卡')
-    expect(html).toContain('复刻SS活动普通战斗关各打一遍')
+    expect(html).toContain('优先刷复刻SS活动普通战斗关（每关一次）')
     expect(html).toContain('用完理智药的日期')
     expect(html).toContain('value-format="yyyy-MM-dd"')
     expect(html).toContain('PRTS.wiki：关卡一览 / 资源收集')

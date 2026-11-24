@@ -11,13 +11,17 @@ const loaded = ref(false)
 const loadError = ref('')
 const saving = ref(false)
 const saveError = ref('')
+const completionOptions = [
+  { label: '已完成', key: 'completed' },
+  { label: '待执行', key: 'pending' }
+]
 let statusRequest
 let timer
 
 function statusLabel(code) {
   if (progress.value[code] === 'running') return '正在执行'
   if (progress.value[code] === 'completed') return '已完成'
-  if (progress.value[code] === 'attempted') return '已启动，结算待确认'
+  if (progress.value[code] === 'attempted') return '结算待确认'
   return '待执行'
 }
 
@@ -84,27 +88,29 @@ watch(() => resourceVersion.info.current_version, refreshStatus)
   <template v-else>
     <n-text>{{ event.name }}</n-text>
     <n-flex>
-      <n-flex v-for="stage in event.stages" :key="stage.code" align="center" :size="4">
-        <n-checkbox
-          :checked="progress[stage.code] === 'completed'"
-          :indeterminate="['attempted', 'running'].includes(progress[stage.code])"
+      <template v-for="stage in event.stages" :key="stage.code">
+        <n-dropdown
+          v-if="progress[stage.code] === 'attempted'"
+          trigger="click"
+          :options="completionOptions"
+          @select="setCompleted(stage.code, $event === 'completed')"
+        >
+          <n-button secondary size="small" type="warning" aria-haspopup="menu" :disabled="saving">
+            {{ stage.code }} · {{ statusLabel(stage.code) }}
+          </n-button>
+        </n-dropdown>
+        <n-button
+          v-else
+          secondary
+          size="small"
+          :type="progress[stage.code] === 'completed' ? 'success' : 'default'"
+          :aria-pressed="progress[stage.code] === 'completed'"
           :disabled="saving || progress[stage.code] === 'running'"
-          @update:checked="setCompleted(stage.code, $event)"
+          @click="setCompleted(stage.code, progress[stage.code] !== 'completed')"
         >
           {{ stage.code }} · {{ statusLabel(stage.code) }}
-        </n-checkbox>
-        <n-button
-          v-if="progress[stage.code] === 'attempted'"
-          text
-          type="primary"
-          size="small"
-          :aria-label="`将 ${stage.code} 设为待执行`"
-          :disabled="saving"
-          @click="setCompleted(stage.code, false)"
-        >
-          设为待执行
         </n-button>
-      </n-flex>
+      </template>
     </n-flex>
   </template>
   <n-alert v-if="saveError" type="error">{{ saveError }}</n-alert>
