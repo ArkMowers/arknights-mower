@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   config: {},
   client: null,
   error: vi.fn(),
+  warning: vi.fn(),
   success: vi.fn(),
   flush: vi.fn()
 }))
@@ -47,7 +48,7 @@ vi.mock('naive-ui', async () => {
         'NUpload'
       ].map((name) => [name, wrapper])
     ),
-    useMessage: () => ({ error: state.error, success: state.success })
+    useMessage: () => ({ error: state.error, warning: state.warning, success: state.success })
   }
 })
 let scope
@@ -56,7 +57,7 @@ const first = { id: 'a'.repeat(64), stage_name: '1-7', title: '作业一' }
 const second = { id: 'b'.repeat(64), stage_name: 'CE-6', title: '作业二' }
 beforeEach(() => {
   vi.clearAllMocks()
-  state.config = { copilot: ref({ scripts: [], user_additional: [] }) }
+  state.config = { copilot: ref({ scripts: [], user_additional: [] }), sss: ref({ scripts: [] }) }
   state.client = {
     get: vi.fn(async () => ({ data: { scripts: [first, second] } })),
     post: vi.fn(async () => ({ data: first })),
@@ -64,6 +65,7 @@ beforeEach(() => {
   }
   scope = effectScope()
   component = scope.run(() => Component.setup({}, { expose: () => {} }))
+  component.library.value = [first, second]
 })
 afterEach(() => {
   scope.stop()
@@ -143,7 +145,7 @@ describe('ordinary Copilot library and queue', () => {
     mock_set()
     component.add_script(second.id)
     const original = { ...state.config.copilot.value.scripts[0] }
-    component.code.value = '  prts://s123  '
+    component.code.value = '  s123  '
     await component.download()
     expect(state.client.get).toHaveBeenCalledWith(
       expect.stringMatching(/\/network\/maa-copilot-set\/123$/)
@@ -164,83 +166,165 @@ describe('ordinary Copilot library and queue', () => {
     expect(component.code.value).toBe('')
     expect(component.loading.value).toBe(false)
   })
-  it.each([{ ids: [] }, { ids: Array.from({ length: 32 }, () => '456') }])(
-    'refuses empty or over-capacity sets without truncation',
-    async ({ ids }) => {
-      mock_set(ids)
+  it('expands each downloaded member in place and preserves existing raid selections', async () => {
+    mock_set()
+    component.add_script(first.id)
+    state.config.copilot.value.scripts[0].is_raid = true
+    state.client.post
+      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+      .mockResolvedValueOnce({ data: { ...second, difficulty: 2 } })
+      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+    component.code.value = 'prts://s123'
+    await component.download()
+    expect(state.config.copilot.value.scripts.map((item) => [item.id, item.is_raid])).toEqual([
+      [first.id, true],
+      [first.id, false],
+      [first.id, true],
+      [second.id, true],
+      [first.id, false],
+      [first.id, true]
+    ])
+  })
+  it.each([
+    [0, [false]],
+    [1, [false]],
+    [2, [true]],
+    [3, [false, true]]
+  ])(
+    'applies difficulty %i to file uploads and existing library selections',
+    async (difficulty, expected) => {
+      const info = { ...first, difficulty }
+      state.client.post.mockResolvedValue({ data: info })
+      state.client.get.mockResolvedValue({ data: { scripts: [info] } })
+      await component.upload_blob(new Blob(['{}']))
       component.add_script(first.id)
-      const original = [...state.config.copilot.value.scripts]
-      component.code.value = 'prts://s123'
-      await component.download()
-      expect(state.client.post).not.toHaveBeenCalled()
-      expect(
-        state.client.get.mock.calls.some(([url]) => url.includes('/network/maa-copilot/'))
-      ).toBe(false)
-      expect(state.config.copilot.value.scripts).toEqual(original)
-      expect(state.error).toHaveBeenCalledOnce()
-      expect(component.code.value).toBe('prts://s123')
+      expect(state.config.copilot.value.scripts.map((item) => item.is_raid)).toEqual([
+        ...expected,
+        ...expected
+      ])
     }
   )
-  it('keeps the queue unchanged when a member download fails', async () => {
-    mock_set()
-    const get = state.client.get.getMockImplementation()
-    state.client.get.mockImplementation(async (url) => {
-      if (url.endsWith('/network/maa-copilot/789')) throw new Error('download failed')
-      return get(url)
-    })
-    component.add_script(second.id)
+  it('refuses both modes as a unit if only one queue slot is free', async () => {
+    mock_set(['456'])
+    state.client.post.mockResolvedValue({ data: { ...first, difficulty: 3 } })
+    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({
+      id: second.id,
+      is_raid: true
+    }))
     const original = [...state.config.copilot.value.scripts]
     component.code.value = 'prts://s123'
     await component.download()
     expect(state.config.copilot.value.scripts).toEqual(original)
-    expect(state.client.post).not.toHaveBeenCalled()
-    expect(state.success).not.toHaveBeenCalled()
-    expect(state.error).toHaveBeenCalledOnce()
-    expect(component.loading.value).toBe(false)
-  })
-  it('keeps partial imports in the library without adding an incomplete set to the queue', async () => {
-    mock_set()
-    state.client.post
-      .mockResolvedValueOnce({ data: first })
-      .mockRejectedValueOnce({ response: { data: { message: '作业类型不匹配' } } })
-    component.add_script(second.id)
-    const original = [...state.config.copilot.value.scripts]
-    component.code.value = 'prts://s123'
-    await component.download()
-    expect(state.client.post).toHaveBeenCalledTimes(2)
-    expect(state.config.copilot.value.scripts).toEqual(original)
-    expect(component.library.value).toEqual([first, second])
-    expect(state.success).not.toHaveBeenCalled()
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('队列未改变'))
-    expect(component.code.value).toBe('prts://s123')
-  })
-  it('does not overfill or overwrite a queue edited during import', async () => {
-    mock_set()
-    state.client.post.mockImplementationOnce(async () => {
-      state.config.copilot.value.scripts = Array.from({ length: 32 }, () => ({ id: second.id }))
-      return { data: first }
-    })
-    component.code.value = 'prts://s123'
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('本次需加入 2 项'))
+    state.config.copilot.value.scripts.pop()
     await component.download()
     expect(state.config.copilot.value.scripts).toHaveLength(32)
-    expect(state.config.copilot.value.scripts.every((item) => item.id === second.id)).toBe(true)
-    expect(state.success).not.toHaveBeenCalled()
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('剩余容量不足'))
+    expect(state.config.copilot.value.scripts.slice(-2).map((item) => item.is_raid)).toEqual([
+      false,
+      true
+    ])
   })
-  it('rejects an oversized member before uploading any member', async () => {
-    mock_set()
-    const get = state.client.get.getMockImplementation()
-    state.client.get.mockImplementation(async (url) => {
-      if (url.endsWith('/network/maa-copilot/789'))
-        return { data: { data: { content: 'x'.repeat(1024 * 1024 + 1) } } }
-      return get(url)
-    })
+  it('reports an empty set before requesting any member', async () => {
+    mock_set([])
     component.code.value = 'prts://s123'
     await component.download()
+    expect(state.client.get).toHaveBeenCalledTimes(1)
     expect(state.client.post).not.toHaveBeenCalled()
-    expect(state.config.copilot.value.scripts).toEqual([])
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('1 MB'))
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('作业集为空'))
   })
+
+  it('downloads, validates and queues each member before fetching the next one', async () => {
+    const calls = []
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/maa-copilot-set/123'))
+        return { data: { ids: ['1', '2', null, '3', '4', '5', '6', '7', '8'] } }
+      if (!url.includes('/network/')) return { data: { scripts: [first, second] } }
+      const id = url.split('/').at(-1)
+      calls.push('get ' + id)
+      if (id === '2') {
+        expect(state.config.copilot.value.scripts).toHaveLength(2)
+        throw new Error('offline')
+      }
+      const content =
+        id === '3'
+          ? '{'
+          : id === '4'
+            ? 'x'.repeat(1024 * 1024 + 1)
+            : JSON.stringify({ type: id === '6' || id === '8' ? 'SSS' : undefined, id })
+      return { data: { data: { content } } }
+    })
+    state.client.post.mockImplementation(async (url, form) => {
+      const { id } = JSON.parse(await form.get('copilot').text())
+      calls.push(url.split('/').at(-1) + ' ' + id)
+      if (id === '5') throw { response: { data: { message: '关卡名称无效' } } }
+      return { data: { ...(id === '6' ? second : first), difficulty: id === '1' ? 3 : 2 } }
+    })
+    component.code.value = 'prts://S123'
+    await component.download()
+    expect(calls).toEqual([
+      'get 1',
+      'maa-copilot 1',
+      'get 2',
+      'get 3',
+      'get 4',
+      'get 5',
+      'maa-copilot 5',
+      'get 6',
+      'sss-copilot 6',
+      'get 7',
+      'maa-copilot 7',
+      'get 8',
+      'sss-copilot 8'
+    ])
+    expect(state.config.copilot.value.scripts.map(({ is_raid }) => is_raid)).toEqual([
+      false,
+      true,
+      true
+    ])
+    expect(state.config.sss.value.scripts).toEqual(
+      [second, first].map(({ id }) => ({ id, type: 1, ec: 1, times: 1 }))
+    )
+    expect(component.failures.value).toEqual([
+      '第 2 份（2）：offline',
+      '第 3 份：作业编号无效',
+      '第 4 份（3）：作业文件不是有效 JSON',
+      '第 5 份（4）：作业文件不能超过 1 MB',
+      '第 6 份（5）：关卡名称无效'
+    ])
+    expect(state.warning).toHaveBeenCalledWith(
+      expect.stringContaining('自动战斗 2 份、保全派驻 2 份')
+    )
+    expect(component.selected.value).toBe(first.id)
+    expect(component.code.value).toBe('')
+  })
+
+  it('rechecks live capacity after upload and limits expanded entries per member', async () => {
+    mock_set(['456', '789', '456'])
+    state.client.post.mockImplementationOnce(async () => {
+      state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({
+        id: second.id,
+        is_raid: true
+      }))
+      return { data: { ...first, difficulty: 3 } }
+    })
+    component.code.value = 's123'
+    await component.download()
+    expect(state.config.copilot.value.scripts).toHaveLength(32)
+    expect(state.config.copilot.value.scripts.slice(0, 31).every(({ is_raid }) => is_raid)).toBe(
+      true
+    )
+    expect(state.config.copilot.value.scripts.at(-1)).toEqual({
+      id: second.id,
+      nav_name_override: '',
+      is_raid: false
+    })
+    expect(component.failures.value).toEqual([
+      expect.stringContaining('本次需加入 2 项'),
+      expect.stringContaining('队列已满')
+    ])
+    expect(state.client.post).toHaveBeenCalledTimes(2)
+  })
+
   it('ignores a duplicate download action while the current import is pending', async () => {
     mock_set()
     let complete
@@ -330,6 +414,32 @@ describe('ordinary Copilot library and queue', () => {
 })
 
 describe('ParadoxCopilot queue', () => {
+  it('keeps set validation and successful members in the paradox editor', async () => {
+    state.config.paradox = ref({ scripts: [], run_id: '' })
+    const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))
+    state.client.get.mockImplementation(async (url) => ({
+      data: url.includes('/maa-copilot-set/')
+        ? { ids: ['1', '2'] }
+        : {
+            data: {
+              content: url.endsWith('/2')
+                ? '{"stage_name":"mem_test_1","actions":[]}'
+                : '{"type":"SSS"}'
+            }
+          }
+    }))
+    state.client.post.mockRejectedValueOnce(new Error('请导入悖论模拟作业'))
+    paradox.code.value = 'S123'
+    await paradox.download()
+    expect(state.client.post.mock.calls.map(([url]) => url.split('/').at(-1))).toEqual([
+      'maa-paradox',
+      'maa-paradox'
+    ])
+    expect(state.config.paradox.value.scripts).toEqual([{ id: first.id }])
+    expect(state.config.sss.value.scripts).toEqual([])
+    expect(state.config.copilot.value.scripts).toEqual([])
+    expect(paradox.failures.value).toEqual(['第 1 份（1）：请导入悖论模拟作业'])
+  })
   it('imports through the paradox endpoint and only records the script id', async () => {
     state.config.paradox = ref({ scripts: [], run_id: '' })
     const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))

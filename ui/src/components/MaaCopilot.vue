@@ -3,7 +3,7 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
-import { downloadCopilotScripts } from '@/utils/maaCopilotCode'
+import { appendCopilotScript, copilotLibraryUrl, useCopilotDownload } from '@/utils/maaCopilotCode'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const props = defineProps({ paradox: { type: Boolean, default: false } })
@@ -13,10 +13,10 @@ const copilot = computed(() => (props.paradox ? configs.paradox.value : configs.
 const axios = inject('axios')
 const mobile = inject('mobile')
 const message = useMessage()
-const endpoint = `${import.meta.env.VITE_HTTP_URL || ''}/${props.paradox ? 'maa-paradox' : 'maa-copilot'}`
+const kind = props.paradox ? 'paradox' : 'copilot'
+const endpoint = copilotLibraryUrl(kind)
 const library = ref([])
 const selected = ref(null)
-const code = ref('')
 const loading = ref(false)
 const options = computed(() =>
   library.value.map((item) => ({ label: `${item.stage_name} · ${item.title}`, value: item.id }))
@@ -48,12 +48,14 @@ async function refresh() {
 }
 onMounted(refresh)
 
-function queue_item(id) {
-  return props.paradox ? { id } : { id, nav_name_override: '', is_raid: false }
-}
 function add_script(id) {
-  if (!id || copilot.value.scripts.length >= 32) return
-  copilot.value.scripts.push(queue_item(id))
+  const script = library.value.find((item) => item.id === id)
+  if (!script) return
+  try {
+    appendCopilotScript(configs, kind, script)
+  } catch (error) {
+    message.error(error.message)
+  }
 }
 async function upload_blob(blob) {
   const form = new FormData()
@@ -61,7 +63,7 @@ async function upload_blob(blob) {
   const { data } = await axios.post(endpoint, form)
   await refresh()
   selected.value = data.id
-  add_script(data.id)
+  appendCopilotScript(configs, kind, data)
   message.success('作业已导入并加入队列')
 }
 async function upload({ file, onFinish, onError }) {
@@ -70,37 +72,22 @@ async function upload({ file, onFinish, onError }) {
     await upload_blob(file.file)
     onFinish()
   } catch (error) {
-    message.error(error.response?.data?.message || '作业导入失败')
+    message.error(error.response?.data?.message || error.message || '作业导入失败')
     onError()
   } finally {
     loading.value = false
   }
 }
-async function download() {
-  if (loading.value) return
-  loading.value = true
-  try {
-    const scripts = await downloadCopilotScripts(
-      axios,
-      code.value,
-      endpoint,
-      32 - copilot.value.scripts.length
-    )
-    await refresh()
-    if (copilot.value.scripts.length + scripts.length > 32) {
-      throw new Error('队列已变更且剩余容量不足。队列未改变，已入库作业可从已有作业中选择')
-    }
-    copilot.value.scripts.push(...scripts.map(({ id }) => queue_item(id)))
-    selected.value = scripts.at(-1).id
-    code.value = ''
-    message.success(`已导入 ${scripts.length} 份作业并加入队列`)
-  } catch (error) {
-    if (error.refreshLibrary) await refresh()
-    message.error(error.response?.data?.message || error.message || '作业下载失败，请检查网络代理')
-  } finally {
-    loading.value = false
-  }
-}
+const { code, download, failures } = useCopilotDownload({
+  axios,
+  configs,
+  kind,
+  loading,
+  selected,
+  library,
+  refresh,
+  message
+})
 async function delete_script() {
   if (!selected.value || selected_in_queue.value) return
   try {
@@ -170,10 +157,19 @@ async function restart_queue() {
             <n-button :disabled="loading">选择文件</n-button>
           </n-upload>
         </n-flex>
-        <n-text depth="3"
-          >支持普通自动战斗作业及 prts://s
-          开头的作业集，按合集顺序追加队列。保全作业请在保全派驻中导入。单个文件最多 1 MB。</n-text
-        >
+        <n-text v-if="paradox" depth="3">
+          支持悖论模拟作业和作业集（如 s123）。单个文件最多 1 MB。
+        </n-text>
+        <n-text v-else depth="3">
+          支持普通自动战斗作业。导入作业集（如
+          s123）时，普通作业和保全作业按顺序加入各自队列。单个文件最多 1 MB。
+        </n-text>
+        <details v-if="failures.length">
+          <summary>导入结果 · {{ failures.length }} 份作业未加入队列</summary>
+          <ul>
+            <li v-for="failure in failures" :key="failure">{{ failure }}</li>
+          </ul>
+        </details>
       </n-flex>
     </n-form-item>
     <n-form-item label="已有作业">
@@ -223,7 +219,8 @@ async function restart_queue() {
           </n-flex>
         </n-card>
         <n-text v-if="!paradox" depth="3"
-          >按队列顺序执行，最多 32 项。Mower 先进入每份作业对应的关卡地图，MAA
+          >按队列顺序执行，最多 32 项。作业同时支持普通和突袭时，依次加入普通、突袭两项。Mower
+          先进入每份作业对应的关卡地图，MAA
           再定位关卡并执行作业；无法识别作业内部关卡标识时，请填写导航关卡名。请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
         >
         <n-text v-else depth="3">

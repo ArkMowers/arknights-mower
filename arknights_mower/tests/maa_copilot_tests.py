@@ -37,7 +37,9 @@ def upload(data=SCRIPT):
     return library.store_script(json.dumps(data).encode())
 
 
-def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(files):
+def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(
+    files, tmp_path
+):
     info = upload()
     assert upload()["id"] == info["id"]
     other = upload({**SCRIPT, "stage_name": "CE-6"})
@@ -48,7 +50,7 @@ def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(files
             {"id": info["id"]},
         ]
     )
-    params = library.build_copilot_params(conf)
+    params = library.build_copilot_params(conf, tmp_path)
     assert params == {
         "formation": False,
         "use_sanity_potion": False,
@@ -68,7 +70,19 @@ def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(files
     assert restored.copilot == conf
 
 
-def test_formation_parameters_only_forward_when_enabled(files):
+@pytest.mark.parametrize("difficulty", [0, 1, 2, 3])
+def test_import_and_existing_library_report_declared_difficulty(files, difficulty):
+    info = upload({**SCRIPT, "difficulty": difficulty})
+    assert info["difficulty"] == difficulty
+    assert library.list_scripts() == [info]
+
+
+def test_existing_script_without_difficulty_defaults_to_unspecified(files):
+    assert upload()["difficulty"] == 0
+    assert library.list_scripts()[0]["difficulty"] == 0
+
+
+def test_formation_parameters_only_forward_when_enabled(files, tmp_path):
     info = upload()
     conf = CopilotConf(
         scripts=[{"id": info["id"]}],
@@ -81,7 +95,7 @@ def test_formation_parameters_only_forward_when_enabled(files):
         support_unit_name=" 维什戴尔 ",
         user_additional=[{"name": "桃金娘", "skill": 1}, {"name": ""}],
     )
-    params = library.build_copilot_params(conf)
+    params = library.build_copilot_params(conf, tmp_path)
     assert params["formation_index"] == 4
     assert (
         params["use_sanity_potion"]
@@ -92,14 +106,14 @@ def test_formation_parameters_only_forward_when_enabled(files):
     assert params["support_unit_name"] == "维什戴尔"
     assert params["user_additional"] == [{"name": "桃金娘", "skill": 1}]
     conf.formation = False
-    assert set(library.build_copilot_params(conf)) == {
+    assert set(library.build_copilot_params(conf, tmp_path)) == {
         "copilot_list",
         "formation",
         "use_sanity_potion",
     }
     conf.formation = True
     conf.support_unit_usage = 1
-    assert "support_unit_name" not in library.build_copilot_params(conf)
+    assert "support_unit_name" not in library.build_copilot_params(conf, tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -142,17 +156,17 @@ def test_oversized_and_exhausted_storage_preserve_existing_script(files, monkeyp
     assert upload()["id"] == info["id"]
 
 
-def test_missing_or_changed_script_fails_before_params_are_returned(files):
+def test_missing_or_changed_script_fails_before_params_are_returned(files, tmp_path):
     info = upload()
     conf = CopilotConf(scripts=[{"id": info["id"]}])
     library.script_path(info["id"]).write_text("{}")
     with pytest.raises(ValueError):
-        library.build_copilot_params(conf)
+        library.build_copilot_params(conf, tmp_path)
     library.script_path(info["id"]).unlink()
     with pytest.raises(OSError):
-        library.build_copilot_params(conf)
+        library.build_copilot_params(conf, tmp_path)
     with pytest.raises(ValueError):
-        library.build_copilot_params(CopilotConf())
+        library.build_copilot_params(CopilotConf(), tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -425,6 +439,34 @@ def test_formation_disabled_ignores_saved_assistance_and_legacy_key_is_preserved
     scheduler.maa_plan_solver()
     scheduler.MAA.get_version.assert_not_called()
     assert "operbox_data_path" not in scheduler.MAA.append_task.call_args.args[1]
+
+
+@pytest.mark.parametrize("start_error", [False, True])
+def test_legacy_execution_copy_lives_until_maa_finishes(scheduler, start_error):
+    old = json.dumps(SCRIPT, ensure_ascii=False).encode()
+    old_id = hashlib.sha256(old).hexdigest()
+    path = library.script_path(old_id)
+    path.write_bytes(old)
+    conf = base_schedule.config.conf.copilot
+    conf.scripts[0].id = old_id
+    opened = []
+
+    def start():
+        entry = scheduler.MAA.append_task.call_args.args[1]["copilot_list"][0]
+        filename = Path(entry["filename"])
+        opened.append((filename, json.loads(filename.read_bytes())))
+        if start_error:
+            raise RuntimeError("作业启动失败")
+
+    scheduler.MAA.start.side_effect = start
+    scheduler.maa_plan_solver()
+    assert len(opened) == 1
+    filename, script = opened[0]
+    assert filename != path
+    assert script["opers"][0]["requirements"] == {"elite": 2}
+    assert not filename.parent.exists()
+    assert path.read_bytes() == old
+    assert conf.scripts[0].id == old_id
 
 
 def emit(solver, event, taskid, **kwargs):

@@ -471,7 +471,24 @@ class ProxySettingsTests(ProxySettingsBase):
                 "https://prts.maa.plus/set/get", params={"id": 123}, timeout=30
             )
 
-    def test_copilot_set_rejects_missing_invalid_or_oversized_members(self):
+    def test_copilot_set_returns_large_sets_and_marks_invalid_member_positions(self):
+        app = Flask(__name__)
+        app.token = "local-test-token"
+        app.register_blueprint(network_bp)
+        ids = list(range(1, 34))
+        with patch("arknights_mower.views.network.requests.get") as get:
+            get.return_value.json.return_value = {
+                "data": {"copilot_ids": [True, -1, 1.5, "https://other.test", *ids, 1]}
+            }
+            response = app.test_client().get(
+                "/network/maa-copilot-set/123", headers={"token": app.token}
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(
+                response.get_json()["ids"], [None] * 4 + [str(i) for i in ids] + ["1"]
+            )
+
+    def test_copilot_set_rejects_missing_member_list_or_upstream_failure(self):
         app = Flask(__name__)
         app.token = "local-test-token"
         app.register_blueprint(network_bp)
@@ -479,11 +496,6 @@ class ProxySettingsTests(ProxySettingsBase):
         for payload in (
             {},
             {"data": {"copilot_ids": []}},
-            {"data": {"copilot_ids": [True]}},
-            {"data": {"copilot_ids": [-1]}},
-            {"data": {"copilot_ids": [1.5]}},
-            {"data": {"copilot_ids": ["https://other.test"]}},
-            {"data": {"copilot_ids": list(range(1, 34))}},
             {"status_code": 400, "data": {"copilot_ids": [456]}},
         ):
             with self.subTest(payload=payload):
@@ -492,7 +504,7 @@ class ProxySettingsTests(ProxySettingsBase):
                     response = client.get(
                         "/network/maa-copilot-set/123", headers={"token": app.token}
                     )
-                    self.assertIn(response.status_code, (400, 502))
+                    self.assertEqual(response.status_code, 502)
                     self.assertNotIn("ids", response.get_json())
         with patch(
             "arknights_mower.views.network.requests.get", side_effect=requests.Timeout
