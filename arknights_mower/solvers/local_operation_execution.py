@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+from arknights_mower.solvers.event_rerun import run_event_rerun
 from arknights_mower.solvers.local_operation import (
     build_sanity_projection,
     compute_next_threshold_time,
@@ -65,6 +66,26 @@ def run_local_operation(scheduler, one_time=False, *, manual=False):
         else:
             observe_activity(scheduler, "stage-plan", "mower", "running")
             activity_started = True
+
+            def deadline():
+                if manual:
+                    return manual_task_deadline(scheduler)
+                return fixed_deadline if one_time else scheduler.tasks[0].time
+
+            fixed_deadline = datetime.now() + timedelta(days=1)
+            rerun_played = run_event_rerun(scheduler, deadline)
+            if rerun_played is not None and (
+                config.maintenance_recheck.is_set()
+                or (deadline() - datetime.now()) < timedelta(minutes=5)
+            ):
+                finish_running_observations(
+                    scheduler,
+                    "mower",
+                    key="stage-plan",
+                    outcome="checked",
+                    reason="plan_checked",
+                )
+                return False if manual else None
             stages, _ = scheduler.mower_stage_plan()
             logger.debug(
                 f"local operation plan: {stages}",
@@ -76,13 +97,7 @@ def run_local_operation(scheduler, one_time=False, *, manual=False):
                     "、".join(stages),
                     extra={"log_group": "local-operation"},
                 )
-            next_task_time = (
-                datetime.now() + timedelta(days=1)
-                if one_time
-                else manual_task_deadline(scheduler)
-                if manual
-                else scheduler.tasks[0].time
-            )
+            next_task_time = deadline()
             logger.debug(
                 "local operation scheduling window | next_task_time=%s | one_time=%s",
                 next_task_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -90,7 +105,7 @@ def run_local_operation(scheduler, one_time=False, *, manual=False):
                 extra={"log_group": "local-operation"},
             )
 
-            executed_any = False
+            executed_any = bool(rerun_played)
             inventory_unconfirmed = False
             skipped_stages = set()
             threshold_control_failed = False

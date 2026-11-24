@@ -242,10 +242,13 @@ it('shows the full simulation name and puts the green configuration shortcut bef
     maa_long_task_type: 'rogue',
     maa_long_task_weekly_windows: windows
   })
-  expect(state.selects['第1段任务类型'].options).toContainEqual({
-    label: '卫戍协议 · 个人极速模拟',
-    value: 'garrison'
-  })
+  for (const label of ['默认任务类型', '配置类型', '第1段任务类型']) {
+    const values = state.selects[label].options.map((option) => option.value)
+    expect(values.at(-1)).toBe('garrison')
+    expect(values).not.toContain('event_rerun')
+  }
+  expect(state.selects['默认任务类型'].options[0].value).toBe('rogue')
+  expect(state.selects['第1段任务类型'].options[0].value).toBe('default')
   expect(state.buttons['配置第1段任务'].type).toBe('primary')
   expect(html.indexOf('配置第1段任务')).toBeLessThan(html.indexOf('删除第1段'))
   state.buttons['配置第1段任务'].onClick()

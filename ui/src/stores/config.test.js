@@ -51,6 +51,27 @@ it('loads and saves an explicit empty long-task week without restoring daily win
   expect(store.maa_long_task_weekly_windows).toEqual([])
 })
 
+it.each([{}, { use_sanity_potion: false }])(
+  'loads and serializes the rerun potion preference from %j',
+  async (settings) => {
+    pinia = createPinia()
+    setActivePinia(pinia)
+    const app = createApp({})
+    app.use(pinia)
+    app.provide('loaded', ref(false))
+    store = app.runWithContext(() => useConfigStore())
+    for (const name of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[name] = []
+    expect(store.event_rerun.use_sanity_potion).toBe(true)
+    axios.get.mockResolvedValue({
+      data: { ...store.build_config(), maa_weekly_plan_active: '默认', event_rerun: settings }
+    })
+    await store.load_config()
+    expect(store.build_config().event_rerun.use_sanity_potion).toBe(
+      settings.use_sanity_potion ?? true
+    )
+  }
+)
+
 describe('workshop config autosave', () => {
   it('saves MAA growth separately from native mastery and crafting', async () => {
     pinia = createPinia()

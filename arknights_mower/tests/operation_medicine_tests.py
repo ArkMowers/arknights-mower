@@ -42,15 +42,18 @@ def test_native_potion_retains_threshold_and_expiry_recognition(
 
 
 @pytest.mark.parametrize(
-    "scene, today, used",
+    "scene, today, override, used",
     [
-        (Scene.OPERATOR_RECOVER_POTION, 24, True),
-        (Scene.OPERATOR_RECOVER_POTION, 25, False),
-        (Scene.OPERATOR_RECOVER_ORIGINITE, 24, False),
+        (Scene.OPERATOR_RECOVER_POTION, 24, None, True),
+        (Scene.OPERATOR_RECOVER_POTION, 24, False, False),
+        (Scene.OPERATOR_RECOVER_POTION, 25, None, False),
+        (Scene.OPERATOR_RECOVER_POTION, 25, True, True),
+        (Scene.OPERATOR_RECOVER_ORIGINITE, 24, None, False),
+        (Scene.OPERATOR_RECOVER_ORIGINITE, 24, True, False),
     ],
 )
 def test_selected_date_accepts_any_potion_without_enabling_originite(
-    monkeypatch, scene, today, used
+    monkeypatch, scene, today, override, used
 ):
     monkeypatch.setattr(
         operation.config,
@@ -63,6 +66,7 @@ def test_selected_date_accepts_any_potion_without_enabling_originite(
     )
     solver = object.__new__(operation.OperationSolver)
     solver.stage_id = "1-7"
+    solver.use_sanity_potion = override
     solver.scene = MagicMock(return_value=scene)
     solver.tap = MagicMock()
     solver._finish_batch = MagicMock()

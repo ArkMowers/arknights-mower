@@ -560,7 +560,9 @@ def save_maa_sss_progress(progress):
 
 def load_event_rerun_progress(event_key):
     path = get_path("@app/tmp/data.db")
-    if not path.is_file():
+    try:
+        path.stat()
+    except FileNotFoundError:
         return {}
     with closing(
         sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
@@ -587,6 +589,67 @@ def claim_event_rerun_stage(event_key, stage):
             ).rowcount
             == 1
         )
+
+
+_event_rerun_lock = Lock()
+_active_rerun_stages = set()
+
+
+@contextmanager
+def event_rerun_execution(event_key, stage):
+    key = (event_key, stage)
+    with _event_rerun_lock:
+        admitted = (
+            key not in _active_rerun_stages
+            and stage not in load_event_rerun_progress(event_key)
+        )
+        if admitted:
+            _active_rerun_stages.add(key)
+    try:
+        yield admitted
+    finally:
+        if admitted:
+            with _event_rerun_lock:
+                _active_rerun_stages.discard(key)
+
+
+def event_rerun_status(event_key):
+    with _event_rerun_lock:
+        progress = load_event_rerun_progress(event_key)
+        for opening, stage in _active_rerun_stages:
+            if opening == event_key:
+                progress[stage] = "running"
+        return progress
+
+
+def set_event_rerun_completion(event_key, stage, expected, completed):
+    with _event_rerun_lock:
+        if (event_key, stage) in _active_rerun_stages:
+            return False
+        with _conn() as connection, connection:
+            connection.execute("BEGIN IMMEDIATE")
+            key = (event_key, stage)
+            row = connection.execute(
+                "SELECT status FROM event_rerun_progress WHERE event_key = ? AND stage = ?",
+                key,
+            ).fetchone()
+            current = row[0] if row else "pending"
+            desired = "completed" if completed else "pending"
+            if current == desired:
+                return True
+            if current != expected:
+                return False
+            if completed:
+                connection.execute(
+                    "INSERT OR REPLACE INTO event_rerun_progress VALUES (?, ?, 'completed')",
+                    key,
+                )
+            else:
+                connection.execute(
+                    "DELETE FROM event_rerun_progress WHERE event_key = ? AND stage = ?",
+                    key,
+                )
+            return True
 
 
 def release_event_rerun_stage(event_key, stage):

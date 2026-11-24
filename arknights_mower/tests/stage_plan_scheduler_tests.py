@@ -504,3 +504,29 @@ def test_rescue_daily_yields_to_near_base_task(scheduler, monkeypatch):
     scheduler.tasks[0].time = datetime.now() + timedelta(minutes=2)
     scheduler.maa_plan_solver()
     scheduler.initialize_maa.assert_not_called()
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_maa_checks_rerun_before_initializing_or_appending_fight(
+    scheduler, monkeypatch, manual
+):
+    from arknights_mower.solvers import event_rerun
+
+    conf = Conf(stage_plan_runner="maa", event_rerun={"enabled": True})
+    monkeypatch.setattr(base_schedule.config, "conf", conf)
+    scheduler.task = SimpleNamespace(type=TaskTypes.STAGE_PLAN)
+    scheduler._maa_refresh_deadline = lambda: None
+    order = []
+
+    def rerun(owner, deadline):
+        assert owner is scheduler
+        assert deadline() > datetime.now()
+        order.append("rerun")
+        return True
+
+    monkeypatch.setattr(event_rerun, "run_event_rerun", rerun)
+    scheduler.initialize_maa = lambda: order.append("initialize")
+    scheduler.append_maa_task = lambda task: order.append(task)
+    scheduler.maa_plan_solver(["Fight", "Award"] if manual else "All", manual=manual)
+    assert order[:2] == ["rerun", "initialize"]
+    assert "Fight" in order[2:]

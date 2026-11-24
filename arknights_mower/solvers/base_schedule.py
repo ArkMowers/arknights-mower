@@ -23289,10 +23289,6 @@ class BaseSchedulerSolver(
                     extra={"log_group": "maa-integration"},
                 )
             else:
-                send_message("启动MAA", subject="准备启动 MAA")
-                self.back_to_index()
-                # 任务及参数请参考 docs/集成文档.md
-                self.initialize_maa()
                 if tasks == "All":
                     tasks = ["StartUp"]
                     if getattr(
@@ -23317,6 +23313,21 @@ class BaseSchedulerSolver(
                     ):
                         tasks.append("Mall")
                     tasks.append("Award")
+                if "Fight" in tasks and not one_time:
+                    from arknights_mower.solvers.event_rerun import run_event_rerun
+
+                    if run_event_rerun(self, deadline) is not None:
+                        if (
+                            config.maintenance_recheck.is_set()
+                            or (deadline() - datetime.now()).total_seconds() < 300
+                        ):
+                            return False if manual else None
+                        if (refresh := self._maa_refresh_deadline()) is not None:
+                            return defer_refresh(refresh)
+                send_message("启动MAA", subject="准备启动 MAA")
+                self.back_to_index()
+                # 任务及参数请参考 docs/集成文档.md
+                self.initialize_maa()
                 for maa_task in tasks:
                     if mall_action:
                         self.append_maa_task(maa_task, mall_action=mall_action)

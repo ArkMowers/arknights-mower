@@ -25,7 +25,7 @@ from arknights_mower.utils.path import temporary_root
 WEEKLY_SELECTION_FILE = "profile-weekly.json"
 TABLE_GROUPS = {
     "garrison_progress": "long",
-    "event_rerun_progress": "long",
+    "event_rerun_progress": "weekly_plan",
     "maa_copilot_progress": "long",
     "maa_paradox_progress": "long",
     "maa_sss_progress": "long",

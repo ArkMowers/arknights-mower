@@ -2150,6 +2150,78 @@ def stage_latest_activity():
     return build_options(selected, inventory)
 
 
+def _event_rerun_status(event):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.event_rerun import STAGE_SECONDS
+
+    progress = record.event_rerun_status(event["key"]) if event else {}
+    return {
+        "event": event,
+        "stage_seconds": STAGE_SECONDS,
+        "progress": {
+            stage["code"]: progress[stage["code"]]
+            for stage in event["stages"]
+            if stage["code"] in progress
+        }
+        if event
+        else {},
+    }
+
+
+def _read_event_rerun_status():
+    from arknights_mower.utils.event_rerun import current_rerun
+
+    with backup_lock:
+        try:
+            return _event_rerun_status(current_rerun())
+        except (OSError, ValueError, sqlite3.Error):
+            logger.exception("读取复刻SS活动关卡或进度失败")
+            return {"message": "暂时无法读取复刻关卡进度，请稍后重试"}, 503
+
+
+@app.get("/stage/event-rerun")
+@require_token
+def stage_event_rerun_status():
+    return _read_event_rerun_status()
+
+
+@app.patch("/stage/event-rerun")
+@require_token
+def update_event_rerun_stage():
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.event_rerun import current_rerun
+
+    data = request.get_json(silent=True)
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("event_key"), str)
+        or not isinstance(data.get("stage"), str)
+        or data.get("expected") not in ("pending", "attempted", "completed")
+        or type(data.get("completed")) is not bool
+    ):
+        return {"message": "关卡状态无效"}, 400
+    with backup_lock:
+        event = current_rerun()
+        if not event or data["event_key"] != event["key"]:
+            return {"message": "活动期次已变更，请刷新后重试"}, 409
+        code = data["stage"]
+        if not any(stage["code"] == code for stage in event["stages"]):
+            return {"message": "请选择本期普通战斗关"}, 400
+        if not record.set_event_rerun_completion(
+            event["key"], code, data["expected"], data["completed"]
+        ):
+            return {"message": "关卡正在执行或状态已变更，请刷新后重试"}, 409
+        if not data["completed"]:
+            from arknights_mower.__main__ import base_scheduler
+
+            fingerprint, blocked = getattr(
+                base_scheduler, "event_rerun_blocked", (None, None)
+            )
+            if fingerprint and fingerprint[0] == event["key"]:
+                blocked.discard(code)
+        return _event_rerun_status(event)
+
+
 @app.route("/stage/inventory-rules")
 @require_token
 def stage_inventory_rules():
@@ -3320,20 +3392,7 @@ def maa_long_task_status():
     with backup_lock:
         try:
             if request.args.get("kind") == "event_rerun":
-                from arknights_mower.solvers.record import load_event_rerun_progress
-                from arknights_mower.utils.event_rerun import (
-                    STAGE_SECONDS,
-                    current_rerun,
-                )
-
-                event = current_rerun()
-                return {
-                    "event": event,
-                    "stage_seconds": STAGE_SECONDS,
-                    "progress": load_event_rerun_progress(event["key"])
-                    if event
-                    else {},
-                }
+                return _read_event_rerun_status()
             return completion_status(config.conf)
         except Exception:
             logger.exception("读取 MAA 大型任务完成状态失败")
@@ -3376,7 +3435,6 @@ def maa_copilot_library(library):
 @app.delete(COPILOT_LIBRARY_ROUTE + "/<script_id>")
 @require_token
 def delete_maa_copilot(library, script_id):
-    from arknights_mower.utils.event_rerun import current_rerun
     from arknights_mower.utils.maa_copilot import script_path
 
     with backup_lock, maa_maintenance_lock:
@@ -3389,24 +3447,6 @@ def delete_maa_copilot(library, script_id):
             return {"message": "请先将作业移出执行队列"}, 409
         if _maa_busy_response():
             return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
-        rerun = getattr(config.conf, "event_rerun", None)
-        if (
-            library == "maa-copilot"
-            and getattr(rerun, "raid_enabled", False)
-            and rerun.script_id == script_id
-        ):
-            try:
-                event = current_rerun()
-            except (OSError, ValueError):
-                logger.exception("删除作业前无法读取复刻SS活动资源")
-                return {"message": "无法确认复刻SS活动的作业引用"}, 503
-            if (
-                event is not None
-                and event["key"] == rerun.event_key
-                and event["raid"] is not None
-                and event["now"] < event["raid"]["end_ts"]
-            ):
-                return {"message": "请先取消本期复刻SS活动的作业选择"}, 409
         try:
             script_path(
                 script_id,

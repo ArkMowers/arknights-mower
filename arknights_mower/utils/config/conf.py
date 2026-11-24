@@ -212,12 +212,8 @@ class CopilotConf(ConfModel):
 
 
 class EventRerunConf(ConfModel):
-    event_key: str = Field(default="", max_length=48)
-    stages: list[Annotated[str, Field(pattern=r"^[A-Z0-9]+-\d+$", max_length=24)]] = (
-        Field(default_factory=list, max_length=64)
-    )
-    raid_enabled: bool = False
-    script_id: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
+    enabled: bool = False
+    use_sanity_potion: bool = True
 
 
 class RogueRecruitConf(ConfModel):
@@ -242,7 +238,6 @@ class WeeklyLongTaskWindow(LongTaskWindow):
             "ra",
             "sf",
             "garrison",
-            "event_rerun",
         ]
         | None
     ) = None
@@ -444,7 +439,6 @@ class LongTaskPart(ConfModel):
         "签到活动开关"
 
     copilot: CopilotConf = Field(default_factory=CopilotConf)
-    event_rerun: EventRerunConf = Field(default_factory=EventRerunConf)
 
     maa_rg_enable: int = 0
     "大型任务"
@@ -634,6 +628,7 @@ class RegularTaskPart(ConfModel):
     "活动签到"
     maa_enable: bool = True
     "日常任务（兼容旧字段）"
+    event_rerun: EventRerunConf = Field(default_factory=EventRerunConf)
     stage_plan_enable: bool = True
     "刷理智周计划开关"
     stage_plan_runner: Literal["maa", "mower"] = "maa"
@@ -1418,6 +1413,25 @@ class Conf(
             data.pop("device", None)
         if not isinstance(data, dict):
             return data
+        # Retire only the windows that selected the former rerun long task.
+        rerun_default = data.get("maa_long_task_type") == "event_rerun"
+        weekly = data.get("maa_long_task_weekly_windows")
+        if rerun_default:
+            data["maa_long_task_type"] = "rogue"
+            if weekly is None:
+                data["maa_long_task_weekly_windows"] = []
+        if isinstance(weekly, list):
+            data["maa_long_task_weekly_windows"] = [
+                row
+                for row in weekly
+                if not (
+                    isinstance(row, dict)
+                    and (
+                        row.get("task_type") == "event_rerun"
+                        or (rerun_default and not row.get("task_type"))
+                    )
+                )
+            ]
         # 旧访友开关只迁移启用状态，访友和购物统一交给 Mower。
         old_visit_friend = data.pop("visit_friend", None)
         if old_visit_friend is not None:
@@ -1481,10 +1495,6 @@ class Conf(
     @property
     def SF(self):
         return self.maa_rg_enable == 1 and self.maa_long_task_type == "sf"
-
-    @property
-    def EVENT_RERUN(self):
-        return self.maa_rg_enable == 1 and self.maa_long_task_type == "event_rerun"
 
     @property
     def GARRISON(self):

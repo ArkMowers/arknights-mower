@@ -17,7 +17,7 @@ def select_rerun(activities, stages, now):
     available = [
         activity
         for activity in activities
-        if activity["activity_id"].endswith("sre")
+        if re.fullmatch(r"act\d+sre", activity["activity_id"])
         and activity["start_ts"] <= now < activity["end_ts"]
     ]
     if not available:
@@ -31,7 +31,9 @@ def select_rerun(activities, stages, now):
     activity_id = activity["activity_id"]
     chapters = activity.get("chapters", {})
     normal = {}
-    raids = {}
+    normal_chapter = chapters.get("normal")
+    if not normal_chapter:
+        return None
     for stage in stages:
         code = stage.get("id", "")
         window = stage.get("endTs")
@@ -55,23 +57,11 @@ def select_rerun(activities, stages, now):
             "end_ts": window["endTs"],
         }
         if (
-            stage.get("subTitle") == chapters.get("normal")
+            stage.get("subTitle") == normal_chapter
             and stage.get("difficulty") == "NORMAL"
             and re.fullmatch(r"[A-Z0-9]+-\d+", code)
         ):
             normal[code] = option
-        elif stage.get("subTitle") == chapters.get("ex") and re.fullmatch(
-            r"[A-Z0-9]+-EX-8 突袭", code
-        ):
-            variants = {code, code.removesuffix(" 突袭"), option["name"]}
-            activity_number = activity_id.removeprefix("act").removesuffix("sre")
-            for prefix in ("act", "level_act"):
-                for kind in ("side", "sre"):
-                    for index in ("08", "8"):
-                        level = f"{prefix}{activity_number}{kind}_ex{index}"
-                        variants.update((level, f"{level}#f#"))
-            raids[code] = {**option, "script_stage_names": sorted(variants)}
-
     return {
         "key": f"{activity_id}:{latest}",
         "activity_id": activity_id,
@@ -80,5 +70,4 @@ def select_rerun(activities, stages, now):
         "stages": sorted(
             normal.values(), key=lambda stage: int(stage["code"].rsplit("-", 1)[1])
         ),
-        "raid": next(iter(raids.values())) if len(raids) == 1 else None,
     }
