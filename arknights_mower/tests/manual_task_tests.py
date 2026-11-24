@@ -43,7 +43,7 @@ def queue(manual, kind, minutes=60):
 
 @pytest.mark.parametrize("kind", list(MANUAL_TASK_TYPES))
 def test_task_route_accepts_each_type_clears_roster_and_wakes(
-    manual, monkeypatch, kind
+    manual, monkeypatch, kind, tmp_path
 ):
     from arknights_mower.views import task as route
 
@@ -62,6 +62,12 @@ def test_task_route_accepts_each_type_clears_roster_and_wakes(
             "meta_data": "stale",
         }
     }
+    if kind == TaskTypes.MANUAL_COPILOT:
+        from arknights_mower.utils import maa_copilot
+
+        monkeypatch.setattr(maa_copilot, "get_path", lambda _: tmp_path)
+        info = maa_copilot.store_script(b'{"stage_name":"1-7","actions":[]}')
+        body["task"]["copilot"] = {"mode": "single", "id": info["id"]}
     client = app.test_client()
     for token in (None, "wrong"):
         headers = {} if token is None else {"token": token}
@@ -437,3 +443,21 @@ def test_local_stage_selection_uses_mower(manual, monkeypatch):
     assert manual.manual.run_manual_task(manual.solver, task)
     manual.solver.mower_plan_solver.assert_called_once_with(manual=True)
     manual.solver.maa_plan_solver.assert_not_called()
+
+
+def test_manual_copilot_runs_before_entering_base_and_keeps_other_tasks(
+    manual, monkeypatch
+):
+    task, later = queue(manual, TaskTypes.MANUAL_COPILOT)
+    recover_scene = Mock()
+    monkeypatch.setattr(manual.module, "recover_base_scene", recover_scene)
+    enter_base = Mock()
+    monkeypatch.setattr(manual.module.SceneGraphSolver, "run", enter_base)
+    manual.solver.run()
+    manual.solver.maa_plan_solver.assert_called_once_with(
+        [], manual=True, long_task="manual_copilot"
+    )
+    enter_base.assert_not_called()
+    recover_scene.assert_not_called()
+    assert task not in manual.solver.tasks
+    assert later in manual.solver.tasks

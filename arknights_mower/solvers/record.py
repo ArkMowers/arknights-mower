@@ -293,11 +293,14 @@ def current_state():
         or not getattr(base_scheduler, "_state_restore_complete", True)
     ):
         return None
-    data, tasks = base_scheduler.op_data, base_scheduler.tasks
-    if any(getattr(task, "mood_control_event", None) for task in tasks):
-        tasks = [
-            task for task in tasks if not getattr(task, "mood_control_event", None)
-        ]
+    data = base_scheduler.op_data
+    # Interactive Copilot requests belong to the current game screen and session.
+    tasks = [
+        task
+        for task in base_scheduler.tasks
+        if not getattr(task, "mood_control_event", None)
+        and not hasattr(task, "copilot_request")
+    ]
     return {
         "dorm": data.all_dorms(),
         "tasks": tasks,

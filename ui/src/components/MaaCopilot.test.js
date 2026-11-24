@@ -43,6 +43,9 @@ vi.mock('naive-ui', async () => {
         'NForm',
         'NFormItem',
         'NInput',
+        'NInputNumber',
+        'NRadio',
+        'NRadioGroup',
         'NSelect',
         'NText',
         'NUpload'
