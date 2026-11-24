@@ -3,7 +3,10 @@ from threading import Lock, Thread, current_thread
 import cv2
 import numpy as np
 
-from arknights_mower.solvers.record import claim_monthly_card_reminder
+from arknights_mower.solvers.record import (
+    claim_monthly_card_reminder,
+    restore_monthly_card_reminder,
+)
 from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.email import send_message
@@ -91,24 +94,31 @@ class MonthlyCardReminder:
             logger.debug("未能启动月卡到期提醒检查", exc_info=True)
 
     def _check(self, region, today, owner):
+        def active():
+            return (
+                owner.is_alive()
+                and not config.stop_mower.is_set()
+                and today == get_server_time().date()
+            )
+
         try:
-            if not expiry_visible(region):
+            if not expiry_visible(region) or not active():
                 return
-            if (
-                not owner.is_alive()
-                or config.stop_mower.is_set()
-                or today != get_server_time().date()
-            ):
+            first_reminder, previous_day = claim_monthly_card_reminder(today)
+            if not active():
+                if first_reminder:
+                    restore_monthly_card_reminder(today, previous_day)
                 return
-            first_reminder = claim_monthly_card_reminder(today)
             self._reminded_day = today
             if first_reminder:
-                logger.warning("月卡即将到期，请在游戏内查看剩余时间")
-                send_message(
-                    "请在游戏内查看月卡剩余时间。",
-                    subject="月卡即将到期",
-                    level="WARNING",
-                )
+                try:
+                    send_message(
+                        "请在游戏内查看月卡剩余时间。",
+                        subject="月卡即将到期",
+                        level="WARNING",
+                    )
+                finally:
+                    logger.warning("月卡即将到期，请在游戏内查看剩余时间")
         except Exception:
             logger.debug("月卡到期提醒检查失败", exc_info=True)
         finally:

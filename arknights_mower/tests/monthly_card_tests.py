@@ -174,6 +174,62 @@ def test_cached_home_scene_without_a_frame_does_not_start_a_capture(reminder_thr
     capture.assert_not_called()
 
 
+def test_stop_while_registering_reminder_preserves_same_day_retry(
+    income_db, monkeypatch, reminder_threads
+):
+    from arknights_mower.solvers import record
+
+    started, release = Event(), Event()
+    original_claim = monthly_card.claim_monthly_card_reminder
+    now = datetime(2026, 11, 24, 12)
+    yesterday = now.replace(day=23).date()
+    assert original_claim(yesterday)[0]
+
+    def blocked_claim(today):
+        started.set()
+        assert release.wait(5)
+        return original_claim(today)
+
+    mail = Mock()
+    monkeypatch.setattr(monthly_card, "expiry_visible", Mock(return_value=True))
+    monkeypatch.setattr(monthly_card, "claim_monthly_card_reminder", blocked_claim)
+    monkeypatch.setattr(monthly_card, "send_message", mail)
+    monkeypatch.setattr(monthly_card, "get_server_time", lambda: now)
+    recognizer = Mock(img=home_frame())
+
+    monthly_card.MonthlyCardReminder().observe(Scene.INDEX, recognizer)
+    try:
+        assert started.wait(2)
+        monthly_card.config.stop_mower.set()
+    finally:
+        release.set()
+        reminder_threads[0].join(5)
+    mail.assert_not_called()
+    assert record._fetchall("SELECT game_day FROM monthly_card_reminder") == [
+        (yesterday.isoformat(),)
+    ]
+
+    monthly_card.config.stop_mower.clear()
+    monthly_card.MonthlyCardReminder().observe(Scene.INDEX, recognizer)
+    reminder_threads[-1].join(5)
+    mail.assert_called_once()
+
+
+def test_revoking_a_cancelled_claim_preserves_a_newer_reminder(income_db):
+    from arknights_mower.solvers import record
+
+    day = datetime(2026, 11, 24).date()
+    next_day = day.replace(day=25)
+    claimed, previous = record.claim_monthly_card_reminder(day)
+    assert claimed
+    assert record.claim_monthly_card_reminder(next_day)[0]
+
+    record.restore_monthly_card_reminder(day, previous)
+
+    assert not record.claim_monthly_card_reminder(day)[0]
+    assert not record.claim_monthly_card_reminder(next_day)[0]
+
+
 def test_reminder_has_an_independent_short_shared_ocr_timeout(monkeypatch, tmp_path):
     shared = monthly_card.SharedOCREngine(directory=tmp_path)
     calls = []
