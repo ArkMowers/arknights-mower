@@ -44,11 +44,70 @@ def operator_recipe_allowed(name, recipe, *, fodder=False):
     return name != "莱伊" or not t4
 
 
+def workshop_material_rarities(formulas):
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
+
+    rarity_by_name = {
+        item["name"]: item.get("rarity")
+        for item in get_skill_data().get("items", {}).values()
+    }
+    return {
+        name: (
+            rarity_by_name.get(recipe.get("output_name", name))
+            if recipe.get("tab") == "精英材料"
+            else None
+        )
+        for name, recipe in list(formulas.items())
+    }
+
+
+def expand_workshop_items(items, formulas=None):
+    if not any(
+        item.get("material_rarities")
+        if isinstance(item, dict)
+        else getattr(item, "material_rarities", ())
+        for item in items
+    ):
+        return list(items)
+    if formulas is None:
+        from arknights_mower.data import workshop_formula
+
+        formulas = workshop_formula
+    rarities = workshop_material_rarities(formulas)
+    result = []
+    seen = set()
+    for item in items:
+        data = item.model_dump() if hasattr(item, "model_dump") else dict(item)
+        selected_rarities = data.pop("material_rarities", ())
+        additional = (
+            name for name, rarity in rarities.items() if rarity in selected_rarities
+        )
+        names = [
+            name
+            for name in dict.fromkeys([*data["item_names"], *additional])
+            if name not in seen
+        ]
+        if names:
+            seen.update(names)
+            result.append(
+                item.model_copy(
+                    update={
+                        "item_names": names,
+                        **({"material_rarities": []} if selected_rarities else {}),
+                    }
+                )
+                if hasattr(item, "model_copy")
+                else {**data, "item_names": names}
+            )
+    return result
+
+
 def scope_workshop_items(name, items, formulas=None):
-    """Filter saved tasks too; copy changed items without altering user settings."""
+    """Resolve saved tiers and apply recipe restrictions to an execution copy."""
+    items = expand_workshop_items(items, formulas)
     protected = protected_workshop_materials()
     if not protected and name not in SCOPED_OPERATORS:
-        return list(items)
+        return items
     if formulas is None:
         from arknights_mower.data import workshop_formula
 

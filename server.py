@@ -2082,22 +2082,11 @@ def item_list():
 @require_token
 def workshop_material_options():
     from arknights_mower.data import workshop_formula
-    from arknights_mower.utils.mastery_recommendation import get_skill_data
+    from arknights_mower.utils.workshop_recipes import workshop_material_rarities
 
-    rarity_by_name = {
-        item["name"]: item.get("rarity")
-        for item in get_skill_data().get("items", {}).values()
-    }
     return [
-        {
-            "name": name,
-            "rarity": (
-                rarity_by_name.get(recipe.get("output_name", name))
-                if recipe["tab"] == "精英材料"
-                else None
-            ),
-        }
-        for name, recipe in list(workshop_formula.items())
+        {"name": name, "rarity": rarity}
+        for name, rarity in workshop_material_rarities(workshop_formula).items()
     ]
 
 

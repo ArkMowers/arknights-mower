@@ -1,8 +1,6 @@
 """Allocate permitted recipes in the user-selected operator order."""
 
-from arknights_mower.utils.workshop_material_policy import protected_workshop_materials
 from arknights_mower.utils.workshop_recipes import (
-    SCOPED_OPERATORS,
     matches_specialty,
     operator_recipe_allowed,
     operator_specialties,
@@ -30,15 +28,14 @@ def setting_recipe_bonus(entry, available, formulas):
 
 def scope_setting(entry, formulas):
     name = entry.operator if hasattr(entry, "model_dump") else entry["operator"]
-    if not protected_workshop_materials() and name not in SCOPED_OPERATORS:
+    items = entry.items if hasattr(entry, "model_dump") else entry["items"]
+    scoped = scope_workshop_items(name, items, formulas)
+    if scoped == items:
         return entry
-    items = scope_workshop_items(
-        name, entry.items if hasattr(entry, "model_dump") else entry["items"], formulas
-    )
     return (
-        entry.model_copy(update={"items": items})
+        entry.model_copy(update={"items": scoped})
         if hasattr(entry, "model_copy")
-        else {**entry, "items": items}
+        else {**entry, "items": scoped}
     )
 
 

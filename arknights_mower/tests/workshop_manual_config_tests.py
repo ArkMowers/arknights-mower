@@ -91,6 +91,102 @@ def test_edit_when_idle_updates_runtime_and_cannot_be_replaced_by_old_tab(next_s
     assert config.conf.drone_interval == 9
 
 
+@pytest.mark.parametrize("rarity", [4, 5])
+def test_saved_material_tier_admits_recipes_from_refreshed_resources(
+    next_skill, monkeypatch, rarity
+):
+    from types import SimpleNamespace
+
+    from arknights_mower import data
+    from arknights_mower.utils import crash_recovery, scheduler_task
+    from arknights_mower.utils import mastery_recommendation as rec
+    from arknights_mower.utils.workshop_fodder import deer_manual_t4
+    from arknights_mower.utils.workshop_recipes import scope_workshop_items
+
+    formulas = {"碳素": data.workshop_formula["碳素"]}
+    catalog = {}
+    monkeypatch.setattr(data, "workshop_formula", formulas)
+    monkeypatch.setattr(rec, "get_skill_data", lambda: {"items": catalog})
+    config.conf.enable_crafting = False
+    operator = "九色鹿" if rarity == 4 else "能天使"
+    req = payload()
+    selected = {
+        "item_names": ["碳素"],
+        "material_rarities": [rarity],
+        "children_lower_limit": 0,
+        "self_upper_limit": 3,
+    }
+    duplicate = {
+        "item_names": ["碳素"],
+        "children_lower_limit": 50,
+        "self_upper_limit": 0,
+    }
+    req["workshop_manual_settings"] = [
+        {"operator": operator, "items": [selected, duplicate]}
+    ]
+    response = state.save_user_config(req)
+    assert response["workshop_manual_settings"][0]["items"] == [selected, duplicate]
+
+    monkeypatch.setattr(
+        config, "conf", config.Conf.model_validate_json(config.conf.model_dump_json())
+    )
+    inventory = {"碳素": 3, "碳": 10, "新配方成品": 0, "新增材料原料": 10}
+    monkeypatch.setattr(scheduler_task, "get_inventory_counts", lambda: inventory)
+    op_data = SimpleNamespace(operators={operator: SimpleNamespace(mood=24)})
+    tasks = []
+    scheduler_task.try_workshop_tasks(op_data, tasks)
+    assert tasks == []
+
+    formulas.update(
+        {
+            "新配方": {
+                "tab": "精英材料",
+                "apCost": 4 if rarity == 4 else 8,
+                "output_name": "新配方成品",
+                "output_count": 1,
+                "items": ["新增材料原料"],
+                "costs": {"新增材料原料": 2},
+            },
+            "其他配方": {"tab": "基建材料", "apCost": 4},
+        }
+    )
+    catalog.update(
+        material={"name": "新配方成品", "rarity": rarity},
+        unrelated={"name": "其他配方", "rarity": rarity},
+    )
+    settings = config.conf.workshop_settings[0].items
+    assert [
+        item.model_dump() for item in scope_workshop_items(operator, settings, formulas)
+    ] == [
+        {
+            "item_names": ["碳素", "新配方"],
+            "children_lower_limit": 0,
+            "self_upper_limit": 3,
+        }
+    ]
+    assert crash_recovery.workshop_inventory_names() == {
+        "碳素",
+        "碳",
+        "新配方成品",
+        "新增材料原料",
+    }
+    if rarity == 4:
+        inventory["碳素"] = 0
+        assert deer_manual_t4(inventory, {}, formulas) == [
+            {
+                "item_names": ["新配方"],
+                "children_lower_limit": 0,
+                "self_upper_limit": 1,
+            }
+        ]
+    scheduler_task.try_workshop_tasks(op_data, tasks)
+    assert [task.meta_data for task in tasks] == [operator]
+    assert state.read_user_config()["workshop_manual_settings"][0]["items"] == [
+        selected,
+        duplicate,
+    ]
+
+
 def test_version_update_policy_change_wakes_running_scheduler(next_skill):
     from arknights_mower import __main__ as mower_main
 

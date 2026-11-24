@@ -211,8 +211,8 @@ describe('partial configuration saves', () => {
     axios.get.mockResolvedValueOnce({ data: ['聚合剂', '糖聚块'] })
     await store.load_item()
     expect(store.item_list).toEqual([
-      { value: '聚合剂', label: '聚合剂', rarity: null },
-      { value: '糖聚块', label: '糖聚块', rarity: null }
+      { value: '聚合剂', label: '聚合剂' },
+      { value: '糖聚块', label: '糖聚块' }
     ])
   })
 

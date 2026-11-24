@@ -280,10 +280,11 @@ export const useConfigStore = defineStore('config', () => {
       params: { kind: 'workshop-materials' }
     })
     if (revision !== itemLoadRevision) return
-    item_list.value = data.map((option) => {
-      const { name, rarity } = typeof option === 'string' ? { name: option, rarity: null } : option
-      return { value: name, label: name, rarity }
-    })
+    item_list.value = data.map((option) =>
+      typeof option === 'string'
+        ? { value: option, label: option }
+        : { value: option.name, label: option.name, rarity: option.rarity }
+    )
   }
 
   function normalizeWeeklyPlan(rawPlan) {

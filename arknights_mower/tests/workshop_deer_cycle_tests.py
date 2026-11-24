@@ -114,6 +114,22 @@ def test_completed_fodder_requires_t4_before_more_fodder(deer):
     update.assert_called_once()
 
 
+def test_deer_can_execute_a_saved_purple_tier(deer):
+    solver, state, base, update, _ = deer
+    state.causality = 36
+    group = config.conf.workshop_settings[0].items[-1]
+    group.item_names = []
+    group.material_rarities = [4]
+
+    solver.generate_product("九色鹿")
+
+    base.save_exception.assert_not_called()
+    assert state.crafts == [("异铁块", 1)]
+    assert group.item_names == []
+    assert group.material_rarities == [4]
+    update.assert_called_once()
+
+
 def test_no_usable_t4_stops_without_more_fodder(deer, inventory):
     solver, state, base, update, _ = deer
     state.causality = 36
