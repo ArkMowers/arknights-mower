@@ -3,7 +3,8 @@ defineProps({ showEnable: { type: Boolean, default: true } })
 import { storeToRefs } from 'pinia'
 import { NTag, NCheckbox } from 'naive-ui'
 import axios from 'axios'
-import { computed, h, inject, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, h, inject, onBeforeUnmount, ref, watch } from 'vue'
+import { onFirstPanelVisit } from '@/composables/firstPanelVisit'
 import { useConfigStore } from '@/stores/config'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
 import { useGameDay } from '@/composables/gameWeekday'
@@ -68,8 +69,14 @@ async function loadLatestActivityStages() {
   }
 }
 
-onMounted(loadLatestActivityStages)
-watch(() => resourceVersion.info.current_version, loadLatestActivityStages)
+const panel = ref(null)
+const { visited } = onFirstPanelVisit(panel, loadLatestActivityStages)
+watch(
+  () => resourceVersion.info.current_version,
+  () => {
+    if (visited.value) void loadLatestActivityStages()
+  }
+)
 
 const copyDialogVisible = ref(false)
 const copyStageValue = ref('')
@@ -283,7 +290,7 @@ function cancelCopyDialogLongPress() {
 </script>
 
 <template>
-  <n-card class="maa-weekly">
+  <n-card ref="panel" class="maa-weekly">
     <template #header>
       <n-checkbox v-if="showEnable" v-model:checked="stage_plan_enable" aria-label="启用周计划">
         <div class="card-title">刷理智周计划</div>

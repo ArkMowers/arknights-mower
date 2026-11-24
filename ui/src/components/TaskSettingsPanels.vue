@@ -25,14 +25,15 @@ import Clue from '@/components/Clue.vue'
 import MaaWeekly from '@/components/MaaWeekly.vue'
 import LongTasks from '@/components/LongTasks.vue'
 import SKLand from '@/components/SKLand.vue'
-import YituliuSyncSettings from '@/components/YituliuSyncSettings.vue'
+import DeferredSettingsPanel from '@/components/DeferredSettingsPanel.vue'
 import Depotswitch from '@/components/Depotswitch.vue'
-import IncomeSettings from '@/components/IncomeSettings.vue'
-import MaaBasic from '@/components/MaaBasic.vue'
 import TrustSettings from '@/components/TrustSettings.vue'
 import '@/styles/settings.css'
 
 defineOptions({ name: 'TaskSettingsPanels' })
+const loadYituliu = () => import('@/components/YituliuSyncSettings.vue')
+const loadIncome = () => import('@/components/IncomeSettings.vue')
+const loadMaaBasic = () => import('@/components/MaaBasic.vue')
 const props = defineProps({
   active: { type: String, default: '' }
 })
@@ -827,19 +828,24 @@ const idleOptions = computed(() => [
 
     <section data-task-editor="accounts">
       <div class="settings-card-grid">
-        <YituliuSyncSettings />
+        <DeferredSettingsPanel :load="loadYituliu" title="一图流同步设置" />
       </div>
     </section>
 
     <section data-task-editor="accounts">
       <div class="settings-card-grid">
-        <div class="settings-card-wide"><IncomeSettings /></div>
+        <DeferredSettingsPanel
+          id="income-settings"
+          class="settings-card-wide"
+          :load="loadIncome"
+          title="材料价值与基报算法"
+        />
       </div>
     </section>
 
     <section id="task-maa" data-task-editor="maa">
       <div class="settings-card-grid">
-        <div class="settings-card-wide"><MaaBasic /></div>
+        <DeferredSettingsPanel class="settings-card-wide" :load="loadMaaBasic" title="MAA 核心" />
       </div>
     </section>
     <MowerSettings />

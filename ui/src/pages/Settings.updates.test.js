@@ -28,6 +28,7 @@ vi.mock('naive-ui', async () => {
       'NFormItem',
       'NIcon',
       'NSelect',
+      'NSpace',
       'NSlider',
       'NSwitch'
     ].map((key) => [

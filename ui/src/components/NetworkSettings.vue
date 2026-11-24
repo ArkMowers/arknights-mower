@@ -1,5 +1,6 @@
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, ref } from 'vue'
+import { onFirstPanelVisit } from '@/composables/firstPanelVisit'
 import { copyMowerTestText } from '../utils/copyMowerTestText'
 
 const axios = inject('axios')
@@ -156,7 +157,8 @@ async function copyResult() {
     : '复制失败，请手动选择文字'
 }
 
-onMounted(load)
+const panel = ref(null)
+onFirstPanelVisit(panel, load)
 defineExpose({ save })
 onBeforeUnmount(() => {
   clearTimeout(timer)
@@ -165,7 +167,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <n-card id="network-settings" title="网络与下载代理" class="network-settings">
+  <n-card ref="panel" id="network-settings" title="网络与下载代理" class="network-settings">
     <div class="network-summary">
       <p>全部实例共享，用于后续连接。</p>
       <span class="network-save-status" role="status">

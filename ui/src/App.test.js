@@ -1279,7 +1279,7 @@ describe('desktop page startup', () => {
     const component = await mount()
     expect(state.sidebarInitialize).toHaveBeenCalled()
     const request = { action: 'rename-group', groupKey: 'daily' }
-    component.openSidebarEditor(request)
+    await component.openSidebarEditor(request)
     expect(component.sidebarEditorRequest.value).toEqual(request)
     expect(component.sidebarEditorOpen.value).toBe(true)
   })

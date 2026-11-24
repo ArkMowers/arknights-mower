@@ -92,8 +92,9 @@ const editorKeywords = {
     '设备 模拟器 ADB 截图 触控 MuMu 性能适配 恢复 超时 重试 选择实例 旋转截图 截图命令 启动游戏 点击坐标 启动命令 自定义命令启动 空闲动作 关闭MuMu模拟器12时断开该实例的adb连接 启动后自动开始任务',
   intervals: '日常任务间隔 MAA 日常 制造站补货',
   runtime: '截图最短间隔 选人采样间隔 操作反馈超时 等待时间 截图间隔 等待次数 等待场景网络自适应',
-  accounts: '森空岛账号 一图流干员同步 OAuth token 收益统计',
-  maa: 'MAA目录 连接配置 触控模式 恢复主题 目标主题',
+  accounts:
+    '森空岛账号 一图流干员同步 OAuth token 材料价值与基报算法 基报收益算法 经验书价值比例 赤金价值比例 订单价值比例 收益统计',
+  maa: 'MAA目录 连接配置 触控模式 日常任务结束后恢复主题 目标主题',
   base: '换班 排班 轮班 自动救急 救急排班',
   runorder: '跑单前置延时 葛朗台跑单 葛朗台缓冲时间 跑单前返回主界面 跑单网络自适应',
   clue: '线索 收集 交流 赠送 雷锋模式 信息板 上周结算 本周信用 领取信息板信用',
@@ -228,7 +229,7 @@ export function settingsEditors(config) {
         config.manager_owned_device && id === 'maa' ? '设置 MAA 恢复主题与目标主题。' : description,
       searchKeywords:
         config.manager_owned_device && id === 'maa'
-          ? 'MAA 恢复主题 目标主题'
+          ? 'MAA 日常任务结束后恢复主题 目标主题'
           : config.manager_owned_device && id === 'runorder'
             ? `${editorKeywords[id]} 等待场景网络自适应`
             : editorKeywords[id] || ''

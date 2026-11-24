@@ -75,17 +75,21 @@ const hasChanges = computed(() => serialized.value !== savedLayout.value)
 const screenshotSide = computed(() => (draft.value.left.includes('screenshot') ? 'left' : 'right'))
 const moduleKey = (id) => id
 
-watch([open, loaded], ([show, ready]) => {
-  if (!show) return
-  if (ready) {
-    draft.value = parseRunningLogLayout(runningLogLayout.value)
-    attemptedSave.value = false
-    dragging.value = false
-    moveStatus.value = ''
-  } else {
-    void gui.load()
-  }
-})
+watch(
+  [open, loaded],
+  ([show, ready]) => {
+    if (!show) return
+    if (ready) {
+      draft.value = parseRunningLogLayout(runningLogLayout.value)
+      attemptedSave.value = false
+      dragging.value = false
+      moveStatus.value = ''
+    } else {
+      void gui.load()
+    }
+  },
+  { immediate: true }
+)
 
 function splitAt(side, id, order) {
   const otherItems = order.filter((item) => item !== id)
