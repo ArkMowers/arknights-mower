@@ -158,10 +158,6 @@ def _wake_scheduler_if_running():
 def save_user_config(req):
     with workshop_lock:
         previous = config.conf
-        previous_maintenance_policy = (
-            config.conf.version_update_resting_threshold,
-            config.conf.version_update_threshold_advance_hours,
-        )
         state = config.conf.model_copy(deep=True)
         warning = initialize_manual_settings(state)
         conflict = _edit_manual(state, req)
@@ -177,12 +173,14 @@ def save_user_config(req):
         if not conf.enable_crafting:
             restore_manual_settings(conf)
         save_conf(conf)
-        if any(
+        growth_switch_changed = (
+            previous.enable_mastery != conf.enable_mastery
+            or previous.maa_growth_enable != conf.maa_growth_enable
+        )
+        if growth_switch_changed or any(
             getattr(previous, key) != getattr(conf, key)
             for key in (
                 "enable_crafting",
-                "enable_mastery",
-                "maa_growth_enable",
                 "fodder_operators",
                 "t5_operators",
                 "book_operators",
@@ -197,7 +195,6 @@ def save_user_config(req):
             from arknights_mower.solvers.record import workshop_inventory_changed
 
             workshop_inventory_changed.set()
-            _wake_scheduler_if_running()
         long_windows_changed = (previous.maa_rg_enable or conf.maa_rg_enable) and any(
             getattr(previous, key) != getattr(conf, key)
             for key in (
@@ -209,10 +206,13 @@ def save_user_config(req):
                 "maa_long_task_weekly_windows",
             )
         )
-        if long_windows_changed or previous_maintenance_policy != (
-            conf.version_update_resting_threshold,
-            conf.version_update_threshold_advance_hours,
-        ):
+        maintenance_policy_changed = (
+            previous.version_update_resting_threshold
+            != conf.version_update_resting_threshold
+            or previous.version_update_threshold_advance_hours
+            != conf.version_update_threshold_advance_hours
+        )
+        if growth_switch_changed or long_windows_changed or maintenance_policy_changed:
             # Let a sleeping running scheduler re-evaluate and hot-apply the policy.
             _wake_scheduler_if_running()
         if conf.workshop_preset_migrated:

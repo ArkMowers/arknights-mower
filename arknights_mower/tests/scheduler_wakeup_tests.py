@@ -173,6 +173,54 @@ def test_http_workshop_wake_reselects_task_before_dispatch(scheduler):
     assert all(task is not scheduler.shift for task in scheduler.solver.tasks)
 
 
+def test_saving_manual_recipes_keeps_idle_deadline(scheduler, monkeypatch):
+    import server
+    from arknights_mower.solvers import record
+
+    solver = scheduler.solver
+    monkeypatch.setattr(
+        config,
+        "conf",
+        config.Conf(close_simulator_when_idle=True, workshop_preset_migrated=True),
+    )
+    monkeypatch.setattr(config, "save_conf", MagicMock())
+    monkeypatch.setattr(record, "workshop_inventory_changed", Event())
+    monkeypatch.setattr(server.app, "token", "", raising=False)
+    solver._simulator_closed_for_idle = True
+    solver.device = MagicMock()
+    restarted_at = []
+
+    def restart(**kwargs):
+        restarted_at.append(scheduler.clock.now())
+        return True
+
+    monkeypatch.setattr(base_schedule, "restart_simulator", restart)
+    recipe_group = {"material_rarities": [4], "self_upper_limit": 20}
+    setting = {"operator": "九色鹿", "items": [recipe_group]}
+
+    def edit_recipes():
+        assert solver.sleeping
+        response = server.app.test_client().patch(
+            "/conf",
+            json={
+                "workshop_manual_settings_revision": 0,
+                "workshop_manual_settings": [setting],
+            },
+        )
+        assert response.status_code == 200
+        assert not response.json["workshop_manual_conflict"]
+
+    scheduler.on_sleep = edit_recipes
+    scheduled_at = scheduler.shift.time
+    solver._idle_sleep((scheduled_at - scheduler.clock.now()).total_seconds())
+
+    assert restarted_at == [scheduled_at]
+    assert scheduler.shift.time == scheduled_at
+    assert solver.tasks[0] is scheduler.shift
+    assert record.workshop_inventory_changed.is_set()
+    assert config.conf.workshop_settings[0].items[0].material_rarities == [4]
+
+
 def primary_with_vacancies(scheduler, monkeypatch):
     from arknights_mower.utils.operators import Operator, Operators
     from arknights_mower.utils.plan import Plan, PlanConfig, Room
