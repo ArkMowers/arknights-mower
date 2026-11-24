@@ -8,6 +8,7 @@ const state = vi.hoisted(() => ({
   config: {},
   client: null,
   error: vi.fn(),
+  warning: vi.fn(),
   success: vi.fn(),
   flush: vi.fn()
 }))
@@ -23,7 +24,7 @@ vi.mock('@/stores/config', () => ({
 vi.mock('pinia', () => ({ storeToRefs: (store) => store }))
 vi.mock('naive-ui', async (original) => ({
   ...(await original()),
-  useMessage: () => ({ error: state.error, success: state.success })
+  useMessage: () => ({ error: state.error, warning: state.warning, success: state.success })
 }))
 let scope
 let component
@@ -31,7 +32,7 @@ const first = { id: 'a'.repeat(64), stage_name: '保全关卡一', title: '作�
 const second = { id: 'b'.repeat(64), stage_name: '保全关卡二', title: '作业二' }
 beforeEach(() => {
   vi.clearAllMocks()
-  state.config = { sss: ref({ scripts: [] }) }
+  state.config = { copilot: ref({ scripts: [] }), sss: ref({ scripts: [] }) }
   state.client = {
     get: vi.fn(async () => ({ data: { scripts: [first, second] } })),
     post: vi.fn(async () => ({ data: first })),
@@ -117,6 +118,7 @@ describe('SSS library and per-item rounds', () => {
           data: {
             data: {
               content: JSON.stringify({
+                type: 'SSS',
                 stage_name: url.endsWith('789') ? 'second' : 'first',
                 actions: []
               })
@@ -135,7 +137,7 @@ describe('SSS library and per-item rounds', () => {
     mock_set()
     component.add_script(second.id)
     const original = { ...state.config.sss.value.scripts[0] }
-    component.code.value = '  prts://s123  '
+    component.code.value = '  S123  '
     await component.download()
     expect(state.client.get).toHaveBeenCalledWith(
       expect.stringMatching(/\/network\/maa-copilot-set\/123$/)
@@ -156,82 +158,27 @@ describe('SSS library and per-item rounds', () => {
     expect(component.code.value).toBe('')
     expect(component.loading.value).toBe(false)
   })
-  it.each([{ ids: [] }, { ids: Array.from({ length: 32 }, () => '456') }])(
-    'refuses empty or over-capacity sets without truncation',
-    async ({ ids }) => {
-      mock_set(ids)
-      component.add_script(first.id)
-      const original = [...state.config.sss.value.scripts]
-      component.code.value = 'prts://s123'
-      await component.download()
-      expect(state.client.post).not.toHaveBeenCalled()
-      expect(
-        state.client.get.mock.calls.some(([url]) => url.includes('/network/maa-copilot/'))
-      ).toBe(false)
-      expect(state.config.sss.value.scripts).toEqual(original)
-      expect(state.error).toHaveBeenCalledOnce()
-      expect(component.code.value).toBe('prts://s123')
-    }
-  )
-  it('keeps the queue unchanged when a member download fails', async () => {
-    mock_set()
+  it('routes ordinary members after the SSS queue reaches capacity in a large set', async () => {
+    mock_set([...Array(33).fill('456'), '789'])
     const get = state.client.get.getMockImplementation()
-    state.client.get.mockImplementation(async (url) => {
-      if (url.endsWith('/network/maa-copilot/789')) throw new Error('download failed')
-      return get(url)
-    })
-    component.add_script(second.id)
-    const original = [...state.config.sss.value.scripts]
-    component.code.value = 'prts://s123'
-    await component.download()
-    expect(state.config.sss.value.scripts).toEqual(original)
-    expect(state.client.post).not.toHaveBeenCalled()
-    expect(state.success).not.toHaveBeenCalled()
-    expect(state.error).toHaveBeenCalledOnce()
-    expect(component.loading.value).toBe(false)
-  })
-  it('keeps partial imports in the library without adding an incomplete set to the queue', async () => {
-    mock_set()
-    state.client.post
-      .mockResolvedValueOnce({ data: first })
-      .mockRejectedValueOnce({ response: { data: { message: '作业类型不匹配' } } })
-    component.add_script(second.id)
-    const original = [...state.config.sss.value.scripts]
-    component.code.value = 'prts://s123'
-    await component.download()
-    expect(state.client.post).toHaveBeenCalledTimes(2)
-    expect(state.config.sss.value.scripts).toEqual(original)
-    expect(component.library.value).toEqual([first, second])
-    expect(state.success).not.toHaveBeenCalled()
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('队列未改变'))
-    expect(component.code.value).toBe('prts://s123')
-  })
-  it('does not overfill or overwrite a queue edited during import', async () => {
-    mock_set()
-    state.client.post.mockImplementationOnce(async () => {
-      state.config.sss.value.scripts = Array.from({ length: 32 }, () => ({ id: second.id }))
-      return { data: first }
-    })
-    component.code.value = 'prts://s123'
+    state.client.get.mockImplementation(async (url) =>
+      url.endsWith('/network/maa-copilot/789')
+        ? { data: { data: { content: '{"stage_name":"second","actions":[]}' } } }
+        : get(url)
+    )
+    component.code.value = 's123'
     await component.download()
     expect(state.config.sss.value.scripts).toHaveLength(32)
-    expect(state.config.sss.value.scripts.every((item) => item.id === second.id)).toBe(true)
-    expect(state.success).not.toHaveBeenCalled()
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('剩余容量不足'))
-  })
-  it('rejects an oversized member before uploading any member', async () => {
-    mock_set()
-    const get = state.client.get.getMockImplementation()
-    state.client.get.mockImplementation(async (url) => {
-      if (url.endsWith('/network/maa-copilot/789'))
-        return { data: { data: { content: 'x'.repeat(1024 * 1024 + 1) } } }
-      return get(url)
-    })
-    component.code.value = 'prts://s123'
-    await component.download()
-    expect(state.client.post).not.toHaveBeenCalled()
-    expect(state.config.sss.value.scripts).toEqual([])
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('1 MB'))
+    expect(state.config.copilot.value.scripts).toEqual([
+      { id: second.id, is_raid: false, nav_name_override: '' }
+    ])
+    expect(state.client.post).toHaveBeenCalledTimes(33)
+    expect(state.client.post.mock.calls.at(-1)[0]).toMatch(/\/maa-copilot$/)
+    expect(component.failures.value).toEqual([
+      expect.stringContaining('第 33 份（456）：保全派驻队列已满')
+    ])
+    expect(component.selected.value).toBe(first.id)
+    expect(state.warning).toHaveBeenCalledOnce()
   })
   it('ignores a duplicate download action while the current import is pending', async () => {
     mock_set()
