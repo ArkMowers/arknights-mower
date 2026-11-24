@@ -7,10 +7,13 @@ import path from 'node:path'
 // read this identifier even when their installation has no Git metadata.
 export function relayBuildId(root) {
   const digest = createHash('sha256')
-  function add(relative) {
+  function add(relative, entry) {
     const filename = path.join(root, relative)
-    if (fs.statSync(filename).isDirectory()) {
-      for (const name of fs.readdirSync(filename).sort()) add(relative + '/' + name)
+    const type = entry && !entry.isSymbolicLink() ? entry : fs.statSync(filename)
+    if (type.isDirectory()) {
+      const children = fs.readdirSync(filename, { withFileTypes: true })
+      children.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+      for (const child of children) add(relative + '/' + child.name, child)
       return
     }
     if (/\.test\.[cm]?[jt]s$/.test(relative)) return
@@ -37,4 +40,19 @@ export function relayBuildId(root) {
   ])
     add(name)
   return digest.digest('hex')
+}
+
+export function relayBuildMetadata(root) {
+  let build
+  return {
+    name: 'mower-relay-build',
+    apply: 'build',
+    buildStart() {
+      build = relayBuildId(root)
+      this.emitFile({ type: 'asset', fileName: 'relay-ui.json', source: JSON.stringify({ build }) })
+    },
+    transformIndexHtml() {
+      return [{ tag: 'meta', attrs: { name: 'mower-relay-build', content: build } }]
+    }
+  }
 }

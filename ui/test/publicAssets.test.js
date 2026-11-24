@@ -8,6 +8,7 @@ import { gunzipSync } from 'node:zlib'
 import { afterEach, expect, it, vi } from 'vitest'
 import { build, createLogger } from 'vite'
 import { incrementalPublicAssets, preparePublicOutput } from '../scripts/publicAssets.js'
+import { relayBuildId, relayBuildMetadata } from '../scripts/relayBuild.js'
 
 const copyScript = fileURLToPath(new URL('../copy.js', import.meta.url))
 const temporary = []
@@ -21,7 +22,7 @@ function fixture() {
     path.join(fs.realpathSync(os.tmpdir()), 'mower-public-copy-test-')
   )
   temporary.push(directory)
-  const root = path.join(directory, 'project')
+  const root = path.join(directory, 'project', 'ui')
   const publicDir = path.join(root, 'public')
   const outDir = path.join(root, 'dist')
   fs.mkdirSync(publicDir, { recursive: true })
@@ -67,6 +68,88 @@ function expectGzip(root, name, content) {
   expect(text(root, name)).toBe(content)
   expect(gunzipSync(fs.readFileSync(path.join(root, name + '.gz'))).toString()).toBe(content)
 }
+
+it.each([undefined, 'custom-dist'])(
+  'publishes the current public bytes and relay ID to %s',
+  async (outDir) => {
+    const { root, write } = fixture()
+    const project = path.dirname(root)
+    for (const file of [
+      'scripts/example.js',
+      'manager/index.html',
+      'copy.js',
+      'package-lock.json',
+      'vite.config.js',
+      '../arknights_mower/data/riic/example.json',
+      '../arknights_mower/data/building_skill.json',
+      '../arknights_mower/data/recycling_model.json',
+      '../CHANGELOG.md'
+    ])
+      write(file, 'fixture')
+    const output = path.join(root, outDir ?? 'dist')
+    const options = { build: outDir ? { outDir } : {}, plugins: [relayBuildMetadata(project)] }
+    function publishedId() {
+      const { build } = JSON.parse(text(output, 'relay-ui.json'))
+      expect(text(output, 'index.html')).toContain(`name="mower-relay-build" content="${build}"`)
+      expect(build).toBe(relayBuildId(project))
+      return build
+    }
+    await runBuild(root, options)
+    const before = publishedId()
+    const source = path.join(root, 'public/settings.json')
+    const { atime, mtime } = fs.statSync(source)
+    write('public/settings.json', '{"state":2}')
+    fs.utimesSync(source, atime, mtime)
+    write('public/added.json', '{"new":1}')
+    fs.unlinkSync(path.join(root, 'public/removed.svg'))
+    await runBuild(root, options)
+    expect(publishedId()).not.toBe(before)
+    expect(text(output, 'settings.json')).toBe('{"state":2}')
+    expect(text(output, 'added.json')).toBe('{"new":1}')
+    expect(fs.existsSync(path.join(output, 'removed.svg'))).toBe(false)
+    if (!outDir) expectGzip(output, 'settings.json', '{"state":2}')
+
+    write(
+      'entry.js',
+      'import "./src/compiled.js"; new Worker(new URL("./src/worker.js", import.meta.url), { type: "module" })'
+    )
+    write('src/compiled.js', 'console.log("entry-version-a")')
+    write('src/worker.js', 'self.postMessage("worker-version-a")')
+    const compiledId = relayBuildId(project)
+    await runBuild(root, {
+      ...options,
+      plugins: [
+        ...options.plugins,
+        {
+          name: 'edit-after-bundling',
+          buildEnd() {
+            write('src/compiled.js', 'console.log("entry-version-b")')
+            write('src/worker.js', 'self.postMessage("worker-version-b")')
+          },
+          renderStart: {
+            order: 'post',
+            handler() {
+              write('public/settings.json', '{"state":3}')
+            }
+          }
+        }
+      ]
+    })
+    expect(JSON.parse(text(output, 'relay-ui.json')).build).toBe(compiledId)
+    expect(text(output, 'index.html')).toContain(compiledId)
+    const scripts = fs
+      .readdirSync(path.join(output, 'assets'))
+      .filter((name) => name.endsWith('.js'))
+      .map((name) => text(output, `assets/${name}`))
+      .join('\n')
+    expect(scripts).toContain('entry-version-a')
+    expect(scripts).toContain('worker-version-a')
+    expect(scripts).not.toContain('version-b')
+    expect(text(output, 'settings.json')).toBe('{"state":2}')
+    await runBuild(root, options)
+    expect(publishedId()).not.toBe(compiledId)
+  }
+)
 
 it('builds complete cold and repeated outputs while copying only changed public bytes', async () => {
   const { root, outDir, write } = fixture()
