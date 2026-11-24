@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from time import monotonic
 
+from arknights_mower.utils.csleep import cancellation_scope, csleep
+
 _remaining: ContextVar[Callable[[], float] | None] = ContextVar(
     "device_io_remaining", default=None
 )
@@ -16,8 +18,6 @@ def io_timeout(maximum: float) -> float:
 
 
 def budget_sleep(seconds: float) -> None:
-    from arknights_mower.utils.csleep import csleep
-
     csleep(io_timeout(seconds))
     io_timeout(0)
 
@@ -25,8 +25,6 @@ def budget_sleep(seconds: float) -> None:
 @contextmanager
 def touch_release_budget():
     """仅为已按下的触摸释放保留一秒清理预算，不发送新的手势。"""
-    from arknights_mower.utils.csleep import cancellation_scope
-
     deadline = monotonic() + 1
 
     def remaining():

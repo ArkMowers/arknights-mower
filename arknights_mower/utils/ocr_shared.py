@@ -12,7 +12,6 @@ from pathlib import Path
 from threading import Lock, Thread
 from time import monotonic, sleep
 
-from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.rapidocr import DEFAULT_TEXT_SCORE
 
 REQUEST_TIMEOUT = 60.0
@@ -335,6 +334,8 @@ class SharedOCREngine:
 
     def __call__(self, image, use_det=None, use_cls=None, use_rec=None, **kwargs):
         import numpy as np
+
+        from arknights_mower.utils.device.io_budget import io_timeout
 
         if not isinstance(image, np.ndarray) or image.dtype != np.uint8:
             raise ValueError("共享 OCR 只接收 uint8 图像数组")
