@@ -212,6 +212,7 @@ class CopilotConf(ConfModel):
 
 
 class EventRerunConf(ConfModel):
+    use_sanity_potion: bool = True
     event_key: str = Field(default="", max_length=48)
     stages: list[Annotated[str, Field(pattern=r"^[A-Z0-9]+-\d+$", max_length=24)]] = (
         Field(default_factory=list, max_length=64)

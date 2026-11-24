@@ -145,7 +145,7 @@ def test_budget_is_checked_before_each_claim_and_completion_survives_restart(
 
     owner.deadline += timedelta(seconds=11)
 
-    def fight(owner, stage, prepare, claim, complete):
+    def fight(owner, stage, settings, prepare, claim, complete):
         assert prepare() > 0
         assert claim()
         clock.current += timedelta(minutes=5)
@@ -166,7 +166,7 @@ def test_budget_is_checked_before_each_claim_and_completion_survives_restart(
 def test_navigation_cannot_spend_the_battle_reserve(scheduler, monkeypatch):
     owner, clock = scheduler
 
-    def prepare_stage(owner, stage, prepare, claim, complete):
+    def prepare_stage(owner, stage, settings, prepare, claim, complete):
         assert prepare() > 0
         clock.current += timedelta(seconds=11)
         assert not claim()
@@ -186,7 +186,7 @@ def test_unchanged_failed_preparation_yields_to_other_selected_stages(
     owner, clock = scheduler
     order = []
 
-    def play(owner, stage, prepare, claim, complete):
+    def play(owner, stage, settings, prepare, claim, complete):
         order.append(stage["code"])
         if stage["code"] == "OS-1":
             return "blocked"
@@ -202,8 +202,13 @@ def test_unchanged_failed_preparation_yields_to_other_selected_stages(
     assert owner.deadline == clock.now() + timedelta(minutes=4, seconds=10)
 
 
-def test_ordinary_keeps_device_io_after_deadline_during_battle(scheduler, monkeypatch):
+@pytest.mark.parametrize("allow", [True, False])
+def test_ordinary_keeps_device_io_after_deadline_during_battle(
+    scheduler, monkeypatch, allow
+):
     owner, clock = scheduler
+    assert config.conf.event_rerun.use_sanity_potion is True
+    config.conf.event_rerun.use_sanity_potion = allow
     navigator = MagicMock()
     navigator.scene.return_value = Scene.OPERATOR_BEFORE
     navigator.normalize_stage_text.side_effect = lambda text: text
@@ -216,6 +221,7 @@ def test_ordinary_keeps_device_io_after_deadline_during_battle(scheduler, monkey
     operation = MagicMock()
 
     def run(**kwargs):
+        assert kwargs["use_sanity_potion"] is allow
         assert io_timeout(60) <= 10
         assert kwargs["before_single_battle"]()
         clock.current += timedelta(minutes=5)
@@ -230,10 +236,12 @@ def test_ordinary_keeps_device_io_after_deadline_during_battle(scheduler, monkey
     assert record.load_event_rerun_progress("act46sre:100") == {"OS-1": "completed"}
 
 
+@pytest.mark.parametrize("allow", [True, False])
 def test_raid_auto_formation_stays_running_past_task_deadline(
-    scheduler, monkeypatch, files
+    scheduler, monkeypatch, files, allow
 ):
     owner, clock = scheduler
+    config.conf.event_rerun.use_sanity_potion = allow
     config.conf.event_rerun.stages = []
     config.conf.event_rerun.raid_enabled = True
     config.conf.event_rerun.script_id = copilot.upload(
@@ -273,6 +281,7 @@ def test_raid_auto_formation_stays_running_past_task_deadline(
     assert runner.run_event_rerun(owner)
     task, params = maa.append_task.call_args.args
     assert task == "Copilot" and params["formation"]
+    assert params["use_sanity_potion"] is allow
     assert len(params["copilot_list"]) == 1
     assert params["copilot_list"][0]["is_raid"]
     assert params["copilot_list"][0]["nav_name_override"] == "OS-EX-8"
@@ -337,13 +346,15 @@ def test_raid_start_failure_releases_only_confirmed_rejection(
 def test_raid_does_not_dispatch_a_script_for_another_stage(files):
     script_id = copilot.upload({**copilot.SCRIPT, "stage_name": "OS-EX-7"})["id"]
     with pytest.raises(ValueError, match="OS-EX-8"):
-        runner._raid_params(event()["raid"], script_id)
+        runner._raid_params(
+            event()["raid"], Conf(event_rerun={"script_id": script_id}).event_rerun
+        )
 
 
 def test_unconfirmed_attempt_stays_claimed_after_new_scheduler(scheduler, monkeypatch):
     owner, clock = scheduler
 
-    def play(owner, stage, prepare, claim, complete):
+    def play(owner, stage, settings, prepare, claim, complete):
         assert claim()
         return "defer"
 

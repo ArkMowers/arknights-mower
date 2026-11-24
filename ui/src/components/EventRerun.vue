@@ -27,7 +27,12 @@ let disposed = false
 const selected = computed(() =>
   event_rerun.value.event_key === event.value?.key
     ? event_rerun.value
-    : { stages: [], raid_enabled: false, script_id: '' }
+    : {
+        stages: [],
+        use_sanity_potion: event_rerun.value.use_sanity_potion ?? true,
+        raid_enabled: false,
+        script_id: ''
+      }
 )
 const scriptStageNames = computed(
   () => new Set((event.value?.raid?.script_stage_names ?? []).map((name) => name.toLowerCase()))
@@ -138,6 +143,14 @@ watch(() => resourceVersion.info.current_version, refreshStatus)
   <n-empty v-else-if="!event" description="当前资源包没有开放的复刻SS活动" />
   <n-form v-else :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
     <n-form-item label="本期活动">{{ event.name }}</n-form-item>
+    <n-form-item label="理智恢复">
+      <n-checkbox
+        :checked="selected.use_sanity_potion"
+        @update:checked="updateSettings({ use_sanity_potion: $event })"
+      >
+        允许使用理智药
+      </n-checkbox>
+    </n-form-item>
     <n-form-item label="普通关">
       <n-checkbox-group :value="selected.stages" @update:value="updateSettings({ stages: $event })">
         <n-space :size="[12, 4]">

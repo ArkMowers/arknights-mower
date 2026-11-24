@@ -69,9 +69,9 @@ def pending_rerun(scheduler):
     return None
 
 
-def _raid_params(stage, script_id):
+def _raid_params(stage, settings):
     target = stage["code"].removesuffix(" 突袭")
-    with script_path(script_id).open("rb") as stream:
+    with script_path(settings.script_id).open("rb") as stream:
         stage_name = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))[
             "stage_name"
         ].strip()
@@ -82,14 +82,17 @@ def _raid_params(stage, script_id):
     return target, build_copilot_params(
         CopilotConf(
             formation=True,
+            use_sanity_potion=settings.use_sanity_potion,
             scripts=[
-                CopilotScriptConf(id=script_id, nav_name_override=target, is_raid=True)
+                CopilotScriptConf(
+                    id=settings.script_id, nav_name_override=target, is_raid=True
+                )
             ],
         )
     )
 
 
-def _play_ordinary(scheduler, stage, prepare, claim, complete):
+def _play_ordinary(scheduler, stage, settings, prepare, claim, complete):
     navigator = NavigationSolver(scheduler.device, scheduler.recog)
     with device_io_budget(prepare):
         if (
@@ -119,6 +122,7 @@ def _play_ordinary(scheduler, stage, prepare, claim, complete):
             stage_id=stage["code"],
             ap_cost=stage["ap_cost"],
             inventory_limit_rules=[],
+            use_sanity_potion=settings.use_sanity_potion,
             before_single_battle=start_single_battle,
             on_single_battle_settlement=complete,
         )
@@ -129,10 +133,10 @@ def _play_ordinary(scheduler, stage, prepare, claim, complete):
     return "blocked"
 
 
-def _play_raid(scheduler, stage, script_id, prepare, claim, complete):
+def _play_raid(scheduler, stage, settings, prepare, claim, complete):
     if scheduler._maa_refresh_deadline() is not None:
         return "defer"
-    target, params = _raid_params(stage, script_id)
+    target, params = _raid_params(stage, settings)
     task_id = None
     start_called = False
     ended = False
@@ -245,13 +249,15 @@ def run_event_rerun(scheduler):
                     outcome = _play_raid(
                         scheduler,
                         stage,
-                        settings.script_id,
+                        settings,
                         prepare,
                         claim,
                         complete,
                     )
                 else:
-                    outcome = _play_ordinary(scheduler, stage, prepare, claim, complete)
+                    outcome = _play_ordinary(
+                        scheduler, stage, settings, prepare, claim, complete
+                    )
             except (MowerExit, SharedADBError, DeviceRecoveryError):
                 raise
             except InterruptedError:

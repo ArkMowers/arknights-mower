@@ -71,11 +71,22 @@ it('scopes stage and script selection to the current opening and shows saved out
   panel.updateSettings({ raid_enabled: true, script_id: 'raid' })
   expect(state.settings.value).toEqual({
     event_key: 'act46sre:100',
+    use_sanity_potion: true,
     stages: ['OS-1', 'OS-10'],
     raid_enabled: true,
     script_id: 'raid'
   })
   expect(panel.expectedMinutes.value).toBe(12)
+})
+
+it('retains a disabled potion setting when the next event opens', async () => {
+  await panel.refreshStatus()
+  panel.updateSettings({ use_sanity_potion: false, stages: ['OS-1'] })
+  panel.event.value = { ...live.event, key: 'act47sre:200' }
+  expect(panel.selected.value.use_sanity_potion).toBe(false)
+  expect(panel.selected.value.stages).toEqual([])
+  panel.updateSettings({ raid_enabled: true })
+  expect(state.settings.value.use_sanity_potion).toBe(false)
 })
 
 it('does not carry an import into a different activity', async () => {

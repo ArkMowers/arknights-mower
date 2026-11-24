@@ -34,6 +34,7 @@ from arknights_mower.utils.recognize import Scene
 
 
 class OperationSolver(SceneGraphSolver):
+    use_sanity_potion: bool | None = None
     before_single_battle: Callable[[], bool] | None = None
     on_single_battle_settlement: Callable[[], None] | None = None
 
@@ -49,9 +50,11 @@ class OperationSolver(SceneGraphSolver):
         sanity_threshold: int | None = None,
         stage_duration_seconds: int | None = None,
         inventory_limit_rules=None,
+        use_sanity_potion: bool | None = None,
         before_single_battle: Callable[[], bool] | None = None,
         on_single_battle_settlement: Callable[[], None] | None = None,
     ):
+        self.use_sanity_potion = use_sanity_potion
         self.before_single_battle = before_single_battle
         self.on_single_battle_settlement = on_single_battle_settlement
         self.single_battle_started = False
@@ -579,11 +582,16 @@ class OperationSolver(SceneGraphSolver):
             self.tap_element("double_confirm/main", x_rate=1)
             return True
         elif scene == Scene.OPERATOR_RECOVER_POTION:
-            if is_game_date(getattr(config.conf, "medicine_use_all_date", None)):
+            if self.use_sanity_potion is True or (
+                self.use_sanity_potion is None
+                and is_game_date(getattr(config.conf, "medicine_use_all_date", None))
+            ):
                 logger.info("使用理智药")
                 self.tap((1635, 865))
                 return
-            use_medicine = config.conf.medicine_expire_days > 0
+            use_medicine = (
+                self.use_sanity_potion is None and config.conf.medicine_expire_days > 0
+            )
             if use_medicine:
                 img = cropimg(self.recog.img, ((1015, 515), (1170, 560)))
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
