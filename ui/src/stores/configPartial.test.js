@@ -181,7 +181,7 @@ describe('partial configuration saves', () => {
     'keeps the latest %s response when a background request finishes later',
     async (load, list) => {
       await setup({ maa_mall_buy: '招聘许可' })
-      const recipe = { tab: '精英材料', apCost: 8 }
+      const recipe = { rarity: 5 }
       const response = (name) => ({ data: [load === 'load_item' ? { name, ...recipe } : name] })
       let finishInitial
       axios.get
@@ -205,6 +205,16 @@ describe('partial configuration saves', () => {
       expect(axios.patch).not.toHaveBeenCalled()
     }
   )
+
+  it('keeps legacy workshop names searchable when the item response has no rarity', async () => {
+    await setup()
+    axios.get.mockResolvedValueOnce({ data: ['聚合剂', '糖聚块'] })
+    await store.load_item()
+    expect(store.item_list).toEqual([
+      { value: '聚合剂', label: '聚合剂', rarity: null },
+      { value: '糖聚块', label: '糖聚块', rarity: null }
+    ])
+  })
 
   it.each([
     ['INFO', 'INFO - 接收正常通知、警告和错误'],

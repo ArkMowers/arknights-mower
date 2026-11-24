@@ -50,10 +50,12 @@ def test_workshop_material_options_require_token_before_reading_recipes(
     from arknights_mower import data
 
     formulas = Mock(wraps=data.workshop_formula)
+    skill_data = Mock(wraps=rec.get_skill_data)
     monkeypatch.setattr(data, "workshop_formula", formulas)
+    monkeypatch.setattr(rec, "get_skill_data", skill_data)
     monkeypatch.setattr(server.app, "token", "workshop-options-test", raising=False)
     client = server.app.test_client()
-    endpoint = "/workshop-material-options"
+    endpoint = "/item?kind=workshop-materials"
 
     assert client.open(endpoint, method=method).status_code == 403
     assert (
@@ -61,15 +63,18 @@ def test_workshop_material_options_require_token_before_reading_recipes(
         == 403
     )
     formulas.items.assert_not_called()
+    skill_data.assert_not_called()
 
     response = client.open(endpoint, method=method, headers={"token": server.app.token})
     assert response.status_code == 200
     formulas.items.assert_called_once_with()
+    skill_data.assert_called_once_with()
     if method == "GET":
         options = {option["name"]: option for option in response.json}
-        assert options["聚合剂"] == {"name": "聚合剂", "tab": "精英材料", "apCost": 8}
-        assert options["糖聚块"] == {"name": "糖聚块", "tab": "精英材料", "apCost": 4}
-        assert options["碳素组"] == {"name": "碳素组", "tab": "基建材料", "apCost": 4}
+        assert options["聚合剂"] == {"name": "聚合剂", "rarity": 5}
+        assert options["糖聚块"] == {"name": "糖聚块", "rarity": 4}
+        assert options["碳素组"] == {"name": "碳素组", "rarity": None}
+        assert list(options) == client.get("/item").json == list(formulas.keys())
 
 
 def test_default_materials_are_retained_and_empty_selection_stays_empty(next_skill):

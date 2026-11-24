@@ -12,8 +12,8 @@ const materialGroups = computed(() => {
   const purple = { type: 'group', key: 'purple', label: '紫材料', children: [] }
   const other = { type: 'group', key: 'other', label: '其他材料', children: [] }
   for (const option of props.item_list ?? []) {
-    if (option.tab === '精英材料' && option.apCost >= 8) gold.children.push(option)
-    else if (option.tab === '精英材料' && option.apCost === 4) purple.children.push(option)
+    if (option.rarity === 5) gold.children.push(option)
+    else if (option.rarity === 4) purple.children.push(option)
     else other.children.push(option)
   }
   return [gold, purple, other].filter((group) => group.children.length)

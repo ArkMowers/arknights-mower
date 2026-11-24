@@ -99,6 +99,11 @@ def test_dispatch_scope_and_instance_token(relay):
     for supplied in ("", "incorrect"):
         assert request("/getwatermark", supplied)["status"] == 403
     assert request("/getwatermark", relay.app.token)["status"] == 200
+    response = request("/item?kind=workshop-materials", relay.app.token)
+    assert response["status"] == 200
+    assert {"name": "聚合剂", "rarity": 5} in json.loads(
+        base64.b64decode(response["body"])
+    )
     for target in (
         "/relay/settings",
         "//elsewhere.invalid/status",

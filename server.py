@@ -2066,22 +2066,37 @@ def shop_list():
 
 @app.route("/item")
 def item_list():
-    from arknights_mower.data import workshop_formula
-
-    if request.args.get("kind") == "deer-fodder":
+    kind = request.args.get("kind")
+    if kind == "workshop-materials":
+        return workshop_material_options()
+    if kind == "deer-fodder":
         from arknights_mower.utils.workshop_fodder import deer_fodder_materials
 
         return deer_fodder_materials()
+
+    from arknights_mower.data import workshop_formula
+
     return list(workshop_formula.keys())
 
 
-@app.route("/workshop-material-options")
 @require_token
 def workshop_material_options():
     from arknights_mower.data import workshop_formula
+    from arknights_mower.utils.mastery_recommendation import get_skill_data
 
+    rarity_by_name = {
+        item["name"]: item.get("rarity")
+        for item in get_skill_data().get("items", {}).values()
+    }
     return [
-        {"name": name, "tab": recipe["tab"], "apCost": recipe["apCost"]}
+        {
+            "name": name,
+            "rarity": (
+                rarity_by_name.get(recipe.get("output_name", name))
+                if recipe["tab"] == "精英材料"
+                else None
+            ),
+        }
         for name, recipe in list(workshop_formula.items())
     ]
 
