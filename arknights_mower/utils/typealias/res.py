@@ -53,6 +53,7 @@ Res = Literal[
     "infra_collect_recycle",
     "infra_collect_trust",
     "infra_credit_complete",
+    "infra_distracted",
     "infra_exp_complete",
     "infra_gold_complete",
     "infra_info_complete",

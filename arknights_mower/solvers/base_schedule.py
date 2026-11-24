@@ -831,6 +831,15 @@ class BaseSchedulerSolver(
             return None
         return datetime.now() + timedelta(seconds=remaining)
 
+    @staticmethod
+    def _room_slot_distracted(gray, top):
+        # 只匹配心情下方的状态文字，排除头像上的同名提示和右侧倒计时。
+        status = gray[top + 132 : top + 174, 1470:1620]
+        template = loadres("infra_distracted", gray=True)
+        if status.shape[0] < template.shape[0] or status.shape[1] < template.shape[1]:
+            return False
+        return cv2.matchTemplate(status, template, cv2.TM_CCOEFF_NORMED).max() >= 0.95
+
     def read_operator_time(self, room, index, cord):
         """从采集时刻计算干员倒计时的终点。空值按非工作状态或心情耗尽处理。"""
         remaining = self.read_time(cord, None)
@@ -19303,7 +19312,19 @@ class BaseSchedulerSolver(
                         or room.startswith("room_")
                     )
                 ):
-                    working_time = read_slot_time(i, _name)
+                    if self._room_slot_distracted(gray, slot_y[i][0]):
+                        sampled_at = (
+                            lower_captured_at
+                            if saved
+                            else self.recog.capture_started_at
+                        )
+                        working_time = (
+                            sampled_at
+                            if isinstance(sampled_at, datetime)
+                            else datetime.now()
+                        )
+                    else:
+                        working_time = read_slot_time(i, _name)
                     if after_roster:
                         self._check_room_roster_frame(room, after_roster, sampled=True)
                 elif isinstance(first_end, bool) and _mood >= 0 and _mood != 24:
