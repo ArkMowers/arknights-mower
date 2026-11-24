@@ -92,9 +92,11 @@ class ActivityNavigation:
         return self.currency_entry(((0, 100), (800, 950)))
 
     def shop_entry(self):
-        return self.currency_entry(((0, 0), (1920, 1080)), min_scale=0.3, min_score=0.8)
+        return self.currency_entry(
+            ((0, 0), (1920, 1080)), min_scale=0.3, fallback_score=0.8
+        )
 
-    def currency_entry(self, scope, min_scale=0.8, *, min_score=0.9):
+    def currency_entry(self, scope, min_scale=0.8, *, fallback_score=None):
         tokens = set(self.shop.get("token_ids", [])) | {
             drop["id"]
             for stage in stage_data_full
@@ -112,7 +114,8 @@ class ActivityNavigation:
         ]
         (x0, y0), (x1, y1) = scope
         frame = self.solver.recog.img[y0:y1, x0:x1]
-        matches = []
+        strong_matches = []
+        fallback_matches = []
         for token in sorted(tokens):
             path = next(
                 (
@@ -152,9 +155,13 @@ class ActivityNavigation:
                             point[1] + scaled.shape[0] // 2 + y0,
                         ),
                     )
-            if best[0] >= min_score:
-                matches.append(best)
-        return matches[0][1] if len(matches) == 1 else None
+            score, point = best
+            if score >= 0.9:
+                strong_matches.append(point)
+            elif fallback_score is not None and score >= fallback_score:
+                fallback_matches.append(point)
+        matches = strong_matches or fallback_matches
+        return matches[0] if len(matches) == 1 else None
 
     def enter_from_terminal(self):
         solver = self.solver
