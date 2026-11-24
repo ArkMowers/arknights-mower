@@ -110,17 +110,16 @@ function clockMinute(time) {
 const mobile = inject('mobile')
 
 const taskOptions = [
-  { label: '卫戍协议 · 个人极速模拟', value: 'garrison' },
-  { label: '复刻SS活动', value: 'event_rerun' },
   { label: '集成战略 (MAA)', value: 'rogue' },
   { label: '自动战斗／作业 (MAA)', value: 'copilot' },
   { label: '悖论模拟 (MAA)', value: 'paradox' },
   { label: '保全派驻 (MAA)', value: 'sss' },
   { label: '生息演算 (MAA)', value: 'rcl' },
   { label: '生息演算', value: 'ra' },
-  { label: '隐秘战线', value: 'sf' }
+  { label: '隐秘战线', value: 'sf' },
+  { label: '卫戍协议 · 个人极速模拟', value: 'garrison' }
 ]
-const windowTaskOptions = [...taskOptions, { label: '跟随默认', value: 'default' }]
+const windowTaskOptions = [{ label: '跟随默认', value: 'default' }, ...taskOptions]
 const editingType = ref(null)
 const parameterType = computed({
   get: () => editingType.value ?? maa_long_task_type.value,

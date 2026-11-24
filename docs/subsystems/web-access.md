@@ -39,7 +39,7 @@ The temporary software-update progress service applies the same credentialed for
 
 <a id="event-rerun-status"></a>
 
-**Event Rerun Status**: GET and HEAD `/maa-long-task-status?kind=event_rerun` require the active instance token before reading the resource package or saved progress. They expose the current rerun's selectable stages, per-stage estimate and saved outcomes without writing progress. The ordinary Copilot library requires the same token before deletion. It protects a rerun script while the saved raid is enabled and still belongs to the current, unexpired rerun raid. A stale or disabled rerun selection permits deletion under the library's ordinary queue and MAA occupancy checks. If the active resource cannot be read, deletion of a potentially referenced raid script returns 503. The [scheduler contract](base-scheduler.md#event-rerun-stage-admission) defines admission and settlement.
+**Event Rerun Status**: GET and HEAD `/maa-long-task-status?kind=event_rerun` require the active instance token before reading the resource package or saved progress. They expose the current rerun’s ordinary battle stages, per-stage estimate and saved outcomes for the stage plan. The [scheduler contract](base-scheduler.md#event-rerun-stage-admission) defines admission and settlement.
 
 ## 2. Log Read Interface
 

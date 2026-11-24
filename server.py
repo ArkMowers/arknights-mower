@@ -3327,10 +3327,15 @@ def maa_long_task_status():
                 )
 
                 event = current_rerun()
+                progress = load_event_rerun_progress(event["key"]) if event else {}
                 return {
                     "event": event,
                     "stage_seconds": STAGE_SECONDS,
-                    "progress": load_event_rerun_progress(event["key"])
+                    "progress": {
+                        stage["code"]: progress[stage["code"]]
+                        for stage in event["stages"]
+                        if stage["code"] in progress
+                    }
                     if event
                     else {},
                 }
@@ -3376,7 +3381,6 @@ def maa_copilot_library(library):
 @app.delete(COPILOT_LIBRARY_ROUTE + "/<script_id>")
 @require_token
 def delete_maa_copilot(library, script_id):
-    from arknights_mower.utils.event_rerun import current_rerun
     from arknights_mower.utils.maa_copilot import script_path
 
     with backup_lock, maa_maintenance_lock:
@@ -3389,24 +3393,6 @@ def delete_maa_copilot(library, script_id):
             return {"message": "请先将作业移出执行队列"}, 409
         if _maa_busy_response():
             return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
-        rerun = getattr(config.conf, "event_rerun", None)
-        if (
-            library == "maa-copilot"
-            and getattr(rerun, "raid_enabled", False)
-            and rerun.script_id == script_id
-        ):
-            try:
-                event = current_rerun()
-            except (OSError, ValueError):
-                logger.exception("删除作业前无法读取复刻SS活动资源")
-                return {"message": "无法确认复刻SS活动的作业引用"}, 503
-            if (
-                event is not None
-                and event["key"] == rerun.event_key
-                and event["raid"] is not None
-                and event["now"] < event["raid"]["end_ts"]
-            ):
-                return {"message": "请先取消本期复刻SS活动的作业选择"}, 409
         try:
             script_path(
                 script_id,

@@ -80,12 +80,7 @@ def run_long_task_if_dorm_pending(scheduler):
         return False
     garrison = kind == "garrison"
     window = long_task_deadline(scheduler, cutoff) - now
-    if kind == "event_rerun":
-        from arknights_mower.solvers.event_rerun import pending_rerun, run_event_rerun
-
-        if pending_rerun(scheduler) is None:
-            return False
-    elif garrison:
+    if garrison:
         from arknights_mower.solvers.garrison.runner import (
             eligible_progress,
             run_garrison,
@@ -108,8 +103,6 @@ def run_long_task_if_dorm_pending(scheduler):
         for task in scheduler.tasks
     ):
         return False
-    if kind == "event_rerun":
-        return run_event_rerun(scheduler)
     if garrison:
         return run_garrison(scheduler)
     now = datetime.now()
@@ -320,6 +313,6 @@ def _run_single(scheduler, kind):
     elif kind == TaskTypes.STAGE_PLAN:
         if conf.stage_plan_runner == "maa":
             return scheduler.maa_plan_solver(["Fight", "Award"], manual=True)
-        scheduler.mower_plan_solver(manual=True)
+        return scheduler.mower_plan_solver(manual=True)
     elif kind in LONG_TASKS:
         return scheduler.maa_plan_solver([], manual=True, long_task=LONG_TASKS[kind])

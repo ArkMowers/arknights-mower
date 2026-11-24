@@ -18,6 +18,7 @@ import {
   reorderWeeklyPlanStages,
   setStageForWeekday
 } from '@/utils/maa_weekly_plan'
+import EventRerun from './EventRerun.vue'
 import MaaWeeklyTable from './MaaWeeklyTable.vue'
 import MaaStageInventory from './MaaStageInventory.vue'
 import WeeklyPlanSelector from './WeeklyPlanSelector.vue'
@@ -27,6 +28,7 @@ const {
   maa_weekly_plan,
   filterStageByAvailability,
   stage_plan_enable,
+  event_rerun,
   stage_plan_runner,
   medicine_expire_days,
   medicine_use_all_date,
@@ -323,6 +325,19 @@ function cancelCopyDialogLongPress() {
     >
       <n-form-item :show-label="false">
         <n-flex vertical :size="8">
+          <n-flex align="center">
+            <n-checkbox v-model:checked="event_rerun.enabled" :disabled="!stage_plan_enable">
+              复刻SS活动普通战斗关各打一遍
+            </n-checkbox>
+            <n-checkbox
+              v-if="event_rerun.enabled"
+              v-model:checked="event_rerun.use_sanity_potion"
+              :disabled="!stage_plan_enable"
+            >
+              复刻关允许使用理智药
+            </n-checkbox>
+          </n-flex>
+          <EventRerun v-if="stage_plan_enable && event_rerun.enabled" />
           <n-flex align="center">
             <span>执行方式</span>
             <n-radio-group v-model:value="stage_plan_runner" :disabled="!stage_plan_enable">

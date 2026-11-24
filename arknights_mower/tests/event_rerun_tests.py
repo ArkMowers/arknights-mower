@@ -13,7 +13,6 @@ from arknights_mower.tests import maa_copilot_tests as copilot
 from arknights_mower.utils import config, event_rerun
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.device.io_budget import io_timeout
-from arknights_mower.utils.maa_backup import VerifiedAsst
 from arknights_mower.utils.scene import Scene
 
 client = copilot.client
@@ -57,11 +56,17 @@ def event():
     )
 
 
-def test_resources_offer_timed_ordinary_battles_and_ex8_raid():
+def test_resources_offer_only_timed_ordinary_rerun_battles():
     choice = event()
     assert choice["key"] == "act46sre:100"
     assert [item["code"] for item in choice["stages"]] == ["OS-1", "OS-10"]
-    assert choice["raid"]["code"] == "OS-EX-8 突袭"
+    assert "raid" not in choice
+    assert (
+        event_rerun.select_rerun(
+            [dict(ACTIVITY, activity_id="act46side")], [stage("OS-1")], 105
+        )
+        is None
+    )
     assert event_rerun.select_rerun([ACTIVITY], [], 99) is None
     assert event_rerun.select_rerun([ACTIVITY], [], 1800) is None
 
@@ -93,22 +98,7 @@ def scheduler(monkeypatch, database):
     monkeypatch.setattr(
         config,
         "conf",
-        Conf(
-            maa_rg_enable=1,
-            maa_long_task_type="garrison",
-            maa_long_task_weekly_windows=[
-                {
-                    "start": "11:00",
-                    "end": "13:00",
-                    "weekdays": [1],
-                    "task_type": "event_rerun",
-                }
-            ],
-            event_rerun={
-                "event_key": "act46sre:100",
-                "stages": ["OS-10", "OS-1", "OS-1"],
-            },
-        ),
+        Conf(maa_rg_enable=0, stage_plan_enable=True, event_rerun={"enabled": True}),
     )
     monkeypatch.setattr(runner, "current_rerun", event)
 
@@ -127,9 +117,6 @@ def scheduler(monkeypatch, database):
         tasks=[],
         deadline=Clock.now() + timedelta(minutes=4, seconds=10),
     )
-    monkeypatch.setattr(
-        runner, "long_task_deadline", lambda owner, cutoff: owner.deadline
-    )
     return owner, Clock
 
 
@@ -140,7 +127,7 @@ def test_budget_is_checked_before_each_claim_and_completion_survives_restart(
     play = MagicMock()
     monkeypatch.setattr(runner, "_play_ordinary", play)
     owner.deadline -= timedelta(seconds=11)
-    assert not runner.run_event_rerun(owner)
+    assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     play.assert_not_called()
 
     owner.deadline += timedelta(seconds=11)
@@ -153,14 +140,14 @@ def test_budget_is_checked_before_each_claim_and_completion_survives_restart(
         return "completed"
 
     play.side_effect = fight
-    assert runner.run_event_rerun(owner)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
     assert play.call_count == 1
     assert record.load_event_rerun_progress("act46sre:100") == {"OS-1": "completed"}
 
     next_owner = SimpleNamespace(tasks=[], deadline=clock.now() + timedelta(minutes=5))
-    assert runner.run_event_rerun(next_owner)
+    assert runner.run_event_rerun(next_owner, lambda: next_owner.deadline)
     assert [call.args[1]["code"] for call in play.call_args_list] == ["OS-1", "OS-10"]
-    assert not runner.run_event_rerun(next_owner)
+    assert not runner.run_event_rerun(next_owner, lambda: next_owner.deadline)
 
 
 def test_navigation_cannot_spend_the_battle_reserve(scheduler, monkeypatch):
@@ -174,7 +161,7 @@ def test_navigation_cannot_spend_the_battle_reserve(scheduler, monkeypatch):
 
     play = MagicMock(side_effect=prepare_stage)
     monkeypatch.setattr(runner, "_play_ordinary", play)
-    assert not runner.run_event_rerun(owner)
+    assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     play.assert_called_once()
     assert record.load_event_rerun_progress("act46sre:100") == {}
     assert not owner.event_rerun_blocked[1]
@@ -195,8 +182,8 @@ def test_unchanged_failed_preparation_yields_to_other_selected_stages(
         return "completed"
 
     monkeypatch.setattr(runner, "_play_ordinary", play)
-    assert runner.run_event_rerun(owner)
-    assert not runner.run_event_rerun(owner)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
+    assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     assert order == ["OS-1", "OS-10"]
     assert record.load_event_rerun_progress("act46sre:100") == {"OS-10": "completed"}
     assert owner.deadline == clock.now() + timedelta(minutes=4, seconds=10)
@@ -231,124 +218,9 @@ def test_ordinary_keeps_device_io_after_deadline_during_battle(
 
     operation.run.side_effect = run
     monkeypatch.setattr(runner, "OperationSolver", lambda *_: operation)
-    assert runner.run_event_rerun(owner)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
     assert operation.run.call_count == 1
     assert record.load_event_rerun_progress("act46sre:100") == {"OS-1": "completed"}
-
-
-@pytest.mark.parametrize("allow", [True, False])
-def test_raid_auto_formation_stays_running_past_task_deadline(
-    scheduler, monkeypatch, files, allow
-):
-    owner, clock = scheduler
-    config.conf.event_rerun.use_sanity_potion = allow
-    config.conf.event_rerun.stages = []
-    config.conf.event_rerun.raid_enabled = True
-    config.conf.event_rerun.script_id = copilot.upload(
-        {**copilot.SCRIPT, "stage_name": "act46side_ex08"}
-    )["id"]
-    navigator = MagicMock()
-    navigator.run.side_effect = lambda _: owner.MAA is maa
-    monkeypatch.setattr(runner, "NavigationSolver", lambda *_: navigator)
-    owner.scene_graph_navigation = MagicMock()
-    owner.scene = lambda: Scene.OPERATOR_CHOOSE_LEVEL
-    owner._maa_refresh_deadline = lambda: None
-    owner.release_maa = MagicMock()
-    maa = MagicMock()
-    maa.append_task.return_value = 7
-    checked = []
-
-    def init(on_task_event):
-        owner.MAA = maa
-
-        def running():
-            checked.append(clock.now())
-            if len(checked) == 1:
-                clock.current += timedelta(minutes=5)
-                return True
-            other_task = {"taskid": 8, "taskchain": "Copilot"}
-            on_task_event(10002, other_task)
-            assert record.load_event_rerun_progress("act46sre:100") == {
-                "OS-EX-8 突袭": "attempted"
-            }
-            on_task_event(10002, {**other_task, "taskid": 7})
-            return False
-
-        maa.running.side_effect = running
-
-    owner.initialize_maa = init
-    monkeypatch.setattr(runner, "csleep", lambda _: None)
-    assert runner.run_event_rerun(owner)
-    task, params = maa.append_task.call_args.args
-    assert task == "Copilot" and params["formation"]
-    assert params["use_sanity_potion"] is allow
-    assert len(params["copilot_list"]) == 1
-    assert params["copilot_list"][0]["is_raid"]
-    assert params["copilot_list"][0]["nav_name_override"] == "OS-EX-8"
-    assert checked[1] > owner.deadline
-    maa.start.assert_called_once()
-    maa.stop.assert_not_called()
-    assert record.load_event_rerun_progress("act46sre:100") == {
-        "OS-EX-8 突袭": "completed"
-    }
-    assert not runner.run_event_rerun(owner)
-
-
-@pytest.mark.parametrize("rejected", [True, False])
-def test_raid_start_failure_releases_only_confirmed_rejection(
-    scheduler, monkeypatch, files, rejected
-):
-    owner, _ = scheduler
-    settings = config.conf.event_rerun
-    settings.stages = []
-    settings.raid_enabled = True
-    script = {**copilot.SCRIPT, "stage_name": "act46side_ex08"}
-    settings.script_id = copilot.upload(script)["id"]
-    monkeypatch.setattr(runner, "NavigationSolver", lambda *_: MagicMock())
-    owner.scene_graph_navigation = MagicMock()
-    owner.scene = lambda: Scene.OPERATOR_CHOOSE_LEVEL
-    owner._maa_refresh_deadline = lambda: None
-    owner.release_maa = MagicMock()
-    owner.MAA = MagicMock()
-    owner.MAA.append_task.return_value = 7
-    owner.MAA.running.return_value = False
-    owner.initialize_maa = MagicMock()
-
-    verified = object.__new__(VerifiedAsst)
-    verified._asst = MagicMock()
-    verified._outcome = MagicMock()
-    verified._asst.start.return_value = False
-    if not rejected:
-        verified._asst.start.side_effect = TimeoutError("启动响应超时")
-    owner.MAA.start.side_effect = verified.start
-
-    assert runner.run_event_rerun(owner) is not rejected
-    assert not runner.run_event_rerun(owner)
-    owner.MAA.start.assert_called_once()
-    raid_code = "OS-EX-8 突袭"
-    progress = record.load_event_rerun_progress("act46sre:100")
-    if rejected:
-        assert progress == {}
-        owner.MAA.stop.assert_called_once()
-        settings.script_id = copilot.upload({**script, "doc": {"title": "替换作业"}})[
-            "id"
-        ]
-        verified._asst.start.return_value = True
-        assert runner.run_event_rerun(owner)
-        assert record.load_event_rerun_progress("act46sre:100") == {
-            raid_code: "attempted"
-        }
-    else:
-        assert progress == {raid_code: "attempted"}
-        owner.MAA.stop.assert_called_once()
-
-
-def test_raid_does_not_dispatch_a_script_for_another_stage(files):
-    script_id = copilot.upload({**copilot.SCRIPT, "stage_name": "OS-EX-7"})["id"]
-    with pytest.raises(ValueError, match="OS-EX-8"):
-        runner._raid_params(
-            event()["raid"], Conf(event_rerun={"script_id": script_id}).event_rerun
-        )
 
 
 def test_unconfirmed_attempt_stays_claimed_after_new_scheduler(scheduler, monkeypatch):
@@ -359,12 +231,14 @@ def test_unconfirmed_attempt_stays_claimed_after_new_scheduler(scheduler, monkey
         return "defer"
 
     monkeypatch.setattr(runner, "_play_ordinary", play)
-    config.conf.event_rerun.stages = ["OS-1"]
-    assert runner.run_event_rerun(owner)
-    assert not runner.run_event_rerun(
-        SimpleNamespace(tasks=[], deadline=owner.deadline)
-    )
-    assert record.load_event_rerun_progress("act46sre:100") == {"OS-1": "attempted"}
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
+    later = SimpleNamespace(tasks=[], deadline=owner.deadline)
+    assert runner.run_event_rerun(later, lambda: later.deadline)
+    assert not runner.run_event_rerun(later, lambda: later.deadline)
+    assert record.load_event_rerun_progress("act46sre:100") == {
+        "OS-1": "attempted",
+        "OS-10": "attempted",
+    }
 
 
 def test_single_proxy_guard_disallows_unconfirmed_multipliers():
@@ -434,58 +308,95 @@ def test_status_requires_token_before_reading(
         read.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("scenario", "expected_status"),
-    [
-        ("active", 409),
-        ("no_current_rerun", 200),
-        ("previous_opening", 200),
-        ("no_raid", 200),
-        ("raid_ended", 200),
-        ("raid_disabled", 200),
-        ("resources_unreadable", 503),
-    ],
-)
-def test_script_deletion_protects_only_current_raid(
-    client, monkeypatch, files, scenario, expected_status
+@pytest.mark.parametrize("master, enabled", [(False, True), (True, False)])
+def test_disabled_stage_plan_or_rerun_skips_resource_reads(
+    scheduler, monkeypatch, master, enabled
 ):
-    script_id = copilot.upload({**copilot.SCRIPT, "stage_name": "OS-EX-8"})["id"]
-    settings = config.conf.event_rerun
-    current = event()
-    settings.event_key = current["key"]
-    settings.script_id = script_id
-    settings.raid_enabled = scenario != "raid_disabled"
-    if scenario == "no_current_rerun":
-        current = None
-    elif scenario == "previous_opening":
-        current["key"] = "act46sre:200"
-    elif scenario == "no_raid":
-        current["raid"] = None
-    elif scenario == "raid_ended":
-        current["raid"]["end_ts"] = current["now"]
-    error = OSError("资源不可读") if scenario == "resources_unreadable" else None
-    read = MagicMock(return_value=current, side_effect=error)
-    monkeypatch.setattr(event_rerun, "current_rerun", read)
+    owner, _ = scheduler
+    config.conf.stage_plan_enable = master
+    config.conf.event_rerun.enabled = enabled
+    lookup = MagicMock()
+    monkeypatch.setattr(runner, "current_rerun", lookup)
+    assert not runner.run_event_rerun(owner, lambda: owner.deadline)
+    lookup.assert_not_called()
 
-    response = client.delete(
-        f"/maa-copilot/{script_id}", headers={"token": "copilot-test-token"}
+
+def test_old_long_task_windows_retire_without_enabling_all_stages():
+    window = {"start": "10:00", "end": "11:00", "weekdays": [1]}
+    settings = dict(
+        maa_long_task_type="event_rerun",
+        maa_rg_enable=1,
+        event_rerun={
+            "event_key": "old",
+            "stages": ["OS-1"],
+            "raid_enabled": True,
+            "use_sanity_potion": False,
+        },
     )
-
-    assert response.status_code == expected_status
-    assert (files / f"{script_id}.json").exists() is (expected_status != 200)
-    assert read.call_count == int(settings.raid_enabled)
-
-
-@pytest.mark.parametrize("token", [None, "invalid"])
-def test_unauthorized_delete_does_not_inspect_rerun(client, monkeypatch, token):
-    script_id = "a" * 64
-    config.conf.event_rerun.raid_enabled = True
-    config.conf.event_rerun.script_id = script_id
-    read = MagicMock()
-    monkeypatch.setattr(event_rerun, "current_rerun", read)
-    headers = {} if token is None else {"token": token}
-
-    assert (
-        client.delete(f"/maa-copilot/{script_id}", headers=headers).status_code == 403
+    assert Conf(**settings).maa_long_task_weekly_windows == []
+    conf = Conf(
+        **settings,
+        maa_long_task_weekly_windows=[
+            window,
+            dict(window, task_type="event_rerun"),
+            dict(window, task_type="garrison"),
+        ],
     )
-    read.assert_not_called()
+    assert [w.task_type for w in conf.maa_long_task_weekly_windows] == ["garrison"]
+    assert conf.event_rerun.model_dump() == {
+        "enabled": False,
+        "use_sanity_potion": False,
+    }
+    conf = Conf(
+        maa_long_task_type="sss",
+        maa_long_task_weekly_windows=[window, dict(window, task_type="event_rerun")],
+    )
+    assert conf.maa_long_task_type == "sss"
+    assert [w.task_type for w in conf.maa_long_task_weekly_windows] == [None]
+
+
+def test_expired_budget_during_database_claim_keeps_stage_pending(
+    scheduler, monkeypatch
+):
+    owner, clock = scheduler
+    original = record.claim_event_rerun_stage
+
+    def delayed_claim(key, code):
+        claimed = original(key, code)
+        clock.current += timedelta(seconds=11)
+        return claimed
+
+    monkeypatch.setattr(record, "claim_event_rerun_stage", delayed_claim)
+
+    def play(owner, stage, settings, prepare, claim, complete):
+        assert not claim()
+        return "defer"
+
+    monkeypatch.setattr(runner, "_play_ordinary", play)
+    assert not runner.run_event_rerun(owner, lambda: owner.deadline)
+    assert record.load_event_rerun_progress("act46sre:100") == {}
+
+
+def test_next_opening_runs_all_ordinary_stages_with_previous_opening_complete(
+    scheduler, monkeypatch
+):
+    owner, _ = scheduler
+
+    def play(owner, stage, settings, prepare, claim, complete):
+        assert claim()
+        complete()
+        return "completed"
+
+    monkeypatch.setattr(runner, "_play_ordinary", play)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
+    monkeypatch.setattr(runner, "current_rerun", lambda: None)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline) is None
+    monkeypatch.setattr(
+        runner, "current_rerun", lambda: dict(event(), key="act46sre:200")
+    )
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
+    for key in ("act46sre:100", "act46sre:200"):
+        assert record.load_event_rerun_progress(key) == {
+            "OS-1": "completed",
+            "OS-10": "completed",
+        }

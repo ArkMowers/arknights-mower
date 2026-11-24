@@ -353,3 +353,21 @@ def test_followup_bookkeeping_stays_at_debug(local, caplog):
         "clear local operation follow-up tasks | count=1",
         "skip local operation follow-up insert because run_at is empty",
     ]
+
+
+def test_rerun_precedes_local_weekly_plan_on_due_dispatch_only(
+    local, monkeypatch, caplog
+):
+    local.plan("1-7", ap=120)
+
+    def rerun(owner, deadline):
+        assert deadline() == owner.tasks[0].time
+        local.navigation.return_value.run.assert_not_called()
+        return True
+
+    preflight = MagicMock(side_effect=rerun)
+    monkeypatch.setattr(local_operation_execution, "run_event_rerun", preflight)
+    dispatch(local, caplog)
+    local.navigation.return_value.run.assert_called()
+    dispatch(local, caplog)
+    preflight.assert_called_once()

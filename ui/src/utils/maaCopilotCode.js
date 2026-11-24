@@ -16,7 +16,7 @@ export function parseCopilotCode(value) {
   throw new Error('请输入有效的 prts:// 作业代码、PRTS Plus 作业链接或编号')
 }
 
-export async function downloadCopilotFile(axios, id) {
+async function downloadCopilotFile(axios, id) {
   const { data } = await axios.get(
     `${import.meta.env.VITE_HTTP_URL || ''}/network/maa-copilot/${id}`
   )
