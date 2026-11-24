@@ -22733,7 +22733,7 @@ class BaseSchedulerSolver(
             return guarded
         return cached if isinstance(cached, dict) and cached else None
 
-    def initialize_maa(self):
+    def initialize_maa(self, *, on_task_event=None):
         from arknights_mower.utils.maa_backup import (
             MaaCallError,
             VerifiedAsst,
@@ -22744,6 +22744,8 @@ class BaseSchedulerSolver(
         observation_run = begin_maa_observations(self)
 
         def callback(msg, details, arg):
+            if on_task_event is not None and msg in (10000, 10002, 10004):
+                on_task_event(msg, parse_details(details))
             return self.on_maa_callback(
                 msg, details, arg, observation_run=observation_run
             )

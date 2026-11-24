@@ -155,6 +155,7 @@ export const useConfigStore = defineStore('config', () => {
   const maa_rcl_theme = ref('Tales')
   const rcl = ref({})
   const rogue = ref({})
+  const event_rerun = ref({ event_key: '', stages: [], raid_enabled: false, script_id: '' })
   const garrison = ref({ mode: 'medals', match_limit: 1, target_wins: 3, run_id: '' })
   const sss = ref({ type: 1, ec: 1, scripts: [], run_id: '' })
   const paradox = ref({ scripts: [], run_id: '' })
@@ -641,6 +642,13 @@ export const useConfigStore = defineStore('config', () => {
       maa_rcl_theme.value = response.data.maa_rcl_theme
       rcl.value = response.data.rcl
       rogue.value = response.data.rogue
+      event_rerun.value = {
+        event_key: '',
+        stages: [],
+        raid_enabled: false,
+        script_id: '',
+        ...response.data.event_rerun
+      }
       garrison.value = {
         mode: 'medals',
         match_limit: 1,
@@ -879,6 +887,7 @@ export const useConfigStore = defineStore('config', () => {
       maa_rcl_theme: maa_rcl_theme.value,
       rcl: rcl.value,
       rogue: rogue.value,
+      event_rerun: event_rerun.value,
       garrison: garrison.value,
       sss: sss.value,
       copilot: copilot.value,
@@ -1299,6 +1308,7 @@ export const useConfigStore = defineStore('config', () => {
     maa_rcl_theme,
     rcl,
     rogue,
+    event_rerun,
     garrison,
     sss,
     copilot,

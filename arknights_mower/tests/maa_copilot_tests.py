@@ -181,6 +181,7 @@ def client(monkeypatch, files):
     "method,path",
     [
         ("GET", "/maa-copilot"),
+        ("HEAD", "/maa-copilot"),
         ("POST", "/maa-copilot"),
         ("DELETE", "/maa-copilot/" + "a" * 64),
     ],
@@ -215,6 +216,7 @@ def test_authorized_upload_list_and_delete_and_selected_guard(
     assert response.status_code == 200
     info = response.get_json()
     assert info["title"] == "离线作业"
+    assert client.head("/maa-copilot", headers=headers).status_code == 200
     assert client.get("/maa-copilot", headers=headers).get_json()["scripts"] == [info]
     server.config.conf = Conf(copilot={"scripts": [{"id": info["id"]}]})
     path = "/maa-copilot/" + info["id"]
@@ -728,3 +730,23 @@ def test_copilot_does_not_start_without_confirmed_stage_map(scheduler, failure):
     scheduler.MAA.append_task.assert_not_called()
     scheduler.MAA.start.assert_not_called()
     assert scheduler.maa_copilot_progress["failed"] is True
+
+
+def test_relay_copilot_library_methods():
+    from arknights_mower.utils.mower_relay.protocol import allowed_request
+
+    routes = {
+        "/sss-copilot": {"GET", "POST"},
+        "/maa-copilot": set(),
+        "/maa-paradox": set(),
+        "/other-copilot": set(),
+        "/sss-copilot/" + "a" * 64: set(),
+        "/maa-copilot/" + "a" * 64: set(),
+        "/maa-paradox/" + "a" * 64: set(),
+    }
+    for path, expected in routes.items():
+        assert {
+            method
+            for method in ("HEAD", "GET", "POST", "PUT", "PATCH", "DELETE")
+            if allowed_request(method, path)
+        } == expected

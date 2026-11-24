@@ -1135,6 +1135,13 @@ def simulate(saved):
                 remaining_time = (
                     _next_scheduler_task().time - datetime.now()
                 ).total_seconds()
+                kind, _, _ = long_task_schedule(config.conf, datetime.now())
+                if kind == "event_rerun":
+                    from arknights_mower.solvers.event_rerun import run_event_rerun
+
+                    if run_event_rerun(base_scheduler):
+                        continue
+
                 if remaining_time > 540:
                     from arknights_mower.solvers.trust_rotation import (
                         run_trust_rotation,

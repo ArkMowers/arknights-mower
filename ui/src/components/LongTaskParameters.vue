@@ -2,6 +2,7 @@
 import { computed, inject, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useConfigStore } from '@/stores/config'
+import EventRerun from '@/components/EventRerun.vue'
 
 defineProps({ taskType: String })
 const { maa_rcl_theme, garrison, rcl } = storeToRefs(useConfigStore())
@@ -120,6 +121,7 @@ watch(
   <maa-sss v-else-if="taskType == 'sss'" />
   <reclamation-algorithm v-else-if="taskType == 'ra'" />
   <secret-front v-else-if="taskType == 'sf'" />
+  <EventRerun v-else-if="taskType == 'event_rerun'" />
   <template v-else-if="taskType == 'garrison'">
     <n-form-item label="刷取目标">
       <n-select

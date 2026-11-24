@@ -5,7 +5,7 @@ import json
 import pickle
 import sqlite3
 import traceback
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date, datetime, timedelta
 from threading import Event, Lock
 
@@ -45,6 +45,9 @@ _DB_TABLE_STMTS = (
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_sss_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS event_rerun_progress ("
+    "event_key TEXT NOT NULL, stage TEXT NOT NULL, status TEXT NOT NULL,"
+    "PRIMARY KEY (event_key, stage))",
     "CREATE TABLE IF NOT EXISTS garrison_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_copilot_progress ("
@@ -553,6 +556,55 @@ def save_maa_sss_progress(progress):
             (json.dumps(progress),),
         )
         connection.commit()
+
+
+def load_event_rerun_progress(event_key):
+    path = get_path("@app/tmp/data.db")
+    if not path.is_file():
+        return {}
+    with closing(
+        sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    ) as conn:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_schema WHERE type = 'table' "
+            "AND name = 'event_rerun_progress'"
+        ).fetchone():
+            return {}
+        return dict(
+            conn.execute(
+                "SELECT stage, status FROM event_rerun_progress WHERE event_key = ?",
+                (event_key,),
+            )
+        )
+
+
+def claim_event_rerun_stage(event_key, stage):
+    with _conn() as connection, connection:
+        return (
+            connection.execute(
+                "INSERT OR IGNORE INTO event_rerun_progress VALUES (?, ?, 'attempted')",
+                (event_key, stage),
+            ).rowcount
+            == 1
+        )
+
+
+def release_event_rerun_stage(event_key, stage):
+    with _conn() as connection, connection:
+        connection.execute(
+            "DELETE FROM event_rerun_progress "
+            "WHERE event_key = ? AND stage = ? AND status = 'attempted'",
+            (event_key, stage),
+        )
+
+
+def complete_event_rerun_stage(event_key, stage):
+    with _conn() as connection, connection:
+        connection.execute(
+            "UPDATE event_rerun_progress SET status = 'completed' "
+            "WHERE event_key = ? AND stage = ?",
+            (event_key, stage),
+        )
 
 
 def load_garrison_progress():
