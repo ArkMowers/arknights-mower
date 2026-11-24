@@ -251,6 +251,55 @@ def test_partially_executed_old_shift_does_not_replay_completed_room(captain):
     assert final["central"][1] == "歌蕾蒂娅"
 
 
+@pytest.fixture
+def reserved_bed(captain):
+    room = "dormitory_1"
+    old = SchedulerTask(
+        task_type=TaskTypes.SHIFT_OFF,
+        task_plan={room: ["Current"] * 4 + ["歌蕾蒂娅"]},
+    )
+    old.backup_shift_active = True
+    captain.tasks = [old]
+    return old
+
+
+def test_explicit_clear_replaces_old_bed_assignment(captain, reserved_bed):
+    room = "dormitory_1"
+    transition = {room: ["Current"] * 4 + [""]}
+    final, consumed = captain._coalesce_backup_transition(transition)
+    assert consumed == [reserved_bed]
+    assert final == transition
+    assert reserved_bed.plan[room][-1] == "歌蕾蒂娅"
+
+
+@pytest.mark.parametrize("overlap", ["none", "resident", "other_room"])
+def test_unmerged_bed_protects_resident_and_allows_independent_work(
+    captain, reserved_bed, overlap
+):
+    resident = captain.op_data.get_current_operator("dormitory_1", 4).name
+    move = {"central": [resident]}
+    independent = {"factory": [""]}
+    transition = dict(independent)
+    if overlap != "none":
+        # 另一份候选也想调走现住客，新安排可经由中枢或会客室与它相交。
+        other = SchedulerTask(
+            task_type=TaskTypes.SELF_CORRECTION,
+            task_plan={**move, "meeting": ["远山"]},
+        )
+        other.backup_shift_active = True
+        captain.tasks.append(other)
+    transition.update({"meeting": ["远山"]} if overlap == "other_room" else move)
+
+    before = copy.deepcopy(transition)
+    queued = [(task, task.time, copy.deepcopy(task.plan)) for task in captain.tasks]
+    for _ in range(2):
+        final, consumed = captain._coalesce_backup_transition(transition)
+        assert final == independent
+        assert consumed == []
+        assert transition == before
+        assert [(task, task.time, task.plan) for task in captain.tasks] == queued
+
+
 def test_connected_old_tasks_converge_without_duplicate_operator(captain):
     old = logged_rest(captain)
     other = SchedulerTask(

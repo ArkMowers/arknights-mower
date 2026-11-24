@@ -8334,13 +8334,32 @@ class BaseSchedulerSolver(
             names, slots = set(), set()
             for room, agents in plan.items():
                 for index, name in enumerate(agents):
-                    if name not in ("Current", ""):
+                    if name != "Current":
                         slots.add((room, index))
                     if name not in ("Current", "Free", ""):
                         names.add(name)
             return names, slots
 
-        remaining = [
+        def connected_tasks(transition, tasks):
+            names, slots = footprint(transition)
+            remaining = list(tasks)
+            connected = []
+            while remaining:
+                matched = []
+                for task in remaining:
+                    task_names, task_slots = footprint(task.plan)
+                    if names & task_names or slots & task_slots:
+                        matched.append(task)
+                        names.update(task_names)
+                        slots.update(task_slots)
+                if not matched:
+                    break
+                connected.extend(matched)
+                ids = {id(task) for task in matched}
+                remaining = [task for task in remaining if id(task) not in ids]
+            return connected
+
+        candidates = [
             task
             for task in task_view(self.tasks, TaskScope.REPLAN)
             if task.type in ordinary
@@ -8352,47 +8371,45 @@ class BaseSchedulerSolver(
             and not getattr(task, "strict_mood_limit", False)
             and not getattr(task, "dorm_recovery_restore", [])
         ]
-        transition = copy.deepcopy(transition)
-        mergeable_backups = {
-            id(task)
-            for task in remaining
-            if getattr(task, "backup_shift_active", False)
-        }
-        self._suppress_retained_arrangements(
-            transition,
-            reservation_tasks=[
-                task for task in self.tasks if id(task) not in mergeable_backups
-            ],
-        )
-        names, slots = footprint(transition)
-        merged_tasks = []
-        # 同一批任务可能经由第三条安排互相重叠，按关联范围一次收齐。
-        while remaining:
-            matched = []
-            for task in remaining:
-                task_names, task_slots = footprint(task.plan)
-                if names & task_names or slots & task_slots:
-                    matched.append(task)
-                    names.update(task_names)
-                    slots.update(task_slots)
-            if not matched:
+        # 仅在当前候选确实接替旧安排时放开预约。每次重算至少移除一个
+        # 候选，未接替的任务重新保护其岗位及当前驻员。
+        source = transition
+        while True:
+            exempt = {
+                id(task)
+                for task in candidates
+                if getattr(task, "backup_shift_active", False)
+            }
+            reservations = [task for task in self.tasks if id(task) not in exempt]
+            transition = copy.deepcopy(source)
+            self._suppress_retained_arrangements(
+                transition, reservation_tasks=reservations
+            )
+            merged_tasks = connected_tasks(transition, candidates)
+            if exempt.difference(id(task) for task in merged_tasks):
+                candidates = merged_tasks
+                continue
+            if not merged_tasks:
+                return transition, []
+            merged = {}
+            for task in sorted(merged_tasks, key=lambda task: task.time):
+                planned = copy.deepcopy(task.plan)
+                self._filter_ordinary_exhaust_departures(task, planned, self.op_data)
+                _merge_shift_transition(merged, planned, self.op_data)
+            _merge_shift_transition(merged, transition, self.op_data)
+            # 旧任务也可能带入其他预约保护的调人操作。核对最终名单，
+            # 只保留仍能完整交接剩余安排的任务，再重验它们之间的关联。
+            _, slots = footprint(merged)
+            self._suppress_retained_arrangements(merged, reservation_tasks=reservations)
+            blocked = slots - footprint(merged)[1]
+            if not blocked:
                 break
-            merged_tasks.extend(matched)
-            ids = {id(task) for task in matched}
-            remaining = [task for task in remaining if id(task) not in ids]
-        if not merged_tasks:
-            return transition, []
-        merged = {}
-        for task in sorted(merged_tasks, key=lambda task: task.time):
-            planned = copy.deepcopy(task.plan)
-            self._filter_ordinary_exhaust_departures(task, planned, self.op_data)
-            _merge_shift_transition(merged, planned, self.op_data)
-        _merge_shift_transition(merged, transition, self.op_data)
-        merged = {
-            room: agents
-            for room, agents in merged.items()
-            if any(name != "Current" for name in agents)
-        }
+            candidates = [
+                task for task in merged_tasks if not footprint(task.plan)[1] & blocked
+            ]
+            if len(candidates) == len(merged_tasks):
+                # 合并后整组回班条件也可能改变新意图的准入，保留原任务。
+                candidates = []
         logger.debug(
             "副表收敛合并 %s 条旧安排，直接执行最终换班：%s", len(merged_tasks), merged
         )
