@@ -9,8 +9,16 @@ import pytest
 from arknights_mower.utils.recognize import Recognizer
 
 FIXTURES = Path(__file__).parent / "fixtures" / "selection"
-SAMPLED = datetime(2026, 11, 24, 12)
 CENTRAL = ["薇薇安娜", "焰尾", "森蚺", "重岳", "歌蕾蒂娅"]
+
+
+class RoomClock(datetime):
+    @classmethod
+    def now(cls):
+        return SAMPLED + timedelta(seconds=5)
+
+
+SAMPLED = RoomClock(2026, 11, 24, 12)
 
 
 def recorded_panel(name):
@@ -22,13 +30,12 @@ def recorded_panel(name):
 
 @pytest.fixture
 def reader(monkeypatch):
-    import sys
+    from arknights_mower.solvers import base_schedule
 
-    monkeypatch.setitem(sys.modules, "arknights_mower.utils.skland", Mock())
-    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    monkeypatch.setattr(base_schedule, "datetime", RoomClock)
 
     def make(room, names, frame):
-        s = object.__new__(BaseSchedulerSolver)
+        s = object.__new__(base_schedule.BaseSchedulerSolver)
         s.task, s.tasks = None, []
         s.op_data = Mock()
         s.op_data.plan = {room: [None] * len(names)}
@@ -74,13 +81,14 @@ def test_portrait_label_without_status_text_keeps_countdown_fallback(reader, rem
     frame[267:309, 1470:1620] = 136  # 保留头像上的同一行文字。
     s, _ = reader("room_2_3", ["Lancet-2"], frame)
     s.read_time.return_value = remaining
-    before = datetime.now()
     (row,) = s.get_agent_from_room("room_2_3", force_mood=True)
     s.read_time.assert_called_once_with(((1650, 270), (1780, 305)), None)
     if remaining is None:
-        assert before <= row["time"] <= datetime.now()
+        assert row["time"] == RoomClock.now()
+        assert s.op_data.update_detail.call_args.kwargs["mood_event"] == "exhausted"
     else:
         assert row["time"] == SAMPLED + timedelta(seconds=remaining)
+        assert "mood_event" not in s.op_data.update_detail.call_args.kwargs
 
 
 def test_central_uses_saved_lower_slots_without_reopening_them(reader):
