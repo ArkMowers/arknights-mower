@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import cv2
 import numpy as np
@@ -208,6 +208,52 @@ def test_shop_click_uses_detected_currency_location_without_coordinates(
     monkeypatch.setattr(navigator, "confirm_shop", lambda: True)
     assert navigator.open_shop()
     solver.tap.assert_called_once_with((1300, 350))
+
+
+@pytest.mark.parametrize(
+    "scores, terminal_entry, taps",
+    [
+        pytest.param((0.80, 0.0), None, [call((229, 826))], id="unique-fallback"),
+        pytest.param((0.799, 0.0), None, [], id="below-fallback"),
+        pytest.param(
+            (0.93, 0.82), (229, 926), [call((229, 826))], id="strong-with-fallback"
+        ),
+        pytest.param((0.93, 0.91), None, [], id="ambiguous-strong-matches"),
+        pytest.param((0.82, 0.81), None, [], id="ambiguous-fallback-matches"),
+    ],
+)
+def test_shop_currency_match_priority(
+    activity, tmp_path, monkeypatch, scores, terminal_entry, taps
+):
+    root = tmp_path / "resource/template/items"
+    root.mkdir(parents=True)
+    template = np.random.default_rng(123).integers(0, 100, (64, 64, 3), dtype=np.uint8)
+    cv2.imwrite(str(root / "test_token.png"), template)
+    cv2.imwrite(str(root / "alternate_token.png"), 255 - template)
+    monkeypatch.setattr(nav.config.conf, "maa_path", str(tmp_path))
+
+    primary, alternate = np.zeros((2, 811, 214), dtype=np.float32)
+    primary[810, 213], alternate[284, 74] = scores
+    empty = np.zeros((1, 1), dtype=np.float32)
+
+    def match_template(_frame, scaled, _method):
+        if scaled.shape[:2] != (32, 32):
+            return empty
+        return primary if scaled[0, 0, 0] < 128 else alternate
+
+    monkeypatch.setattr(cv2, "matchTemplate", match_template)
+    solver = MagicMock(stage_meta=activity[0][0])
+    solver.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    shop = {**activity[1], "token_icon_ids": ["alternate_token"]}
+    navigator = nav.ActivityNavigation(solver, shop)
+    monkeypatch.setattr(navigator, "open_page", lambda: True)
+    read = MagicMock(return_value=[[[], "关闭时间", 0.99], [[], "剩余10", 0.99]])
+    monkeypatch.setattr(navigator, "read", read)
+
+    assert navigator.token_entry() == terminal_entry
+    assert navigator.open_shop() is bool(taps)
+    assert solver.tap.call_args_list == taps
+    assert read.call_count == len(taps)
 
 
 @pytest.mark.parametrize(
