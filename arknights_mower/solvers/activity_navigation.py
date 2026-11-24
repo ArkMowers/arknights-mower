@@ -2,12 +2,15 @@
 
 import re
 from pathlib import Path
+from time import monotonic
 
 import cv2
 import numpy as np
 
 from arknights_mower.data import stage_data_full
 from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.path import resolve_config_path
 from arknights_mower.utils.scene import Scene
 
@@ -89,14 +92,6 @@ class ActivityNavigation:
         return any(name in text for name in self.entry_names())
 
     def token_entry(self):
-        return self.currency_entry(((0, 100), (800, 950)))
-
-    def shop_entry(self):
-        return self.currency_entry(
-            ((0, 0), (1920, 1080)), min_scale=0.3, fallback_score=0.8
-        )
-
-    def currency_entry(self, scope, min_scale=0.8, *, fallback_score=None):
         tokens = set(self.shop.get("token_ids", [])) | {
             drop["id"]
             for stage in stage_data_full
@@ -112,10 +107,9 @@ class ActivityNavigation:
             installation / "cache/resource/template/items",
             installation / "resource/template/items",
         ]
-        (x0, y0), (x1, y1) = scope
+        x0, y0, x1, y1 = 0, 100, 800, 950
         frame = self.solver.recog.img[y0:y1, x0:x1]
-        strong_matches = []
-        fallback_matches = []
+        matches = []
         for token in sorted(tokens):
             path = next(
                 (
@@ -140,7 +134,7 @@ class ActivityNavigation:
             if np.std(template) < 1:
                 continue
             best = (0, None)
-            for scale in np.arange(min_scale, 2.01, 0.025 if min_scale < 0.8 else 0.05):
+            for scale in np.arange(0.8, 2.01, 0.05):
                 scaled = cv2.resize(template, None, fx=scale, fy=scale)
                 if any(a > b for a, b in zip(scaled.shape[:2], frame.shape[:2])):
                     continue
@@ -157,34 +151,31 @@ class ActivityNavigation:
                     )
             score, point = best
             if score >= 0.9:
-                strong_matches.append(point)
-            elif fallback_score is not None and score >= fallback_score:
-                fallback_matches.append(point)
-        matches = strong_matches or fallback_matches
+                matches.append(point)
         return matches[0] if len(matches) == 1 else None
 
-    def enter_from_terminal(self):
+    def enter_from_terminal(self, *, confirm_entry=None):
         solver = self.solver
         if solver.scene() != Scene.TERMINAL_MAIN:
             return False
         point = self.token_entry()
-        if point is not None:
-            return solver.tap_and_detect_page_move(
-                point, self.activity, record_step=False
-            )
-        matches = [
-            c
-            for c in solver.collect_terminal_ocr_candidates()
-            if c["score"] >= 0.8
-            and 0 <= c["center"][0] < 700
-            and 750 <= c["center"][1] < 950
-            and self.matches_name(c["text"])
-        ]
-        if len(matches) != 1:
-            return False
-        return solver.tap_and_detect_page_move(
-            matches[0]["center"], matches[0]["text"], record_step=False
-        )
+        label = self.activity
+        if point is None:
+            matches = [
+                c
+                for c in solver.collect_terminal_ocr_candidates()
+                if c["score"] >= 0.8
+                and 0 <= c["center"][0] < 700
+                and 750 <= c["center"][1] < 950
+                and self.matches_name(c["text"])
+            ]
+            if len(matches) != 1:
+                return False
+            point, label = matches[0]["center"], matches[0]["text"]
+        if confirm_entry is not None:
+            solver.tap(point, interval=0.2)
+            return confirm_entry()
+        return solver.tap_and_detect_page_move(point, label, record_step=False)
 
     def read(self):
         self.solver.recog.update()
@@ -215,19 +206,52 @@ class ActivityNavigation:
                 self.solver.sleep(0.2)
         return False
 
-    def open_page(self):
+    def confirm_activity_home(self):
+        deadline = monotonic() + 5
+
+        def remaining():
+            seconds = deadline - monotonic()
+            if seconds <= 0:
+                raise TimeoutError("活动首页确认超时")
+            return seconds
+
+        try:
+            with device_io_budget(remaining):
+                while True:
+                    io_timeout(0)
+                    texts = [normalize_activity_text(item[1]) for item in self.read()]
+                    io_timeout(0)
+                    if any("作战结束时间" in text for text in texts) and any(
+                        self.matches_name(text) for text in texts
+                    ):
+                        return True
+                    self.solver.sleep(min(0.2, remaining()))
+        except (TimeoutError, DeviceRecoveryError):
+            if monotonic() < deadline:
+                raise
+            return False
+
+    def open_page(self, *, confirm_entry=None):
         solver = self.solver
         solver.scene_graph_navigation(Scene.TERMINAL_MAIN)
-        if self.enter_from_terminal() and self.confirm(self.matches_name):
+        if confirm_entry is None:
+            entered = self.enter_from_terminal() and self.confirm(self.matches_name)
+        else:
+            entered = self.enter_from_terminal(confirm_entry=confirm_entry)
+        if entered:
             return True
         solver.scene_graph_navigation(Scene.TERMINAL_MAIN)
         solver.tap((490, 1014), interval=0.2)
         solver.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
-        return (
-            solver.open_activity_overview_until_ready(max_taps=8)
-            and solver.find_stage_image_and_enter(self.activity, max_swipes=10)
-            and self.confirm(self.matches_name)
-        )
+        if not solver.open_activity_overview_until_ready(max_taps=8):
+            return False
+        if confirm_entry is not None:
+            return solver.find_stage_image_and_enter(
+                self.activity, max_swipes=10, confirm_entry=confirm_entry
+            )
+        return solver.find_stage_image_and_enter(
+            self.activity, max_swipes=10
+        ) and self.confirm(self.matches_name)
 
     def open_chapter(self, title, target):
         matches = [
@@ -274,11 +298,8 @@ class ActivityNavigation:
                 self.solver.sleep(0.2)
         return False
 
-    def open_shop(self):
-        if not self.open_page():
-            return False
-        point = self.shop_entry()
-        if point is None:
+    def open_shop(self, point):
+        if not self.open_page(confirm_entry=self.confirm_activity_home):
             return False
         self.solver.tap(point)
         self.solver.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)

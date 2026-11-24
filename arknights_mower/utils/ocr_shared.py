@@ -335,6 +335,8 @@ class SharedOCREngine:
     def __call__(self, image, use_det=None, use_cls=None, use_rec=None, **kwargs):
         import numpy as np
 
+        from arknights_mower.utils.device.io_budget import io_timeout
+
         if not isinstance(image, np.ndarray) or image.dtype != np.uint8:
             raise ValueError("共享 OCR 只接收 uint8 图像数组")
         shape = list(image.shape)
@@ -348,7 +350,7 @@ class SharedOCREngine:
                 **kwargs,
             }
         )
-        deadline = monotonic() + self.timeout
+        deadline = monotonic() + io_timeout(self.timeout)
         if not self._lock.acquire(timeout=remaining(deadline)):
             raise TimeoutError("共享 OCR 等待前一请求超时")
         try:

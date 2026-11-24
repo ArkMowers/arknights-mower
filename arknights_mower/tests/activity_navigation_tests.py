@@ -74,9 +74,7 @@ def test_currency_template_is_found_at_different_positions(
     assert nav.ActivityNavigation(solver).token_entry() == expected
 
 
-def test_rerun_currency_reuses_game_icon_at_both_entrances(
-    activity, tmp_path, monkeypatch
-):
+def test_rerun_currency_reuses_game_icon_in_terminal(activity, tmp_path, monkeypatch):
     stages, shop = activity
     token = "act46side_token_detector_rep_1"
     icon = "act46side_token_detector"
@@ -93,9 +91,6 @@ def test_rerun_currency_reuses_game_icon_at_both_entrances(
 
     frame[300:364, 120:184] = cv2.cvtColor(template, cv2.COLOR_BGR2RGB)
     assert navigator.token_entry() == (152, 332)
-    frame.fill(0)
-    frame[220:284, 1500:1564] = cv2.cvtColor(template, cv2.COLOR_BGR2RGB)
-    assert navigator.shop_entry() == (1532, 252)
 
 
 def test_missing_currency_does_not_match_unrelated_image(
@@ -127,7 +122,7 @@ def test_token_entry_is_used_without_reading_changing_banner_text(
     )
 
 
-def test_changed_page_without_target_activity_does_not_click_shop(
+def test_changed_page_without_target_activity_does_not_open_stage(
     activity, monkeypatch
 ):
     solver = MagicMock()
@@ -136,7 +131,7 @@ def test_changed_page_without_target_activity_does_not_click_shop(
     navigator = nav.ActivityNavigation(solver, activity[1])
     monkeypatch.setattr(navigator, "enter_from_terminal", lambda: True)
     monkeypatch.setattr(navigator, "read", lambda: [[[], "其他活动", 0.99]])
-    assert not navigator.open_shop()
+    assert not navigator.open_stage("AB-1")
     assert solver.tap.call_args_list == [(((490, 1014),), {"interval": 0.2})]
 
 
@@ -192,38 +187,28 @@ def test_chapter_animation_does_not_confirm_the_wrong_map(activity, monkeypatch)
     assert solver.sleep.call_count == 2
 
 
-def test_shop_click_uses_detected_currency_location_without_coordinates(
+def test_shop_does_not_click_fixed_point_when_activity_entry_fails(
     activity, monkeypatch
 ):
-    solver = MagicMock()
-    solver.stage_meta = activity[0][0]
-    shop = {
-        key: value
-        for key, value in activity[1].items()
-        if key not in {"x", "y", "confirm_text"}
-    }
-    navigator = nav.ActivityNavigation(solver, shop)
-    monkeypatch.setattr(navigator, "open_page", lambda: True)
-    monkeypatch.setattr(navigator, "shop_entry", lambda: (1300, 350))
-    monkeypatch.setattr(navigator, "confirm_shop", lambda: True)
-    assert navigator.open_shop()
-    solver.tap.assert_called_once_with((1300, 350))
+    solver = MagicMock(stage_meta=activity[0][0])
+    solver.open_activity_overview_until_ready.return_value = True
+    solver.find_stage_image_and_enter.return_value = False
+    navigator = nav.ActivityNavigation(solver, activity[1])
+    monkeypatch.setattr(navigator, "enter_from_terminal", lambda **_: False)
+    read = MagicMock()
+    monkeypatch.setattr(navigator, "read", read)
+
+    assert not navigator.open_shop((229, 826))
+    assert solver.tap.call_args_list == [call((490, 1014), interval=0.2)]
+    read.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "scores, terminal_entry, taps",
-    [
-        pytest.param((0.80, 0.0), None, [call((229, 826))], id="unique-fallback"),
-        pytest.param((0.799, 0.0), None, [], id="below-fallback"),
-        pytest.param(
-            (0.93, 0.82), (229, 926), [call((229, 826))], id="strong-with-fallback"
-        ),
-        pytest.param((0.93, 0.91), None, [], id="ambiguous-strong-matches"),
-        pytest.param((0.82, 0.81), None, [], id="ambiguous-fallback-matches"),
-    ],
+    "scores, expected",
+    [((0.93, 0.82), (229, 926)), ((0.93, 0.91), None), ((0.82, 0.81), None)],
 )
-def test_shop_currency_match_priority(
-    activity, tmp_path, monkeypatch, scores, terminal_entry, taps
+def test_terminal_currency_requires_a_unique_strong_template(
+    activity, tmp_path, monkeypatch, scores, expected
 ):
     root = tmp_path / "resource/template/items"
     root.mkdir(parents=True)
@@ -242,18 +227,91 @@ def test_shop_currency_match_priority(
         return primary if scaled[0, 0, 0] < 128 else alternate
 
     monkeypatch.setattr(cv2, "matchTemplate", match_template)
-    solver = MagicMock(stage_meta=activity[0][0])
-    solver.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    solver = SimpleNamespace(
+        stage_meta=activity[0][0],
+        recog=SimpleNamespace(img=np.zeros((1080, 1920, 3), dtype=np.uint8)),
+    )
     shop = {**activity[1], "token_icon_ids": ["alternate_token"]}
-    navigator = nav.ActivityNavigation(solver, shop)
-    monkeypatch.setattr(navigator, "open_page", lambda: True)
-    read = MagicMock(return_value=[[[], "关闭时间", 0.99], [[], "剩余10", 0.99]])
-    monkeypatch.setattr(navigator, "read", read)
+    assert nav.ActivityNavigation(solver, shop).token_entry() == expected
 
-    assert navigator.token_entry() == terminal_entry
-    assert navigator.open_shop() is bool(taps)
-    assert solver.tap.call_args_list == taps
-    assert read.call_count == len(taps)
+
+@pytest.mark.parametrize(
+    "capture_duration,ocr_duration,expected",
+    [(12.0, 0.0, False), (2.0, 12.0, False), (2.0, 1.0, True)],
+)
+def test_activity_confirmation_shares_budget_between_capture_and_ocr(
+    activity, tmp_path, monkeypatch, capture_duration, ocr_duration, expected
+):
+    from arknights_mower.utils import ocr_shared
+    from arknights_mower.utils.device.io_budget import io_timeout
+
+    clock = [0.0]
+    monkeypatch.setattr(nav, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(ocr_shared, "monotonic", lambda: clock[0])
+
+    class Recognizer:
+        def update(self):
+            pass
+
+        @property
+        def img(self):
+            duration = min(capture_duration, io_timeout(60))
+            clock[0] += duration
+            if duration < capture_duration:
+                raise TimeoutError
+            return np.zeros((8, 8), dtype=np.uint8)
+
+    def read_response(_channel, deadline):
+        duration = min(ocr_duration, deadline - clock[0])
+        clock[0] += duration
+        if duration < ocr_duration:
+            raise TimeoutError
+        return {
+            "status": "ok",
+            "result": ([[[], "测试活动", 0.99], [[], "作战结束时间", 0.99]], None),
+        }
+
+    ocr = ocr_shared.SharedOCREngine(directory=tmp_path)
+    open_service = MagicMock(return_value=(MagicMock(), "token"))
+    monkeypatch.setattr(ocr_shared, "open_service", open_service)
+    monkeypatch.setattr(ocr_shared, "send_preamble", MagicMock())
+    monkeypatch.setattr(ocr_shared, "send_json", MagicMock())
+    monkeypatch.setattr(ocr_shared, "send", MagicMock())
+    responses = iter(({"status": "authenticated"}, {"status": "ready"}))
+    monkeypatch.setattr(
+        ocr_shared,
+        "read_json",
+        lambda *args: next(responses, None) or read_response(*args),
+    )
+    monkeypatch.setattr(nav.rapidocr, "engine", ocr)
+
+    solver = SimpleNamespace(stage_meta=activity[0][0], recog=Recognizer())
+    navigator = nav.ActivityNavigation(solver, activity[1])
+
+    assert navigator.confirm_activity_home() is expected
+    assert clock[0] == (3.0 if expected else 5.0)
+    if capture_duration < 5.0:
+        open_service.assert_called_once_with(tmp_path, 5.0)
+    else:
+        open_service.assert_not_called()
+
+
+def test_activity_confirmation_rejects_late_in_process_ocr_result(
+    activity, monkeypatch
+):
+    clock = [0.0]
+    monkeypatch.setattr(nav, "monotonic", lambda: clock[0])
+    solver = MagicMock(stage_meta=activity[0][0])
+    navigator = nav.ActivityNavigation(solver, activity[1])
+
+    def read(*args, **kwargs):
+        clock[0] += 12.0
+        return [[[], "测试活动", 0.99], [[], "作战结束时间", 0.99]], None
+
+    monkeypatch.setattr(nav.rapidocr, "engine", read)
+    assert not navigator.confirm_activity_home()
+    solver.recog.update.assert_called_once()
+    solver.sleep.assert_not_called()
 
 
 @pytest.mark.parametrize(

@@ -9,9 +9,8 @@ from arknights_mower.utils.scene import Scene
 SHOP = {
     "activity": "时间啊，向前！",
     "entry_names": ["残照终尽", "长冬初青", "世纪之春"],
-    "x": 1461,
-    "y": 255,
-    "confirm_text": "炮火所掩埋的",
+    "activity_id": "act55side",
+    "start_ts": 1793487600,
 }
 BANNER = [
     [[140, 50], [400, 50], [400, 90], [140, 90]],
@@ -37,6 +36,11 @@ def navigation(monkeypatch):
     ):
         monkeypatch.setattr(solver, name, MagicMock(return_value=True))
     solver.tap_and_detect_page_move = MagicMock(return_value=True)
+    solver.find_stage_image_and_enter.side_effect = (
+        lambda *args, confirm_entry=None, **kwargs: (
+            confirm_entry() if confirm_entry is not None else True
+        )
+    )
     solver.open_activity_overview_until_ready = MagicMock(return_value=False)
     solver.rank_activity_candidates = MagicMock(side_effect=AssertionError("AI called"))
     banners = [BANNER]
@@ -44,15 +48,12 @@ def navigation(monkeypatch):
         activity_navigation.ActivityNavigation, "token_entry", lambda _: None
     )
 
-    monkeypatch.setattr(
-        activity_navigation.ActivityNavigation, "shop_entry", lambda _: (1461, 255)
-    )
-
     def ocr(frame, **kwargs):
         if frame.shape[:2] == (200, 1400):
             return banners, None
         if frame.shape[:2] == (1080, 1920):
             return [
+                [[], "作战结束时间", 0.99],
                 [[], "关闭时间：2026/11/29", 0.99],
                 [[], "剩余10", 0.99],
                 [[], SHOP["activity"], 0.99],
@@ -65,13 +66,13 @@ def navigation(monkeypatch):
     return solver, banners
 
 
-def test_shop_clicks_named_banner_and_confirms_title_without_ai(navigation):
+def test_shop_clicks_named_banner_and_confirms_shop_without_ai(navigation):
     solver, _ = navigation
     assert solver.run(SHOP)
-    solver.tap_and_detect_page_move.assert_called_once_with(
-        (270, 820), BANNER[1], record_step=False
-    )
-    solver.tap.assert_called_once_with((1461, 255))
+    assert solver.tap.call_args_list == [
+        call((270, 820), interval=0.2),
+        call((1461, 255)),
+    ]
     solver.open_activity_overview_until_ready.assert_not_called()
     solver.click_subtitle_if_needed.assert_not_called()
     solver.find_target_stage_after_entry.assert_not_called()
@@ -94,10 +95,10 @@ def test_shop_accepts_activity_and_chapter_banners(navigation, text):
     solver, banners = navigation
     banners[:] = [[BANNER[0], text, 0.99]]
     assert solver.run(SHOP)
-    solver.tap_and_detect_page_move.assert_called_once_with(
-        (270, 820), text, record_step=False
-    )
-    solver.tap.assert_called_once_with((1461, 255))
+    assert solver.tap.call_args_list == [
+        call((270, 820), interval=0.2),
+        call((1461, 255)),
+    ]
     solver.open_activity_overview_until_ready.assert_not_called()
 
 
@@ -133,8 +134,11 @@ def test_chapter_banner_still_requires_confirmed_shop_page(navigation, monkeypat
         activity_navigation.ActivityNavigation, "confirm_shop", lambda _: False
     )
     assert not solver.run(SHOP)
-    solver.tap_and_detect_page_move.assert_called_once()
-    assert solver.recog.update.call_count == 1
+    assert solver.tap.call_args_list == [
+        call((270, 820), interval=0.2),
+        call((1461, 255)),
+    ]
+    solver.recog.update.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -213,18 +217,32 @@ def test_unconfirmed_banner_uses_list_entry_and_never_clicks_shop(navigation, fa
     solver.open_activity_overview_until_ready.assert_called_once_with(max_taps=8)
 
 
-def test_banner_click_without_page_change_falls_back_to_activity_list(navigation):
+def test_unconfirmed_terminal_entry_falls_back_to_activity_list(
+    navigation, monkeypatch
+):
     solver, _ = navigation
-    solver.tap_and_detect_page_move.return_value = False
     solver.open_activity_overview_until_ready.return_value = True
+    original = event_shop.rapidocr.engine
+    clock = [0.0]
+    monkeypatch.setattr(activity_navigation, "monotonic", lambda: clock[0])
+    solver.sleep.side_effect = lambda _: clock.__setitem__(0, 5.0)
+
+    def ocr(frame, **kwargs):
+        if (
+            frame.shape[:2] == (1080, 1920)
+            and not solver.find_stage_image_and_enter.called
+        ):
+            return [], None
+        return original(frame, **kwargs)
+
+    monkeypatch.setattr(event_shop.rapidocr, "engine", ocr)
     assert solver.run(SHOP)
     assert solver.tap.call_args_list == [
+        call((270, 820), interval=0.2),
         call((490, 1014), interval=0.2),
         call((1461, 255)),
     ]
-    solver.find_stage_image_and_enter.assert_called_once_with(
-        SHOP["activity"], max_swipes=10
-    )
+    solver.find_stage_image_and_enter.assert_called_once()
 
 
 def test_activity_page_is_not_accepted_as_shop(navigation, monkeypatch):
@@ -232,7 +250,9 @@ def test_activity_page_is_not_accepted_as_shop(navigation, monkeypatch):
     original = event_shop.rapidocr.engine
 
     def ocr(frame, **kwargs):
-        if frame.shape[:2] == (1080, 1920):
+        if frame.shape[:2] == (1080, 1920) and solver.tap.call_args == call(
+            (1461, 255)
+        ):
             return [[[], SHOP["activity"], 0.99]], None
         return original(frame, **kwargs)
 
@@ -240,6 +260,37 @@ def test_activity_page_is_not_accepted_as_shop(navigation, monkeypatch):
     assert not solver.run(SHOP)
     assert solver.recog.update.call_count == 4
     assert solver.sleep.call_count == 2
+
+
+@pytest.mark.parametrize("from_list", [False, True])
+def test_shop_rejects_other_activity_even_if_fixed_point_would_open_a_shop(
+    navigation, monkeypatch, from_list
+):
+    solver, banners = navigation
+    if from_list:
+        banners.clear()
+        solver.open_activity_overview_until_ready.return_value = True
+        monkeypatch.setattr(
+            solver,
+            "find_stage_image_and_enter",
+            event_shop.NavigationSolver.find_stage_image_and_enter.__get__(solver),
+        )
+        monkeypatch.setattr(solver, "find_stage_banner", lambda _: ((270, 70),) * 2)
+    original = event_shop.rapidocr.engine
+    clock = [0.0]
+    monkeypatch.setattr(activity_navigation, "monotonic", lambda: clock[0])
+    solver.sleep.side_effect = lambda _: clock.__setitem__(0, clock[0] + 5.0)
+
+    def ocr(frame, **kwargs):
+        if frame.shape[:2] != (1080, 1920):
+            return original(frame, **kwargs)
+        if call((1461, 255)) in solver.tap.call_args_list:
+            return [[[], "关闭时间", 0.99], [[], "剩余10", 0.99]], None
+        return [[[], "其他活动", 0.99], [[], "作战结束时间", 0.99]], None
+
+    monkeypatch.setattr(event_shop.rapidocr, "engine", ocr)
+    assert not solver.run(SHOP)
+    assert call((1461, 255)) not in solver.tap.call_args_list
 
 
 def test_ordinary_activity_navigation_reuses_banner_before_ai(navigation):
@@ -265,15 +316,15 @@ def test_ordinary_activity_navigation_reuses_banner_before_ai(navigation):
     assert not solver._suppress_nav_recording
 
 
-def test_shop_title_is_confirmed_from_fresh_frames_after_transition(
-    navigation, monkeypatch
-):
+def test_shop_is_confirmed_from_fresh_frames_after_fixed_click(navigation, monkeypatch):
     solver, _ = navigation
     original = event_shop.rapidocr.engine
     shop_reads = []
 
     def ocr(frame, **kwargs):
-        if frame.shape[:2] == (1080, 1920):
+        if frame.shape[:2] == (1080, 1920) and solver.tap.call_args == call(
+            (1461, 255)
+        ):
             shop_reads.append(None)
             if len(shop_reads) == 1:
                 return [], None
@@ -281,6 +332,50 @@ def test_shop_title_is_confirmed_from_fresh_frames_after_transition(
 
     monkeypatch.setattr(event_shop.rapidocr, "engine", ocr)
     assert solver.run(SHOP)
-    assert len(shop_reads) == 3
+    assert len(shop_reads) == 2
     assert solver.recog.update.call_count == 3
     solver.sleep.assert_called_once_with(0.2)
+
+
+@pytest.mark.parametrize("from_list", [False, True])
+def test_shop_waits_for_activity_controls_while_background_keeps_animating(
+    navigation, monkeypatch, from_list
+):
+    solver, banners = navigation
+    solver.wait_for_scene_stable.return_value = False
+    entry_point = (270, 820)
+    if from_list:
+        banners.clear()
+        entry_point = (270, 70)
+        solver.open_activity_overview_until_ready.return_value = True
+        monkeypatch.setattr(
+            solver,
+            "find_stage_image_and_enter",
+            event_shop.NavigationSolver.find_stage_image_and_enter.__get__(solver),
+        )
+        monkeypatch.setattr(solver, "find_stage_banner", lambda _: (entry_point,) * 2)
+    original = event_shop.rapidocr.engine
+    names = [[[], "残照终尽", 0.99]]
+    activity_frames = iter([[], names, [*names, [[], "作战结束时间", 0.99]]])
+
+    def on_tap(point, **kwargs):
+        if point == (1461, 255):
+            assert next(activity_frames, None) is None
+
+    def ocr(frame, **kwargs):
+        if frame.shape[:2] == (1080, 1920) and solver.tap.call_args == call(
+            entry_point, interval=0.2
+        ):
+            return next(activity_frames), None
+        return original(frame, **kwargs)
+
+    solver.tap.side_effect = on_tap
+    monkeypatch.setattr(event_shop.rapidocr, "engine", ocr)
+    assert solver.run(SHOP)
+    assert solver.tap.call_args == call((1461, 255))
+    assert solver.sleep.call_args_list == [call(0.2), call(0.2)]
+    solver.tap_and_detect_page_move.assert_not_called()
+    if not from_list:
+        solver.wait_for_scene_stable.assert_called_once_with(
+            timeout_seconds=5, interval_seconds=0.2
+        )

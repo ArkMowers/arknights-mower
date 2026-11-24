@@ -842,7 +842,8 @@ class Device:
         delta = (min_time - start_time).total_seconds()
         if delta > 0:
             if recover:
-                time.sleep(delta)
+                time.sleep(io_timeout(delta))
+                io_timeout(0)
             else:
                 budget_sleep(delta)
             start_time = min_time

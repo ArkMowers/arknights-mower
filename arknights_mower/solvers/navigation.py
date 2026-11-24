@@ -661,7 +661,9 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             self.wait_for_scene_stable(timeout_seconds=3, interval_seconds=0.2)
         return self.find("navigation/orderby_time")
 
-    def find_stage_image_and_enter(self, zone_name: str, max_swipes: int = 10) -> bool:
+    def find_stage_image_and_enter(
+        self, zone_name: str, max_swipes: int = 10, *, confirm_entry=None
+    ) -> bool:
         key = f"navigation/stage/{zone_name}"
         logger.debug(
             f"find_stage_image_and_enter start: zone={zone_name}, key={key}, max_swipes={max_swipes}"
@@ -672,6 +674,9 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             pos = self.find_stage_banner(zone_name)
             logger.debug(f"find_stage_image_and_enter round={i}, pos_found={bool(pos)}")
             if pos:
+                if confirm_entry is not None:
+                    self.tap(pos[0], interval=0.2)
+                    return confirm_entry()
                 moved = self.tap_and_detect_page_move(pos[0], zone_name)
                 logger.debug(
                     f"find_stage_image_and_enter tap result: moved={moved}, zone={zone_name}"

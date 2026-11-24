@@ -1,7 +1,7 @@
 import json
 import time
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, call
+from unittest.mock import ANY, MagicMock, call
 
 import pytest
 import yaml
@@ -463,46 +463,81 @@ def test_authorized_shop_route_reads_selected_resources(
         assert response.data == b""
 
 
+@pytest.mark.parametrize(
+    "activity_id,start_ts,point,terminal_point",
+    [
+        ("act46sre", 1795291200, (229, 826), (336, 827)),
+        ("act55side", 1793487600, (1461, 255), None),
+    ],
+)
 @pytest.mark.parametrize("title,ready", [("关闭时间", True), ("活动首页", False)])
-def test_navigation_confirms_shop_title_after_entering_selected_activity(
-    monkeypatch, title, ready
+def test_navigation_reads_shop_page_after_clicking_fixed_entrance(
+    monkeypatch, activity_id, start_ts, point, terminal_point, title, ready
 ):
     from arknights_mower.solvers import activity_navigation, event_shop
+    from arknights_mower.utils.scene import Scene
 
+    token_entry = MagicMock(return_value=terminal_point)
     monkeypatch.setattr(
-        activity_navigation.ActivityNavigation, "shop_entry", lambda _: (1200, 500)
+        activity_navigation.ActivityNavigation, "token_entry", token_entry
     )
     solver = object.__new__(EventShopNavigation)
     solver.recog = MagicMock()
-    monkeypatch.setattr(solver, "sleep", MagicMock())
-    monkeypatch.setattr(solver, "enter_activity_from_terminal", lambda: False)
-    order = []
+    monkeypatch.setattr(solver, "scene", lambda: Scene.TERMINAL_MAIN)
+    monkeypatch.setattr(solver, "collect_terminal_ocr_candidates", lambda: [])
     for name in (
         "scene_graph_navigation",
         "open_activity_overview_until_ready",
         "find_stage_image_and_enter",
-        "tap",
+        "tap_and_detect_page_move",
         "wait_for_scene_stable",
+        "sleep",
     ):
-        monkeypatch.setattr(
-            solver,
-            name,
-            MagicMock(
-                side_effect=lambda *a, _name=name, **k: order.append((_name, a)) or True
-            ),
-        )
-    monkeypatch.setattr(
-        event_shop.rapidocr,
-        "engine",
-        MagicMock(
-            side_effect=[([[[], "测试活动", 0.99]], None)]
-            + [([[[], title, 0.99], [[], "剩余10", 0.99]], None)] * 3
-        ),
+        monkeypatch.setattr(solver, name, MagicMock(return_value=True))
+    monkeypatch.setattr(solver, "tap", MagicMock())
+
+    solver.find_stage_image_and_enter.side_effect = (
+        lambda *args, confirm_entry, **kwargs: confirm_entry()
     )
-    assert solver.run(ENTRY) is ready
-    assert order[2] == ("tap", ((490, 1014),))
-    assert order[5] == ("find_stage_image_and_enter", ("测试活动",))
-    assert order[6] == ("tap", ((1200, 500),))
+
+    def read_page(*_args, **_kwargs):
+        if solver.tap.call_args != call(point):
+            return [[[], "测试活动", 0.99], [[], "作战结束时间", 0.99]], None
+        return [[[], title, 0.99], [[], "剩余10", 0.99]], None
+
+    monkeypatch.setattr(event_shop.rapidocr, "engine", read_page)
+    entry = {**ENTRY, "activity_id": activity_id, "start_ts": start_ts}
+    assert solver.run(entry) is ready
+    token_entry.assert_called_once_with()
+    if terminal_point is None:
+        solver.find_stage_image_and_enter.assert_called_once_with(
+            "测试活动", max_swipes=10, confirm_entry=ANY
+        )
+        assert solver.tap.call_args_list == [
+            call((490, 1014), interval=0.2),
+            call(point),
+        ]
+    else:
+        assert solver.tap.call_args_list == [
+            call(terminal_point, interval=0.2),
+            call(point),
+        ]
+
+
+def test_shop_with_no_fixed_point_for_its_edition_skips_navigation(monkeypatch):
+    from arknights_mower.solvers import event_shop
+
+    solver = object.__new__(EventShopNavigation)
+    navigate = MagicMock()
+    initialize_ocr = MagicMock()
+    monkeypatch.setattr(solver, "scene_graph_navigation", navigate)
+    monkeypatch.setattr(event_shop.rapidocr, "initialize_ocr", initialize_ocr)
+    monkeypatch.setattr(event_shop.rapidocr, "engine", None)
+
+    entry = {**ENTRY, "activity_id": "act46sre", "start_ts": 1795291201}
+    assert not solver.run(entry)
+    navigate.assert_not_called()
+    initialize_ocr.assert_not_called()
 
 
 def test_stopping_shop_navigation_does_not_start_a_following_large_task(
@@ -545,6 +580,9 @@ def test_shop_navigation_exits_recovery_when_its_task_ends(
     from arknights_mower.utils.scene import Scene
 
     setup_shop(scheduler)
+    monkeypatch.setitem(
+        event_shop.SHOP_ENTRANCE_POINTS, shop.shop_identity(ENTRY), (229, 826)
+    )
     elapsed = 0.0
     sleeps = []
     monkeypatch.setattr(time, "monotonic", lambda: elapsed)
