@@ -153,6 +153,7 @@ def client(monkeypatch, storage):
     "method,path",
     [
         ("GET", "/sss-copilot"),
+        ("HEAD", "/sss-copilot"),
         ("POST", "/sss-copilot"),
         ("DELETE", "/sss-copilot/" + "a" * 64),
     ],
@@ -189,6 +190,7 @@ def test_authorized_library_upload_validation_selection_busy_and_deletion(
     response = post(SCRIPT)
     assert response.status_code == 200
     info = response.get_json()
+    assert client.head("/sss-copilot", headers=headers).status_code == 200
     assert client.get("/sss-copilot", headers=headers).get_json() == {"scripts": [info]}
     path = "/sss-copilot/" + info["id"]
     server.config.conf = Conf(sss={"scripts": [{"id": info["id"]}]})

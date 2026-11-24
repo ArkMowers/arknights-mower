@@ -3333,9 +3333,12 @@ def maa_long_task_status():
             return {"message": "读取大型任务状态失败"}, 500
 
 
-@app.route("/maa-copilot", methods=["GET", "POST"])
+COPILOT_LIBRARY_ROUTE = "/<any('maa-copilot','maa-paradox','sss-copilot'):library>"
+
+
+@app.route(COPILOT_LIBRARY_ROUTE, methods=["GET", "POST"])
 @require_token
-def maa_copilot_library():
+def maa_copilot_library(library):
     from arknights_mower.utils.maa_copilot import (
         MAX_SCRIPT_BYTES,
         list_scripts,
@@ -3344,33 +3347,47 @@ def maa_copilot_library():
 
     with backup_lock:
         try:
-            if request.method == "GET":
-                return {"scripts": list_scripts()}
+            sss = library == "sss-copilot"
+            paradox = library == "maa-paradox"
+            if request.method in ("GET", "HEAD"):
+                return {"scripts": list_scripts(sss=sss, paradox=paradox)}
             upload = request.files.get("copilot")
             if upload is None:
                 return {"message": "没有收到作业文件"}, 400
-            return store_script(upload.read(MAX_SCRIPT_BYTES + 1))
+            return store_script(
+                upload.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
+            )
         except (ValueError, TypeError, RecursionError):
+            label = "保全作业" if sss else "作业"
             return {
-                "message": "作业格式无效或存储已满，请检查文件并清理不再使用的作业"
+                "message": f"{label}格式无效或存储已满，请检查文件并清理不再使用的作业"
             }, 400
         except OSError:
             return {"message": "作业读写失败，请检查目录权限"}, 500
 
 
-@app.delete("/maa-copilot/<script_id>")
+@app.delete(COPILOT_LIBRARY_ROUTE + "/<script_id>")
 @require_token
-def delete_maa_copilot(script_id):
+def delete_maa_copilot(library, script_id):
     from arknights_mower.utils.event_rerun import current_rerun
     from arknights_mower.utils.maa_copilot import script_path
 
     with backup_lock, maa_maintenance_lock:
-        if any(item.id == script_id for item in config.conf.copilot.scripts):
+        queue = {
+            "maa-copilot": "copilot",
+            "maa-paradox": "paradox",
+            "sss-copilot": "sss",
+        }[library]
+        if any(item.id == script_id for item in getattr(config.conf, queue).scripts):
             return {"message": "请先将作业移出执行队列"}, 409
         if _maa_busy_response():
             return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
         rerun = getattr(config.conf, "event_rerun", None)
-        if getattr(rerun, "raid_enabled", False) and rerun.script_id == script_id:
+        if (
+            library == "maa-copilot"
+            and getattr(rerun, "raid_enabled", False)
+            and rerun.script_id == script_id
+        ):
             try:
                 event = current_rerun()
             except (OSError, ValueError):
@@ -3384,7 +3401,11 @@ def delete_maa_copilot(script_id):
             ):
                 return {"message": "请先取消本期复刻SS活动的作业选择"}, 409
         try:
-            script_path(script_id).unlink(missing_ok=True)
+            script_path(
+                script_id,
+                sss=library == "sss-copilot",
+                paradox=library == "maa-paradox",
+            ).unlink(missing_ok=True)
         except ValueError:
             return {"message": "作业标识无效"}, 400
         except OSError:
@@ -3408,94 +3429,6 @@ def maa_event_shop_navigation():
         except (ValueError, OSError):
             logger.exception("读取活动商店资源失败")
             return {"message": "活动商店资源无效，请更新资源包"}, 400
-
-
-@app.route("/maa-paradox", methods=["GET", "POST"])
-@require_token
-def maa_paradox_library():
-    from arknights_mower.utils.maa_copilot import (
-        MAX_SCRIPT_BYTES,
-        list_scripts,
-        store_script,
-    )
-
-    with backup_lock:
-        try:
-            if request.method in ("GET", "HEAD"):
-                return {"scripts": list_scripts(paradox=True)}
-            upload = request.files.get("copilot")
-            if upload is None:
-                return {"message": "没有收到作业文件"}, 400
-            return store_script(upload.read(MAX_SCRIPT_BYTES + 1), paradox=True)
-        except (ValueError, TypeError, RecursionError):
-            return {
-                "message": "作业格式无效或存储已满，请检查文件并清理不再使用的作业"
-            }, 400
-        except OSError:
-            return {"message": "作业读写失败，请检查目录权限"}, 500
-
-
-@app.delete("/maa-paradox/<script_id>")
-@require_token
-def delete_maa_paradox(script_id):
-    from arknights_mower.utils.maa_copilot import script_path
-
-    with backup_lock, maa_maintenance_lock:
-        if any(item.id == script_id for item in config.conf.paradox.scripts):
-            return {"message": "请先将作业移出执行队列"}, 409
-        if _maa_busy_response():
-            return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
-        try:
-            script_path(script_id, paradox=True).unlink(missing_ok=True)
-        except ValueError:
-            return {"message": "作业标识无效"}, 400
-        except OSError:
-            return {"message": "删除作业失败，请检查目录权限"}, 500
-    return {"ok": True}
-
-
-@app.route("/sss-copilot", methods=["GET", "POST"])
-@require_token
-def upload_sss_copilot():
-    from arknights_mower.utils.maa_copilot import (
-        MAX_SCRIPT_BYTES,
-        list_scripts,
-        store_script,
-    )
-
-    with backup_lock:
-        try:
-            if request.method == "GET":
-                return {"scripts": list_scripts(sss=True)}
-            upload = request.files.get("copilot")
-            if upload is None:
-                return {"message": "没有收到作业文件"}, 400
-            return store_script(upload.read(MAX_SCRIPT_BYTES + 1), sss=True)
-        except (ValueError, TypeError, RecursionError):
-            return {
-                "message": "保全作业格式无效或存储已满，请检查文件并清理不再使用的作业"
-            }, 400
-        except OSError:
-            return {"message": "作业读写失败，请检查目录权限"}, 500
-
-
-@app.delete("/sss-copilot/<script_id>")
-@require_token
-def delete_sss_copilot(script_id):
-    from arknights_mower.utils.maa_copilot import script_path
-
-    with backup_lock, maa_maintenance_lock:
-        if any(item.id == script_id for item in config.conf.sss.scripts):
-            return {"message": "请先将作业移出执行队列"}, 409
-        if _maa_busy_response():
-            return {"message": "MAA 正在使用中，请等待任务结束后删除作业"}, 409
-        try:
-            script_path(script_id, sss=True).unlink(missing_ok=True)
-        except ValueError:
-            return {"message": "作业标识无效"}, 400
-        except OSError:
-            return {"message": "删除作业失败，请检查目录权限"}, 500
-    return {"ok": True}
 
 
 @app.route("/resource-update/manual", methods=["POST"])
