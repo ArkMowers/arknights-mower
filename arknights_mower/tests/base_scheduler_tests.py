@@ -3,7 +3,7 @@ import sys
 import unittest
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from threading import Event
+from threading import Event, Thread
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
@@ -46,6 +46,60 @@ from arknights_mower.utils.scheduler_task import (  # noqa: E402
 
 with patch.dict("sys.modules", {"RecruitSolver": MagicMock()}):
     pass
+
+
+def test_navigation_leaves_home_while_monthly_card_ocr_is_pending(
+    income_db, monkeypatch
+):
+    import numpy as np
+
+    from arknights_mower.solvers import monthly_card
+
+    ocr_started, release_ocr, navigated = Event(), Event(), Event()
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[530, 900] = (10, 20, 30)
+    seen = []
+    reminder_workers = []
+
+    def make_reminder_worker(*args, **kwargs):
+        worker = Thread(*args, **kwargs)
+        reminder_workers.append(worker)
+        return worker
+
+    def blocked_ocr(image):
+        seen.append(image)
+        ocr_started.set()
+        release_ocr.wait(5)
+        return False
+
+    monkeypatch.setattr(monthly_card, "expiry_visible", blocked_ocr)
+    monkeypatch.setattr(monthly_card.config, "stop_mower", Event())
+    monkeypatch.setattr(monthly_card, "Thread", make_reminder_worker)
+    scheduler = object.__new__(BaseSchedulerSolver)
+    scheduler._monthly_card_reminder = monthly_card.MonthlyCardReminder()
+    scheduler.recog = MagicMock(img=frame)
+    scheduler.recog.get_scene.side_effect = [Scene.INDEX, Scene.INFRA_MAIN]
+    scheduler.tap_index_element = MagicMock()
+
+    def navigate():
+        scheduler.scene_graph_navigation(Scene.INFRA_MAIN)
+        navigated.set()
+        release_ocr.wait(5)
+
+    worker = Thread(target=navigate, daemon=True)
+    worker.start()
+    try:
+        assert ocr_started.wait(2)
+        assert navigated.wait(1), "首页 OCR 阻塞了进入基建"
+        scheduler.tap_index_element.assert_called_once_with("infrastructure")
+        assert seen[0].shape == (320, 600, 3)
+        assert tuple(seen[0][0, 0]) == (10, 20, 30)
+        assert not np.shares_memory(seen[0], frame)
+    finally:
+        release_ocr.set()
+        worker.join(5)
+        for reminder_worker in reminder_workers:
+            reminder_worker.join(5)
 
 
 class TestSklandLogPrivacy(unittest.TestCase):
