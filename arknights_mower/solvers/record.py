@@ -562,7 +562,9 @@ def load_event_rerun_progress(event_key):
     path = get_path("@app/tmp/data.db")
     if not path.is_file():
         return {}
-    with closing(sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)) as conn:
+    with closing(
+        sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
+    ) as conn:
         if not conn.execute(
             "SELECT 1 FROM sqlite_schema WHERE type = 'table' "
             "AND name = 'event_rerun_progress'"
@@ -578,10 +580,13 @@ def load_event_rerun_progress(event_key):
 
 def claim_event_rerun_stage(event_key, stage):
     with _conn() as connection, connection:
-        return connection.execute(
-            "INSERT OR IGNORE INTO event_rerun_progress VALUES (?, ?, 'attempted')",
-            (event_key, stage),
-        ).rowcount == 1
+        return (
+            connection.execute(
+                "INSERT OR IGNORE INTO event_rerun_progress VALUES (?, ?, 'attempted')",
+                (event_key, stage),
+            ).rowcount
+            == 1
+        )
 
 
 def complete_event_rerun_stage(event_key, stage):

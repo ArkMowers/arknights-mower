@@ -212,8 +212,8 @@ class CopilotConf(ConfModel):
 
 class EventRerunConf(ConfModel):
     event_key: str = Field(default="", max_length=48)
-    stages: list[Annotated[str, Field(pattern=r"^[A-Z0-9]+-\d+$", max_length=24)]] = Field(
-        default_factory=list, max_length=64
+    stages: list[Annotated[str, Field(pattern=r"^[A-Z0-9]+-\d+$", max_length=24)]] = (
+        Field(default_factory=list, max_length=64)
     )
     raid_enabled: bool = False
     script_id: str = Field(default="", pattern=r"^(?:[a-f0-9]{64})?$")
@@ -233,7 +233,15 @@ class WeeklyLongTaskWindow(LongTaskWindow):
     weekdays: list[Annotated[int, Field(strict=True, ge=0, le=6)]]
     task_type: (
         Literal[
-            "rogue", "copilot", "paradox", "sss", "rcl", "ra", "sf", "garrison", "event_rerun"
+            "rogue",
+            "copilot",
+            "paradox",
+            "sss",
+            "rcl",
+            "ra",
+            "sf",
+            "garrison",
+            "event_rerun",
         ]
         | None
     ) = None
