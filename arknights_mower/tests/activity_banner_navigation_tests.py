@@ -9,9 +9,8 @@ from arknights_mower.utils.scene import Scene
 SHOP = {
     "activity": "时间啊，向前！",
     "entry_names": ["残照终尽", "长冬初青", "世纪之春"],
-    "x": 1461,
-    "y": 255,
-    "confirm_text": "炮火所掩埋的",
+    "activity_id": "act55side",
+    "start_ts": 1793487600,
 }
 BANNER = [
     [[140, 50], [400, 50], [400, 90], [140, 90]],
@@ -44,10 +43,6 @@ def navigation(monkeypatch):
         activity_navigation.ActivityNavigation, "token_entry", lambda _: None
     )
 
-    monkeypatch.setattr(
-        activity_navigation.ActivityNavigation, "shop_entry", lambda _: (1461, 255)
-    )
-
     def ocr(frame, **kwargs):
         if frame.shape[:2] == (200, 1400):
             return banners, None
@@ -65,7 +60,7 @@ def navigation(monkeypatch):
     return solver, banners
 
 
-def test_shop_clicks_named_banner_and_confirms_title_without_ai(navigation):
+def test_shop_clicks_named_banner_and_confirms_shop_without_ai(navigation):
     solver, _ = navigation
     assert solver.run(SHOP)
     solver.tap_and_detect_page_move.assert_called_once_with(
@@ -134,7 +129,8 @@ def test_chapter_banner_still_requires_confirmed_shop_page(navigation, monkeypat
     )
     assert not solver.run(SHOP)
     solver.tap_and_detect_page_move.assert_called_once()
-    assert solver.recog.update.call_count == 1
+    solver.tap.assert_called_once_with((1461, 255))
+    solver.recog.update.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -238,7 +234,7 @@ def test_activity_page_is_not_accepted_as_shop(navigation, monkeypatch):
 
     monkeypatch.setattr(event_shop.rapidocr, "engine", ocr)
     assert not solver.run(SHOP)
-    assert solver.recog.update.call_count == 4
+    assert solver.recog.update.call_count == 3
     assert solver.sleep.call_count == 2
 
 
@@ -265,15 +261,14 @@ def test_ordinary_activity_navigation_reuses_banner_before_ai(navigation):
     assert not solver._suppress_nav_recording
 
 
-def test_shop_title_is_confirmed_from_fresh_frames_after_transition(
-    navigation, monkeypatch
-):
+def test_shop_is_confirmed_from_fresh_frames_after_fixed_click(navigation, monkeypatch):
     solver, _ = navigation
     original = event_shop.rapidocr.engine
     shop_reads = []
 
     def ocr(frame, **kwargs):
         if frame.shape[:2] == (1080, 1920):
+            solver.tap.assert_called_once_with((1461, 255))
             shop_reads.append(None)
             if len(shop_reads) == 1:
                 return [], None
@@ -281,6 +276,6 @@ def test_shop_title_is_confirmed_from_fresh_frames_after_transition(
 
     monkeypatch.setattr(event_shop.rapidocr, "engine", ocr)
     assert solver.run(SHOP)
-    assert len(shop_reads) == 3
-    assert solver.recog.update.call_count == 3
+    assert len(shop_reads) == 2
+    assert solver.recog.update.call_count == 2
     solver.sleep.assert_called_once_with(0.2)

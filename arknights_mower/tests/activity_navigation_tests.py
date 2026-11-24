@@ -74,9 +74,7 @@ def test_currency_template_is_found_at_different_positions(
     assert nav.ActivityNavigation(solver).token_entry() == expected
 
 
-def test_rerun_currency_reuses_game_icon_at_both_entrances(
-    activity, tmp_path, monkeypatch
-):
+def test_rerun_currency_reuses_game_icon_in_terminal(activity, tmp_path, monkeypatch):
     stages, shop = activity
     token = "act46side_token_detector_rep_1"
     icon = "act46side_token_detector"
@@ -93,9 +91,6 @@ def test_rerun_currency_reuses_game_icon_at_both_entrances(
 
     frame[300:364, 120:184] = cv2.cvtColor(template, cv2.COLOR_BGR2RGB)
     assert navigator.token_entry() == (152, 332)
-    frame.fill(0)
-    frame[220:284, 1500:1564] = cv2.cvtColor(template, cv2.COLOR_BGR2RGB)
-    assert navigator.shop_entry() == (1532, 252)
 
 
 def test_missing_currency_does_not_match_unrelated_image(
@@ -127,7 +122,7 @@ def test_token_entry_is_used_without_reading_changing_banner_text(
     )
 
 
-def test_changed_page_without_target_activity_does_not_click_shop(
+def test_changed_page_without_target_activity_does_not_open_stage(
     activity, monkeypatch
 ):
     solver = MagicMock()
@@ -136,7 +131,7 @@ def test_changed_page_without_target_activity_does_not_click_shop(
     navigator = nav.ActivityNavigation(solver, activity[1])
     monkeypatch.setattr(navigator, "enter_from_terminal", lambda: True)
     monkeypatch.setattr(navigator, "read", lambda: [[[], "其他活动", 0.99]])
-    assert not navigator.open_shop()
+    assert not navigator.open_stage("AB-1")
     assert solver.tap.call_args_list == [(((490, 1014),), {"interval": 0.2})]
 
 
@@ -192,38 +187,28 @@ def test_chapter_animation_does_not_confirm_the_wrong_map(activity, monkeypatch)
     assert solver.sleep.call_count == 2
 
 
-def test_shop_click_uses_detected_currency_location_without_coordinates(
+def test_shop_does_not_click_fixed_point_when_activity_entry_fails(
     activity, monkeypatch
 ):
-    solver = MagicMock()
-    solver.stage_meta = activity[0][0]
-    shop = {
-        key: value
-        for key, value in activity[1].items()
-        if key not in {"x", "y", "confirm_text"}
-    }
-    navigator = nav.ActivityNavigation(solver, shop)
-    monkeypatch.setattr(navigator, "open_page", lambda: True)
-    monkeypatch.setattr(navigator, "shop_entry", lambda: (1300, 350))
-    monkeypatch.setattr(navigator, "confirm_shop", lambda: True)
-    assert navigator.open_shop()
-    solver.tap.assert_called_once_with((1300, 350))
+    solver = MagicMock(stage_meta=activity[0][0])
+    solver.open_activity_overview_until_ready.return_value = True
+    solver.find_stage_image_and_enter.return_value = False
+    navigator = nav.ActivityNavigation(solver, activity[1])
+    monkeypatch.setattr(navigator, "enter_from_terminal", lambda: False)
+    read = MagicMock()
+    monkeypatch.setattr(navigator, "read", read)
+
+    assert not navigator.open_shop((229, 826))
+    assert solver.tap.call_args_list == [call((490, 1014), interval=0.2)]
+    read.assert_not_called()
 
 
 @pytest.mark.parametrize(
-    "scores, terminal_entry, taps",
-    [
-        pytest.param((0.80, 0.0), None, [call((229, 826))], id="unique-fallback"),
-        pytest.param((0.799, 0.0), None, [], id="below-fallback"),
-        pytest.param(
-            (0.93, 0.82), (229, 926), [call((229, 826))], id="strong-with-fallback"
-        ),
-        pytest.param((0.93, 0.91), None, [], id="ambiguous-strong-matches"),
-        pytest.param((0.82, 0.81), None, [], id="ambiguous-fallback-matches"),
-    ],
+    "scores, expected",
+    [((0.93, 0.82), (229, 926)), ((0.93, 0.91), None), ((0.82, 0.81), None)],
 )
-def test_shop_currency_match_priority(
-    activity, tmp_path, monkeypatch, scores, terminal_entry, taps
+def test_terminal_currency_requires_a_unique_strong_template(
+    activity, tmp_path, monkeypatch, scores, expected
 ):
     root = tmp_path / "resource/template/items"
     root.mkdir(parents=True)
@@ -242,18 +227,12 @@ def test_shop_currency_match_priority(
         return primary if scaled[0, 0, 0] < 128 else alternate
 
     monkeypatch.setattr(cv2, "matchTemplate", match_template)
-    solver = MagicMock(stage_meta=activity[0][0])
-    solver.recog.img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    solver = SimpleNamespace(
+        stage_meta=activity[0][0],
+        recog=SimpleNamespace(img=np.zeros((1080, 1920, 3), dtype=np.uint8)),
+    )
     shop = {**activity[1], "token_icon_ids": ["alternate_token"]}
-    navigator = nav.ActivityNavigation(solver, shop)
-    monkeypatch.setattr(navigator, "open_page", lambda: True)
-    read = MagicMock(return_value=[[[], "关闭时间", 0.99], [[], "剩余10", 0.99]])
-    monkeypatch.setattr(navigator, "read", read)
-
-    assert navigator.token_entry() == terminal_entry
-    assert navigator.open_shop() is bool(taps)
-    assert solver.tap.call_args_list == taps
-    assert read.call_count == len(taps)
+    assert nav.ActivityNavigation(solver, shop).token_entry() == expected
 
 
 @pytest.mark.parametrize(

@@ -89,14 +89,6 @@ class ActivityNavigation:
         return any(name in text for name in self.entry_names())
 
     def token_entry(self):
-        return self.currency_entry(((0, 100), (800, 950)))
-
-    def shop_entry(self):
-        return self.currency_entry(
-            ((0, 0), (1920, 1080)), min_scale=0.3, fallback_score=0.8
-        )
-
-    def currency_entry(self, scope, min_scale=0.8, *, fallback_score=None):
         tokens = set(self.shop.get("token_ids", [])) | {
             drop["id"]
             for stage in stage_data_full
@@ -112,10 +104,9 @@ class ActivityNavigation:
             installation / "cache/resource/template/items",
             installation / "resource/template/items",
         ]
-        (x0, y0), (x1, y1) = scope
+        x0, y0, x1, y1 = 0, 100, 800, 950
         frame = self.solver.recog.img[y0:y1, x0:x1]
-        strong_matches = []
-        fallback_matches = []
+        matches = []
         for token in sorted(tokens):
             path = next(
                 (
@@ -140,7 +131,7 @@ class ActivityNavigation:
             if np.std(template) < 1:
                 continue
             best = (0, None)
-            for scale in np.arange(min_scale, 2.01, 0.025 if min_scale < 0.8 else 0.05):
+            for scale in np.arange(0.8, 2.01, 0.05):
                 scaled = cv2.resize(template, None, fx=scale, fy=scale)
                 if any(a > b for a, b in zip(scaled.shape[:2], frame.shape[:2])):
                     continue
@@ -157,10 +148,7 @@ class ActivityNavigation:
                     )
             score, point = best
             if score >= 0.9:
-                strong_matches.append(point)
-            elif fallback_score is not None and score >= fallback_score:
-                fallback_matches.append(point)
-        matches = strong_matches or fallback_matches
+                matches.append(point)
         return matches[0] if len(matches) == 1 else None
 
     def enter_from_terminal(self):
@@ -215,10 +203,12 @@ class ActivityNavigation:
                 self.solver.sleep(0.2)
         return False
 
-    def open_page(self):
+    def open_page(self, *, confirm_title=True):
         solver = self.solver
         solver.scene_graph_navigation(Scene.TERMINAL_MAIN)
-        if self.enter_from_terminal() and self.confirm(self.matches_name):
+        if self.enter_from_terminal() and (
+            not confirm_title or self.confirm(self.matches_name)
+        ):
             return True
         solver.scene_graph_navigation(Scene.TERMINAL_MAIN)
         solver.tap((490, 1014), interval=0.2)
@@ -226,7 +216,7 @@ class ActivityNavigation:
         return (
             solver.open_activity_overview_until_ready(max_taps=8)
             and solver.find_stage_image_and_enter(self.activity, max_swipes=10)
-            and self.confirm(self.matches_name)
+            and (not confirm_title or self.confirm(self.matches_name))
         )
 
     def open_chapter(self, title, target):
@@ -274,11 +264,8 @@ class ActivityNavigation:
                 self.solver.sleep(0.2)
         return False
 
-    def open_shop(self):
-        if not self.open_page():
-            return False
-        point = self.shop_entry()
-        if point is None:
+    def open_shop(self, point):
+        if not self.open_page(confirm_title=False):
             return False
         self.solver.tap(point)
         self.solver.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
