@@ -260,14 +260,99 @@ def test_conflicting_saved_plan_preserves_reallocation_for_other_rooms(solver):
 
     solver._emergency_plan_beds(state)
 
-    assert solver.tasks == [reservation]
-    assert "dorm_replan_plan" not in state
-    assert state["dorm_replan_pending"]
-    solver._emergency_plan_beds(state)
     assert solver.tasks[0] is reservation
     task = solver.tasks[1]
     assert reserved_room not in task.plan
     assert task.plan[other_room][2] == resting
+    assert state["dorm_replan_pending"]
+
+
+@pytest.mark.parametrize("planned_source", [False, True])
+def test_reserved_source_cancels_linked_move_but_keeps_unrelated_bed(
+    solver, planned_source
+):
+    source, target = "dormitory_1", "dormitory_2"
+    data, state = setup_episode(solver, 0)
+    resident, independent = COVERS[:2]
+    solver.op_data = data.project_arrangements(
+        [{source: ["Current", "Current", resident, "", ""]}]
+    )
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {
+        target: ["Current", "Current", independent, resident, "Current"],
+    }
+    if planned_source:
+        state["dorm_replan_plan"][source] = [
+            "Current",
+            "Current",
+            "",
+            "Current",
+            "Current",
+        ]
+    reservation = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER, task_plan={source: ["Current", "Current", "Free"]}
+    )
+    solver.tasks.append(reservation)
+
+    solver._emergency_plan_beds(state)
+
+    assert solver.tasks[0] is reservation
+    result = solver.op_data.project_arrangements([solver.tasks[1].plan])
+    assert result.get_current_room(source, True)[2] == resident
+    assert result.get_current_room(target, True)[2:4] == [independent, ""]
+
+
+def test_cancelled_manager_swap_replans_the_residents_other_bed(solver):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 0)
+    sleeper, other = COVERS[:2]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", sleeper, other, "", ""]}]
+    )
+    data.plan[room][0].agent = "Free"
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {
+        room: ["Current", "闪灵", sleeper, "Current", "Current"]
+    }
+
+    attempts = []
+    for _ in range(2):
+        solver._emergency_plan_beds(state)
+        task = solver.tasks.pop()
+        attempts.append(task.plan)
+        actual = data.get_current_room(room, True)
+        row = [
+            actual[i] if name == "Current" else name
+            for i, name in enumerate(task.plan[room])
+        ]
+        names = [name for name in row if name not in ("", "Free")]
+        assert len(names) == len(set(names))
+        assert row[1] == "闪灵"
+    assert attempts[0] == attempts[1]
+    solver.op_data = data.project_arrangements([task.plan])
+    solver._emergency_plan_beds(state)
+    assert not solver.tasks
+
+
+def test_first_reallocation_keeps_reserved_resident_in_place_after_compaction(solver):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 0)
+    solver.op_data = data.project_arrangements(
+        [{room: ["冰酿", "闪灵", *COVERS[:2], ""]}]
+    )
+    state["dorm_replan_pending"] = True
+    reservation = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER, task_plan={room: ["Current"] * 3 + ["Free"]}
+    )
+    solver.tasks.append(reservation)
+
+    solver._emergency_plan_beds(state)
+
+    assert solver.tasks == [reservation]
+    solver.tasks.clear()
+    solver._emergency_plan_beds(state)
+    task = solver.tasks.pop()
+    assert task.plan[room][2:4] == ["", ""]
 
 
 def test_high_need_opens_every_slot_and_produces_full_capacity_plan(solver):

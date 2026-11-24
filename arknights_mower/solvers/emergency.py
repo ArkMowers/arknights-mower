@@ -1946,17 +1946,20 @@ class EmergencyRecoveryMixin:
             state["dorm_replan_pending"] = False
             return
         reserved, slots = dorm_task_reservations(self.op_data, self.tasks)
-        plan = (
-            copy.deepcopy(previous)
-            if previous
-            else emergency_dorm_plan(
+
+        def new_allocation(available_slots=None, reserved_names=()):
+            return emergency_dorm_plan(
                 self.op_data,
                 state,
                 self.tasks,
                 reallocate=reallocate,
                 recovery_order=self._emergency_recovery_order(),
+                available_slots=available_slots,
+                reserved_names=reserved_names,
             )
-        )
+
+        allocation = copy.deepcopy(previous) if previous else new_allocation()
+        managers = {}
         for room, original in state.get("dorm_layout", {}).items():
             for index, name in enumerate(original):
                 if (
@@ -1967,23 +1970,58 @@ class EmergencyRecoveryMixin:
                 ):
                     current = self.op_data.get_current_operator(room, index)
                     if current is None or current.name != name:
-                        plan.setdefault(room, ["Current"] * len(original))[index] = name
-        # 保存分床安排，执行换位时再根据目标床位的当前住客补齐原位。
-        replan = copy.deepcopy(plan) if reallocate else None
-        self._resolve_emergency_dorm_manager_moves(plan, state, reserved, slots)
-        compact_dorm_vacancies(self.op_data, plan)
-        if previous and self._emergency_saved_dorm_plan_conflicts(
-            plan, reserved, slots
-        ):
+                        managers[room, index] = name
+                        allocation.setdefault(room, ["Current"] * len(original))[
+                            index
+                        ] = name
+        # 只保存分床要求；重派时按实测住客补齐同房换位。
+        retry_saved = bool(previous)
+        deferred = None
+        while True:
+            plan = copy.deepcopy(allocation)
+            self._resolve_emergency_dorm_manager_moves(plan, state, reserved, slots)
+            compacted = compact_dorm_vacancies(self.op_data, plan.copy())
+            affected = self._emergency_dorm_conflicting_beds(
+                allocation, plan, compacted, reserved, slots
+            )
+            if not affected:
+                plan = compacted
+                break
+            if retry_saved:
+                keep = {
+                    name
+                    for room, row in allocation.items()
+                    for index, name in enumerate(row)
+                    if (room, index) not in affected
+                    and name not in ("", "Current", "Free")
+                }
+                replacement = new_allocation(
+                    available_slots=affected, reserved_names=keep
+                )
+                for room, index in affected:
+                    row = replacement.get(room)
+                    allocation[room][index] = managers.get(
+                        (room, index), row[index] if row else "Current"
+                    )
+                retry_saved = False
+            else:
+                # 同一批人选已按本轮预约算过；仅延后仍会冲突的床位。
+                if deferred is None:
+                    deferred = copy.deepcopy(allocation)
+                for room, index in affected:
+                    allocation[room][index] = "Current"
+        plan = {
+            room: row
+            for room, row in plan.items()
+            if not self._emergency_dorm_plan_is_current({room: row})
+        }
+        if not plan:
             state.pop("dorm_replan_plan", None)
-            return
-        if self._emergency_dorm_plan_is_current(plan):
-            state.pop("dorm_replan_plan", None)
-            if reallocate:
+            if reallocate and deferred is None:
                 state["dorm_replan_pending"] = False
             return
-        if replan is not None:
-            state["dorm_replan_plan"] = replan
+        if reallocate:
+            state["dorm_replan_plan"] = deferred or allocation
         task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan=plan)
         task.emergency_dorm = True
         self.tasks.append(task)
@@ -1999,22 +2037,72 @@ class EmergencyRecoveryMixin:
             for room, row in plan.items()
         )
 
-    def _emergency_saved_dorm_plan_conflicts(self, plan, reserved, slots):
-        for room, row in plan.items():
-            actual = self.op_data.get_current_room(room, True) or ()
-            for index, name in enumerate(row):
-                current = actual[index] if index < len(actual) else None
-                if name in ("Current", current):
+    def _emergency_dorm_conflicting_beds(
+        self, allocation, plan, compacted, reserved, slots
+    ):
+        """从最终床位逆查分床要求，只重算共用床位或干员的变更。"""
+        if not compacted:
+            return set()
+        data = self.op_data
+        actual = {
+            room: data.get_current_room(room, True)
+            for room in data.plan
+            if room.startswith("dorm")
+        }
+        # 换人也会腾出干员的原床；原床不在本批安排中时仍须保护。
+        protected = reserved | {
+            resident
+            for room, current in actual.items()
+            for index, resident in enumerate(current)
+            if resident
+            and ((room, index) in slots or data.plan[room][index].agent == resident)
+        }
+        occupants = {}
+        blocked = set()
+        for room in allocation:
+            current = actual[room]
+            row = compacted.get(room, ())
+            for index, resident in enumerate(current):
+                name = row[index] if index < len(row) else "Current"
+                if name == "Current":
+                    name = resident
+                pos = (room, index)
+                if name not in ("", "Free"):
+                    if name in occupants:
+                        blocked.update((pos, occupants[name]))
+                    occupants[name] = pos
+                if name == resident:
                     continue
-                if (
-                    (room, index) in slots
-                    or name in reserved
-                    or current in reserved
-                    or current
-                    and self.op_data.plan[room][index].agent == current
-                ):
-                    return True
-        return False
+                if pos in slots or name in protected or resident in protected:
+                    blocked.add(pos)
+
+        if not blocked:
+            return set()
+        # 空床整理可能把保留的住客移过前面的空位，需撤销导致移动的清床要求。
+        for room, index in list(blocked):
+            before = plan.get(room, ())
+            if index >= len(before):
+                continue
+            prior = actual[room][index] if before[index] == "Current" else before[index]
+            if compacted[room][index] not in ("Current", prior):
+                gaps = [(room, i) for i, name in enumerate(before) if name == ""]
+                blocked.update([pos for pos in gaps if pos[1] <= index] or gaps)
+
+        edits = {}
+        for room, row in allocation.items():
+            for index, name in enumerate(row):
+                if name != "Current":
+                    edits[room, index] = {actual[room][index], name} - {"", "Free"}
+        names = {actual[room][index] for room, index in blocked} - {""}
+        affected = set()
+        while True:
+            linked = {
+                pos for pos, people in edits.items() if pos in blocked or people & names
+            }
+            if linked <= affected:
+                return affected
+            affected.update(linked)
+            names.update(*(edits[pos] for pos in linked))
 
     def _resolve_emergency_dorm_manager_moves(self, plan, state, reserved, slots):
         data = self.op_data
