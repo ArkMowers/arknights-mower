@@ -274,26 +274,3 @@ def test_ordinary_configuration_saves_preserve_update_choice(
     assert "updates_enabled" not in yaml.safe_load(
         config.conf_path.read_text(encoding="utf-8")
     )
-
-
-def test_relay_maa_update_operation_methods():
-    from arknights_mower.utils.mower_relay.protocol import allowed_request
-
-    routes = {
-        "/maa-update/info": {"GET"},
-        "/maa-update/status": {"GET"},
-        "/maa-update/check": set(),
-        "/maa-update/start": set(),
-        "/maa-resource-update/info": {"GET"},
-        "/maa-resource-update/status": {"GET"},
-        "/maa-resource-update/check": set(),
-        "/maa-resource-update/start": set(),
-        "/maa-other-update/info": set(),
-        "/maa-update/mirrorchyan-status": set(),
-    }
-    for path, expected in routes.items():
-        assert {
-            method
-            for method in ("HEAD", "GET", "POST", "PUT", "PATCH", "DELETE")
-            if allowed_request(method, path)
-        } == expected

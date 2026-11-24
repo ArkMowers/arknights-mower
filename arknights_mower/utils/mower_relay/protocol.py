@@ -32,24 +32,64 @@ def public_origin(subdomain):
     return f"https://{subdomain}.{DOMAIN}:{PORT}"
 
 
+HTTP_METHODS = {"GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"}
+# The gateway owns its control and static URLs. The instance owns native management.
+LOCAL_NAMESPACES = {
+    "__mower",
+    "admin",
+    "assets",
+    "dialog",
+    "instances",
+    "relay",
+}
+LOCAL_PATHS = {
+    "/import",
+    "/config-backup/import",
+    "/config-profiles/import",
+    "/process-control/action",
+    "/resource/install",
+    "/resource-update/manual",
+}
+MAINTENANCE_NAMESPACES = {"software-update", "maa-update", "maa-resource-update"}
+
+
 def allowed_request(method, target):
+    if not isinstance(method, str) or method not in HTTP_METHODS:
+        return False
     if not isinstance(target, str) or len(target) > 8192:
+        return False
+    if not target.startswith("/") or target.startswith("//") or "#" in target:
+        return False
+    if any(ord(c) < 32 or ord(c) == 127 for c in target):
         return False
     try:
         url = urlsplit(target)
+        path = unquote(url.path, errors="strict")
     except ValueError:
         return False
-    if url.scheme or url.netloc or url.fragment or not target.startswith("/"):
+    # Permit encoded names inside a segment, but never encoded URL delimiters.
+    if len(path.split("/")) != len(url.path.split("/")) or any(
+        c in path for c in "\\%?#"
+    ):
         return False
-    path = unquote(url.path)
-    if path != url.path or "\\" in path or "//" in path:
+    if any(ord(c) < 32 or ord(c) == 127 for c in path):
         return False
-    if any(part in {".", ".."} for part in path.split("/")):
+    if "//" in path or any(part in {".", ".."} for part in path.split("/")):
         return False
-    return any(
-        method in methods and re.fullmatch(pattern, path)
-        for methods, pattern in HTTP_OPERATIONS
-    )
+    path = path.rstrip("/")
+    namespace = path.partition("/")[2].partition("/")[0]
+    if (
+        not path
+        or namespace in LOCAL_NAMESPACES
+        or path in LOCAL_PATHS
+        or path in SOCKETS
+    ):
+        return False
+    if path.startswith("/software-update/source/"):
+        return False
+    if namespace in MAINTENANCE_NAMESPACES and method not in {"GET", "HEAD"}:
+        return False
+    return True
 
 
 def decode_body(value):
@@ -77,7 +117,7 @@ def response_kind(path):
     return "data"
 
 
-def validate_response(path, status, mime, data):
+def validate_response(path, status, mime, data, *, method=None):
     if (
         type(status) is not int
         or not 200 <= status <= 599
@@ -86,6 +126,10 @@ def validate_response(path, status, mime, data):
         or len(mime) > 128
     ):
         raise ValueError("中转响应无效")
+    if method == "HEAD":
+        if data or not re.fullmatch(r"[a-zA-Z0-9.+-]+/[a-zA-Z0-9.+-]+", mime):
+            raise ValueError("中转 HEAD 响应无效")
+        return
     if status == 204 and not data:
         return
     if urlsplit(path).path == "/gui/log-background" and status == 200:
@@ -99,7 +143,16 @@ def validate_response(path, status, mime, data):
         if mime == "image/png" and data.startswith(b"\x89PNG\r\n\x1a\n"):
             return
         raise ValueError("中转只接受 Mower 截图格式")
-    if kind == "attachment" and status < 400:
+    if (
+        kind == "attachment"
+        and status < 400
+        and mime
+        in {
+            "application/zip",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        and data.startswith(b"PK")
+    ):
         return
     if mime == "application/json":
         json.loads(data)
@@ -108,115 +161,3 @@ def validate_response(path, status, mime, data):
         data.decode("utf-8")
         return
     raise ValueError("中转不接受网页或脚本响应")
-
-
-CONVERSATION_PATH = r"/ai/conversations/[0-9a-f]{32}"
-HTTP_OPERATIONS = [
-    (("GET", "DELETE"), "/ai/conversations"),
-    (("GET", "DELETE"), CONVERSATION_PATH),
-    (("POST",), CONVERSATION_PATH + "/summary"),
-    (("POST",), CONVERSATION_PATH + r"/turns/[0-9]+/control"),
-    (("GET",), "/basement-skill/operators"),
-    (("GET",), "/check-maa"),
-    (("GET",), "/check-maa/status"),
-    (("GET",), "/check-skland"),
-    (("GET",), "/check-skland-sign"),
-    (("GET", "PATCH", "POST"), "/conf"),
-    (("GET",), "/config-backup/export"),
-    (("GET",), "/config-profiles"),
-    (("GET",), "/gui/appearance"),
-    (("GET",), "/gui/log-background"),
-    (("GET",), "/db-admin/maintenance"),
-    (("GET",), "/process-control/info"),
-    (("GET",), "/gui/sidebar"),
-    (("GET",), "/daily-status"),
-    (("GET",), "/crash-recovery/status"),
-    (("GET",), "/cultivate-fetch"),
-    (("POST",), "/db-admin/delete"),
-    (("GET",), "/db-admin/stats"),
-    (("GET",), "/depot/history"),
-    (("GET",), "/depot/readdepot"),
-    (("POST",), r"/device/(?:avd|redroid|genymotion)/start"),
-    (("POST",), "/device/boss_key"),
-    (("POST",), "/device/discover"),
-    (("DELETE", "GET", "POST"), "/device/performance-test"),
-    (("GET",), "/device/performance-test/screenshot"),
-    (("POST",), "/device/preflight"),
-    (("POST",), "/device/start"),
-    (("GET",), "/device/status"),
-    (("GET",), "/diagnostics/errors"),
-    (("DELETE",), "/diagnostics/errors/[A-Za-z0-9_.-]+"),
-    (("POST",), "/diagnostics/errors/[A-Za-z0-9_.-]+/analyze"),
-    (("GET",), "/diagnostics/errors/[A-Za-z0-9_.-]+/export"),
-    (("GET",), "/diagnostics/errors/[A-Za-z0-9_.-]+/logs"),
-    (("GET",), "/diagnostics/export"),
-    (("GET",), "/diagnostics/timeline"),
-    (("GET",), "/export-json"),
-    (("GET",), "/facility-state"),
-    (("GET",), "/getwatermark"),
-    (("POST",), "/growth-chip-farming"),
-    (("DELETE", "GET", "PUT"), "/growth-crafting-order"),
-    (("GET", "POST"), "/growth-plan"),
-    (("GET",), "/growth-survey"),
-    (("POST",), "/growth-sync"),
-    (("DELETE", "GET", "PUT"), "/growth-sync-token"),
-    (("GET",), "/item"),
-    (("GET",), "/latest-screenshot"),
-    (("GET",), "/maa-conn-preset"),
-    (("GET",), r"/maa(?:-resource)?-update/(?:info|status)"),
-    (("GET",), "/mastery-recommendation"),
-    (("GET",), "/mastery-recommendation-debug"),
-    (("POST",), "/mastery-t3-debug"),
-    (("POST",), "/mastery-t3-summary"),
-    (("GET",), "/network/maa-copilot/[0-9]+"),
-    (("GET", "POST"), "/network/settings"),
-    (("POST",), "/network/test"),
-    (("GET",), "/operator"),
-    (("GET", "POST"), "/plan"),
-    (("POST",), "/plan/restore-running"),
-    (("DELETE",), "/record/clear-data"),
-    (("GET",), "/record/getMoodRatios"),
-    (("GET",), "/record/mood-available-operators"),
-    (("GET",), "/record/mood-series"),
-    (("GET",), "/report/getOrundumData"),
-    (("GET",), "/report/getReportData"),
-    (("GET",), "/report/recycling_history"),
-    (("GET",), "/report/recycling_history/export"),
-    (("DELETE", "GET", "PUT"), "/report/recycling_settings"),
-    (("POST",), "/report/recycling_settings/import"),
-    (("GET",), "/report/restore-trading-history"),
-    (("GET",), "/report/trading_history"),
-    (("GET", "POST"), "/rescue-plan"),
-    (("POST",), "/rescue-plan/validate"),
-    (("GET",), "/resource-version"),
-    (("GET",), "/resource/status"),
-    (("GET",), "/riic/income-cache"),
-    (("DELETE", "PUT"), "/scheduled-start"),
-    (("GET",), "/screenshot/latest"),
-    (("GET",), "/screenshot/stats"),
-    (("GET",), r"/screenshots/[A-Za-z0-9_./-]+\.(?:jpg|jpeg|png)"),
-    (("GET",), "/shop"),
-    (("GET", "POST"), "/sss-copilot"),
-    (("GET",), "/stage/inventory-rules"),
-    (("GET",), "/stage/latest-activity"),
-    (("GET", "POST"), "/start/[A-Za-z0-9_.-]+"),
-    (("GET",), "/status"),
-    (("GET",), "/stop"),
-    (("GET",), "/stop-maa"),
-    (("POST",), "/submit_feedback"),
-    (("GET", "POST"), "/task"),
-    (("GET",), "/test-custom-screenshot"),
-    (("GET",), "/test-email"),
-    (("GET", "POST"), "/ui-state/log-layout"),
-    (("GET", "PATCH", "POST"), "/ui-state/mood-board"),
-    (("GET",), "/update-notice"),
-    (("POST",), "/update-notice/ack"),
-    (("POST",), "/validate-plan"),
-    (("GET",), "/weekly-plans"),
-    (("DELETE",), "/weekly-plans/[A-Za-z0-9_.-]+"),
-    (("POST",), "/weekly-plans/active"),
-    (("POST",), "/weekly-plans/activity-fallback"),
-    (("POST",), "/workshop-auto-config"),
-    (("GET",), "/workshop-preset"),
-    (("GET",), "/workshop-status"),
-]

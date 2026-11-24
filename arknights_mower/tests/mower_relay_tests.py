@@ -8,7 +8,11 @@ from aiohttp import WSMsgType, web
 from aiohttp.test_utils import TestServer
 
 from arknights_mower.utils.mower_relay import client, settings
-from arknights_mower.utils.mower_relay.protocol import public_origin
+from arknights_mower.utils.mower_relay.protocol import (
+    allowed_request,
+    public_origin,
+    validate_response,
+)
 
 
 @pytest.fixture
@@ -113,6 +117,24 @@ def test_dispatch_scope_and_instance_token(relay):
             request(target, relay.app.token)
 
 
+def test_business_status_and_static_fallback_use_instance_routes(relay):
+    def request(method, path):
+        return relay.dispatch(
+            {
+                "id": "request",
+                "method": method,
+                "path": path,
+                "headers": {"token": relay.app.token},
+            },
+            public_origin("example"),
+        )
+
+    assert request("GET", "/maa-long-task-status")["status"] == 200
+    assert request("HEAD", "/getwatermark")["body"] == ""
+    assert request("GET", "/index.html")["status"] == 404
+    assert request("GET", "/unknown-feature")["status"] == 404
+
+
 def test_relay_conversation_operations_require_the_instance_token(relay, monkeypatch):
     import server
 
@@ -147,8 +169,7 @@ def test_relay_conversation_operations_require_the_instance_token(relay, monkeyp
         ("GET", item + "/summary"),
         ("GET", "/ai/settings"),
     ]:
-        with pytest.raises(ValueError):
-            request(method, path, {"token": relay.app.token})
+        assert request(method, path, {"token": relay.app.token})["status"] in {404, 405}
 
 
 def test_connection_login_dispatch_and_disable(relay, monkeypatch, tmp_path):
@@ -323,3 +344,50 @@ def test_enable_requires_active_configured_token(
         ).status_code
         == 200
     )
+
+
+@pytest.mark.parametrize(
+    "method,path,expected",
+    [
+        ("GET", "/future-feature/status", True),
+        ("PATCH", "/stage/event-rerun", True),
+        ("POST", "/maa-copilot", True),
+        ("DELETE", "/weekly-plans/%E5%91%A8%E4%B8%80", True),
+        ("HEAD", "/process-control/info", True),
+        ("GET", "/config-backup/export", True),
+        ("GET", "/maa-resource-update/status", True),
+        ("POST", "/maa-update/start", False),
+        ("POST", "/software-update/start", False),
+        ("GET", "/software-update/source/history", False),
+        ("POST", "/resource/install", False),
+        ("POST", "/config-backup/import", False),
+        ("POST", "/config-profiles/import", False),
+        ("POST", "/process-control/action", False),
+        ("GET", "/dialog/folder", False),
+        ("POST", "/relay/settings", False),
+        ("GET", "/instances", False),
+        ("POST", "/process-control/%61ction", False),
+        ("POST", "///conf", False),
+        ("GET", "/a%2Fb", False),
+        ("GET", "/%252e%252e", False),
+        ("GET", "/test%0dname", False),
+        ("GET", "/%ff", False),
+        ("GET", "/ws/chat", False),
+        ("CONNECT", "/future-feature/status", False),
+    ],
+)
+def test_relay_forwards_business_paths_and_excludes_local_management(
+    method, path, expected
+):
+    assert allowed_request(method, path) is expected
+
+
+def test_relay_validates_head_and_download_responses():
+    validate_response("/stage/event-rerun", 200, "application/json", b"", method="HEAD")
+    with pytest.raises(ValueError):
+        validate_response(
+            "/stage/event-rerun", 200, "application/json", b"{}", method="HEAD"
+        )
+    validate_response("/config-backup/export", 200, "application/zip", b"PK\x03\x04")
+    with pytest.raises(ValueError):
+        validate_response("/future-feature/export", 200, "text/html", b"<html></html>")
