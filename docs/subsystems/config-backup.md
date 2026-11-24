@@ -115,7 +115,9 @@ key per instance or manager. Selecting distinct private keys through
 System-service initialization and explicit recovery serialize through the fixed
 user directory `~/.local/share/arknights-mower/credential-service-lock`, independent
 of `XDG_DATA_HOME`, because the Keychain and Secret Service entries are shared by
-that user. Ordinary reads do not create this coordination directory.
+that user. This directory also holds the initialization record for each service,
+so a new data root recognizes that the user's key has already been created.
+Ordinary reads do not create this coordination directory.
 
 Without an explicit key-file setting, reads use the recorded provider and
 require a matching key identifier. With `MOWER_CREDENTIAL_KEY_FILE` explicitly

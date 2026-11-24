@@ -303,7 +303,7 @@ def _key(provider, *, create=False):
         lock_directory = _key_lock_directory(provider, directory)
         _prepare_directory(lock_directory)
         with update_runtime.supervision_lock(lock_directory, timeout=15):
-            initialized = directory / f"{provider}.initialized"
+            initialized = lock_directory / f"{provider}.initialized"
             if initialized.is_symlink() or (
                 initialized.exists() and not initialized.is_file()
             ):
@@ -400,7 +400,7 @@ def recover_private_key():
             lock_directory = _key_lock_directory(provider, directory)
             _prepare_directory(lock_directory)
             with update_runtime.supervision_lock(lock_directory, timeout=15):
-                marker = directory / f"{provider}.initialized"
+                marker = lock_directory / f"{provider}.initialized"
                 if marker.is_symlink() or (marker.exists() and not marker.is_file()):
                     raise CredentialStoreError("凭据密钥初始化标记必须是普通文件")
                 if provider in ("keychain", "secret-service"):

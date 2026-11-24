@@ -12,7 +12,11 @@ from unittest.mock import patch
 import yaml
 
 from arknights_mower.utils import config as config_module
-from arknights_mower.utils import configuration_secrets, credential_store, workshop_config
+from arknights_mower.utils import (
+    configuration_secrets,
+    credential_store,
+    workshop_config,
+)
 from arknights_mower.utils.config import atomic_write, migrate_app_config_paths
 from arknights_mower.utils.config.conf import Conf
 from arknights_mower.utils.config.device_profile import DeviceProfile

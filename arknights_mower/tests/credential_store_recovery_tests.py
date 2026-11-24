@@ -234,11 +234,14 @@ def test_explicit_deployment_key_is_never_created_or_replaced(
 @pytest.mark.parametrize("provider", ["keychain", "secret-service"])
 @pytest.mark.parametrize("state", ["missing", "healthy", "corrupt", "locked"])
 def test_system_recovery_only_creates_confirmed_missing_entry(
-    tmp_path, monkeypatch, provider, state
+    tmp_path, monkeypatch, isolated_user_home, provider, state
 ):
     directory = tmp_path / "keys"
-    directory.mkdir()
-    marker = directory / f"{provider}.initialized"
+    marker_dir = (
+        isolated_user_home / ".local/share/arknights-mower/credential-service-lock"
+    )
+    marker_dir.mkdir(parents=True)
+    marker = marker_dir / f"{provider}.initialized"
     marker.write_bytes(b"original-marker")
     original = base64.b64encode(os.urandom(96)) if state == "healthy" else b"corrupt"
     values = {"key": original if state in ("healthy", "corrupt") else None}

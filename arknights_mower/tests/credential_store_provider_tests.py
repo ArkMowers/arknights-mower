@@ -21,7 +21,7 @@ def isolated_user_home(tmp_path, monkeypatch):
 
 
 @pytest.fixture(params=["keychain", "secret-service"])
-def system_provider(request, tmp_path, monkeypatch):
+def system_provider(request, tmp_path, monkeypatch, isolated_user_home):
     monkeypatch.delenv("MOWER_CREDENTIAL_KEY_FILE")
     provider = request.param
     directory = tmp_path / "private-keys"
@@ -42,7 +42,10 @@ def system_provider(request, tmp_path, monkeypatch):
         "_mac_key" if provider == "keychain" else "_secret_service_key",
         lookup,
     )
-    return provider, directory, state
+    marker_dir = (
+        isolated_user_home / ".local/share/arknights-mower/credential-service-lock"
+    )
+    return provider, marker_dir, state
 
 
 def test_first_system_key_is_reused_for_all_credential_files(tmp_path, system_provider):
@@ -59,7 +62,7 @@ def test_first_system_key_is_reused_for_all_credential_files(tmp_path, system_pr
     assert store.read_credentials(second) == {"token": "second-token"}
     assert b"first-token" not in first.read_bytes()
     assert b"second-token" not in second.read_bytes()
-    assert not (directory / "private.key").exists()
+    assert not (store._private_directory() / "private.key").exists()
 
 
 def test_existing_system_key_gets_marker_without_replacement(tmp_path, system_provider):
@@ -74,8 +77,9 @@ def test_existing_system_key_gets_marker_without_replacement(tmp_path, system_pr
     assert store.read_credentials(path) == {"token": "existing-key-token"}
 
 
+@pytest.mark.parametrize("new_data_root", [False, True])
 def test_missing_system_key_cannot_be_recreated_by_a_new_file(
-    tmp_path, system_provider
+    tmp_path, system_provider, monkeypatch, new_data_root
 ):
     _, _, state = system_provider
     first = tmp_path / "mower.secrets.json"
@@ -84,6 +88,8 @@ def test_missing_system_key_cannot_be_recreated_by_a_new_file(
     original_ciphertext = first.read_bytes()
     original_key = state["key"]
     state["key"] = None
+    if new_data_root:
+        monkeypatch.setattr(store, "_private_directory", lambda: tmp_path / "new-root")
     for path in (first, second):
         with pytest.raises(store.CredentialStoreError, match="unavailable"):
             store.write_credentials(path, {"token": "replacement-token"})
@@ -99,7 +105,7 @@ def test_initialization_markers_are_separate_for_each_provider(
     tmp_path, system_provider
 ):
     provider, directory, state = system_provider
-    directory.mkdir()
+    directory.mkdir(parents=True)
     other = "secret-service" if provider == "keychain" else "keychain"
     (directory / f"{other}.initialized").write_text("initialized")
     path = tmp_path / "mower.secrets.json"
@@ -415,17 +421,11 @@ else:
         assert resumed.returncode == 0, resumed.stderr
         assert resumed.stdout.strip() == output.strip()
         assert service.read_bytes() == original
-        for name in ("first-xdg", "second-xdg"):
-            assert (
-                tmp_path
-                / name
-                / "arknights-mower/credentials/secret-service.initialized"
-            ).is_file()
+        lock = (
+            isolated_user_home / ".local/share/arknights-mower/credential-service-lock"
+        )
+        assert (lock / "secret-service.initialized").is_file()
         if os.name != "nt":
-            lock = (
-                isolated_user_home
-                / ".local/share/arknights-mower/credential-service-lock"
-            )
             assert lock.stat().st_mode & 0o777 == 0o700
     finally:
         if holder.poll() is None:
