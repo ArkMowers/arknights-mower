@@ -8340,10 +8340,6 @@ class BaseSchedulerSolver(
                         names.add(name)
             return names, slots
 
-        transition = copy.deepcopy(transition)
-        self._suppress_retained_arrangements(transition)
-        names, slots = footprint(transition)
-        merged_tasks = []
         remaining = [
             task
             for task in task_view(self.tasks, TaskScope.REPLAN)
@@ -8356,6 +8352,20 @@ class BaseSchedulerSolver(
             and not getattr(task, "strict_mood_limit", False)
             and not getattr(task, "dorm_recovery_restore", [])
         ]
+        transition = copy.deepcopy(transition)
+        mergeable_backups = {
+            id(task)
+            for task in remaining
+            if getattr(task, "backup_shift_active", False)
+        }
+        self._suppress_retained_arrangements(
+            transition,
+            reservation_tasks=[
+                task for task in self.tasks if id(task) not in mergeable_backups
+            ],
+        )
+        names, slots = footprint(transition)
+        merged_tasks = []
         # 同一批任务可能经由第三条安排互相重叠，按关联范围一次收齐。
         while remaining:
             matched = []
@@ -10369,7 +10379,9 @@ class BaseSchedulerSolver(
         self._resume_waiting_group_shifts()
         return True
 
-    def _suppress_retained_arrangements(self, plan, *, returning_groups=()):
+    def _suppress_retained_arrangements(
+        self, plan, *, returning_groups=(), reservation_tasks=None
+    ):
         """派生安排不重做保留任务，也不挪用其目标和当前驻员。"""
         returning = [
             group
@@ -10385,7 +10397,7 @@ class BaseSchedulerSolver(
             )
             names, slots = retained_task_reservations(
                 self.op_data,
-                self.tasks,
+                self.tasks if reservation_tasks is None else reservation_tasks,
                 current_task=getattr(self, "task", None),
                 returning_groups=returning,
                 recovering_name=recovering_name,
