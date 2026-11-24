@@ -4,7 +4,7 @@ import pytest
 
 from arknights_mower.tests.mass_mood_recovery_tests import COVERS, NOW, PRIMARY
 from arknights_mower.tests.mass_mood_recovery_tests import solver as solver
-from arknights_mower.utils.operators import Operator
+from arknights_mower.utils.operators import Dormitory, Operator
 from arknights_mower.utils.plan import Room
 from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
@@ -101,9 +101,7 @@ def test_saved_manager_return_waits_for_reserved_slot(
     state["dorm_replan_pending"] = True
     state["dorm_replan_plan"] = {room: ["Current", "闪灵", *["Current"] * 3]}
     if explicit_swap:
-        solver._emergency_plan_beds(state)
-        assert solver.tasks.pop().plan[room][:2] == [sleeper, "闪灵"]
-        assert state["dorm_replan_plan"][room][:2] == [sleeper, "闪灵"]
+        state["dorm_replan_plan"][room][0] = sleeper
     reservation = SchedulerTask(
         task_type=TaskTypes.RE_ORDER,
         task_plan={room: ["Current"] * reserved_index + ["Free"]},
@@ -179,6 +177,7 @@ def test_saved_manager_swap_uses_new_target_bed_resident(solver):
     state["dorm_replan_plan"] = {room: ["Current", "闪灵", *["Current"] * 3]}
     solver._emergency_plan_beds(state)
     assert solver.tasks.pop().plan[room][:2] == [original_resident, "闪灵"]
+    assert state["dorm_replan_plan"][room][:2] == ["Current", "闪灵"]
     solver.op_data = data = data.project_arrangements(
         [
             {
@@ -197,6 +196,26 @@ def test_saved_manager_swap_uses_new_target_bed_resident(solver):
     solver._emergency_plan_beds(state)
     assert not solver.tasks
     assert "dorm_replan_plan" not in state
+
+
+def test_saved_reallocation_keeps_independently_selected_resident(solver):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 1)
+    candidate, sleeper = PRIMARY[0], COVERS[0]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", sleeper, *["Current"] * 3]}]
+    )
+    data.plan[room][0].agent = "Free"
+    data.dorm.insert(0, Dormitory((room, 0), "闪灵"))
+    state["dorm_replan_pending"] = True
+
+    solver._emergency_plan_beds(state)
+    first = solver.tasks.pop()
+    assert first.plan[room][:2] == [candidate, "闪灵"]
+
+    solver._emergency_plan_beds(state)
+
+    assert solver.tasks[0].plan == first.plan
 
 
 def test_saved_manager_swap_preserves_restored_fixed_bed(solver):

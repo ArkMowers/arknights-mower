@@ -1968,9 +1968,9 @@ class EmergencyRecoveryMixin:
                     current = self.op_data.get_current_operator(room, index)
                     if current is None or current.name != name:
                         plan.setdefault(room, ["Current"] * len(original))[index] = name
-        self._resolve_emergency_dorm_manager_moves(
-            plan, state, reserved, slots, saved=bool(previous)
-        )
+        # 保存分床安排，执行换位时再根据目标床位的当前住客补齐原位。
+        replan = copy.deepcopy(plan) if reallocate else None
+        self._resolve_emergency_dorm_manager_moves(plan, state, reserved, slots)
         compact_dorm_vacancies(self.op_data, plan)
         if previous and self._emergency_saved_dorm_plan_conflicts(
             plan, reserved, slots
@@ -1982,8 +1982,8 @@ class EmergencyRecoveryMixin:
             if reallocate:
                 state["dorm_replan_pending"] = False
             return
-        if reallocate:
-            state["dorm_replan_plan"] = copy.deepcopy(plan)
+        if replan is not None:
+            state["dorm_replan_plan"] = replan
         task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan=plan)
         task.emergency_dorm = True
         self.tasks.append(task)
@@ -2016,9 +2016,7 @@ class EmergencyRecoveryMixin:
                     return True
         return False
 
-    def _resolve_emergency_dorm_manager_moves(
-        self, plan, state, reserved, slots, *, saved
-    ):
+    def _resolve_emergency_dorm_manager_moves(self, plan, state, reserved, slots):
         data = self.op_data
         for room, original in state.get("dorm_layout", {}).items():
             if room not in plan:
@@ -2036,12 +2034,6 @@ class EmergencyRecoveryMixin:
                 # 新生成与已保存的同房换位都要服从本轮预约。
                 resident = data.get_current_operator(room, index)
                 source_role = data.plan[room][source].agent
-                if (
-                    saved
-                    and row[source] not in ("", "Free", "Current")
-                    and (resident is None or row[source] != resident.name)
-                ):
-                    row[source] = "Current"
                 fill_source = row[source] == "Current"
                 if fill_source:
                     if (
