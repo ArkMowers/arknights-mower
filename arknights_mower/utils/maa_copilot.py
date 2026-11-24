@@ -4,7 +4,6 @@ import hashlib
 import json
 import os
 import re
-from pathlib import Path
 
 from arknights_mower.utils.maa_storage import storage_root
 from arknights_mower.utils.path import get_path, resolve_config_path
@@ -172,6 +171,8 @@ def build_copilot_params(conf):
 
 
 def _maa_map_code(stage_name):
+    from pathlib import Path
+
     from arknights_mower.utils import config
 
     installation = Path(resolve_config_path(config.conf.maa_path))
