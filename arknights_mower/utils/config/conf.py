@@ -704,6 +704,7 @@ class WorkShopItem(ConfModel):
 
 
 class WorkshopDeerFodderItem(WorkShopItem):
+    material_rarities: list[Literal[2, 3]] = Field(default_factory=list)
     children_lower_limit: int = Field(default=20, ge=0, le=999999)
     self_upper_limit: int = Field(default=9999, ge=0, le=999999)
 

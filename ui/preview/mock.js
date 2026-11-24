@@ -995,6 +995,16 @@ export function createPreviewAdapter(data, requests = []) {
       '/shop': () => ['龙门币', '招聘许可', '赤金'],
       '/item': () => {
         const kind = config.params?.kind ?? requestUrl.searchParams.get('kind')
+        if (kind === 'deer-fodder') {
+          return Object.entries(workshopFormula)
+            .filter(
+              ([, { tab, apCost }]) =>
+                tab === '基建材料' ||
+                tab === '技巧概要' ||
+                (tab === '精英材料' && [1, 2].includes(apCost))
+            )
+            .map(([name]) => name)
+        }
         if (kind !== 'workshop-materials') return ['龙门币', '赤金', '源岩']
         return Object.entries(workshopFormula).map(([name, { tab, output_name }]) => ({
           name,

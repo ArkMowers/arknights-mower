@@ -92,9 +92,47 @@ def test_new_options_do_not_change_default_fodder_selection(next_skill):
     defaults = config.Conf().workshop_deer_fodder
     assert len(defaults) == 1
     assert defaults[0].item_names == ["碳素", "碳素组", "家具零件_碳素组"]
+    assert defaults[0].material_rarities == []
+    assert WorkshopDeerFodderItem().material_rarities == []
     assert defaults[0].children_lower_limit == 20
     assert WorkshopDeerFodderItem().children_lower_limit == 20
     assert WorkshopDeerFodderItem(children_lower_limit=0).children_lower_limit == 0
+
+
+@pytest.mark.parametrize(
+    ("tier", "name", "other", "cost"), [(2, "糖", "糖组", 1), (3, "糖组", "糖", 2)]
+)
+def test_saved_fodder_tier_picks_up_new_recipes_with_original_limits(
+    next_skill, monkeypatch, tier, name, other, cost
+):
+    from arknights_mower.data import workshop_formula
+
+    group = WorkshopDeerFodderItem(
+        material_rarities=[tier],
+        item_names=[name, "碳素组"],
+        children_lower_limit=7,
+        self_upper_limit=81,
+    )
+    config.conf.workshop_deer_fodder = [group]
+    assert other not in deer_fodder_items()[0]["item_names"]
+    monkeypatch.setitem(
+        workshop_formula,
+        "新增垫刀配方",
+        {
+            "tab": "精英材料",
+            "apCost": cost,
+            "output_name": name,
+        },
+    )
+    result = deer_fodder_items()[0]
+    assert result["item_names"][:2] == [name, "碳素组"]
+    assert result["item_names"].count(name) == 1
+    assert "新增垫刀配方" in result["item_names"]
+    assert "糖聚块" not in result["item_names"]
+    assert "技巧概要·卷3" not in result["item_names"]
+    assert (result["children_lower_limit"], result["self_upper_limit"]) == (7, 81)
+    assert group.item_names == [name, "碳素组"]
+    assert group.material_rarities == [tier]
 
 
 def test_custom_fodder_stays_manual_and_survives_backup_restore(

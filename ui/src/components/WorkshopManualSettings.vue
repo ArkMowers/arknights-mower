@@ -1,13 +1,20 @@
 <script setup>
 import { computed, inject, ref } from 'vue'
 import { pinyin_match } from '@/utils/common'
+import {
+  filterMaterial,
+  materialFallback,
+  selectedMaterials,
+  updateSelectedMaterials,
+  normalizeTierSearch
+} from '@/utils/workshopMaterialSelection'
 import { render_op_option, render_op_label } from '@/utils/op_select'
 
 const props = defineProps({ operators: Array, item_list: Array, migrationWarning: String })
 const settings = defineModel({ type: Array, default: () => [] })
 const mobile = inject('mobile', ref(false))
 const materialTiers = [5, 4, 3, 2]
-const tierOptions = materialTiers.map((value) => ({ value, label: `T${value} 材料` }))
+const tierOptions = materialTiers.map(materialFallback)
 
 const materialOptions = computed(() => {
   const tiers = new Map(
@@ -30,29 +37,11 @@ const materialOptions = computed(() => {
 
 function materialSummary(item) {
   return (
-    selectedMaterials(item)
+    selectedMaterials(item, materialTiers)
       .map((value) => materialFallback(value).label)
       .join('、') || '未选择材料'
   )
 }
-
-function selectedMaterials(item) {
-  return [
-    ...materialTiers.filter((rarity) => item.material_rarities?.includes(rarity)),
-    ...item.item_names
-  ]
-}
-
-function updateSelectedMaterials(item, selection) {
-  item.material_rarities = selection.filter((value) => typeof value === 'number')
-  item.item_names = selection.filter((value) => typeof value === 'string')
-}
-
-function materialFallback(value) {
-  return { value, label: typeof value === 'number' ? `T${value} 材料` : value }
-}
-
-const normalizeTierSearch = (text) => text.replace(/\s+/g, '').toLowerCase()
 
 function createMaterialOption(name) {
   const option = { label: name, value: name }
@@ -60,13 +49,6 @@ function createMaterialOption(name) {
     tierOptions.some(({ label }) => normalizeTierSearch(label) === normalizeTierSearch(name))
     ? { ...option, type: 'ignored' }
     : option
-}
-
-function filterMaterial(pattern, option) {
-  if (typeof option.value === 'number') {
-    return normalizeTierSearch(option.label).includes(normalizeTierSearch(pattern))
-  }
-  return pinyin_match(option.label, pattern)
 }
 
 const showSettingModal = ref(false)
@@ -182,7 +164,7 @@ function createNewItem() {
                 :options="materialOptions"
                 :fallback-option="materialFallback"
                 :max-tag-count="mobile ? 3 : 8"
-                :value="selectedMaterials(value)"
+                :value="selectedMaterials(value, materialTiers)"
                 @update:value="updateSelectedMaterials(value, $event)"
                 :filter="filterMaterial"
                 filterable

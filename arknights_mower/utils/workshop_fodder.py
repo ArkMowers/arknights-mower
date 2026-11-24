@@ -11,9 +11,11 @@ def deer_fodder_materials():
 
 
 def deer_fodder_items():
+    from arknights_mower.utils.workshop_recipes import expand_workshop_items
+
     allowed = set(deer_fodder_materials())
     result = []
-    for item in config.conf.workshop_deer_fodder:
+    for item in expand_workshop_items(config.conf.workshop_deer_fodder):
         data = item.model_dump()
         names = [name for name in data["item_names"] if name in allowed]
         if names:
