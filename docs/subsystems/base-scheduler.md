@@ -772,7 +772,7 @@ The [task retention decision](../../.agents/notes/implemented/bug-fix/2026-10-01
 
 ### Monthly Card Expiry Reminder
 
-When the base scheduler observes the game home screen, it checks the existing frame for the monthly card badge near the store. It selects candidates by shape and by the dark left panel and pink text background, then reads the right side for the complete text `即将到期`. Mower checks once per visit to the home screen within a game day. An inconclusive reading can be checked again on a later visit. The check does not open the store or change the task queue.
+When the base scheduler observes the game home screen, it copies the area around the store from the existing frame for a background check. Navigation continues while the check runs. Each process admits one check at a time and skips observations while it is busy. The check selects candidates by shape and by the dark left panel and pink text background, then reads the right side for the complete text `即将到期`. Shared OCR requests use a separate client with a five-second timeout per candidate. Mower checks at most once per home visit within a game day. It can check again on a later visit after an inconclusive reading or a skipped observation. The check does not open the store or change the task queue.
 
 After confirming the badge, Mower records a reminder for the game day in the instance database. It logs `月卡即将到期` and uses the WARNING email level, which follows the same mail settings as a rare recruitment tag. The saved date prevents another reminder on the same game day after restarting Mower. The badge supplies neither the expiry date nor the remaining number of days. [Focused tests](../../arknights_mower/tests/monthly_card_tests.py) cover recognition and reminder delivery.
 

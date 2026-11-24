@@ -1,17 +1,21 @@
+from threading import Lock, Thread, current_thread
+
 import cv2
 import numpy as np
 
 from arknights_mower.solvers.record import claim_monthly_card_reminder
-from arknights_mower.utils import rapidocr
-from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils import config, rapidocr
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.ocr_shared import SharedOCREngine
 from arknights_mower.utils.scene import Scene
 
+_HOME_REGION = np.s_[530:850, 900:1500]
+_reminder_slot = Lock()
 
-def expiry_visible(frame: np.ndarray) -> bool:
-    region = frame[530:850, 900:1500]
+
+def expiry_visible(region: np.ndarray) -> bool:
     hue, saturation, value = cv2.split(cv2.cvtColor(region, cv2.COLOR_RGB2HSV))
     pink = (hue >= 155) & (saturation > 121) & (value > 85)
     mask = cv2.morphologyEx(
@@ -33,15 +37,17 @@ def expiry_visible(frame: np.ndarray) -> bool:
             continue
         candidates.append((contrast, x, y, width, height))
 
-    if not candidates:
+    ocr = rapidocr.engine
+    if not candidates or ocr is None:
         return False
-    rapidocr.initialize_ocr()
+    if isinstance(ocr, SharedOCREngine):
+        ocr = SharedOCREngine(ocr.score, directory=ocr.directory, timeout=5)
     for _, x, y, width, height in sorted(candidates, reverse=True)[:3]:
         text = region[
             max(0, y - 3) : y + height + 3, x + round(width * 0.37) : x + width + 3
         ]
         text = cv2.resize(text, None, fx=2, fy=2)
-        result, _ = rapidocr.engine(
+        result, _ = ocr(
             cv2.cvtColor(text, cv2.COLOR_RGB2BGR),
             use_det=False,
             use_cls=False,
@@ -67,10 +73,32 @@ class MonthlyCardReminder:
         today = get_server_time().date()
         if today in (self._checked_home_day, self._reminded_day):
             return
+        if recognizer.capture_started_at is None:
+            return
         self._checked_home_day = today
-        frame = recognizer.img
+        if config.stop_mower.is_set() or not _reminder_slot.acquire(blocking=False):
+            return
         try:
-            if not expiry_visible(frame):
+            region = recognizer.img[_HOME_REGION].copy()
+            Thread(
+                target=self._check,
+                args=(region, today, current_thread()),
+                name="mower-monthly-card-reminder",
+                daemon=True,
+            ).start()
+        except Exception:
+            _reminder_slot.release()
+            logger.debug("未能启动月卡到期提醒检查", exc_info=True)
+
+    def _check(self, region, today, owner):
+        try:
+            if not expiry_visible(region):
+                return
+            if (
+                not owner.is_alive()
+                or config.stop_mower.is_set()
+                or today != get_server_time().date()
+            ):
                 return
             first_reminder = claim_monthly_card_reminder(today)
             self._reminded_day = today
@@ -81,7 +109,7 @@ class MonthlyCardReminder:
                     subject="月卡即将到期",
                     level="WARNING",
                 )
-        except MowerExit:
-            raise
         except Exception:
             logger.debug("月卡到期提醒检查失败", exc_info=True)
+        finally:
+            _reminder_slot.release()
