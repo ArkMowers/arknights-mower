@@ -2,6 +2,7 @@
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
+import { downloadCopilotFile, parseCopilotCode } from '@/utils/maaCopilotCode'
 import { useConfigStore } from '@/stores/config'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
 
@@ -18,8 +19,10 @@ const loaded = ref(false)
 const loadError = ref('')
 const scripts = ref([])
 const importing = ref(false)
+const code = ref('')
 let statusRequest
 let timer
+let disposed = false
 
 const selected = computed(() =>
   event_rerun.value.event_key === event.value?.key
@@ -81,25 +84,40 @@ async function refreshScripts() {
   scripts.value = data.scripts
 }
 
-async function upload({ file, onFinish, onError }) {
+async function importScript(file) {
+  if (importing.value) return false
   const eventKey = event.value?.key
   importing.value = true
   try {
     const body = new FormData()
-    body.append('copilot', file.file)
+    if (!file) {
+      const target = parseCopilotCode(code.value)
+      if (target.set) throw new Error('突袭只使用一份作业，请粘贴单份作业码或详情页链接')
+      file = await downloadCopilotFile(axios, target.id)
+    }
+    body.append('copilot', file)
     const { data } = await axios.post(`${base}/maa-copilot`, body)
     await refreshScripts()
-    if (event.value?.key === eventKey) {
+    if (!disposed && event.value?.key === eventKey && selected.value.raid_enabled) {
       if (matchesRaid(data)) updateSettings({ script_id: data.id })
       else message.error('作业已导入，关卡与本期 EX-8 不符')
     }
-    onFinish()
+    return true
   } catch (error) {
-    message.error(error.response?.data?.message || '作业导入失败')
-    onError()
+    message.error(error.response?.data?.message || error.message || '作业导入失败')
+    return false
   } finally {
     importing.value = false
   }
+}
+
+async function upload({ file, onFinish, onError }) {
+  if (await importScript(file.file)) onFinish()
+  else onError()
+}
+
+async function download() {
+  if (await importScript()) code.value = ''
 }
 
 onMounted(() => {
@@ -107,7 +125,10 @@ onMounted(() => {
   refreshScripts().catch((error) => message.error(error.response?.data?.message || '读取作业失败'))
   timer = setInterval(refreshStatus, 5000)
 })
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => {
+  disposed = true
+  clearInterval(timer)
+})
 watch(() => resourceVersion.info.current_version, refreshStatus)
 </script>
 
@@ -145,6 +166,22 @@ watch(() => resourceVersion.info.current_version, refreshStatus)
       </n-form-item>
       <n-form-item v-if="selected.raid_enabled" label="突袭作业">
         <n-flex style="width: 100%">
+          <n-input
+            v-model:value="code"
+            placeholder="prts:// 作业码、编号或作业详情页链接"
+            aria-label="突袭作业码"
+            :disabled="importing"
+            style="flex: 1; min-width: 180px"
+            @keyup.enter="download"
+          />
+          <n-button :disabled="importing || !code.trim()" @click="download">导入作业码</n-button>
+          <n-a href="https://prts.plus/" target="_blank" rel="noopener noreferrer"
+            >PRTS Plus 作业站</n-a
+          >
+        </n-flex>
+      </n-form-item>
+      <n-form-item v-if="selected.raid_enabled" label="已导入作业">
+        <n-flex style="width: 100%">
           <n-select
             :value="selected.script_id || null"
             :options="options"
@@ -162,7 +199,7 @@ watch(() => resourceVersion.info.current_version, refreshStatus)
             :disabled="importing"
             style="width: auto"
           >
-            <n-button :loading="importing">导入作业</n-button>
+            <n-button :loading="importing">导入 JSON</n-button>
           </n-upload>
         </n-flex>
       </n-form-item>

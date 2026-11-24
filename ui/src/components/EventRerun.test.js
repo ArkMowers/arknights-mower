@@ -2,7 +2,13 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { effectScope, ref } from 'vue'
 import Component from './EventRerun.vue'
 
-const state = vi.hoisted(() => ({ settings: null, client: null, mount: null, unmount: null }))
+const state = vi.hoisted(() => ({
+  settings: null,
+  client: null,
+  mount: null,
+  unmount: null,
+  error: vi.fn()
+}))
 vi.mock('vue', async (original) => ({
   ...(await original()),
   inject: (key) => (key === 'axios' ? state.client : false),
@@ -13,7 +19,7 @@ vi.mock('vue', async (original) => ({
 vi.mock('pinia', () => ({ storeToRefs: (store) => store }))
 vi.mock('naive-ui', async (original) => ({
   ...(await original()),
-  useMessage: () => ({ error: vi.fn() })
+  useMessage: () => ({ error: state.error })
 }))
 vi.mock('@/stores/config', () => ({ useConfigStore: () => ({ event_rerun: state.settings }) }))
 vi.mock('@/stores/resourceVersion', () => ({ useResourceVersionStore: () => ({ info: {} }) }))
@@ -33,6 +39,7 @@ let panel
 
 beforeEach(() => {
   vi.useFakeTimers()
+  state.error.mockClear()
   state.settings = ref({
     event_key: 'act10sre:50',
     stages: ['OLD-1'],
@@ -73,14 +80,17 @@ it('scopes stage and script selection to the current opening and shows saved out
 
 it('does not carry an import into a different activity', async () => {
   await panel.refreshStatus()
-  state.client.get.mockResolvedValueOnce({ data: { scripts: [{ id: 'new' }] } })
-  state.client.post.mockResolvedValue({ data: { id: 'new' } })
+  panel.updateSettings({ raid_enabled: true })
+  const script = { id: 'new', stage_name: 'OS-EX-8' }
+  state.client.get.mockResolvedValueOnce({ data: { scripts: [script] } })
+  state.client.post.mockResolvedValue({ data: script })
   const done = vi.fn()
   const upload = panel.upload({ file: { file: new Blob() }, onFinish: done, onError: vi.fn() })
   panel.event.value = { ...live.event, key: 'act47sre:200' }
+  panel.updateSettings({ raid_enabled: true, script_id: 'next-opening' })
   await upload
   expect(done).toHaveBeenCalledOnce()
-  expect(panel.selected.value.script_id).toBe('')
+  expect(panel.selected.value.script_id).toBe('next-opening')
 })
 
 it('offers matching EX-8 scripts from the ordinary Copilot library', async () => {
@@ -95,4 +105,48 @@ it('offers matching EX-8 scripts from the ordinary Copilot library', async () =>
   })
   await panel.refreshScripts()
   expect(panel.options.value).toEqual([{ label: 'act46side_ex08 · 突袭作业', value: 'raid' }])
+})
+
+it.each(['prts://12345', '12345', 'https://prts.plus/operation/12345'])(
+  'imports %s and selects the matching raid script',
+  async (source) => {
+    await panel.refreshStatus()
+    panel.updateSettings({ raid_enabled: true })
+    const script = { id: 'raid', stage_name: 'OS-EX-8', title: '突袭作业' }
+    const content = JSON.stringify({ stage_name: 'OS-EX-8', actions: [] })
+    state.client.get.mockResolvedValueOnce({ data: { data: { content } } })
+    state.client.post.mockResolvedValueOnce({ data: script })
+    state.client.get.mockResolvedValueOnce({ data: { scripts: [script] } })
+    panel.code.value = source
+    await panel.download()
+    expect(state.client.get).toHaveBeenCalledWith(
+      expect.stringMatching(/\/network\/maa-copilot\/12345$/)
+    )
+    const [url, form] = state.client.post.mock.calls[0]
+    expect(url).toMatch(/\/maa-copilot$/)
+    expect(await form.get('copilot').text()).toBe(content)
+    expect(panel.selected.value.script_id).toBe('raid')
+    expect(panel.code.value).toBe('')
+  }
+)
+
+it('keeps the selected raid script when the downloaded stage differs', async () => {
+  await panel.refreshStatus()
+  panel.updateSettings({ raid_enabled: true, script_id: 'already-selected' })
+  const script = { id: 'another-stage', stage_name: 'OS-EX-7' }
+  state.client.get.mockResolvedValueOnce({ data: { data: { content: '{}' } } })
+  state.client.post.mockResolvedValueOnce({ data: script })
+  state.client.get.mockResolvedValueOnce({ data: { scripts: [script] } })
+  panel.code.value = 'prts://12345'
+  await panel.download()
+  expect(panel.selected.value.script_id).toBe('already-selected')
+  expect(state.error).toHaveBeenCalledWith(expect.stringContaining('关卡与本期 EX-8 不符'))
+})
+
+it('rejects a set before downloading any scripts', async () => {
+  panel.code.value = 'prts://s123'
+  await panel.download()
+  expect(state.error).toHaveBeenCalledWith(expect.stringContaining('单份作业码'))
+  expect(state.client.get).not.toHaveBeenCalled()
+  expect(state.client.post).not.toHaveBeenCalled()
 })

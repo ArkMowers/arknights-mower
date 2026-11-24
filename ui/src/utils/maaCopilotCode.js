@@ -16,6 +16,17 @@ export function parseCopilotCode(value) {
   throw new Error('请输入有效的 prts:// 作业代码、PRTS Plus 作业链接或编号')
 }
 
+export async function downloadCopilotFile(axios, id) {
+  const { data } = await axios.get(
+    `${import.meta.env.VITE_HTTP_URL || ''}/network/maa-copilot/${id}`
+  )
+  const content = data.data?.content
+  if (typeof content !== 'string') throw new Error('下载的作业内容缺失')
+  const blob = new Blob([content], { type: 'application/json' })
+  if (blob.size > 1024 * 1024) throw new Error('作业文件不能超过 1 MB')
+  return blob
+}
+
 export async function downloadCopilotScripts(axios, source, endpoint, remaining) {
   const target = parseCopilotCode(source)
   const base = `${import.meta.env.VITE_HTTP_URL || ''}/network`
@@ -30,12 +41,7 @@ export async function downloadCopilotScripts(axios, source, endpoint, remaining)
   }
   const blobs = []
   for (const id of ids) {
-    const { data } = await axios.get(`${base}/maa-copilot/${id}`)
-    const content = data.data?.content
-    if (typeof content !== 'string') throw new Error('下载的作业内容缺失')
-    const blob = new Blob([content], { type: 'application/json' })
-    if (blob.size > 1024 * 1024) throw new Error('作业文件不能超过 1 MB')
-    blobs.push(blob)
+    blobs.push(await downloadCopilotFile(axios, id))
   }
   const scripts = []
   try {
