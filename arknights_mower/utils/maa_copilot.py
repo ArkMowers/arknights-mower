@@ -4,7 +4,6 @@ import hashlib
 import json
 import re
 
-from arknights_mower.utils.maa_copilot_normalization import normalize_copilot
 from arknights_mower.utils.path import get_path
 from arknights_mower.utils.update_runtime import write_json
 
@@ -81,7 +80,7 @@ def parse_script(raw, *, sss=False, paradox=False):
     return data
 
 
-def script_info(script_id, data, *, sss=False):
+def script_info(script_id, data, *, sss=False, paradox=False):
     doc = data.get("doc")
     doc = doc if isinstance(doc, dict) else {}
     info = {
@@ -96,6 +95,11 @@ def script_info(script_id, data, *, sss=False):
             {"name": str(item.get("name", ""))[:256], "skill": item.get("skill", 0)}
             for item in data.get("opers", [])[:64]
         ]
+    elif not paradox:
+        difficulty = data.get("difficulty")
+        info["difficulty"] = (
+            difficulty if type(difficulty) is int and difficulty in (1, 2, 3) else 0
+        )
     return info
 
 
@@ -114,7 +118,7 @@ def list_scripts(*, sss=False, paradox=False):
             data = parse_script(
                 stream.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
             )
-        result.append(script_info(script_id, data, sss=sss))
+        result.append(script_info(script_id, data, sss=sss, paradox=paradox))
     return result
 
 
@@ -122,17 +126,22 @@ def _script_content(data):
     return json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def _normalized_copilot_content(data):
+    from arknights_mower.utils.maa_copilot_normalization import normalize_copilot
+
+    normalize_copilot(data)
+    return _script_content(data)
+
+
 def store_script(raw, *, sss=False, paradox=False):
     data = parse_script(raw, sss=sss, paradox=paradox)
-    if not sss and not paradox:
-        original = _script_content(data)
-        normalize_copilot(data)
-    content = _script_content(data)
+    original = _script_content(data)
+    content = original if sss or paradox else _normalized_copilot_content(data)
     if len(content) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
     script_id = hashlib.sha256(content).hexdigest()
     path = script_path(script_id, sss=sss, paradox=paradox)
-    if not sss and not paradox and original != content and not path.exists():
+    if original != content and not path.exists():
         old_id = hashlib.sha256(original).hexdigest()
         old_path = script_path(old_id)
         if old_path.exists():
@@ -146,7 +155,7 @@ def store_script(raw, *, sss=False, paradox=False):
     ):
         raise ValueError("作业存储已满，请先删除不再使用的作业")
     write_json(path, data)
-    return script_info(script_id, data, sss=sss)
+    return script_info(script_id, data, sss=sss, paradox=paradox)
 
 
 def build_copilot_params(conf, work_dir):
@@ -158,8 +167,7 @@ def build_copilot_params(conf, work_dir):
         with path.open("rb") as stream:
             data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
         before = _script_content(data)
-        normalize_copilot(data)
-        content = _script_content(data)
+        content = _normalized_copilot_content(data)
         if len(content) > MAX_SCRIPT_BYTES:
             raise ValueError("作业文件不能超过 1 MB")
         if before != content:

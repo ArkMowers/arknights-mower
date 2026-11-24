@@ -171,18 +171,13 @@ def maa_copilot_set(code):
         ):
             raise ValueError("作业集内容缺失")
         ids = data["data"].get("copilot_ids")
-        if (
-            not isinstance(ids, list)
-            or not ids
-            or any(type(item) is not int or item <= 0 for item in ids)
-        ):
-            raise ValueError("作业集为空或包含无效作业编号")
-        if len(ids) > 32:
-            return {
-                "ok": False,
-                "message": "作业集超过队列的 32 项上限，请拆分后导入",
-            }, 400
-        return {"ids": [str(item) for item in ids]}
+        if not isinstance(ids, list) or not ids:
+            raise ValueError("作业集为空或缺少成员列表")
+        return {
+            "ids": [
+                str(item) if type(item) is int and item > 0 else None for item in ids
+            ]
+        }
     except (requests.RequestException, ValueError):
         return {
             "ok": False,
