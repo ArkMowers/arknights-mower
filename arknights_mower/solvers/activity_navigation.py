@@ -2,6 +2,7 @@
 
 import re
 from pathlib import Path
+from time import monotonic
 
 import cv2
 import numpy as np
@@ -151,28 +152,28 @@ class ActivityNavigation:
                 matches.append(point)
         return matches[0] if len(matches) == 1 else None
 
-    def enter_from_terminal(self):
+    def enter_from_terminal(self, *, confirm_entry=None):
         solver = self.solver
         if solver.scene() != Scene.TERMINAL_MAIN:
             return False
         point = self.token_entry()
-        if point is not None:
-            return solver.tap_and_detect_page_move(
-                point, self.activity, record_step=False
-            )
-        matches = [
-            c
-            for c in solver.collect_terminal_ocr_candidates()
-            if c["score"] >= 0.8
-            and 0 <= c["center"][0] < 700
-            and 750 <= c["center"][1] < 950
-            and self.matches_name(c["text"])
-        ]
-        if len(matches) != 1:
-            return False
-        return solver.tap_and_detect_page_move(
-            matches[0]["center"], matches[0]["text"], record_step=False
-        )
+        label = self.activity
+        if point is None:
+            matches = [
+                c
+                for c in solver.collect_terminal_ocr_candidates()
+                if c["score"] >= 0.8
+                and 0 <= c["center"][0] < 700
+                and 750 <= c["center"][1] < 950
+                and self.matches_name(c["text"])
+            ]
+            if len(matches) != 1:
+                return False
+            point, label = matches[0]["center"], matches[0]["text"]
+        if confirm_entry is not None:
+            solver.tap(point, interval=0.2)
+            return confirm_entry()
+        return solver.tap_and_detect_page_move(point, label, record_step=False)
 
     def read(self):
         self.solver.recog.update()
@@ -203,21 +204,41 @@ class ActivityNavigation:
                 self.solver.sleep(0.2)
         return False
 
-    def open_page(self, *, confirm_title=True):
+    def confirm_activity_home(self):
+        deadline = monotonic() + 5
+        while monotonic() < deadline:
+            texts = [normalize_activity_text(item[1]) for item in self.read()]
+            remaining = deadline - monotonic()
+            if remaining <= 0:
+                return False
+            if any("作战结束时间" in text for text in texts) and any(
+                self.matches_name(text) for text in texts
+            ):
+                return True
+            self.solver.sleep(min(0.2, remaining))
+        return False
+
+    def open_page(self, *, confirm_entry=None):
         solver = self.solver
         solver.scene_graph_navigation(Scene.TERMINAL_MAIN)
-        if self.enter_from_terminal() and (
-            not confirm_title or self.confirm(self.matches_name)
-        ):
+        if confirm_entry is None:
+            entered = self.enter_from_terminal() and self.confirm(self.matches_name)
+        else:
+            entered = self.enter_from_terminal(confirm_entry=confirm_entry)
+        if entered:
             return True
         solver.scene_graph_navigation(Scene.TERMINAL_MAIN)
         solver.tap((490, 1014), interval=0.2)
         solver.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
-        return (
-            solver.open_activity_overview_until_ready(max_taps=8)
-            and solver.find_stage_image_and_enter(self.activity, max_swipes=10)
-            and (not confirm_title or self.confirm(self.matches_name))
-        )
+        if not solver.open_activity_overview_until_ready(max_taps=8):
+            return False
+        if confirm_entry is not None:
+            return solver.find_stage_image_and_enter(
+                self.activity, max_swipes=10, confirm_entry=confirm_entry
+            )
+        return solver.find_stage_image_and_enter(
+            self.activity, max_swipes=10
+        ) and self.confirm(self.matches_name)
 
     def open_chapter(self, title, target):
         matches = [
@@ -265,7 +286,7 @@ class ActivityNavigation:
         return False
 
     def open_shop(self, point):
-        if not self.open_page(confirm_title=False):
+        if not self.open_page(confirm_entry=self.confirm_activity_home):
             return False
         self.solver.tap(point)
         self.solver.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)

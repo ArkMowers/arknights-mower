@@ -1,7 +1,7 @@
 import json
 import time
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, call
+from unittest.mock import ANY, MagicMock, call
 
 import pytest
 import yaml
@@ -496,27 +496,32 @@ def test_navigation_reads_shop_page_after_clicking_fixed_entrance(
         monkeypatch.setattr(solver, name, MagicMock(return_value=True))
     monkeypatch.setattr(solver, "tap", MagicMock())
 
-    def read_shop_page(*_args, **_kwargs):
-        assert solver.tap.call_args == call(point)
+    solver.find_stage_image_and_enter.side_effect = (
+        lambda *args, confirm_entry, **kwargs: confirm_entry()
+    )
+
+    def read_page(*_args, **_kwargs):
+        if solver.tap.call_args != call(point):
+            return [[[], "测试活动", 0.99], [[], "作战结束时间", 0.99]], None
         return [[[], title, 0.99], [[], "剩余10", 0.99]], None
 
-    monkeypatch.setattr(event_shop.rapidocr, "engine", read_shop_page)
+    monkeypatch.setattr(event_shop.rapidocr, "engine", read_page)
     entry = {**ENTRY, "activity_id": activity_id, "start_ts": start_ts}
     assert solver.run(entry) is ready
     token_entry.assert_called_once_with()
     if terminal_point is None:
         solver.find_stage_image_and_enter.assert_called_once_with(
-            "测试活动", max_swipes=10
+            "测试活动", max_swipes=10, confirm_entry=ANY
         )
         assert solver.tap.call_args_list == [
             call((490, 1014), interval=0.2),
             call(point),
         ]
     else:
-        solver.tap_and_detect_page_move.assert_called_once_with(
-            terminal_point, "测试活动", record_step=False
-        )
-        solver.tap.assert_called_once_with(point)
+        assert solver.tap.call_args_list == [
+            call(terminal_point, interval=0.2),
+            call(point),
+        ]
 
 
 def test_shop_with_no_fixed_point_for_its_edition_skips_navigation(monkeypatch):

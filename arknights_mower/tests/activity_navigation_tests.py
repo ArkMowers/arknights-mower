@@ -194,7 +194,7 @@ def test_shop_does_not_click_fixed_point_when_activity_entry_fails(
     solver.open_activity_overview_until_ready.return_value = True
     solver.find_stage_image_and_enter.return_value = False
     navigator = nav.ActivityNavigation(solver, activity[1])
-    monkeypatch.setattr(navigator, "enter_from_terminal", lambda: False)
+    monkeypatch.setattr(navigator, "enter_from_terminal", lambda **_: False)
     read = MagicMock()
     monkeypatch.setattr(navigator, "read", read)
 
