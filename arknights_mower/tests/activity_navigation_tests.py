@@ -236,6 +236,85 @@ def test_terminal_currency_requires_a_unique_strong_template(
 
 
 @pytest.mark.parametrize(
+    "capture_duration,ocr_duration,expected",
+    [(12.0, 0.0, False), (2.0, 12.0, False), (2.0, 1.0, True)],
+)
+def test_activity_confirmation_shares_budget_between_capture_and_ocr(
+    activity, tmp_path, monkeypatch, capture_duration, ocr_duration, expected
+):
+    from arknights_mower.utils import ocr_shared
+    from arknights_mower.utils.device.io_budget import io_timeout
+
+    clock = [0.0]
+    monkeypatch.setattr(nav, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(ocr_shared, "monotonic", lambda: clock[0])
+
+    class Recognizer:
+        def update(self):
+            pass
+
+        @property
+        def img(self):
+            duration = min(capture_duration, io_timeout(60))
+            clock[0] += duration
+            if duration < capture_duration:
+                raise TimeoutError
+            return np.zeros((8, 8), dtype=np.uint8)
+
+    def read_response(_channel, deadline):
+        duration = min(ocr_duration, deadline - clock[0])
+        clock[0] += duration
+        if duration < ocr_duration:
+            raise TimeoutError
+        return {
+            "status": "ok",
+            "result": ([[[], "测试活动", 0.99], [[], "作战结束时间", 0.99]], None),
+        }
+
+    ocr = ocr_shared.SharedOCREngine(directory=tmp_path)
+    open_service = MagicMock(return_value=(MagicMock(), "token"))
+    monkeypatch.setattr(ocr_shared, "open_service", open_service)
+    monkeypatch.setattr(ocr_shared, "send_preamble", MagicMock())
+    monkeypatch.setattr(ocr_shared, "send_json", MagicMock())
+    monkeypatch.setattr(ocr_shared, "send", MagicMock())
+    responses = iter(({"status": "authenticated"}, {"status": "ready"}))
+    monkeypatch.setattr(
+        ocr_shared,
+        "read_json",
+        lambda *args: next(responses, None) or read_response(*args),
+    )
+    monkeypatch.setattr(nav.rapidocr, "engine", ocr)
+
+    solver = SimpleNamespace(stage_meta=activity[0][0], recog=Recognizer())
+    navigator = nav.ActivityNavigation(solver, activity[1])
+
+    assert navigator.confirm_activity_home() is expected
+    assert clock[0] == (3.0 if expected else 5.0)
+    if capture_duration < 5.0:
+        open_service.assert_called_once_with(tmp_path, 5.0)
+    else:
+        open_service.assert_not_called()
+
+
+def test_activity_confirmation_rejects_late_in_process_ocr_result(
+    activity, monkeypatch
+):
+    clock = [0.0]
+    monkeypatch.setattr(nav, "monotonic", lambda: clock[0])
+    solver = MagicMock(stage_meta=activity[0][0])
+    navigator = nav.ActivityNavigation(solver, activity[1])
+
+    def read(*args, **kwargs):
+        clock[0] += 12.0
+        return [[[], "测试活动", 0.99], [[], "作战结束时间", 0.99]], None
+
+    monkeypatch.setattr(nav.rapidocr, "engine", read)
+    assert not navigator.confirm_activity_home()
+    solver.recog.update.assert_called_once()
+    solver.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize(
     "texts,expected",
     [
         (["关闭时间：2026/11/29", "剩余10"], True),

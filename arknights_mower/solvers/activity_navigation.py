@@ -9,6 +9,8 @@ import numpy as np
 
 from arknights_mower.data import stage_data_full
 from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.path import resolve_config_path
 from arknights_mower.utils.scene import Scene
 
@@ -206,17 +208,28 @@ class ActivityNavigation:
 
     def confirm_activity_home(self):
         deadline = monotonic() + 5
-        while monotonic() < deadline:
-            texts = [normalize_activity_text(item[1]) for item in self.read()]
-            remaining = deadline - monotonic()
-            if remaining <= 0:
-                return False
-            if any("作战结束时间" in text for text in texts) and any(
-                self.matches_name(text) for text in texts
-            ):
-                return True
-            self.solver.sleep(min(0.2, remaining))
-        return False
+
+        def remaining():
+            seconds = deadline - monotonic()
+            if seconds <= 0:
+                raise TimeoutError("活动首页确认超时")
+            return seconds
+
+        try:
+            with device_io_budget(remaining):
+                while True:
+                    io_timeout(0)
+                    texts = [normalize_activity_text(item[1]) for item in self.read()]
+                    io_timeout(0)
+                    if any("作战结束时间" in text for text in texts) and any(
+                        self.matches_name(text) for text in texts
+                    ):
+                        return True
+                    self.solver.sleep(min(0.2, remaining()))
+        except (TimeoutError, DeviceRecoveryError):
+            if monotonic() < deadline:
+                raise
+            return False
 
     def open_page(self, *, confirm_entry=None):
         solver = self.solver

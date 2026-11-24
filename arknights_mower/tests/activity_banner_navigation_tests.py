@@ -223,8 +223,9 @@ def test_unconfirmed_terminal_entry_falls_back_to_activity_list(
     solver, _ = navigation
     solver.open_activity_overview_until_ready.return_value = True
     original = event_shop.rapidocr.engine
-    clock = iter([0, 0, 5, 5, 5, 5])
-    monkeypatch.setattr(activity_navigation, "monotonic", lambda: next(clock))
+    clock = [0.0]
+    monkeypatch.setattr(activity_navigation, "monotonic", lambda: clock[0])
+    solver.sleep.side_effect = lambda _: clock.__setitem__(0, 5.0)
 
     def ocr(frame, **kwargs):
         if (
@@ -276,8 +277,9 @@ def test_shop_rejects_other_activity_even_if_fixed_point_would_open_a_shop(
         )
         monkeypatch.setattr(solver, "find_stage_banner", lambda _: ((270, 70),) * 2)
     original = event_shop.rapidocr.engine
-    clock = iter(range(100))
-    monkeypatch.setattr(activity_navigation, "monotonic", lambda: next(clock))
+    clock = [0.0]
+    monkeypatch.setattr(activity_navigation, "monotonic", lambda: clock[0])
+    solver.sleep.side_effect = lambda _: clock.__setitem__(0, clock[0] + 5.0)
 
     def ocr(frame, **kwargs):
         if frame.shape[:2] != (1080, 1920):

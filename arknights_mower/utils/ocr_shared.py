@@ -12,6 +12,7 @@ from pathlib import Path
 from threading import Lock, Thread
 from time import monotonic, sleep
 
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.rapidocr import DEFAULT_TEXT_SCORE
 
 REQUEST_TIMEOUT = 60.0
@@ -348,7 +349,7 @@ class SharedOCREngine:
                 **kwargs,
             }
         )
-        deadline = monotonic() + self.timeout
+        deadline = monotonic() + io_timeout(self.timeout)
         if not self._lock.acquire(timeout=remaining(deadline)):
             raise TimeoutError("共享 OCR 等待前一请求超时")
         try:

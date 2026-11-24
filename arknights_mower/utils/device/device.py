@@ -841,10 +841,7 @@ class Device:
         min_time = config.screenshot_time + timedelta(milliseconds=screenshot_interval)
         delta = (min_time - start_time).total_seconds()
         if delta > 0:
-            if recover:
-                time.sleep(delta)
-            else:
-                budget_sleep(delta)
+            budget_sleep(delta)
             start_time = min_time
 
         capture_owner = getattr(self, "_screenshot_owner", None)
