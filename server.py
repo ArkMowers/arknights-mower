@@ -1072,6 +1072,8 @@ def _is_html_navigation():
 def authorize_relay_request():
     if request.environ.get("mower.relay"):
         check_token()
+        if request.endpoint in {"static", "serve_index", "serve_basement_skill"}:
+            return {"error": "Not Found"}, 404
 
 
 @app.before_request
