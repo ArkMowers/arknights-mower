@@ -86,7 +86,11 @@ def test_rescue_returns_manager_from_another_slot_without_losing_resident(
     assert "dorm_replan_plan" not in state
 
 
-def test_saved_manager_return_waits_for_reserved_source_slot(solver):
+@pytest.mark.parametrize("explicit_swap", [False, True])
+@pytest.mark.parametrize("reserved_index", [0, 1])
+def test_saved_manager_return_waits_for_reserved_slot(
+    solver, explicit_swap, reserved_index
+):
     room = "dormitory_1"
     data, state = setup_episode(solver, 0)
     sleeper = COVERS[0]
@@ -96,8 +100,13 @@ def test_saved_manager_return_waits_for_reserved_source_slot(solver):
     data.plan[room][0].agent = "Free"
     state["dorm_replan_pending"] = True
     state["dorm_replan_plan"] = {room: ["Current", "闪灵", *["Current"] * 3]}
+    if explicit_swap:
+        solver._emergency_plan_beds(state)
+        assert solver.tasks.pop().plan[room][:2] == [sleeper, "闪灵"]
+        assert state["dorm_replan_plan"][room][:2] == [sleeper, "闪灵"]
     reservation = SchedulerTask(
-        task_type=TaskTypes.RE_ORDER, task_plan={room: ["Free"]}
+        task_type=TaskTypes.RE_ORDER,
+        task_plan={room: ["Current"] * reserved_index + ["Free"]},
     )
     solver.tasks.append(reservation)
 
@@ -110,6 +119,26 @@ def test_saved_manager_return_waits_for_reserved_source_slot(solver):
     solver.tasks.remove(reservation)
     solver._emergency_plan_beds(state)
     assert solver.tasks[0].plan[room] == [sleeper, "闪灵", *["Current"] * 3]
+
+
+def test_saved_explicit_manager_swap_uses_current_capacity(solver, monkeypatch):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 0)
+    sleeper = COVERS[0]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", sleeper, "Current", "Current", "Current"]}]
+    )
+    data.plan[room][0].agent = "Free"
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {room: [sleeper, "闪灵", *["Current"] * 3]}
+    with monkeypatch.context() as context:
+        context.setattr(data, "dorm_capacity_allows", lambda *args, **kwargs: False)
+        solver._emergency_plan_beds(state)
+        assert not solver.tasks
+        assert "dorm_replan_plan" not in state
+
+    solver._emergency_plan_beds(state)
+    assert solver.tasks[0].plan[room][:2] == [sleeper, "闪灵"]
 
 
 def test_high_need_opens_every_slot_and_produces_full_capacity_plan(solver):

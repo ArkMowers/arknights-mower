@@ -2004,27 +2004,44 @@ class EmergencyRecoveryMixin:
                 if manager is None or manager.current_room != room:
                     continue
                 source = manager.current_index
-                if not 0 <= source < len(row) or row[source] != "Current":
+                if not 0 <= source < len(row) or source == index:
                     continue
-                # 在本房调换床位时明确写入原位置，避免 Current 保留同一名宿管。
+                # 新生成与已保存的同房换位都要服从本轮预约。
                 resident = data.get_current_operator(room, index)
+                source_role = data.plan[room][source].agent
+                fill_source = row[source] == "Current"
+                if fill_source:
+                    if (
+                        source_role != "Free"
+                        or resident is None
+                        or resident.name in assigned
+                    ):
+                        row[index] = "Current"
+                        continue
+                    replacement = resident.name
+                else:
+                    replacement = row[source]
                 if (
-                    name not in reserved
-                    and (room, index) not in slots
-                    and (room, source) not in slots
-                    and data.plan[room][index].agent == name
-                    and data.plan[room][source].agent == "Free"
-                    and resident is not None
-                    and resident.name not in reserved
-                    and resident.name not in assigned
-                    and data.dorm_capacity_allows(
-                        resident.name, (room, source), plan=plan
+                    name in reserved
+                    or (room, index) in slots
+                    or (room, source) in slots
+                    or data.plan[room][index].agent != name
+                    or resident is not None
+                    and resident.name in reserved
+                    or replacement in reserved
+                    or replacement == name
+                    or replacement not in ("", "Free", source_role)
+                    and (
+                        source_role != "Free"
+                        or not data.dorm_capacity_allows(
+                            replacement, (room, source), plan=plan
+                        )
                     )
                 ):
-                    row[source] = resident.name
-                    assigned.add(resident.name)
-                else:
-                    row[index] = "Current"
+                    row[source] = row[index] = "Current"
+                elif fill_source:
+                    row[source] = replacement
+                    assigned.add(replacement)
             if all(name == "Current" for name in row):
                 del plan[room]
 
