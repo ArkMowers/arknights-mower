@@ -1954,6 +1954,7 @@ class EmergencyRecoveryMixin:
             state.pop("dorm_replan_plan", None)
             state["dorm_replan_pending"] = False
             return
+        reserved, slots = dorm_task_reservations(self.op_data, self.tasks)
         plan = (
             copy.deepcopy(previous)
             if previous
@@ -1965,7 +1966,6 @@ class EmergencyRecoveryMixin:
                 recovery_order=self._emergency_recovery_order(),
             )
         )
-        reserved, slots = dorm_task_reservations(self.op_data, self.tasks)
         for room, original in state.get("dorm_layout", {}).items():
             for index, name in enumerate(original):
                 if (
@@ -1979,7 +1979,10 @@ class EmergencyRecoveryMixin:
                         plan.setdefault(room, ["Current"] * len(original))[index] = name
         self._resolve_emergency_dorm_manager_moves(plan, state, reserved, slots)
         compact_dorm_vacancies(self.op_data, plan)
-        if not plan:
+        if not plan or (
+            previous
+            and self._emergency_saved_dorm_plan_conflicts(plan, reserved, slots)
+        ):
             state.pop("dorm_replan_plan", None)
             if reallocate:
                 state["dorm_replan_pending"] = False
@@ -1989,6 +1992,23 @@ class EmergencyRecoveryMixin:
         task = SchedulerTask(task_type=TaskTypes.FILL_DORM, task_plan=plan)
         task.emergency_dorm = True
         self.tasks.append(task)
+
+    def _emergency_saved_dorm_plan_conflicts(self, plan, reserved, slots):
+        for room, row in plan.items():
+            actual = self.op_data.get_current_room(room, True) or ()
+            for index, name in enumerate(row):
+                current = actual[index] if index < len(actual) else None
+                if (
+                    name != "Current"
+                    and name != current
+                    and (
+                        (room, index) in slots
+                        or name in reserved
+                        or current in reserved
+                    )
+                ):
+                    return True
+        return False
 
     def _resolve_emergency_dorm_manager_moves(self, plan, state, reserved, slots):
         data = self.op_data

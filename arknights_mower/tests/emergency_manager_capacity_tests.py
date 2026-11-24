@@ -141,6 +141,32 @@ def test_saved_explicit_manager_swap_uses_current_capacity(solver, monkeypatch):
     assert solver.tasks[0].plan[room][:2] == [sleeper, "闪灵"]
 
 
+def test_saved_manager_swap_leaves_reserved_former_bed_alone(solver):
+    room = "dormitory_1"
+    data, state = setup_episode(solver, 0)
+    sleeper, current_resident = COVERS[:2]
+    solver.op_data = data = data.project_arrangements(
+        [{room: ["闪灵", sleeper, "Current", "Current", "Current"]}]
+    )
+    data.plan[room][0].agent = "Free"
+    state["dorm_replan_pending"] = True
+    state["dorm_replan_plan"] = {room: [sleeper, "闪灵", *["Current"] * 3]}
+    solver.op_data = data = data.project_arrangements(
+        [{room: [current_resident, "闪灵", "Current", "Current", "Current"]}]
+    )
+    reservation = SchedulerTask(
+        task_type=TaskTypes.RE_ORDER, task_plan={room: ["Free"]}
+    )
+    solver.tasks.append(reservation)
+
+    solver._emergency_plan_beds(state)
+    solver._emergency_plan_beds(state)
+
+    assert solver.tasks == [reservation]
+    assert "dorm_replan_plan" not in state
+    assert data.get_current_room(room, True)[:2] == [current_resident, "闪灵"]
+
+
 def test_high_need_opens_every_slot_and_produces_full_capacity_plan(solver):
     data, state = setup_episode(solver, 10)
 
