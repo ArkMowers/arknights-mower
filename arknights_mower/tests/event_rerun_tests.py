@@ -408,7 +408,9 @@ def test_status_requires_token_before_reading(
     read = MagicMock(return_value=event())
     monkeypatch.setattr(event_rerun, "current_rerun", read)
     headers = {} if token is None else {"token": token}
-    response = client.open("/event-rerun", method=method, headers=headers)
+    response = client.open(
+        "/maa-long-task-status?kind=event_rerun", method=method, headers=headers
+    )
     if token == "copilot-test-token":
         read.assert_called_once()
         assert response.status_code == 200

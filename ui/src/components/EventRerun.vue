@@ -58,7 +58,7 @@ async function refreshStatus() {
   if (statusRequest) return statusRequest
   statusRequest = (async () => {
     try {
-      const { data } = await axios.get(`${base}/event-rerun`)
+      const { data } = await axios.get(`${base}/maa-long-task-status?kind=event_rerun`)
       event.value = data.event
       progress.value = data.progress
       stageSeconds.value = data.stage_seconds

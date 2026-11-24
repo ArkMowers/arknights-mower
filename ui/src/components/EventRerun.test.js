@@ -52,6 +52,9 @@ afterEach(() => {
 
 it('scopes stage and script selection to the current opening and shows saved outcomes', async () => {
   await panel.refreshStatus()
+  expect(state.client.get).toHaveBeenCalledWith(
+    expect.stringMatching(/\/maa-long-task-status\?kind=event_rerun$/)
+  )
   expect(state.settings.value.event_key).toBe('act10sre:50')
   expect(panel.selected.value.stages).toEqual([])
   expect(panel.statusLabel('OS-1')).toBe('已完成')

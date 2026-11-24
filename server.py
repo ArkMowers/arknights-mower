@@ -3312,29 +3312,25 @@ def maa_long_task_status():
 
     with backup_lock:
         try:
+            if request.args.get("kind") == "event_rerun":
+                from arknights_mower.solvers.record import load_event_rerun_progress
+                from arknights_mower.utils.event_rerun import (
+                    STAGE_SECONDS,
+                    current_rerun,
+                )
+
+                event = current_rerun()
+                return {
+                    "event": event,
+                    "stage_seconds": STAGE_SECONDS,
+                    "progress": load_event_rerun_progress(event["key"])
+                    if event
+                    else {},
+                }
             return completion_status(config.conf)
         except Exception:
             logger.exception("读取 MAA 大型任务完成状态失败")
             return {"message": "读取大型任务状态失败"}, 500
-
-
-@app.route("/event-rerun")
-@require_token
-def event_rerun_status():
-    from arknights_mower.solvers.record import load_event_rerun_progress
-    from arknights_mower.utils.event_rerun import STAGE_SECONDS, current_rerun
-
-    with backup_lock:
-        try:
-            event = current_rerun()
-            return {
-                "event": event,
-                "stage_seconds": STAGE_SECONDS,
-                "progress": load_event_rerun_progress(event["key"]) if event else {},
-            }
-        except Exception:
-            logger.exception("读取复刻SS活动关卡和进度失败")
-            return {"message": "读取复刻SS活动关卡和进度失败"}, 500
 
 
 @app.route("/maa-copilot", methods=["GET", "POST"])
