@@ -2172,7 +2172,11 @@ def _read_event_rerun_status():
     from arknights_mower.utils.event_rerun import current_rerun
 
     with backup_lock:
-        return _event_rerun_status(current_rerun())
+        try:
+            return _event_rerun_status(current_rerun())
+        except (OSError, ValueError, sqlite3.Error):
+            logger.exception("读取复刻SS活动关卡或进度失败")
+            return {"message": "暂时无法读取复刻关卡进度，请稍后重试"}, 503
 
 
 @app.get("/stage/event-rerun")

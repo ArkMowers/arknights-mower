@@ -39,7 +39,7 @@ The temporary software-update progress service applies the same credentialed for
 
 <a id="event-rerun-status"></a>
 
-**Event Rerun Status**: GET and HEAD `/stage/event-rerun` require the active instance token before reading the resource package or saved progress. They expose the current rerun’s ordinary battle stages, per-stage estimate and saved outcomes for the stage plan. PATCH on the same resource requires the instance token and sets one ordinary stage to completed or pending. It checks the opening key and the observed status and rejects changes during battle. Older local clients can still read progress through `/maa-long-task-status?kind=event_rerun`. The [scheduler contract](base-scheduler.md#event-rerun-stage-admission) defines admission and settlement.
+**Event Rerun Status**: GET and HEAD `/stage/event-rerun` require the active instance token before reading the resource package or saved progress. They expose the current rerun’s ordinary battle stages, per-stage estimate and saved outcomes for the stage plan. PATCH on the same resource requires the instance token and sets one ordinary stage to completed or pending. It checks the opening key and the observed status and rejects changes during preparation and battle. Progress reads return JSON with HTTP 503 when activity resources or progress storage are unavailable. Older local clients can still read progress through `/maa-long-task-status?kind=event_rerun`. The [scheduler contract](base-scheduler.md#event-rerun-stage-admission) defines admission and settlement.
 
 ## 2. Log Read Interface
 

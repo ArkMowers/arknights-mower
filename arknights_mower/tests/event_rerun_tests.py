@@ -471,8 +471,9 @@ def test_manual_completion_skips_stage_and_reset_allows_another_battle(
     assert change("completed", False).json["progress"] == {}
     assert runner.pending_rerun(owner, lambda: owner.deadline)[1]["code"] == "OS-1"
 
-    with record.event_rerun_battle(STAGE_CHANGE["event_key"], "OS-1") as admitted:
+    with record.event_rerun_execution(STAGE_CHANGE["event_key"], "OS-1") as admitted:
         assert admitted
+        assert record.claim_event_rerun_stage(STAGE_CHANGE["event_key"], "OS-1")
         assert client.get(RERUN_URL, headers=headers).json["progress"] == {
             "OS-1": "running"
         }
@@ -488,3 +489,67 @@ def test_manual_completion_skips_stage_and_reset_allows_another_battle(
     assert change("attempted", False).json["progress"] == {"OS-10": "completed"}
     assert record.claim_event_rerun_stage(STAGE_CHANGE["event_key"], "OS-1")
     assert change("attempted", True).json["progress"]["OS-1"] == "completed"
+
+
+@pytest.mark.parametrize("url", [RERUN_URL, "/maa-long-task-status?kind=event_rerun"])
+def test_unreadable_progress_skips_rerun_and_returns_status_error(
+    client, scheduler, database, monkeypatch, url
+):
+    owner, _ = scheduler
+    database.parent.mkdir(exist_ok=True)
+    database.write_bytes(b"unreadable progress database")
+    play = MagicMock()
+    monkeypatch.setattr(runner, "_play_ordinary", play)
+    monkeypatch.setattr(event_rerun, "current_rerun", event)
+
+    assert runner.run_event_rerun(owner, lambda: owner.deadline) is None
+    play.assert_not_called()
+    response = client.get(url, headers={"token": "copilot-test-token"})
+    assert response.status_code == 503
+    assert response.json == {"message": "暂时无法读取复刻关卡进度，请稍后重试"}
+
+
+def test_manual_completion_before_preparation_skips_operation(scheduler, monkeypatch):
+    owner, _ = scheduler
+    select = runner.pending_rerun
+
+    def mark_selected_completed(*args):
+        pending = select(*args)
+        if pending:
+            opening, stage = pending[:2]
+            assert record.set_event_rerun_completion(
+                opening["key"], stage["code"], "pending", True
+            )
+        return pending
+
+    monkeypatch.setattr(runner, "pending_rerun", mark_selected_completed)
+    play = MagicMock()
+    monkeypatch.setattr(runner, "_play_ordinary", play)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline) is False
+    play.assert_not_called()
+
+
+def test_preparation_before_potions_rejects_edits_without_durable_battle_claim(
+    client, scheduler, monkeypatch
+):
+    owner, _ = scheduler
+    monkeypatch.setattr(event_rerun, "current_rerun", event)
+
+    def preparing(_owner, stage, settings, prepare, claim, complete):
+        assert settings.use_sanity_potion
+        assert record.load_event_rerun_progress(STAGE_CHANGE["event_key"]) == {}
+        response = client.patch(
+            RERUN_URL, json=STAGE_CHANGE, headers={"token": "copilot-test-token"}
+        )
+        assert response.status_code == 409
+        return "defer"
+
+    monkeypatch.setattr(runner, "_play_ordinary", preparing)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline) is False
+    assert record.event_rerun_status(STAGE_CHANGE["event_key"]) == {}
+    assert (
+        client.patch(
+            RERUN_URL, json=STAGE_CHANGE, headers={"token": "copilot-test-token"}
+        ).status_code
+        == 200
+    )

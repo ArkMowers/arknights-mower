@@ -560,7 +560,9 @@ def save_maa_sss_progress(progress):
 
 def load_event_rerun_progress(event_key):
     path = get_path("@app/tmp/data.db")
-    if not path.is_file():
+    try:
+        path.stat()
+    except FileNotFoundError:
         return {}
     with closing(
         sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
@@ -594,10 +596,13 @@ _active_rerun_stages = set()
 
 
 @contextmanager
-def event_rerun_battle(event_key, stage):
+def event_rerun_execution(event_key, stage):
     key = (event_key, stage)
     with _event_rerun_lock:
-        admitted = key not in _active_rerun_stages and claim_event_rerun_stage(*key)
+        admitted = (
+            key not in _active_rerun_stages
+            and stage not in load_event_rerun_progress(event_key)
+        )
         if admitted:
             _active_rerun_stages.add(key)
     try:

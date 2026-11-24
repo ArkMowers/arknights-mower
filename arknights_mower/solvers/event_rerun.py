@@ -1,4 +1,4 @@
-from contextlib import ExitStack
+import sqlite3
 from datetime import datetime
 from time import monotonic
 
@@ -26,13 +26,12 @@ def pending_rerun(scheduler, deadline):
     observed_at = monotonic()
     try:
         event = current_rerun()
-    except (OSError, ValueError):
-        logger.exception("读取复刻SS活动关卡失败")
+        if not event:
+            return None
+        progress = record.event_rerun_status(event["key"])
+    except (OSError, ValueError, sqlite3.Error):
+        logger.exception("读取复刻SS活动关卡或进度失败，本轮继续执行周计划")
         return None
-    if not event:
-        return None
-
-    progress = record.load_event_rerun_progress(event["key"])
     fingerprint = (event["key"], settings.use_sanity_potion)
     blocked_key, blocked = getattr(scheduler, "event_rerun_blocked", (None, set()))
     if blocked_key != fingerprint:
@@ -139,7 +138,7 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
             nonlocal claimed, already_claimed
             if not can_start():
                 return False
-            if not battle.enter_context(record.event_rerun_battle(key, code)):
+            if not record.claim_event_rerun_stage(key, code):
                 already_claimed = True
                 return False
             try:
@@ -153,10 +152,13 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
             record.complete_event_rerun_stage(key, code)
 
         try:
-            with ExitStack() as battle:
-                outcome = _play_ordinary(
-                    scheduler, stage, settings, prepare, claim, complete
-                )
+            with record.event_rerun_execution(key, code) as active:
+                if active:
+                    outcome = _play_ordinary(
+                        scheduler, stage, settings, prepare, claim, complete
+                    )
+                else:
+                    outcome = "skipped"
         except (MowerExit, SharedADBError, DeviceRecoveryError):
             raise
         except InterruptedError:
