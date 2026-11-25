@@ -683,6 +683,23 @@ def test_facility_level_uses_startup_snapshot_during_live_plan_edit(
     assert projected.mood_model.rooms["dormitory_1"]["level"] == 2
 
 
+def test_shift_rate_batch_uses_the_mood_query_clock_and_only_observed_operators(
+    solver, monkeypatch
+):
+    data = enable(solver, monkeypatch)
+    del data.mood_model.moods["伊内丝"]
+    now = NOW + timedelta(hours=2)
+    before = data.mood_model.moods.copy()
+    name = next(name for name in before if data.calculated_mood(name, now) is not None)
+    _, expected = data.mood_model.snapshot(now)
+    rates = data.calculated_mood_rates(now)
+    assert name in rates and rates[name] == expected[name]
+    assert "伊内丝" not in rates and data.calculated_mood_rate("伊内丝", now) is None
+    assert (data.mood_model.at, data.mood_model.moods) == (NOW, before)
+    rates[name] = 999
+    assert data.calculated_mood_rate(name, now) == expected[name]
+
+
 def test_unrecognized_occupied_facility_keeps_rate_and_scheduling_mood_unknown(
     solver, monkeypatch
 ):

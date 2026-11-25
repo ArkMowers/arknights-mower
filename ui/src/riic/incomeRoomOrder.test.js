@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest'
 import { appendFileSync } from 'node:fs'
 import process from 'node:process'
+import roomRoutes from '../../../arknights_mower/tests/fixtures/arrangement_room_routes.json'
 import originalPlan from './fixtures/income-21trade-3proviso.json'
 import { calculateIncome } from './incomeWorker'
 import { defaultIncomeSettings } from './income'
@@ -31,6 +32,47 @@ it.each([
   const original = structuredClone(plan)
   expect(mowerArrangementRoomOrder(plan, (name) => positions[name])).toEqual(expected)
   expect(plan).toEqual(original)
+})
+
+it.each(roomRoutes)('$case', ({ rooms, targets = {}, positions = {}, expected }) => {
+  const plan = Object.fromEntries(rooms.map((room) => [room, targets[room] ?? [room]]))
+  const original = structuredClone(plan)
+  expect(mowerArrangementRoomOrder(plan, (name) => positions[name])).toEqual(expected)
+  expect(plan).toEqual(original)
+})
+
+it.each(['Current', 'Free', '_', ''])('keeps the room resolving %j in place', (target) => {
+  const plan = { room_2_1: ['A'], factory: [target], room_2_2: ['B'], contact: ['C'] }
+  expect(mowerArrangementRoomOrder(plan, () => '')).toEqual(Object.keys(plan))
+})
+
+it.each([
+  [T.SHIFT_ON, false, true, ['room_2_1', 'room_2_2', 'factory', 'contact']],
+  [T.SHIFT_ON, true, true, ['room_2_1', 'factory', 'room_2_2', 'contact']],
+  [T.FIAMMETTA, false, true, ['room_2_1', 'factory', 'room_2_2', 'contact']],
+  [T.SHIFT_ON, false, false, ['room_2_1', 'factory', 'room_2_2', 'contact']]
+])('applies the route only to a fresh ordinary alpha shift', (type, retained, alpha, expected) => {
+  const targets = { room_2_1: ['A'], factory: ['B'], room_2_2: ['C'], contact: ['D'] }
+  const task = new MowerTask({ time: 12, type, plan: structuredClone(targets) })
+  task.executionRetained = retained
+  const queue = new MowerTaskQueue()
+  queue.tasks = [task]
+  const staffed = []
+  for (const step of executeMowerTaskArrangementSteps(task, queue, {
+    alpha,
+    currentRoom: () => '',
+    backup: () => ({ changed: false, generated: [] }),
+    arrangeRoom(room, names) {
+      staffed.push([room, [...names]])
+    },
+    metadata() {}
+  })) {
+    expect(step.room).toBe(staffed.at(-1)[0])
+  }
+  expect(staffed.map(([room]) => room)).toEqual(expected)
+  expect(Object.fromEntries(staffed)).toEqual(targets)
+  expect(task.time).toBe(12)
+  expect(task.plan).toEqual({})
 })
 
 it('refills the source through the real room executor before transferring its only occupant', () => {

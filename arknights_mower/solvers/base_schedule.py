@@ -5,10 +5,11 @@ import os
 import pathlib
 import re
 import threading
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime, timedelta
-from functools import wraps
+from functools import cache, wraps
+from itertools import groupby
 from tempfile import TemporaryDirectory
 from time import monotonic, perf_counter
 from typing import Literal, Optional
@@ -134,6 +135,7 @@ from arknights_mower.utils.dorm_candidates import (
     product_wait_resting_replacements,
     retained_task_reservations,
     run_order_waits_for_staffing,
+    scheduling_mood_observation,
     scheduling_mood_reaches,
     unstarted_product_wait,
     vacant_dorm_slots,
@@ -371,8 +373,69 @@ def _merge_plan_overlay(plan: dict, overlay: dict, op_data: Operators) -> None:
                 target[index] = name
 
 
-def _arrangement_room_order(plan: dict, op_data: Operators) -> list[str]:
-    """Refill pending source workplaces before transferring their occupants."""
+_PRODUCTION_ROOMS = frozenset(
+    room for room in base_room_list if room.startswith("room_")
+)
+
+
+def _needs_map_drag(previous: str, room: str) -> bool:
+    if previous in RIGHT_SIDE_ROOM_CAPACITY:
+        # 从会客室返回地图后，B103 和 B303 仍露在屏幕左侧。
+        if previous == "meeting" and room in ("room_1_3", "room_3_3"):
+            return False
+        return room in _PRODUCTION_ROOMS
+    return previous in _PRODUCTION_ROOMS and room in RIGHT_SIDE_ROOM_CAPACITY
+
+
+def _shortest_map_route(
+    rooms: list[str], dependencies: dict[str, set[str]]
+) -> list[str]:
+    """固定两端，在满足原岗位依赖的访问顺序中找出拖图最少的一条。"""
+    original = sum(_needs_map_drag(a, b) for a, b in zip(rooms, rooms[1:]))
+    if not original:
+        return rooms
+    middle = rooms[1:-1]
+    bits = {room: 1 << i for i, room in enumerate(middle)}
+    required = {
+        room: sum(bits.get(source, 0) for source in dependencies[room])
+        for room in middle
+    }
+    # 同一可见范围共享搜索结果。最后一位表示走到固定终点是否要拖图。
+    end_bit = 1 << len(middle)
+    drags = {
+        room: sum(
+            1 << i
+            for i, target in enumerate(rooms[1:])
+            if _needs_map_drag(room, target)
+        )
+        for room in rooms[:-1]
+    }
+
+    @cache
+    def visit(pending, drag_mask, budget):
+        if not pending:
+            return () if budget or not drag_mask & end_bit else None
+        for room, bit in bits.items():
+            if not pending & bit or required[room] & pending:
+                continue
+            cost = int(bool(drag_mask & bit))
+            if cost <= budget:
+                tail = visit(pending ^ bit, drags[room], budget - cost)
+                if tail is not None:
+                    return (room, *tail)
+        return None
+
+    for budget in range(original):
+        path = visit(end_bit - 1, drags[rooms[0]], budget)
+        if path is not None:
+            return [rooms[0], *path, rooms[-1]]
+    return rooms
+
+
+def _arrangement_room_order(
+    plan: dict, op_data: Operators, *, prefer_visible: bool = True
+) -> list[str]:
+    """先补原工作设施，只在能少拖图时提前访问可独立换班的房间。"""
     work = [room for room in plan if not room.startswith("dormitory_")]
     dependencies = {room: set() for room in work}
     for room in work:
@@ -389,15 +452,87 @@ def _arrangement_room_order(plan: dict, op_data: Operators) -> list[str]:
             None,
         )
         if ready is None:
-            # Cyclic exchanges still complete in the original stable order.
-            ordered.extend(pending)
             break
         pending.remove(ready)
         ordered.append(ready)
-    return ordered + sorted(
-        (room for room in plan if room.startswith("dormitory_")),
-        key=lambda room: int(room.split("_")[1]),
+    rooms = (
+        ordered
+        + pending
+        + sorted(
+            (room for room in plan if room.startswith("dormitory_")),
+            key=lambda room: int(room.split("_")[1]),
+        )
     )
+    if not prefer_visible or len(rooms) < 4 or len(ordered) < 3:
+        return rooms
+    counts = Counter(
+        name
+        for names in plan.values()
+        for name in names
+        if name not in ("Current", "Free", "_", "")
+    )
+    movable = {
+        room
+        for room in ordered
+        if room != "train"
+        and (
+            room in _PRODUCTION_ROOMS
+            or room in RIGHT_SIDE_ROOM_CAPACITY
+            or room == "central"
+        )
+        and plan[room]
+        and all(counts[name] == 1 for name in plan[room])
+    }
+    start = 0
+    for end in range(1, len(rooms)):
+        if end == len(rooms) - 1 or rooms[end] not in movable:
+            if end - start > 2:
+                rooms[start : end + 1] = _shortest_map_route(
+                    rooms[start : end + 1], dependencies
+                )
+            start = end
+    return rooms
+
+
+def _order_ordinary_departures(data, candidates, observations, now):
+    """已到个人下限的主班先下班，其余轮休组有可比较的工作时长时再调整顺序。"""
+    above = [op for op in candidates if observations[op.name][0] > op.lower_limit]
+    if len({(bool(op.group), op.group or op.name) for op in above}) < 2:
+        return candidates
+    rates = data.calculated_mood_rates(now) if data.mood_calculation_enabled else None
+    hours = {}
+    for op in above:
+        if (op.current_room, op.current_index) != (op.room, op.index):
+            continue
+        mood, stamp = observations[op.name]
+        if rates is not None:
+            rate = rates.get(op.name)
+            if rate is not None and math.isfinite(rate):
+                hours[op.name] = (
+                    (mood - op.lower_limit) / rate if rate > 0 else math.inf
+                )
+        elif (
+            stamp == op.time_stamp
+            and not op.mood_is_prediction
+            and not getattr(op, "_projected_mood_resting", False)
+            and has_resting_mood(op, now)
+        ):
+            if op.exhaust_time is not None:
+                hours[op.name] = max(0, (op.exhaust_time - now).total_seconds() / 3600)
+            elif math.isfinite(op.depletion_rate) and op.depletion_rate > 0:
+                hours[op.name] = max(
+                    0,
+                    (op.mood - op.lower_limit) / op.depletion_rate
+                    - (now - stamp).total_seconds() / 3600,
+                )
+
+    # 已到下限或缺少工作时长的主班保持原有优先级，两侧分别比较。
+    result = []
+    for comparable, group in groupby(candidates, lambda op: op.name in hours):
+        result.extend(
+            sorted(group, key=lambda op: hours[op.name]) if comparable else group
+        )
+    return result
 
 
 def _assigned_operator_names(plan: dict) -> set[str]:
@@ -7600,32 +7735,61 @@ class BaseSchedulerSolver(
         if self.agent_get_mood() is None:
             self.backup_plan_solver()
 
+    def _ordinary_shift_candidates(self, now, working, returning, returning_groups):
+        data = self.op_data
+        protected = self._protected_facility_names()
+        candidates = []
+        observations = {}
+        for op in self.total_agent:
+            if (
+                not op.is_high()
+                or op.multi_group
+                and not (op.independent_rest or op.shift_group)
+                or op.group
+                and not data.is_group_shift_anchor(op)
+            ):
+                continue
+            if (
+                op.group in working
+                or op.group in returning_groups
+                or not op.group
+                and op.name in returning
+                or op.name in data.reserved_product_replacements
+                or op.name in data.workaholic_agent
+                or op.name in data.exhaust_agent
+                or op.group
+                and op.group in data.exhaust_group
+            ):
+                continue
+            if (
+                op.is_resting()
+                or data.is_standby(op.name)
+                or "factory" in (op.current_room, op.room)
+                or op.name in protected
+                or self._resting_tier(op) == RestingTier.EXCLUDED
+            ):
+                continue
+            observation = scheduling_mood_observation(data, op.name, now)
+            if observation is None:
+                continue
+            mood = observation[0]
+            if (
+                mood >= op.upper_limit
+                if data.custom_mood_limits(op.name) is not None
+                else op.upper_limit - mood < 2
+            ) or mood > data.resting_mood_threshold(op):
+                continue
+            observations[op.name] = observation
+            candidates.append(op)
+
+        candidates.sort(key=lambda op: observations[op.name][0] - op.lower_limit)
+        return _order_ordinary_departures(data, candidates, observations, now)
+
     def resting(self, *, returning=(), returning_groups=()):
         from arknights_mower.utils.backup_group_tasks import forced_work_groups
 
-        working = forced_work_groups(self.op_data)
         self._refresh_deferred_product_reservations()
-        reserved_names = self.op_data.reserved_product_replacements
         now = getattr(self.op_data, "_projection_now", None) or datetime.now()
-        # 沿用原下班顺序：只比较距心情下限的余量。显式名单、高低优和
-        # 候补均属于宿舍分床规则，不能让仍有心情的组抢走红脸组的替班。
-        moods = {
-            op.name: dorm_candidate_mood(self.op_data, op.name, now)
-            for op in self.total_agent
-        }
-        self.total_agent.sort(
-            key=lambda op: (
-                moods[op.name] is None,
-                (moods[op.name] or 0) - op.lower_limit,
-            )
-        )
-        shift_candidates = [
-            op
-            for op in self.total_agent
-            if op.is_high()
-            and (not op.multi_group or op.independent_rest or op.shift_group)
-            and (not op.group or self.op_data.is_group_shift_anchor(op))
-        ]
         # 宿舍的普通空闲者统一交给补床入口，不依赖不养闲人开关；否则先预约
         # 床位并生成普通重排任务，会使真空床又被跑单避让推迟。
         self.plan_metadata()
@@ -7644,7 +7808,9 @@ class BaseSchedulerSolver(
             else effective_dorm_count
         )
         logger.debug(f"当前理想休息人数是{self.ideal_resting_count}")
-        protected_training = self._protected_facility_names()
+        shift_candidates = self._ordinary_shift_candidates(
+            now, forced_work_groups(self.op_data), returning, returning_groups
+        )
         _replacement = []
         _plan = {}
         dorm_admissions = {}
@@ -7653,23 +7819,11 @@ class BaseSchedulerSolver(
         ordinary_requests = []
         # 工作组先取得床位预约，空闲干员随后由统一补床入口安排。
         for op in shift_candidates:
-            if op.group in working:
-                continue
             if op.independent_rest and self.op_data.resting_binding_groups(
                 op, self.op_data.arrangement_group_transitions(_plan)
             ):
                 continue
-            mood = moods[op.name]
-            if mood is None:
-                continue
-            if op.group in returning_groups or not op.group and op.name in returning:
-                continue
             if op.name in _replacement:
-                # 本轮已接工作替班的人不能又预约休息床位。
-                continue
-            if self._resting_tier(op) == RestingTier.EXCLUDED:
-                continue
-            if op.name in reserved_names:
                 continue
             standby_scope = self.op_data.groups[op.group] if op.group else [op.name]
             can_standby = self.op_data.standby_candidates(standby_scope)
@@ -7693,29 +7847,6 @@ class BaseSchedulerSolver(
             ):
                 _high_done = True
                 continue
-            if op.name in self.op_data.workaholic_agent:
-                continue
-            if (
-                op.is_resting()
-                or self.op_data.is_standby(op.name)
-                or op.current_room in ["factory"]
-                or op.name in protected_training
-                or op.room in ["factory"]
-            ):
-                continue
-            # 忽略掉心情太高的
-            if (
-                mood >= op.upper_limit
-                if self.op_data.custom_mood_limits(op.name) is not None
-                else op.upper_limit - mood < 2
-            ):
-                continue
-            # 忽略 用尽，已经处理
-            if op.name in self.op_data.exhaust_agent:
-                continue
-            # 忽略掉心情值没低于上限的的
-            if mood > self.op_data.resting_mood_threshold(op):
-                continue
             members = (
                 self.op_data.shift_group_members(op.group) if op.group else [op.name]
             )
@@ -7723,9 +7854,6 @@ class BaseSchedulerSolver(
                 continue
             previous_plan = copy.deepcopy(_plan)
             if op.group != "":
-                if op.group in self.op_data.exhaust_group:
-                    # 忽略掉用尽心情的分组
-                    continue
                 if op.group in attempted_groups:
                     continue
                 attempted_groups.add(op.group)
@@ -21867,7 +21995,29 @@ class BaseSchedulerSolver(
                     self.preserve_resting_crafters(plan[dorm_room], dorm_room)
         if not self._prepare_run_order_dorm_departures(plan):
             return False
-        rooms = _arrangement_room_order(plan, self.op_data)
+        rooms = _arrangement_room_order(
+            plan,
+            self.op_data,
+            prefer_visible=(
+                plan is self.task.plan
+                and self.task.type
+                in (
+                    TaskTypes.SHIFT_ON,
+                    TaskTypes.SHIFT_OFF,
+                    TaskTypes.SELF_CORRECTION,
+                    TaskTypes.NOT_SPECIFIC,
+                )
+                and not self.task.retains_execution
+                and not getattr(self.task, "strict_mood_limit", False)
+                and not getattr(self.task, "arrangement_retry_room", None)
+                and not getattr(self.task, "dorm_recovery_restore", [])
+                and not getattr(self.task, "product_shift_locked", False)
+                and not getattr(self.task, "exhaust_support", False)
+                and not getattr(self, "_product_batch_active", False)
+                and not getattr(self.task, "emergency_staffing", False)
+                and not self._emergency_active()
+            ),
+        )
         # 救急跑单失败沿用换入意图；普通跑单由实测原班补偿接续。
         original_plan = (
             copy.deepcopy(plan)

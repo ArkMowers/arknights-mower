@@ -62,6 +62,91 @@ function contention(alternate = false) {
   return { data, queue: new MowerTaskQueue() }
 }
 
+it.each([
+  ['rate', 'B'],
+  ['countdown', 'B'],
+  ['unknown after', 'B'],
+  ['unknown between', 'A'],
+  ['calculated', 'B'],
+  ['calculated zero', 'B'],
+  ['calculated recovering', 'B'],
+  ['different seat', 'A'],
+  ['prediction and card', 'A'],
+  ['unknown', 'A'],
+  ['newer card', 'A'],
+  ['at floor', 'A'],
+  ['above threshold', 'A'],
+  ['equal time', 'A']
+])('assigns the last bed using %s evidence', (evidence, expected) => {
+  const { data, queue } = contention(true)
+  const { A, B, X } = data.operators
+  Object.assign(A, { mood: 6, lowerLimit: 4, depletionRate: 0.5 })
+  Object.assign(B, {
+    mood: 4,
+    depletionRate: 2,
+    currentRoom: B.room,
+    currentIndex: B.index,
+    replacement: ['Y']
+  })
+  X.currentRoom = ''
+  data.dorms = [new MowerDormState(['dormitory_1', 0])]
+  if (evidence === 'countdown')
+    Object.assign(B, { depletionRate: 0.25, exhaustTimeMicros: toMowerMicros(2) })
+  const options = {}
+  const rateInputs = []
+  if (evidence.startsWith('calculated')) {
+    data.policy.predictiveMoodControl = true
+    const snapshot = { timeMicros: data.nowMicros, values: { A: 6, B: 4, X: 24, Y: 24 } }
+    data.calculatedMoodSnapshot = snapshot
+    for (const op of Object.values(data.operators)) op.calculatedMoodSnapshot = snapshot
+    A.depletionRate = 8
+    B.depletionRate = 0.1
+    options.coordinationRates = (roster, moods) => {
+      if (moods) rateInputs.push([roster, moods])
+      const rate = { calculated: 0.5, 'calculated zero': 0, 'calculated recovering': -0.1 }[
+        evidence
+      ]
+      return { work: { A: rate, B: 2 }, recovery: {} }
+    }
+  }
+  if (evidence.startsWith('unknown ')) {
+    data.operators.C = new MowerOperatorState({
+      name: 'C',
+      operatorType: 'high',
+      room: 'room_2_1',
+      currentRoom: 'room_2_1',
+      index: 0,
+      currentIndex: 0,
+      mood: evidence === 'unknown after' ? 8 : 3,
+      timeStampMicros: 0
+    })
+    data.plan.room_2_1 = ['C']
+  }
+  if (evidence === 'different seat') B.currentIndex = 2
+  if (evidence === 'prediction and card') {
+    A.moodIsPrediction = true
+    data.dormMoodEstimates.set('A', [6, 0])
+  }
+  if (evidence === 'unknown') A.depletionRate = 0
+  if (evidence === 'newer card') {
+    A.timeStampMicros = -toMowerMicros(5 / 60)
+    data.dormMoodEstimates.set('A', [6, 0])
+  }
+  if (evidence === 'at floor') A.mood = A.lowerLimit
+  if (evidence === 'above threshold') Object.assign(B, { mood: 23, depletionRate: 50 })
+  if (evidence === 'equal time') B.depletionRate = 1
+
+  const plan = planMowerOrdinary(data, queue, options)
+  if (evidence.startsWith('calculated')) {
+    expect(rateInputs).toHaveLength(1)
+    expect(rateInputs[0][0]).toBe(data)
+    expect(rateInputs[0][1]).toBe(data.calculatedMoodSnapshot.values)
+  }
+  expect(plan.dormitory_1[0]).toBe(expected)
+  expect(plan[expected === 'A' ? A.room : B.room]).toEqual([expected === 'A' ? 'X' : 'Y'])
+  expect(plan[expected === 'A' ? B.room : A.room]).toBeUndefined()
+})
+
 it('leaves ordinary contention in planning until the shared cover is released', () => {
   const { data, queue } = contention()
   for (let run = 0; run < 3; run++) {

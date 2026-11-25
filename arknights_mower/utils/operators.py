@@ -1007,17 +1007,22 @@ class Operators:
         ).value(name, now or getattr(self, "_projection_now", None))
 
     @measure_mood_calculation(MOOD_ESTIMATE)
-    def calculated_mood_rate(self, name, now=None):
+    def _calculated_mood_snapshot(self, now=None):
         if not self.mood_calculation_enabled:
-            return None
+            return {}, {}
         from arknights_mower.utils.calculated_mood import sync_model
 
-        now = now or getattr(self, "_projection_now", None)
-        model = sync_model(self, getattr(self, "_projection_now", None))
-        if now is not None:
-            model = copy.deepcopy(model)
-            model.advance(now)
-        return model._rates().get(name) if name in model.moods else None
+        projection = getattr(self, "_projection_now", None)
+        model = sync_model(self, projection, advance_clock=False)
+        return model.snapshot(now or projection)
+
+    def calculated_mood_rates(self, now=None):
+        moods, rates = self._calculated_mood_snapshot(now)
+        return {name: rates[name] for name in moods if name in rates}
+
+    def calculated_mood_rate(self, name, now=None):
+        moods, rates = self._calculated_mood_snapshot(now)
+        return rates.get(name) if name in moods else None
 
     def calculated_mood_deadline(self, name, target, now=None, max_hours=240):
         if not self.mood_calculation_enabled:
