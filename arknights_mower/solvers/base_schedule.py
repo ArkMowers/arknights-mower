@@ -993,7 +993,6 @@ class BaseSchedulerSolver(
 
         snapshot = {
             "plan": plan,
-            "meta_data": task.meta_data,
             "correction_groups": {
                 group: data.group_is_resting(group) for group in correction_groups
             },
@@ -1024,6 +1023,7 @@ class BaseSchedulerSolver(
             },
         }
         if arrangement_room is None:
+            snapshot["meta_data"] = task.meta_data
             snapshot["backup_group_tasks"] = tuple(active_group_tasks(data))
         if dorm_plan or dorm_slots:
             snapshot["run_order_dorm_plan"] = dorm_plan
@@ -1621,13 +1621,61 @@ class BaseSchedulerSolver(
             and BaseSchedulerSolver._is_ordinary_facility_arrangement(task)
             and (
                 failure["reason"].startswith(
-                    ("干员确认", "两次滑动后整页干员及位置均未变化")
+                    (
+                        "干员确认",
+                        "检测到干员选择错误",
+                        "检测到安排干员未成功",
+                        "两次滑动后整页干员及位置均未变化",
+                    )
                 )
                 or failure["reason"].endswith("返回房间重试")
                 or TrainingSubmissionUnconfirmed.retained_slot(task, failure)
                 is not None
             )
         )
+
+    def _restore_legacy_room_failure(self, task, failure):
+        room = task.arrangement_retry_room
+        saved = failure["snapshot"]
+        names = set(saved["plan"].get(room, ()))
+        # 从失败时的整项快照中提取旧读数，保留此后已发生的相关变化。
+        saved.pop("meta_data", None)
+        saved.pop("backup_group_tasks", None)
+        for key in (
+            "plan",
+            "effective_plan",
+            "room_observations",
+            "facilities",
+            "products",
+        ):
+            if key in saved:
+                saved[key] = {room: saved[key][room]} if room in saved[key] else {}
+        saved["observations"] = {
+            name: value
+            for name, value in saved["observations"].items()
+            if name in names or value[0] == room
+        }
+        if "card_moods" in saved:
+            saved["card_moods"] = {
+                name: value
+                for name, value in saved["card_moods"].items()
+                if name in names
+            }
+        if "reservations" in saved:
+            reserved, slots = saved["reservations"]
+            saved["reservations"] = (
+                sorted(names.intersection(reserved)),
+                [slot for slot in slots if slot[0] == room],
+            )
+        if groups := saved.get("correction_groups"):
+            relevant = self._task_failure_snapshot(
+                task, (room,), arrangement_room=room
+            )["correction_groups"]
+            saved["correction_groups"] = {
+                group: groups[group] for group in groups.keys() & relevant.keys()
+            }
+        failure["arrangement_room"] = room
+        task.arrangement_failures = {room: failure}
 
     def _resume_failed_tasks(self):
         self._discard_legacy_ordinary_requests()
@@ -1741,15 +1789,10 @@ class BaseSchedulerSolver(
                 ):
                     continue
             if failure and "arrangement_room" not in failure:
-                if predecessors or self._failure_snapshot_changed(task, failure):
+                if self._legacy_selection_failure(task, failure) and not predecessors:
+                    self._restore_legacy_room_failure(task, failure)
+                elif predecessors or self._failure_snapshot_changed(task, failure):
                     self._resume_observed_task(task)
-                elif self._legacy_selection_failure(task, failure):
-                    room = task.arrangement_retry_room
-                    failure["arrangement_room"] = room
-                    failure["snapshot"] = self._task_failure_snapshot(
-                        task, (room,), arrangement_room=room
-                    )
-                    task.arrangement_failures = {room: failure}
                 else:
                     continue
             if getattr(task, "arrangement_failures", None):

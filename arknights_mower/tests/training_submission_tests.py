@@ -262,6 +262,54 @@ def test_source_bed_release_allows_a_new_training_selection(
     solver._complete_group_shift.assert_called_once_with(task)
 
 
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "检测到干员选择错误，重新选择",
+        "检测到安排干员未成功",
+        "训练干员列表已到末尾，返回房间重试",
+    ],
+)
+@pytest.mark.parametrize("changed_room", ["dormitory_1", "train"])
+def test_legacy_failure_compares_only_saved_room_evidence(
+    training_dispatch, reason, changed_room
+):
+    solver, task, _ = training_dispatch
+    task.plan["dormitory_1"] = ["杜林"]
+    op = Operator(
+        "杜林", "", current_room="dormitory_1", current_index=0, time_stamp=task.time
+    )
+    solver.op_data.add(op)
+    task.arrangement_retry_room, task.arrangement_retry_count = "train", 1
+    solver._retain_failed_task(task, reason, ["train"])
+    task = pickle.loads(pickle.dumps(task))
+    solver.tasks = [task]
+    if changed_room == "dormitory_1":
+        op.time_stamp = None
+        solver.op_data.room_observations[changed_room] += 1
+    else:
+        solver.op_data.room_observations["train"] += 1
+    solver._resume_failed_tasks()
+    assert find_next_task([task]) is task
+    expected = {"train"} if changed_room == "dormitory_1" else set()
+    assert solver._blocked_arrangement_rooms(task) == expected
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert solver._blocked_arrangement_rooms(task) == expected
+
+
+def test_other_bed_metadata_does_not_retry_training(training_dispatch):
+    solver, task, _ = training_dispatch
+    task.type = TaskTypes.SHIFT_ON
+    task.plan["dormitory_1"] = ["深巡"]
+    task.meta_data = "dorm0,dorm1"
+    solver._retain_failed_task(task, "选人失败", ["train"], arrangement_room="train")
+    solver._resume_failed_tasks()
+    task.meta_data = "dorm1"
+    solver._resume_failed_tasks()
+    assert solver._blocked_arrangement_rooms(task) == {"train"}
+
+
 def test_old_room_failure_releases_dorm_but_preserves_product_wait(training_dispatch):
     solver, task, depot = training_dispatch
     task.plan["dormitory_1"] = ["深巡"]
