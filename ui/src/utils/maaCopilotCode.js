@@ -21,6 +21,7 @@ export function parseCopilotCode(value) {
 const libraryPaths = { copilot: 'maa-copilot', sss: 'sss-copilot', paradox: 'maa-paradox' }
 const queueNames = { copilot: '自动战斗', sss: '保全派驻', paradox: '悖论模拟' }
 const base = import.meta.env.VITE_HTTP_URL || ''
+const maxBufferedBytes = 8 * 1024 * 1024
 
 export function copilotLibraryUrl(kind) {
   return `${base}/${libraryPaths[kind]}`
@@ -30,7 +31,7 @@ export function appendCopilotScript(configs, kind, script) {
   appendToQueue(configs[kind].value.scripts, kind, script)
 }
 
-function appendToQueue(queue, kind, { id, difficulty }) {
+function appendToQueue(queue, kind, { id, difficulty }, existingLength = 0) {
   let items
   if (kind === 'sss') {
     items = [{ id, type: 1, ec: 1, times: 1 }]
@@ -40,47 +41,33 @@ function appendToQueue(queue, kind, { id, difficulty }) {
     const modes = difficulty === 3 ? [false, true] : [difficulty === 2]
     items = modes.map((is_raid) => ({ id, nav_name_override: '', is_raid }))
   }
-  if (queue.length >= 32) throw new Error(`${queueNames[kind]}队列已满，最多 32 项`)
-  if (queue.length + items.length > 32) {
-    throw new Error(
-      `${queueNames[kind]}队列最多 32 项，本次需加入 ${items.length} 项，剩余容量不足。已入库作业可从已有作业中选择`
-    )
-  }
+  checkCapacity(kind, existingLength + queue.length, items.length)
   queue.push(...items)
 }
 
-async function importMember(axios, id, kind, mixed, available) {
-  if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new Error('作业编号无效')
-  const destinations = mixed ? ['copilot', 'sss'] : [kind]
-  if (destinations.every((key) => available(key) === 0)) {
-    throw new Error(
-      `${destinations.map((key) => queueNames[key]).join('和')}队列已满，每个队列最多 32 项`
-    )
+function checkCapacity(kind, used, needed) {
+  if (used >= 32) throw new Error(`${queueNames[kind]}队列已满，最多 32 项`)
+  if (used + needed > 32) {
+    throw new Error(`${queueNames[kind]}队列最多 32 项，本次需加入 ${needed} 项，剩余容量不足`)
   }
+}
+
+async function downloadMember(axios, id, kind, mixed) {
+  if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new Error('作业编号无效')
   const { data } = await axios.get(`${base}/network/maa-copilot/${id}`)
   const content = data.data?.content
   if (typeof content !== 'string') throw new Error('下载的作业内容缺失')
   const blob = new Blob([content], { type: 'application/json' })
   if (blob.size > 1024 * 1024) throw new Error('作业文件不能超过 1 MB')
-  let destination = kind
-  let slots = 1
-  if (mixed) {
-    let script
-    try {
-      script = JSON.parse(content.replace(/^\uFEFF/, ''))
-    } catch {
-      throw new Error('作业文件不是有效 JSON')
-    }
-    destination = script?.type === 'SSS' ? 'sss' : 'copilot'
-    if (destination === 'copilot' && script?.difficulty === 3) slots = 2
+  let script
+  try {
+    script = JSON.parse(content.replace(/^\uFEFF/, ''))
+  } catch {
+    throw new Error('作业文件不是有效 JSON')
   }
-  if (available(destination) < slots) {
-    throw new Error(`${queueNames[destination]}队列已满，最多 32 项`)
-  }
-  const form = new FormData()
-  form.append('copilot', blob)
-  const { data: script } = await axios.post(copilotLibraryUrl(destination), form)
-  return { destination, script }
+  const destination = mixed ? (script?.type === 'SSS' ? 'sss' : 'copilot') : kind
+  const slots = destination === 'copilot' && script?.difficulty === 3 ? 2 : 1
+  return { blob, destination, slots }
 }
 
 export function useCopilotDownload({
@@ -114,59 +101,99 @@ export function useCopilotDownload({
     try {
       const target = parseCopilotCode(code.value)
       const mixed = target.set && kind !== 'paradox'
+      if (!target.set) checkCapacity(kind, configs[kind].value.scripts.length, 1)
       const ids = target.set
         ? (await axios.get(`${base}/network/maa-copilot-set/${target.id}`)).data.ids
         : [target.id]
       if (!Array.isArray(ids) || !ids.length) throw new Error('作业集为空或缺少成员列表')
-      const imported = []
+      const members = []
       const errors = []
       const cached = new Map()
-      const possibleSlots = { copilot: 32, sss: 32, paradox: 32 }
-      const available = (destination) =>
-        target.set ? possibleSlots[destination] : 32 - configs[destination].value.scripts.length
-      const recordFailure = (index, id, error) => {
+      let bufferedBytes = 0
+      const formatFailure = (index, error) => {
         const reason = error.response?.data?.message || error.message || '作业导入失败'
-        const number = typeof id === 'string' ? `（${id}）` : ''
-        errors[index] = `第 ${index + 1} 份${number}：${reason}`
+        const number = typeof ids[index] === 'string' ? `（${ids[index]}）` : ''
+        return `第 ${index + 1} 份${number}：${reason}`
       }
       for (const [index, id] of ids.entries()) {
         try {
           let member = cached.get(id)
           if (!member) {
-            member = await importMember(axios, id, kind, mixed, available)
+            member = await downloadMember(axios, id, kind, mixed)
+            if (bufferedBytes + member.blob.size <= maxBufferedBytes) {
+              bufferedBytes += member.blob.size
+            } else {
+              // Keep metadata for every candidate; fetch overflow files only if they fit.
+              member.blob = null
+            }
             cached.set(id, member)
           }
-          const { destination, script } = member
-          const size = destination === 'copilot' && script.difficulty === 3 ? 2 : 1
-          const remaining = possibleSlots[destination]
-          if (remaining < size) throw new Error(`${queueNames[destination]}队列已满，最多 32 项`)
-          // A two-slot member may leave one free slot when the actual capacity is odd.
-          possibleSlots[destination] = Math.max(size - 1, remaining - size)
-          imported.push({ index, id, destination, script })
+          members.push({ index, member })
         } catch (error) {
-          recordFailure(index, id, error)
+          errors[index] = formatFailure(index, error)
         }
       }
-      const queues = new Map()
-      const counts = new Map()
-      for (const { index, id, destination, script } of imported) {
-        if (destination === kind) {
-          if (!library.value.some((item) => item.id === script.id)) library.value.push(script)
-          selected.value = script.id
+
+      const destinations = mixed ? ['copilot', 'sss'] : [kind]
+      let counts
+      for (;;) {
+        const plans = Object.fromEntries(
+          destinations.map((key) => [
+            key,
+            { startLength: configs[key].value.scripts.length, added: [] }
+          ])
+        )
+        const edited = () =>
+          destinations.some((key) => configs[key].value.scripts.length !== plans[key].startLength)
+        const results = [...errors]
+        counts = new Map()
+        for (const { index, member } of members) {
+          if (errors[index]) continue
+          const { destination } = member
+          const { startLength, added } = plans[destination]
+          try {
+            checkCapacity(destination, startLength + added.length, member.slots)
+          } catch (error) {
+            results[index] = formatFailure(index, error)
+            continue
+          }
+          try {
+            if (!member.script) {
+              let blob = member.blob
+              if (!blob) {
+                const fresh = await downloadMember(axios, ids[index], kind, mixed)
+                if (fresh.destination !== destination || fresh.slots !== member.slots) {
+                  throw new Error('下载期间作业的类型或难度已变化，请重新导入')
+                }
+                blob = fresh.blob
+                if (edited()) break
+              }
+              const form = new FormData()
+              form.append('copilot', blob)
+              const { data } = await axios.post(copilotLibraryUrl(destination), form)
+              member.blob = null
+              member.script = data
+              member.slots = destination === 'copilot' && data.difficulty === 3 ? 2 : 1
+              if (destination === kind) {
+                if (!library.value.some((item) => item.id === data.id)) library.value.push(data)
+              }
+              if (edited()) break
+            }
+            appendToQueue(added, destination, member.script, startLength)
+            if (destination === kind) selected.value = member.script.id
+            counts.set(destination, (counts.get(destination) || 0) + 1)
+          } catch (error) {
+            errors[index] = results[index] = formatFailure(index, error)
+            if (edited()) break
+          }
         }
-        if (!queues.has(destination))
-          queues.set(destination, [...configs[destination].value.scripts])
-        try {
-          appendToQueue(queues.get(destination), destination, script)
-          counts.set(destination, (counts.get(destination) || 0) + 1)
-        } catch (error) {
-          recordFailure(index, id, error)
+        if (edited()) continue
+        for (const destination of counts.keys()) {
+          configs[destination].value.scripts.push(...plans[destination].added)
         }
+        failures.value = results.filter(Boolean)
+        break
       }
-      for (const destination of counts.keys()) {
-        configs[destination].value.scripts = queues.get(destination)
-      }
-      failures.value = errors.filter(Boolean)
       if (counts.size) {
         code.value = ''
         const added = [...counts].map(([key, count]) => `${queueNames[key]} ${count} 份`).join('、')
