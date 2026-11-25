@@ -2482,6 +2482,8 @@ class EmergencyRecoveryMixin:
 
     def _emergency_restore(self):
         """重新求值副表，交接成功后清除批次；失败按实际驻员继续交接。"""
+        from arknights_mower.solvers.base_schedule import RoomArrangementDeferred
+
         state = self.emergency_state
         saved_beds = {
             bed.position: (bed.name, bed.time) for bed in self.op_data.all_dorms()
@@ -2543,13 +2545,23 @@ class EmergencyRecoveryMixin:
             if plan:
                 previous_task = self.task
                 self.task = SchedulerTask(task_plan=plan)
+                deferral = None
                 try:
                     arranged = self.agent_arrange(plan, get_time=True)
+                except RoomArrangementDeferred as exc:
+                    arranged = False
+                    deferral = exc
                 finally:
                     self.task = previous_task
                 if arranged is False:
                     state["handoff_plan"] = copy.deepcopy(plan)
-                    self._emergency_save()
+                    if deferral is None:
+                        self._emergency_save()
+                    else:
+                        logger.warning(
+                            "自动救急交接暂缓（%s）：%s", deferral.room, deferral
+                        )
+                        self._emergency_defer_read()
                     return False
             state["handoff_observing"] = True
             self._emergency_save()

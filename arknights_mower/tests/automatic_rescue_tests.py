@@ -948,7 +948,7 @@ def test_partial_handoff_persists_plan_and_retry_does_not_replan_temporary_staff
 
 def partial_handoff(solver, monkeypatch, failure="deferred"):
     """物理安排首房成功后中断；交接与原生可行性判断使用实际实现。"""
-    from arknights_mower.solvers import record
+    from arknights_mower.solvers import base_schedule, record
 
     monkeypatch.setattr(record, "save_agent_action", MagicMock())
     state = make_episode(solver)
@@ -989,6 +989,10 @@ def partial_handoff(solver, monkeypatch, failure="deferred"):
             del pending[room]
             if failure == "error":
                 raise RuntimeError("第二个房间安排失败")
+            if failure == "room_exit":
+                raise base_schedule.RoomArrangementDeferred(
+                    next(iter(pending)), base_schedule.RecognizeError("未确认返回地图")
+                )
             return False
         solver.op_data = solver.op_data.project_arrangements([pending])
         pending.clear()
@@ -1011,6 +1015,33 @@ def partial_handoff(solver, monkeypatch, failure="deferred"):
     )
     state["next_read"] = NOW
     return state, attempts
+
+
+def test_handoff_exit_failure_preserves_progress_and_waits_for_observation(
+    solver, monkeypatch
+):
+    state, attempts = partial_handoff(solver, monkeypatch, "room_exit")
+    completed = solver.op_data.operators[PRIMARY[0]].room
+    pending = solver.op_data.operators[PRIMARY[1]].room
+    assert completed not in state["handoff_plan"]
+    assert state["handoff_plan"] == {pending: [PRIMARY[1]]}
+    continuation = next(task for task in solver.tasks if task.emergency_continuation)
+    original_time = continuation.time
+    checkpoint = state["continuation_wait"]
+
+    for _ in range(3):
+        solver._emergency_tick()
+        assert len(attempts) == 1
+        assert state["continuation_wait"] is checkpoint
+        assert continuation.time == original_time
+
+    solver.op_data.room_observations[pending] = (
+        solver.op_data.room_observations.get(pending, 0) + 1
+    )
+    solver._emergency_tick()
+
+    assert attempts[1] == {pending: [PRIMARY[1]]}
+    assert solver.emergency_state is None
 
 
 @pytest.mark.parametrize("failure", ["deferred", "error"])
