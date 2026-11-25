@@ -51,6 +51,29 @@ def script_path(script_id, *, sss=False, paradox=False):
     return path
 
 
+def missing_new_queue_scripts(conf, updates):
+    missing = {}
+    for kind in ("copilot", "sss", "paradox"):
+        update = updates.get(kind)
+        if not isinstance(update, dict) or "scripts" not in update:
+            continue
+        current = getattr(conf, kind)
+        proposed = type(current).model_validate({"scripts": update["scripts"]})
+        added = {item.id for item in proposed.scripts} - {
+            item.id for item in current.scripts
+        }
+        absent = [
+            id_
+            for id_ in sorted(added)
+            if not script_path(
+                id_, sss=kind == "sss", paradox=kind == "paradox"
+            ).is_file()
+        ]
+        if absent:
+            missing[kind] = absent
+    return missing
+
+
 def parse_script(raw, *, sss=False, paradox=False):
     if len(raw) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")

@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, toRaw, watch } from 'vue'
 
 export function parseCopilotCode(value) {
   const code = value.trim()
@@ -103,6 +103,56 @@ export function useCopilotLibrary({
       message.error(error.response?.data?.message || '删除作业失败')
     }
   }
+  async function publishImports(imports, errors) {
+    if (imports.size && store.autosave_paused) throw new Error('配置保存已暂停，请稍后重试')
+    const newRows = new Map()
+    for (const [destination, members] of imports) {
+      const rows = members.flatMap(({ script }) => queueEntries(destination, script))
+      newRows.set(destination, rows)
+      const queue = configs[destination].value
+      queue.scripts = queue.scripts.concat(rows)
+    }
+    while (imports.size) {
+      await nextTick()
+      try {
+        await store.flush_config_saves()
+        if (store.autosave_paused) throw new Error('配置保存已暂停')
+        return
+      } catch (error) {
+        const data = error.response?.data
+        if (error.response?.status !== 409 || data?.code !== 'copilot_scripts_missing') {
+          throw new Error(
+            `队列保存结果未确认，请刷新后核对。 ${data?.message || error.message || ''}`.trim(),
+            { cause: error }
+          )
+        }
+        let removed = false
+        for (const [destination, members] of imports) {
+          const missing = new Set(data.missing_scripts?.[destination])
+          const kept = members.filter(({ script, index, id }) => {
+            if (!missing.has(script.id)) return true
+            errors[index] = id
+              ? `第 ${index + 1} 份（${id}）：作业文件已被删除`
+              : '作业文件已被删除'
+            return false
+          })
+          if (kept.length === members.length) continue
+          removed = true
+          if (kept.length) imports.set(destination, kept)
+          else imports.delete(destination)
+          const queue = configs[destination].value
+          const added = new Set(newRows.get(destination))
+          queue.scripts = queue.scripts.filter(
+            (row) => !missing.has(row.id) || !added.has(toRaw(row))
+          )
+          if (destination === kind)
+            library.value = library.value.filter((script) => !missing.has(script.id))
+        }
+        if (!removed)
+          throw new Error(data.message || '队列中有已删除的作业，保存失败', { cause: error })
+      }
+    }
+  }
   async function upload({ file, onFinish, onError }) {
     loading.value = true
     try {
@@ -111,8 +161,11 @@ export function useCopilotLibrary({
       form.append('copilot', file.file)
       const { data } = await axios.post(endpoint, form)
       await refresh()
+      const imports = new Map([[kind, [{ script: data, index: 0 }]]])
+      const errors = []
+      await publishImports(imports, errors)
+      if (!imports.size) throw new Error(errors[0])
       selected.value = data.id
-      appendCopilotScript(configs, kind, data)
       message.success('作业已导入并加入队列')
       onFinish()
     } catch (error) {
@@ -167,22 +220,17 @@ export function useCopilotLibrary({
           }
           const { destination, script } = member
           if (!imports.has(destination)) imports.set(destination, [])
-          imports.get(destination).push(script)
+          imports.get(destination).push({ script, index, id })
         } catch (error) {
           const reason = error.response?.data?.message || error.message || '作业导入失败'
           const number = typeof id === 'string' ? `（${id}）` : ''
-          errors.push(`第 ${index + 1} 份${number}：${reason}`)
+          errors[index] = `第 ${index + 1} 份${number}：${reason}`
         }
       }
 
-      for (const [destination, scripts] of imports) {
-        const queue = configs[destination].value
-        queue.scripts = queue.scripts.concat(
-          scripts.flatMap((script) => queueEntries(destination, script))
-        )
-        if (destination === kind) selected.value = scripts.at(-1).id
-      }
-      failures.value = errors
+      await publishImports(imports, errors)
+      if (imports.has(kind)) selected.value = imports.get(kind).at(-1).script.id
+      failures.value = errors.filter(Boolean)
       if (imports.size) {
         code.value = ''
         const added = [...imports]

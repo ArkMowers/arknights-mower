@@ -380,6 +380,57 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.config.copilot.value.scripts.map((item) => item.id)).toEqual([first.id])
   })
 
+  it('keeps surviving members and manual edits when another client deletes a stored file', async () => {
+    mock_set(['456', '789', '456'])
+    state.client.post.mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+    state.client.post.mockResolvedValueOnce({ data: second })
+    const saving = Promise.withResolvers()
+    const resume = Promise.withResolvers()
+    state.flush.mockImplementationOnce(async () => {
+      saving.resolve()
+      await resume.promise
+      throw {
+        response: {
+          status: 409,
+          data: {
+            code: 'copilot_scripts_missing',
+            missing_scripts: { copilot: [first.id] }
+          }
+        }
+      }
+    })
+    component.code.value = 's123'
+    const downloading = component.download()
+    await Promise.race([saving.promise, downloading])
+    expect(state.success).not.toHaveBeenCalled()
+    const manual = { id: second.id, nav_name_override: '手动编辑', is_raid: true }
+    state.config.copilot.value.scripts.unshift(manual)
+    resume.resolve()
+    await downloading
+    expect(state.config.copilot.value.scripts).toEqual([
+      manual,
+      { id: second.id, nav_name_override: '', is_raid: false }
+    ])
+    expect(component.failures.value).toEqual([
+      expect.stringContaining('第 1 份（456）'),
+      expect.stringContaining('第 3 份（456）')
+    ])
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.warning).toHaveBeenCalledWith(expect.stringContaining('自动战斗 1 份'))
+    expect(state.flush).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports an unconfirmed save without adding the imported entries again', async () => {
+    mock_set(['456'])
+    state.flush.mockRejectedValueOnce(new Error('connection lost'))
+    component.code.value = 's123'
+    await component.download()
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('刷新'))
+    expect(state.config.copilot.value.scripts.map((item) => item.id)).toEqual([first.id])
+    expect(state.flush).toHaveBeenCalledOnce()
+  })
+
   it('imports a long set with repeated dual-difficulty members and keeps their order', async () => {
     mock_set([...Array(80).fill('456'), '789'], { 456: 3 })
     state.config.copilot.value.scripts = [{ id: second.id }]

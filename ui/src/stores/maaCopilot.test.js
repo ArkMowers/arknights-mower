@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createApp, nextTick, ref } from 'vue'
-import { createPinia } from 'pinia'
+import { createApp, effectScope, nextTick, ref } from 'vue'
+import { createPinia, storeToRefs } from 'pinia'
 import axios from 'axios'
 import { useConfigStore } from './config'
+import { useCopilotLibrary } from '@/utils/maaCopilotCode'
 
 vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
 let store
@@ -49,6 +50,63 @@ describe('MAA ordinary Copilot config', () => {
     })
     loaded.value = false
   })
+  it('saves only surviving set members after another client deletes an uploaded file', async () => {
+    const loaded = setup()
+    for (const key of ['reload_room', 'maa_mall_buy', 'maa_mall_blacklist']) store[key] = []
+    loaded.value = true
+    await nextTick()
+    await store.flush_config_saves()
+    const missingId = 'a'.repeat(64)
+    const retainedId = 'b'.repeat(64)
+    axios.get.mockImplementation(async (url) => ({
+      data: url.includes('copilot-set') ? { ids: ['1', '2'] } : { data: { content: '{}' } }
+    }))
+    axios.post.mockResolvedValueOnce({ data: { id: missingId, difficulty: 3 } })
+    axios.post.mockResolvedValueOnce({ data: { id: retainedId } })
+    axios.patch.mockImplementation(async (_url, patch) => {
+      if (patch.copilot.scripts.some(({ id }) => id === missingId)) {
+        throw {
+          response: {
+            status: 409,
+            data: {
+              code: 'copilot_scripts_missing',
+              missing_scripts: { copilot: [missingId] }
+            }
+          }
+        }
+      }
+      return { data: {} }
+    })
+    const message = { warning: vi.fn(), error: vi.fn(), success: vi.fn() }
+    const scope = effectScope()
+    try {
+      const editor = scope.run(() =>
+        useCopilotLibrary({
+          axios,
+          configs: storeToRefs(store),
+          kind: 'copilot',
+          selected: ref(null),
+          library: ref([]),
+          refresh: vi.fn(),
+          message,
+          store
+        })
+      )
+      editor.code.value = 's1'
+      await editor.download()
+      expect(
+        axios.patch.mock.calls.map(([, patch]) => patch.copilot.scripts.map(({ id }) => id))
+      ).toEqual([[missingId, missingId, retainedId], [retainedId]])
+      expect(store.copilot.scripts.map(({ id }) => id)).toEqual([retainedId])
+      expect(editor.failures.value).toEqual(['第 1 份（1）：作业文件已被删除'])
+      expect(message.warning).toHaveBeenCalledOnce()
+      expect(store.config_save_error).toBe('')
+    } finally {
+      loaded.value = false
+      scope.stop()
+    }
+  })
+
   it('restores saved choices and supplies defaults when loading old config', async () => {
     setup()
     const legacy = {

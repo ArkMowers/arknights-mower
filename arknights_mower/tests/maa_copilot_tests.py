@@ -252,6 +252,88 @@ def test_authorized_upload_list_and_delete_and_selected_guard(
     assert client.get("/maa-copilot", headers=headers).get_json() == {"scripts": []}
 
 
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+@pytest.mark.parametrize("token", [None, "invalid"])
+def test_queue_save_requires_token_before_reading_script_files(
+    client, monkeypatch, method, token
+):
+    read = MagicMock()
+    monkeypatch.setattr(library, "script_path", read)
+    response = client.open(
+        "/conf",
+        method=method,
+        headers={"token": token} if token else {},
+        json={"copilot": {"scripts": [{"id": "a" * 64}]}},
+    )
+    assert response.status_code == 403
+    read.assert_not_called()
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+def test_queue_save_and_cross_client_script_deletion(
+    client, monkeypatch, tmp_path, method
+):
+    import server
+    from arknights_mower.utils import workshop_config
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    def temp_path(name):
+        return tmp_path / name.removeprefix("@app/")
+
+    monkeypatch.setattr(library, "get_path", temp_path)
+    monkeypatch.setattr(workshop_config, "get_path", temp_path)
+    monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
+    conf_path = tmp_path / "conf.yaml"
+    monkeypatch.setattr(server.config, "conf_path", conf_path)
+    legacy = "f" * 64
+    server.config.conf = Conf(copilot={"scripts": [{"id": legacy}]})
+    server.config.save_conf()
+    original = conf_path.read_bytes()
+    deleted = upload()["id"]
+    kept = upload({**SCRIPT, "stage_name": "CE-6"})["id"]
+    headers = {"token": "copilot-test-token"}
+    other = server.app.test_client()
+    assert other.delete("/maa-copilot/" + deleted, headers=headers).status_code == 200
+
+    response = client.open(
+        "/conf",
+        method=method,
+        headers=headers,
+        json={
+            "copilot": {
+                "scripts": [{"id": id_} for id_ in [legacy, deleted, deleted, kept]]
+            },
+            "sss": {"scripts": [{"id": kept}]},
+            "paradox": {"scripts": [{"id": deleted}]},
+        },
+    )
+    assert response.status_code == 409
+    assert response.json["code"] == "copilot_scripts_missing"
+    assert response.json["missing_scripts"] == {
+        "copilot": [deleted],
+        "sss": [kept],
+        "paradox": [deleted],
+    }
+    assert conf_path.read_bytes() == original
+    assert [item.id for item in server.config.conf.copilot.scripts] == [legacy]
+
+    scripts = [{"id": kept}, {"id": legacy, "is_raid": True}]
+    response = client.open(
+        "/conf", method=method, headers=headers, json={"copilot": {"scripts": scripts}}
+    )
+    assert response.status_code == 200
+    assert [(item.id, item.is_raid) for item in server.config.conf.copilot.scripts] == [
+        (kept, False),
+        (legacy, True),
+    ]
+    assert other.delete("/maa-copilot/" + kept, headers=headers).status_code == 409
+    response = client.open(
+        "/conf", method=method, headers=headers, json={"copilot": {"scripts": []}}
+    )
+    assert response.status_code == 200
+    assert other.delete("/maa-copilot/" + kept, headers=headers).status_code == 200
+
+
 @pytest.fixture
 def scheduler(monkeypatch, files, tmp_path):
     from arknights_mower.solvers import record

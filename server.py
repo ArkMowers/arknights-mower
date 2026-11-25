@@ -1825,6 +1825,19 @@ def load_config():
                     "error": "device_session_active",
                     "message": "设备会话正在运行，请停止任务后修改目标或截图、触控设置",
                 }, 409
+        from arknights_mower.utils.maa_copilot import missing_new_queue_scripts
+
+        try:
+            missing = missing_new_queue_scripts(config.conf, req)
+        except ValueError as exc:
+            return {"error": "invalid_configuration", "message": str(exc)}, 400
+        if missing:
+            return {
+                "error": "copilot_scripts_missing",
+                "code": "copilot_scripts_missing",
+                "missing_scripts": missing,
+                "message": "部分作业文件已不存在，请刷新作业库后重新导入",
+            }, 409
         requested_plan_key = str(req.pop("maa_weekly_plan_active", "")).strip()
         from arknights_mower.utils.config.weekly_plan_loader import (
             get_weekly_plan_manager,
