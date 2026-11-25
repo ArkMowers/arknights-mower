@@ -118,12 +118,6 @@ function add_operator() {
 
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
-    <n-form-item v-if="!paradox" :show-label="false">
-      <n-alert type="warning" :show-icon="false">
-        请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务，再使用普通作业的自动地图导航。Mower
-        会先进入目标关卡地图，导航失败时不启动 MAA。
-      </n-alert>
-    </n-form-item>
     <n-form-item label="目前状态">
       <MaaTaskStatus ref="taskStatus" :kind="kind" :settings="copilot" />
     </n-form-item>

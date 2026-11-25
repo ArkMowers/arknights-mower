@@ -148,13 +148,10 @@ describe('ordinary Copilot library and queue', () => {
     }
   )
 
-  it('shows the Mower AI setup requirement for ordinary map navigation only', async () => {
-    state.config.paradox = ref({ scripts: [], run_id: '' })
+  it('shows ordinary Copilot settings without a model setup warning', async () => {
     const ordinary = await renderToString(createSSRApp(Component))
-    expect(ordinary).toContain('请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务')
-    expect(ordinary).toContain('导航失败时不启动 MAA')
-    const paradox = await renderToString(createSSRApp(Component, { paradox: true }))
-    expect(paradox).not.toContain('请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务')
+    expect(ordinary).toContain('队列统一设置')
+    expect(ordinary).not.toContain('AI 助手与模型服务')
   })
   it('offers roster assistance only for ordinary automatic formation', async () => {
     state.config.paradox = ref({ scripts: [] })
