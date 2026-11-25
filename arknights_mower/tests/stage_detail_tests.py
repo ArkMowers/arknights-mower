@@ -1,5 +1,7 @@
+from pathlib import Path
 from unittest.mock import MagicMock, call
 
+import cv2
 import numpy as np
 import pytest
 
@@ -20,33 +22,35 @@ def navigator():
 
 
 @pytest.mark.parametrize(
-    "text,score,right_edge,expected",
+    "sample,expected",
     [
-        ("OPERATIONOS-1", 0.85, 270, "OS-1"),
-        ("OS-EX-8", 0.97, 265, "OS-EX-8"),
-        ("OS-10", 0.98, 265, "OS-10"),
-        ("OS-1", 0.98, 330, None),
-        ("OS-1", 0.6, 265, None),
-        ("OPERATION", 0.99, 110, None),
+        ("ordinary", "OS-2"),
+        ("ex", "OS-EX-8"),
+        ("OS-10", "OS-10"),
+        ("0S-10", "0S-10"),
+        ("SN-S-1-A", "SN-S-1-A"),
+        ("SN-S-1-B", "SN-S-1-B"),
+        ("OF-EX4", "OF-EX4"),
     ],
 )
-def test_detail_reads_only_a_complete_code_from_the_panel_header(
-    navigator, monkeypatch, text, score, right_edge, expected
-):
+def test_detail_reads_visible_glyphs_after_panel_opens(navigator, sample, expected):
     frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
-    frame[108:166, 1267:1598] = 1
+    folder = Path(__file__).parent / "fixtures/stage_detail"
+    frame[108:170, 1267:1550] = cv2.imread(str(folder / f"{sample}.png"))
     navigator.recog.img = frame
-
-    def ocr(title, **kwargs):
-        assert title.shape == (58, 331, 3)
-        assert title.all()
-        return [([(0, 0), (right_edge, 58)], text, score)], None
-
-    monkeypatch.setattr(navigation.rapidocr, "engine", ocr)
     navigator.find.side_effect = [None] * 4 + [True]
     assert navigator._read_stage_detail_code() == expected
     assert navigator.find.call_args_list == [call("ope_start")] * 5
     assert navigator.sleep.call_args_list == [call(0.4)] * 4
+
+
+@pytest.mark.parametrize("area", [None, (1384, 1410), (1516, 1532), (1400, 1430)])
+def test_blank_clipped_or_unknown_shapes_do_not_confirm_a_stage(navigator, area):
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    if area:
+        frame[125:160, area[0] : area[1]] = 255
+    navigator.recog.img = frame
+    assert navigator._read_stage_detail_code() is None
 
 
 @pytest.mark.parametrize(
