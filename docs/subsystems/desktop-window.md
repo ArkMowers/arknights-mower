@@ -2,6 +2,10 @@
 
 The desktop entry in [`webview_ui.py`](../../webview_ui.py) owns window creation, startup mode and saved size. [`WindowShellBridge`](../../arknights_mower/utils/window_shell.py) connects the shared Vue title bar to WinForms, Cocoa, GTK or Qt. The ordinary browser page has no desktop title bar.
 
+## Initial window on Windows
+
+A foreground launch prepares the window child while the parent loads the HTTP server. After the server and instance registration are ready, the parent sends the first command over the child's private pipe to allow native navigation or browser fallback. Only then can other callers use the window channel. If startup fails, desktop shutdown closes the prepared child and its channel. A background instance creates its window on request.
+
 ## Backend selection and capabilities
 
 The entry selects the pywebview backend before choosing frameless behavior. WinForms keeps its existing Win32 input and DPI handling. Cocoa, GTK and Qt install native input handlers after the native window exists; bridge readiness waits for that installation. Unknown backends retain native window decorations.

@@ -317,7 +317,15 @@ def start_tray(queue, instance_name, port, url):
 
 
 def webview_window(
-    child_conn, global_space, instance_name, host, port, url, tray, log_queue=None
+    child_conn,
+    global_space,
+    instance_name,
+    host,
+    port,
+    url,
+    tray,
+    log_queue=None,
+    wait_for_startup=False,
 ):
     import sys
     from threading import Lock, Thread
@@ -360,6 +368,17 @@ def webview_window(
     global width
     global height
 
+    def can_open():
+        if not wait_for_startup:
+            return True
+        from arknights_mower.utils.instance_supervisor import STARTUP_TIMEOUT
+
+        # Until the parent publishes this pipe, its only other command is exit.
+        try:
+            return child_conn.poll(STARTUP_TIMEOUT) and child_conn.recv() == "open"
+        except (EOFError, OSError):
+            return False
+
     config.load_conf()
     try:
         backend = prepare_window_backend()
@@ -369,7 +388,8 @@ def webview_window(
         logger.exception("WebView 窗口后端初始化失败，回退为浏览器打开")
         import webbrowser
 
-        webbrowser.open(url)
+        if can_open():
+            webbrowser.open(url)
         return
     windows_native = backend == "winforms"
     shell_enabled = backend in SUPPORTED_BACKENDS
@@ -588,9 +608,10 @@ def webview_window(
                     result = result[0]
             child_conn.send(result)
 
-    Thread(target=recv_msg, daemon=True).start()
-
     try:
+        if not can_open():
+            return
+        Thread(target=recv_msg, daemon=True).start()
         webview.start(gui=backend if backend in ("gtk", "qt") else None)
 
         size = sanitize_window_size(width, height)
@@ -678,7 +699,7 @@ def own_child(process, connection=None):
     return record
 
 
-def start_desktop_child(kind, *args, log_queue=None):
+def start_desktop_child(kind, *args, log_queue=None, wait_for_startup=False):
     from arknights_mower.utils.desktop_process import run_with_parent_watch
     from arknights_mower.utils.lifecycle import shutdown
 
@@ -698,7 +719,7 @@ def start_desktop_child(kind, *args, log_queue=None):
     }[kind]
     if kind == "window":
         parent, child = mp.Pipe()
-        args = (*args, log_queue)
+        args = (*args, log_queue, wait_for_startup)
     else:
         parent = child = mp.Queue()
     own_channel(parent)
@@ -965,6 +986,30 @@ def _run_desktop():
         updates_enabled=config.updates_enabled,
     )
     registration.publish()
+    url = f"http://127.0.0.1:{port}"
+    url += f"?token={quote(runtime_token, safe='')}"
+
+    def launch_window(*, wait_for_startup=False):
+        return start_desktop_child(
+            "window",
+            path.global_space,
+            instance_name,
+            host,
+            port,
+            url,
+            keep_running,
+            log_queue=mp_log_queue,
+            wait_for_startup=wait_for_startup,
+        )
+
+    config.webview_process = None
+    config.parent_conn = None
+    # The HTTP handlers must not use the command pipe before the child receives "open".
+    prepared_window = (
+        launch_window(wait_for_startup=True)
+        if sys.platform == "win32" and not background
+        else None
+    )
     if splash_queue is not None:
         splash_queue.put({"type": "text", "data": "加载 Flask 依赖"})
     import server
@@ -988,8 +1033,6 @@ def _run_desktop():
     registration.running = lambda: bool(
         server.mower_thread and server.mower_thread.is_alive()
     )
-    url = f"http://127.0.0.1:{port}"
-    url += f"?token={quote(runtime_token, safe='')}"
     startup_ready = Event()
     explicitly_stopped = os.environ.pop("MOWER_UPDATE_TASK_STOPPED", "") == "1"
     stop_order = os.environ.pop("MOWER_UPDATE_TASK_STOP_ORDER", "")
@@ -1072,20 +1115,20 @@ def _run_desktop():
     def open_window():
         close_child(config.webview_process)
         close_channel(config.parent_conn)
-        config.webview_process, config.parent_conn = start_desktop_child(
-            "window",
-            path.global_space,
-            instance_name,
-            host,
-            port,
-            url,
-            keep_running,
-            log_queue=mp_log_queue,
-        )
+        config.webview_process, config.parent_conn = launch_window()
 
-    config.webview_process = None
-    config.parent_conn = None
-    if not background:
+    if prepared_window is not None:
+        process, connection = prepared_window
+        try:
+            connection.send("open")
+        except (EOFError, OSError):
+            # Preparation failed before HTTP became ready. Use the ordinary launch path once.
+            close_child(process, connection)
+            close_channel(connection)
+            open_window()
+        else:
+            config.webview_process, config.parent_conn = prepared_window
+    elif not background:
         open_window()
     close_child(splash_process)
 

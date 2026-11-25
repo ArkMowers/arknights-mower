@@ -461,6 +461,120 @@ class DesktopStartupTests(unittest.TestCase):
                 worker()
             return events, server
 
+    def test_windows_prepares_one_private_window_before_server_import(self):
+        import builtins
+
+        from arknights_mower.utils import instance_supervisor
+
+        def observe(stack, task_server, server, config, events):
+            importer = builtins.__import__
+            stack.enter_context(patch.object(sys, "platform", "win32"))
+            helper, channel = server.desktop_child.return_value
+
+            def launch(kind, *args, **kwargs):
+                if kind == "window":
+                    self.assertTrue(kwargs["wait_for_startup"])
+                    events.append("prepare")
+                return helper, channel
+
+            def on_import(name, *args, **kwargs):
+                if name == "server":
+                    events.append("import")
+                return importer(name, *args, **kwargs)
+
+            def start_http(*args):
+                self.assertIsNone(config.parent_conn)
+                self.assertIsNone(config.webview_process)
+                self.assertTrue(server.app.token)
+                events.append("listen")
+
+            server.desktop_child.side_effect = launch
+            server.http_start.side_effect = start_http
+            stack.enter_context(patch.object(builtins, "__import__", on_import))
+            stack.enter_context(
+                patch.object(
+                    instance_supervisor,
+                    "child_ready",
+                    side_effect=lambda *a, **k: events.append("ready"),
+                )
+            )
+            channel.send.side_effect = events.append
+
+        events, _ = self.launch(
+            automatic=False, commands=["show", "exit"], configure_startup=observe
+        )
+        self.assertEqual(
+            events, ["prepare", "import", "listen", "ready", "open", "show"]
+        )
+
+    def test_server_import_failure_reaps_prepared_window_without_opening_it(self):
+        import builtins
+
+        import webview_ui
+
+        start_child = webview_ui.start_desktop_child
+        process = Mock(pid=321)
+        process.is_alive.side_effect = lambda: not process.join.called
+        parent, child = Mock(), Mock()
+
+        def fail_import(stack, task_server, server, config, events):
+            importer = builtins.__import__
+
+            def import_module(name, *args, **kwargs):
+                if name == "server":
+                    raise ImportError("server import failed")
+                return importer(name, *args, **kwargs)
+
+            def launch(kind, *args, **kwargs):
+                if kind == "window":
+                    return start_child(kind, *args, **kwargs)
+                return Mock(), Mock()
+
+            server.desktop_child.side_effect = launch
+            stack.enter_context(patch.object(sys, "platform", "win32"))
+            stack.enter_context(
+                patch.object(webview_ui.mp, "Process", return_value=process)
+            )
+            stack.enter_context(
+                patch.object(webview_ui.mp, "Pipe", return_value=(parent, child))
+            )
+            stack.enter_context(patch.object(builtins, "__import__", import_module))
+
+        with self.assertRaisesRegex(ImportError, "server import failed"):
+            self.launch(automatic=False, configure_startup=fail_import)
+
+        process.start.assert_called_once()
+        parent.send.assert_called_once_with("exit")
+        process.close.assert_called_once()
+        parent.close.assert_called_once()
+        child.close.assert_called_once()
+
+    def test_closed_preparation_pipe_launches_one_ready_window(self):
+        def close_pipe(stack, task_server, server, config, events):
+            stack.enter_context(patch.object(sys, "platform", "win32"))
+            prepared, ready = (Mock(), Mock()), (Mock(), Mock())
+            prepared[1].send.side_effect = BrokenPipeError
+            stack.enter_context(patch("webview_ui.close_channel"))
+
+            def launch(kind, *args, **kwargs):
+                if kind != "window":
+                    return Mock(), Mock()
+                if kwargs["wait_for_startup"]:
+                    events.append("prepare")
+                    return prepared
+                server.http_start.assert_called_once()
+                prepared[1].send.assert_called_once_with("open")
+                events.append("reopen")
+                return ready
+
+            server.desktop_child.side_effect = launch
+            ready[1].send.side_effect = events.append
+
+        events, _ = self.launch(
+            automatic=False, commands=["show", "exit"], configure_startup=close_pipe
+        )
+        self.assertEqual(events, ["prepare", "reopen", "show"])
+
     def test_normal_autostart_admits_task_through_the_start_route(self):
         events, server = self.launch()
         self.assertEqual(events, [("start", "0")])
