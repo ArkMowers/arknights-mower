@@ -66,6 +66,18 @@ def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(files
     assert restored.copilot == conf
 
 
+@pytest.mark.parametrize("difficulty", [0, 1, 2, 3])
+def test_import_and_existing_library_report_declared_difficulty(files, difficulty):
+    info = upload({**SCRIPT, "difficulty": difficulty})
+    assert info["difficulty"] == difficulty
+    assert library.list_scripts() == [info]
+
+
+def test_existing_script_without_difficulty_defaults_to_unspecified(files):
+    assert upload()["difficulty"] == 0
+    assert library.list_scripts()[0]["difficulty"] == 0
+
+
 def test_formation_parameters_only_forward_when_enabled(files):
     info = upload()
     conf = CopilotConf(

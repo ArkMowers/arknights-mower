@@ -64,6 +64,7 @@ beforeEach(() => {
   }
   scope = effectScope()
   component = scope.run(() => Component.setup({}, { expose: () => {} }))
+  component.library.value = [first, second]
 })
 afterEach(() => {
   scope.stop()
@@ -155,6 +156,64 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.error).not.toHaveBeenCalled()
     expect(component.code.value).toBe('')
     expect(component.loading.value).toBe(false)
+  })
+  it('expands each downloaded member in place and preserves existing raid selections', async () => {
+    mock_set()
+    component.add_script(first.id)
+    state.config.copilot.value.scripts[0].is_raid = true
+    state.client.post
+      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+      .mockResolvedValueOnce({ data: { ...second, difficulty: 2 } })
+      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+    component.code.value = 'prts://s123'
+    await component.download()
+    expect(state.config.copilot.value.scripts.map((item) => [item.id, item.is_raid])).toEqual([
+      [first.id, true],
+      [first.id, false],
+      [first.id, true],
+      [second.id, true],
+      [first.id, false],
+      [first.id, true]
+    ])
+  })
+  it.each([
+    [0, [false]],
+    [1, [false]],
+    [2, [true]],
+    [3, [false, true]]
+  ])(
+    'applies difficulty %i to file uploads and existing library selections',
+    async (difficulty, expected) => {
+      const info = { ...first, difficulty }
+      state.client.post.mockResolvedValue({ data: info })
+      state.client.get.mockResolvedValue({ data: { scripts: [info] } })
+      await component.upload_blob(new Blob(['{}']))
+      component.add_script(first.id)
+      expect(state.config.copilot.value.scripts.map((item) => item.is_raid)).toEqual([
+        ...expected,
+        ...expected
+      ])
+    }
+  )
+  it('refuses both modes as a unit if only one queue slot is free', async () => {
+    mock_set(['456'])
+    state.client.post.mockResolvedValue({ data: { ...first, difficulty: 3 } })
+    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({
+      id: second.id,
+      is_raid: true
+    }))
+    const original = [...state.config.copilot.value.scripts]
+    component.code.value = 'prts://s123'
+    await component.download()
+    expect(state.config.copilot.value.scripts).toEqual(original)
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('本次需加入 2 项'))
+    state.config.copilot.value.scripts.pop()
+    await component.download()
+    expect(state.config.copilot.value.scripts).toHaveLength(32)
+    expect(state.config.copilot.value.scripts.slice(-2).map((item) => item.is_raid)).toEqual([
+      false,
+      true
+    ])
   })
   it.each([{ ids: [] }, { ids: Array.from({ length: 32 }, () => '456') }])(
     'refuses empty or over-capacity sets without truncation',
