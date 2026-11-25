@@ -293,16 +293,11 @@ def current_state():
         or not getattr(base_scheduler, "_state_restore_complete", True)
     ):
         return None
-    data = base_scheduler.op_data
-    tasks = base_scheduler.tasks
-
-    def session_only(task):
-        return getattr(task, "mood_control_event", None) or hasattr(
-            task, "copilot_request"
-        )
-
-    if any(session_only(task) for task in tasks):
-        tasks = [task for task in tasks if not session_only(task)]
+    data, tasks = base_scheduler.op_data, base_scheduler.tasks
+    if any(getattr(task, "mood_control_event", None) for task in tasks):
+        tasks = [
+            task for task in tasks if not getattr(task, "mood_control_event", None)
+        ]
     return {
         "dorm": data.all_dorms(),
         "tasks": tasks,

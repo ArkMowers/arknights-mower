@@ -293,28 +293,25 @@ def copilot_formation_params(params, conf, maa):
         yield {**params, "operbox_data_path": str(path.absolute())}
 
 
-def build_copilot_params(conf, work_dir, *, index=None):
+def build_copilot_params(conf, work_dir, *, index=0):
     if not conf.scripts:
         raise ValueError("请先导入并选择自动战斗作业")
-    queue = []
-    scripts = conf.scripts if index is None else [conf.scripts[index]]
-    for item in scripts:
-        path = script_path(item.id)
-        with path.open("rb") as stream:
-            data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
-        before = _script_content(data)
-        content = _normalized_copilot_content(data)
-        if len(content) > MAX_SCRIPT_BYTES:
-            raise ValueError("作业文件不能超过 1 MB")
-        if before != content:
-            path = work_dir / path.name
-            write_json(path, data)
-        entry = {"filename": str(path), "is_raid": item.is_raid}
-        if item.nav_name_override.strip():
-            entry["nav_name_override"] = item.nav_name_override.strip()
-        queue.append(entry)
+    item = conf.scripts[index]
+    path = script_path(item.id)
+    with path.open("rb") as stream:
+        data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
+    before = _script_content(data)
+    content = _normalized_copilot_content(data)
+    if len(content) > MAX_SCRIPT_BYTES:
+        raise ValueError("作业文件不能超过 1 MB")
+    if before != content:
+        path = work_dir / path.name
+        write_json(path, data)
+    entry = {"filename": str(path), "is_raid": item.is_raid}
+    if item.nav_name_override.strip():
+        entry["nav_name_override"] = item.nav_name_override.strip()
     params = {
-        "copilot_list": queue,
+        "copilot_list": [entry],
         "use_sanity_potion": conf.use_sanity_potion,
         "formation": conf.formation,
     }
@@ -385,34 +382,6 @@ def copilot_navigation_target(item):
     if re.fullmatch(r"[A-Z0-9]+(?:-[A-Z0-9]+)+", target.upper()):
         return target.upper()
     raise ValueError("无法确定作业关卡，请填写导航关卡名，例如 1-7 或活动关卡编号")
-
-
-def manual_copilot_request(conf, selection):
-    from arknights_mower.utils.config.conf import CopilotScriptConf
-
-    if not isinstance(selection, dict):
-        raise ValueError("请选择要手动执行的作业")
-    mode = selection.get("mode")
-    loops = selection.get("loop_times", 1)
-    if type(loops) is not int or not 1 <= loops <= 9999:
-        raise ValueError("作业执行次数应为 1 至 9999")
-    if mode == "single":
-        item = CopilotScriptConf(id=selection.get("id"))
-        if not script_path(item.id).is_file():
-            raise ValueError("所选作业不存在，请刷新作业库")
-        entries = [item]
-    elif mode == "list" and loops == 1:
-        # The UI sends queue entries by value so edits cannot retarget a pending run.
-        raw = selection.get("scripts")
-        if not isinstance(raw, list) or not raw:
-            raise ValueError("请至少勾选一项作业")
-        entries = [CopilotScriptConf.model_validate(item) for item in raw]
-        if any(not script_path(item.id).is_file() for item in entries):
-            raise ValueError("所选作业不存在，请刷新作业库")
-    else:
-        raise ValueError("无效的手动作业模式")
-    settings = conf.model_copy(update={"scripts": entries})
-    return {"mode": mode, "loop_times": loops, "settings": settings.model_dump()}
 
 
 def build_paradox_params(item, index):

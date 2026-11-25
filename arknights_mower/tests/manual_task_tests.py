@@ -43,7 +43,7 @@ def queue(manual, kind, minutes=60):
 
 @pytest.mark.parametrize("kind", list(MANUAL_TASK_TYPES))
 def test_task_route_accepts_each_type_clears_roster_and_wakes(
-    manual, monkeypatch, kind, tmp_path
+    manual, monkeypatch, kind
 ):
     from arknights_mower.views import task as route
 
@@ -62,12 +62,6 @@ def test_task_route_accepts_each_type_clears_roster_and_wakes(
             "meta_data": "stale",
         }
     }
-    if kind == TaskTypes.MANUAL_COPILOT:
-        from arknights_mower.utils import maa_copilot
-
-        monkeypatch.setattr(maa_copilot, "get_path", lambda _: tmp_path)
-        info = maa_copilot.store_script(b'{"stage_name":"1-7","actions":[]}')
-        body["task"]["copilot"] = {"mode": "single", "id": info["id"]}
     client = app.test_client()
     for token in (None, "wrong"):
         headers = {} if token is None else {"token": token}
@@ -87,6 +81,40 @@ def test_task_route_accepts_each_type_clears_roster_and_wakes(
         == kind.display_value
     )
     manual.module.config.wake_scheduler.clear()
+
+
+@pytest.mark.parametrize(
+    "task_type,selection",
+    [
+        ("手动作业 (MAA)", {"mode": "list", "scripts": [{"id": "a" * 64}]}),
+        ("manual_copilot", {"mode": "single", "id": "a" * 64, "loop_times": 1}),
+    ],
+)
+def test_retired_manual_copilot_is_rejected_without_queueing(
+    manual, monkeypatch, task_type, selection
+):
+    from arknights_mower.views import task as route
+
+    app = Flask(__name__)
+    app.token = "test-token"
+    app.register_blueprint(route.task_bp)
+    monkeypatch.setattr(route, "mower_thread", Mock(is_alive=lambda: True))
+    body = {
+        "task": {
+            "time": "2026-10-01T02:00:00.000Z",
+            "task_type": task_type,
+            "plan": {},
+            "meta_data": "",
+            "copilot": selection,
+        }
+    }
+    client = app.test_client()
+    assert client.post("/task", json=body).status_code == 403
+    result = client.post("/task", json=body, headers={"token": "test-token"})
+    assert result.status_code == 400
+    assert "手动作业已移除" in result.get_json()["message"]
+    assert not manual.solver.tasks
+    assert not manual.module.config.wake_scheduler.is_set()
 
 
 @pytest.mark.parametrize(
@@ -443,76 +471,3 @@ def test_local_stage_selection_uses_mower(manual, monkeypatch):
     assert manual.manual.run_manual_task(manual.solver, task)
     manual.solver.mower_plan_solver.assert_called_once_with(manual=True)
     manual.solver.maa_plan_solver.assert_not_called()
-
-
-def test_manual_copilot_runs_before_entering_base_and_keeps_other_tasks(
-    manual, monkeypatch
-):
-    task, later = queue(manual, TaskTypes.MANUAL_COPILOT)
-    recover_scene = Mock()
-    monkeypatch.setattr(manual.module, "recover_base_scene", recover_scene)
-    enter_base = Mock()
-    monkeypatch.setattr(manual.module.SceneGraphSolver, "run", enter_base)
-    manual.solver.run()
-    manual.solver.maa_plan_solver.assert_called_once_with(
-        [], manual=True, long_task="manual_copilot"
-    )
-    enter_base.assert_not_called()
-    recover_scene.assert_not_called()
-    assert task not in manual.solver.tasks
-    assert later in manual.solver.tasks
-
-
-@pytest.mark.parametrize("mode", ["single", "list"])
-@pytest.mark.parametrize("interrupt", ["schedule", "stop"])
-def test_manual_copilot_interrupted_during_last_screen_check(
-    manual, tmp_path, monkeypatch, mode, interrupt
-):
-    from arknights_mower.utils import maa_copilot
-
-    monkeypatch.setattr(maa_copilot, "get_path", lambda _: tmp_path)
-    info = maa_copilot.store_script(b'{"stage_name":"1-7","actions":[]}')
-    task, later = queue(manual, TaskTypes.MANUAL_COPILOT)
-    original_time = task.time
-    selection = {"mode": mode}
-    if mode == "list":
-        selection["scripts"] = [{"id": info["id"]}]
-    else:
-        selection["id"] = info["id"]
-    task.copilot_request = maa_copilot.manual_copilot_request(
-        manual.module.config.conf.copilot, selection
-    )
-    solver, engine = actual_maa(manual)
-    engine.append_task.return_value = 1
-    solver.scene.return_value = (
-        manual.module.Scene.OPERATOR_BEFORE
-        if mode == "single"
-        else manual.module.Scene.OPERATOR_CHOOSE_LEVEL
-    )
-    blocker = SchedulerTask(manual.clock.now() + timedelta(seconds=20))
-
-    def interrupt_before_start():
-        engine.append_task.assert_called_once()
-        if interrupt == "schedule":
-            solver.tasks.append(blocker)
-        else:
-            manual.module.config.stop_maa.set()
-
-    solver.recog.update.side_effect = interrupt_before_start
-    solver.run()
-    engine.start.assert_not_called()
-    if interrupt == "stop":
-        assert solver.tasks == [later]
-        engine.stop.assert_called_once()
-        return
-    assert task in solver.tasks and task.time == original_time
-    engine.stop.assert_called_once()
-    assert task.manual_steps == [TaskTypes.MANUAL_COPILOT.display_value]
-    for _ in range(2):
-        solver._resume_failed_tasks()
-        assert task.execution_failure
-    solver.tasks.remove(blocker)
-    solver.recog.update.side_effect = None
-    solver.run()
-    engine.start.assert_called_once()
-    assert task not in solver.tasks and later in solver.tasks

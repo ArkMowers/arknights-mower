@@ -131,6 +131,14 @@ describe('backup file count warning', () => {
 })
 
 describe('ordinary Copilot library and queue', () => {
+  it('offers the scheduled queue restart without manual runs from the current game screen', async () => {
+    const html = await renderToString(createSSRApp(Component))
+    expect(html).toContain('重新执行整份队列')
+    expect(html).not.toContain('执行勾选列表')
+    expect(html).not.toContain('当前关卡作业')
+    expect(html).not.toContain('执行一次手动任务')
+  })
+
   it('shows the Mower AI setup requirement for ordinary map navigation only', async () => {
     state.config.paradox = ref({ scripts: [], run_id: '' })
     const ordinary = await renderToString(createSSRApp(Component))

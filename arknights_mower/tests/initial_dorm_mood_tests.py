@@ -320,9 +320,8 @@ def test_saved_state_uses_live_operators_and_tasks_without_card_estimates(
 
 
 @pytest.mark.parametrize("include_wakeup", [False, True])
-@pytest.mark.parametrize("include_copilot", [False, True])
-def test_saved_state_omits_session_tasks_without_changing_live_queue(
-    solver, monkeypatch, include_wakeup, include_copilot
+def test_saved_state_omits_predictive_wakeup_without_changing_live_queue(
+    solver, monkeypatch, include_wakeup
 ):
     from arknights_mower import __main__ as main
 
@@ -344,18 +343,13 @@ def test_saved_state_omits_session_tasks_without_changing_live_queue(
         task_type=TaskTypes.SHIFT_OFF,
     )
     task.execution_failure = {"reason": "wait for observation"}
-    session_tasks = [wake] if include_wakeup else []
-    if include_copilot:
-        manual = SchedulerTask(time=at, task_type=TaskTypes.MANUAL_COPILOT)
-        manual.copilot_request = {"mode": "single"}
-        session_tasks.append(manual)
-    original = solver.tasks = [*session_tasks, task]
+    original = solver.tasks = [wake, task] if include_wakeup else [task]
 
     state = record.current_state()
     assert solver.tasks is original
-    assert solver.tasks == [*session_tasks, task]
+    assert solver.tasks == ([wake, task] if include_wakeup else [task])
     assert state["tasks"] == [task]
-    if not session_tasks:
+    if not include_wakeup:
         assert state["tasks"] is original
     assert state["tasks"][0] is task
     assert task.time == at - timedelta(hours=1)

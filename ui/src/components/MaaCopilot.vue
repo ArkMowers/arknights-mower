@@ -4,7 +4,6 @@ import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 import { appendCopilotScript, useCopilotLibrary } from '@/utils/maaCopilotCode'
-import MaaManualCopilot from './MaaManualCopilot.vue'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const props = defineProps({ paradox: { type: Boolean, default: false } })
@@ -180,12 +179,6 @@ async function restart_queue() {
         >
       </n-flex>
     </n-form-item>
-    <MaaManualCopilot
-      v-if="!paradox"
-      :scripts="copilot.scripts"
-      :library="library"
-      :selected="selected"
-    />
     <n-form-item v-if="!paradox" :show-label="false"
       ><n-checkbox v-model:checked="copilot.use_sanity_potion"
         >允许使用理智药</n-checkbox
