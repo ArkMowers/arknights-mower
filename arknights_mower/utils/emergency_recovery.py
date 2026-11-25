@@ -502,7 +502,15 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
 
 
 def emergency_dorm_plan(
-    data, state, tasks=(), *, members=None, reallocate=False, recovery_order=None
+    data,
+    state,
+    tasks=(),
+    *,
+    members=None,
+    reallocate=False,
+    recovery_order=None,
+    available_slots=None,
+    reserved_names=(),
 ):
     """救急按正常运行交接需要连续恢复同组；余床沿用共享候选和预约。"""
     from arknights_mower.utils.dorm_candidates import (
@@ -512,7 +520,14 @@ def emergency_dorm_plan(
         scheduling_mood_reaches,
     )
 
-    reserved, slots = dorm_task_reservations(data, tasks)
+    reserved, slots = dorm_task_reservations(data, tasks, excluded=reserved_names)
+    if available_slots is not None:
+        for bed in data.all_dorms():
+            if bed.position not in available_slots:
+                slots.add(bed.position)
+                occupant = data.get_current_operator(*bed.position)
+                if occupant is not None:
+                    reserved.add(occupant.name)
     reserved.update(
         name
         for task in tasks
