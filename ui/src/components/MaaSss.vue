@@ -4,18 +4,19 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
-import { downloadCopilotScripts } from '@/utils/maaCopilotCode'
+import { appendCopilotScript, copilotLibraryUrl, useCopilotDownload } from '@/utils/maaCopilotCode'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const store = useConfigStore()
-const { sss } = storeToRefs(store)
+const configs = storeToRefs(store)
+const { sss } = configs
 const axios = inject('axios')
 const mobile = inject('mobile')
 const message = useMessage()
-const endpoint = `${import.meta.env.VITE_HTTP_URL || ''}/sss-copilot`
+const kind = 'sss'
+const endpoint = copilotLibraryUrl(kind)
 const library = ref([])
 const selected = ref(null)
-const code = ref('')
 const loading = ref(false)
 const options = computed(() =>
   library.value.map((item) => ({ label: `${item.stage_name} · ${item.title}`, value: item.id }))
@@ -34,7 +35,7 @@ onMounted(refresh)
 
 function add_script(id) {
   if (!id || sss.value.scripts.length >= 32) return
-  sss.value.scripts.push({ id, type: 1, ec: 1, times: 1 })
+  appendCopilotScript(configs, kind, { id })
 }
 async function upload_blob(blob) {
   const form = new FormData()
@@ -42,7 +43,7 @@ async function upload_blob(blob) {
   const { data } = await axios.post(endpoint, form)
   await refresh()
   selected.value = data.id
-  add_script(data.id)
+  appendCopilotScript(configs, kind, data)
   message.success('作业已导入并加入队列')
 }
 async function upload({ file, onFinish, onError }) {
@@ -57,31 +58,16 @@ async function upload({ file, onFinish, onError }) {
     loading.value = false
   }
 }
-async function download() {
-  if (loading.value) return
-  loading.value = true
-  try {
-    const scripts = await downloadCopilotScripts(
-      axios,
-      code.value,
-      endpoint,
-      32 - sss.value.scripts.length
-    )
-    await refresh()
-    if (sss.value.scripts.length + scripts.length > 32) {
-      throw new Error('队列已变更且剩余容量不足。队列未改变，已入库作业可从已有作业中选择')
-    }
-    sss.value.scripts.push(...scripts.map(({ id }) => ({ id, type: 1, ec: 1, times: 1 })))
-    selected.value = scripts.at(-1).id
-    code.value = ''
-    message.success(`已导入 ${scripts.length} 份作业并加入队列`)
-  } catch (error) {
-    if (error.refreshLibrary) await refresh()
-    message.error(error.response?.data?.message || error.message || '作业下载失败，请检查网络代理')
-  } finally {
-    loading.value = false
-  }
-}
+const { code, download, failures } = useCopilotDownload({
+  axios,
+  configs,
+  kind,
+  loading,
+  selected,
+  library,
+  refresh,
+  message
+})
 async function delete_script() {
   if (!selected.value || selected_in_queue.value) return
   try {
@@ -145,10 +131,17 @@ async function restart_queue() {
             <n-button :disabled="loading">选择文件</n-button>
           </n-upload>
         </n-flex>
-        <n-text depth="3"
-          >仅支持保全派驻作业，也可使用 prts://s 开头的作业集按顺序追加队列。单个文件最多 1
-          MB；请提前在游戏中准备编队。</n-text
-        >
+        <n-text depth="3">
+          支持保全派驻作业。导入作业集（如
+          s123）时，普通作业和保全作业按顺序加入各自队列。单个文件最多 1
+          MB。请提前在游戏中准备编队。
+        </n-text>
+        <details v-if="failures.length">
+          <summary>导入结果 · {{ failures.length }} 份作业未加入队列</summary>
+          <ul>
+            <li v-for="failure in failures" :key="failure">{{ failure }}</li>
+          </ul>
+        </details>
       </n-flex>
     </n-form-item>
     <n-form-item label="已有作业">
