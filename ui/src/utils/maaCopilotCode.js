@@ -64,6 +64,7 @@ const paradoxLibrary = { imports: ref(0), deletions: new Set() }
 export function useCopilotLibrary({ axios, configs, kind, message, store }) {
   const library = ref([])
   const selected = ref(null)
+  const rosterReports = ref([])
   const backupWarning = ref('')
   const activity = kind === 'paradox' ? paradoxLibrary : mixedLibrary
   const endpoint = copilotLibraryUrl(kind)
@@ -87,6 +88,8 @@ export function useCopilotLibrary({ axios, configs, kind, message, store }) {
     }
   }
   async function beginImport() {
+    rosterReports.value = []
+    failures.value = []
     activity.imports.value++
     if (activity.deletions.size) await Promise.allSettled(activity.deletions)
   }
@@ -123,6 +126,12 @@ export function useCopilotLibrary({ axios, configs, kind, message, store }) {
       try {
         await store.flush_config_saves()
         if (store.autosave_paused) throw new Error('配置保存已暂停')
+        const ordinary = imports.get('copilot') || []
+        const reports = new Map()
+        for (const { script } of ordinary) {
+          if (script.roster_check) reports.set(script.id, script)
+        }
+        rosterReports.value = [...reports.values()]
         return
       } catch (error) {
         const data = error.response?.data
@@ -199,7 +208,6 @@ export function useCopilotLibrary({ axios, configs, kind, message, store }) {
   async function download() {
     if (loading.value) return
     loading.value = true
-    failures.value = []
     try {
       await beginImport()
       const target = parseCopilotCode(code.value)
@@ -268,6 +276,7 @@ export function useCopilotLibrary({ axios, configs, kind, message, store }) {
     delete_script,
     download,
     failures,
+    rosterReports,
     library,
     loading,
     refresh,

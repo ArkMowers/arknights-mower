@@ -3489,32 +3489,48 @@ def maa_copilot_library(library):
     from arknights_mower.utils.maa_copilot import (
         MAX_SCRIPT_BYTES,
         list_scripts,
-        store_script,
+        parse_script,
+        store_parsed_script,
     )
 
-    with backup_lock:
-        try:
-            sss = library == "sss-copilot"
-            paradox = library == "maa-paradox"
-            if request.method in ("GET", "HEAD"):
+    sss = library == "sss-copilot"
+    paradox = library == "maa-paradox"
+    try:
+        if request.method in ("GET", "HEAD"):
+            with backup_lock:
                 result = {"scripts": list_scripts(sss=sss, paradox=paradox)}
                 warning = backup_entry_warning()
                 if warning:
                     result["backup_warning"] = warning
                 return result
-            upload = request.files.get("copilot")
-            if upload is None:
-                return {"message": "没有收到作业文件"}, 400
-            return store_script(
-                upload.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
-            )
-        except (ValueError, TypeError, RecursionError):
-            label = "保全作业" if sss else "作业"
-            return {
-                "message": f"{label}格式无效或存储已满，请检查文件并清理不再使用的作业"
-            }, 400
-        except OSError:
-            return {"message": "作业读写失败，请检查目录权限"}, 500
+        upload = request.files.get("copilot")
+        if upload is None:
+            return {"message": "没有收到作业文件"}, 400
+        data = parse_script(upload.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox)
+        with backup_lock:
+            result = store_parsed_script(data, sss=sss, paradox=paradox)
+    except (ValueError, TypeError, RecursionError):
+        label = "保全作业" if sss else "作业"
+        return {
+            "message": f"{label}格式无效或存储已满，请检查文件并清理不再使用的作业"
+        }, 400
+    except OSError:
+        return {"message": "作业读写失败，请检查目录权限"}, 500
+
+    if not (sss or paradox):
+        try:
+            from arknights_mower.utils.maa_copilot_roster import check_copilot_roster
+
+            result["roster_check"] = check_copilot_roster(data)
+        except Exception:
+            logger.exception("普通作业已导入，练度检查未完成")
+            result["roster_check"] = {
+                "status": "unknown",
+                "message": "暂时无法核对干员练度，作业已导入。",
+                "gaps": [],
+                "can_borrow": False,
+            }
+    return result
 
 
 @app.delete(COPILOT_LIBRARY_ROUTE + "/<script_id>")

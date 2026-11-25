@@ -6,6 +6,7 @@ import { useMessage, useThemeVars } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 import { appendCopilotScript, useCopilotLibrary } from '@/utils/maaCopilotCode'
 import StageProgressButton from './StageProgressButton.vue'
+import CopilotRosterReport from './CopilotRosterReport.vue'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const props = defineProps({ paradox: { type: Boolean, default: false } })
@@ -23,6 +24,7 @@ const {
   delete_script,
   download,
   failures,
+  rosterReports,
   library,
   loading,
   refresh,
@@ -150,6 +152,11 @@ function add_operator() {
           1 MB。
         </n-text>
         <n-alert v-if="backupWarning" type="warning">{{ backupWarning }}</n-alert>
+        <CopilotRosterReport
+          v-if="rosterReports.length"
+          :scripts="rosterReports"
+          :settings="configs.copilot.value"
+        />
         <details v-if="failures.length">
           <summary>导入结果 · {{ failures.length }} 份作业未加入队列</summary>
           <ul>
@@ -283,17 +290,11 @@ function add_operator() {
             </label>
           </div>
           <n-flex :size="[20, 8]">
-            <n-checkbox v-model:checked="copilot.operbox_assist">使用干员练度辅助编队</n-checkbox>
             <n-checkbox v-model:checked="copilot.add_trust">空位补充低信赖干员</n-checkbox>
             <n-checkbox v-model:checked="copilot.ignore_requirements"
               >忽略可跳过的干员练度要求</n-checkbox
             >
           </n-flex>
-          <n-text v-if="copilot.operbox_assist" depth="3">
-            练度辅助需要 MAA v6.19.0
-            或更新版本。请先在「养成规划」中刷新当前账号的森空岛干员练度。MAA
-            会按作业要求选择干员，无法配齐时停止执行。
-          </n-text>
           <div class="formation-field">
             <span>补充干员</span>
             <div

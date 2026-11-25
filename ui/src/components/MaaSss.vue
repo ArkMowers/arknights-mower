@@ -5,6 +5,7 @@ import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 import { appendCopilotScript, useCopilotLibrary } from '@/utils/maaCopilotCode'
+import CopilotRosterReport from './CopilotRosterReport.vue'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const store = useConfigStore()
@@ -21,6 +22,7 @@ const {
   delete_script,
   download,
   failures,
+  rosterReports,
   library,
   loading,
   refresh,
@@ -93,6 +95,11 @@ async function restart_queue() {
           MB。请提前在游戏中准备编队。
         </n-text>
         <n-alert v-if="backupWarning" type="warning">{{ backupWarning }}</n-alert>
+        <CopilotRosterReport
+          v-if="rosterReports.length"
+          :scripts="rosterReports"
+          :settings="configs.copilot.value"
+        />
         <details v-if="failures.length">
           <summary>导入结果 · {{ failures.length }} 份作业未加入队列</summary>
           <ul>

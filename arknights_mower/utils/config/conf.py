@@ -200,7 +200,6 @@ class CopilotConf(ConfModel):
     run_id: str = Field(default="", max_length=64)
     scripts: list[CopilotScriptConf] = Field(default_factory=list)
     formation: bool = False
-    operbox_assist: bool = False
     formation_index: int = Field(default=0, ge=0, le=4)
     use_sanity_potion: bool = False
     add_trust: bool = False

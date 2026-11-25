@@ -3,6 +3,7 @@ import { createSSRApp, effectScope, ref, watch } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import Component from './MaaCopilot.vue'
 import Sss from './MaaSss.vue'
+import RosterReport from './CopilotRosterReport.vue'
 
 const state = vi.hoisted(() => ({
   config: {},
@@ -153,14 +154,6 @@ describe('ordinary Copilot library and queue', () => {
     expect(ordinary).toContain('队列统一设置')
     expect(ordinary).not.toContain('AI 助手与模型服务')
   })
-  it('offers roster assistance only for ordinary automatic formation', async () => {
-    state.config.paradox = ref({ scripts: [] })
-    const render = (props = {}) => renderToString(createSSRApp(Component, props))
-    expect(await render()).not.toContain('使用干员练度辅助编队')
-    state.config.copilot.value.formation = true
-    expect(await render()).toContain('使用干员练度辅助编队')
-    expect(await render({ paradox: true })).not.toContain('使用干员练度辅助编队')
-  })
   it('shares one formation policy across ordinary entries and shows a name only for designated support', async () => {
     state.config.copilot.value.scripts = [{ id: first.id }, { id: first.id, is_raid: true }]
     state.config.paradox = ref({ scripts: [{ id: second.id }] })
@@ -257,6 +250,72 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.error).not.toHaveBeenCalled()
     expect(component.code.value).toBe('')
     expect(component.loading.value).toBe(false)
+  })
+  it('imports scripts with roster gaps and only describes the current support settings', async () => {
+    const settings = state.config.copilot.value
+    const report = {
+      status: 'shortfall',
+      gaps: [
+        { slot: '塔露拉', candidates: [{ name: '塔露拉', reasons: ['精二 30 级，要求 60 级'] }] }
+      ],
+      can_borrow: true
+    }
+    state.client.post.mockResolvedValue({ data: { ...first, roster_check: report } })
+    const onFinish = vi.fn()
+    await component.upload({ file: { file: new Blob(['{}']) }, onFinish, onError: vi.fn() })
+    expect(onFinish).toHaveBeenCalledOnce()
+    expect(settings.scripts).toHaveLength(1)
+    expect(settings.formation).toBeFalsy()
+    expect(settings.support_unit_usage).toBeFalsy()
+    const render = () =>
+      renderToString(
+        createSSRApp(RosterReport, { scripts: component.rosterReports.value, settings })
+      )
+    expect(await render()).toContain('塔露拉（精二 30 级，要求 60 级）')
+    expect(await render()).toContain('开启自动编队，并将「助战方式」设为「只补一名缺失干员」')
+    expect(settings.formation).toBeFalsy()
+    expect(settings.support_unit_usage).toBeFalsy()
+    settings.formation = true
+    expect(await render()).toContain('中将「助战方式」设为「只补一名缺失干员」')
+    settings.support_unit_usage = 2
+    expect(await render()).toContain('普通队列已允许借用助战')
+    settings.formation = false
+    expect(await render()).toContain('普通队列已设置助战方式')
+    expect(settings).toMatchObject({ formation: false, support_unit_usage: 2 })
+  })
+  it('deduplicates roster checks for repeated set members and replaces them on the next import', async () => {
+    mock_set(['456', '456', '789'])
+    const shortfall = {
+      status: 'shortfall',
+      can_borrow: false,
+      gaps: [
+        { slot: '治疗', candidates: [{ name: '闪灵', reasons: ['未持有'] }] },
+        { slot: '输出', candidates: [{ name: '遥', reasons: ['未持有'] }] }
+      ]
+    }
+    const unknown = { status: 'unknown', message: '请在「养成规划」刷新练度', gaps: [] }
+    state.client.post
+      .mockResolvedValueOnce({ data: { ...first, roster_check: shortfall } })
+      .mockResolvedValueOnce({ data: { ...second, roster_check: unknown } })
+    component.code.value = 's123'
+    await component.download()
+    expect(state.config.copilot.value.scripts).toHaveLength(3)
+    const scripts = component.rosterReports.value
+    expect(scripts.map(({ id }) => id)).toEqual([first.id, second.id])
+    const render = () =>
+      renderToString(createSSRApp(RosterReport, { scripts, settings: state.config.copilot.value }))
+    const html = await render()
+    expect(html).toContain('2 个编队位置')
+    expect(html).toContain('请在「养成规划」刷新练度')
+    expect(html).not.toContain('只补一名缺失干员')
+    state.client.post.mockResolvedValueOnce({
+      data: { ...first, roster_check: { status: 'ready', gaps: [] } }
+    })
+    component.code.value = '456'
+    await component.download()
+    expect(component.rosterReports.value.map(({ roster_check }) => roster_check.status)).toEqual([
+      'ready'
+    ])
   })
   it('expands each downloaded member in place and preserves existing raid selections', async () => {
     mock_set()
