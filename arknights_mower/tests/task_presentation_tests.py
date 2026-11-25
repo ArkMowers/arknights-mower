@@ -940,7 +940,9 @@ def test_idle_wakes_for_next_window_without_changing_queue(
     with caplog.at_level(logging.INFO):
         instance.rest_until_next_task()
     seconds = (opening - now).total_seconds()
-    instance._idle_sleep.assert_called_once_with(seconds, round_end=True)
+    instance._idle_sleep.assert_called_once_with(
+        seconds, round_end=True, next_task_time=instance.tasks[0].time
+    )
     assert [(id(t), t.time) for t in instance.tasks] == tasks
     assert "11:00:00，随后进入大型任务执行时段" in caplog.text
 

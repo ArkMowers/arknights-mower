@@ -145,6 +145,7 @@ from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import log_parent_context, logger
 from arknights_mower.utils.long_task_windows import (
     MAA_LONG_TASK_TYPES,
+    automatic_long_tasks_enabled,
     long_task_schedule,
     long_task_window,
 )
@@ -24951,7 +24952,13 @@ class BaseSchedulerSolver(
         raise MowerExit
 
     def _idle_sleep(
-        self, remaining_time, allow_wakeup=True, *, round_end=False, cancelled=None
+        self,
+        remaining_time,
+        allow_wakeup=True,
+        *,
+        round_end=False,
+        cancelled=None,
+        next_task_time=None,
     ):
         """等待任务并统一维护 `sleeping` 与连续场景观测边界。
 
@@ -24974,7 +24981,16 @@ class BaseSchedulerSolver(
         self.sleeping = True
         try:
             end_time = datetime.now() + timedelta(seconds=remaining_time)
-            while datetime.now() < end_time:
+            while True:
+                if datetime.now() >= end_time:
+                    if next_task_time is None or automatic_long_tasks_enabled(
+                        config.conf
+                    ):
+                        break
+                    # 原大型任务时段已停用，继续等到队列中的任务到期。
+                    end_time = next_task_time
+                    next_task_time = None
+                    continue
                 if config.software_update_shutdown_requested():
                     config.stop_mower.set()
                     raise MowerExit
@@ -25103,8 +25119,8 @@ class BaseSchedulerSolver(
         first = self.find_next_task()
         now = datetime.now()
         if first is None or (
-            config.conf.maa_rg_enable
-            and opening_before_cleanup is not None
+            opening_before_cleanup is not None
+            and automatic_long_tasks_enabled(config.conf)
             and opening_before_cleanup <= now
         ):
             self._stop_after_round()
@@ -25184,7 +25200,9 @@ class BaseSchedulerSolver(
         )
         if window_opens_first:
             remaining_time = max(0, (wake_at - datetime.now()).total_seconds())
-        self._idle_sleep(remaining_time, round_end=True)
+            self._idle_sleep(remaining_time, round_end=True, next_task_time=first.time)
+        else:
+            self._idle_sleep(remaining_time, round_end=True)
         if config.maintenance_recheck.is_set():
             return
         self.check_current_focus()

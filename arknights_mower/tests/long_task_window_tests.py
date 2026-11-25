@@ -235,7 +235,6 @@ def test_invalid_weekday_is_rejected_before_saving(days):
                 {"start": "13:00", "end": "16:00", "weekdays": [2]}
             ]
         },
-        {"maa_long_task_weekly_windows": []},
     ],
 )
 def test_editing_enabled_windows_wakes_idle_scheduler_only_after_changed_save(
@@ -256,4 +255,32 @@ def test_editing_enabled_windows_wakes_idle_scheduler_only_after_changed_save(
     monkeypatch.setattr(workshop_config, "_wake_scheduler_if_running", wake)
     workshop_config.save_user_config(edit)
     workshop_config.save_user_config(edit)
+    wake.assert_called_once()
+
+
+def test_window_edits_stay_quiet_until_automatic_execution_is_enabled(monkeypatch):
+    from unittest.mock import Mock
+
+    from arknights_mower.utils import workshop_config
+
+    monkeypatch.setattr(
+        workshop_config.config,
+        "conf",
+        Conf(maa_rg_enable=0, workshop_preset_migrated=True),
+    )
+    monkeypatch.setattr(workshop_config.config, "save_conf", Mock())
+    wake = Mock()
+    monkeypatch.setattr(workshop_config, "_wake_scheduler_if_running", wake)
+    workshop_config.save_user_config(
+        {"maa_long_task_type": "sss", "maa_long_task_weekly_windows": []}
+    )
+    workshop_config.save_user_config({"maa_rg_enable": 1})
+    wake.assert_not_called()
+    workshop_config.save_user_config(
+        {
+            "maa_long_task_weekly_windows": [
+                {"start": "11:00", "end": "12:00", "weekdays": [0]}
+            ]
+        }
+    )
     wake.assert_called_once()

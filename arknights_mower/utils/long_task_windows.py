@@ -85,6 +85,13 @@ def validate_long_task_windows(weekly, default):
         )
 
 
+def automatic_long_tasks_enabled(conf):
+    weekly = getattr(conf, "maa_long_task_weekly_windows", None)
+    return conf.maa_rg_enable == 1 and (
+        weekly is None or any(window.weekdays for window in weekly)
+    )
+
+
 def long_task_schedule(conf, now):
     """Return the active automatic task type, cutoff and next distinct opening."""
     default = getattr(conf, "maa_long_task_type", None)

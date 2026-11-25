@@ -156,6 +156,65 @@ def production_idle_scheduler(idle_scheduler, monkeypatch):
     return idle_scheduler
 
 
+@pytest.mark.parametrize(
+    "edit",
+    [
+        {"maa_rg_enable": 0},
+        {"maa_long_task_weekly_windows": []},
+        {
+            "maa_long_task_weekly_windows": [
+                {"start": "11:00", "end": "12:00", "weekdays": []}
+            ]
+        },
+    ],
+)
+@pytest.mark.parametrize("manual_wake", [False, True])
+def test_disabling_long_tasks_during_rest_skips_old_opening(
+    production_idle_scheduler, monkeypatch, edit, manual_wake
+):
+    from arknights_mower.utils.workshop_config import save_user_config
+
+    solver, clock = production_idle_scheduler.solver, production_idle_scheduler.clock
+    clock.current = clock.now().replace(hour=10, minute=59, second=58, microsecond=0)
+    start = clock.now()
+    task_time = start + timedelta(seconds=8)
+    solver.tasks[0].time = task_time
+    solver.tasks[1].time = task_time + timedelta(hours=1)
+    config.conf.maa_rg_enable = 1
+    config.conf.maa_rg_sleep_max = "11:00"
+    config.conf.maa_rg_sleep_min = "12:00"
+    config.conf.workshop_preset_migrated = True
+    config.conf.close_simulator_when_idle = True
+    solver._simulator_closed_for_idle = True
+    monkeypatch.setattr(main, "base_scheduler", solver)
+    monkeypatch.setattr(config, "save_conf", MagicMock())
+    resumed = []
+
+    def restart_simulator(*, stop, start):
+        assert start and not stop
+        resumed.append(clock.now())
+        return True
+
+    monkeypatch.setattr(base, "restart_simulator", restart_simulator)
+    solver.check_current_focus = MagicMock()
+
+    def advance(seconds):
+        clock.current += timedelta(seconds=seconds)
+        if clock.now() == start + timedelta(seconds=1):
+            save_user_config(edit)
+        if manual_wake and clock.now() == start + timedelta(seconds=4):
+            solver.tasks.append(
+                SchedulerTask(clock.now(), task_type=TaskTypes.FURNITURE)
+            )
+            config.wake_scheduler.set()
+
+    monkeypatch.setattr(base, "csleep", advance)
+    solver.rest_until_next_task()
+    assert resumed == [start + timedelta(seconds=4) if manual_wake else task_time]
+    assert solver.tasks[0].time == task_time
+    assert not config.wake_scheduler.is_set()
+
+
 @pytest.mark.parametrize("request_at", [0, 1, 3])
 def test_automatic_update_stops_at_idle_without_waking_or_losing_tasks(
     production_idle_scheduler, monkeypatch, tmp_path, request_at

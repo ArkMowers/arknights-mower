@@ -1,6 +1,7 @@
 """The editable manual table survives scans, takeovers and concurrent saves."""
 
 import json
+from threading import Event
 from unittest.mock import MagicMock
 
 import pytest
@@ -348,6 +349,59 @@ def test_conf_read_preserves_legacy_long_task_times_for_weekly_editor(
     assert data["maa_long_task_weekly_windows"] is None
     assert (conf.maa_rg_sleep_max, conf.maa_rg_sleep_min) == (legacy_start, "11:0")
     save.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "switch", ["enable_mastery", "maa_growth_enable", "maa_rg_enable"]
+)
+def test_task_switch_wakes_only_when_enabled(next_skill, monkeypatch, switch):
+    import server
+    from arknights_mower import __main__ as mower_main
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    monkeypatch.setattr(config, "wake_scheduler", Event())
+    monkeypatch.setattr(record, "workshop_inventory_changed", Event())
+    setattr(config.conf, switch, False)
+    client = server.app.test_client()
+    for enabled, wake in [(True, True), (True, False), (False, False), (False, False)]:
+        changed = getattr(config.conf, switch) != enabled
+        response = client.patch("/conf", json={switch: enabled})
+        assert response.status_code == 200
+        assert getattr(config.conf, switch) == enabled
+        assert config.wake_scheduler.is_set() is wake
+        assert record.workshop_inventory_changed.is_set() is (
+            changed and switch != "maa_rg_enable"
+        )
+        config.wake_scheduler.clear()
+        record.workshop_inventory_changed.clear()
+
+
+def test_growth_preferences_saved_with_crafting_off_do_not_wake(
+    next_skill, monkeypatch
+):
+    from arknights_mower import __main__ as mower_main
+
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    monkeypatch.setattr(config, "wake_scheduler", Event())
+    config.conf.enable_mastery = False
+    state.save_user_config(
+        {"enable_crafting": False, "enable_mastery": True, "maa_growth_enable": True}
+    )
+    assert config.conf.enable_mastery and config.conf.maa_growth_enable
+    assert not config.conf.mastery_enabled and not config.conf.maa_growth_enabled
+    assert not config.wake_scheduler.is_set()
+
+
+def test_disabling_one_task_preserves_other_wake_requests(next_skill, monkeypatch):
+    from arknights_mower import __main__ as mower_main
+
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    monkeypatch.setattr(config, "wake_scheduler", Event())
+    state.save_user_config({"enable_mastery": False, "maa_growth_enable": True})
+    assert config.wake_scheduler.is_set()
+    state.save_user_config({"maa_growth_enable": False})
+    assert config.wake_scheduler.is_set()
 
 
 @pytest.mark.parametrize("method", ["POST", "PATCH"])
