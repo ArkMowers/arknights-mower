@@ -62,6 +62,46 @@ def archive(files, tmp_files=None):
     return stream.getvalue()
 
 
+def test_backup_entry_warning_counts_only_exported_files(tmp_path, monkeypatch):
+    root = tmp_path / "config"
+    data = tmp_path / "tmp"
+    monkeypatch.setattr(config, "conf_path", root / "conf.yml")
+    monkeypatch.setattr(backup, "get_path", lambda _: data)
+    monkeypatch.setattr(backup, "MAX_ARCHIVE_ENTRIES", 10)
+    assert backup.backup_entry_warning() is None
+
+    root.mkdir()
+    data.mkdir()
+    (root / "state.json").touch()
+    (root / "growth_plan.json").touch()
+    (data / "growth_plan.json").touch()
+    (data / "unrelated.json").touch()
+    (data / "data.db").touch()
+    (data / "data.db-wal").touch()
+    library = root / "copilots"
+    library.mkdir()
+    for index in range(6):
+        (library / f"{index}.json").touch()
+
+    with patch.object(
+        Path, "open", side_effect=AssertionError("unexpected content read")
+    ):
+        assert backup.backup_entry_warning() is None
+        for count in (9, 10, 11):
+            (library / f"{count}.json").touch()
+            warning = backup.backup_entry_warning()
+            assert f"共需备份 {count} 个文件" in warning
+            assert "备份上限为 10 个" in warning
+            if count > 10:
+                assert "导出备份、切换档案和恢复备份都会失败" in warning
+            else:
+                assert "导出和恢复备份" in warning
+                assert "切换档案还需预留一个文件" in warning
+
+    (root / "link").symlink_to(data)
+    assert backup.backup_entry_warning() is None
+
+
 @pytest.mark.parametrize("managed", [False, True])
 def test_import_keeps_managed_device_settings_but_restores_other_configuration(
     storage, monkeypatch, managed

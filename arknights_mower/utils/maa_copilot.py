@@ -13,7 +13,6 @@ from arknights_mower.utils.path import get_path, resolve_config_path
 from arknights_mower.utils.update_runtime import read_json, write_json
 
 MAX_SCRIPT_BYTES = 1024 * 1024
-MAX_SCRIPTS = 64
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
 
@@ -138,11 +137,8 @@ def list_scripts(*, sss=False, paradox=False):
     root = script_root(sss=sss, paradox=paradox)
     if root.is_symlink():
         raise ValueError("作业目录不能使用符号链接")
-    paths = sorted(root.glob("*.json"))
-    if len(paths) > MAX_SCRIPTS:
-        raise ValueError("作业文件超过 64 个，请整理作业目录")
     result = []
-    for path in paths:
+    for path in sorted(root.glob("*.json")):
         script_id = path.stem
         path = script_path(script_id, sss=sss, paradox=paradox)
         with path.open("rb") as stream:
@@ -179,12 +175,10 @@ def store_script(raw, *, sss=False, paradox=False):
             with old_path.open("rb") as stream:
                 if stream.read(MAX_SCRIPT_BYTES + 1) == original:
                     return script_info(old_id, data)
-    files = list(path.parent.glob("*.json"))
-    if not path.exists() and (
-        len(files) >= MAX_SCRIPTS
-        or sum(item.stat().st_size for item in files) + len(content) > MAX_TOTAL_BYTES
-    ):
-        raise ValueError("作业存储已满，请先删除不再使用的作业")
+    if not path.exists():
+        used_bytes = sum(item.stat().st_size for item in path.parent.glob("*.json"))
+        if used_bytes + len(content) > MAX_TOTAL_BYTES:
+            raise ValueError("作业存储已满，请先删除不再使用的作业")
     write_json(path, data)
     return script_info(script_id, data, sss=sss, paradox=paradox)
 

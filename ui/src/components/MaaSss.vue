@@ -1,10 +1,10 @@
 <script setup>
 import { publicAsset } from '@/utils/publicAsset'
-import { computed, inject, onMounted, ref } from 'vue'
+import { computed, inject, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
-import { appendCopilotScript, copilotLibraryUrl, useCopilotLibrary } from '@/utils/maaCopilotCode'
+import { appendCopilotScript, useCopilotLibrary } from '@/utils/maaCopilotCode'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const store = useConfigStore()
@@ -14,35 +14,27 @@ const axios = inject('axios')
 const mobile = inject('mobile')
 const message = useMessage()
 const kind = 'sss'
-const endpoint = copilotLibraryUrl(kind)
-const library = ref([])
-const selected = ref(null)
+const {
+  backupWarning,
+  code,
+  canDelete,
+  delete_script,
+  download,
+  failures,
+  library,
+  loading,
+  refresh,
+  selected,
+  upload
+} = useCopilotLibrary({ axios, configs, kind, message, store })
+onMounted(refresh)
 const options = computed(() =>
   library.value.map((item) => ({ label: `${item.stage_name} · ${item.title}`, value: item.id }))
 )
-async function refresh() {
-  try {
-    library.value = (await axios.get(endpoint)).data.scripts
-  } catch (error) {
-    message.error(error.response?.data?.message || '读取作业失败')
-  }
-}
-onMounted(refresh)
-
 function add_script(id) {
   if (!id) return
   appendCopilotScript(configs, kind, { id })
 }
-const { code, canDelete, delete_script, download, failures, loading, upload } = useCopilotLibrary({
-  axios,
-  configs,
-  kind,
-  selected,
-  library,
-  refresh,
-  message,
-  store
-})
 function move(index, offset) {
   const scripts = [...sss.value.scripts]
   const target = index + offset
@@ -100,6 +92,7 @@ async function restart_queue() {
           s123）时，普通作业和保全作业按顺序加入各自队列。单个文件最多 1
           MB。请提前在游戏中准备编队。
         </n-text>
+        <n-alert v-if="backupWarning" type="warning">{{ backupWarning }}</n-alert>
         <details v-if="failures.length">
           <summary>导入结果 · {{ failures.length }} 份作业未加入队列</summary>
           <ul>

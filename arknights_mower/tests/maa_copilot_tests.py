@@ -150,7 +150,7 @@ def test_oversized_and_exhausted_storage_preserve_existing_script(files, monkeyp
     before = path.read_bytes()
     with pytest.raises(ValueError):
         library.store_script(b" " * (library.MAX_SCRIPT_BYTES + 1))
-    monkeypatch.setattr(library, "MAX_SCRIPTS", 1)
+    monkeypatch.setattr(library, "MAX_TOTAL_BYTES", len(before))
     with pytest.raises(ValueError):
         upload({**SCRIPT, "stage_name": "CE-6"})
     assert path.read_bytes() == before
@@ -214,7 +214,12 @@ def client(monkeypatch, files):
 def test_every_library_method_rejects_unauthenticated_work(
     client, monkeypatch, method, path, token
 ):
+    from arknights_mower.utils import config_backup
+
     calls = []
+    monkeypatch.setattr(
+        config_backup, "backup_entry_warning", lambda: calls.append("backup")
+    )
     for name in ("get_path", "list_scripts", "store_script", "script_path"):
         monkeypatch.setattr(library, name, lambda *a: calls.append(a))
     response = client.open(
@@ -222,6 +227,64 @@ def test_every_library_method_rejects_unauthenticated_work(
     )
     assert response.status_code == 403
     assert calls == []
+
+
+@pytest.mark.parametrize(
+    "endpoint,script",
+    [
+        ("/maa-copilot", SCRIPT),
+        ("/maa-paradox", {"stage_name": "mem_test_1", "actions": []}),
+        (
+            "/sss-copilot",
+            {
+                "type": "SSS",
+                "stage_name": "SSS",
+                "tool_men": {},
+                "stages": [
+                    {
+                        "stage_name": "SSS-1",
+                        "draw_as_possible": True,
+                        "strategies": [],
+                        "actions": [],
+                    }
+                ],
+            },
+        ),
+    ],
+)
+def test_library_imports_and_lists_more_than_64_distinct_files(
+    client, monkeypatch, tmp_path, endpoint, script
+):
+    from arknights_mower.utils import config_backup
+
+    def instance_path(name):
+        return tmp_path / name.removeprefix("@app/")
+
+    monkeypatch.setattr(library, "get_path", instance_path)
+    monkeypatch.setattr(config_backup, "get_path", instance_path)
+    monkeypatch.setattr(
+        config_backup.config, "conf_path", instance_path("@app/config/conf.yml")
+    )
+    monkeypatch.setattr(config_backup, "MAX_ARCHIVE_ENTRIES", 70)
+    warning = MagicMock(wraps=config_backup.backup_entry_warning)
+    monkeypatch.setattr(config_backup, "backup_entry_warning", warning)
+    headers = {"token": "copilot-test-token"}
+    ids = set()
+    for index in range(65):
+        raw = json.dumps({**script, "doc": {"title": str(index)}}).encode()
+        response = client.post(
+            endpoint,
+            headers=headers,
+            data={"copilot": (io.BytesIO(raw), "script.json")},
+        )
+        assert response.status_code == 200
+        ids.add(response.get_json()["id"])
+    assert len(ids) == 65
+    warning.assert_not_called()
+    response = client.get(endpoint, headers=headers)
+    assert response.status_code == 200
+    assert "共需备份 65 个文件" in response.get_json()["backup_warning"]
+    assert [entry["id"] for entry in response.get_json()["scripts"]] == sorted(ids)
 
 
 def test_authorized_upload_list_and_delete_and_selected_guard(

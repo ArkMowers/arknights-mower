@@ -74,7 +74,7 @@ that incomplete reclamation returns an error rather than a success message.
 The dialog saves an integer backup limit from 1 to 1024 MiB, defaulting to 16 MiB.
 The limit covers compressed ZIP bytes, total expanded configuration and persistent
 data, SQLite snapshots, profile combination and pre-import recovery snapshots.
-The existing entry-count and ten-second SQLite backup bounds remain independent.
+A complete backup can contain up to 1024 files across configuration and persistent data, including files in all three Copilot libraries. Profile switching and backup restoration also use this budget when saving a recovery copy of the current instance. SQLite backup has a separate ten-second deadline.
 Increasing the limit permits larger in-memory snapshots. Reducing it does not
 invalidate the saved-profile registry; operating on an oversized snapshot requires
 raising the limit again. Plan-only upload requests retain their separate bound.
