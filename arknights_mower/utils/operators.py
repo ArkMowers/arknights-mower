@@ -2187,6 +2187,15 @@ class Operators:
                 self.time_stamp = None
             if not preserve_depletion_rate:
                 agent.depletion_rate = 0
+        if (
+            agent.is_working()
+            and current_room
+            and not to_dorm
+            and (agent.current_room, agent.current_index)
+            != (current_room, current_index)
+            and not preserve_depletion_rate
+        ):
+            agent.depletion_rate = 0
         if from_dorm:
             idx, dorm = self.get_dorm_by_name(name, group_transitions=group_transitions)
             if dorm and dorm.name == name:
@@ -2425,6 +2434,8 @@ class Operators:
                 )
             if hasattr(exist, "_projected_mood_resting"):
                 operator._projected_mood_resting = exist._projected_mood_resting
+            if getattr(exist, "_projected_work_position_changed", False):
+                operator._projected_work_position_changed = True
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
@@ -2832,6 +2843,7 @@ class Operators:
                         op.rest_mood_release_limit = None
             for op in self.operators.values():
                 if previous_positions[op.name] != (op.current_room, op.current_index):
+                    op._projected_work_position_changed = True
                     op.clear_dorm_recovery()
                     op.dorm_position_version = (
                         getattr(op, "dorm_position_version", 0) + 1

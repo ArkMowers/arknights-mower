@@ -75,6 +75,30 @@ it.each([
   expect(task.plan).toEqual({})
 })
 
+it.each([false, true])(
+  'routes three workplaces with an order read pending: %s',
+  (hasRunOrderRooms) => {
+    const task = new MowerTask({
+      type: T.SHIFT_ON,
+      plan: { room_1_1: ['A'], factory: ['B'], room_2_2: ['C'] }
+    })
+    const queue = new MowerTaskQueue()
+    queue.tasks = [task]
+    const visited = [
+      ...executeMowerTaskArrangementSteps(task, queue, {
+        alpha: true,
+        hasRunOrderRooms,
+        backup: () => ({ changed: false, generated: [] }),
+        arrangeRoom() {},
+        metadata() {}
+      })
+    ].map((step) => step.room)
+    expect(visited).toEqual(
+      hasRunOrderRooms ? ['room_1_1', 'factory', 'room_2_2'] : ['room_1_1', 'room_2_2', 'factory']
+    )
+  }
+)
+
 it('refills the source through the real room executor before transferring its only occupant', () => {
   const positions = { A: 'room_2_3', N: 'dormitory_1' }
   const task = new MowerTask({

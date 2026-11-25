@@ -388,13 +388,13 @@ def _needs_map_drag(previous: str, room: str) -> bool:
 
 
 def _shortest_map_route(
-    rooms: list[str], dependencies: dict[str, set[str]]
+    rooms: list[str], dependencies: dict[str, set[str]], *, keep_last: bool
 ) -> list[str]:
-    """固定两端，在满足原岗位依赖的访问顺序中找出拖图最少的一条。"""
+    """从首个设施出发，在满足原岗位和末房要求的路线中选择拖图最少的一条。"""
     original = sum(_needs_map_drag(a, b) for a, b in zip(rooms, rooms[1:]))
     if not original:
         return rooms
-    middle = rooms[1:-1]
+    middle = rooms[1:-1] if keep_last else rooms[1:]
     bits = {room: 1 << i for i, room in enumerate(middle)}
     required = {
         room: sum(bits.get(source, 0) for source in dependencies[room])
@@ -408,7 +408,7 @@ def _shortest_map_route(
             for i, target in enumerate(rooms[1:])
             if _needs_map_drag(room, target)
         )
-        for room in rooms[:-1]
+        for room in rooms
     }
 
     @cache
@@ -428,12 +428,12 @@ def _shortest_map_route(
     for budget in range(original):
         path = visit(end_bit - 1, drags[rooms[0]], budget)
         if path is not None:
-            return [rooms[0], *path, rooms[-1]]
+            return [rooms[0], *path, *(rooms[-1:] if keep_last else ())]
     return rooms
 
 
 def _arrangement_room_order(
-    plan: dict, op_data: Operators, *, prefer_visible: bool = True
+    plan: dict, op_data: Operators, *, prefer_visible: bool = True, allow_open_end=False
 ) -> list[str]:
     """先补原工作设施，只在能少拖图时提前访问可独立换班的房间。"""
     work = [room for room in plan if not room.startswith("dormitory_")]
@@ -463,7 +463,7 @@ def _arrangement_room_order(
             key=lambda room: int(room.split("_")[1]),
         )
     )
-    if not prefer_visible or len(rooms) < 4 or len(ordered) < 3:
+    if not prefer_visible or len(ordered) < 3:
         return rooms
     counts = Counter(
         name
@@ -483,12 +483,15 @@ def _arrangement_room_order(
         and plan[room]
         and all(counts[name] == 1 for name in plan[room])
     }
+    open_end = (
+        allow_open_end and len(movable) == len(rooms) and "central" not in movable
+    )
     start = 0
     for end in range(1, len(rooms)):
         if end == len(rooms) - 1 or rooms[end] not in movable:
-            if end - start > 2:
+            if end - start >= (2 if open_end else 3):
                 rooms[start : end + 1] = _shortest_map_route(
-                    rooms[start : end + 1], dependencies
+                    rooms[start : end + 1], dependencies, keep_last=not open_end
                 )
             start = end
     return rooms
@@ -514,10 +517,11 @@ def _order_ordinary_departures(data, candidates, observations, now):
         elif (
             stamp == op.time_stamp
             and not op.mood_is_prediction
-            and not getattr(op, "_projected_mood_resting", False)
+            and not getattr(op, "_projected_work_position_changed", False)
             and has_resting_mood(op, now)
         ):
-            if op.exhaust_time is not None:
+            # 旧版本把满心情工作读数的采样时间存成了用尽时间。
+            if op.exhaust_time is not None and op.mood != 24:
                 hours[op.name] = max(0, (op.exhaust_time - now).total_seconds() / 3600)
             elif math.isfinite(op.depletion_rate) and op.depletion_rate > 0:
                 hours[op.name] = max(
@@ -19456,6 +19460,16 @@ class BaseSchedulerSolver(
                         working_time = read_slot_time(i, _name)
                     if after_roster:
                         self._check_room_roster_frame(room, after_roster, sampled=True)
+                elif (
+                    _mood == 24
+                    and i in read_time_index
+                    and not room.startswith("dorm")
+                    and room not in ("train", "recycle")
+                    and agent.exhaust_require
+                    and _mood <= agent.lower_limit + 2
+                ):
+                    # 高下限用尽干员即使满心情也可能已进入预约范围。
+                    slot_deadline = read_slot_time(i, _name)
                 elif isinstance(first_end, bool) and _mood >= 0 and _mood != 24:
                     # 读时可能换帧。先核实本岗所需的倒计时，再写心情、驻员和床位。
                     needs_time = i in read_time_index or (
@@ -19594,6 +19608,12 @@ class BaseSchedulerSolver(
                 and _name != ""
                 and room != "recycle"
                 and _mood >= 0
+                and (
+                    _mood != 24
+                    or room.startswith("dorm")
+                    or room == "train"
+                    or slot_deadline is not None
+                )
             ):
                 if training_observation is not None:
                     data["time"] = training_observation[i]["time"]
@@ -22016,6 +22036,10 @@ class BaseSchedulerSolver(
                 and not getattr(self, "_product_batch_active", False)
                 and not getattr(self.task, "emergency_staffing", False)
                 and not self._emergency_active()
+            ),
+            allow_open_end=(
+                not getattr(self.op_data, "run_order_rooms", True)
+                and getattr(self, "_workshop_room_handoff", False) is not True
             ),
         )
         # 救急跑单失败沿用换入意图；普通跑单由实测原班补偿接续。

@@ -178,8 +178,8 @@ function ordinaryShiftOrder(data: MowerSchedulingData, candidates: MowerOperator
   if (calculated) {
    const rate = rates?.[op.name]
    if (rate !== undefined && Number.isFinite(rate)) hours.set(op.name, rate > 0 ? (mood - op.lowerLimit) / rate : Infinity)
-  } else if (stamp === op.timeStampMicros && !op.moodIsPrediction && !op.projectedMoodResting && hasRestingMood(op, data.nowMicros)) {
-   if (op.exhaustTimeMicros !== undefined) hours.set(op.name, Math.max(0, fromMowerMicros(op.exhaustTimeMicros - data.nowMicros)))
+  } else if (stamp === op.timeStampMicros && !op.moodIsPrediction && !op.projectedWorkPositionChanged && hasRestingMood(op, data.nowMicros)) {
+   if (op.exhaustTimeMicros !== undefined && op.mood !== 24) hours.set(op.name, Math.max(0, fromMowerMicros(op.exhaustTimeMicros - data.nowMicros)))
    else if (Number.isFinite(op.depletionRate) && op.depletionRate > 0) hours.set(op.name, Math.max(0, (op.mood - op.lowerLimit) / op.depletionRate - fromMowerMicros(data.nowMicros - stamp)))
   }
  }
@@ -215,7 +215,7 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
  const candidates = data.alpha ? ordinaryShiftOrder(data, total.filter(eligible), observations, options) : [...total.filter(op=>op.isHigh()),...total.filter(op=>!op.isHigh())]
  for(const op of candidates){
   if (working.has(op.group) || data.alpha && replacements.includes(op.name)) continue
-  if(op.isHigh()&&!op.workshop){
+  if(op.isHigh()&&(data.alpha||!op.workshop)){
    const standby=mowerStandbyCandidates(data,op.group?data.group(op.group):[op.name])
    const canPreempt=data.alpha&&alphaRestingTier(data,op.name)<=2&&data.dorms.some(b=>b.name&&alphaRestingTier(data,b.name)>alphaRestingTier(data,op.name)&&alphaSlotTakable(data,b,op.name))
    const groupBed=data.alpha&&op.group&&(data.dorms.some(b=>b.autoFree&&data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group===op.group)||data.groupDorms.some(b=>data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group===op.group))

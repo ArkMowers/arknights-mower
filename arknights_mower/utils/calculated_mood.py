@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
+from types import MappingProxyType
 from uuid import uuid4
 
 _runtime = threading.local()
@@ -418,10 +419,14 @@ class CalculatedMood:
         check_cancelled()
         if name not in self.moods:
             return None
-        moods, rates = self.snapshot(now)
+        moods, rates = self._snapshot(now)
         return moods.get(name) if rates.get(name) is not None else None
 
     def snapshot(self, now=None):
+        moods, rates = self._snapshot(now)
+        return MappingProxyType(moods), MappingProxyType(rates)
+
+    def _snapshot(self, now=None):
         if now is None:
             self.advance(max(datetime.now(), self.at or datetime.min))
             return self.moods, self._rates()

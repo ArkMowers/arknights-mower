@@ -11,6 +11,7 @@ export interface MowerTaskExecutionHooks {
  /** Enable the alpha complete-arrangement boundary in the application adapter. */
  protectShift?:boolean
  alpha?:boolean
+ hasRunOrderRooms?:boolean
  adjustForRunOrders?:boolean
  /** changed is the source solver's new_task result, not any plan-condition change. */
  backup:(phase:BackupTiming,task:MowerTask,context:{appendEmptyTask:boolean;restoreOnDeactivate:boolean;customTimeMicros?:number})=>MowerBackupResult
@@ -63,10 +64,10 @@ function needsMapDrag(previous: string, room: string): boolean {
   return productionRooms.has(previous) && rightRooms.has(room)
 }
 
-function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>>): string[] {
+function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>>, keepLast: boolean): string[] {
   const original = rooms.slice(1).filter((room, index) => needsMapDrag(rooms[index]!, room)).length
   if (!original) return rooms
-  const middle = rooms.slice(1, -1)
+  const middle = rooms.slice(1, keepLast ? -1 : undefined)
   const bits = new Map(middle.map((room, index) => [room, 1 << index]))
   const required = middle.map(room => [...dependencies.get(room)!].reduce((mask, source) => mask | (bits.get(source) ?? 0), 0))
   const endBit = 1 << middle.length
@@ -92,15 +93,16 @@ function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>
     return false
   }
   for (let budget = 0; budget < original; budget++) {
-    if (visit(endBit - 1, drags(rooms[0]!), budget)) return [rooms[0]!, ...path, rooms.at(-1)!]
+    if (visit(endBit - 1, drags(rooms[0]!), budget)) return [rooms[0]!, ...path, ...(keepLast ? rooms.slice(-1) : [])]
   }
   return rooms
 }
-/** Refill source workplaces first and keep both ends of the map route fixed. */
+/** Refill source workplaces first and preserve stops needed after the arrangement. */
 export function mowerArrangementRoomOrder(
   plan: MowerTaskPlan,
   currentRoom: (name: string) => string | undefined,
   preferVisible = true,
+  allowOpenEnd = false,
 ): string[] {
   const work = Object.keys(plan).filter(room => !room.startsWith('dormitory_'))
   const dependencies = new Map(work.map(room => [room, new Set(
@@ -114,7 +116,7 @@ export function mowerArrangementRoomOrder(
   }
   const dorms = Object.keys(plan).filter(room => room.startsWith('dormitory_')).sort((a, b) => Number(a.split('_')[1]) - Number(b.split('_')[1]))
   const rooms = [...ordered, ...pending, ...dorms]
-  if (!preferVisible || rooms.length < 4 || ordered.length < 3) return rooms
+  if (!preferVisible || ordered.length < 3) return rooms
   const counts = new Map<string, number>()
   for (const names of Object.values(plan)) {
     for (const name of names) {
@@ -125,10 +127,11 @@ export function mowerArrangementRoomOrder(
     room !== 'train' && (productionRooms.has(room) || rightRooms.has(room) || room === 'central') &&
     plan[room]!.length > 0 && plan[room]!.every(name => counts.get(name) === 1),
   ))
+  const openEnd = allowOpenEnd && movable.size === rooms.length && !movable.has('central')
   let start = 0
   for (let end = 1; end < rooms.length; end++) {
     if (end === rooms.length - 1 || !movable.has(rooms[end]!)) {
-      if (end - start > 2) rooms.splice(start, end - start + 1, ...shortestMapRoute(rooms.slice(start, end + 1), dependencies))
+      if (end - start >= (openEnd ? 2 : 3)) rooms.splice(start, end - start + 1, ...shortestMapRoute(rooms.slice(start, end + 1), dependencies, !openEnd))
       start = end
     }
   }
@@ -149,7 +152,7 @@ export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTask
  const preferVisible = !!hooks.alpha && !task.arrangementStarted && [T.SHIFT_ON, T.SHIFT_OFF, T.SELF_CORRECTION, T.NOT_SPECIFIC].includes(task.type) &&
    !task.retainsExecution && !task.strictMoodLimit && !task.arrangementRetryRoom && !task.dormRecoveryRestore.length &&
    !task.productShiftLocked && !task.exhaustSupport
- const rooms = mowerArrangementRoomOrder(task.plan, hooks.currentRoom ?? (() => undefined), preferVisible)
+ const rooms = mowerArrangementRoomOrder(task.plan, hooks.currentRoom ?? (() => undefined), preferVisible, hooks.hasRunOrderRooms === false)
  let beforeWork=false,beforeDorm=false;const restoration:MowerTaskPlan={}
  for(const room of rooms){
   if(!room.startsWith('dormitory_')&&!beforeWork){beforeWork=true;if(enterPhase('BEFORE_WORK',task,queue,hooks)){if(!Object.keys(task.plan).length)queue.consume(task);return false}}

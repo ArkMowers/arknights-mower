@@ -130,6 +130,11 @@ def test_shift_off_keeps_original_mood_margin_against_lower_limit(solver):
         ("unknown_between", "感知"),
         ("incomplete_group", "感知"),
         ("different_seat", "感知"),
+        ("observed_seat", "感知"),
+        ("projected_seat", "感知"),
+        ("projected_countdown", "感知"),
+        ("projected_same_seat", "深海"),
+        ("legacy_full_mood_timer", "深海"),
         ("prediction_and_card", "感知"),
         ("unknown", "感知"),
         ("newer_card", "感知"),
@@ -160,6 +165,31 @@ def test_competing_groups_share_cover_by_time_to_personal_floor(
         fast.replacement = []
     elif evidence == "different_seat":
         fast.current_index = 4
+    elif evidence == "observed_seat":
+        fast.current_index = 2
+        fast.exhaust_time = now + timedelta(minutes=1)
+        data.update_detail(
+            fast.name, fast.mood, fast.room, fast.index, update_time=True
+        )
+        data._projection_now = fast.time_stamp
+        assert fast.depletion_rate == 0 and fast.exhaust_time is None
+    elif evidence.startswith("projected_"):
+        if evidence != "projected_same_seat":
+            fast.current_index = 2
+        if evidence == "projected_countdown":
+            fast.exhaust_time = now + timedelta(minutes=1)
+        projected = data.project_arrangements(
+            [{"central": ["Current", fast.name]}], now=now
+        ).project_arrangements([], now=now)
+        assert fast.current_index == (1 if evidence == "projected_same_seat" else 2)
+        solver.op_data = data = projected
+        solver.total_agent = [data.operators[op.name] for op in solver.total_agent]
+    elif evidence == "legacy_full_mood_timer":
+        data.config.resting_threshold = 0.9
+        slow.mood, slow.lower_limit, slow.depletion_rate = 24, 19, 1
+        slow.time_stamp = now - timedelta(hours=2)
+        slow.exhaust_time = slow.time_stamp + timedelta(milliseconds=2)
+        fast.mood, fast.depletion_rate = 4, 4
     elif evidence == "prediction_and_card":
         slow.mood_is_prediction = True
         data.dorm_mood_estimates[slow.name] = (6, now)

@@ -59,6 +59,18 @@ def test_exhausted_global_skill_stops_at_exact_zero_and_query_splits_agree():
     assert split.moods == pytest.approx(direct.moods, abs=1e-10)
 
 
+@pytest.mark.parametrize("hours", [0, 1])
+def test_mood_snapshot_protects_shared_moods_and_rates(hours):
+    value = central_model()
+    now = NOW + timedelta(hours=hours)
+    previous = value.value("阿米娅", now)
+    moods, rates = value.snapshot(now)
+    for values in (moods, rates):
+        with pytest.raises(TypeError):
+            values["阿米娅"] = 42
+    assert value.value("阿米娅", now) == previous
+
+
 def test_future_queries_and_deadlines_leave_live_state_unchanged():
     value = central_model()
     old = pickle.dumps(value)

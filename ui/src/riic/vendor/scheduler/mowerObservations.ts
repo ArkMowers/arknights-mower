@@ -39,9 +39,9 @@ export function mowerUpdateDetail(data:MowerSchedulingData,name:string,mood:numb
   op.timeStampMicros=data.nowMicros
   if(data.alpha){op.moodIsPrediction=false;op.idleRestCheck=undefined}
  }
- if(op.isResting()&&!room.startsWith('dorm'))op.depletionRate=0
+ if(op.isResting()&&!room.startsWith('dorm')||data.alpha&&working&&!!room&&!room.startsWith('dorm')&&(op.currentRoom!==room||op.currentIndex!==index))op.depletionRate=0
  if(op.isResting()){const previous=data.getDormByName(name)?.[1];if(previous?.name===name)previous.reset()}
- if(!trueExhaustRooms.has(room))op.exhaustTimeMicros=undefined
+ if(!trueExhaustRooms.has(room)||data.alpha&&(updateTime||op.currentRoom!==room||op.currentIndex!==index))op.exhaustTimeMicros=undefined
  if(op.currentRoom!==room){op.currentRoom=room;onRoomChanged?.(op,!working&&!!room&&!room.startsWith('dorm'))}
  op.currentIndex=index;op.mood=mood
  if(data.alpha){
@@ -87,8 +87,17 @@ export function projectMowerArrangements(data:MowerSchedulingData,plans:MowerTas
   const transitions={...mowerArrangementGroupTransitions(projected,plan),...groupTransitions}
   const changed=new Set(Object.entries(plan).flatMap(([room,names])=>names.flatMap((name,index)=>name!=='Current'?[room+'\0'+index]:[])))
   const timers=new Map(projected.allDorms().filter(b=>b.name).map(b=>[b.name,{position:b.position,time:b.timeMicros}]))
-  for(const op of Object.values(projected.operators))if(changed.has(op.currentRoom+'\0'+op.currentIndex)){if(data.alpha)op.setProjectedPosition('',-1);else{op.currentRoom='';op.currentIndex=-1}}
-  for(const [room,names] of Object.entries(plan))for(const [index,name] of names.entries()){const op=projected.operators[name];if(op){if(data.alpha){op.setProjectedPosition(room,index);op.restMoodReleaseLimit=undefined}else{op.currentRoom=room;op.currentIndex=index}}}
+  for(const op of Object.values(projected.operators))if(changed.has(op.currentRoom+'\0'+op.currentIndex)){
+   if(data.alpha){
+    if(plan[op.currentRoom]?.[op.currentIndex]===op.name)continue
+    op.projectedWorkPositionChanged=true
+    op.setProjectedPosition('',-1)
+   }else{op.currentRoom='';op.currentIndex=-1}
+  }
+  for(const [room,names] of Object.entries(plan))for(const [index,name] of names.entries()){const op=projected.operators[name];if(op){if(data.alpha){
+   if(op.currentRoom!==room||op.currentIndex!==index)op.projectedWorkPositionChanged=true
+   op.setProjectedPosition(room,index);op.restMoodReleaseLimit=undefined
+  }else{op.currentRoom=room;op.currentIndex=index}}}
   if(data.alpha)commitMowerGroupShifts(projected,transitions)
   if(data.alpha)for(const op of Object.values(projected.operators))if(!op.isResting())op.temporaryDormFill=false
   for(const bed of projected.allDorms()){

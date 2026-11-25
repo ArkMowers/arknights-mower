@@ -99,7 +99,7 @@ export function makeMowerSchedulingData(s:RuntimeState,previous?:{data:MowerSche
   s.morale[name]??=mowerInitialMorale(name,config.initialMorale?.[name]??24)
   ;(s.initialMorale??={})[name]??=s.morale[name]
   const old=previous?.data.operators[name],position=config.positions.find(p=>p.primary===name)
-  const op=new MowerOperatorState({projectedMoodResting:old?.projectedMoodResting,name,nativeName:isMowerDormFiller(name)?MOWER_DORM_FILLER_NAME:OPERATOR_MAP.get(name)?.name??name,room,index,group,replacement,groupBindings,operatorType:primary.has(name)&&!!room?'high':'low',restingPriority:rules.lowPriority.includes(name)||!room?'low':'high',workaholic:rules.workaholic.includes(name),exhaustRequire:rules.exhaustRequire.includes(name),restInFull:rules.restInFull.includes(name),lowerLimit:position?.lowerLimit??0,upperLimit:position?.upperLimit??config.mowerPolicy?.restMoodLimits?.[name]??24,restMoodLimit:!!config.mowerPolicy?.restMoodLimits?.[name],mood:old?.mood??24,timeStampMicros:old?.timeStampMicros??(isMowerDormFiller(name)?toMowerMicros(s.time):undefined),depletionRate:old?.depletionRate,currentRoom:old?.currentRoom??'',currentIndex:old?.currentIndex??-1,dormPositionVersion:old?.dormPositionVersion,dormRecoveryRoom:old?.dormRecoveryRoom,dormRecoveryIndex:old?.dormRecoveryIndex,dormRecoveryFixed:old?.dormRecoveryFixed,dormRecoveryObservation:old?.dormRecoveryObservation,restingFromTrain:old?.restingFromTrain,idleRestCheck:old?.idleRestCheck})
+  const op=new MowerOperatorState({projectedMoodResting:old?.projectedMoodResting,projectedWorkPositionChanged:old?.projectedWorkPositionChanged,name,nativeName:isMowerDormFiller(name)?MOWER_DORM_FILLER_NAME:OPERATOR_MAP.get(name)?.name??name,room,index,group,replacement,groupBindings,operatorType:primary.has(name)&&!!room?'high':'low',restingPriority:rules.lowPriority.includes(name)||!room?'low':'high',workaholic:rules.workaholic.includes(name),exhaustRequire:rules.exhaustRequire.includes(name),restInFull:rules.restInFull.includes(name),lowerLimit:position?.lowerLimit??0,upperLimit:position?.upperLimit??config.mowerPolicy?.restMoodLimits?.[name]??24,restMoodLimit:!!config.mowerPolicy?.restMoodLimits?.[name],mood:old?.mood??24,timeStampMicros:old?.timeStampMicros??(isMowerDormFiller(name)?toMowerMicros(s.time):undefined),depletionRate:old?.depletionRate,currentRoom:old?.currentRoom??'',currentIndex:old?.currentIndex??-1,dormPositionVersion:old?.dormPositionVersion,dormRecoveryRoom:old?.dormRecoveryRoom,dormRecoveryIndex:old?.dormRecoveryIndex,dormRecoveryFixed:old?.dormRecoveryFixed,dormRecoveryObservation:old?.dormRecoveryObservation,restingFromTrain:old?.restingFromTrain,idleRestCheck:old?.idleRestCheck})
   op.refreshOrderRooms=mowerRefreshTradingSpec(op.nativeName,(rules.refreshTrading??[]).map(entry=>OPERATOR_MAP.get(entry)?.name??entry))
   op.calculatedMoodSnapshot=old?.calculatedMoodSnapshot
   op.workshop=['年','司霆惊蛰','九色鹿'].includes(op.nativeName)
@@ -243,7 +243,9 @@ function observeRoom(s:RuntimeState,rates:RuntimeRates,room:string,task?:MowerTa
   if(missing!==undefined&&!readTimes.includes(missing))readTimes.push(missing)
   if(readTimes.includes(index)){
    const mood=s.morale[name]!,rate=physicalRate(s,rates,name,room),remaining=room.startsWith('dorm')?24-mood:mood
-   const due=displayedMood===24||['meeting','factory'].includes(room)&&!read?data.nowMicros:rate!==0?data.nowMicros+toMowerMicros(Math.max(0,remaining/Math.abs(rate))):data.nowMicros
+   const readFullWorkTimer=data.alpha&&op.exhaustRequire&&mood<=op.lowerLimit+2&&!room.startsWith('dorm')&&room!=='train'
+   if(data.alpha&&trueExhaustRooms.has(room)&&(displayedMood===24&&!readFullWorkTimer||mood>0&&!(rate<0))){op.exhaustTimeMicros=undefined;continue}
+   const due=displayedMood===24&&!readFullWorkTimer||['meeting','factory'].includes(room)&&!read?data.nowMicros:rate!==0?data.nowMicros+toMowerMicros(Math.max(0,remaining/Math.abs(rate))):data.nowMicros
    mowerRefreshDormTime(data,room,index,name,due,trueExhaustRooms)
   }
  }
@@ -944,6 +946,7 @@ export function settleMowerSource(s:RuntimeState,rates:RuntimeRates,onPhase?:(ph
      data.pendingGroupTransitions={...mowerArrangementGroupTransitions(data,running?.intent??task.plan),...task.groupShiftTransitions}
      const intent=running?.intent??structuredClone(task.plan),positions=running?.positions??Object.fromEntries(Object.values(data.operators).map(op=>[op.name,[op.currentRoom,op.currentIndex] as [string,number]])),steps=running?.steps??executeMowerTaskArrangementSteps(task,queue,{
       protectShift:mowerProtectedShift(task),alpha:data.alpha,adjustForRunOrders:s.config.mowerTaskScheduling?.adjustForRunOrders,
+      hasRunOrderRooms:Object.keys(data.runOrderRooms).length>0,
       currentRoom:name=>getMowerSourceRuntime(s).data.operators[name]?.currentRoom,
      backup,
      arrangeRoom:(room,names,getTime,current,restoration)=>arrangeRoomSteps(s,rates,room,names,getTime,current,restoration),

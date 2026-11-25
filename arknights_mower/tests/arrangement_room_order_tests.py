@@ -101,9 +101,17 @@ def test_facility_map_route(staffed_order, case):
     assert plan == original
 
 
-def test_route_matches_exhaustive_search_from_every_endpoint(staffed_order):
+@pytest.mark.parametrize("open_end", [False, True])
+def test_route_matches_exhaustive_search_from_every_endpoint(staffed_order, open_end):
     base = staffed_order.base
-    rooms = ("room_2_1", "factory", "room_1_3", "central", "contact", "meeting")
+    rooms = (
+        "room_2_1",
+        "factory",
+        "room_1_3",
+        "room_3_3" if open_end else "central",
+        "contact",
+        "meeting",
+    )
     # B103 接走加工站的驻员，会客室再接走 B103 的驻员。
     positions = {"room_1_3": "factory", "meeting": "room_1_3"}
     data = SimpleNamespace(
@@ -119,9 +127,14 @@ def test_route_matches_exhaustive_search_from_every_endpoint(staffed_order):
     for original in permutations(rooms):
         plan = {room: [room] for room in original}
         stable = base._arrangement_room_order(plan, data, prefer_visible=False)
-        possible = [
-            (stable[0], *middle, stable[-1]) for middle in permutations(stable[1:-1])
-        ]
+        possible = (
+            [(stable[0], *tail) for tail in permutations(stable[1:])]
+            if open_end
+            else [
+                (stable[0], *middle, stable[-1])
+                for middle in permutations(stable[1:-1])
+            ]
+        )
         legal = [
             route
             for route in possible
@@ -130,7 +143,7 @@ def test_route_matches_exhaustive_search_from_every_endpoint(staffed_order):
                 for dest, source in positions.items()
             )
         ]
-        result = base._arrangement_room_order(plan, data)
+        result = base._arrangement_room_order(plan, data, allow_open_end=open_end)
         assert tuple(result) in legal
         assert drags(result) == min(map(drags, legal))
         if drags(result) == drags(stable):
@@ -187,6 +200,23 @@ def test_real_arrangement_confirms_the_same_rosters_and_keeps_a_retained_route(
     )
     assert {room: ui.occupants[room] for room in targets} == targets
     assert task.time == start and task.plan == {}
+
+
+@pytest.mark.parametrize("read_orders", [False, True])
+def test_three_workplaces_leave_the_last_stop_open_only_without_order_reads(
+    four_workplaces, read_orders
+):
+    ui, targets, task = four_workplaces
+    del task.plan["contact"]
+    if not read_orders:
+        ui.solver.op_data.run_order_rooms.clear()
+    original = list(task.plan)
+
+    assert ui.solver.agent_arrange(task.plan) is not False
+    assert [r for event, r, _ in ui.events if event == "staffed"] == (
+        original if read_orders else ["room_1_1", "room_2_2", "factory"]
+    )
+    assert all(ui.occupants[room] == targets[room] for room in original)
 
 
 def test_urgent_order_interrupts_the_shorter_route_and_resumes_remaining_rooms(
