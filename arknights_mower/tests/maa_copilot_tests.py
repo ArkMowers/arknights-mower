@@ -174,13 +174,20 @@ def test_missing_or_changed_script_fails_before_params_are_returned(files, tmp_p
     [
         {"formation_index": 5},
         {"support_unit_usage": 4},
-        {"scripts": [{"id": "a" * 64}] * 33},
         {"user_additional": [{"name": "棘刺", "skill": 4}]},
     ],
 )
 def test_invalid_task_options_are_rejected(kwargs):
     with pytest.raises(ValidationError):
         CopilotConf(**kwargs)
+
+
+@pytest.mark.parametrize("kind", ["copilot", "sss", "paradox"])
+def test_saved_config_round_trips_large_script_queues(kind):
+    ids = [f"{i % 3:064x}" for i in range(100)]
+    conf = Conf.model_validate({kind: {"scripts": [{"id": id_} for id_ in ids]}})
+    restored = Conf.model_validate_json(conf.model_dump_json())
+    assert [entry.id for entry in getattr(restored, kind).scripts] == ids
 
 
 @pytest.fixture
@@ -1080,6 +1087,8 @@ def test_manual_copilot_submits_from_current_screen_without_consuming_idle_queue
     queue_pair()
     conf.use_sanity_potion = True
     conf.scripts[1].is_raid = True
+    if mode == "list":
+        conf.scripts = conf.scripts * 50
     task = SchedulerTask(datetime.now(), task_type=TaskTypes.MANUAL_COPILOT)
     selection = (
         {"mode": "single", "id": conf.scripts[1].id, "loop_times": 3}
@@ -1101,7 +1110,7 @@ def test_manual_copilot_submits_from_current_screen_without_consuming_idle_queue
     name, params = scheduler.MAA.append_task.call_args.args
     assert name == "Copilot"
     if mode == "list":
-        assert [row["is_raid"] for row in params["copilot_list"]] == [False, True]
+        assert [row["is_raid"] for row in params["copilot_list"]] == [False, True] * 50
         assert params["use_sanity_potion"]
     else:
         assert params["filename"].endswith(selection["id"] + ".json")

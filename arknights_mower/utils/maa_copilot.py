@@ -386,8 +386,8 @@ def manual_copilot_request(conf, selection):
     elif mode == "list" and loops == 1:
         # The UI sends queue entries by value so edits cannot retarget a pending run.
         raw = selection.get("scripts")
-        if not isinstance(raw, list) or not 1 <= len(raw) <= 32:
-            raise ValueError("请勾选 1 至 32 项作业")
+        if not isinstance(raw, list) or not raw:
+            raise ValueError("请至少勾选一项作业")
         entries = [CopilotScriptConf.model_validate(item) for item in raw]
         if any(not script_path(item.id).is_file() for item in entries):
             raise ValueError("所选作业不存在，请刷新作业库")

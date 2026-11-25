@@ -208,27 +208,6 @@ describe('ordinary Copilot library and queue', () => {
       ])
     }
   )
-  it('refuses both modes as a unit if only one queue slot is free', async () => {
-    mock_set(['456'], { 456: 3 })
-    state.client.post.mockResolvedValue({ data: { ...first, difficulty: 3 } })
-    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({
-      id: second.id,
-      is_raid: true
-    }))
-    const original = [...state.config.copilot.value.scripts]
-    component.code.value = 'prts://s123'
-    await component.download()
-    expect(state.config.copilot.value.scripts).toEqual(original)
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('本次需加入 2 项'))
-    expect(state.client.post).not.toHaveBeenCalled()
-    state.config.copilot.value.scripts.pop()
-    await component.download()
-    expect(state.config.copilot.value.scripts).toHaveLength(32)
-    expect(state.config.copilot.value.scripts.slice(-2).map((item) => item.is_raid)).toEqual([
-      false,
-      true
-    ])
-  })
   it('reports an empty set before requesting any member', async () => {
     mock_set([])
     component.code.value = 'prts://s123'
@@ -268,17 +247,17 @@ describe('ordinary Copilot library and queue', () => {
     await component.download()
     expect(calls).toEqual([
       'get 1',
+      'maa-copilot 1',
       'get 2',
       'get 3',
       'get 4',
       'get 5',
-      'get 6',
-      'get 7',
-      'get 8',
-      'maa-copilot 1',
       'maa-copilot 5',
+      'get 6',
       'sss-copilot 6',
+      'get 7',
       'maa-copilot 7',
+      'get 8',
       'sss-copilot 8'
     ])
     expect(state.config.copilot.value.scripts.map(({ is_raid }) => is_raid)).toEqual([
@@ -301,33 +280,6 @@ describe('ordinary Copilot library and queue', () => {
     )
     expect(component.selected.value).toBe(first.id)
     expect(component.code.value).toBe('')
-  })
-
-  it('rechecks live capacity after upload and limits expanded entries per member', async () => {
-    mock_set(['456', '789', '456'])
-    state.client.post.mockImplementationOnce(async () => {
-      state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({
-        id: second.id,
-        is_raid: true
-      }))
-      return { data: { ...first, difficulty: 3 } }
-    })
-    component.code.value = 's123'
-    await component.download()
-    expect(state.config.copilot.value.scripts).toHaveLength(32)
-    expect(state.config.copilot.value.scripts.slice(0, 31).every(({ is_raid }) => is_raid)).toBe(
-      true
-    )
-    expect(state.config.copilot.value.scripts.at(-1)).toEqual({
-      id: second.id,
-      nav_name_override: '',
-      is_raid: false
-    })
-    expect(component.failures.value).toEqual([
-      expect.stringContaining('本次需加入 2 项'),
-      expect.stringContaining('队列已满')
-    ])
-    expect(state.client.post).toHaveBeenCalledTimes(2)
   })
 
   it('publishes one complete queue after a paused download and keeps concurrent edits', async () => {
@@ -360,7 +312,7 @@ describe('ordinary Copilot library and queue', () => {
     expect(snapshots).toEqual([[second.id], [second.id, first.id, second.id, first.id]])
   })
 
-  it('bounds a long run of dual-difficulty members and keeps a final single slot available', async () => {
+  it('imports a long set with repeated dual-difficulty members and keeps their order', async () => {
     mock_set([...Array(80).fill('456'), '789'], { 456: 3 })
     state.config.copilot.value.scripts = [{ id: second.id }]
     state.client.post
@@ -370,189 +322,28 @@ describe('ordinary Copilot library and queue', () => {
     await component.download()
     expect(state.client.get).toHaveBeenCalledTimes(3)
     expect(state.client.post).toHaveBeenCalledTimes(2)
-    expect(state.config.copilot.value.scripts).toHaveLength(32)
-    expect(state.config.copilot.value.scripts.at(-1).id).toBe(second.id)
-    expect(component.failures.value).toHaveLength(65)
-  })
-
-  it('preserves the last library slot when the destination queue stays full', async () => {
-    let stored = 63
-    state.config.copilot.value.scripts = Array.from({ length: 32 }, () => ({ id: first.id }))
-    mock_set(['456', '789'])
-    const post = state.client.post.getMockImplementation()
-    state.client.post.mockImplementation(async (...args) => {
-      if (stored === 64) throw new Error('作业存储已满')
-      stored++
-      return post(...args)
-    })
-    component.code.value = 's123'
-    await component.download()
-    expect(state.client.post).not.toHaveBeenCalled()
-    expect(stored).toBe(63)
-    expect(component.failures.value).toHaveLength(2)
-    state.config.copilot.value.scripts.pop()
-    component.code.value = '789'
-    await component.download()
-    expect(stored).toBe(64)
-    expect(state.config.copilot.value.scripts.at(-1).id).toBe(second.id)
-  })
-
-  it('keeps a slot available after earlier uploads fail validation', async () => {
-    const ids = Array.from({ length: 33 }, (_, index) => String(100 + index))
-    mock_set([...ids, '789'])
-    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: first.id }))
-    for (const id of ids) state.client.post.mockRejectedValueOnce(new Error(`作业 ${id} 无效`))
-    component.code.value = 's123'
-    await component.download()
-    expect(state.client.post).toHaveBeenCalledTimes(34)
-    expect(component.failures.value).toHaveLength(33)
-    expect(state.config.copilot.value.scripts.at(-1).id).toBe(second.id)
-  })
-
-  it.each([0, 63])(
-    'keeps the uploaded single-slot member when one slot opens (library size %i)',
-    async (initial) => {
-      mock_set(['456', '789'], { 456: 3 })
-      let stored = initial
-      state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: second.id }))
-      const snapshots = []
-      scope.run(() =>
-        watch(
-          () => state.config.copilot.value.scripts.length,
-          (size) => snapshots.push(size),
-          { flush: 'sync' }
-        )
-      )
-      state.client.post.mockImplementation(async (_url, form) => {
-        if (stored === 64) throw new Error('作业存储已满')
-        stored++
-        const script = JSON.parse(await form.get('copilot').text())
-        if (script.difficulty === 3) return { data: { ...first, difficulty: 3 } }
-        state.config.copilot.value.scripts.shift()
-        return { data: second }
-      })
-      component.code.value = 's123'
-      await component.download()
-      expect(state.client.post).toHaveBeenCalledTimes(1)
-      expect(stored).toBe(initial + 1)
-      expect(snapshots).toEqual([30, 31])
-      expect(state.config.copilot.value.scripts.at(-1)).toMatchObject({
-        id: second.id,
-        is_raid: false
-      })
-      expect(component.failures.value).toEqual([expect.stringContaining('第 1 份（456）')])
-    }
-  )
-
-  it('spends an additional single slot on the next fitting member', async () => {
-    const third = { ...first, id: 'c'.repeat(64) }
-    mock_set(['456', '789', '111'], { 456: 3 })
-    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: first.id }))
-    state.client.post.mockImplementation(async (_url, form) => {
-      const script = JSON.parse(await form.get('copilot').text())
-      if (script.stage_name === 'second') {
-        state.config.copilot.value.scripts.pop()
-        state.config.copilot.value.scripts[0] = { id: second.id, is_raid: true }
-        return { data: second }
-      }
-      return { data: script.difficulty === 3 ? { ...first, difficulty: 3 } : third }
-    })
-    component.code.value = 's123'
-    await component.download()
-    expect(state.client.post).toHaveBeenCalledTimes(2)
-    expect(state.config.copilot.value.scripts[0]).toEqual({ id: second.id, is_raid: true })
-    expect(state.config.copilot.value.scripts.slice(-2).map(({ id }) => id)).toEqual([
-      second.id,
-      third.id
-    ])
-    expect(component.failures.value).toEqual([expect.stringContaining('第 1 份（456）')])
-  })
-
-  it('reconsiders earlier skipped members when slots open during a different upload', async () => {
-    mock_set(['456', '789'], { 456: 3 })
-    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: second.id }))
-    state.client.post
-      .mockImplementationOnce(async () => {
-        state.config.copilot.value.scripts.splice(29)
-        return { data: second }
-      })
-      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
-    component.code.value = 's123'
-    await component.download()
-    expect(component.failures.value).toEqual([])
-    expect(state.client.post).toHaveBeenCalledTimes(2)
-    expect(state.config.copilot.value.scripts.slice(-3).map(({ id }) => id)).toEqual([
-      first.id,
-      first.id,
-      second.id
-    ])
-  })
-
-  it('fills slots freed again during a later upload without replacing accepted members', async () => {
-    const third = { ...first, id: 'c'.repeat(64) }
-    mock_set(['456', '789', '111', '222'], { 456: 3 })
-    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: first.id }))
-    state.client.post
-      .mockImplementationOnce(async () => {
-        state.config.copilot.value.scripts.pop()
-        return { data: second }
-      })
-      .mockImplementationOnce(async () => {
-        state.config.copilot.value.scripts.splice(-2)
-        return { data: third }
-      })
-      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
-    component.code.value = 's123'
-    await component.download()
-    expect(state.client.post).toHaveBeenCalledTimes(3)
-    expect(component.failures.value).toEqual([expect.stringContaining('第 4 份（222）')])
-    expect(state.config.copilot.value.scripts).toHaveLength(32)
+    expect(state.config.copilot.value.scripts).toHaveLength(162)
     expect(
-      state.config.copilot.value.scripts.slice(-4).map(({ id, is_raid }) => [id, is_raid])
-    ).toEqual([
-      [first.id, false],
-      [first.id, true],
-      [second.id, false],
-      [third.id, false]
-    ])
-  })
-
-  it('reloads overflow content only for a candidate with a free slot', async () => {
-    const ids = Array.from({ length: 12 }, (_, index) => String(100 + index))
-    mock_set([...ids, '999'])
-    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: first.id }))
-    const get = state.client.get.getMockImplementation()
-    state.client.get.mockImplementation(async (url) => {
-      if (!url.includes('/network/maa-copilot/')) return get(url)
-      const content = JSON.stringify({ padding: 'x'.repeat(900000) })
-      return { data: { data: { content } } }
-    })
-    for (const _id of ids) state.client.post.mockRejectedValueOnce(new Error('作业无效'))
-    state.client.post.mockResolvedValueOnce({ data: second })
-    component.code.value = 's123'
-    await component.download()
-    const downloads = state.client.get.mock.calls.map(([url]) => url.split('/').at(-1))
-    expect(downloads.filter((id) => id === ids[0])).toHaveLength(1)
-    expect(downloads.filter((id) => id === '999')).toHaveLength(2)
+      state.config.copilot.value.scripts.slice(1, -1).map(({ id, is_raid }) => [id, is_raid])
+    ).toEqual(Array.from({ length: 160 }, (_, i) => [first.id, i % 2 === 1]))
     expect(state.config.copilot.value.scripts.at(-1).id).toBe(second.id)
+    expect(component.failures.value).toEqual([])
   })
 
-  it('uses slots freed during a download for earlier validated members', async () => {
+  it('keeps server library errors separate from adding saved scripts to a long queue', async () => {
     mock_set(['456', '789'])
-    state.config.copilot.value.scripts = Array.from({ length: 32 }, () => ({ id: first.id }))
-    const get = state.client.get.getMockImplementation()
-    state.client.get.mockImplementation(async (url) => {
-      if (url.endsWith('/789')) state.config.copilot.value.scripts.splice(30)
-      return get(url)
-    })
+    const existing = Array.from({ length: 32 }, () => ({ id: second.id, is_raid: true }))
+    state.config.copilot.value.scripts = existing
+    state.client.post.mockRejectedValueOnce(new Error('作业存储已满'))
     component.code.value = 's123'
     await component.download()
-    expect(component.failures.value).toEqual([])
-    expect(state.config.copilot.value.scripts.map(({ id }) => id)).toEqual([
-      ...Array(30).fill(first.id),
-      first.id,
-      second.id
+    component.add_script(first.id)
+    expect(state.config.copilot.value.scripts.slice(0, existing.length)).toEqual(existing)
+    expect(state.config.copilot.value.scripts.slice(existing.length).map(({ id }) => id)).toEqual([
+      second.id,
+      first.id
     ])
+    expect(component.failures.value).toEqual(['第 1 份（456）：作业存储已满'])
   })
 
   it('ignores a duplicate download action while the current import is pending', async () => {
@@ -649,7 +440,7 @@ describe('ParadoxCopilot queue', () => {
     const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))
     state.client.get.mockImplementation(async (url) => ({
       data: url.includes('/maa-copilot-set/')
-        ? { ids: ['1', '2'] }
+        ? { ids: ['1', ...Array(40).fill('2')] }
         : {
             data: {
               content: url.endsWith('/2')
@@ -665,7 +456,9 @@ describe('ParadoxCopilot queue', () => {
       'maa-paradox',
       'maa-paradox'
     ])
-    expect(state.config.paradox.value.scripts).toEqual([{ id: first.id }])
+    expect(state.config.paradox.value.scripts).toEqual(
+      Array.from({ length: 40 }, () => ({ id: first.id }))
+    )
     expect(state.config.sss.value.scripts).toEqual([])
     expect(state.config.copilot.value.scripts).toEqual([])
     expect(paradox.failures.value).toEqual(['第 1 份（1）：请导入悖论模拟作业'])

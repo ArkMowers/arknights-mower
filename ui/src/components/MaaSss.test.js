@@ -158,7 +158,7 @@ describe('SSS library and per-item rounds', () => {
     expect(component.code.value).toBe('')
     expect(component.loading.value).toBe(false)
   })
-  it('routes ordinary members after the SSS queue reaches capacity in a large set', async () => {
+  it('keeps all SSS members in a large mixed set and accepts another library entry', async () => {
     mock_set([...Array(33).fill('456'), '789'])
     const get = state.client.get.getMockImplementation()
     state.client.get.mockImplementation(async (url) =>
@@ -168,17 +168,17 @@ describe('SSS library and per-item rounds', () => {
     )
     component.code.value = 's123'
     await component.download()
-    expect(state.config.sss.value.scripts).toHaveLength(32)
+    expect(state.config.sss.value.scripts).toHaveLength(33)
     expect(state.config.copilot.value.scripts).toEqual([
       { id: second.id, is_raid: false, nav_name_override: '' }
     ])
     expect(state.client.post).toHaveBeenCalledTimes(2)
     expect(state.client.post.mock.calls.at(-1)[0]).toMatch(/\/maa-copilot$/)
-    expect(component.failures.value).toEqual([
-      expect.stringContaining('第 33 份（456）：保全派驻队列已满')
-    ])
+    expect(component.failures.value).toEqual([])
+    component.add_script(second.id)
+    expect(state.config.sss.value.scripts).toHaveLength(34)
     expect(component.selected.value).toBe(first.id)
-    expect(state.warning).toHaveBeenCalledOnce()
+    expect(state.warning).not.toHaveBeenCalled()
   })
   it('ignores a duplicate download action while the current import is pending', async () => {
     mock_set()

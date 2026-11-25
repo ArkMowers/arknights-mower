@@ -34,7 +34,7 @@ async function refresh() {
 onMounted(refresh)
 
 function add_script(id) {
-  if (!id || sss.value.scripts.length >= 32) return
+  if (!id) return
   appendCopilotScript(configs, kind, { id })
 }
 async function upload_blob(blob) {
@@ -154,9 +154,7 @@ async function restart_queue() {
           placeholder="选择已导入的作业"
         />
         <n-flex>
-          <n-button :disabled="!selected || sss.scripts.length >= 32" @click="add_script(selected)"
-            >加入队列</n-button
-          >
+          <n-button :disabled="!selected" @click="add_script(selected)">加入队列</n-button>
           <n-button :disabled="!selected || selected_in_queue" @click="delete_script"
             >删除未选作业</n-button
           >
@@ -226,8 +224,7 @@ async function restart_queue() {
           </n-flex>
         </n-card>
         <n-text depth="3"
-          >按顺序执行，最多 32
-          项。每次完整通关一轮才计数，可为两处关卡分别添加作业和次数。中断后保留已完成轮数，当前轮交由
+          >按顺序执行。每次完整通关一轮才计数，可为两处关卡分别添加作业和次数。中断后保留已完成轮数，当前轮交由
           MAA
           从游戏现状接续。全部完成后停止，等待手动重跑；清缓存启动保留进度。修改队列、关卡、导能单元或次数会开启新一轮。未通关时暂停本队列，等待修改队列或手动重跑。</n-text
         >

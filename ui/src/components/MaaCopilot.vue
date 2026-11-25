@@ -52,11 +52,7 @@ onMounted(refresh)
 function add_script(id) {
   const script = library.value.find((item) => item.id === id)
   if (!script) return
-  try {
-    appendCopilotScript(configs, kind, script)
-  } catch (error) {
-    message.error(error.message)
-  }
+  appendCopilotScript(configs, kind, script)
 }
 async function upload_blob(blob) {
   const form = new FormData()
@@ -183,11 +179,7 @@ async function restart_queue() {
           placeholder="选择已导入的作业"
         />
         <n-flex>
-          <n-button
-            :disabled="!selected || copilot.scripts.length >= 32"
-            @click="add_script(selected)"
-            >加入队列</n-button
-          >
+          <n-button :disabled="!selected" @click="add_script(selected)">加入队列</n-button>
           <n-button :disabled="!selected || selected_in_queue" @click="delete_script"
             >删除未选作业</n-button
           >
@@ -220,12 +212,12 @@ async function restart_queue() {
           </n-flex>
         </n-card>
         <n-text v-if="!paradox" depth="3"
-          >按队列顺序执行，最多 32 项。作业同时支持普通和突袭时，依次加入普通、突袭两项。Mower
+          >按队列顺序执行。作业同时支持普通和突袭时，依次加入普通、突袭两项。Mower
           先进入每份作业对应的关卡地图，MAA
           再定位关卡并执行作业；无法识别作业内部关卡标识时，请填写导航关卡名。请确认作业与关卡、难度及干员练度相符。中断后从未完成项重新执行，已完成项会保存并跳过；整轮完成后停止。清缓存启动保留进度。修改执行队列会开启新一轮，调整编队或理智药设置保留已完成项。</n-text
         >
         <n-text v-else depth="3">
-          导入 mem_ 开头关卡的悖论模拟作业，最多 32 项。MAA 自动寻找对应干员并选择作业技能；Mower
+          导入 mem_ 开头关卡的悖论模拟作业。MAA 自动寻找对应干员并选择作业技能；Mower
           会先通过导航栏进入干员列表，无需手动打开页面，请确认已解锁悖论模拟。中断后重新执行未完成项，已完成项会保存并跳过；清缓存启动保留进度。队列全部完成后等待手动重跑，修改队列开启新一轮。
         </n-text>
         <n-button :disabled="!copilot.scripts.length" @click="restart_queue"
