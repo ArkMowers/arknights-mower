@@ -1,4 +1,4 @@
-"""Read the AEwide stage code in the ordinary or challenge preview panel."""
+"""Match game-font glyphs and read the AEwide stage code in the stage preview."""
 
 from functools import lru_cache
 from pathlib import Path
@@ -9,16 +9,26 @@ import numpy as np
 from arknights_mower import __rootdir__
 
 
-@lru_cache(maxsize=1)
-def _model():
-    with np.load(
-        Path(__rootdir__) / "models/stage_code.npz", allow_pickle=False
-    ) as data:
+@lru_cache(maxsize=2)
+def load_stage_glyphs(name):
+    with np.load(Path(__rootdir__) / "models" / name, allow_pickle=False) as data:
         return (
             str(data["alphabet"]),
             data["glyphs"].astype(np.float32) / 255,
             data["ratios"],
         )
+
+
+def match_stage_glyph(component, model):
+    height, width = component.shape
+    alphabet, templates, ratios = model
+    glyph = component.astype(np.float32)
+    glyph = cv2.resize(glyph, (24, 32), interpolation=cv2.INTER_AREA)
+    pixel_error = np.mean((templates - glyph) ** 2, axis=(2, 3))
+    aspect_error = np.abs(np.log(ratios / (width / height)))
+    scores = (pixel_error + 0.35 * np.minimum(aspect_error, 0.32)).min(axis=0)
+    best, second = np.argsort(scores)[:2]
+    return alphabet[best], scores[best], scores[second] - scores[best]
 
 
 def read_stage_code(frame) -> str | None:
@@ -28,7 +38,7 @@ def read_stage_code(frame) -> str | None:
         return None
     _, mask = cv2.threshold(crop.min(axis=2), 0, 255, cv2.THRESH_OTSU)
     count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
-    alphabet, templates, ratios = _model()
+    model = load_stage_glyphs("stage_code.npz")
     result = []
     for index in sorted(range(1, count), key=lambda i: stats[i, cv2.CC_STAT_LEFT]):
         x, y, width, height, area = stats[index]
@@ -43,13 +53,10 @@ def read_stage_code(frame) -> str | None:
             or y + height == mask.shape[0]
         ):
             return None
-        glyph = (labels[y : y + height, x : x + width] == index).astype(np.float32)
-        glyph = cv2.resize(glyph, (24, 32), interpolation=cv2.INTER_AREA)
-        pixel_error = np.mean((templates - glyph) ** 2, axis=(2, 3))
-        aspect_error = np.abs(np.log(ratios / (width / height)))
-        scores = (pixel_error + 0.35 * np.minimum(aspect_error, 0.32)).min(axis=0)
-        best, second = np.argsort(scores)[:2]
-        if scores[best] > 0.36 or scores[second] - scores[best] < 0.008:
+        char, error, gap = match_stage_glyph(
+            labels[y : y + height, x : x + width] == index, model
+        )
+        if error > 0.36 or gap < 0.008:
             return None
-        result.append(alphabet[best])
+        result.append(char)
     return "".join(result) or None

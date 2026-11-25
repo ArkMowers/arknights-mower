@@ -1,4 +1,4 @@
-"""Build the glyph bank for the stage preview's AEwide text component."""
+"""Build stage-label glyphs from AEwide (preview) or NotoSansHans-Medium (map)."""
 
 import argparse
 from pathlib import Path
@@ -30,7 +30,7 @@ def build(font_path, output):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("font", type=Path, help="MowerFonts/fonts/AEwide.otf")
+    parser.add_argument("font", type=Path, help="Game font under MowerFonts/fonts")
     parser.add_argument(
         "--output", type=Path, default="arknights_mower/models/stage_code.npz"
     )
