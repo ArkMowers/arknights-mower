@@ -15,16 +15,16 @@ let generation = 0
 let timer
 let controller
 let disposed = false
-const status_text = computed(() =>
-  failed.value
-    ? '状态读取失败'
-    : completed.value === null
-      ? '读取中'
-      : completed.value
-        ? '已完成'
-        : detail.value?.failed
-          ? '需要核对'
-          : '待执行'
+const status_text = computed(() => {
+  if (failed.value) return '状态读取失败'
+  if (completed.value === null) return '读取中'
+  if (completed.value) return '已完成'
+  if (detail.value?.items?.includes('running')) return '正在执行'
+  if (detail.value?.failed || detail.value?.items?.includes('failed')) return '需要核对'
+  return '待执行'
+})
+const completedItems = computed(
+  () => detail.value?.items?.filter((item) => item === 'completed').length
 )
 const status_type = computed(() =>
   completed.value === null || failed.value ? 'default' : completed.value ? 'success' : 'warning'
@@ -40,20 +40,23 @@ async function refresh() {
   try {
     await store.flush_config_saves()
     if (current !== generation || disposed) return
+    const queue = ['copilot', 'paradox'].includes(props.kind)
     const { data } = await axios.get(
-      `${import.meta.env.VITE_HTTP_URL || ''}/maa-long-task-status`,
+      `${import.meta.env.VITE_HTTP_URL || ''}/maa-long-task-status${queue ? `?kind=${props.kind}` : ''}`,
       { signal }
     )
     if (current !== generation || disposed) return
-    if (typeof data[props.kind]?.completed !== 'boolean') throw new Error('Invalid task status')
-    completed.value = data[props.kind].completed
-    detail.value = data[props.kind]
+    const status = queue ? data : data[props.kind]
+    if (typeof status?.completed !== 'boolean') throw new Error('Invalid task status')
+    completed.value = status.completed
+    detail.value = status
   } catch {
     if (current === generation && !disposed) failed.value = true
   } finally {
     if (current === generation && !disposed) timer = setTimeout(refresh, 5000)
   }
 }
+defineExpose({ detail: computed(() => (failed.value ? null : detail.value)), refresh })
 watch(
   () => [props.kind, props.settings],
   () => {
@@ -75,6 +78,9 @@ onScopeDispose(() => {
 <template>
   <n-flex align="center" :size="8">
     <n-text :type="status_type">{{ status_text }}</n-text>
+    <n-text v-if="detail?.items?.length && !failed" depth="3">
+      {{ completedItems }} / {{ detail.items.length }} 项已完成
+    </n-text>
     <n-text v-if="kind === 'garrison' && detail && !failed">
       <template v-if="detail.mode === 'matches'"
         >已结算 {{ detail.count }}{{ detail.total ? ' / ' + detail.total : '' }} 局{{

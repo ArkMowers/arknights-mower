@@ -490,6 +490,37 @@ class DailyStatusTests(unittest.TestCase):
             self.assertNotIn("progress", self.get()["activities"]["long"])
         self.assertEqual(self.execute("SELECT payload FROM maa_sss_progress"), before)
 
+    def test_long_queue_progress_counts_out_of_order_completions(self):
+        from arknights_mower.utils import config
+        from arknights_mower.utils.maa_copilot import queue_key
+
+        self.run_live(self.scheduler())
+        for kind in ("copilot", "paradox"):
+            conf = config.Conf(
+                maa_rg_enable=1,
+                maa_long_task_type=kind,
+                **{kind: {"scripts": [{"id": "a" * 64}] * 3}},
+            )
+            self.execute(
+                f"CREATE TABLE maa_{kind}_progress (id INTEGER PRIMARY KEY, payload TEXT)"
+            )
+            self.execute(
+                f"INSERT INTO maa_{kind}_progress VALUES (1, ?)",
+                json.dumps(
+                    {
+                        "key": queue_key(getattr(conf, kind)),
+                        "next": 1,
+                        "completed_items": [2],
+                        "failed": False,
+                    }
+                ),
+            )
+            with self.subTest(kind=kind), patch.object(config, "conf", conf):
+                self.assertEqual(
+                    self.get()["activities"]["long"]["progress"],
+                    {"completed": 2, "total": 3, "failed": False},
+                )
+
     def test_activity_authorization_precedes_all_state_and_filesystem_reads(self):
         with (
             patch.object(

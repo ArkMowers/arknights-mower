@@ -46,12 +46,26 @@ function previewFieldGroup(key) {
   if (key.startsWith('automatic_rescue')) return 'rescue_plan'
   if (['start_automatically', 'performance_mode', 'screenshot_interval'].includes(key))
     return 'runtime'
-  if (key.startsWith('maa_rg_') || ['maa_long_task_type', 'sss', 'copilot'].includes(key))
+  if (
+    key.startsWith('maa_rg_') ||
+    ['maa_long_task_type', 'sss', 'copilot', 'paradox'].includes(key)
+  )
     return 'long'
   if (key.startsWith('maa_')) return 'maa'
   if (['check_mail_enable', 'event_sign_in_enable', 'report_enable', 'skland_enable'].includes(key))
     return 'daily'
   return 'other_settings'
+}
+
+const copilotLibraries = {
+  copilot: [
+    { id: 'c'.repeat(64), stage_name: 'OS-EX-6', title: '雪山降临 · 双核低配' },
+    { id: 'd'.repeat(64), stage_name: 'OS-EX-8', title: '以人的名 · 自动编队' }
+  ],
+  paradox: [
+    { id: 'e'.repeat(64), stage_name: 'mem_angel_1', title: '能天使 · 悖论模拟' },
+    { id: 'f'.repeat(64), stage_name: 'mem_chen_1', title: '陈 · 悖论模拟' }
+  ]
 }
 
 export function createPreviewConfiguration(config, theme = 'light') {
@@ -76,6 +90,15 @@ export function createPreviewConfiguration(config, theme = 'light') {
     maa_long_task_extra_windows: [],
     maa_rg_sleep_min: '0:00',
     maa_rg_sleep_max: '0:00',
+    copilot: {
+      ...config.copilot,
+      scripts: [false, false, true].map((is_raid, index) => ({
+        id: copilotLibraries.copilot[Math.min(index, 1)].id,
+        is_raid,
+        nav_name_override: ''
+      }))
+    },
+    paradox: { ...config.paradox, scripts: copilotLibraries.paradox.map(({ id }) => ({ id })) },
     start_automatically: false,
     waiting_scene: {
       CONNECTING: [1, 10],
@@ -844,6 +867,30 @@ export function createPreviewAdapter(data, requests = []) {
       config
     })
   }
+  const copilotProgress = new Map()
+  function currentQueue(kind) {
+    const { scripts = [], run_id = '' } = data.config[kind] || {}
+    const key = JSON.stringify([kind, run_id, scripts])
+    const profileKey = activeId + ':' + kind
+    let queue = copilotProgress.get(profileKey)
+    if (queue?.queue_key !== key) {
+      queue = {
+        queue_key: key,
+        run_id,
+        scripts: clone(scripts),
+        items: scripts.map(() => 'pending')
+      }
+      copilotProgress.set(profileKey, queue)
+    }
+    queue.completed =
+      queue.items.length > 0 && queue.items.every((status) => status === 'completed')
+    return queue
+  }
+  for (const kind of ['copilot', 'paradox']) {
+    const queue = currentQueue(kind)
+    if (queue.items.length && queue.scripts[0].id === copilotLibraries[kind][0].id)
+      queue.items[0] = 'completed'
+  }
   function selection(config, selected) {
     if (
       !Array.isArray(selected) ||
@@ -991,6 +1038,33 @@ export function createPreviewAdapter(data, requests = []) {
         config
       }
     }
+    const queueKind = requestUrl.searchParams.get('kind') || config.params?.kind
+    if (
+      path === '/maa-long-task-status' &&
+      ['copilot', 'paradox'].includes(queueKind) &&
+      ['GET', 'PATCH'].includes(method)
+    ) {
+      const queue = currentQueue(queueKind)
+      if (method === 'PATCH') {
+        if (
+          !Number.isInteger(body?.index) ||
+          body.index < 0 ||
+          body.index >= queue.items.length ||
+          typeof body.completed !== 'boolean'
+        )
+          fail(config, '作业状态无效')
+        if (queue.queue_key !== body.queue_key || queue.items[body.index] !== body.expected)
+          fail(config, '作业状态已变更，请刷新后重试', 409)
+        queue.items[body.index] = body.completed ? 'completed' : 'pending'
+      }
+      return {
+        status: 200,
+        statusText: 'OK',
+        data: clone(currentQueue(queueKind)),
+        headers: {},
+        config
+      }
+    }
     if (path === '/stage/event-rerun') {
       if (method === 'PATCH') {
         if (
@@ -1066,8 +1140,8 @@ export function createPreviewAdapter(data, requests = []) {
       // 离线示例仅提供默认预设，不读取 MAA 文件或建立连接。
       '/maa-conn-preset': () => ['General'],
       '/maa-event-shop': () => ({ shops: [] }),
-      '/maa-paradox': () => ({ scripts: [] }),
-      '/maa-copilot': () => ({ scripts: [] }),
+      '/maa-paradox': () => ({ scripts: clone(copilotLibraries.paradox) }),
+      '/maa-copilot': () => ({ scripts: clone(copilotLibraries.copilot) }),
       '/sss-copilot': () => ({
         scripts: [
           {

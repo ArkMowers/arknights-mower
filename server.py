@@ -3399,19 +3399,84 @@ def import_from_image():
     return "排班已加载"
 
 
-@app.route("/maa-long-task-status")
+def _copilot_queue_status(settings, *, paradox):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.maa_copilot import queue_key
+
+    saved = (
+        record.load_maa_paradox_progress()
+        if paradox
+        else record.load_maa_copilot_progress()
+    )
+    items = record.copilot_item_statuses(settings, saved, paradox=paradox)
+    return {
+        **settings.model_dump(include={"run_id", "scripts"}),
+        "queue_key": queue_key(settings),
+        "items": items,
+        "completed": bool(items) and all(item == "completed" for item in items),
+    }
+
+
+@app.get("/maa-long-task-status")
 @require_token
 def maa_long_task_status():
     from arknights_mower.utils.maa_long_task import completion_status
 
     with backup_lock:
         try:
-            if request.args.get("kind") == "event_rerun":
+            kind = request.args.get("kind")
+            if kind == "event_rerun":
                 return _read_event_rerun_status()
+            if kind in ("copilot", "paradox"):
+                return _copilot_queue_status(
+                    getattr(config.conf, kind), paradox=kind == "paradox"
+                )
             return completion_status(config.conf)
         except Exception:
             logger.exception("读取 MAA 大型任务完成状态失败")
             return {"message": "读取大型任务状态失败"}, 500
+
+
+@app.patch("/maa-long-task-status")
+@require_token
+def update_copilot_item_status():
+    from arknights_mower.solvers import record
+    from arknights_mower.utils.maa_copilot import queue_key
+
+    kind = request.args.get("kind")
+    if kind not in ("copilot", "paradox"):
+        return {"message": "仅支持修改自动战斗和悖论模拟的作业状态"}, 405
+    data = request.get_json(silent=True)
+    if (
+        not isinstance(data, dict)
+        or not isinstance(data.get("queue_key"), str)
+        or type(data.get("index")) is not int
+        or data.get("expected") not in ("pending", "completed", "failed")
+        or type(data.get("completed")) is not bool
+    ):
+        return {"message": "作业状态无效"}, 400
+
+    with backup_lock:
+        settings = getattr(config.conf, kind)
+        if data["queue_key"] != queue_key(settings):
+            return {"message": "作业队列已变更，请刷新后重试"}, 409
+        if not 0 <= data["index"] < len(settings.scripts):
+            return {"message": "请选择队列中的作业"}, 400
+        paradox = kind == "paradox"
+        try:
+            if not record.set_copilot_item_completion(
+                settings,
+                data["queue_key"],
+                data["index"],
+                data["expected"],
+                data["completed"],
+                paradox=paradox,
+            ):
+                return {"message": "作业正在执行或状态已变更，请刷新后重试"}, 409
+            return _copilot_queue_status(settings, paradox=paradox)
+        except (OSError, ValueError, sqlite3.Error):
+            logger.exception("更新作业状态失败")
+            return {"message": "暂时无法更新作业状态，请刷新后重试"}, 503
 
 
 COPILOT_LIBRARY_ROUTE = "/<any('maa-copilot','maa-paradox','sss-copilot'):library>"

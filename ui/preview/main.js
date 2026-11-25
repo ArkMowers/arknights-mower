@@ -40,6 +40,8 @@ const initialPath = location.pathname.startsWith('/preview') ? '/' : location.pa
 history.replaceState(history.state, '', `${initialPath}?${params}${location.hash}`)
 
 const config = createPreviewConfiguration(defaultConfiguration(), params.get('theme'))
+if (['copilot', 'paradox'].includes(params.get('queue')))
+  config.maa_long_task_type = params.get('queue')
 // ?latency=800 让每个接口晚 800 毫秒响应，用来查看启动过程。
 const latency = Math.min(Math.max(Number(params.get('latency')) || 0, 0), 10000)
 // ?run=idle 以已停止、没有日志和截图的实例打开，用来查看未开始的运行日志页。

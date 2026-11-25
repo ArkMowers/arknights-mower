@@ -16,7 +16,7 @@ let props
 beforeEach(() => {
   vi.useFakeTimers()
   state.flush.mockReset().mockResolvedValue()
-  state.client = { get: vi.fn(async () => ({ data: { copilot: { completed: false } } })) }
+  state.client = { get: vi.fn(async () => ({ data: { completed: false } })) }
   props = reactive({ kind: 'copilot', settings: { run_id: '' } })
   scope = effectScope()
   component = scope.run(() => Component.setup(props, { expose: () => {} }))
@@ -31,12 +31,34 @@ describe('MAA task completion status', () => {
     [true, '已完成', 'success'],
     [false, '待执行', 'warning']
   ])('displays %s using the saved backend status', async (completed, text, type) => {
-    state.client.get.mockResolvedValue({ data: { copilot: { completed } } })
+    state.client.get.mockResolvedValue({ data: { completed } })
     await component.refresh()
     expect(component.status_text.value).toBe(text)
     expect(component.status_type.value).toBe(type)
     expect(state.flush).toHaveBeenCalledBefore(state.client.get)
   })
+
+  it.each(['copilot', 'paradox'])(
+    'summarizes progress from the corresponding %s queue',
+    async (kind) => {
+      props.kind = kind
+      const items = ['completed', 'failed', 'running']
+      state.client.get.mockResolvedValue({ data: { completed: false, items } })
+      await nextTick()
+      await component.refresh()
+      expect(state.client.get).toHaveBeenLastCalledWith(
+        expect.stringContaining('maa-long-task-status?kind=' + kind),
+        expect.anything()
+      )
+      expect(component.status_text.value).toBe('正在执行')
+      expect(component.completedItems.value).toBe(1)
+      state.client.get.mockResolvedValue({
+        data: { completed: false, items: ['completed', 'failed'] }
+      })
+      await component.refresh()
+      expect(component.status_text.value).toBe('需要核对')
+    }
+  )
 
   it('rejects an old response when settings change and returns to pending for the new round', async () => {
     let resolveOld
@@ -51,7 +73,7 @@ describe('MAA task completion status', () => {
     props.settings.run_id = 'new-round'
     await nextTick()
     await nextTick()
-    resolveOld({ data: { copilot: { completed: true } } })
+    resolveOld({ data: { completed: true } })
     await old
     expect(component.status_text.value).toBe('待执行')
     expect(component.status_type.value).toBe('warning')

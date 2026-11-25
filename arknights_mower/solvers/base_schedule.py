@@ -56,23 +56,23 @@ from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.solvers.reclamation_algorithm import ReclamationAlgorithm
 from arknights_mower.solvers.record import (
+    apply_copilot_result,
     apply_workshop_inventory,
     battle_inventory_active,
+    claim_copilot_item,
+    finish_copilot_item,
     get_inventory_counts,
     invalidate_workshop_inventory,
     load_maa_blackflow_progress,
-    load_maa_copilot_progress,
-    load_maa_paradox_progress,
     load_maa_sss_progress,
     maa_event_shop_completed,
     mark_maa_event_shop_complete,
+    prepare_copilot_progress,
     save_agent_action,
     save_current_state,
     save_exception,
     save_log,
     save_maa_blackflow_progress,
-    save_maa_copilot_progress,
-    save_maa_paradox_progress,
     save_maa_sss_progress,
     save_recycling_collection,
     update_recycling_operators,
@@ -22397,42 +22397,47 @@ class BaseSchedulerSolver(
             self.release_maa()
             self.recog.reset_after_external_control()
 
-    def _maa_copilot_run(self, conf):
+    def _maa_copilot_run(self, conf, *, paradox=False):
         from arknights_mower.utils.maa_copilot import (
             CopilotRosterError,
             copilot_operators,
-            queue_key,
-            run_key,
         )
 
-        if not getattr(self, "_maa_copilot_progress_loaded", False):
-            self.maa_copilot_progress = load_maa_copilot_progress() or getattr(
-                self, "maa_copilot_progress", {}
-            )
+        attr = "maa_paradox_progress" if paradox else "maa_copilot_progress"
+        pending_attr = "_unsaved_" + attr
+        if pending := getattr(self, pending_attr, None):
+            finish_copilot_item(*pending, paradox=paradox)
+            delattr(self, pending_attr)
+        fallback = {}
+        if not paradox and not getattr(self, "_maa_copilot_progress_loaded", False):
+            fallback = getattr(self, attr, {})
+        progress = prepare_copilot_progress(conf, fallback, paradox=paradox)
+        if not paradox:
             self._maa_copilot_progress_loaded = True
-        progress = self.maa_copilot_progress
-        previous = dict(progress)
-        key = queue_key(conf)
-        settings_key = run_key(conf)
-        # 兼容旧运行快照；新记录独立保存，不受清缓存启动影响。
-        if "settings_key" not in progress and progress.get("key") == settings_key:
-            progress.update(key=key, settings_key=settings_key)
-        if progress.get("key") != key:
-            progress.clear()
-            progress.update(key=key, next=0, failed=False, settings_key=settings_key)
-        elif progress.get("settings_key") != settings_key:
-            progress.update(failed=False, settings_key=settings_key)
-            progress.pop("waiting_for_roster", None)
-        elif progress.get("waiting_for_roster"):
-            try:
-                copilot_operators()
-            except CopilotRosterError:
-                return progress
-            progress.pop("waiting_for_roster")
-            progress["failed"] = False
-        if progress != previous:
-            save_maa_copilot_progress(progress)
+            if progress.get("waiting_for_roster"):
+                try:
+                    copilot_operators()
+                except CopilotRosterError:
+                    pass
+                else:
+                    progress = prepare_copilot_progress(conf, {}, roster_ready=True)
+        setattr(self, attr, progress)
         return progress
+
+    def _finish_copilot_item(self, progress, token, outcome, *, paradox):
+        attr = "maa_paradox_progress" if paradox else "maa_copilot_progress"
+        pending_attr = "_unsaved_" + attr
+        result = (progress["key"], token, outcome)
+        try:
+            saved = finish_copilot_item(*result, paradox=paradox)
+        except Exception:
+            setattr(self, pending_attr, result)
+            apply_copilot_result(progress, *result)
+            raise
+        if saved is None:
+            return False
+        setattr(self, attr, saved)
+        return True
 
     def _maa_blackflow_run(self, conf):
         from arknights_mower.utils.maa_long_task import (
@@ -22475,17 +22480,6 @@ class BaseSchedulerSolver(
             task[1]["completed"] = True
             save_maa_blackflow_progress(task[1], boss=boss)
 
-    def _maa_paradox_run(self, conf):
-        from arknights_mower.utils.maa_copilot import queue_key
-
-        progress = load_maa_paradox_progress()
-        key = queue_key(conf)
-        if progress.get("key") != key:
-            progress = {"key": key, "next": 0, "failed": False}
-            save_maa_paradox_progress(progress)
-        self.maa_paradox_progress = progress
-        return progress
-
     def _record_maa_copilot_callback(self, msg, details, *, paradox=False):
         task_attr = "maa_paradox_task" if paradox else "maa_copilot_task"
         chain = "ParadoxCopilot" if paradox else "Copilot"
@@ -22501,24 +22495,23 @@ class BaseSchedulerSolver(
             return
         setattr(self, task_attr, None)
         progress = self.maa_paradox_progress if paradox else self.maa_copilot_progress
-        if progress.get("key") != task[1] or progress.get("next") != task[2]:
+        if progress.get("key") != task[1]:
+            return
+        outcome = {10002: "completed", 10000: "failed", 10004: "stopped"}[msg]
+        if not self._finish_copilot_item(progress, task[3], outcome, paradox=paradox):
             return
         if msg == 10002:
-            progress["next"] = task[2] + 1
+            self._completed_copilot_attempt = task[3]
             logger.info(
-                f"{name}队列已完成 {progress['next']} 项",
+                f"{name}队列第 {task[2] + 1} 项已完成",
                 extra={"log_group": "maa-integration"},
             )
         elif msg == 10000:
-            progress["failed"] = True
             logger.warning(
-                "%s作业失败，保留进度，等待修改队列或手动重新执行",
+                "%s作业失败，保留进度，等待修改作业或手动调整该项状态",
                 name,
                 extra={"log_group": "maa-integration"},
             )
-        else:
-            return
-        (save_maa_paradox_progress if paradox else save_maa_copilot_progress)(progress)
 
     def _maa_sss_run(self, conf):
         from arknights_mower.utils.maa_copilot import queue_key
@@ -23247,6 +23240,7 @@ class BaseSchedulerSolver(
         """清日常"""
         copilot_run = None
         copilot_dir = None
+        copilot_token = None
         copilot_conf = None
         paradox = False
         sss_run = None
@@ -23261,6 +23255,18 @@ class BaseSchedulerSolver(
                 resume_dorm_releases,
             )
 
+            def release_copilot_attempt():
+                if copilot_token is None:
+                    return
+                progress = (
+                    self.maa_paradox_progress if paradox else self.maa_copilot_progress
+                )
+                if progress.get("attempt", {}).get("token") == copilot_token:
+                    self._finish_copilot_item(
+                        progress, copilot_token, "released", paradox=paradox
+                    )
+
+            run_files.callback(release_copilot_attempt)
             running_long_task = False
             long_limit = datetime.now() + timedelta(hours=24)
 
@@ -23497,12 +23503,11 @@ class BaseSchedulerSolver(
                 if blackflow_run.get("completed") is True:
                     selected_long = None
             if selected_long in ("copilot", "paradox"):
-                copilot_conf = conf.paradox if paradox else conf.copilot
-                copilot_run = (
-                    self._maa_paradox_run(copilot_conf)
-                    if paradox
-                    else self._maa_copilot_run(copilot_conf)
-                )
+                from arknights_mower.utils.config_backup import backup_lock
+
+                with backup_lock:
+                    copilot_conf = getattr(config.conf, selected_long)
+                    copilot_run = self._maa_copilot_run(copilot_conf, paradox=paradox)
             if selected_long == "sss":
                 sss_run = self._maa_sss_run(conf.sss)
             if (
@@ -23529,6 +23534,30 @@ class BaseSchedulerSolver(
                         break
                     if (refresh := self._maa_refresh_deadline()) is not None:
                         return defer_refresh(refresh)
+                    if copilot_run is not None:
+                        token = uuid4().hex
+                        with backup_lock:
+                            conf = config.conf
+                            if not manual:
+                                current_long, cutoff, _ = long_task_schedule(
+                                    conf, datetime.now()
+                                )
+                                if current_long != selected_long:
+                                    break
+                                long_limit = min(long_limit, cutoff)
+                            copilot_conf = getattr(conf, selected_long)
+                            claim = claim_copilot_item(
+                                copilot_conf, copilot_run["key"], token, paradox=paradox
+                            )
+                        if claim is None:
+                            break
+                        copilot_token = token
+                        copilot_run = claim
+                        copilot_index = claim["next"]
+                        if paradox:
+                            self.maa_paradox_progress = claim
+                        else:
+                            self.maa_copilot_progress = claim
                     self.release_maa()
                     if not paradox:
                         self.initialize_maa()
@@ -23571,7 +23600,7 @@ class BaseSchedulerSolver(
                                         )
 
                                         target = copilot_navigation_target(
-                                            copilot_conf.scripts[copilot_run["next"]]
+                                            copilot_conf.scripts[copilot_index]
                                         )
                                         navigator = NavigationSolver(
                                             self.device, self.recog
@@ -23829,7 +23858,6 @@ class BaseSchedulerSolver(
                             copilot_formation_params,
                         )
 
-                        copilot_index = copilot_run["next"]
                         if paradox:
                             params = build_paradox_params(
                                 copilot_conf.scripts[copilot_index], copilot_index
@@ -23860,7 +23888,7 @@ class BaseSchedulerSolver(
                         setattr(
                             self,
                             "maa_paradox_task" if paradox else "maa_copilot_task",
-                            (task_id, copilot_run["key"], copilot_index),
+                            (task_id, copilot_run["key"], copilot_index, copilot_token),
                         )
                     elif selected_long == "sss":
                         from arknights_mower.utils.maa_sss import build_sss_params
@@ -23928,10 +23956,9 @@ class BaseSchedulerSolver(
                         raise MowerExit
                     self.recog.reset_after_external_control()
                     more_copilot = (
-                        copilot_run is not None
-                        and copilot_run["next"] == copilot_index + 1
-                        and not copilot_run["failed"]
-                        and copilot_run["next"] < len(copilot_conf.scripts)
+                        copilot_token is not None
+                        and copilot_token
+                        == getattr(self, "_completed_copilot_attempt", None)
                     )
                     more_sss = (
                         sss_run is not None
@@ -23993,18 +24020,18 @@ class BaseSchedulerSolver(
                         "保存 MAA 保全派驻进度失败",
                         extra={"log_group": "maa-integration"},
                     )
-            if copilot_run is not None:
+            if copilot_token is not None:
                 from arknights_mower.utils.maa_copilot import CopilotRosterError
 
-                copilot_run["failed"] = True
-                if isinstance(e, CopilotRosterError):
-                    copilot_run["waiting_for_roster"] = True
+                outcome = (
+                    "waiting_for_roster"
+                    if isinstance(e, CopilotRosterError)
+                    else "failed"
+                )
                 try:
-                    (
-                        save_maa_paradox_progress
-                        if paradox
-                        else save_maa_copilot_progress
-                    )(copilot_run)
+                    self._finish_copilot_item(
+                        copilot_run, copilot_token, outcome, paradox=paradox
+                    )
                 except Exception:
                     logger.exception(
                         "保存 MAA 自动战斗作业进度失败",
