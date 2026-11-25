@@ -2445,6 +2445,10 @@ class Operators:
             )
             operator.resting_from_train = getattr(exist, "resting_from_train", False)
             operator.dorm_recovery_fixed = getattr(exist, "dorm_recovery_fixed", ())
+            operator.dorm_recovery_roster = getattr(exist, "dorm_recovery_roster", ())
+            operator.dorm_recovery_attempt = getattr(
+                exist, "dorm_recovery_attempt", None
+            )
             operator.dorm_mood_fallback = getattr(exist, "dorm_mood_fallback", "")
             operator.dorm_mood_peers = getattr(exist, "dorm_mood_peers", {}).copy()
             operator.idle_rest_check = getattr(exist, "idle_rest_check", None)
@@ -3334,8 +3338,10 @@ class Operators:
         use_configured_order=False,
         preferred_slots=(),
     ):
-        from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
-        from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+        from arknights_mower.utils.dorm_recovery import (
+            possible_recovery_provider,
+            single_recovery_bed_cost,
+        )
 
         if self.rest_mood_complete(name) and not self.is_free_room_excluded(name):
             return None
@@ -3370,7 +3376,7 @@ class Operators:
                 self.dorm[index], active_groups=active_groups
             )
         ]
-        single_manager = is_single_recovery_manager(name)
+        single_manager = possible_recovery_provider(self, name)
 
         def takeover_cost(index):
             bed = self.dorm[index]
@@ -3812,6 +3818,8 @@ class Operator:
         self.rest_mood_release_limit = None
         # (单回宿管姓名, 床位, 移动版本)；旧缓存的全宿管姓名元组会自动失效。
         self.dorm_recovery_fixed = ()
+        self.dorm_recovery_roster = ()
+        self.dorm_recovery_attempt = None
         self.single_recovery_manager = False
         self.dorm_mood_fallback = ""
         self.dorm_mood_peers = {}
@@ -3919,10 +3927,15 @@ class Operator:
             self.clear_dorm_recovery()
         self.__dict__["current_index"] = value
 
-    def clear_dorm_recovery(self):
+    def clear_dorm_recovery_target(self):
         self.dorm_recovery_room = ""
         self.dorm_recovery_index = -1
         self.dorm_recovery_fixed = ()
+        self.dorm_recovery_roster = ()
+
+    def clear_dorm_recovery(self):
+        self.clear_dorm_recovery_target()
+        self.dorm_recovery_attempt = None
         self.dorm_recovery_observation = None
 
     def is_high(self):

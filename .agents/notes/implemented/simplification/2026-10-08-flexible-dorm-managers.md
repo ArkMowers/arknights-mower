@@ -9,6 +9,8 @@ date: 2026-10-08
 
 ## Contract and simplification
 
+The first-provider selection described below was the October implementation, not an observed game rule. The current native scheduler replaces that selection with [observed recovery ownership](../../../../docs/subsystems/base-scheduler.md#observed-dorm-recipient). The five-slot staffing and validation rules still apply.
+
 [INV-SCHED-07] accepts dormitories with zero or one configured manager. Existing effective Free positions determine capacity; main-plan Free positions remain contiguous after named occupants and every dormitory retains at least one Free position. Named fixed replacements retain their existing capacity rules.
 
 [INV-SCHED-02] selects the first operator with the recognized single-target recovery skill across all five positions of the final resolved roster, including replacements and idle fillers absent from the configured roster. Temporary recovery setup keeps that provider in its original slot and excludes it from target selection. Later providers before the target retain their slots regardless of mood during setup; later providers remain eligible recovery recipients under ordinary resident rules. A roster without a single-target manager skips extra recovery setup; pending final-roster restoration still completes.

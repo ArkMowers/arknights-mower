@@ -585,12 +585,11 @@ def test_high_priority_skill_swap_ignores_list_rank(
         projected.operators["闪灵"].current_room,
         projected.operators["闪灵"].current_index,
     ) == ((ROOM, 4) if ordinary_first else (second, 4))
-    assert (
-        recovery_order_target(
-            projected, ROOM, projected.get_current_room(ROOM, True)
-        ).name
-        == "银灰"
+    target = recovery_order_target(
+        projected, ROOM, projected.get_current_room(ROOM, True)
     )
+    # 闪灵与蜜莓同房时仍按原优先级分床，但不把某一人当作唯一来源。
+    assert (target.name if target else None) == (None if ordinary_first else "银灰")
     assert {bed.name for bed in projected.dorm} == {"闪灵", "银灰", "能天使"}
     assert prioritize_new_dorm_recovery(projected, {}) == {}
     assert [(bed.name, bed.time) for bed in data.dorm] == before

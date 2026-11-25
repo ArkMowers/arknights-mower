@@ -268,8 +268,14 @@ def test_two_close_orders_only_delay_observation_inside_their_window(
     assert task.time == original_time and task.plan == original_plan
 
 
-def test_complete_observation_preserves_and_then_executes_single_recovery(recovery):
+@pytest.mark.parametrize("already_restored", [False, True])
+def test_complete_observation_preserves_single_recovery_until_roster_readback(
+    recovery, already_restored
+):
     solver, task, _, _ = recovery
+    if not already_restored:
+        solver.physical = ["杜林", "琴柳", "黑角", "银灰", ""]
+    solver.game_recipient = "陈" if already_restored else "银灰"
     task.dorm_recovery_restore = [ROOM]
     original_plan = copy.deepcopy(task.plan)
     assert solver._observe_failed_arrangement_confirmation() is True
@@ -279,12 +285,11 @@ def test_complete_observation_preserves_and_then_executes_single_recovery(recove
 
     solver.agent_arrange_room({}, ROOM, task.plan)
 
-    assert solver.confirms == [
-        ["杜林", "琴柳", "黑角", "银灰", ""],
-        dorm_recovery_tests.FINAL,
-    ]
+    assert solver.confirms == ([] if already_restored else [dorm_recovery_tests.FINAL])
     assert not task.plan and task.dorm_recovery_restore == []
-    assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
+    target = solver.op_data.operators["银灰"]
+    assert target.dorm_recovery_room == ("" if already_restored else ROOM)
+    assert bool(target.dorm_recovery_attempt) == already_restored
 
 
 def test_cancelled_observation_stays_consumed_without_more_navigation(recovery):

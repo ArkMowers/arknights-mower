@@ -58,6 +58,24 @@ def test_unchanged_scroll_has_bounded_room_recovery(bottom):
     )
 
 
+@pytest.mark.parametrize("bottom", [False, True])
+@pytest.mark.parametrize("mode", ["xhigh", "high", "medium", "low"])
+def test_first_downward_swipe_duration_and_unchanged_feedback(bottom, mode):
+    from arknights_mower.utils.performance import PERFORMANCE_PRESETS
+
+    result = solver()
+    result._selection_profile_snapshot = PERFORMANCE_PRESETS[mode]
+    result.get_color.side_effect = lambda point: (
+        boundary_color(point) if result.swipe.call_count == 2 else (255, 255, 255)
+    )
+    assert result.scroll_room_operators(bottom=bottom) is bottom
+    first_ms = 220 if bottom and mode in ("xhigh", "high") else 500
+    assert [call.kwargs["duration"] for call in result.swipe.call_args_list] == [
+        first_ms,
+        500,
+    ]
+
+
 @pytest.mark.parametrize("dialog", ["confirm", "double_confirm/main"])
 def test_popup_interrupts_scroll_before_another_gesture(dialog):
     result = solver()
@@ -344,6 +362,164 @@ def test_missing_recovery_bed_timer_checked_before_admission(five_slot_room, cac
         s.op_data.refresh_dorm_time.assert_not_called()
 
 
+@pytest.mark.parametrize("bottom", [False, True])
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("record", [False, True])
+def test_dorm_evidence_keeps_measured_bar_and_raw_timer_from_same_frame(
+    five_slot_room, bottom, enabled, record
+):
+    s, captured, _, names, ready = five_slot_room(bottom, unclear=[("time", 3)])
+    room = "dormitory_1"
+    s.detect_room.return_value = room
+    s._execution_group_transitions = lambda: {}
+    s._reconcile_room_observation = Mock()
+    s.op_data.plan[room] = [SimpleNamespace(agent=name) for name in names]
+    s.op_data.mood_calculation_enabled = enabled
+    s.op_data.update_detail.side_effect = None
+    s.op_data.update_detail.return_value = None
+    deadline = ready + timedelta(minutes=20)
+    beds = {
+        name: SimpleNamespace(position=(room, i), name=name, time=deadline)
+        for i, name in enumerate(names)
+    }
+    s.op_data.all_dorms.return_value = list(beds.values())
+    s.op_data.get_dorm_by_name.side_effect = lambda name: (0, beds[name])
+    for op in s.op_data.operators.values():
+        op.current_room = room
+        op.need_to_refresh.return_value = False
+        op.current_mood.return_value = 22
+
+    result = s.get_agent_from_room(
+        room, read_dorm_evidence=True, record_dorm_evidence=record
+    )
+
+    assert captured == [bottom, not bottom]
+    assert [row["measured_mood"] for row in result] == [11, 12, 13, 14, 15]
+    assert [row.get("mood_sampled", False) for row in result] == [enabled or record] * 5
+    assert [row["recovery_seconds"] for row in result] == [3600, 3601, 3602, None, 3604]
+    assert [row["mood"] for row in result] == (
+        [11, 12, 13, 14, 15] if enabled or record else [22] * 5
+    )
+    assert all(row["time"] == deadline for row in result)
+    s.read_operator_time.assert_not_called()
+
+
+@pytest.mark.parametrize("readable", [True, False])
+def test_full_width_with_visible_timer_is_not_recorded_as_a_full_departure(
+    five_slot_room, readable
+):
+    room = "dormitory_1"
+    s, _, _, names, ready = five_slot_room(
+        False, unclear=[] if readable else [("time", 0)]
+    )
+    s.detect_room.return_value = room
+    s._execution_group_transitions = lambda: {}
+    s._reconcile_room_observation = Mock()
+    s.op_data.plan[room] = [SimpleNamespace(agent=name) for name in names]
+    s.op_data.update_detail.side_effect = None
+    s.op_data.update_detail.return_value = None
+    beds = {
+        n: SimpleNamespace(position=(room, i), name=n, time=ready)
+        for i, n in enumerate(names)
+    }
+    s.op_data.all_dorms.return_value = list(beds.values())
+    s.op_data.get_dorm_by_name.side_effect = lambda name: (0, beds[name])
+    for op in s.op_data.operators.values():
+        op.current_room = room
+        op.need_to_refresh.return_value = False
+        op.current_mood.return_value = 22
+    s.recog.img[270, 1652] = 255
+    s.read_accurate_mood = lambda _: 24
+    first = s.get_agent_from_room(room, record_dorm_evidence=True)[0]
+    assert first["recovery_seconds"] == (3600 if readable else None)
+    assert first.get("measured_mood") == (24 if readable else None)
+    assert not first.get("mood_sampled")
+    assert first["mood"] == 22
+    assert s.op_data.update_detail.call_args_list[0].args[-1] is False
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("evidence", [False, True])
+@pytest.mark.parametrize("cold", [False, True])
+@pytest.mark.parametrize("finished", [False, True])
+def test_last_second_of_full_width_bar_preserves_sample_and_bed_deadline(
+    five_slot_room, enabled, evidence, cold, finished
+):
+    from pathlib import Path
+
+    from PIL import Image
+
+    from arknights_mower.utils.operators import Dormitory, Operators
+
+    room = "dormitory_3"
+    s, _, _, names, ready = five_slot_room(False, empty=(1, 2, 3, 4))
+    names[0] = "蓝毒"
+    s.detect_room.return_value = room
+    s._execution_group_transitions = lambda: {}
+    s._reconcile_room_observation = Mock()
+    s.op_data.plan[room] = [SimpleNamespace(agent="Free")] * 5
+    s.op_data.mood_calculation_enabled = enabled
+    old_mood = 24 if cold else 22
+    old_stamp = None if cold else ready - timedelta(hours=1)
+    op = s.op_data.operators.pop("黑键")
+    op.current_room, op.mood, op.time_stamp = room, old_mood, old_stamp
+    op.upper_limit, op.mood_is_prediction = 24, False
+    op.current_mood.return_value = old_mood
+    s.op_data.operators[names[0]] = op
+    bed = Dormitory((room, 0))
+    bed.name = names[0]
+    if not cold:
+        bed.time = ready
+    s.op_data.dorm, s.op_data.group_dorm, s.op_data.true_exhaust_room = [bed], [], []
+    s.op_data.all_dorms.return_value = [bed]
+    s.op_data.get_dorm_by_name.return_value = (0, bed)
+    s.op_data.is_recovery_dorm.return_value = True
+    s.op_data.is_dynamic_dorm_position.return_value = True
+
+    def write(name, mood, room, index, update):
+        if update:
+            op.mood, op.time_stamp = mood, ready
+        return index
+
+    s.op_data.update_detail.side_effect = write
+    s.op_data.refresh_dorm_time.side_effect = lambda *args: Operators.refresh_dorm_time(
+        s.op_data, *args
+    )
+    # 同一张床的连续两帧：蓝毒 23/24、还剩一秒，随后 24/24、倒计时消失。
+    path = (
+        Path(__file__).parent
+        / "fixtures/selection/blue_poison_full_countdown_20261125.png"
+    )
+    with Image.open(path) as source:
+        cards = np.asarray(source).reshape(2, 86, 310)
+    s.recog.img[219:305, 1470:1780] = cards[int(finished), :, :, None]
+    s.read_accurate_mood = BaseSchedulerSolver.read_accurate_mood.__get__(s)
+    read = s.read_screen.side_effect
+
+    def read_card(img, *, type, cord=None):
+        if type == "time":
+            assert not finished
+            assert np.array_equal(img[270:305, 1650:1780, 0], cards[0, 51:, 180:])
+            return "00:00:01"
+        return read(img, type=type, cord=cord)
+
+    s.read_screen.side_effect = read_card
+    first = s.get_agent_from_room(
+        room, [0], force_mood=not enabled, read_dorm_evidence=evidence
+    )[0]
+    if finished:
+        assert op.mood == first["mood"] == 24 and op.time_stamp == ready
+        assert first.get("recovery_seconds") is None
+    else:
+        assert (op.mood, op.time_stamp) == (old_mood, old_stamp)
+        assert not first.get("mood_sampled")
+        assert first["mood"] < 24
+        assert first["time"] == bed.time == ready + timedelta(seconds=2)
+        if evidence:
+            assert (first["measured_mood"], first["recovery_seconds"]) == (24, 1)
+    s.read_operator_time.assert_not_called()
+
+
 def test_wrong_room_at_lower_start_does_not_apply_any_slot(five_slot_room):
     s, captured, written, _, _ = five_slot_room(True)
     s.detect_room.return_value = "dormitory_1"
@@ -527,3 +703,32 @@ def test_near_bottom_requires_independent_aligned_frames_and_third_resident(
         assert rows[3]["time"] == ready + timedelta(hours=2)
     else:
         s.read_operator_time.assert_not_called()
+
+
+def test_release_reads_full_bars_without_requesting_extra_countdowns(five_slot_room):
+    s, captured, _, names, ready = five_slot_room(False)
+    room = "dormitory_1"
+    s.detect_room.return_value = room
+    s._execution_group_transitions = lambda: {}
+    s._reconcile_room_observation = Mock()
+    s.op_data.plan[room] = [SimpleNamespace(agent=n) for n in names]
+    s.op_data.update_detail.side_effect = None
+    s.op_data.update_detail.return_value = None
+    beds = {
+        n: SimpleNamespace(position=(room, i), name=n, time=ready + timedelta(hours=1))
+        for i, n in enumerate(names)
+    }
+    s.op_data.all_dorms.return_value = list(beds.values())
+    s.op_data.get_dorm_by_name.side_effect = lambda n: (0, beds[n])
+    for op in s.op_data.operators.values():
+        op.current_room = room
+        op.need_to_refresh.return_value = False
+        op.current_mood.return_value = 22
+    s._release_dorm_readings = {}
+    s.recog.img[270, 1652] = 255
+    s.read_accurate_mood = lambda _: 24
+    readings = s.get_agent_from_room(room)
+    assert captured == [False, True]
+    assert [r.get("measured_mood") for r in readings] == [None, 24, 24, 24, 24]
+    assert not any(c.kwargs["type"] == "time" for c in s.read_screen.call_args_list)
+    s.read_operator_time.assert_not_called()

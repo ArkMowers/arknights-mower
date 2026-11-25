@@ -82,7 +82,9 @@ def test_single_recovery_uses_pending_mixed_binding_through_readback(
     )
     solver.tap_confirm = MagicMock()
 
-    def read_temporary_room(room, *, departing_plan=None, expected_agents=None):
+    def read_temporary_room(
+        room, *, departing_plan=None, expected_agents=None, read_dorm_evidence=False
+    ):
         if departing_plan is not None:
             assert not selected
             assert departing_plan == [incoming, "琴柳", "", "", ""]
@@ -101,7 +103,9 @@ def test_single_recovery_uses_pending_mixed_binding_through_readback(
         _, bed = data.get_dorm_by_name(incoming, group_transitions=context)
         assert bed is not None and bed.name == incoming
         bed.time = due
-        return [{"agent": name} for name in names]
+        from arknights_mower.tests.dorm_recovery_tests import room_readings
+
+        return room_readings(data.operators, names, incoming)
 
     solver.get_agent_from_room = MagicMock(side_effect=read_temporary_room)
     assert solver.ensure_dorm_recovery_order("dormitory_1", final)
@@ -114,7 +118,12 @@ def test_single_recovery_uses_pending_mixed_binding_through_readback(
     assert data.group_shift_state == confirmed
     # 临时阵容已读回，重试只恢复最终名单，不能再次清房或换目标。
     solver.tap_confirm.reset_mock()
-    assert solver.ensure_dorm_recovery_order("dormitory_1", final)
+    current = [{"agent": name} for name in data.get_current_room("dormitory_1", True)]
+    solver.get_agent_from_room = MagicMock(return_value=current)
+    assert solver.ensure_dorm_recovery_order("dormitory_1", final) == current
+    solver.get_agent_from_room.assert_called_once_with(
+        "dormitory_1", departing_plan=final, read_dorm_evidence=True
+    )
     solver.tap_confirm.assert_not_called()
 
 

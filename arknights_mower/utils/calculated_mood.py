@@ -645,6 +645,33 @@ class CalculatedMood:
         return None
 
 
+def known_operator_stages(owner=None):
+    """宿舍读房和心情推算共用本地练度，未同步的干员保留未知。"""
+    from arknights_mower.utils.building_skills import load_skill_snapshot
+    from arknights_mower.utils.dorm_skills import resource_generation
+    from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
+
+    if owner is not None and getattr(owner, "_mood_frozen_inputs", False):
+        return owner.mood_model.stages
+    payload = get_cultivate_snapshot()
+    if (
+        not hasattr(_runtime, "growth_payload")
+        or _runtime.growth_payload is not payload
+        or _runtime.growth_generation != resource_generation
+    ):
+        cached = load_skill_snapshot(payload or {})
+        _runtime.growth_payload = payload
+        _runtime.growth_generation = resource_generation
+        _runtime.growth_stages = {
+            entry["name"]: (entry["phase"], entry["level"])
+            for entry in cached["operators"]
+            if entry["owned"]
+            and type(entry["phase"]) is int
+            and type(entry["level"]) is int
+        }
+    return _runtime.growth_stages
+
+
 @measure_mood_calculation(_MOOD_INPUTS)
 def sync_model(owner, now=None, *, advance_clock=True):
     from arknights_mower.utils.csleep import check_cancelled
@@ -654,27 +681,7 @@ def sync_model(owner, now=None, *, advance_clock=True):
 
     model = owner.mood_model
     now = now or getattr(owner, "_projection_now", None) or datetime.now()
-    from arknights_mower.utils.building_skills import load_skill_snapshot
-    from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
-
-    if getattr(owner, "_mood_frozen_inputs", False):
-        stages = dict(model.stages)
-    else:
-        payload = get_cultivate_snapshot()
-        if (
-            not hasattr(_runtime, "growth_payload")
-            or _runtime.growth_payload is not payload
-        ):
-            cached = load_skill_snapshot(payload or {})
-            _runtime.growth_payload = payload
-            _runtime.growth_stages = {
-                entry["name"]: (entry["phase"], entry["level"])
-                for entry in cached["operators"]
-                if entry["owned"]
-                and type(entry["phase"]) is int
-                and type(entry["level"]) is int
-            }
-        stages = dict(_runtime.growth_stages)
+    stages = dict(known_operator_stages(owner))
     levels = _facility_levels(owner)
     observed_rooms = (
         set(owner.plan)
@@ -704,15 +711,15 @@ def sync_model(owner, now=None, *, advance_clock=True):
         op.name: getattr(op, "dorm_position_version", 0)
         for op in owner.operators.values()
     }
-    single_targets = {
-        manager[0]: op.name
-        for op in owner.operators.values()
-        if op.current_room.startswith("dorm")
-        and (op.current_room, op.current_index)
-        == (op.dorm_recovery_room, op.dorm_recovery_index)
-        for manager in getattr(op, "dorm_recovery_fixed", ())
-        if len(manager) == 3
-    }
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    single_targets = {}
+    for op in owner.operators.values():
+        room = op.current_room
+        if room.startswith("dorm") and active_recovery_position(
+            owner, op, stages=stages
+        ):
+            single_targets[op.dorm_recovery_fixed[0][0]] = op.name
     if advance_clock or any(
         (
             model.stages != stages,

@@ -1603,7 +1603,7 @@ def _active_recovery_room(op_data, name):
     """只有实际床位仍匹配的单回标记参与豁免。"""
     from arknights_mower.utils.dorm_recovery import active_recovery_position
 
-    position = active_recovery_position(op_data.operators[name])
+    position = active_recovery_position(op_data, op_data.operators[name])
     return position[0] if position else ""
 
 
@@ -1704,10 +1704,13 @@ def _recovery_aware_assignments(
         candidate[2]: position for position, candidate in assignments.items()
     }
     if clear_invalid_recovery:
-        for name in protected:
+        for _, _, name, _, _ in candidates:
             op = op_data.operators[name]
-            if assigned_positions.get(name) != (op.current_room, op.current_index):
-                op_data.operators[name].clear_dorm_recovery()
+            if getattr(op, "dorm_recovery_room", "") and (
+                name not in protected
+                or assigned_positions.get(name) != (op.current_room, op.current_index)
+            ):
+                op.clear_dorm_recovery_target()
     return assignments, dropped
 
 
@@ -2975,8 +2978,10 @@ def prioritize_new_dorm_recovery(
     执行后传入变化房间的原驻员，以当前实读阵容分床，不重放离宿意图。
     只修改投影计划，保留住客集合、预约和真实恢复标记。
     """
-    from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
-    from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+    from arknights_mower.utils.dorm_recovery import (
+        possible_recovery_provider,
+        single_recovery_bed_cost,
+    )
 
     if (
         not plan
@@ -3166,7 +3171,9 @@ def prioritize_new_dorm_recovery(
     providers = [
         name
         for name in allocations.values()
-        if name and tier(name) != filler_tier and is_single_recovery_manager(name)
+        if name
+        and tier(name) != filler_tier
+        and possible_recovery_provider(projected, name)
     ]
     providers.sort(key=lambda name: resting_key(projected, name, now))
     placed = set()

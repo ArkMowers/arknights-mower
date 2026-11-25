@@ -41,11 +41,11 @@ def test_readback_requires_full_padding_even_when_it_exceeds_target(solver, mood
     read = solver.get_agent_from_room.side_effect
 
     def read_changed_mood(*args, **kwargs):
-        result = read(*args, **kwargs)
         if solver.confirms and solver.physical != FINAL:
             solver.op_data.operators["黑角"].mood = mood
             solver.op_data.operators["黑角"].time_stamp = datetime.now()
-        return result
+            solver.game_recipient = "黑角"
+        return read(*args, **kwargs)
 
     solver.get_agent_from_room.side_effect = read_changed_mood
     arrange(solver)
@@ -63,7 +63,9 @@ def test_every_low_non_single_manager_before_target_uses_full_padding(solver):
     assert temporary[1] == "琴柳"
     assert temporary[3] == "银灰"
     assert solver.confirms[-1] == FINAL
-    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+    # 杜林补回后仍有自回，银灰、红和陈的读数足以单独核实受益者。
+    assert solver.game_recipient == "银灰"
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
 
 
 def test_preceding_single_managers_stay_even_when_not_full(solver):
@@ -71,8 +73,8 @@ def test_preceding_single_managers_stay_even_when_not_full(solver):
     solver.op_data.operators["琴柳"].mood = 1
     final = ["闪灵", "琴柳", "红", "银灰", "陈"]
     arrange(solver, final)
-    assert solver.confirms == [["闪灵", "琴柳", "黑角", "银灰", ""], final]
-    assert solver.op_data.operators["银灰"].dorm_recovery_index == 3
+    assert solver.confirms == [final]
+    assert not solver.op_data.operators["银灰"].dorm_recovery_room
 
 
 def test_low_fixed_cover_and_priority_target_arriving_together_confirm_in_two_steps(
@@ -115,6 +117,12 @@ def test_newer_green_card_can_supply_padding_without_overwriting_numeric_mood(
         if solver.confirms:
             # 正常入住换位会清除短期卡片缓存，不能丢失本次选人的证据。
             data.dorm_mood_estimates.pop(op.name, None)
+            if op.name in solver.physical:
+                # 现场绿卡选中的是满心情垫位者；独立的房间读数不改写旧缓存。
+                result[solver.physical.index(op.name)].update(
+                    measured_mood=24, recovery_seconds=None
+                )
+                solver.game_recipient = "银灰"
         return result
 
     solver.get_agent_from_room.side_effect = read_roster
@@ -139,7 +147,9 @@ def test_invalid_green_card_cache_cannot_supply_padding(solver, age, inferred):
 
 def test_new_yellow_card_excludes_padding_without_overwriting_measurement(solver):
     data = solver.op_data
-    data.dorm_mood_estimates["黑角"] = (23.9, datetime.now())
+    now = datetime.now()
+    data.operators["黑角"].time_stamp = now - timedelta(minutes=1)
+    data.dorm_mood_estimates["黑角"] = (23.9, now)
     arrange(solver)
     assert solver.confirms == [FINAL]
     assert not data.operators["银灰"].dorm_recovery_room
@@ -231,7 +241,9 @@ def test_real_card_scan_keeps_full_fixed_occupants_in_temporary_roster(
     assert solver.confirms[0][full_fixed_index] == fixed
     assert solver.confirms[0][0] == "杜林"
     assert solver.confirms[-1] == FINAL
-    assert data.operators["银灰"].dorm_recovery_index == 3
+    assert data.operators["银灰"].dorm_recovery_index == (
+        3 if measured is not None else -1
+    )
 
 
 @pytest.mark.parametrize("calculated", [5, 24])
@@ -257,9 +269,14 @@ def test_calculated_mood_controls_single_recovery_target(
 
     arrange(solver)
 
-    assert len(solver.confirms) == (2 if calculated == 5 else 1)
-    assert solver.confirms[-1] == FINAL
-    assert bool(target.dorm_recovery_room) is (calculated == 5)
+    assert solver.confirms == [FINAL]
+    if calculated == 5:
+        # 模型请求核验，但在场目标的满条和无倒计时应当结束额外排序。
+        assert any(
+            call.kwargs.get("read_dorm_evidence")
+            for call in solver.get_agent_from_room.call_args_list
+        )
+    assert not target.dorm_recovery_room
     assert target.mood == measured
 
 
