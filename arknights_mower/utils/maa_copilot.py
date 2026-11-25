@@ -166,7 +166,13 @@ def store_script(raw, *, sss=False, paradox=False):
     return script_info(script_id, data, sss=sss, paradox=paradox)
 
 
-def _copilot_operators():
+class CopilotRosterError(ValueError):
+    """Formation cannot use the current roster or operator resources."""
+
+
+def copilot_operators():
+    from arknights_mower.utils import config
+    from arknights_mower.utils.maa_copilot_normalization import battle_data_path
     from arknights_mower.utils.mastery_recommendation import (
         get_cultivate_snapshot,
         get_skill_data,
@@ -178,17 +184,26 @@ def _copilot_operators():
     def integer(entry, key, low, high):
         value = entry.get(key) if isinstance(entry, dict) else None
         if type(value) is not int or not low <= value <= high:
-            raise ValueError(error)
+            raise CopilotRosterError(error)
         return value
 
     if snapshot is None:
-        raise ValueError(error)
+        raise CopilotRosterError(error)
+    target = Path(resolve_config_path(config.conf.maa_path))
+    battle_data = read_json(battle_data_path(target))
+    known_ids = battle_data.get("chars") if isinstance(battle_data, dict) else None
+    if not isinstance(known_ids, dict) or not known_ids:
+        raise CopilotRosterError(
+            "无法读取 MAA 战斗干员表，请更新 MAA 资源后再使用辅助编队"
+        )
     definitions = get_skill_data().get("growth", {}).get("characters", {})
     operators = []
     seen = set()
     for char in snapshot["data"]["characters"]:
+        if char["id"] not in known_ids:
+            continue
         if char["id"] in seen:
-            raise ValueError(error)
+            raise CopilotRosterError(error)
         seen.add(char["id"])
         definition = definitions.get(char["id"])
         if not definition:
@@ -196,7 +211,7 @@ def _copilot_operators():
         skills = char.get("skills", [])
         equips = char.get("equips", [])
         if not isinstance(skills, list) or not isinstance(equips, list):
-            raise ValueError(error)
+            raise CopilotRosterError(error)
 
         modules = {module["id"]: module["type"] for module in definition["modules"]}
         equipped = []
@@ -204,12 +219,14 @@ def _copilot_operators():
             level = integer(equip, "level", 0, 3)
             equip_id = equip.get("id")
             if not isinstance(equip_id, str):
-                raise ValueError(error)
+                raise CopilotRosterError(error)
             if not level or equip_id.startswith("uniequip_001_"):
                 continue
             branch = modules.get(equip_id, "").rsplit("-", 1)[-1]
             if branch not in {"A", "B", "D", "X", "Y"}:
-                raise ValueError("缺少模组资源，请更新 Mower 资源后再使用辅助编队")
+                raise CopilotRosterError(
+                    "缺少模组资源，请更新 Mower 资源后再使用辅助编队"
+                )
             equipped.append({"id": equip_id, "type": branch, "level": level})
         operators.append(
             {
@@ -229,8 +246,12 @@ def _copilot_operators():
                 "equips": equipped,
             }
         )
+    if not operators:
+        raise CopilotRosterError(
+            "MAA 战斗干员表与当前练度数据没有匹配项，请更新资源或刷新森空岛干员练度"
+        )
     if not any(oper["skills"] for oper in operators):
-        raise ValueError(error)
+        raise CopilotRosterError(error)
     return operators
 
 
@@ -244,7 +265,7 @@ def copilot_formation_params(params, conf, maa):
 
     if is_maa_version_newer("v6.19.0", maa.get_version()):
         raise ValueError("使用干员练度辅助编队需要 MAA v6.19.0 或更新版本")
-    operators = _copilot_operators()
+    operators = copilot_operators()
     root = get_path("@app/tmp")
     root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=root, prefix="copilot-") as directory:

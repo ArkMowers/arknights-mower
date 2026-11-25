@@ -312,6 +312,28 @@ def roster_cache(scheduler, tmp_path, monkeypatch):
     monkeypatch.setattr(
         library, "get_path", lambda key: root if key == "@app/tmp" else original(key)
     )
+    installation = tmp_path / "maa"
+    resource = installation / "resource"
+    resource.mkdir(parents=True)
+    (resource / "battle_data.json").write_text(
+        json.dumps(
+            {
+                "chars": {
+                    "char_2012_typhon": {
+                        "name": "提丰",
+                        "profession": "SNIPER",
+                        "rarity": 6,
+                    },
+                    "char_293_thorns": {
+                        "name": "棘刺",
+                        "profession": "WARRIOR",
+                        "rarity": 6,
+                    },
+                }
+            }
+        )
+    )
+    base_schedule.config.conf.maa_path = str(installation)
     settings = base_schedule.config.conf.copilot
     settings.formation = settings.operbox_assist = True
     scheduler.MAA.get_version.return_value = "v6.23.0"
@@ -407,17 +429,97 @@ def test_enabled_formation_assistance_requires_usable_roster_and_core(
     assert not list(roster_cache.parent.glob("copilot-*"))
 
 
+def test_older_core_receives_only_owned_operators_in_its_battle_table(
+    scheduler, roster_cache
+):
+    scheduler.MAA.get_version.return_value = "v6.19.0"
+    data = json.loads(roster_cache.read_text())
+    data["data"]["characters"].append(
+        {
+            **data["data"]["characters"][0],
+            "id": "char_4244_tocka",
+        }
+    )
+    roster_cache.write_text(json.dumps(data))
+
+    def append(_, params):
+        rows = json.loads(Path(params["operbox_data_path"]).read_bytes())["own_opers"]
+        assert [op["id"] for op in rows] == ["char_2012_typhon"]
+        return 1
+
+    scheduler.MAA.append_task.side_effect = append
+    scheduler.maa_plan_solver()
+    scheduler.MAA.start.assert_called_once()
+
+
+def test_roster_refresh_resumes_failed_item_without_replaying_completed_prefix(
+    scheduler, roster_cache, monkeypatch
+):
+    from arknights_mower.solvers import record
+
+    queue_pair()
+    contents = roster_cache.read_bytes()
+
+    def complete_first():
+        emit(scheduler, 10002, 1)
+        roster_cache.unlink()
+        return False
+
+    scheduler.MAA.running.side_effect = complete_first
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.start.call_count == 1
+    assert scheduler.maa_copilot_progress["next"] == 1
+    assert record.load_maa_copilot_progress()["waiting_for_roster"]
+    assert scheduler.maa_copilot_progress["failed"]
+
+    monkeypatch.delattr(scheduler, "_maa_copilot_progress_loaded")
+    scheduler.maa_copilot_progress = {}
+    scheduler.MAA.running.side_effect = None
+    navigation = base_schedule.NavigationSolver.return_value.run
+    navigation.reset_mock()
+    for broken in (None, b"{}", b'{"data":{"characters":[]}}'):
+        if broken:
+            roster_cache.write_bytes(broken)
+        scheduler.maa_plan_solver()
+        navigation.assert_not_called()
+        assert scheduler.MAA.start.call_count == 1
+        assert scheduler.maa_copilot_progress["next"] == 1
+
+    roster_cache.write_bytes(contents)
+    scheduler.maa_plan_solver()
+    navigation.assert_called_once_with("CE-6")
+    params = scheduler.MAA.append_task.call_args.args[1]
+    assert params["copilot_list"][0]["nav_name_override"] == "CE-6"
+    assert scheduler.MAA.start.call_count == 2
+    assert not scheduler.maa_copilot_progress["failed"]
+    assert "waiting_for_roster" not in record.load_maa_copilot_progress()
+
+
+def test_roster_refresh_does_not_retry_native_formation_failure(
+    scheduler, roster_cache
+):
+    scheduler.MAA.append_task.side_effect = ValueError("核心拒绝作业")
+    scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["failed"]
+    assert "waiting_for_roster" not in scheduler.maa_copilot_progress
+    payload = json.loads(roster_cache.read_bytes())
+    payload["data"]["characters"][0]["level"] += 1
+    roster_cache.write_text(json.dumps(payload))
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.append_task.call_count == 1
+
+
 def test_formation_deadline_still_checked_after_roster_preparation(
     scheduler, roster_cache, monkeypatch
 ):
-    read_roster = library._copilot_operators
+    read_roster = library.copilot_operators
 
     def read_at_deadline():
         rows = read_roster()
         scheduler.tasks[0].time = datetime.now() + timedelta(seconds=10)
         return rows
 
-    monkeypatch.setattr(library, "_copilot_operators", read_at_deadline)
+    monkeypatch.setattr(library, "copilot_operators", read_at_deadline)
     scheduler.maa_plan_solver()
     scheduler.MAA.append_task.assert_not_called()
     scheduler.MAA.start.assert_not_called()
