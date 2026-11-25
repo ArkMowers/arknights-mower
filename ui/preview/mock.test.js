@@ -66,12 +66,27 @@ describe('offline preview', () => {
   it('loads the new shop and copilot forms without device or resource access', async () => {
     const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
     expect((await client.get('/maa-event-shop')).data).toEqual({ shops: [] })
-    expect((await client.get('/maa-paradox')).data).toEqual({ scripts: [] })
-    expect((await client.get('/maa-copilot')).data).toEqual({ scripts: [] })
+    expect((await client.get('/maa-paradox')).data.scripts).toHaveLength(2)
+    expect((await client.get('/maa-copilot')).data.scripts).toHaveLength(2)
     await expect(client.post('/maa-event-shop', {})).rejects.toMatchObject({
       response: { status: 405 }
     })
   })
+  it.each(['copilot', 'paradox'])('edits only one configured %s preview row', async (kind) => {
+    const client = axios.create({
+      adapter: createPreviewAdapter(createPreviewData(createPreviewConfiguration({})))
+    })
+    const url = '/maa-long-task-status?kind=' + kind
+    const { data: queue } = await client.get(url)
+    expect(queue.items[0]).toBe('completed')
+    const change = { queue_key: queue.queue_key, index: 1, expected: 'pending', completed: true }
+    const { data: updated } = await client.patch(url, change)
+    expect(updated.items).toEqual(
+      queue.items.map((status, index) => (index === 1 ? 'completed' : status))
+    )
+    await expect(client.patch(url, change)).rejects.toMatchObject({ response: { status: 409 } })
+  })
+
   it('keeps depot choices across independent edits and ignores a later migration', async () => {
     const data = createPreviewData({ theme: 'light' })
     const client = axios.create({ adapter: createPreviewAdapter(data) })

@@ -146,6 +146,170 @@ def test_opening_and_boss_statuses_are_independent(status):
     assert read()["blackflow_boss"]["completed"] is False
 
 
+@pytest.mark.parametrize("kind", ["copilot", "paradox"])
+@pytest.mark.parametrize("method", ["GET", "HEAD", "PATCH"])
+@pytest.mark.parametrize("token", [None, "invalid"])
+def test_item_status_checks_token_before_parsing_or_storage(
+    client, monkeypatch, kind, method, token
+):
+    from flask import Request
+
+    parse = MagicMock()
+    connection = MagicMock()
+    monkeypatch.setattr(Request, "get_json", parse)
+    monkeypatch.setattr(record, "_conn", connection)
+    headers = {"token": token} if token else {}
+    response = client.open(
+        f"/maa-long-task-status?kind={kind}", method=method, headers=headers
+    )
+    assert response.status_code == 403
+    parse.assert_not_called()
+    connection.assert_not_called()
+
+
+@pytest.mark.parametrize("kind", ["copilot", "paradox"])
+def test_item_status_edits_only_the_chosen_occurrence_and_round(client, status, kind):
+    server, summary = status
+    conf = server.config.conf
+    scripts = [{"id": "a" * 64}, {"id": "a" * 64}, {"id": "b" * 64}]
+    settings = getattr(Conf(**{kind: {"scripts": scripts}}), kind)
+    setattr(conf, kind, settings)
+    other = "paradox" if kind == "copilot" else "copilot"
+    setattr(conf, other, getattr(Conf(**{other: {"scripts": scripts}}), other))
+    url = f"/maa-long-task-status?kind={kind}"
+    headers = {"token": "copilot-test-token"}
+    snapshot = client.get(url, headers=headers).get_json()
+    assert snapshot == {
+        **settings.model_dump(include={"run_id", "scripts"}),
+        "completed": False,
+        "queue_key": queue_key(settings),
+        "items": ["pending"] * 3,
+    }
+    assert client.head(url, headers=headers).status_code == 200
+
+    change = {
+        "queue_key": snapshot["queue_key"],
+        "index": 1,
+        "expected": "pending",
+        "completed": True,
+    }
+    changed = client.patch(url, headers=headers, json=change)
+    assert changed.status_code == 200
+    assert changed.get_json()["items"] == ["pending", "completed", "pending"]
+    assert client.get(url, headers=headers).get_json() == changed.get_json()
+    assert (
+        client.get(f"/maa-long-task-status?kind={other}", headers=headers).get_json()[
+            "items"
+        ]
+        == ["pending"] * 3
+    )
+    assert (
+        client.patch(url, headers=headers, json=change).get_json() == changed.get_json()
+    )
+    stale = {**change, "expected": "pending", "completed": False}
+    assert client.patch(url, headers=headers, json=stale).status_code == 409
+    assert not summary()[kind]["completed"]
+
+    for index in (0, 2):
+        assert (
+            client.patch(
+                url, headers=headers, json={**change, "index": index}
+            ).status_code
+            == 200
+        )
+    assert summary()[kind]["completed"]
+    reopen = {**change, "expected": "completed", "completed": False}
+    assert client.patch(url, headers=headers, json=reopen).get_json()["items"] == [
+        "completed",
+        "pending",
+        "completed",
+    ]
+    assert not summary()[kind]["completed"]
+    settings.run_id = "new-round"
+    assert client.patch(url, headers=headers, json=change).status_code == 409
+    assert client.get(url, headers=headers).get_json()["items"] == ["pending"] * 3
+
+
+@pytest.mark.parametrize("kind", ["copilot", "paradox"])
+def test_item_edits_allow_other_rows_while_current_attempt_runs(client, status, kind):
+    server, _ = status
+    paradox = kind == "paradox"
+    scripts = [{"id": "a" * 64}, {"id": "b" * 64}]
+    settings = getattr(Conf(**{kind: {"scripts": scripts}}), kind)
+    setattr(server.config.conf, kind, settings)
+    key = queue_key(settings)
+    record.prepare_copilot_progress(settings, {}, paradox=paradox)
+    assert record.claim_copilot_item(key, 2, "test-attempt", paradox=paradox)
+    url = f"/maa-long-task-status?kind={kind}"
+    headers = {"token": "copilot-test-token"}
+    assert client.get(url, headers=headers).get_json()["items"] == [
+        "running",
+        "pending",
+    ]
+    change = {"queue_key": key, "index": 0, "expected": "pending", "completed": True}
+    assert client.patch(url, headers=headers, json=change).status_code == 409
+    assert client.patch(url, headers=headers, json={**change, "index": 1}).get_json()[
+        "items"
+    ] == ["running", "completed"]
+    record.finish_copilot_item(key, "test-attempt", "failed", paradox=paradox)
+    assert client.get(url, headers=headers).get_json()["items"] == [
+        "failed",
+        "completed",
+    ]
+    retry = {**change, "expected": "failed", "completed": False}
+    assert client.patch(url, headers=headers, json=retry).get_json()["items"] == [
+        "pending",
+        "completed",
+    ]
+
+
+@pytest.mark.parametrize("kind", ["copilot", "paradox"])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("index", False),
+        ("index", -1),
+        ("index", 1),
+        ("completed", 1),
+        ("expected", "unknown"),
+    ],
+)
+def test_invalid_item_status_does_not_write(
+    client, status, monkeypatch, kind, field, value
+):
+    server, _ = status
+    settings = getattr(Conf(**{kind: {"scripts": [{"id": "a" * 64}]}}), kind)
+    setattr(server.config.conf, kind, settings)
+    write = MagicMock()
+    monkeypatch.setattr(record, "set_copilot_item_completion", write)
+    change = {
+        "queue_key": queue_key(settings),
+        "index": 0,
+        "completed": True,
+        "expected": "pending",
+    }
+    response = client.patch(
+        f"/maa-long-task-status?kind={kind}",
+        headers={"token": "copilot-test-token"},
+        json={**change, field: value},
+    )
+    assert response.status_code == 400
+    write.assert_not_called()
+
+
+def test_other_task_kinds_are_read_only(client, monkeypatch):
+    write = MagicMock()
+    monkeypatch.setattr(record, "set_copilot_item_completion", write)
+    for query in ("", "?kind=sss", "?kind=event_rerun"):
+        assert (
+            client.patch(
+                f"/maa-long-task-status{query}", headers={"token": "copilot-test-token"}
+            ).status_code
+            == 405
+        )
+    write.assert_not_called()
+
+
 def test_authorized_head_reads_status(client, monkeypatch):
     read = MagicMock(return_value={"blackflow_boss": {"completed": True}})
     monkeypatch.setattr("arknights_mower.utils.maa_long_task.completion_status", read)

@@ -1,5 +1,6 @@
 <script setup>
 import { inject, onMounted, onUnmounted, ref, watch } from 'vue'
+import StageProgressButton from './StageProgressButton.vue'
 import { useResourceVersionStore } from '@/stores/resourceVersion'
 
 const resourceVersion = useResourceVersionStore()
@@ -11,19 +12,8 @@ const loaded = ref(false)
 const loadError = ref('')
 const saving = ref(false)
 const saveError = ref('')
-const completionOptions = [
-  { label: '已完成', key: 'completed' },
-  { label: '待执行', key: 'pending' }
-]
 let statusRequest
 let timer
-
-function statusLabel(code) {
-  if (progress.value[code] === 'running') return '正在执行'
-  if (progress.value[code] === 'completed') return '已完成'
-  if (progress.value[code] === 'attempted') return '结算待确认'
-  return '待执行'
-}
 
 function applyStatus(data) {
   event.value = data.event
@@ -88,29 +78,14 @@ watch(() => resourceVersion.info.current_version, refreshStatus)
   <template v-else>
     <n-text>{{ event.name }}</n-text>
     <n-flex>
-      <template v-for="stage in event.stages" :key="stage.code">
-        <n-dropdown
-          v-if="progress[stage.code] === 'attempted'"
-          trigger="click"
-          :options="completionOptions"
-          @select="setCompleted(stage.code, $event === 'completed')"
-        >
-          <n-button secondary size="small" type="warning" aria-haspopup="menu" :disabled="saving">
-            {{ stage.code }} · {{ statusLabel(stage.code) }}
-          </n-button>
-        </n-dropdown>
-        <n-button
-          v-else
-          secondary
-          size="small"
-          :type="progress[stage.code] === 'completed' ? 'success' : 'default'"
-          :aria-pressed="progress[stage.code] === 'completed'"
-          :disabled="saving || progress[stage.code] === 'running'"
-          @click="setCompleted(stage.code, progress[stage.code] !== 'completed')"
-        >
-          {{ stage.code }} · {{ statusLabel(stage.code) }}
-        </n-button>
-      </template>
+      <StageProgressButton
+        v-for="stage in event.stages"
+        :key="stage.code"
+        :stage="stage.code"
+        :status="progress[stage.code] || 'pending'"
+        :disabled="saving"
+        @set-completed="setCompleted(stage.code, $event)"
+      />
     </n-flex>
   </template>
   <n-alert v-if="saveError" type="error">{{ saveError }}</n-alert>

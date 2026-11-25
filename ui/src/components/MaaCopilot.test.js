@@ -45,11 +45,14 @@ vi.mock('naive-ui', async () => {
         'NButton',
         'NCard',
         'NCheckbox',
+        'NDropdown',
         'NEmpty',
         'NFlex',
         'NForm',
         'NFormItem',
         'NImage',
+        'NIcon',
+        'NTag',
         'NInput',
         'NInputNumber',
         'NRadio',
@@ -60,6 +63,7 @@ vi.mock('naive-ui', async () => {
         'NUpload'
       ].map((name) => [name, wrapper])
     ),
+    useThemeVars: () => ({ value: {} }),
     useMessage: () => ({ error: state.error, warning: state.warning, success: state.success })
   }
 })
@@ -131,13 +135,18 @@ describe('backup file count warning', () => {
 })
 
 describe('ordinary Copilot library and queue', () => {
-  it('offers the scheduled queue restart without manual runs from the current game screen', async () => {
-    const html = await renderToString(createSSRApp(Component))
-    expect(html).toContain('重新执行整份队列')
-    expect(html).not.toContain('执行勾选列表')
-    expect(html).not.toContain('当前关卡作业')
-    expect(html).not.toContain('执行一次手动任务')
-  })
+  it.each([false, true])(
+    'offers individual progress without a bulk restart (paradox %s)',
+    async (paradox) => {
+      state.config.paradox = ref({ scripts: [] })
+      const html = await renderToString(createSSRApp(Component, { paradox }))
+      expect(html).toContain('点击作业状态')
+      expect(html).not.toContain('重新执行整份队列')
+      expect(html).not.toContain('执行勾选列表')
+      expect(html).not.toContain('当前关卡作业')
+      expect(html).not.toContain('执行一次手动任务')
+    }
+  )
 
   it('shows the Mower AI setup requirement for ordinary map navigation only', async () => {
     state.config.paradox = ref({ scripts: [], run_id: '' })
@@ -154,6 +163,25 @@ describe('ordinary Copilot library and queue', () => {
     state.config.copilot.value.formation = true
     expect(await render()).toContain('使用干员练度辅助编队')
     expect(await render({ paradox: true })).not.toContain('使用干员练度辅助编队')
+  })
+  it('shares one formation policy across ordinary entries and shows a name only for designated support', async () => {
+    state.config.copilot.value.scripts = [{ id: first.id }, { id: first.id, is_raid: true }]
+    state.config.paradox = ref({ scripts: [{ id: second.id }] })
+    const render = (paradox = false) => renderToString(createSSRApp(Component, { paradox }))
+    const ordinary = await render()
+    expect(ordinary.match(/aria-label="队列统一设置"/g)).toHaveLength(1)
+    expect(ordinary.match(/允许使用理智药/g)).toHaveLength(1)
+    expect(ordinary).not.toContain('助战方式')
+    state.config.copilot.value.formation = true
+    state.config.copilot.value.support_unit_name = '能天使'
+    for (const usage of [2, 1, 3, 0, 2]) {
+      state.config.copilot.value.support_unit_usage = usage
+      const html = await render()
+      expect(html).toContain('助战方式')
+      expect(html.includes('指定助战')).toBe(usage === 2)
+    }
+    expect(state.config.copilot.value.support_unit_name).toBe('能天使')
+    expect(await render(true)).not.toContain('队列统一设置')
   })
   it.each([
     'prts://123',
@@ -602,18 +630,46 @@ describe('ordinary Copilot library and queue', () => {
       expect.stringMatching(new RegExp('/maa-copilot/' + first.id + '$'))
     )
   })
-  it('starts a new round only when the user resets the queue', async () => {
-    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) })
-    component.add_script(first.id)
-    const scripts = state.config.copilot.value.scripts
-    await component.restart_queue()
-    const firstRun = state.config.copilot.value.run_id
-    expect(firstRun).toMatch(/^[a-f0-9]{32}$/)
-    expect(state.flush).toHaveBeenCalledOnce()
-    await component.restart_queue()
-    expect(state.config.copilot.value.run_id).not.toBe(firstRun)
-    expect(state.config.copilot.value.scripts).toEqual(scripts)
-  })
+  it.each([false, true])(
+    'updates only the selected row and refreshes after each edit (paradox %s)',
+    async (paradox) => {
+      const kind = paradox ? 'paradox' : 'copilot'
+      const scripts = [false, true, false].map((is_raid) =>
+        paradox ? { id: first.id } : { id: first.id, is_raid, nav_name_override: '' }
+      )
+      state.config[kind] = ref({ scripts })
+      const editor = scope.run(() => Component.setup({ paradox }, { expose: () => {} }))
+      const detail = {
+        queue_key: 'key',
+        run_id: '',
+        scripts,
+        items: ['running', 'completed', 'failed']
+      }
+      const refresh = vi.fn()
+      editor.taskStatus.value = { detail, refresh }
+      state.client.patch = vi.fn().mockResolvedValue({})
+      await editor.setCompleted(0, true)
+      expect(state.client.patch).not.toHaveBeenCalled()
+      await editor.setCompleted(1, false)
+      state.client.patch.mockRejectedValueOnce({ response: { data: { message: '状态已变更' } } })
+      await editor.setCompleted(2, true)
+      expect(state.client.patch.mock.calls).toEqual([
+        [
+          expect.stringContaining('/maa-long-task-status?kind=' + kind),
+          { queue_key: 'key', index: 1, expected: 'completed', completed: false }
+        ],
+        [
+          expect.stringContaining('/maa-long-task-status?kind=' + kind),
+          { queue_key: 'key', index: 2, expected: 'failed', completed: true }
+        ]
+      ])
+      expect(refresh).toHaveBeenCalledTimes(2)
+      expect(state.error).toHaveBeenCalledWith('状态已变更')
+      editor.taskStatus.value.detail.scripts = [{ id: second.id }, ...scripts.slice(1)]
+      await editor.setCompleted(2, true)
+      expect(state.client.patch).toHaveBeenCalledTimes(2)
+    }
+  )
 })
 
 describe('ParadoxCopilot queue', () => {

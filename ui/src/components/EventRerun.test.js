@@ -45,9 +45,8 @@ it('reads the current opening and displays each ordinary stage outcome', async (
   await panel.refreshStatus()
   expect(state.client.get).toHaveBeenCalledWith(expect.stringMatching(/\/stage\/event-rerun$/))
   expect(panel.event.value.key).toBe(live.event.key)
-  expect(panel.statusLabel('OS-1')).toBe('已完成')
-  expect(panel.statusLabel('OS-10')).toBe('结算待确认')
-  expect(panel.statusLabel('OS-3')).toBe('待执行')
+  expect(panel.progress.value['OS-1']).toBe('completed')
+  expect(panel.progress.value['OS-10']).toBe('attempted')
 })
 
 it('saves and clears a completion for the displayed opening', async () => {
@@ -57,9 +56,9 @@ it('saves and clears a completion for the displayed opening', async () => {
     .mockResolvedValueOnce({ data: { ...live, progress: {} } })
     .mockResolvedValueOnce({ data: live })
   await panel.setCompleted('OS-1', false)
-  expect(panel.statusLabel('OS-1')).toBe('待执行')
+  expect(panel.progress.value['OS-1']).toBeUndefined()
   await panel.setCompleted('OS-1', true)
-  expect(panel.statusLabel('OS-1')).toBe('已完成')
+  expect(panel.progress.value['OS-1']).toBe('completed')
   expect(state.client.patch.mock.calls.map(([, body]) => body)).toEqual([
     { event_key: live.event.key, stage: 'OS-1', expected: 'completed', completed: false },
     { event_key: live.event.key, stage: 'OS-1', expected: 'pending', completed: true }
@@ -72,7 +71,7 @@ it('refreshes conflicting edits and prevents changes during a battle', async () 
   state.client.get.mockResolvedValue({ data: { ...live, progress: { 'OS-10': 'running' } } })
   await panel.setCompleted('OS-10', false)
   expect(panel.saveError.value).toBe('状态已变更')
-  expect(panel.statusLabel('OS-10')).toBe('正在执行')
+  expect(panel.progress.value['OS-10']).toBe('running')
   await panel.setCompleted('OS-10', true)
   expect(state.client.patch).toHaveBeenCalledTimes(1)
 })

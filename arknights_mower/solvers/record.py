@@ -2,6 +2,7 @@
 import collections
 import copy
 import json
+import os
 import pickle
 import sqlite3
 import traceback
@@ -496,6 +497,192 @@ def load_maa_copilot_progress():
             "SELECT payload FROM maa_copilot_progress WHERE id = 1"
         ).fetchone()
     return json.loads(row[0]) if row else {}
+
+
+@contextmanager
+def _edit_copilot_progress(paradox):
+    table = "maa_paradox_progress" if paradox else "maa_copilot_progress"
+    with _conn() as connection, connection:
+        connection.execute("BEGIN IMMEDIATE")
+        row = connection.execute(f"SELECT payload FROM {table} WHERE id = 1").fetchone()
+        progress = json.loads(row[0]) if row else {}
+        before = progress.copy()
+        yield progress
+        if progress != before:
+            connection.execute(
+                f"INSERT OR REPLACE INTO {table} VALUES (1, ?)",
+                (json.dumps(progress),),
+            )
+
+
+def _clear_copilot_failure(progress):
+    progress["failed"] = False
+    progress.pop("failed_index", None)
+    progress.pop("waiting_for_roster", None)
+
+
+def _prepare_copilot_progress(progress, key, settings_key):
+    if "settings_key" not in progress and progress.get("key") == settings_key:
+        progress.update(key=key, settings_key=settings_key)
+    if progress.get("key") != key:
+        progress.clear()
+        progress.update(key=key, next=0, failed=False, settings_key=settings_key)
+    elif progress.get("settings_key") != settings_key:
+        if "settings_key" in progress:
+            _clear_copilot_failure(progress)
+        progress["settings_key"] = settings_key
+
+
+def prepare_copilot_progress(conf, fallback, *, paradox=False, roster_ready=False):
+    from arknights_mower.utils.maa_copilot import queue_key, run_key
+
+    key = queue_key(conf)
+    settings_key = key if paradox else run_key(conf)
+    with _edit_copilot_progress(paradox) as progress:
+        if not progress:
+            progress.update(fallback)
+        _prepare_copilot_progress(progress, key, settings_key)
+        if roster_ready and progress.get("waiting_for_roster"):
+            _clear_copilot_failure(progress)
+    return progress
+
+
+def _copilot_attempt_path(paradox):
+    kind = "paradox" if paradox else "copilot"
+    return get_path(f"@app/tmp/{kind}-attempt.json")
+
+
+def _running_copilot_item(progress, paradox):
+    from arknights_mower.utils.update_runtime import read_json, registered_process_alive
+
+    attempt = progress.get("attempt") or {}
+    if attempt.get("active"):
+        # A backup or another profile can carry the progress row, but not its live owner.
+        owner = read_json(_copilot_attempt_path(paradox), {})
+        if owner.get("token") == attempt["token"] and registered_process_alive(owner):
+            return attempt["index"]
+    return None
+
+
+def copilot_item_statuses(conf, saved, *, paradox=False):
+    from arknights_mower.utils.maa_copilot import queue_key, run_key
+
+    key = queue_key(conf)
+    saved = saved.copy()
+    _prepare_copilot_progress(saved, key, key if paradox else run_key(conf))
+    first = saved.get("next", 0)
+    if type(first) is not int or not 0 <= first <= len(conf.scripts):
+        return ["pending"] * len(conf.scripts)
+    result = ["completed"] * first + ["pending"] * (len(conf.scripts) - first)
+    for index in saved.get("completed_items", ()):
+        result[index] = "completed"
+    if saved.get("failed") and first < len(result):
+        result[saved.get("failed_index", first)] = "failed"
+    running = _running_copilot_item(saved, paradox)
+    if running is not None:
+        result[running] = "running"
+    return result
+
+
+def _mark_copilot_item(progress, index, completed):
+    first = progress["next"]
+    extra = set(progress.get("completed_items", ()))
+    if completed:
+        extra.add(index)
+        while first in extra:
+            extra.remove(first)
+            first += 1
+    elif index < first:
+        extra.update(range(index + 1, first))
+        first = index
+    else:
+        extra.discard(index)
+    progress.update(next=first, completed_items=sorted(extra))
+
+
+def set_copilot_item_completion(
+    conf, key, index, expected, completed, *, paradox=False
+):
+    from arknights_mower.utils.maa_copilot import queue_key, run_key
+
+    if (
+        key != queue_key(conf)
+        or type(index) is not int
+        or not 0 <= index < len(conf.scripts)
+    ):
+        return False
+    with _edit_copilot_progress(paradox) as progress:
+        current = copilot_item_statuses(conf, progress, paradox=paradox)[index]
+        desired = "completed" if completed else "pending"
+        if current == "running" or current not in (expected, desired):
+            return False
+        if current == desired:
+            return True
+        _prepare_copilot_progress(progress, key, key if paradox else run_key(conf))
+        if progress.get("failed"):
+            failed = progress.get("failed_index", progress["next"])
+            if index == failed:
+                _clear_copilot_failure(progress)
+            else:
+                progress["failed_index"] = failed
+        if progress.get("attempt", {}).get("index") == index:
+            progress.pop("attempt")
+        _mark_copilot_item(progress, index, completed)
+        return True
+
+
+def claim_copilot_item(key, count, token, *, paradox=False):
+    from arknights_mower.utils.update_runtime import process_identity, write_json
+
+    with _edit_copilot_progress(paradox) as progress:
+        if (
+            progress.get("key") != key
+            or progress["failed"]
+            or progress["next"] >= count
+            or _running_copilot_item(progress, paradox) is not None
+        ):
+            return None
+        pid = os.getpid()
+        write_json(
+            _copilot_attempt_path(paradox),
+            dict(token=token, pid=pid, **process_identity(pid)),
+        )
+        progress["attempt"] = {
+            "index": progress["next"],
+            "token": token,
+            "active": True,
+        }
+    return progress
+
+
+def apply_copilot_result(progress, key, token, outcome):
+    attempt = progress.get("attempt", {})
+    if progress.get("key") != key or attempt.get("token") != token:
+        return
+    index = attempt["index"]
+    if outcome == "released":
+        # A matching terminal callback may arrive after running() returns.
+        progress["attempt"] = {"index": index, "token": token}
+    else:
+        progress.pop("attempt")
+        if outcome == "completed":
+            _mark_copilot_item(progress, index, True)
+        elif outcome in ("failed", "waiting_for_roster"):
+            progress.update(failed=True, failed_index=index)
+            if outcome == "waiting_for_roster":
+                progress["waiting_for_roster"] = True
+
+
+def finish_copilot_item(key, token, outcome, *, paradox=False):
+    with _edit_copilot_progress(paradox) as progress:
+        if (
+            progress.get("key") != key
+            or progress.get("attempt", {}).get("token") != token
+        ):
+            return None
+        _copilot_attempt_path(paradox).unlink(missing_ok=True)
+        apply_copilot_result(progress, key, token, outcome)
+    return progress
 
 
 def load_maa_blackflow_progress(*, boss=False):

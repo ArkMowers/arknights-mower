@@ -180,6 +180,20 @@ def read_long_progress(path, mode):
         return {}
     try:
         with readonly_connection(path) as connection:
+            if mode in {"copilot", "paradox"}:
+                row = connection.execute(
+                    "SELECT json_extract(payload, '$.key'), json_extract(payload, '$.next'), "
+                    "json_extract(payload, '$.failed'), json_array_length(payload, '$.completed_items') "
+                    f"FROM {table} WHERE id = 1"
+                ).fetchone()
+                if row:
+                    return {
+                        "key": row[0],
+                        "next": row[1],
+                        "failed": row[2] == 1,
+                        "extra_completed": row[3] or 0,
+                    }
+                return {}
             row = connection.execute(
                 f"SELECT payload FROM {table} WHERE id = 1"
             ).fetchone()
@@ -205,8 +219,13 @@ def _progress(conf, saved):
     position = saved.get("next")
     if not _integer(position, len(scripts)):
         return None
+    extra_completed = (
+        saved.get("extra_completed", 0) if mode in {"copilot", "paradox"} else 0
+    )
+    if not _integer(extra_completed, len(scripts) - position):
+        return None
     result = {
-        "completed": position,
+        "completed": position + extra_completed,
         "total": len(scripts),
         "failed": saved.get("failed") is True,
     }
