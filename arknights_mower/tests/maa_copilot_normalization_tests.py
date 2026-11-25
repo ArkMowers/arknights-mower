@@ -315,7 +315,7 @@ def test_existing_file_runs_corrected_with_original_id_and_library_quota(
     path.parent.mkdir()
     path.write_bytes(old)
     conf = CopilotConf(scripts=[{"id": key, "is_raid": True}])
-    monkeypatch.setattr(library, "MAX_SCRIPTS", 1)
+    monkeypatch.setattr(library, "MAX_TOTAL_BYTES", len(old))
     assert library.store_script(old)["id"] == key
     directory = tmp_path / "run"
     params = library.build_copilot_params(conf, directory)
