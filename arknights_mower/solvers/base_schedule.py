@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime, timedelta
 from functools import wraps
+from tempfile import TemporaryDirectory
 from time import monotonic, perf_counter
 from typing import Literal, Optional
 from uuid import uuid4
@@ -180,7 +181,7 @@ from arknights_mower.utils.operators import (
     Operator,
     Operators,
 )
-from arknights_mower.utils.path import resolve_config_path
+from arknights_mower.utils.path import resolve_config_path, temporary_root
 from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.replacement_check import (
@@ -1712,7 +1713,12 @@ class BaseSchedulerSolver(
         self._resume_failed_tasks()
         self._card_moods_scanned_this_run = False
         self._workshop_card_moods_scanned_this_run = False
-        self.handle_error(True)
+        # Base recovery can press Back on an unfamiliar user-selected map.
+        if not any(
+            task.type == TaskTypes.MANUAL_COPILOT and task.time <= datetime.now()
+            for task in task_view(self.tasks, TaskScope.DISPATCH, self.op_data)
+        ):
+            self.handle_error(True)
         self._emergency_filter_tasks()
         self._schedule_maintenance_backup_check()
 
@@ -1774,6 +1780,25 @@ class BaseSchedulerSolver(
         dispatched_task = self.task
         try:
             with run_order_network_scope(self):
+                if self.task is not None and self.task.type == TaskTypes.MANUAL_COPILOT:
+                    # MAA starts from the user's current screen before base navigation.
+                    from arknights_mower.solvers.manual_tasks import run_manual_task
+
+                    keep_pending = False
+                    try:
+                        keep_pending = not run_manual_task(self, dispatched_task)
+                    except ValueError as error:
+                        logger.warning(
+                            "手动作业结束：%s",
+                            error,
+                            extra={"log_group": "maa-integration"},
+                        )
+                    finally:
+                        if not keep_pending:
+                            self.tasks[:] = [
+                                t for t in self.tasks if t is not dispatched_task
+                            ]
+                    return
                 return super().run()
         finally:
             if (
@@ -22397,7 +22422,12 @@ class BaseSchedulerSolver(
             self.recog.reset_after_external_control()
 
     def _maa_copilot_run(self, conf):
-        from arknights_mower.utils.maa_copilot import queue_key, run_key
+        from arknights_mower.utils.maa_copilot import (
+            CopilotRosterError,
+            copilot_operators,
+            queue_key,
+            run_key,
+        )
 
         if not getattr(self, "_maa_copilot_progress_loaded", False):
             self.maa_copilot_progress = load_maa_copilot_progress() or getattr(
@@ -22416,6 +22446,14 @@ class BaseSchedulerSolver(
             progress.update(key=key, next=0, failed=False, settings_key=settings_key)
         elif progress.get("settings_key") != settings_key:
             progress.update(failed=False, settings_key=settings_key)
+            progress.pop("waiting_for_roster", None)
+        elif progress.get("waiting_for_roster"):
+            try:
+                copilot_operators()
+            except CopilotRosterError:
+                return progress
+            progress.pop("waiting_for_roster")
+            progress["failed"] = False
         if progress != previous:
             save_maa_copilot_progress(progress)
         return progress
@@ -23204,7 +23242,7 @@ class BaseSchedulerSolver(
         mall_action=None,
         outer_idle_loop=False,
     ):
-        with maa_control.execution():
+        with maa_control.execution(), ExitStack() as run_files:
             result = self._run_maa_plan(
                 tasks,
                 one_time,
@@ -23212,6 +23250,7 @@ class BaseSchedulerSolver(
                 long_task=long_task,
                 mall_action=mall_action,
                 outer_idle_loop=outer_idle_loop,
+                run_files=run_files,
             )
         # 正常休息已经离开 MAA 执行范围，唤醒故障仍交回设备恢复。
         if result is True and not manual and not outer_idle_loop:
@@ -23219,11 +23258,21 @@ class BaseSchedulerSolver(
         return result
 
     def _run_maa_plan(
-        self, tasks, one_time, *, manual, long_task, mall_action, outer_idle_loop
+        self,
+        tasks,
+        one_time,
+        *,
+        manual,
+        long_task,
+        mall_action,
+        outer_idle_loop,
+        run_files,
     ):
         """清日常"""
         copilot_run = None
+        copilot_dir = None
         copilot_conf = None
+        manual_copilot = manual and long_task == "manual_copilot"
         paradox = False
         sss_run = None
         blackflow_run = None
@@ -23479,10 +23528,16 @@ class BaseSchedulerSolver(
                     if paradox
                     else self._maa_copilot_run(copilot_conf)
                 )
+            if selected_long == "manual_copilot":
+                from arknights_mower.utils.config.conf import CopilotConf
+
+                copilot_conf = CopilotConf.model_validate(
+                    self.task.copilot_request["settings"]
+                )
             if selected_long == "sss":
                 sss_run = self._maa_sss_run(conf.sss)
             if (
-                selected_long in ("rogue", "rcl")
+                selected_long in ("rogue", "rcl", "manual_copilot")
                 or (
                     sss_run is not None
                     and not sss_run["failed"]
@@ -23508,7 +23563,7 @@ class BaseSchedulerSolver(
                     self.release_maa()
                     if not paradox:
                         self.initialize_maa()
-                    if selected_long not in ("sss", "rcl"):
+                    if selected_long not in ("sss", "rcl", "manual_copilot"):
                         from arknights_mower.utils.device.io_budget import (
                             device_io_budget,
                         )
@@ -23588,7 +23643,7 @@ class BaseSchedulerSolver(
                             or (deadline() - datetime.now()).total_seconds() <= 30
                         ):
                             break
-                    else:
+                    elif not manual_copilot:
                         self.recog.reset_after_external_control()
                         self.back_to_index()
                     if not large_task_start_allowed():
@@ -23801,35 +23856,58 @@ class BaseSchedulerSolver(
                             and task_id > 0
                         ):
                             self.maa_blackflow_task = (task_id, blackflow_run)
-                    elif selected_long in ("copilot", "paradox"):
+                    elif selected_long in ("copilot", "paradox", "manual_copilot"):
                         from arknights_mower.utils.maa_copilot import (
                             build_copilot_params,
                             build_paradox_params,
+                            copilot_formation_params,
                         )
 
-                        copilot_index = copilot_run["next"]
+                        if not manual_copilot:
+                            copilot_index = copilot_run["next"]
                         if paradox:
                             params = build_paradox_params(
                                 copilot_conf.scripts[copilot_index], copilot_index
                             )
                         else:
-                            params = build_copilot_params(copilot_conf)
-                            params["copilot_list"] = [
-                                params["copilot_list"][copilot_index]
-                            ]
-                            params["copilot_list"][0]["nav_name_override"] = target
-                        if not large_task_start_allowed():
-                            break
-                        task_id = self.MAA.append_task(
-                            "ParadoxCopilot" if paradox else "Copilot", params
-                        )
+                            if copilot_dir is None:
+                                copilot_dir = pathlib.Path(
+                                    run_files.enter_context(
+                                        TemporaryDirectory(
+                                            dir=temporary_root(), prefix="copilot-"
+                                        )
+                                    )
+                                )
+                            params = build_copilot_params(copilot_conf, copilot_dir)
+                            if not manual_copilot:
+                                params["copilot_list"] = [
+                                    params["copilot_list"][copilot_index]
+                                ]
+                                params["copilot_list"][0]["nav_name_override"] = target
+                            elif self.task.copilot_request["mode"] == "single":
+                                params["filename"] = params.pop("copilot_list")[0][
+                                    "filename"
+                                ]
+                                params["loop_times"] = self.task.copilot_request[
+                                    "loop_times"
+                                ]
+                                params["use_sanity_potion"] = False
+                        with copilot_formation_params(
+                            params, copilot_conf, self.MAA
+                        ) as params:
+                            if not large_task_start_allowed():
+                                break
+                            task_id = self.MAA.append_task(
+                                "ParadoxCopilot" if paradox else "Copilot", params
+                            )
                         if not task_id:
                             raise ValueError("MAA 未接受作业，请检查核心版本和作业文件")
-                        setattr(
-                            self,
-                            "maa_paradox_task" if paradox else "maa_copilot_task",
-                            (task_id, copilot_run["key"], copilot_index),
-                        )
+                        if not manual_copilot:
+                            setattr(
+                                self,
+                                "maa_paradox_task" if paradox else "maa_copilot_task",
+                                (task_id, copilot_run["key"], copilot_index),
+                            )
                     elif selected_long == "sss":
                         from arknights_mower.utils.maa_sss import build_sss_params
 
@@ -23873,6 +23951,21 @@ class BaseSchedulerSolver(
                     if not large_task_start_allowed():
                         self.maa_stop()
                         break
+                    if manual_copilot:
+                        self.recog.update()
+                        expected_scene = (
+                            Scene.OPERATOR_BEFORE
+                            if self.task.copilot_request["mode"] == "single"
+                            else Scene.OPERATOR_CHOOSE_LEVEL
+                        )
+                        current_scene = self.scene()
+                        if not large_task_start_allowed():
+                            self.maa_stop()
+                            break
+                        if current_scene != expected_scene:
+                            raise ValueError(
+                                "游戏页面已变化，请打开所选作业的关卡详情或列表的关卡地图，再提交手动作业"
+                            )
                     logger.info("启动", extra={"log_group": "maa-integration"})
                     large_task_started = True
                     self.MAA.start()
@@ -23937,6 +24030,9 @@ class BaseSchedulerSolver(
                     finally:
                         resume_dorm_releases(self)
 
+            if manual_copilot and not large_task_started:
+                # A user stop consumes the request; a shortened window retains its step.
+                return config.stop_maa.is_set()
             if not manual and (refresh := self._maa_refresh_deadline()) is not None:
                 defer_refresh(refresh)
             self.release_maa()
@@ -23962,7 +24058,11 @@ class BaseSchedulerSolver(
                         extra={"log_group": "maa-integration"},
                     )
             if copilot_run is not None:
+                from arknights_mower.utils.maa_copilot import CopilotRosterError
+
                 copilot_run["failed"] = True
+                if isinstance(e, CopilotRosterError):
+                    copilot_run["waiting_for_roster"] = True
                 try:
                     (
                         save_maa_paradox_progress

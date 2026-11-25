@@ -114,6 +114,15 @@ def add_task():
                     if new_task.type in MANUAL_TASK_TYPES | {TaskTypes.FURNITURE}:
                         new_task.plan = {}
                         new_task.meta_data = ""
+                    if new_task.type == TaskTypes.MANUAL_COPILOT:
+                        from arknights_mower.utils import config
+                        from arknights_mower.utils.maa_copilot import (
+                            manual_copilot_request,
+                        )
+
+                        new_task.copilot_request = manual_copilot_request(
+                            config.conf.copilot, task.get("copilot")
+                        )
                     if new_task.type == TaskTypes.WORKSHOP:
                         from arknights_mower.utils import config
                         from arknights_mower.utils.workshop_automation import (

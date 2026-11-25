@@ -17,6 +17,7 @@ from arknights_mower.utils.scheduler_task import (
 )
 
 LONG_TASKS = {
+    TaskTypes.MANUAL_COPILOT: "manual_copilot",
     TaskTypes.ROGUELIKE: "rogue",
     TaskTypes.SSS: "sss",
     TaskTypes.RECLAMATION: "rcl",

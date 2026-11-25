@@ -1,9 +1,11 @@
+import hashlib
 import io
 import json
 import logging
 import sys
 import threading
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -35,7 +37,9 @@ def upload(data=SCRIPT):
     return library.store_script(json.dumps(data).encode())
 
 
-def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(files):
+def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(
+    files, tmp_path
+):
     info = upload()
     assert upload()["id"] == info["id"]
     other = upload({**SCRIPT, "stage_name": "CE-6"})
@@ -46,7 +50,7 @@ def test_import_deduplicates_and_queue_preserves_order_raid_and_navigation(files
             {"id": info["id"]},
         ]
     )
-    params = library.build_copilot_params(conf)
+    params = library.build_copilot_params(conf, tmp_path)
     assert params == {
         "formation": False,
         "use_sanity_potion": False,
@@ -78,7 +82,7 @@ def test_existing_script_without_difficulty_defaults_to_unspecified(files):
     assert library.list_scripts()[0]["difficulty"] == 0
 
 
-def test_formation_parameters_only_forward_when_enabled(files):
+def test_formation_parameters_only_forward_when_enabled(files, tmp_path):
     info = upload()
     conf = CopilotConf(
         scripts=[{"id": info["id"]}],
@@ -91,7 +95,7 @@ def test_formation_parameters_only_forward_when_enabled(files):
         support_unit_name=" 维什戴尔 ",
         user_additional=[{"name": "桃金娘", "skill": 1}, {"name": ""}],
     )
-    params = library.build_copilot_params(conf)
+    params = library.build_copilot_params(conf, tmp_path)
     assert params["formation_index"] == 4
     assert (
         params["use_sanity_potion"]
@@ -102,14 +106,14 @@ def test_formation_parameters_only_forward_when_enabled(files):
     assert params["support_unit_name"] == "维什戴尔"
     assert params["user_additional"] == [{"name": "桃金娘", "skill": 1}]
     conf.formation = False
-    assert set(library.build_copilot_params(conf)) == {
+    assert set(library.build_copilot_params(conf, tmp_path)) == {
         "copilot_list",
         "formation",
         "use_sanity_potion",
     }
     conf.formation = True
     conf.support_unit_usage = 1
-    assert "support_unit_name" not in library.build_copilot_params(conf)
+    assert "support_unit_name" not in library.build_copilot_params(conf, tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -152,17 +156,17 @@ def test_oversized_and_exhausted_storage_preserve_existing_script(files, monkeyp
     assert upload()["id"] == info["id"]
 
 
-def test_missing_or_changed_script_fails_before_params_are_returned(files):
+def test_missing_or_changed_script_fails_before_params_are_returned(files, tmp_path):
     info = upload()
     conf = CopilotConf(scripts=[{"id": info["id"]}])
     library.script_path(info["id"]).write_text("{}")
     with pytest.raises(ValueError):
-        library.build_copilot_params(conf)
+        library.build_copilot_params(conf, tmp_path)
     library.script_path(info["id"]).unlink()
     with pytest.raises(OSError):
-        library.build_copilot_params(conf)
+        library.build_copilot_params(conf, tmp_path)
     with pytest.raises(ValueError):
-        library.build_copilot_params(CopilotConf())
+        library.build_copilot_params(CopilotConf(), tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -294,6 +298,277 @@ def scheduler(monkeypatch, files, tmp_path):
     monkeypatch.setattr(base_schedule.config, "stop_maa", threading.Event())
     monkeypatch.setattr(base_schedule.config, "stop_mower", threading.Event())
     return solver
+
+
+@pytest.fixture
+def roster_cache(scheduler, tmp_path, monkeypatch):
+    from arknights_mower.utils import mastery_recommendation
+
+    root = tmp_path / "当前实例" / "tmp"
+    root.mkdir(parents=True)
+    cache = root / "cultivate.json"
+    monkeypatch.setattr(mastery_recommendation, "get_path", lambda _: cache)
+    original = library.get_path
+    monkeypatch.setattr(
+        library, "get_path", lambda key: root if key == "@app/tmp" else original(key)
+    )
+    installation = tmp_path / "maa"
+    resource = installation / "resource"
+    resource.mkdir(parents=True)
+    (resource / "battle_data.json").write_text(
+        json.dumps(
+            {
+                "chars": {
+                    "char_2012_typhon": {
+                        "name": "提丰",
+                        "profession": "SNIPER",
+                        "rarity": 6,
+                    },
+                    "char_293_thorns": {
+                        "name": "棘刺",
+                        "profession": "WARRIOR",
+                        "rarity": 6,
+                    },
+                }
+            }
+        )
+    )
+    base_schedule.config.conf.maa_path = str(installation)
+    settings = base_schedule.config.conf.copilot
+    settings.formation = settings.operbox_assist = True
+    scheduler.MAA.get_version.return_value = "v6.23.0"
+    roster = {
+        "id": "char_2012_typhon",
+        "evolvePhase": 2,
+        "level": 85,
+        "potentialRank": 2,
+        "mainSkillLevel": 7,
+        "private": "secret",
+        "skills": [{"level": 0}, {"level": 2}, {"level": 3}],
+        "equips": [
+            {"id": "uniequip_001_typhon", "level": 1},
+            {"id": "uniequip_002_typhon", "level": 2},
+            {"id": "uniequip_003_typhon", "level": 0},
+        ],
+    }
+    cache.write_text(
+        json.dumps(
+            {
+                "_mower_player": {"uid": "secret", "nickName": "secret"},
+                "data": {"characters": [roster], "items": [{"id": "secret"}]},
+            }
+        )
+    )
+    return cache
+
+
+@pytest.mark.parametrize("core_rejects", [True, False])
+def test_worker_receives_private_instance_formation_data_during_append(
+    scheduler, roster_cache, core_rejects
+):
+    received = []
+
+    def append(task, params):
+        assert task == "Copilot" and params["formation"]
+        path = Path(params["operbox_data_path"])
+        assert path.is_absolute() and path.parent.parent == roster_cache.parent
+        received.append(json.loads(path.read_text("utf-8")))
+        if core_rejects:
+            raise ValueError("MAA 拒绝编队")
+        return 1
+
+    scheduler.MAA.append_task.side_effect = append
+    scheduler.maa_plan_solver()
+    assert received == [
+        {
+            "own_opers": [
+                {
+                    "id": "char_2012_typhon",
+                    "name": "提丰",
+                    "elite": 2,
+                    "level": 85,
+                    "potential": 3,
+                    "mainSkillLevel": 7,
+                    "rarity": 6,
+                    "own": True,
+                    "skills": [{"level": 0}, {"level": 2}, {"level": 3}],
+                    "equips": [{"id": "uniequip_002_typhon", "type": "X", "level": 2}],
+                }
+            ]
+        }
+    ]
+    assert list(roster_cache.parent.iterdir()) == [roster_cache]
+    assert scheduler.MAA.start.called is not core_rejects
+
+
+@pytest.mark.parametrize(
+    "problem", ["inventory", "no_skills", "invalid", "duplicate", "old_core", "missing"]
+)
+def test_enabled_formation_assistance_requires_usable_roster_and_core(
+    scheduler, roster_cache, problem
+):
+    payload = json.loads(roster_cache.read_text())
+    if problem == "inventory":
+        del payload["data"]["characters"]
+    elif problem == "no_skills":
+        payload["data"]["characters"][0]["skills"] = []
+    elif problem == "invalid":
+        payload["data"]["characters"][0]["skills"][0]["level"] = "2"
+    elif problem == "duplicate":
+        payload["data"]["characters"] *= 2
+    elif problem == "old_core":
+        scheduler.MAA.get_version.return_value = "v6.18.0"
+    roster_cache.write_text(json.dumps(payload))
+    if problem == "missing":
+        roster_cache.unlink()
+    scheduler.maa_plan_solver()
+    scheduler.MAA.append_task.assert_not_called()
+    scheduler.MAA.start.assert_not_called()
+    assert scheduler.maa_copilot_progress["failed"]
+    assert scheduler.maa_copilot_progress["next"] == 0
+    assert not list(roster_cache.parent.glob("copilot-*"))
+
+
+def test_older_core_receives_only_owned_operators_in_its_battle_table(
+    scheduler, roster_cache
+):
+    scheduler.MAA.get_version.return_value = "v6.19.0"
+    data = json.loads(roster_cache.read_text())
+    data["data"]["characters"].append(
+        {
+            **data["data"]["characters"][0],
+            "id": "char_4244_tocka",
+        }
+    )
+    roster_cache.write_text(json.dumps(data))
+
+    def append(_, params):
+        rows = json.loads(Path(params["operbox_data_path"]).read_bytes())["own_opers"]
+        assert [op["id"] for op in rows] == ["char_2012_typhon"]
+        return 1
+
+    scheduler.MAA.append_task.side_effect = append
+    scheduler.maa_plan_solver()
+    scheduler.MAA.start.assert_called_once()
+
+
+def test_roster_refresh_resumes_failed_item_without_replaying_completed_prefix(
+    scheduler, roster_cache, monkeypatch
+):
+    from arknights_mower.solvers import record
+
+    queue_pair()
+    contents = roster_cache.read_bytes()
+
+    def complete_first():
+        emit(scheduler, 10002, 1)
+        roster_cache.unlink()
+        return False
+
+    scheduler.MAA.running.side_effect = complete_first
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.start.call_count == 1
+    assert scheduler.maa_copilot_progress["next"] == 1
+    assert record.load_maa_copilot_progress()["waiting_for_roster"]
+    assert scheduler.maa_copilot_progress["failed"]
+
+    monkeypatch.delattr(scheduler, "_maa_copilot_progress_loaded")
+    scheduler.maa_copilot_progress = {}
+    scheduler.MAA.running.side_effect = None
+    navigation = base_schedule.NavigationSolver.return_value.run
+    navigation.reset_mock()
+    for broken in (None, b"{}", b'{"data":{"characters":[]}}'):
+        if broken:
+            roster_cache.write_bytes(broken)
+        scheduler.maa_plan_solver()
+        navigation.assert_not_called()
+        assert scheduler.MAA.start.call_count == 1
+        assert scheduler.maa_copilot_progress["next"] == 1
+
+    roster_cache.write_bytes(contents)
+    scheduler.maa_plan_solver()
+    navigation.assert_called_once_with("CE-6")
+    params = scheduler.MAA.append_task.call_args.args[1]
+    assert params["copilot_list"][0]["nav_name_override"] == "CE-6"
+    assert scheduler.MAA.start.call_count == 2
+    assert not scheduler.maa_copilot_progress["failed"]
+    assert "waiting_for_roster" not in record.load_maa_copilot_progress()
+
+
+def test_roster_refresh_does_not_retry_native_formation_failure(
+    scheduler, roster_cache
+):
+    scheduler.MAA.append_task.side_effect = ValueError("核心拒绝作业")
+    scheduler.maa_plan_solver()
+    assert scheduler.maa_copilot_progress["failed"]
+    assert "waiting_for_roster" not in scheduler.maa_copilot_progress
+    payload = json.loads(roster_cache.read_bytes())
+    payload["data"]["characters"][0]["level"] += 1
+    roster_cache.write_text(json.dumps(payload))
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.append_task.call_count == 1
+
+
+def test_formation_deadline_still_checked_after_roster_preparation(
+    scheduler, roster_cache, monkeypatch
+):
+    read_roster = library.copilot_operators
+
+    def read_at_deadline():
+        rows = read_roster()
+        scheduler.tasks[0].time = datetime.now() + timedelta(seconds=10)
+        return rows
+
+    monkeypatch.setattr(library, "copilot_operators", read_at_deadline)
+    scheduler.maa_plan_solver()
+    scheduler.MAA.append_task.assert_not_called()
+    scheduler.MAA.start.assert_not_called()
+    assert not scheduler.maa_copilot_progress["failed"]
+    assert scheduler.maa_copilot_progress["next"] == 0
+    assert list(roster_cache.parent.iterdir()) == [roster_cache]
+
+
+def test_formation_disabled_ignores_saved_assistance_and_legacy_key_is_preserved(
+    scheduler,
+):
+    conf = base_schedule.config.conf.copilot
+    old = conf.model_dump(exclude={"operbox_assist"})
+    old_key = hashlib.sha256(
+        json.dumps(old, sort_keys=True, ensure_ascii=False).encode()
+    ).hexdigest()
+    assert library.run_key(conf) == old_key
+    conf.operbox_assist = True
+    scheduler.maa_plan_solver()
+    scheduler.MAA.get_version.assert_not_called()
+    assert "operbox_data_path" not in scheduler.MAA.append_task.call_args.args[1]
+
+
+@pytest.mark.parametrize("start_error", [False, True])
+def test_legacy_execution_copy_lives_until_maa_finishes(scheduler, start_error):
+    old = json.dumps(SCRIPT, ensure_ascii=False).encode()
+    old_id = hashlib.sha256(old).hexdigest()
+    path = library.script_path(old_id)
+    path.write_bytes(old)
+    conf = base_schedule.config.conf.copilot
+    conf.scripts[0].id = old_id
+    opened = []
+
+    def start():
+        entry = scheduler.MAA.append_task.call_args.args[1]["copilot_list"][0]
+        filename = Path(entry["filename"])
+        opened.append((filename, json.loads(filename.read_bytes())))
+        if start_error:
+            raise RuntimeError("作业启动失败")
+
+    scheduler.MAA.start.side_effect = start
+    scheduler.maa_plan_solver()
+    assert len(opened) == 1
+    filename, script = opened[0]
+    assert filename != path
+    assert script["opers"][0]["requirements"] == {"elite": 2}
+    assert not filename.parent.exists()
+    assert path.read_bytes() == old
+    assert conf.scripts[0].id == old_id
 
 
 def emit(solver, event, taskid, **kwargs):
@@ -792,3 +1067,81 @@ def test_copilot_does_not_start_without_confirmed_stage_map(scheduler, failure):
     scheduler.MAA.append_task.assert_not_called()
     scheduler.MAA.start.assert_not_called()
     assert scheduler.maa_copilot_progress["failed"] is True
+
+
+@pytest.mark.parametrize("mode", ["list", "single"])
+def test_manual_copilot_submits_from_current_screen_without_consuming_idle_queue(
+    scheduler, mode
+):
+    from arknights_mower.solvers.manual_tasks import run_manual_task
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    conf = base_schedule.config.conf.copilot
+    queue_pair()
+    conf.use_sanity_potion = True
+    conf.scripts[1].is_raid = True
+    task = SchedulerTask(datetime.now(), task_type=TaskTypes.MANUAL_COPILOT)
+    selection = (
+        {"mode": "single", "id": conf.scripts[1].id, "loop_times": 3}
+        if mode == "single"
+        else {"mode": "list", "scripts": [entry.model_dump() for entry in conf.scripts]}
+    )
+    scheduler.scene.side_effect = None
+    scheduler.scene.return_value = (
+        base_schedule.Scene.OPERATOR_BEFORE
+        if mode == "single"
+        else base_schedule.Scene.OPERATOR_CHOOSE_LEVEL
+    )
+    task.copilot_request = library.manual_copilot_request(conf, selection)
+    scheduler.task = task
+    scheduler.tasks.insert(0, task)
+    conf.scripts.clear()
+    assert run_manual_task(scheduler, task) is True
+    scheduler.MAA.append_task.assert_called_once()
+    name, params = scheduler.MAA.append_task.call_args.args
+    assert name == "Copilot"
+    if mode == "list":
+        assert [row["is_raid"] for row in params["copilot_list"]] == [False, True]
+        assert params["use_sanity_potion"]
+    else:
+        assert params["filename"].endswith(selection["id"] + ".json")
+        assert params["loop_times"] == 3
+        assert params["use_sanity_potion"] is False
+        assert "copilot_list" not in params
+    scheduler.MAA.start.assert_called_once()
+    scheduler.back_to_index.assert_not_called()
+    base_schedule.NavigationSolver.assert_not_called()
+    assert not getattr(scheduler, "maa_copilot_progress", None)
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        {"mode": "list", "scripts": []},
+        {"mode": "single", "id": "../../file"},
+        {"mode": "single", "id": "a" * 64, "loop_times": -1},
+        {"mode": "single", "id": "a" * 64},
+    ],
+)
+def test_reject_invalid_manual_selection(files, selection):
+    with pytest.raises(ValueError):
+        library.manual_copilot_request(CopilotConf(), selection)
+
+
+def test_deferred_manual_request_refuses_a_changed_game_screen(scheduler):
+    from arknights_mower.solvers.manual_tasks import run_manual_task
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    conf = base_schedule.config.conf.copilot
+    task = SchedulerTask(datetime.now(), task_type=TaskTypes.MANUAL_COPILOT)
+    task.copilot_request = library.manual_copilot_request(
+        conf, {"mode": "single", "id": conf.scripts[0].id}
+    )
+    scheduler.task = task
+    scheduler.tasks.insert(0, task)
+    scheduler.scene.side_effect = None
+    scheduler.scene.return_value = base_schedule.Scene.INFRA_MAIN
+    with pytest.raises(ValueError, match="游戏页面已变化"):
+        run_manual_task(scheduler, task)
+    scheduler.MAA.start.assert_not_called()
+    scheduler.back_to_index.assert_not_called()

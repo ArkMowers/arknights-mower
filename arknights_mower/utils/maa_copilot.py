@@ -4,6 +4,9 @@ import hashlib
 import json
 import os
 import re
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 
 from arknights_mower.utils.maa_storage import storage_root
 from arknights_mower.utils.path import get_path, resolve_config_path
@@ -15,8 +18,11 @@ MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
 
 def run_key(conf):
+    settings = conf.model_dump()
+    if settings.get("operbox_assist") is False:
+        del settings["operbox_assist"]  # Preserve pre-existing progress when disabled.
     return hashlib.sha256(
-        json.dumps(conf.model_dump(), sort_keys=True, ensure_ascii=False).encode()
+        json.dumps(settings, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
 
 
@@ -124,13 +130,32 @@ def list_scripts(*, sss=False, paradox=False):
     return result
 
 
+def _script_content(data):
+    return json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
+
+
+def _normalized_copilot_content(data):
+    from arknights_mower.utils.maa_copilot_normalization import normalize_copilot
+
+    normalize_copilot(data)
+    return _script_content(data)
+
+
 def store_script(raw, *, sss=False, paradox=False):
     data = parse_script(raw, sss=sss, paradox=paradox)
-    content = json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    original = _script_content(data)
+    content = original if sss or paradox else _normalized_copilot_content(data)
     if len(content) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
     script_id = hashlib.sha256(content).hexdigest()
     path = script_path(script_id, sss=sss, paradox=paradox)
+    if original != content and not path.exists():
+        old_id = hashlib.sha256(original).hexdigest()
+        old_path = script_path(old_id)
+        if old_path.exists():
+            with old_path.open("rb") as stream:
+                if stream.read(MAX_SCRIPT_BYTES + 1) == original:
+                    return script_info(old_id, data)
     files = list(path.parent.glob("*.json"))
     if not path.exists() and (
         len(files) >= MAX_SCRIPTS
@@ -141,14 +166,131 @@ def store_script(raw, *, sss=False, paradox=False):
     return script_info(script_id, data, sss=sss, paradox=paradox)
 
 
-def build_copilot_params(conf):
+class CopilotRosterError(ValueError):
+    """Formation cannot use the current roster or operator resources."""
+
+
+def copilot_operators():
+    from arknights_mower.utils import config
+    from arknights_mower.utils.maa_copilot_normalization import battle_data_path
+    from arknights_mower.utils.mastery_recommendation import (
+        get_cultivate_snapshot,
+        get_skill_data,
+    )
+
+    snapshot = get_cultivate_snapshot()
+    error = "请先在「养成规划」中刷新森空岛干员练度，再使用辅助编队"
+
+    def integer(entry, key, low, high):
+        value = entry.get(key) if isinstance(entry, dict) else None
+        if type(value) is not int or not low <= value <= high:
+            raise CopilotRosterError(error)
+        return value
+
+    if snapshot is None:
+        raise CopilotRosterError(error)
+    target = Path(resolve_config_path(config.conf.maa_path))
+    battle_data = read_json(battle_data_path(target))
+    known_ids = battle_data.get("chars") if isinstance(battle_data, dict) else None
+    if not isinstance(known_ids, dict) or not known_ids:
+        raise CopilotRosterError(
+            "无法读取 MAA 战斗干员表，请更新 MAA 资源后再使用辅助编队"
+        )
+    definitions = get_skill_data().get("growth", {}).get("characters", {})
+    operators = []
+    seen = set()
+    for char in snapshot["data"]["characters"]:
+        if char["id"] not in known_ids:
+            continue
+        if char["id"] in seen:
+            raise CopilotRosterError(error)
+        seen.add(char["id"])
+        definition = definitions.get(char["id"])
+        if not definition:
+            continue
+        skills = char.get("skills", [])
+        equips = char.get("equips", [])
+        if not isinstance(skills, list) or not isinstance(equips, list):
+            raise CopilotRosterError(error)
+
+        modules = {module["id"]: module["type"] for module in definition["modules"]}
+        equipped = []
+        for equip in equips:
+            level = integer(equip, "level", 0, 3)
+            equip_id = equip.get("id")
+            if not isinstance(equip_id, str):
+                raise CopilotRosterError(error)
+            if not level or equip_id.startswith("uniequip_001_"):
+                continue
+            branch = modules.get(equip_id, "").rsplit("-", 1)[-1]
+            if branch not in {"A", "B", "D", "X", "Y"}:
+                raise CopilotRosterError(
+                    "缺少模组资源，请更新 Mower 资源后再使用辅助编队"
+                )
+            equipped.append({"id": equip_id, "type": branch, "level": level})
+        operators.append(
+            {
+                "id": char["id"],
+                "name": definition["name"],
+                "own": True,
+                "rarity": definition["rarity"],
+                "elite": integer(char, "evolvePhase", 0, 2),
+                "level": integer(char, "level", 1, 90),
+                "potential": integer(char, "potentialRank", 0, 5) + 1,
+                "mainSkillLevel": integer(char, "mainSkillLevel", 1, 7)
+                if skills
+                else 0,
+                "skills": [
+                    {"level": integer(skill, "level", 0, 3)} for skill in skills
+                ],
+                "equips": equipped,
+            }
+        )
+    if not operators:
+        raise CopilotRosterError(
+            "MAA 战斗干员表与当前练度数据没有匹配项，请更新资源或刷新森空岛干员练度"
+        )
+    if not any(oper["skills"] for oper in operators):
+        raise CopilotRosterError(error)
+    return operators
+
+
+@contextmanager
+def copilot_formation_params(params, conf, maa):
+    if not params.get("formation") or not conf.operbox_assist:
+        yield params
+        return
+
+    from arknights_mower.utils.maa_update import is_maa_version_newer
+
+    if is_maa_version_newer("v6.19.0", maa.get_version()):
+        raise ValueError("使用干员练度辅助编队需要 MAA v6.19.0 或更新版本")
+    operators = copilot_operators()
+    root = get_path("@app/tmp")
+    root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=root, prefix="copilot-") as directory:
+        path = Path(directory) / "OperBoxData.json"
+        path.write_text(
+            json.dumps({"own_opers": operators}, ensure_ascii=False), "utf-8"
+        )
+        yield {**params, "operbox_data_path": str(path.absolute())}
+
+
+def build_copilot_params(conf, work_dir):
     if not conf.scripts:
         raise ValueError("请先导入并选择自动战斗作业")
     queue = []
     for item in conf.scripts:
         path = script_path(item.id)
         with path.open("rb") as stream:
-            parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
+            data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
+        before = _script_content(data)
+        content = _normalized_copilot_content(data)
+        if len(content) > MAX_SCRIPT_BYTES:
+            raise ValueError("作业文件不能超过 1 MB")
+        if before != content:
+            path = work_dir / path.name
+            write_json(path, data)
         entry = {"filename": str(path), "is_raid": item.is_raid}
         if item.nav_name_override.strip():
             entry["nav_name_override"] = item.nav_name_override.strip()
@@ -225,6 +367,34 @@ def copilot_navigation_target(item):
     if re.fullmatch(r"[A-Z0-9]+(?:-[A-Z0-9]+)+", target.upper()):
         return target.upper()
     raise ValueError("无法确定作业关卡，请填写导航关卡名，例如 1-7 或活动关卡编号")
+
+
+def manual_copilot_request(conf, selection):
+    from arknights_mower.utils.config.conf import CopilotScriptConf
+
+    if not isinstance(selection, dict):
+        raise ValueError("请选择要手动执行的作业")
+    mode = selection.get("mode")
+    loops = selection.get("loop_times", 1)
+    if type(loops) is not int or not 1 <= loops <= 9999:
+        raise ValueError("作业执行次数应为 1 至 9999")
+    if mode == "single":
+        item = CopilotScriptConf(id=selection.get("id"))
+        if not script_path(item.id).is_file():
+            raise ValueError("所选作业不存在，请刷新作业库")
+        entries = [item]
+    elif mode == "list" and loops == 1:
+        # The UI sends queue entries by value so edits cannot retarget a pending run.
+        raw = selection.get("scripts")
+        if not isinstance(raw, list) or not 1 <= len(raw) <= 32:
+            raise ValueError("请勾选 1 至 32 项作业")
+        entries = [CopilotScriptConf.model_validate(item) for item in raw]
+        if any(not script_path(item.id).is_file() for item in entries):
+            raise ValueError("所选作业不存在，请刷新作业库")
+    else:
+        raise ValueError("无效的手动作业模式")
+    settings = conf.model_copy(update={"scripts": entries})
+    return {"mode": mode, "loop_times": loops, "settings": settings.model_dump()}
 
 
 def build_paradox_params(item, index):

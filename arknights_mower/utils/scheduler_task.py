@@ -73,6 +73,7 @@ class TaskTypes(Enum):
     CREDIT_SHOP = ("credit_shop", "信用购物", 2)
     MISSION = ("mission", "领取任务奖励", 2)
     STAGE_PLAN = ("stage_plan", "作战计划", 2)
+    MANUAL_COPILOT = ("manual_copilot", "手动作业 (MAA)", 2)
     ROGUELIKE = ("roguelike", "集成战略 (MAA)", 2)
     SSS = ("sss", "保全派驻 (MAA)", 2)
     RECLAMATION = ("reclamation", "生息演算 (MAA)", 2)
@@ -100,6 +101,7 @@ MANUAL_TASK_TYPES = frozenset(
         TaskTypes.CREDIT_SHOP,
         TaskTypes.MISSION,
         TaskTypes.STAGE_PLAN,
+        TaskTypes.MANUAL_COPILOT,
         TaskTypes.ROGUELIKE,
         TaskTypes.SSS,
         TaskTypes.RECLAMATION,

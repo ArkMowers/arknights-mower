@@ -1744,7 +1744,7 @@ def test_gap_exclusions_preserve_exact_names_and_have_isolated_defaults():
     assert conf.group_mood_gap_exclusions == [" 组一 ", "组二"]
 
 
-def test_ordinary_copilot_library_and_queue_roundtrip(storage, monkeypatch):
+def test_ordinary_copilot_library_and_queue_roundtrip(storage, monkeypatch, tmp_path):
     from arknights_mower.solvers import record
     from arknights_mower.utils import maa_copilot
 
@@ -1773,9 +1773,9 @@ def test_ordinary_copilot_library_and_queue_roundtrip(storage, monkeypatch):
     assert config.conf.copilot.scripts[0].id == info["id"]
     assert config.conf.copilot.scripts[0].is_raid is True
     assert (
-        maa_copilot.build_copilot_params(config.conf.copilot)["copilot_list"][0][
-            "is_raid"
-        ]
+        maa_copilot.build_copilot_params(config.conf.copilot, tmp_path)["copilot_list"][
+            0
+        ]["is_raid"]
         is True
     )
 
