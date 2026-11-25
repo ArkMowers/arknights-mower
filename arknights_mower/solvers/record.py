@@ -294,13 +294,15 @@ def current_state():
     ):
         return None
     data = base_scheduler.op_data
-    # Interactive Copilot requests belong to the current game screen and session.
-    tasks = [
-        task
-        for task in base_scheduler.tasks
-        if not getattr(task, "mood_control_event", None)
-        and not hasattr(task, "copilot_request")
-    ]
+    tasks = base_scheduler.tasks
+
+    def session_only(task):
+        return getattr(task, "mood_control_event", None) or hasattr(
+            task, "copilot_request"
+        )
+
+    if any(session_only(task) for task in tasks):
+        tasks = [task for task in tasks if not session_only(task)]
     return {
         "dorm": data.all_dorms(),
         "tasks": tasks,
