@@ -68,6 +68,10 @@ Every bundled catalog entry has a decoded 96×96 WEBP avatar, and every referenc
 
 The [production-room selector](base-scheduler.md#28-operator-selection-verification) reads operator names and branch identifiers from the active package’s training metadata in `skill_data.json`. The same file includes Chinese branch labels from the equipment table. Older packages use the bundled labels for their known branch identifiers. Operators with shared names across forms or unknown branch identifiers retain name search.
 
+### Bundled Room Templates
+
+The software package ships the PNG templates used to read room occupancy, resident timers, manufacturing products, trading strategies and the station filter, together with the dormitory removal button. Installing a MowerResource update leaves these files in place. With `MOWERFONTS_DIR` set to the `fonts` directory of a MowerFonts checkout, `python build_room_templates.py --check` compares the six templates containing rendered text with the bundled pixels. The [template generator](../../build_room_templates.py) uses the original fonts and the recorded filter arrows. The remaining five templates use game screenshots.
+
 ### Activity Shop Resources
 
 <a id="activity-shop-resources"></a>

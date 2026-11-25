@@ -472,6 +472,8 @@ Res = Literal[
     "room/product_detail_exp3",
     "room/product_exp3",
     "room/product_gold",
+    "room/resident_timer_glyphs",
+    "room/station_filter_glyphs",
     "room/strategy_lmd",
     "room/strategy_locked",
     "room/strategy_orundum",
