@@ -68,7 +68,7 @@ function rosterHint(report) {
   if (!first) return '作业编队要求未满足'
   if (gaps.length === 1 && first.candidates.length === 1) {
     const oper = first.candidates[0]
-    return `${oper.name} · ${oper.reasons[0]}${report.can_borrow ? '，可尝试借助战' : ''}`
+    return `${oper.name} · ${oper.reasons[0]}`
   }
   return `${first.slot}${gaps.length > 1 ? `等 ${gaps.length} 个位置` : ''}缺少符合要求的干员`
 }

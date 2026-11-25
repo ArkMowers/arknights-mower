@@ -270,7 +270,7 @@ describe('ordinary Copilot library and queue', () => {
     expect(settings.support_unit_usage).toBeFalsy()
     expect(component.selectedReport.value).toBeNull()
     const script = component.scriptsById.value.get(first.id)
-    expect(component.rosterHint(script.roster_check)).toContain('可尝试借助战')
+    expect(component.rosterHint(script.roster_check)).toBe('塔露拉 · 精二 30 级，要求 60 级')
     component.reportItem.value = settings.scripts[0]
     expect(component.selectedReport.value).toEqual(report)
     component.reportItem.value = null
