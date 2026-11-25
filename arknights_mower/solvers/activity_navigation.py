@@ -13,7 +13,7 @@ from arknights_mower.utils.device.io_budget import device_io_budget, io_timeout
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.path import resolve_config_path
 from arknights_mower.utils.scene import Scene
-from arknights_mower.utils.stage_map_labels import find_stage_on_map
+from arknights_mower.utils.stage_map_labels import read_map_stage_labels
 
 
 def normalize_activity_text(text):
@@ -266,15 +266,19 @@ class ActivityNavigation:
         point = tuple(int(sum(p[i] for p in box) / len(box)) for i in (0, 1))
         if not self.solver.tap_and_detect_page_move(point, title, record_step=False):
             return False
-        if find_stage_on_map(self.solver.recog.img, target) is not None:
-            return True
         stem = self.solver.stage_pattern_stem(target)
-        return self.confirm(
-            lambda text: (
+
+        def in_chapter(text):
+            return (
                 self.solver.is_stage_code(text)
                 and self.solver.stage_pattern_stem(text) == stem
             )
-        )
+
+        if any(
+            in_chapter(code) for code, _ in read_map_stage_labels(self.solver.recog.img)
+        ):
+            return True
+        return self.confirm(in_chapter)
 
     def open_stage(self, target):
         title = self.meta.get("subTitle")

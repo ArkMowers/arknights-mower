@@ -27,7 +27,7 @@ from arknights_mower.utils.nav_steps import (
 )
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.stage_code_glyphs import read_stage_code
-from arknights_mower.utils.stage_map_labels import find_stage_on_map
+from arknights_mower.utils.stage_map_labels import read_map_stage_labels
 
 # 剧情/故事「进入」按钮（OCR 常读成 "Story >>"）不是关卡入口，LLM 在线构建选它只会
 # 录进没用的路由，从导航候选中剔除。"Story Line · XX" 章节名不带 ">>"，不受影响。
@@ -986,9 +986,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         target_tail_num = int(target_tail_match.group(1)) if target_tail_match else None
         for swipe_idx in range(max_swipes + 1):
             self.wait_for_scene_stable(timeout_seconds=3, interval_seconds=0.2)
-            point = find_stage_on_map(self.recog.img, target_norm)
-            if point is not None:
-                self.tap_map_stage(point, target_norm, "字模")
+            labels = read_map_stage_labels(self.recog.img)
+            points = [point for code, point in labels if code == target_norm]
+            if len(points) == 1:
+                self.tap_map_stage(points[0], target_norm, "字模")
                 return True
 
             candidates = self.collect_terminal_ocr_candidates(save_shot=False)
@@ -1007,15 +1008,26 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 for c in candidates
                 if self.normalize_stage_text(c["text"]) == target_norm
             ]
-            if len(matches) == 1:
-                self.tap_map_stage(matches[0]["center"], matches[0]["text"], "OCR")
-                return True
+            if not points and len(matches) == 1:
+                point = matches[0]["center"]
+                # A word over a plate already decoded as another code cannot identify the target.
+                if not any(
+                    abs(point[0] - x) < 95 and abs(point[1] - y) < 22
+                    for _, (x, y) in labels
+                ):
+                    self.tap_map_stage(point, matches[0]["text"], "OCR")
+                    return True
 
-            has_same_pattern = any(
-                self.is_stage_code(t) and self.stage_pattern_stem(t) == pattern_stem
-                for t in texts
-            )
-            if not has_same_pattern:
+            def in_chapter(text):
+                return (
+                    self.is_stage_code(text)
+                    and self.stage_pattern_stem(text) == pattern_stem
+                )
+
+            chapter_codes = [code for code, _ in labels if in_chapter(code)]
+            if not chapter_codes:
+                chapter_codes = [text for text in texts if in_chapter(text)]
+            if not chapter_codes:
                 logger.debug("当前页面未识别到同 pattern 关卡，停止继续滑动")
                 return False
 
@@ -1032,14 +1044,8 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 return True
 
             same_pattern_nums = []
-            for t in texts:
-                norm_t = self.normalize_stage_text(t)
-                if (
-                    not self.is_stage_code(norm_t)
-                    or self.stage_pattern_stem(norm_t) != pattern_stem
-                ):
-                    continue
-                m = re.search(r"-(\d+)$", norm_t)
+            for code in chapter_codes:
+                m = re.search(r"-(\d+)$", self.normalize_stage_text(code))
                 if m:
                     same_pattern_nums.append(int(m.group(1)))
 
