@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSSRApp, effectScope, ref } from 'vue'
+import { createSSRApp, effectScope, ref, watch } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import Component from './MaaCopilot.vue'
 
@@ -146,7 +146,7 @@ describe('ordinary Copilot library and queue', () => {
       state.client.get.mock.calls
         .filter(([url]) => url.includes('/network/maa-copilot/'))
         .map(([url]) => url.split('/').at(-1))
-    ).toEqual(['456', '789', '456'])
+    ).toEqual(['456', '789'])
     expect(state.config.copilot.value.scripts).toEqual([
       original,
       { id: first.id, nav_name_override: '', is_raid: false },
@@ -225,7 +225,7 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.error).toHaveBeenCalledWith(expect.stringContaining('作业集为空'))
   })
 
-  it('downloads, validates and queues each member before fetching the next one', async () => {
+  it('downloads and validates each member before publishing both queues', async () => {
     const calls = []
     state.client.get.mockImplementation(async (url) => {
       if (url.endsWith('/maa-copilot-set/123'))
@@ -234,7 +234,7 @@ describe('ordinary Copilot library and queue', () => {
       const id = url.split('/').at(-1)
       calls.push('get ' + id)
       if (id === '2') {
-        expect(state.config.copilot.value.scripts).toHaveLength(2)
+        expect(state.config.copilot.value.scripts).toHaveLength(0)
         throw new Error('offline')
       }
       const content =
@@ -317,6 +317,69 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.client.post).toHaveBeenCalledTimes(2)
   })
 
+  it('publishes one complete queue after a paused download and keeps concurrent edits', async () => {
+    mock_set(['456', '789', '456'])
+    const snapshots = []
+    scope.run(() =>
+      watch(
+        () => state.config.copilot.value.scripts.map(({ id }) => id),
+        (ids) => snapshots.push(ids),
+        { flush: 'sync' }
+      )
+    )
+    const paused = Promise.withResolvers()
+    const resume = Promise.withResolvers()
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/789')) {
+        paused.resolve()
+        await resume.promise
+      }
+      return get(url)
+    })
+    component.code.value = 's123'
+    const download = component.download()
+    await paused.promise
+    expect(snapshots).toEqual([])
+    component.add_script(second.id)
+    resume.resolve()
+    await download
+    expect(snapshots).toEqual([[second.id], [second.id, first.id, second.id, first.id]])
+  })
+
+  it('bounds a long run of dual-difficulty members and keeps a final single slot available', async () => {
+    mock_set([...Array(80).fill('456'), '789'])
+    state.config.copilot.value.scripts = [{ id: second.id }]
+    state.client.post
+      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+      .mockResolvedValueOnce({ data: second })
+    component.code.value = 's123'
+    await component.download()
+    expect(state.client.get).toHaveBeenCalledTimes(3)
+    expect(state.client.post).toHaveBeenCalledTimes(2)
+    expect(state.config.copilot.value.scripts).toHaveLength(32)
+    expect(state.config.copilot.value.scripts.at(-1).id).toBe(second.id)
+    expect(component.failures.value).toHaveLength(65)
+  })
+
+  it('uses slots freed during a download for earlier validated members', async () => {
+    mock_set(['456', '789'])
+    state.config.copilot.value.scripts = Array.from({ length: 32 }, () => ({ id: first.id }))
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/789')) state.config.copilot.value.scripts.splice(30)
+      return get(url)
+    })
+    component.code.value = 's123'
+    await component.download()
+    expect(component.failures.value).toEqual([])
+    expect(state.config.copilot.value.scripts.map(({ id }) => id)).toEqual([
+      ...Array(30).fill(first.id),
+      first.id,
+      second.id
+    ])
+  })
+
   it('ignores a duplicate download action while the current import is pending', async () => {
     mock_set()
     let complete
@@ -336,7 +399,7 @@ describe('ordinary Copilot library and queue', () => {
     complete()
     await firstDownload
     expect(state.config.copilot.value.scripts).toHaveLength(3)
-    expect(state.client.post).toHaveBeenCalledTimes(3)
+    expect(state.client.post).toHaveBeenCalledTimes(2)
   })
   it.each([
     '',

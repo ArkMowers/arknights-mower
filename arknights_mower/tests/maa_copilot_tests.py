@@ -756,6 +756,24 @@ def test_copilot_dispatch_uses_map_code_for_internal_stage_id(
     assert library.copilot_navigation_target(item) == "1-7"
 
 
+@pytest.mark.parametrize(
+    "stage,other,expected",
+    [("高空坠物", "RI-1", "2-5"), ("蔓延", "FC-TR-2", "1-2"), ("突围", "9-16", "0-11")],
+)
+def test_copilot_navigation_keeps_known_stage_with_duplicate_map_name(
+    files, tmp_path, monkeypatch, stage, other, expected
+):
+    monkeypatch.setattr(base_schedule.config.conf, "maa_path", str(tmp_path))
+    maps = tmp_path / "resource/Arknights-Tile-Pos"
+    maps.mkdir(parents=True)
+    (maps / "overview.json").write_text(
+        json.dumps({"map": {"name": stage, "code": other}})
+    )
+    info = upload({**SCRIPT, "stage_name": stage})
+    item = CopilotConf(scripts=[{"id": info["id"]}]).scripts[0]
+    assert library.copilot_navigation_target(item) == expected
+
+
 def test_unknown_internal_navigation_target_requires_stage_override(files):
     info = upload({**SCRIPT, "stage_name": "unmapped_internal_stage"})
     item = CopilotConf(scripts=[{"id": info["id"]}]).scripts[0]

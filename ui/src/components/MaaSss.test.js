@@ -146,7 +146,7 @@ describe('SSS library and per-item rounds', () => {
       state.client.get.mock.calls
         .filter(([url]) => url.includes('/network/maa-copilot/'))
         .map(([url]) => url.split('/').at(-1))
-    ).toEqual(['456', '789', '456'])
+    ).toEqual(['456', '789'])
     expect(state.config.sss.value.scripts).toEqual([
       original,
       { id: first.id, type: 1, ec: 1, times: 1 },
@@ -172,7 +172,7 @@ describe('SSS library and per-item rounds', () => {
     expect(state.config.copilot.value.scripts).toEqual([
       { id: second.id, is_raid: false, nav_name_override: '' }
     ])
-    expect(state.client.post).toHaveBeenCalledTimes(33)
+    expect(state.client.post).toHaveBeenCalledTimes(2)
     expect(state.client.post.mock.calls.at(-1)[0]).toMatch(/\/maa-copilot$/)
     expect(component.failures.value).toEqual([
       expect.stringContaining('第 33 份（456）：保全派驻队列已满')
@@ -199,7 +199,7 @@ describe('SSS library and per-item rounds', () => {
     complete()
     await firstDownload
     expect(state.config.sss.value.scripts).toHaveLength(3)
-    expect(state.client.post).toHaveBeenCalledTimes(3)
+    expect(state.client.post).toHaveBeenCalledTimes(2)
   })
   it.each([
     '',

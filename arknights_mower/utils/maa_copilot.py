@@ -207,17 +207,18 @@ def _maa_map_code(stage_name):
 def copilot_navigation_target(item):
     from arknights_mower.data import stage_data_full
 
-    target = item.nav_name_override.strip()
+    override = item.nav_name_override.strip()
+    target = override
     if not target:
         with script_path(item.id).open("rb") as stream:
             target = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))[
                 "stage_name"
             ].strip()
-        if code := _maa_map_code(target):
-            return code
     for stage in stage_data_full:
         if target in (stage.get("id"), stage.get("name")):
             return stage["id"]
+    if not override and (code := _maa_map_code(target)):
+        return code
     main = re.fullmatch(r"main_(\d+)-(\d+)", target, re.IGNORECASE)
     if main:
         return f"{int(main[1])}-{int(main[2])}"

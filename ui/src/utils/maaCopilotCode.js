@@ -26,7 +26,11 @@ export function copilotLibraryUrl(kind) {
   return `${base}/${libraryPaths[kind]}`
 }
 
-export function appendCopilotScript(configs, kind, { id, difficulty }) {
+export function appendCopilotScript(configs, kind, script) {
+  appendToQueue(configs[kind].value.scripts, kind, script)
+}
+
+function appendToQueue(queue, kind, { id, difficulty }) {
   let items
   if (kind === 'sss') {
     items = [{ id, type: 1, ec: 1, times: 1 }]
@@ -36,7 +40,7 @@ export function appendCopilotScript(configs, kind, { id, difficulty }) {
     const modes = difficulty === 3 ? [false, true] : [difficulty === 2]
     items = modes.map((is_raid) => ({ id, nav_name_override: '', is_raid }))
   }
-  const queue = configs[kind].value.scripts
+  if (queue.length >= 32) throw new Error(`${queueNames[kind]}队列已满，最多 32 项`)
   if (queue.length + items.length > 32) {
     throw new Error(
       `${queueNames[kind]}队列最多 32 项，本次需加入 ${items.length} 项，剩余容量不足。已入库作业可从已有作业中选择`
@@ -45,10 +49,10 @@ export function appendCopilotScript(configs, kind, { id, difficulty }) {
   queue.push(...items)
 }
 
-async function importMember(axios, id, kind, mixed, configs) {
+async function importMember(axios, id, kind, mixed, available) {
   if (typeof id !== 'string' || !/^\d+$/.test(id)) throw new Error('作业编号无效')
   const destinations = mixed ? ['copilot', 'sss'] : [kind]
-  if (destinations.every((key) => configs[key].value.scripts.length >= 32)) {
+  if (destinations.every((key) => available(key) === 0)) {
     throw new Error(
       `${destinations.map((key) => queueNames[key]).join('和')}队列已满，每个队列最多 32 项`
     )
@@ -59,6 +63,7 @@ async function importMember(axios, id, kind, mixed, configs) {
   const blob = new Blob([content], { type: 'application/json' })
   if (blob.size > 1024 * 1024) throw new Error('作业文件不能超过 1 MB')
   let destination = kind
+  let slots = 1
   if (mixed) {
     let script
     try {
@@ -67,8 +72,9 @@ async function importMember(axios, id, kind, mixed, configs) {
       throw new Error('作业文件不是有效 JSON')
     }
     destination = script?.type === 'SSS' ? 'sss' : 'copilot'
+    if (destination === 'copilot' && script?.difficulty === 3) slots = 2
   }
-  if (configs[destination].value.scripts.length >= 32) {
+  if (available(destination) < slots) {
     throw new Error(`${queueNames[destination]}队列已满，最多 32 项`)
   }
   const form = new FormData()
@@ -112,22 +118,55 @@ export function useCopilotDownload({
         ? (await axios.get(`${base}/network/maa-copilot-set/${target.id}`)).data.ids
         : [target.id]
       if (!Array.isArray(ids) || !ids.length) throw new Error('作业集为空或缺少成员列表')
-      const counts = new Map()
+      const imported = []
+      const errors = []
+      const cached = new Map()
+      const possibleSlots = { copilot: 32, sss: 32, paradox: 32 }
+      const available = (destination) =>
+        target.set ? possibleSlots[destination] : 32 - configs[destination].value.scripts.length
+      const recordFailure = (index, id, error) => {
+        const reason = error.response?.data?.message || error.message || '作业导入失败'
+        const number = typeof id === 'string' ? `（${id}）` : ''
+        errors[index] = `第 ${index + 1} 份${number}：${reason}`
+      }
       for (const [index, id] of ids.entries()) {
         try {
-          const { destination, script } = await importMember(axios, id, kind, mixed, configs)
-          if (destination === kind) {
-            if (!library.value.some((item) => item.id === script.id)) library.value.push(script)
-            selected.value = script.id
+          let member = cached.get(id)
+          if (!member) {
+            member = await importMember(axios, id, kind, mixed, available)
+            cached.set(id, member)
           }
-          appendCopilotScript(configs, destination, script)
-          counts.set(destination, (counts.get(destination) || 0) + 1)
+          const { destination, script } = member
+          const size = destination === 'copilot' && script.difficulty === 3 ? 2 : 1
+          const remaining = possibleSlots[destination]
+          if (remaining < size) throw new Error(`${queueNames[destination]}队列已满，最多 32 项`)
+          // A two-slot member may leave one free slot when the actual capacity is odd.
+          possibleSlots[destination] = Math.max(size - 1, remaining - size)
+          imported.push({ index, id, destination, script })
         } catch (error) {
-          const reason = error.response?.data?.message || error.message || '作业导入失败'
-          const number = typeof id === 'string' ? `（${id}）` : ''
-          failures.value.push(`第 ${index + 1} 份${number}：${reason}`)
+          recordFailure(index, id, error)
         }
       }
+      const queues = new Map()
+      const counts = new Map()
+      for (const { index, id, destination, script } of imported) {
+        if (destination === kind) {
+          if (!library.value.some((item) => item.id === script.id)) library.value.push(script)
+          selected.value = script.id
+        }
+        if (!queues.has(destination))
+          queues.set(destination, [...configs[destination].value.scripts])
+        try {
+          appendToQueue(queues.get(destination), destination, script)
+          counts.set(destination, (counts.get(destination) || 0) + 1)
+        } catch (error) {
+          recordFailure(index, id, error)
+        }
+      }
+      for (const destination of counts.keys()) {
+        configs[destination].value.scripts = queues.get(destination)
+      }
+      failures.value = errors.filter(Boolean)
       if (counts.size) {
         code.value = ''
         const added = [...counts].map(([key, count]) => `${queueNames[key]} ${count} 份`).join('、')
