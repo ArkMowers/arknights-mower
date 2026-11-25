@@ -23579,7 +23579,7 @@ class BaseSchedulerSolver(
                                         ready = navigator.run(target)
                                         navigation_remaining()
                                         if ready:
-                                            ready = navigator.wait_for_stage_detail()
+                                            ready = navigator.confirm_selected_stage()
                                         if ready:
                                             navigation_remaining()
                                             navigator.back()

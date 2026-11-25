@@ -1310,7 +1310,7 @@ def test_copilot_does_not_start_without_confirmed_stage_detail(scheduler, failur
     if failure == "route":
         navigator.run.return_value = False
     else:
-        navigator.wait_for_stage_detail.return_value = False
+        navigator.confirm_selected_stage.return_value = False
     scheduler.maa_plan_solver([])
     navigator.back.assert_not_called()
     scheduler.MAA.append_task.assert_not_called()

@@ -51,7 +51,7 @@ def pending_rerun(scheduler, deadline):
 def _play_ordinary(scheduler, stage, settings, prepare, claim, complete):
     navigator = NavigationSolver(scheduler.device, scheduler.recog)
     with device_io_budget(prepare):
-        if not navigator.run(stage["code"]) or not navigator.wait_for_stage_detail():
+        if not navigator.run(stage["code"]) or not navigator.confirm_selected_stage():
             return "blocked"
 
     battle_started = False

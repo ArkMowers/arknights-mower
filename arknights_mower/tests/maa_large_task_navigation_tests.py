@@ -7,7 +7,7 @@ import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
-from arknights_mower.solvers import base_schedule, navigation  # noqa: E402
+from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.tests import maa_copilot_tests as helpers  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 
@@ -31,9 +31,9 @@ def test_large_task_enters_terminal_before_maa_submission(scheduler, kind, manua
     order.attach_mock(scheduler.scene_graph_navigation, "navigate")
     if kind == "copilot":
         navigator = base_schedule.NavigationSolver.return_value
-        navigator.wait_for_stage_detail.return_value = True
+        navigator.confirm_selected_stage.return_value = True
         order.attach_mock(navigator.run, "map")
-        order.attach_mock(navigator.wait_for_stage_detail, "detail")
+        order.attach_mock(navigator.confirm_selected_stage, "detail")
         order.attach_mock(navigator.back, "leave_detail")
     order.attach_mock(scheduler.MAA.append_task, "append")
     order.attach_mock(scheduler.MAA.start, "start")
@@ -55,18 +55,6 @@ def test_large_task_enters_terminal_before_maa_submission(scheduler, kind, manua
         == {"rogue": "Roguelike", "copilot": "Copilot"}[kind]
     )
     assert order.mock_calls[append_index + 1] == call.start()
-
-
-@pytest.mark.parametrize("found", [True, False])
-def test_stage_detail_uses_the_start_button_after_panel_animation(found):
-    solver = MagicMock(spec=navigation.NavigationSolver)
-    solver.recog = MagicMock()
-    solver.find.side_effect = [None] * 4 + [((10, 10), (20, 20)) if found else None]
-
-    assert navigation.NavigationSolver.wait_for_stage_detail(solver) is found
-    solver.recog.update.assert_called_once_with()
-    assert solver.find.call_args_list == [call("ope_start")] * 5
-    assert solver.sleep.call_args_list == [call(0.4)] * 4
 
 
 def test_reclamation_keeps_its_theme_navigation(scheduler):
