@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -269,10 +270,8 @@ def test_queue_save_requires_token_before_reading_script_files(
     read.assert_not_called()
 
 
-@pytest.mark.parametrize("method", ["POST", "PATCH"])
-def test_queue_save_and_cross_client_script_deletion(
-    client, monkeypatch, tmp_path, method
-):
+@pytest.fixture
+def queue_config_path(client, monkeypatch, tmp_path):
     import server
     from arknights_mower.utils import workshop_config
     from arknights_mower.utils.config import weekly_plan_loader
@@ -285,10 +284,17 @@ def test_queue_save_and_cross_client_script_deletion(
     monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
     conf_path = tmp_path / "conf.yaml"
     monkeypatch.setattr(server.config, "conf_path", conf_path)
+    return conf_path
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+def test_queue_save_and_cross_client_script_deletion(client, queue_config_path, method):
+    import server
+
     legacy = "f" * 64
     server.config.conf = Conf(copilot={"scripts": [{"id": legacy}]})
     server.config.save_conf()
-    original = conf_path.read_bytes()
+    original = queue_config_path.read_bytes()
     deleted = upload()["id"]
     kept = upload({**SCRIPT, "stage_name": "CE-6"})["id"]
     headers = {"token": "copilot-test-token"}
@@ -314,7 +320,7 @@ def test_queue_save_and_cross_client_script_deletion(
         "sss": [kept],
         "paradox": [deleted],
     }
-    assert conf_path.read_bytes() == original
+    assert queue_config_path.read_bytes() == original
     assert [item.id for item in server.config.conf.copilot.scripts] == [legacy]
 
     scripts = [{"id": kept}, {"id": legacy, "is_raid": True}]
@@ -332,6 +338,68 @@ def test_queue_save_and_cross_client_script_deletion(
     )
     assert response.status_code == 200
     assert other.delete("/maa-copilot/" + kept, headers=headers).status_code == 200
+
+
+def test_delete_waits_for_inflight_queue_save(client, queue_config_path, monkeypatch):
+    import yaml
+    from flask import request
+    from yamlcore import CoreLoader
+
+    import server
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    saving = threading.Event()
+    resume = threading.Event()
+    delete_blocked = threading.Event()
+
+    def get_active_plan_key():
+        saving.set()
+        assert resume.wait(10)
+        return ""
+
+    manager = weekly_plan_loader.get_weekly_plan_manager()
+    manager.get_active_plan_key.side_effect = get_active_plan_key
+    lock = server.backup_lock
+
+    def acquire():
+        if lock.acquire(blocking=False):
+            return True
+        if request.method == "DELETE":
+            delete_blocked.set()
+        return lock.acquire()
+
+    observed_lock = MagicMock(wraps=lock)
+    observed_lock.acquire.side_effect = acquire
+    observed_lock.__enter__.side_effect = lock.__enter__
+    observed_lock.__exit__.side_effect = lock.__exit__
+    monkeypatch.setattr(server, "backup_lock", observed_lock)
+    other = server.app.test_client()
+    script_id = upload()["id"]
+    scripts = [{"id": script_id, "is_raid": True}]
+    headers = {"token": "copilot-test-token"}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        save = pool.submit(
+            client.patch,
+            "/conf",
+            headers=headers,
+            json={"copilot": {"scripts": scripts}},
+        )
+        try:
+            assert saving.wait(5)
+            delete = pool.submit(
+                other.delete, "/maa-copilot/" + script_id, headers=headers
+            )
+            assert delete_blocked.wait(5)
+            assert not delete.done()
+        finally:
+            resume.set()
+        assert save.result(timeout=5).status_code == 200
+        assert delete.result(timeout=5).status_code == 409
+
+    persisted = yaml.load(queue_config_path.read_text("utf-8"), Loader=CoreLoader)
+    assert persisted["copilot"]["scripts"] == scripts
+    assert server.config.conf.copilot.scripts[0].id == script_id
+    assert library.script_path(script_id).is_file()
 
 
 @pytest.fixture
