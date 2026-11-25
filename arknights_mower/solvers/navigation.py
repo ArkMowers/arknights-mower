@@ -27,6 +27,7 @@ from arknights_mower.utils.nav_steps import (
 )
 from arknights_mower.utils.scene import Scene
 from arknights_mower.utils.stage_code_glyphs import read_stage_code
+from arknights_mower.utils.stage_map_labels import read_map_stage_labels
 
 # 剧情/故事「进入」按钮（OCR 常读成 "Story >>"）不是关卡入口，LLM 在线构建选它只会
 # 录进没用的路由，从导航候选中剔除。"Story Line · XX" 章节名不带 ">>"，不受影响。
@@ -978,15 +979,19 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
     def find_target_stage_after_entry(
         self, target_stage: str, max_swipes: int = 6, pattern_only: bool = False
     ) -> bool:
-        """
-        进入活动后继续 OCR，若在同一 pattern 页面（如 AP-1）则横向滑动直到找到目标。
-        """
+        """Find the full stage code on the map, swiping within its chapter as needed."""
         target_norm = self.normalize_stage_text(target_stage)
         pattern_stem = self.stage_pattern_stem(target_norm)
         target_tail_match = re.search(r"-(\d+)$", target_norm)
         target_tail_num = int(target_tail_match.group(1)) if target_tail_match else None
         for swipe_idx in range(max_swipes + 1):
             self.wait_for_scene_stable(timeout_seconds=3, interval_seconds=0.2)
+            labels = read_map_stage_labels(self.recog.img)
+            points = [point for code, point in labels if code == target_norm]
+            if len(points) == 1:
+                self.tap_map_stage(points[0], target_norm, "字模")
+                return True
+
             candidates = self.collect_terminal_ocr_candidates(save_shot=False)
             texts = [c["text"] for c in candidates]
             logger.debug(
@@ -998,32 +1003,31 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 len(texts),
                 texts[:20],
             )
-            exact = next(
-                (
-                    c
-                    for c in candidates
-                    if self.normalize_stage_text(c["text"]) == target_norm
-                ),
-                None,
-            )
-            if exact:
-                self.tap(exact["center"], interval=0.2)
-                self.record_nav_step(
-                    "tap", pos=exact["center"], text=exact["text"], success=True
-                )
-                # Mark route as successful only when final pattern-level target is reached.
-                self.nav_route_success = True
-                logger.debug(f"OCR 直接命中目标关卡 {target_stage}，导航成功")
-                # Persist immediately so successful path survives unexpected early exits.
-                if not self._suppress_nav_recording:
-                    self.persist_nav_steps()
-                return True
+            matches = [
+                c
+                for c in candidates
+                if self.normalize_stage_text(c["text"]) == target_norm
+            ]
+            if not points and len(matches) == 1:
+                point = matches[0]["center"]
+                # A word over a plate already decoded as another code cannot identify the target.
+                if not any(
+                    abs(point[0] - x) < 95 and abs(point[1] - y) < 22
+                    for _, (x, y) in labels
+                ):
+                    self.tap_map_stage(point, matches[0]["text"], "OCR")
+                    return True
 
-            has_same_pattern = any(
-                self.is_stage_code(t) and self.stage_pattern_stem(t) == pattern_stem
-                for t in texts
-            )
-            if not has_same_pattern:
+            def in_chapter(text):
+                return (
+                    self.is_stage_code(text)
+                    and self.stage_pattern_stem(text) == pattern_stem
+                )
+
+            chapter_codes = [code for code, _ in labels if in_chapter(code)]
+            if not chapter_codes:
+                chapter_codes = [text for text in texts if in_chapter(text)]
+            if not chapter_codes:
                 logger.debug("当前页面未识别到同 pattern 关卡，停止继续滑动")
                 return False
 
@@ -1040,14 +1044,8 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 return True
 
             same_pattern_nums = []
-            for t in texts:
-                norm_t = self.normalize_stage_text(t)
-                if (
-                    not self.is_stage_code(norm_t)
-                    or self.stage_pattern_stem(norm_t) != pattern_stem
-                ):
-                    continue
-                m = re.search(r"-(\d+)$", norm_t)
+            for code in chapter_codes:
+                m = re.search(r"-(\d+)$", self.normalize_stage_text(code))
                 if m:
                     same_pattern_nums.append(int(m.group(1)))
 
@@ -1079,6 +1077,14 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             pattern_only,
         )
         return False
+
+    def tap_map_stage(self, point, text, method):
+        self.tap(point, interval=0.2)
+        self.record_nav_step("tap", pos=point, text=text, success=True)
+        self.nav_route_success = True
+        logger.debug("%s 命中地图关号 %s，点击 %s", method, text, point)
+        if not self._suppress_nav_recording:
+            self.persist_nav_steps()
 
     def record_nav_step(self, action: str, **payload):
         if self._suppress_nav_recording:
