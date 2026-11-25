@@ -1,6 +1,7 @@
 """Skland ownership checks shared by manual and startup schedule validation."""
 
 import json
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -231,24 +232,54 @@ def write_training_roster(path, *, level=7, masteries=(3, 3, 2)):
 
 
 @pytest.mark.parametrize(
-    ("level", "masteries", "reason"),
+    ("level", "masteries", "selectable", "reason"),
     [
-        (6, (0,), "基础技能仅 6 级"),
-        (7, (3, 3), "所有技能均已专三"),
-        (7, (3, 2), "仍有技能未专三"),
-        (None, (), "无法确认基础技能等级"),
+        (6, (0,), False, "基础技能仅 6 级"),
+        (7, (3, 3), False, "所有技能均已专三"),
+        (7, (3, 2), True, "仍有技能未专三"),
+        (None, (), None, "无法确认基础技能等级"),
+        (7, (4,), None, "无法确认技能专精等级"),
     ],
 )
 def test_missing_trainee_diagnostic_only_uses_cached_progress(
-    roster_path, remote_refresh, level, masteries, reason
+    roster_path, remote_refresh, level, masteries, selectable, reason
 ):
     assert schedule_roster.cached_training_requirement("能天使") is None
     roster_path.write_text("{", encoding="utf-8")
     assert schedule_roster.cached_training_requirement("能天使") is None
     write_training_roster(roster_path, level=level, masteries=masteries)
     assert reason in schedule_roster.cached_training_requirement("能天使")
+    assert schedule_roster.cached_training_progress("能天使").selectable is selectable
     assert schedule_roster.cached_training_requirement("迷迭香") is None
+    assert schedule_roster.cached_training_progress("迷迭香").selectable is None
     remote_refresh.assert_not_called()
+
+
+def test_missing_trainee_reads_progress_once_per_local_file_version(
+    roster_path, monkeypatch, bundled_mastery_skills
+):
+    parse_roster = MagicMock(wraps=schedule_roster.parse_roster)
+    monkeypatch.setattr(schedule_roster, "parse_roster", parse_roster)
+    write_training_roster(roster_path, level=6)
+    assert "基础技能仅 6 级" in schedule_roster.cached_training_requirement("能天使")
+    for _ in range(3):
+        assert schedule_roster.cached_training_progress("能天使").selectable is False
+    assert parse_roster.call_count == 1
+
+    # 用户刷新同一文件时，技能等级变动可以不改变文件大小。
+    stat = roster_path.stat()
+    write_training_roster(roster_path, level=7)
+    assert stat.st_size == roster_path.stat().st_size
+    os.utime(roster_path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000))
+    for _ in range(3):
+        assert schedule_roster.cached_training_progress("能天使").selectable is True
+    assert parse_roster.call_count == 2
+
+    payload = json.loads(roster_path.read_text(encoding="utf-8"))
+    payload["data"]["characters"][0]["mainSkillLevel"] = 4
+    roster_path.write_text(json.dumps(payload), encoding="utf-8")
+    assert schedule_roster.cached_training_progress("年").selectable is False
+    assert schedule_roster.cached_training_progress("能天使").selectable is True
 
 
 @pytest.mark.parametrize(
@@ -345,9 +376,11 @@ def test_training_slot_checks_secondary_binding_replacements(roster_path, monkey
     assert "基础技能仅 6 级" in schedule_roster.validate_owned_operators(plan)
 
 
-@pytest.mark.parametrize("unfinished_form", [False, True])
+@pytest.mark.parametrize(
+    "second_mastery,selectable", [(2, True), (3, False), (None, None)]
+)
 def test_training_slot_same_name_forms_use_owned_progress(
-    roster_path, monkeypatch, unfinished_form
+    roster_path, bundled_mastery_skills, second_mastery, selectable
 ):
     characters = [{"id": "char_2014_nian", "evolvePhase": 2, "level": 80}]
     characters.extend(
@@ -360,17 +393,20 @@ def test_training_slot_same_name_forms_use_owned_progress(
         }
         for cid, mastery in [
             ("char_002_amiya", 3),
-            ("char_1001_amiya2", 2 if unfinished_form else 3),
+            ("char_1001_amiya2", second_mastery),
         ]
     )
     roster_path.write_text(json.dumps({"data": {"characters": characters}}))
     plan = training_plan()
     plan["default_plan"].plan["train"][1].agent = "阿米娅"
     message = schedule_roster.validate_owned_operators(plan)
-    if unfinished_form:
+    assert schedule_roster.cached_training_progress("阿米娅").selectable is selectable
+    if selectable:
         assert message is None
     else:
         assert "所有技能均已专三" in message
+        if selectable is None:
+            assert "无法确认技能专精等级" in message
 
 
 @pytest.mark.parametrize("payload", [None, {"code": 0, "data": {"items": []}}])

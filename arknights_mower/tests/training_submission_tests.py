@@ -298,12 +298,19 @@ def test_legacy_failure_compares_only_saved_room_evidence(
         assert solver._blocked_arrangement_rooms(task) == expected
 
 
-def test_other_bed_metadata_does_not_retry_training(training_dispatch):
+@pytest.mark.parametrize("saved_with_metadata", [False, True])
+def test_other_bed_metadata_does_not_retry_training(
+    training_dispatch, saved_with_metadata
+):
     solver, task, _ = training_dispatch
     task.type = TaskTypes.SHIFT_ON
     task.plan["dormitory_1"] = ["深巡"]
     task.meta_data = "dorm0,dorm1"
     solver._retain_failed_task(task, "选人失败", ["train"], arrangement_room="train")
+    if saved_with_metadata:
+        task.execution_failure["snapshot"]["meta_data"] = task.meta_data
+        task = pickle.loads(pickle.dumps(task))
+        solver.tasks = [task]
     solver._resume_failed_tasks()
     task.meta_data = "dorm1"
     solver._resume_failed_tasks()
@@ -357,6 +364,13 @@ def test_submitted_training_slot_can_be_read_while_a_second_room_is_held(
 
     def read(room, *, strict_observation):
         assert room == "train" and strict_observation
+        for index, name in enumerate(("望", "余")):
+            old = solver.op_data.get_current_operator(room, index)
+            if old:
+                old.current_room, old.current_index = "", -1
+            if name not in solver.op_data.operators:
+                solver.op_data.add(Operator(name, ""))
+            solver.op_data.update_detail(name, 18, room, index)
         solver.op_data.room_observations[room] += 1
         return [{"agent": "望"}, {"agent": "余"}]
 

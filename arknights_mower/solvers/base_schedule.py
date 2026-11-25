@@ -550,12 +550,16 @@ class OrderReturnUnresolved(RecognizeError):
 
 
 class TraineeCardUnavailable(AgentPageNotAdvanced):
-    def __init__(self, name, op_data, error):
+    def __init__(self, name, op_data, error, *, candidates=None):
         from arknights_mower.utils.schedule_roster import cached_training_requirement
 
         self.name = name
-        operator = getattr(op_data, "operators", {}).get(name)
+        self.candidates = candidates
         self.source = None
+        if name == "Free":
+            super().__init__(f"训练位未找到可进驻的空闲干员。{error}")
+            return
+        operator = getattr(op_data, "operators", {}).get(name)
         details = [f"训练位选人时未识别到{name}的可选卡片。"]
         if (
             operator is not None
@@ -576,17 +580,17 @@ class TraineeCardUnavailable(AgentPageNotAdvanced):
             )
         super().__init__("".join(details) + f" {error}")
 
-    def pending_source_release(self, plan):
-        if self.source is not None:
-            room, index = self.source
-            row = plan.get(room, ())
-            if (
-                room != "train"
-                and index < len(row)
-                and row[index] not in ("Current", "Free", self.name)
-            ):
-                return room
-        return None
+    def selection_wait(self, solver, task):
+        from arknights_mower.utils.training_selection_recovery import (
+            training_selection_wait,
+        )
+
+        source = self.source
+        if source and source[0] in solver._blocked_arrangement_rooms(task, "train"):
+            source = None
+        return training_selection_wait(
+            solver, task, self.name, source=source, candidates=self.candidates
+        )
 
 
 class TrainingSubmissionUnconfirmed(AgentSelectionNotReady):
@@ -622,6 +626,7 @@ class RoomArrangementDeferred(RuntimeError):
         super().__init__(str(error))
         self.room = room
         self.submitted_training_slot = submitted_training_slot
+        self.training_selection_wait = None
 
 
 class MoodArrangementChanged(RuntimeError):
@@ -1496,9 +1501,27 @@ class BaseSchedulerSolver(
         return True
 
     def _failure_snapshot_changed(self, task, failure):
+        if wait := failure.get("training_selection_wait"):
+            from arknights_mower.utils.training_selection_recovery import (
+                training_selection_ready,
+            )
+
+            ready = training_selection_ready(self, task, wait)
+            if ready is not None:
+                return ready
+        if submitted := TrainingSubmissionUnconfirmed.retained_slot(task, failure):
+            index, target = submitted
+            if task.plan.get("train", [])[index : index + 1] == [target]:
+                occupant = self.op_data.get_current_operator("train", index)
+                if not self._training_slot_matches(
+                    index, target, occupant.name if occupant else ""
+                ):
+                    return False
         current_snapshot = self._task_failure_snapshot(
             task, failure["rooms"], arrangement_room=failure.get("arrangement_room")
         )
+        if "arrangement_room" in failure:
+            failure["snapshot"].pop("meta_data", None)
         current_cards = current_snapshot.get("card_moods", {})
         now = datetime.now()
         saved_cards = failure["snapshot"].setdefault("card_moods", current_cards)
@@ -1562,6 +1585,21 @@ class BaseSchedulerSolver(
             blocked.update(dependents)
         return blocked
 
+    def _suppress_dispatchable_arrangement(self, task, plan):
+        held = (
+            self._blocked_arrangement_rooms(task)
+            if getattr(task, "arrangement_failures", None)
+            else set()
+        )
+        if not held:
+            self._suppress_facility_arrangement(plan)
+            return
+        # 保护规则只修改本次能执行的岗位，尤其不能在续做宿舍时撤销尚待补读的训练位。
+        ready = {room: row for room, row in plan.items() if room not in held}
+        self._suppress_facility_arrangement(ready)
+        for room in plan.keys() - held - ready.keys():
+            del plan[room]
+
     def _resume_observed_task(self, task):
         from arknights_mower.utils.retained_recovery import (
             reconcile_retained_recovery,
@@ -1598,10 +1636,25 @@ class BaseSchedulerSolver(
         task.execution_retained = True
 
     def _resume_arrangement_rooms(self, task):
+        if any(
+            failure and failure.get("product_reservation")
+            for failure in task.arrangement_failures.values()
+        ):
+            reserved_rooms = {
+                room
+                for _, slots in self._product_slot_conflicts(task)
+                for room, _ in slots
+            }
+        else:
+            reserved_rooms = set()
         for room, failure in list(task.arrangement_failures.items()):
             if room not in task.plan:
                 del task.arrangement_failures[room]
-            elif failure and self._failure_snapshot_changed(task, failure):
+            elif failure and (
+                room not in reserved_rooms
+                if failure.get("product_reservation")
+                else self._failure_snapshot_changed(task, failure)
+            ):
                 task.execution_failure = failure
                 self._resume_observed_task(task)
                 # 新观测允许执行。保留房间标记，重入时先核对实读，再决定是否重选。
@@ -1639,7 +1692,6 @@ class BaseSchedulerSolver(
         saved = failure["snapshot"]
         names = set(saved["plan"].get(room, ()))
         # 从失败时的整项快照中提取旧读数，保留此后已发生的相关变化。
-        saved.pop("meta_data", None)
         saved.pop("backup_group_tasks", None)
         for key in (
             "plan",
@@ -4460,6 +4512,9 @@ class BaseSchedulerSolver(
                             self.skip()
                             return True
                         self._defer_conflicting_product_shift_slots(self.task)
+                        if getattr(self.task, "execution_failure", None):
+                            self.skip()
+                            return True
                         if (
                             getattr(self.task, "initial_staffing", False)
                             and not getattr(
@@ -4637,6 +4692,10 @@ class BaseSchedulerSolver(
                     if e.submitted_training_slot is not None:
                         task.execution_failure["submitted_training_slot"] = (
                             e.submitted_training_slot
+                        )
+                    if e.training_selection_wait is not None:
+                        task.execution_failure["training_selection_wait"] = (
+                            e.training_selection_wait
                         )
                     if isolate_room:
                         self._set_arrangement_dispatch(task)
@@ -10001,7 +10060,7 @@ class BaseSchedulerSolver(
                     proposed.setdefault(
                         op.room, ["Current"] * len(self.op_data.plan[op.room])
                     )[op.index] = name
-        self._suppress_facility_arrangement(proposed)
+        self._suppress_dispatchable_arrangement(task, proposed)
         complete_returns = self.op_data.arrangement_group_transitions(proposed)
         incomplete_rooms = {
             op.room
@@ -10181,13 +10240,16 @@ class BaseSchedulerSolver(
             task.plan, group_transitions=task.group_shift_transitions
         )
         self._cancel_dorm_recovery_targets(expected_plan, transitions, task=task)
+        skipped = getattr(task, "training_skipped_slots", ())
+        if skipped and getattr(task, "arrangement_failures", {}).get("train"):
+            skipped = ()
         for plan in (task.plan, expected_plan):
-            for index in getattr(task, "training_skipped_slots", ()):
+            for index in skipped:
                 if index < len(plan.get("train", [])) and pending_zero_returns.get(
                     "train", []
                 )[index : index + 1] in ([], ["Current"]):
                     plan["train"][index] = "Current"
-            self._suppress_facility_arrangement(plan)
+            self._suppress_dispatchable_arrangement(task, plan)
         remaining_transitions = self.op_data.arrangement_group_transitions(
             expected_plan
         )
@@ -12002,6 +12064,11 @@ class BaseSchedulerSolver(
         if hasattr(task, "backup_shift_conditions"):
             # 收敛后的上下班是一个整体，不能拆出会让副表条件改变的中间态。
             slots = changed
+        if failures := getattr(task, "arrangement_failures", None):
+            # 原任务保留正在复核的房间，拆出的其他岗位不继承该房间的提交责任。
+            slots = slots | {
+                position for position in changed if position[0] in failures
+            }
         independent_task = None
         if slots != changed:
             independent = self._plan_for_slots(task.plan, changed - slots)
@@ -12130,34 +12197,32 @@ class BaseSchedulerSolver(
             else set()
         )
 
+    def _product_slot_conflicts(self, task):
+        conflicts = []
+        for lock in self._deferred_product_locks(exclude=task):
+            if getattr(lock, "product_wait_return_task", None) is task:
+                continue
+            recovering = product_wait_resting_replacements(self.op_data, lock)
+            slots = {
+                (room, index)
+                for room, row in task.plan.items()
+                for index, name in enumerate(row)
+                if name != "Current"
+                and (
+                    (room, index) in lock.product_lock_slots
+                    or name in lock.product_lock_names
+                    and not (room.startswith("dorm") and name in recovering)
+                )
+            }
+            if slots:
+                conflicts.append((lock, slots))
+        return conflicts
+
     def _defer_conflicting_product_shift_slots(self, task):
-        locks = [
-            lock
-            for lock in self._deferred_product_locks(exclude=task)
-            if getattr(lock, "product_wait_return_task", None) is not task
-        ]
-        if not locks:
+        conflicts = self._product_slot_conflicts(task)
+        if not conflicts:
             return
-        recovering = {
-            id(lock): product_wait_resting_replacements(self.op_data, lock)
-            for lock in locks
-        }
-
-        def conflicts(lock, room, index, name):
-            return (room, index) in lock.product_lock_slots or (
-                name in lock.product_lock_names
-                and not (room.startswith("dorm") and name in recovering[id(lock)])
-            )
-
-        conflicting = {
-            (room, index)
-            for room, names in task.plan.items()
-            for index, name in enumerate(names)
-            if name != "Current"
-            and any(conflicts(lock, room, index, name) for lock in locks)
-        }
-        if not conflicting:
-            return
+        conflicting = set().union(*(slots for _, slots in conflicts))
         changed = {
             (room, index)
             for room, names in task.plan.items()
@@ -12172,6 +12237,20 @@ class BaseSchedulerSolver(
             and not getattr(task, "group_shift_transitions", {})
             and not getattr(task, "group_shift_expected", {})
         ):
+            if failures := getattr(task, "arrangement_failures", None):
+                # 原任务已持有逐房进度，切产物只挂起实际冲突的房间。
+                for room in sorted({room for room, _ in conflicting}):
+                    if not failures.get(room):
+                        self._retain_failed_task(
+                            task,
+                            "床位或替班已为切产物后的换班预留",
+                            [room],
+                            dependency=True,
+                            arrangement_room=room,
+                        )
+                        task.execution_failure["product_reservation"] = True
+                self._set_arrangement_dispatch(task)
+                return
             independent = SchedulerTask(
                 time=task.time,
                 task_plan=self._plan_for_slots(task.plan, changed - conflicting),
@@ -12180,19 +12259,12 @@ class BaseSchedulerSolver(
             )
             self.tasks.append(independent)
             task.plan = self._plan_for_slots(task.plan, conflicting)
-        dependencies = [
-            lock
-            for lock in locks
-            if any(
-                conflicts(lock, *slot, task.plan[slot[0]][slot[1]])
-                for slot in conflicting
-            )
-        ]
+        dependencies = [lock for lock, _ in conflicts]
         snapshot = build_task_presentation(
             task, self.op_data, predecessors=dependencies
         )
         descriptions, agents = [], []
-        for lock in dependencies:
+        for lock, slots in conflicts:
             owner = build_task_presentation(lock, self.op_data)
             agents.extend(
                 action["subject"]
@@ -12201,9 +12273,7 @@ class BaseSchedulerSolver(
             )
             for room, names in task.plan.items():
                 for index, name in enumerate(names):
-                    if (room, index) not in conflicting or not conflicts(
-                        lock, room, index, name
-                    ):
+                    if (room, index) not in slots:
                         continue
                     if (room, index) in lock.product_lock_slots:
                         position = (
@@ -16423,8 +16493,9 @@ class BaseSchedulerSolver(
         profession_pages = []
         while True:
             try:
+                candidates = [ope] if named_target else self.get_free_list([])
                 sel, ret = self.scan_agent(
-                    [ope] if ope != "Free" else self.get_free_list([]),
+                    candidates,
                     max_agent_count=1,
                     train=True,
                     observation=observation,
@@ -16472,9 +16543,12 @@ class BaseSchedulerSolver(
                 right_swipe += moved
             except (AgentPageNotAdvanced, AgentCardObservationNotReady) as error:
                 if not narrowed:
-                    if named_target and isinstance(error, AgentPageNotAdvanced):
+                    if isinstance(error, AgentPageNotAdvanced):
                         raise TraineeCardUnavailable(
-                            ope, self.op_data, error
+                            ope,
+                            getattr(self, "op_data", None),
+                            error,
+                            candidates=None if named_target else tuple(candidates),
                         ) from error
                     raise
                 self.require_agent_selection_page()
@@ -20682,7 +20756,7 @@ class BaseSchedulerSolver(
         get_time=False,
     ):
         self._prepare_group_shift_execution_targets(self.task)
-        self._suppress_facility_arrangement(plan)
+        self._suppress_dispatchable_arrangement(self.task, plan)
         if room not in plan:
             return new_plan
         restoring_order = getattr(self.task, "run_order_restore_pending", False)
@@ -20748,7 +20822,7 @@ class BaseSchedulerSolver(
                             self.task.training_skipped_slots.update(
                                 self._protected_training_slots()
                             )
-                            self._suppress_facility_arrangement(plan)
+                            self._suppress_dispatchable_arrangement(self.task, plan)
                             self._prepare_group_shift_execution_targets(self.task)
                             if room not in plan:
                                 self.back()
@@ -20800,7 +20874,7 @@ class BaseSchedulerSolver(
                             self.task.training_skipped_slots.update(
                                 self._protected_training_slots()
                             )
-                            self._suppress_facility_arrangement(plan)
+                            self._suppress_dispatchable_arrangement(self.task, plan)
                         elif room_state is None or room_state.locked:
                             # 未启用专精时也不能替换正在训练的训练位。
                             if len(plan[room]) > 1:
@@ -20819,7 +20893,7 @@ class BaseSchedulerSolver(
                 self._start_facility_arrangement_log(room, plan[room])
                 if room == "recycle":
                     final_observation = self.get_agent_from_room(room)
-                    self._suppress_facility_arrangement(plan)
+                    self._suppress_dispatchable_arrangement(self.task, plan)
                     self._prepare_group_shift_execution_targets(self.task)
                     if room not in plan:
                         self.back()
@@ -21426,13 +21500,17 @@ class BaseSchedulerSolver(
                         room, e, submitted_training_slot=submitted_training_slot
                     )
                     if (
+                        isinstance(e, TraineeCardUnavailable)
+                        and self._is_ordinary_facility_arrangement(self.task)
+                        and submitted_training_slot is None
+                    ):
+                        deferred.training_selection_wait = e.selection_wait(
+                            self, self.task
+                        )
+                    if (
                         choose_error > retry_limit
                         or urgent
-                        or isinstance(e, TraineeCardUnavailable)
-                        and self._is_ordinary_facility_arrangement(self.task)
-                        and (source := e.pending_source_release(plan)) is not None
-                        and source
-                        not in self._blocked_arrangement_rooms(self.task, room)
+                        or (deferred.training_selection_wait or {}).get("source")
                     ):
                         raise deferred from e
                 if choose_error > retry_limit:
@@ -21958,11 +22036,18 @@ class BaseSchedulerSolver(
                 )
             ):
                 raise RuntimeError("救急期间暂停普通工作站换班")
-        self._suppress_facility_arrangement(plan)
+        held = (
+            self._blocked_arrangement_rooms(self.task)
+            if plan is self.task.plan
+            and getattr(self.task, "arrangement_failures", None)
+            else set()
+        )
+        self._suppress_dispatchable_arrangement(self.task, plan)
         if any(
             name in self.op_data.operators
             and self.op_data.operators[name].current_room == "train"
-            for row in plan.values()
+            for room, row in plan.items()
+            if room not in held
             for name in row
         ) and (
             getattr(self.task, "emergency_staffing", False)
@@ -21983,13 +22068,13 @@ class BaseSchedulerSolver(
                 room_state = None
             if config.conf.mastery_enabled:
                 self.train_room_state = room_state or RoomState(read_failed=True)
-                self._suppress_facility_arrangement(plan)
+                self._suppress_dispatchable_arrangement(self.task, plan)
             if getattr(self.task, "emergency_staffing", False):
                 self._emergency_protect_training(plan, room_state)
                 self._emergency_protect_training(
                     self.emergency_state.setdefault("staffing_plan", {}), room_state
                 )
-            for room in list(plan):
+            for room in plan.keys() - held:
                 if all(name == "Current" for name in plan[room]):
                     del plan[room]
             self.back_to_infrastructure()

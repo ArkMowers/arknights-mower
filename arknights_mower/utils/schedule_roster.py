@@ -1,6 +1,8 @@
 """Report advisory ownership, building-skill and training checks for a schedule."""
 
 import json
+from functools import lru_cache
+from typing import NamedTuple
 
 from arknights_mower.utils.mastery_support_types import IGNORED_NAMES
 from arknights_mower.utils.path import get_path
@@ -54,18 +56,25 @@ def _operator_ids_by_name():
     return name_to_ids
 
 
-def _training_requirement_error(char):
+class TrainingProgress(NamedTuple):
+    selectable: bool | None
+    reason: str | None
+
+
+def _training_progress(char):
     level = char.get("mainSkillLevel")
     if type(level) is not int or not 1 <= level <= 7:
-        return (
+        return TrainingProgress(
+            None,
             "无法确认基础技能等级，请前往「养成规划」页面手动点击「刷新」，"
-            "同步干员数据后重新验证排班"
+            "同步干员数据后重新验证排班",
         )
     if level < 7:
-        return (
+        return TrainingProgress(
+            False,
             f"基础技能仅 {level} 级，须达到 7 级才能进驻训练位；升至 7 级后，"
             "请前往「养成规划」页面手动点击「刷新」后重新验证排班。"
-            f"{RUNTIME_RISK_WARNING}"
+            f"{RUNTIME_RISK_WARNING}",
         )
     skills = char.get("skills")
     if (
@@ -78,43 +87,62 @@ def _training_requirement_error(char):
             for skill in skills
         )
     ):
-        return (
+        return TrainingProgress(
+            None,
             "无法确认技能专精等级，请前往「养成规划」页面手动点击「刷新」，"
-            "同步干员数据后重新验证排班"
+            "同步干员数据后重新验证排班",
         )
     if all(skill["level"] == 3 for skill in skills):
-        return (
+        return TrainingProgress(
+            False,
             "所有技能均已专三，无法进驻训练位；更换干员后，"
             "请前往「养成规划」页面手动点击「刷新」后重新验证排班。"
-            f"{RUNTIME_RISK_WARNING}"
+            f"{RUNTIME_RISK_WARNING}",
         )
-    return None
+    return TrainingProgress(True, None)
 
 
-def _training_requirement_for_ids(owned, ids):
-    reasons = [
-        _training_requirement_error(owned[cid]) for cid in sorted(ids) if cid in owned
-    ]
-    if reasons and all(reasons):
-        return "；".join(dict.fromkeys(reasons))
-    return None
+def _training_progress_for_ids(owned, ids):
+    forms = [_training_progress(owned[cid]) for cid in sorted(ids) if cid in owned]
+    if not forms:
+        return TrainingProgress(None, None)
+    if any(form.selectable is True for form in forms):
+        return TrainingProgress(True, None)
+    reasons = dict.fromkeys(form.reason for form in forms)
+    selectable = False if all(form.selectable is False for form in forms) else None
+    return TrainingProgress(selectable, "；".join(reasons))
+
+
+@lru_cache(maxsize=32)
+def _read_training_progress(path, name, file_version):
+    try:
+        roster = _read_roster(path)
+        if roster:
+            ids = _operator_ids_by_name().get(name, ())
+            owned = {char["id"]: char for char in roster if char["id"] in ids}
+            return _training_progress_for_ids(owned, ids)
+    except (ValueError, TypeError):
+        pass
+    return TrainingProgress(None, None)
+
+
+def cached_training_progress(name) -> TrainingProgress:
+    """训练卡片搜索失败后，按本地练度文件版本复用该干员的校验结果。"""
+    path = get_path("@app/tmp/cultivate.json")
+    try:
+        stat = path.stat()
+        return _read_training_progress(
+            path, name, (stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        )
+    except OSError:
+        return TrainingProgress(None, None)
 
 
 def cached_training_requirement(name):
-    """选人失败时读取本地练度，多个形态沿用排班校验的训练条件。"""
-    try:
-        roster = _read_roster(get_path("@app/tmp/cultivate.json"))
-        if roster:
-            owned = {char["id"]: char for char in roster}
-            ids = _operator_ids_by_name().get(name, set()) & owned.keys()
-            if ids:
-                return (
-                    _training_requirement_for_ids(owned, ids)
-                    or "基础技能已达 7 级，仍有技能未专三。"
-                )
-    except (OSError, ValueError, TypeError):
-        pass
-    return None
+    progress = cached_training_progress(name)
+    if progress.selectable:
+        return "基础技能已达 7 级，仍有技能未专三。"
+    return progress.reason
 
 
 def _training_slot_errors(global_plan, characters, name_to_ids):
@@ -132,7 +160,7 @@ def _training_slot_errors(global_plan, characters, name_to_ids):
             if len(task) > 1:
                 names.add(task[1])
         for name in sorted(names - IGNORED_NAMES):
-            if reason := _training_requirement_for_ids(owned, name_to_ids[name]):
+            if reason := _training_progress_for_ids(owned, name_to_ids[name]).reason:
                 errors.append(f"{source}训练位 {name}：{reason}")
     return errors
 
