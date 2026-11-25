@@ -24,7 +24,6 @@ const {
   delete_script,
   download,
   failures,
-  rosterReports,
   library,
   loading,
   refresh,
@@ -55,6 +54,24 @@ const savingProgress = ref(false)
 const expandedItem = ref(null)
 const theme = useThemeVars()
 const scriptsById = computed(() => new Map(library.value.map((script) => [script.id, script])))
+const reportItem = ref(null)
+const selectedReport = computed(() => {
+  if (!copilot.value.scripts.includes(reportItem.value)) return null
+  return scriptsById.value.get(reportItem.value.id)?.roster_check
+})
+function rosterHint(report) {
+  if (!report || report.status === 'ready') return ''
+  if (report.message) return report.message
+  if (report.status === 'unknown') return '练度资料不足，暂时无法核对'
+  const gaps = report.gaps
+  const first = gaps?.[0]
+  if (!first) return '作业编队要求未满足'
+  if (gaps.length === 1 && first.candidates.length === 1) {
+    const oper = first.candidates[0]
+    return `${oper.name} · ${oper.reasons[0]}${report.can_borrow ? '，可尝试借助战' : ''}`
+  }
+  return `${first.slot}${gaps.length > 1 ? `等 ${gaps.length} 个位置` : ''}缺少符合要求的干员`
+}
 const queueProgress = computed(() => {
   const detail = taskStatus.value?.detail
   const { scripts, run_id } = copilot.value
@@ -152,11 +169,6 @@ function add_operator() {
           1 MB。
         </n-text>
         <n-alert v-if="backupWarning" type="warning">{{ backupWarning }}</n-alert>
-        <CopilotRosterReport
-          v-if="rosterReports.length"
-          :scripts="rosterReports"
-          :settings="configs.copilot.value"
-        />
         <details v-if="failures.length">
           <summary>导入结果 · {{ failures.length }} 份作业未加入队列</summary>
           <ul>
@@ -224,6 +236,21 @@ function add_operator() {
                   ><n-icon><ChevronDown /></n-icon
                 ></template>
               </n-button>
+            </div>
+            <div
+              v-if="!paradox && rosterHint(scriptsById.get(item.id)?.roster_check)"
+              class="queue-roster"
+            >
+              <n-text type="warning">{{
+                rosterHint(scriptsById.get(item.id).roster_check)
+              }}</n-text>
+              <n-button
+                text
+                size="small"
+                :aria-label="`查看第 ${index + 1} 项作业的练度详情`"
+                @click="reportItem = item"
+                >查看详情</n-button
+              >
             </div>
             <div v-if="expandedItem === item" class="queue-editor">
               <label v-if="!paradox" class="queue-navigation">
@@ -322,6 +349,26 @@ function add_operator() {
       </div>
     </n-form-item>
   </n-form>
+  <n-modal
+    :show="!!selectedReport && selectedReport.status !== 'ready'"
+    preset="dialog"
+    type="warning"
+    title="作业练度检查"
+    positive-text="关闭"
+    style="width: min(520px, calc(100vw - 32px))"
+    @update:show="
+      (show) => {
+        if (!show) reportItem = null
+      }
+    "
+    @positive-click="reportItem = null"
+  >
+    <CopilotRosterReport
+      v-if="selectedReport && reportItem"
+      :script="scriptsById.get(reportItem.id)"
+      :settings="copilot"
+    />
+  </n-modal>
 </template>
 
 <style scoped>
@@ -396,6 +443,15 @@ function add_operator() {
 }
 .queue-disclosure[aria-expanded='true'] :deep(svg) {
   transform: rotate(180deg);
+}
+.queue-roster {
+  display: flex;
+  gap: 4px 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin: 0 12px 10px 40px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .queue-editor {
   display: grid;

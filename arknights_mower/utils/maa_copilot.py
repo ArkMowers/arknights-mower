@@ -130,7 +130,7 @@ def script_info(script_id, data, *, sss=False, paradox=False):
     return info
 
 
-def list_scripts(*, sss=False, paradox=False):
+def list_scripts(*, sss=False, paradox=False, formations=None):
     root = script_root(sss=sss, paradox=paradox)
     if root.is_symlink():
         raise ValueError("作业目录不能使用符号链接")
@@ -143,6 +143,12 @@ def list_scripts(*, sss=False, paradox=False):
                 stream.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
             )
         result.append(script_info(script_id, data, sss=sss, paradox=paradox))
+        if formations is not None and not (sss or paradox):
+            formations[script_id] = {
+                "opers": data.get("opers", []),
+                "groups": data.get("groups", []),
+                "actions": [],
+            }
     return result
 
 

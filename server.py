@@ -3482,6 +3482,27 @@ def update_copilot_item_status():
 COPILOT_LIBRARY_ROUTE = "/<any('maa-copilot','maa-paradox','sss-copilot'):library>"
 
 
+def _copilot_roster_report(data, *, saved=False):
+    try:
+        from arknights_mower.utils.maa_copilot_roster import check_copilot_roster
+
+        if saved:
+            from arknights_mower.utils.maa_copilot_normalization import (
+                normalize_copilot,
+            )
+
+            normalize_copilot(data)
+        return check_copilot_roster(data)
+    except Exception:
+        logger.exception("无法完成普通作业练度检查")
+        return {
+            "status": "unknown",
+            "message": "暂时无法核对这份作业的干员练度。",
+            "gaps": [],
+            "can_borrow": False,
+        }
+
+
 @app.route(COPILOT_LIBRARY_ROUTE, methods=["GET", "POST"])
 @require_token
 def maa_copilot_library(library):
@@ -3497,12 +3518,19 @@ def maa_copilot_library(library):
     paradox = library == "maa-paradox"
     try:
         if request.method in ("GET", "HEAD"):
+            formations = {}
             with backup_lock:
-                result = {"scripts": list_scripts(sss=sss, paradox=paradox)}
+                scripts = list_scripts(sss=sss, paradox=paradox, formations=formations)
                 warning = backup_entry_warning()
-                if warning:
-                    result["backup_warning"] = warning
-                return result
+            for script in scripts:
+                if script["id"] in formations:
+                    script["roster_check"] = _copilot_roster_report(
+                        formations[script["id"]], saved=True
+                    )
+            result = {"scripts": scripts}
+            if warning:
+                result["backup_warning"] = warning
+            return result
         upload = request.files.get("copilot")
         if upload is None:
             return {"message": "没有收到作业文件"}, 400
@@ -3518,18 +3546,7 @@ def maa_copilot_library(library):
         return {"message": "作业读写失败，请检查目录权限"}, 500
 
     if not (sss or paradox):
-        try:
-            from arknights_mower.utils.maa_copilot_roster import check_copilot_roster
-
-            result["roster_check"] = check_copilot_roster(data)
-        except Exception:
-            logger.exception("普通作业已导入，练度检查未完成")
-            result["roster_check"] = {
-                "status": "unknown",
-                "message": "暂时无法核对干员练度，作业已导入。",
-                "gaps": [],
-                "can_borrow": False,
-            }
+        result["roster_check"] = _copilot_roster_report(data)
     return result
 
 

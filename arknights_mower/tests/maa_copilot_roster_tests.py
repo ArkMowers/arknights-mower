@@ -155,3 +155,47 @@ def test_unknown_slot_preserves_independently_confirmed_gap(roster):
             "candidates": [{"name": "塔露拉", "reasons": ["精二 30 级，要求 60 级"]}],
         }
     ]
+
+
+@pytest.mark.parametrize(
+    "count,missing,status,can_borrow",
+    [
+        (12, 0, "ready", False),
+        (12, 1, "shortfall", True),
+        (13, 0, "shortfall", True),
+        (13, 1, "shortfall", True),
+        (13, 2, "shortfall", False),
+        (14, 0, "shortfall", False),
+        (14, 1, "shortfall", False),
+        (15, 2, "shortfall", False),
+    ],
+)
+def test_formation_capacity_and_missing_operators(
+    roster, count, missing, status, can_borrow
+):
+    names = [f"干员{i}" for i in range(count)]
+    for i, name in enumerate(names):
+        roster(name, owned=i >= missing)
+    result = assess(*names)
+    assert result["status"] == status
+    assert result["can_borrow"] is can_borrow
+    assert len(result["gaps"]) == missing
+    if count > 12:
+        assert f"需要 {count} 个编队位置" in result["message"]
+
+
+@pytest.mark.parametrize("count,status", [(13, "unknown"), (14, "shortfall")])
+def test_capacity_is_reported_even_without_roster(monkeypatch, count, status):
+    monkeypatch.setattr(check, "get_cultivate_characters", lambda: None)
+    result = assess(*(f"干员{i}" for i in range(count)))
+    assert result["status"] == status and not result["can_borrow"]
+    assert f"需要 {count} 个编队位置" in result["message"]
+    assert "刷新森空岛" in result["message"]
+
+
+def test_empty_group_and_alternatives_do_not_consume_extra_slots(roster):
+    names = [f"干员{i}" for i in range(13)]
+    for name in names:
+        roster(name)
+    result = assess(*names[:11], groups=[names[11:], []])
+    assert result["status"] == "ready"

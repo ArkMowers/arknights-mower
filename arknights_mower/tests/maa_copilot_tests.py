@@ -323,6 +323,34 @@ def test_import_check_error_still_allows_saving_the_queue(
     assert server.config.conf.copilot.scripts[0].id == info["id"]
 
 
+def test_library_reloads_the_current_roster_for_existing_queue_items(
+    client, monkeypatch
+):
+    from arknights_mower.utils import maa_copilot_roster
+
+    results = [
+        {"status": "shortfall", "gaps": [], "can_borrow": True},
+        {"status": "ready", "gaps": [], "can_borrow": False},
+    ]
+    checker = MagicMock(side_effect=results)
+    monkeypatch.setattr(maa_copilot_roster, "check_copilot_roster", checker)
+    headers = {"token": "copilot-test-token"}
+    saved = client.post(
+        "/maa-copilot",
+        headers=headers,
+        data={"copilot": (io.BytesIO(json.dumps(SCRIPT).encode()), "copilot.json")},
+    ).get_json()
+    assert saved["roster_check"] == results[0]
+    current = client.get("/maa-copilot", headers=headers).get_json()["scripts"]
+    assert [(row["id"], row["roster_check"]) for row in current] == [
+        (saved["id"], results[1])
+    ]
+    assert (
+        checker.call_args_list[0].args[0]["opers"]
+        == checker.call_args_list[1].args[0]["opers"]
+    )
+
+
 def test_authorized_upload_list_and_delete_and_selected_guard(
     client, monkeypatch, files
 ):
@@ -341,10 +369,7 @@ def test_authorized_upload_list_and_delete_and_selected_guard(
     assert info["title"] == "离线作业"
     assert client.head("/maa-copilot", headers=headers).status_code == 200
     assert "roster_check" in info
-    stored_info = {key: value for key, value in info.items() if key != "roster_check"}
-    assert client.get("/maa-copilot", headers=headers).get_json()["scripts"] == [
-        stored_info
-    ]
+    assert client.get("/maa-copilot", headers=headers).get_json()["scripts"] == [info]
     server.config.conf = Conf(copilot={"scripts": [{"id": info["id"]}]})
     path = "/maa-copilot/" + info["id"]
     assert client.delete(path, headers=headers).status_code == 409

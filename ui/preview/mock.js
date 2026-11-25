@@ -60,7 +60,18 @@ function previewFieldGroup(key) {
 const copilotLibraries = {
   copilot: [
     { id: 'c'.repeat(64), stage_name: 'OS-EX-6', title: '雪山降临 · 双核低配' },
-    { id: 'd'.repeat(64), stage_name: 'OS-EX-8', title: '以人的名 · 自动编队' }
+    {
+      id: 'd'.repeat(64),
+      stage_name: 'OS-EX-8',
+      title: '以人的名 · 自动编队',
+      roster_check: {
+        status: 'shortfall',
+        can_borrow: true,
+        gaps: [
+          { slot: '塔露拉', candidates: [{ name: '塔露拉', reasons: ['精二30级，要求精二60级'] }] }
+        ]
+      }
+    }
   ],
   paradox: [
     { id: 'e'.repeat(64), stage_name: 'mem_angel_1', title: '能天使 · 悖论模拟' },

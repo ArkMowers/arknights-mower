@@ -132,6 +132,11 @@ export function useCopilotLibrary({ axios, configs, kind, message, store }) {
           if (script.roster_check) reports.set(script.id, script)
         }
         rosterReports.value = [...reports.values()]
+        if (kind === 'copilot' && reports.size) {
+          const known = new Map(library.value.map((script) => [script.id, script]))
+          for (const [id, script] of reports) known.set(id, script)
+          library.value = [...known.values()]
+        }
         return
       } catch (error) {
         const data = error.response?.data

@@ -54,6 +54,7 @@ vi.mock('naive-ui', async () => {
         'NImage',
         'NIcon',
         'NTag',
+        'NModal',
         'NInput',
         'NInputNumber',
         'NRadio',
@@ -267,10 +268,15 @@ describe('ordinary Copilot library and queue', () => {
     expect(settings.scripts).toHaveLength(1)
     expect(settings.formation).toBeFalsy()
     expect(settings.support_unit_usage).toBeFalsy()
-    const render = () =>
-      renderToString(
-        createSSRApp(RosterReport, { scripts: component.rosterReports.value, settings })
-      )
+    expect(component.selectedReport.value).toBeNull()
+    const script = component.scriptsById.value.get(first.id)
+    expect(component.rosterHint(script.roster_check)).toContain('可尝试借助战')
+    component.reportItem.value = settings.scripts[0]
+    expect(component.selectedReport.value).toEqual(report)
+    component.reportItem.value = null
+    expect(component.selectedReport.value).toBeNull()
+    expect(settings.scripts).toHaveLength(1)
+    const render = () => renderToString(createSSRApp(RosterReport, { script, settings }))
     expect(await render()).toContain('塔露拉（精二 30 级，要求 60 级）')
     expect(await render()).toContain('开启自动编队，并将「助战方式」设为「只补一名缺失干员」')
     expect(settings.formation).toBeFalsy()
@@ -300,22 +306,50 @@ describe('ordinary Copilot library and queue', () => {
     component.code.value = 's123'
     await component.download()
     expect(state.config.copilot.value.scripts).toHaveLength(3)
-    const scripts = component.rosterReports.value
-    expect(scripts.map(({ id }) => id)).toEqual([first.id, second.id])
-    const render = () =>
-      renderToString(createSSRApp(RosterReport, { scripts, settings: state.config.copilot.value }))
-    const html = await render()
-    expect(html).toContain('2 个编队位置')
-    expect(html).toContain('请在「养成规划」刷新练度')
-    expect(html).not.toContain('只补一名缺失干员')
+    const items = state.config.copilot.value.scripts
+    expect(items.map(({ id }) => id)).toEqual([first.id, first.id, second.id])
+    expect(component.selectedReport.value).toBeNull()
+    component.reportItem.value = items[1]
+    expect(component.selectedReport.value).toEqual(shortfall)
+    component.move(1, 1)
+    expect(component.selectedReport.value).toEqual(shortfall)
+    component.remove(2)
+    expect(component.selectedReport.value).toBeNull()
+    const scripts = component.scriptsById.value
+    const render = (script) =>
+      renderToString(createSSRApp(RosterReport, { script, settings: state.config.copilot.value }))
+    expect(await render(scripts.get(first.id))).toContain('2 个编队位置')
+    expect(await render(scripts.get(second.id))).toContain('请在「养成规划」刷新练度')
+    expect(await render(scripts.get(first.id))).not.toContain('只补一名缺失干员')
     state.client.post.mockResolvedValueOnce({
       data: { ...first, roster_check: { status: 'ready', gaps: [] } }
     })
     component.code.value = '456'
     await component.download()
-    expect(component.rosterReports.value.map(({ roster_check }) => roster_check.status)).toEqual([
-      'ready'
-    ])
+    expect(component.scriptsById.value.get(first.id).roster_check.status).toBe('ready')
+    expect(component.rosterHint(component.scriptsById.value.get(first.id).roster_check)).toBe('')
+  })
+  it('renders only the affected queue rows after reload and shows capacity shortfalls in details', async () => {
+    const settings = state.config.copilot.value
+    settings.scripts = [{ id: first.id }, { id: first.id, is_raid: true }, { id: second.id }]
+    const oversized = {
+      ...first,
+      roster_check: {
+        status: 'shortfall',
+        message: '编队位置超过上限，助战也无法补齐',
+        gaps: [],
+        can_borrow: false
+      }
+    }
+    const ready = { ...second, roster_check: { status: 'ready', gaps: [] } }
+    state.mountForRender = true
+    state.client.get.mockResolvedValue({ data: { scripts: [oversized, ready] } })
+    const html = await renderToString(createSSRApp(Component))
+    expect(html.match(/查看详情/g)).toHaveLength(2)
+    expect(html.match(/编队位置超过上限，助战也无法补齐/g)).toHaveLength(2)
+    const detail = await renderToString(createSSRApp(RosterReport, { script: oversized, settings }))
+    expect(detail).toContain('编队位置超过上限，助战也无法补齐')
+    expect(detail).not.toContain('只补一名缺失干员')
   })
   it('expands each downloaded member in place and preserves existing raid selections', async () => {
     mock_set()

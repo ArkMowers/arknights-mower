@@ -2,48 +2,34 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  scripts: { type: Array, required: true },
+  script: { type: Object, required: true },
   settings: { type: Object, required: true }
 })
-const issues = computed(() =>
-  props.scripts.filter((script) => script.roster_check.status !== 'ready')
-)
-const canBorrow = computed(() =>
-  issues.value.some(
-    ({ roster_check }) => roster_check.status === 'shortfall' && roster_check.can_borrow === true
-  )
-)
+const report = computed(() => props.script.roster_check)
 const borrowing = computed(() => props.settings.formation && props.settings.support_unit_usage > 0)
 </script>
 
 <template>
-  <n-text v-if="!issues.length" depth="3" role="status">本次导入的普通作业均满足编队要求。</n-text>
-  <n-alert v-else title="导入作业的练度检查" type="warning" :show-icon="false">
-    <section v-for="script in issues" :key="script.id" class="script-result">
-      <n-text strong>{{ script.stage_name }} · {{ script.title }}</n-text>
-      <p v-if="script.roster_check.status === 'unknown'">
+  <div class="script-result">
+    <n-text strong>{{ script.stage_name }} · {{ script.title }}</n-text>
+    <p v-if="report.message">{{ report.message }}</p>
+    <p v-else-if="report.status === 'unknown'">
+      练度数据不足，请在「养成规划」中刷新森空岛干员练度。
+    </p>
+    <ul v-if="report.gaps?.length">
+      <li v-for="(gap, index) in report.gaps" :key="index">
+        <span v-if="gap.candidates.length > 1 || gap.slot !== gap.candidates[0]?.name"
+          >{{ gap.slot }}：</span
+        >
         {{
-          script.roster_check.message ||
-          '练度数据不足，请在「养成规划」中刷新森空岛干员练度后重新导入。'
+          gap.candidates.map(({ name, reasons }) => `${name}（${reasons.join('，')}）`).join(' 或 ')
         }}
-      </p>
-      <ul v-if="script.roster_check.gaps?.length">
-        <li v-for="(gap, index) in script.roster_check.gaps" :key="index">
-          <span v-if="gap.candidates.length > 1 || gap.slot !== gap.candidates[0]?.name"
-            >{{ gap.slot }}：</span
-          >
-          {{
-            gap.candidates
-              .map(({ name, reasons }) => `${name}（${reasons.join('，')}）`)
-              .join(' 或 ')
-          }}
-        </li>
-      </ul>
-      <p v-if="script.roster_check.gaps?.length > 1">
-        还差 {{ script.roster_check.gaps.length }} 个编队位置，每场最多借用一名助战。
-      </p>
-    </section>
-    <p v-if="canBorrow" class="support-hint">
+      </li>
+    </ul>
+    <p v-if="report.gaps?.length > 1">
+      还差 {{ report.gaps.length }} 个编队位置，每场最多借用一名助战。
+    </p>
+    <p v-if="report.can_borrow" class="support-hint">
       <template v-if="borrowing">普通队列已允许借用助战补一个缺位。</template>
       <template v-else-if="settings.support_unit_usage">
         普通队列已设置助战方式，可在「队列统一设置」中开启自动编队以借用助战。
@@ -54,14 +40,15 @@ const borrowing = computed(() => props.settings.formation && props.settings.supp
         }}将「助战方式」设为「只补一名缺失干员」。
       </template>
     </p>
-  </n-alert>
+  </div>
 </template>
 
 <style scoped>
 .script-result {
   overflow-wrap: anywhere;
+  max-height: 60vh;
+  overflow-y: auto;
 }
-.script-result + .script-result,
 .support-hint {
   margin: 10px 0 0;
 }

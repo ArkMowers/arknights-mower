@@ -140,9 +140,7 @@ def _can_borrow(start, edges, borrowable, assigned):
     return False
 
 
-def check_copilot_roster(data):
-    slots = [(op["name"], [op]) for op in data.get("opers", [])]
-    slots.extend((g["name"], g["opers"]) for g in data.get("groups", []))
+def _check_slots(slots):
     ready = {"status": "ready", "gaps": [], "can_borrow": False}
     if not slots:
         return ready
@@ -215,3 +213,21 @@ def check_copilot_roster(data):
         "can_borrow": len(missing) == 1
         and _can_borrow(missing[0], edges, borrowable, assigned),
     }
+
+
+def check_copilot_roster(data):
+    slots = [(op["name"], [op]) for op in data.get("opers", [])]
+    slots.extend((g["name"], g["opers"]) for g in data.get("groups", []) if g["opers"])
+    result = _check_slots(slots)
+    count = len(slots)
+    if count <= 12:
+        return result
+    if count == 13:
+        capacity = "作业需要 13 个编队位置，第 13 位必须使用助战。"
+        if result["status"] == "ready":
+            result.update(status="shortfall", can_borrow=True)
+    else:
+        capacity = f"作业需要 {count} 个编队位置，超过 12 名自有干员加 1 名助战的上限。"
+        result.update(status="shortfall", can_borrow=False)
+    result["message"] = capacity + result.get("message", "")
+    return result
