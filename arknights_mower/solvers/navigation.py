@@ -26,6 +26,7 @@ from arknights_mower.utils.nav_steps import (
     select_replay_steps,
 )
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.stage_code_glyphs import read_stage_code
 
 # 剧情/故事「进入」按钮（OCR 常读成 "Story >>"）不是关卡入口，LLM 在线构建选它只会
 # 录进没用的路由，从导航候选中剔除。"Story Line · XX" 章节名不带 ">>"，不受影响。
@@ -128,20 +129,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         self.recog.update()
         for attempt in range(5):
             io_timeout(0)
-            if self.find("ope_start") and rapidocr.engine:
-                title = self.recog.img[108:166, 1267:1598]
-                readings, _ = rapidocr.engine(
-                    title, use_det=True, use_cls=False, use_rec=True
-                )
-                codes = set()
-                for box, text, score in readings or ():
-                    if score < 0.8 or max(x for x, _ in box) >= title.shape[1] - 1:
-                        continue
-                    code = text.upper().replace(" ", "").removeprefix("OPERATION")
-                    if self.is_stage_code(code):
-                        codes.add(code)
-                if len(codes) == 1:
-                    return codes.pop()
+            if self.find("ope_start"):
+                code = read_stage_code(self.recog.img)
+                if code:
+                    return code
             if attempt < 4:
                 self.sleep(io_timeout(0.4))
         return None
