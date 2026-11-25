@@ -231,6 +231,27 @@ def write_training_roster(path, *, level=7, masteries=(3, 3, 2)):
 
 
 @pytest.mark.parametrize(
+    ("level", "masteries", "reason"),
+    [
+        (6, (0,), "基础技能仅 6 级"),
+        (7, (3, 3), "所有技能均已专三"),
+        (7, (3, 2), "仍有技能未专三"),
+        (None, (), "无法确认基础技能等级"),
+    ],
+)
+def test_missing_trainee_diagnostic_only_uses_cached_progress(
+    roster_path, remote_refresh, level, masteries, reason
+):
+    assert schedule_roster.cached_training_requirement("能天使") is None
+    roster_path.write_text("{", encoding="utf-8")
+    assert schedule_roster.cached_training_requirement("能天使") is None
+    write_training_roster(roster_path, level=level, masteries=masteries)
+    assert reason in schedule_roster.cached_training_requirement("能天使")
+    assert schedule_roster.cached_training_requirement("迷迭香") is None
+    remote_refresh.assert_not_called()
+
+
+@pytest.mark.parametrize(
     "source", [{}, {"backup": True}, {"task": True}, {"replacement": True}]
 )
 @pytest.mark.parametrize(

@@ -91,6 +91,32 @@ def _training_requirement_error(char):
     return None
 
 
+def _training_requirement_for_ids(owned, ids):
+    reasons = [
+        _training_requirement_error(owned[cid]) for cid in sorted(ids) if cid in owned
+    ]
+    if reasons and all(reasons):
+        return "；".join(dict.fromkeys(reasons))
+    return None
+
+
+def cached_training_requirement(name):
+    """选人失败时读取本地练度，多个形态沿用排班校验的训练条件。"""
+    try:
+        roster = _read_roster(get_path("@app/tmp/cultivate.json"))
+        if roster:
+            owned = {char["id"]: char for char in roster}
+            ids = _operator_ids_by_name().get(name, set()) & owned.keys()
+            if ids:
+                return (
+                    _training_requirement_for_ids(owned, ids)
+                    or "基础技能已达 7 级，仍有技能未专三。"
+                )
+    except (OSError, ValueError, TypeError):
+        pass
+    return None
+
+
 def _training_slot_errors(global_plan, characters, name_to_ids):
     owned = {char["id"]: char for char in characters}
     errors = []
@@ -106,15 +132,8 @@ def _training_slot_errors(global_plan, characters, name_to_ids):
             if len(task) > 1:
                 names.add(task[1])
         for name in sorted(names - IGNORED_NAMES):
-            candidates = [
-                owned[cid] for cid in sorted(name_to_ids[name]) if cid in owned
-            ]
-            # Missing operators are reported by the ownership check.
-            reasons = [_training_requirement_error(char) for char in candidates]
-            if reasons and all(reasons):
-                errors.append(
-                    f"{source}训练位 {name}：{'；'.join(dict.fromkeys(reasons))}"
-                )
+            if reason := _training_requirement_for_ids(owned, name_to_ids[name]):
+                errors.append(f"{source}训练位 {name}：{reason}")
     return errors
 
 

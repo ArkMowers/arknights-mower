@@ -549,6 +549,46 @@ class OrderReturnUnresolved(RecognizeError):
     """订单已读，返回地图的画面仍未确认。"""
 
 
+class TraineeCardUnavailable(AgentPageNotAdvanced):
+    def __init__(self, name, op_data, error):
+        from arknights_mower.utils.schedule_roster import cached_training_requirement
+
+        self.name = name
+        operator = getattr(op_data, "operators", {}).get(name)
+        self.source = None
+        details = [f"训练位选人时未识别到{name}的可选卡片。"]
+        if (
+            operator is not None
+            and operator.current_room
+            and operator.current_index >= 0
+        ):
+            self.source = operator.current_room, operator.current_index
+            details.append(
+                f"最近记录在{facility_label(operator.current_room, op_data)}第"
+                f"{operator.current_index + 1}位。"
+            )
+        requirement = cached_training_requirement(name)
+        if requirement:
+            details.append(f"本地练度记录：{requirement}")
+        else:
+            details.append(
+                "请核对游戏中的基础技能是否达到 7 级，以及是否还有技能未专三。"
+            )
+        super().__init__("".join(details) + f" {error}")
+
+    def pending_source_release(self, plan):
+        if self.source is not None:
+            room, index = self.source
+            row = plan.get(room, ())
+            if (
+                room != "train"
+                and index < len(row)
+                and row[index] not in ("Current", "Free", self.name)
+            ):
+                return room
+        return None
+
+
 class TrainingSubmissionUnconfirmed(AgentSelectionNotReady):
     messages = (
         "训练室协助位提交后未确认目标驻员，返回房间重试",
@@ -560,8 +600,7 @@ class TrainingSubmissionUnconfirmed(AgentSelectionNotReady):
         self.slot = (index, target)
 
     @classmethod
-    def retained_slot(cls, task):
-        failure = task.execution_failure
+    def retained_slot(cls, task, failure):
         if "submitted_training_slot" in failure:
             return failure["submitted_training_slot"]
         # 旧存档只有提交后失败的岗位名称，目标取自原任务的该岗位。
@@ -862,7 +901,7 @@ class BaseSchedulerSolver(
             sampled_at = datetime.now()
         return sampled_at + timedelta(seconds=remaining)
 
-    def _task_failure_snapshot(self, task, rooms):
+    def _task_failure_snapshot(self, task, rooms, *, arrangement_room=None):
         """失败任务仅由新观测或相关安排变化重新准入，不使用时钟计时。"""
         if pending := getattr(task, "credit_shop_pending", None):
             return copy.deepcopy(pending["observation"])
@@ -875,14 +914,20 @@ class BaseSchedulerSolver(
 
             return manual_task_snapshot(self, task)
         data = self.op_data
-        names = {name for row in task.plan.values() for name in row}
+        plan = (
+            task.plan
+            if arrangement_room is None
+            else {arrangement_room: task.plan.get(arrangement_room, [])}
+        )
+        names = {name for row in plan.values() for name in row}
         from arknights_mower.utils.replacement_coordination import (
             coordination_reservations,
             replacement_dependencies,
         )
 
-        if task.type == TaskTypes.EXHAUST_OFF or getattr(
-            task, "coordination_request_names", ()
+        if arrangement_room is None and (
+            task.type == TaskTypes.EXHAUST_OFF
+            or getattr(task, "coordination_request_names", ())
         ):
             names.update(
                 replacement_dependencies(
@@ -933,7 +978,7 @@ class BaseSchedulerSolver(
         if getattr(task, "derived_correction", False):
             owners = names | {
                 data.plan[room][index].agent
-                for room, row in task.plan.items()
+                for room, row in plan.items()
                 for index, name in enumerate(row)
                 if name != "Current" and index < len(data.plan.get(room, ()))
             }
@@ -947,8 +992,7 @@ class BaseSchedulerSolver(
         from arknights_mower.utils.backup_group_tasks import active_group_tasks
 
         snapshot = {
-            "backup_group_tasks": tuple(active_group_tasks(data)),
-            "plan": task.plan,
+            "plan": plan,
             "meta_data": task.meta_data,
             "correction_groups": {
                 group: data.group_is_resting(group) for group in correction_groups
@@ -979,6 +1023,8 @@ class BaseSchedulerSolver(
                 room: getattr(data, "room_observations", {}).get(room) for room in rooms
             },
         }
+        if arrangement_room is None:
+            snapshot["backup_group_tasks"] = tuple(active_group_tasks(data))
         if dorm_plan or dorm_slots:
             snapshot["run_order_dorm_plan"] = dorm_plan
         if (
@@ -1016,7 +1062,7 @@ class BaseSchedulerSolver(
                     for name, op in data.operators.items()
                 },
             }
-        if task.plan:
+        if plan:
             snapshot["card_moods"] = {
                 name: getattr(data, "dorm_mood_estimates", {}).get(name)
                 for name in names
@@ -1109,15 +1155,29 @@ class BaseSchedulerSolver(
                 self.back_to_infrastructure()
 
     def _retain_failed_task(
-        self, task, reason, rooms, *, dependency=False, log_group=None
+        self,
+        task,
+        reason,
+        rooms,
+        *,
+        dependency=False,
+        log_group=None,
+        arrangement_room=None,
     ):
         rooms = tuple(rooms)
         task.execution_failure = {
             "reason": reason,
             "rooms": rooms,
-            "snapshot": self._task_failure_snapshot(task, rooms),
+            "snapshot": self._task_failure_snapshot(
+                task, rooms, arrangement_room=arrangement_room
+            ),
             "dependency": dependency,
         }
+        if arrangement_room is not None:
+            task.execution_failure["arrangement_room"] = arrangement_room
+            task.__dict__.setdefault("arrangement_failures", {})[arrangement_room] = (
+                task.execution_failure
+            )
         parent = self._rescue_staffing_log_parent(task)
         self._fail_rescue_staffing_log(task, reason)
         log = logger.info if dependency else logger.error
@@ -1155,6 +1215,13 @@ class BaseSchedulerSolver(
             TaskTypes.RELEASE_DORM,
             TaskTypes.NOT_SPECIFIC,
         }
+
+        def failures_for(task):
+            active = getattr(task, "execution_failure", None)
+            if active and "arrangement_room" not in active:
+                return (active,)
+            return getattr(task, "arrangement_failures", {}).values()
+
         pending = [
             (task, failure, training_slot)
             for task in self.tasks
@@ -1164,9 +1231,14 @@ class BaseSchedulerSolver(
                 and getattr(task, "run_order_restore_pending", False)
                 and not task.meta_data
             )
-            and (failure := getattr(task, "execution_failure", None))
+            for failure in failures_for(task)
+            if failure
             and (
-                (training_slot := TrainingSubmissionUnconfirmed.retained_slot(task))
+                (
+                    training_slot := TrainingSubmissionUnconfirmed.retained_slot(
+                        task, failure
+                    )
+                )
                 is not None
                 or failure.get("reason", "").startswith("干员确认")
             )
@@ -1247,7 +1319,9 @@ class BaseSchedulerSolver(
                     if not complete:
                         # 补读不完整或提交的岗位仍不符时，本次读数不解除失败。
                         failure["snapshot"] = self._task_failure_snapshot(
-                            task, failure["rooms"]
+                            task,
+                            failure["rooms"],
+                            arrangement_room=failure.get("arrangement_room"),
                         )
                     self.task = current_task
                 self.back_to_infrastructure()
@@ -1421,6 +1495,140 @@ class BaseSchedulerSolver(
         logger.debug("相关观测已更新，重新计算原纠错任务：%s", task.plan)
         return True
 
+    def _failure_snapshot_changed(self, task, failure):
+        current_snapshot = self._task_failure_snapshot(
+            task, failure["rooms"], arrangement_room=failure.get("arrangement_room")
+        )
+        current_cards = current_snapshot.get("card_moods", {})
+        now = datetime.now()
+        saved_cards = failure["snapshot"].setdefault("card_moods", current_cards)
+        for name, estimate in current_cards.items():
+            # 预估失效或丢失不构成新观测，也不能按时钟重新准入。
+            if (
+                dorm_candidate_mood(self.op_data, name, now) or 0
+            ) < self.op_data.operators[name].upper_limit:
+                saved_cards[name] = estimate
+        if "card_moods" not in current_snapshot:
+            failure["snapshot"].pop("card_moods", None)
+        failure["snapshot"].setdefault("correction_groups", {})
+        failure["snapshot"].setdefault(
+            "reservations",
+            current_snapshot["reservations"],
+        )
+        failure["snapshot"].setdefault(
+            "room_observations", {room: None for room in failure["rooms"]}
+        )
+        mastery = failure["snapshot"].get("mastery")
+        if mastery and getattr(self, "last_mastery_observation", None) is None:
+            # 重启丢失进程内观测时间不构成新的训练实测。
+            mastery["observation"] = None
+        # 旧快照中的预测时间也不构成实测证据；预测失效不解除失败。
+        for name, observation in failure["snapshot"]["observations"].items():
+            op = self.op_data.operators.get(name)
+            if op is not None and getattr(op, "mood_is_prediction", False):
+                failure["snapshot"]["observations"][name] = (
+                    *observation[:2],
+                    None,
+                )
+        return current_snapshot != failure["snapshot"]
+
+    def _blocked_arrangement_rooms(self, task, failed_room=None):
+        blocked = {
+            room
+            for room, failure in getattr(task, "arrangement_failures", {}).items()
+            if failure and room in task.plan
+        }
+        if failed_room in task.plan:
+            blocked.add(failed_room)
+        while blocked:
+            reserved = {
+                name
+                for room in blocked
+                for name in task.plan[room]
+                if name not in ("", "Free", "Current")
+            }
+            reserved.update(
+                name
+                for name, op in self.op_data.operators.items()
+                if op.current_room in blocked
+            )
+            dependents = {
+                room
+                for room, row in task.plan.items()
+                if room not in blocked and not reserved.isdisjoint(row)
+            }
+            if not dependents:
+                break
+            blocked.update(dependents)
+        return blocked
+
+    def _resume_observed_task(self, task):
+        from arknights_mower.utils.retained_recovery import (
+            reconcile_retained_recovery,
+        )
+
+        refreshed = self._refresh_derived_correction(task)
+        if not refreshed:
+            reconcile_retained_recovery(self.op_data, task)
+        # 已开始的剩余执行继续保留；普通派生纠错重新经过完整预演。
+        task.execution_retained = not refreshed
+        del task.execution_failure
+        task.__dict__.pop("product_shift_predecessors", None)
+        task.__dict__.pop("process_recovery_fia_wait", None)
+        self._log_arrangement(
+            "相关观测或安排已更新，恢复原任务",
+            task=task,
+            log_group="credit-shop"
+            if task.type in (TaskTypes.CREDIT_SHOP, TaskTypes.MAA_MALL)
+            else "clue"
+            if task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY)
+            else None,
+        )
+
+    def _set_arrangement_dispatch(self, task):
+        failures = task.arrangement_failures
+        if task.plan and self._blocked_arrangement_rooms(task) == task.plan.keys():
+            task.execution_failure = next(
+                failure for failure in failures.values() if failure
+            )
+        else:
+            task.__dict__.pop("execution_failure", None)
+        if not failures:
+            del task.arrangement_failures
+        task.execution_retained = True
+
+    def _resume_arrangement_rooms(self, task):
+        for room, failure in list(task.arrangement_failures.items()):
+            if room not in task.plan:
+                del task.arrangement_failures[room]
+            elif failure and self._failure_snapshot_changed(task, failure):
+                task.execution_failure = failure
+                self._resume_observed_task(task)
+                # 新观测允许执行。保留房间标记，重入时先核对实读，再决定是否重选。
+                task.arrangement_failures[room] = None
+        self._set_arrangement_dispatch(task)
+
+    @staticmethod
+    def _legacy_selection_failure(task, failure):
+        # 旧存档的重试房间也可能残留在切产物等前置失败上，只迁移可辨认的选人失败。
+        room = getattr(task, "arrangement_retry_room", None)
+        return (
+            room in task.plan
+            and len(task.plan) > 1
+            and tuple(failure["rooms"]) == (room,)
+            and not failure.get("dependency")
+            and not getattr(task, "arrangement_failures", None)
+            and BaseSchedulerSolver._is_ordinary_facility_arrangement(task)
+            and (
+                failure["reason"].startswith(
+                    ("干员确认", "两次滑动后整页干员及位置均未变化")
+                )
+                or failure["reason"].endswith("返回房间重试")
+                or TrainingSubmissionUnconfirmed.retained_slot(task, failure)
+                is not None
+            )
+        )
+
     def _resume_failed_tasks(self):
         self._discard_legacy_ordinary_requests()
         self._discard_legacy_recovery_checks()
@@ -1532,63 +1740,20 @@ class BaseSchedulerSolver(
                     or (dorm_candidate_mood(self.op_data, fia.name) or 0) < 24
                 ):
                     continue
-            if failure:
-                current_snapshot = self._task_failure_snapshot(task, failure["rooms"])
-                current_cards = current_snapshot.get("card_moods", {})
-                now = datetime.now()
-                saved_cards = failure["snapshot"].setdefault(
-                    "card_moods", current_cards
-                )
-                for name, estimate in current_cards.items():
-                    # 预估失效或丢失不构成新观测，也不能按时钟重新准入。
-                    if (
-                        dorm_candidate_mood(self.op_data, name, now) or 0
-                    ) < self.op_data.operators[name].upper_limit:
-                        saved_cards[name] = estimate
-                if "card_moods" not in current_snapshot:
-                    failure["snapshot"].pop("card_moods", None)
-                failure["snapshot"].setdefault("correction_groups", {})
-                failure["snapshot"].setdefault(
-                    "reservations",
-                    current_snapshot["reservations"],
-                )
-                failure["snapshot"].setdefault(
-                    "room_observations", {room: None for room in failure["rooms"]}
-                )
-                mastery = failure["snapshot"].get("mastery")
-                if mastery and getattr(self, "last_mastery_observation", None) is None:
-                    # 重启丢失进程内观测时间不构成新的训练实测。
-                    mastery["observation"] = None
-                # 旧快照中的预测时间也不构成实测证据；预测失效不解除失败。
-                for name, observation in failure["snapshot"]["observations"].items():
-                    op = self.op_data.operators.get(name)
-                    if op is not None and getattr(op, "mood_is_prediction", False):
-                        failure["snapshot"]["observations"][name] = (
-                            *observation[:2],
-                            None,
-                        )
-            if failure and (predecessors or current_snapshot != failure["snapshot"]):
-                from arknights_mower.utils.retained_recovery import (
-                    reconcile_retained_recovery,
-                )
-
-                refreshed = self._refresh_derived_correction(task)
-                if not refreshed:
-                    reconcile_retained_recovery(self.op_data, task)
-                # 已开始的剩余执行继续保留；普通派生纠错重新经过完整预演。
-                task.execution_retained = not refreshed
-                del task.execution_failure
-                task.__dict__.pop("product_shift_predecessors", None)
-                task.__dict__.pop("process_recovery_fia_wait", None)
-                self._log_arrangement(
-                    "相关观测或安排已更新，恢复原任务",
-                    task=task,
-                    log_group="credit-shop"
-                    if task.type in (TaskTypes.CREDIT_SHOP, TaskTypes.MAA_MALL)
-                    else "clue"
-                    if task.type in (TaskTypes.CLUE, TaskTypes.CLUE_PARTY)
-                    else None,
-                )
+            if failure and "arrangement_room" not in failure:
+                if predecessors or self._failure_snapshot_changed(task, failure):
+                    self._resume_observed_task(task)
+                elif self._legacy_selection_failure(task, failure):
+                    room = task.arrangement_retry_room
+                    failure["arrangement_room"] = room
+                    failure["snapshot"] = self._task_failure_snapshot(
+                        task, (room,), arrangement_room=room
+                    )
+                    task.arrangement_failures = {room: failure}
+                else:
+                    continue
+            if getattr(task, "arrangement_failures", None):
+                self._resume_arrangement_rooms(task)
 
     def _prepare_manual_maintenance(self, info):
         """先执行完提前跑单、原班恢复及换人，再暂停或停服。"""
@@ -4412,11 +4577,26 @@ class BaseSchedulerSolver(
                     inserting_order
                     and getattr(task, "run_order_restore_pending", False)
                 ):
-                    self._retain_failed_task(task, str(e), [e.room])
+                    isolate_room = (
+                        e.room in task.plan
+                        and self._is_ordinary_facility_arrangement(task)
+                        and (
+                            len(task.plan) > 1
+                            or getattr(task, "arrangement_failures", None)
+                        )
+                    )
+                    self._retain_failed_task(
+                        task,
+                        str(e),
+                        [e.room],
+                        arrangement_room=e.room if isolate_room else None,
+                    )
                     if e.submitted_training_slot is not None:
                         task.execution_failure["submitted_training_slot"] = (
                             e.submitted_training_slot
                         )
+                    if isolate_room:
+                        self._set_arrangement_dispatch(task)
                 self.skip()
                 self.back_to_infrastructure()
             except ProductSwitchFailed as e:
@@ -16239,10 +16419,6 @@ class BaseSchedulerSolver(
                     and right_swipe >= 3
                     and ret == previous_page
                 ):
-                    if choose_error >= 2:
-                        logger.warning(
-                            f"训练位干员列表中未找到 ['{ope}']，请检查是否为 ['{ope}'] 设置了特别关注"
-                        )
                     if not narrowed and getattr(self, "choose_error", None) is not None:
                         self.choose_error.add(ope)
                     raise AgentPageNotAdvanced("训练干员列表已到末尾，返回房间重试")
@@ -16251,8 +16427,12 @@ class BaseSchedulerSolver(
                     ret, [ope], train=True, return_page=True
                 )
                 right_swipe += moved
-            except (AgentPageNotAdvanced, AgentCardObservationNotReady):
+            except (AgentPageNotAdvanced, AgentCardObservationNotReady) as error:
                 if not narrowed:
+                    if named_target and isinstance(error, AgentPageNotAdvanced):
+                        raise TraineeCardUnavailable(
+                            ope, self.op_data, error
+                        ) from error
                     raise
                 self.require_agent_selection_page()
                 self.profession_filter(profession)
@@ -20465,7 +20645,10 @@ class BaseSchedulerSolver(
         restoring_order = getattr(self.task, "run_order_restore_pending", False)
         finished = False
         # 延期重试也先读实际驻员，避免确认已成功却重复选人／充能。
-        choose_error = int(getattr(self.task, "arrangement_retry_room", None) == room)
+        choose_error = int(
+            getattr(self.task, "arrangement_retry_room", None) == room
+            or room in getattr(self.task, "arrangement_failures", ())
+        )
         retry_limit = 1 if room == "train" else 3
         checked = False
         reconcile_after_confirmation = False
@@ -21199,7 +21382,15 @@ class BaseSchedulerSolver(
                     deferred = RoomArrangementDeferred(
                         room, e, submitted_training_slot=submitted_training_slot
                     )
-                    if choose_error > retry_limit or urgent:
+                    if (
+                        choose_error > retry_limit
+                        or urgent
+                        or isinstance(e, TraineeCardUnavailable)
+                        and self._is_ordinary_facility_arrangement(self.task)
+                        and (source := e.pending_source_release(plan)) is not None
+                        and source
+                        not in self._blocked_arrangement_rooms(self.task, room)
+                    ):
                         raise deferred from e
                 if choose_error > retry_limit:
                     raise e
@@ -21889,6 +22080,9 @@ class BaseSchedulerSolver(
         )
 
         central_before = central_training_occupants(self)
+        if plan is self.task.plan and getattr(self.task, "arrangement_failures", None):
+            blocked = self._blocked_arrangement_rooms(self.task)
+            rooms = [room for room in rooms if room not in blocked]
         for room in rooms:
             if not new_plan and self._defer_arrangement_for_priority_task(room, plan):
                 self._finish_idle_dorm_shift()
@@ -21927,6 +22121,12 @@ class BaseSchedulerSolver(
                     return self._retain_run_order_restoration(
                         failure="跑单原班恢复未完成" if restoring_order else None
                     )
+                return False
+        if plan is self.task.plan and getattr(self.task, "arrangement_failures", None):
+            self._resume_arrangement_rooms(self.task)
+            if plan:
+                self._finish_idle_dorm_shift()
+                refresh_after_central_change(self, central_before)
                 return False
         if (
             rooms
