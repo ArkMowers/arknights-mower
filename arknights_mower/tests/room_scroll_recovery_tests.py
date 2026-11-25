@@ -13,7 +13,9 @@ sys.modules.setdefault("arknights_mower.utils.skland", Mock())
 
 from arknights_mower.solvers import base_schedule  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.tests import room_occupancy_tests  # noqa: E402
 from arknights_mower.utils.csleep import MowerExit  # noqa: E402
+from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.recognize import RecognizeError  # noqa: E402
 
 
@@ -251,15 +253,19 @@ def five_slot_room():
                 return "?"
             return f"01:00:0{index}"
 
-        def live_time(room, index, cord):
+        def live_seconds(cord, limit):
+            index = time_y.index(cord[0][1])
             assert bottom == (index >= 3)
             s.recog.update()
             if timer_replacement:
                 names[index] = timer_replacement
-            return ready + timedelta(hours=2)
+            return 7200
 
         s.read_screen = Mock(side_effect=read)
-        s.read_operator_time = Mock(side_effect=live_time)
+        s.read_time = Mock(side_effect=live_seconds)
+        s.read_operator_time = Mock(
+            wraps=BaseSchedulerSolver.read_operator_time.__get__(s)
+        )
         s.read_accurate_mood = lambda img: int(img[0, 0])
         return s, captured, written, names, ready
 
@@ -290,10 +296,8 @@ def test_fuzzy_lower_sample_returns_to_correct_slot_once(five_slot_room, field):
     assert [row["agent"] for row in result] == names
     assert [slot for _, _, slot, _ in written] == list(range(5))
     if field == "time":
-        assert result[3]["time"] == ready + timedelta(hours=2)
-        s.read_operator_time.assert_called_once_with(
-            "central", 3, ((1650, 668), (1780, 703))
-        )
+        assert result[3]["time"] == s.recog.capture_started_at + timedelta(hours=2)
+        s.read_time.assert_called_once_with(((1650, 668), (1780, 703)), None)
     else:
         s.read_operator_time.assert_not_called()
 
@@ -697,10 +701,8 @@ def test_near_bottom_requires_independent_aligned_frames_and_third_resident(
         )
         assert rows[4]["time"] == captured_at + timedelta(hours=31, seconds=47)
     if condition == "unclear_time":
-        s.read_operator_time.assert_called_once_with(
-            "central", 3, ((1650, 668), (1780, 703))
-        )
-        assert rows[3]["time"] == ready + timedelta(hours=2)
+        s.read_time.assert_called_once_with(((1650, 668), (1780, 703)), None)
+        assert rows[3]["time"] == s.recog.capture_started_at + timedelta(hours=2)
     else:
         s.read_operator_time.assert_not_called()
 
@@ -732,3 +734,187 @@ def test_release_reads_full_bars_without_requesting_extra_countdowns(five_slot_r
     assert [r.get("measured_mood") for r in readings] == [None, 24, 24, 24, 24]
     assert not any(c.kwargs["type"] == "time" for c in s.read_screen.call_args_list)
     s.read_operator_time.assert_not_called()
+
+
+atlas = room_occupancy_tests.atlas
+frame = room_occupancy_tests.frame
+room_reader = room_occupancy_tests.room_reader
+local_ocr = room_occupancy_tests.local_ocr
+
+
+@pytest.fixture
+def central_fourth(room_reader, frame, central_end_frames, local_ocr, monkeypatch):
+    from pathlib import Path
+
+    from PIL import Image
+
+    from arknights_mower.utils import rapidocr
+
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+    upper = frame("clear-hi-off-pair_top")
+    lower = frame("clear-hi-off-pair_bottom")
+    top, bottom = [
+        cv2.cvtColor(central_end_frames[i], cv2.COLOR_RGB2GRAY) for i in (0, 4)
+    ]
+    # 取中枢实卡、4/5 人数栏和同尺寸的半截倒计时，保留游戏的端点坐标。
+    upper[135:744, 1460:1805] = top[135:744, 210:555]
+    upper[762:941, 1460:1805] = bottom[532:711, 210:555]
+    lower[323:723, 1460:1805] = bottom[323:723, 210:555]
+    with Image.open(
+        Path(__file__).parent / "fixtures/resident_timers_20261125.png"
+    ) as im:
+        upper[898:933, 1650:1780] = np.asarray(im.convert("L"))[
+            9 * 36 : 9 * 36 + 35, :130
+        ]
+    names = ("薇薇安娜", "焰尾", "森蚺", "维什戴尔")
+    s, install = room_reader("clear-hi-off-pair_top")
+    s.recog.capture_started_at = datetime.now().replace(microsecond=0)
+    install(upper)
+    s.swipe.side_effect = lambda *args, **kwargs: install(lower)
+    s.detect_room.return_value = "central"
+    s._log_room_mood = Mock()
+    s.op_data.plan = {
+        "central": [SimpleNamespace(agent=n) for n in (*names, "Current")]
+    }
+    s.op_data.operators = {
+        n: Operator(
+            n,
+            "central",
+            current_room="central",
+            current_index=i,
+            mood=18,
+            time_stamp=s.recog.capture_started_at,
+        )
+        for i, n in enumerate(names)
+    }
+    s.op_data.dorm = s.op_data.group_dorm = []
+    s.op_data.true_exhaust_room = {"central"}
+    s.op_data.refresh_dorm_time.side_effect = Operators.refresh_dorm_time.__get__(
+        s.op_data
+    )
+    s.read_operator_time = BaseSchedulerSolver.read_operator_time.__get__(s)
+    return s, install, upper, lower
+
+
+@pytest.mark.parametrize(
+    "plan_length,footer,upper_width",
+    [
+        (5, True, 227),
+        (5, True, 0),
+        (5, True, 310),
+        (4, True, 227),
+        (5, False, 227),
+        (4, False, 227),
+    ],
+)
+def test_fourth_work_deadline_uses_the_capture_with_the_complete_clock(
+    central_fourth, plan_length, footer, upper_width
+):
+    s, install, upper, _ = central_fourth
+    del s.op_data.plan["central"][plan_length:]
+    if not footer:
+        upper[1003:1060, 1595:] = 0
+    upper[845, 1470:1780] = 0
+    upper[845, 1470 : 1470 + upper_width] = 255
+    install(upper)
+    rows = s._read_room_mood("central", strict_observation=True)
+    fourth = rows[3]
+    expected = s.recog.capture_started_at + timedelta(hours=27, minutes=3)
+    assert fourth["agent"] == "维什戴尔"
+    assert fourth["time"] == s.op_data.operators["维什戴尔"].exhaust_time == expected
+    assert fourth["mood"] == pytest.approx(227 * 24 / 310)
+    timer_crops = [
+        c.kwargs["cord"][0][1]
+        for c in s.read_screen.call_args_list
+        if c.kwargs["type"] == "time"
+    ]
+    assert timer_crops.count(898) == int(footer and plan_length == 5)
+    assert timer_crops.count(668) == 1
+    s.swipe.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    "footer,outcome", [(True, "changed"), (True, "masked"), (False, "masked")]
+)
+def test_unknown_fourth_work_deadline_preserves_the_previous_observation(
+    central_fourth, frame, footer, outcome
+):
+    s, install, upper, lower = central_fourth
+    if not footer:
+        upper[1003:1060, 1595:] = 0
+    if outcome == "changed":
+        lower[557:612, 1460:1785] = frame("b102-initial")[160:215, 1460:1785]
+    else:
+        lower[668:703, 1650:1780] = upper[898:933, 1650:1780]
+    install(upper)
+    op = s.op_data.operators["维什戴尔"]
+    prior = op.exhaust_time = s.recog.capture_started_at + timedelta(days=2)
+    with pytest.raises(RecognizeError):
+        s._read_room_mood("central", strict_observation=True)
+    assert op.exhaust_time == prior
+    assert all(c.args[3] < 3 for c in s.op_data.update_detail.call_args_list)
+    assert all(c.args[1] < 3 for c in s.op_data.refresh_dorm_time.call_args_list)
+    s._reconcile_room_observation.assert_not_called()
+    s.swipe.assert_called_once()
+
+
+@pytest.mark.parametrize("mood_width", [0, 225])
+def test_unrequested_fourth_work_deadline_keeps_the_visible_end(
+    central_fourth, mood_width
+):
+    s, install, upper, _ = central_fourth
+    upper[845, 1470:1780] = 0
+    upper[845, 1470 : 1470 + mood_width] = 255
+    install(upper)
+    rows = s.get_agent_from_room("central", [0], force_mood=True)
+    assert rows[3]["agent"] == "维什戴尔"
+    assert "time" not in rows[3]
+    assert s.op_data.operators["维什戴尔"].exhaust_time is None
+    assert all(
+        c.kwargs.get("cord") != ((1650, 898), (1780, 933))
+        for c in s.read_screen.call_args_list
+    )
+    s.swipe.assert_not_called()
+
+
+def test_readable_upper_fourth_work_clock_finishes_on_the_same_frame(central_fourth):
+    s, install, upper, lower = central_fourth
+    upper[898:933, 1650:1780] = lower[668:703, 1650:1780]
+    install(upper)
+    captured_at = s.recog.capture_started_at
+    rows = s._read_room_mood("central", strict_observation=True)
+    assert rows[3]["time"] == captured_at + timedelta(hours=27, minutes=3)
+    s.swipe.assert_not_called()
+
+
+def test_unrequested_zero_mood_does_not_reopen_a_saved_lower_end(five_slot_room):
+    s, captured, _, _, _ = five_slot_room(True, unclear=[("time", 3)])
+    read_mood = s.read_accurate_mood
+    s.read_accurate_mood = lambda bar: 0 if read_mood(bar) == 14 else read_mood(bar)
+    rows = s.get_agent_from_room("central", force_mood=True)
+    assert rows[3]["mood"] == 0 and "time" not in rows[3]
+    assert captured == [True, False]
+    s.swipe.assert_called_once()
+
+
+@pytest.mark.parametrize("timestamp", [True, False])
+def test_confirmed_distracted_fourth_uses_the_status_capture(central_fourth, timestamp):
+    from arknights_mower.utils.image import loadres
+
+    s, install, upper, _ = central_fourth
+    upper[845, 1470:1780] = 0
+    glyph = loadres("infra_distracted", gray=True)
+    height, width = glyph.shape
+    upper[894 : 894 + height, 1470 : 1470 + width] = glyph
+    install(upper)
+    if timestamp:
+        stamp = s.recog.capture_started_at
+        rows = s.get_agent_from_room("central", [3], strict_observation=True)
+        assert rows[3]["mood"] == 0 and rows[3]["time"] == stamp
+    else:
+        s.recog.capture_started_at = None
+        with pytest.raises(RecognizeError):
+            s.get_agent_from_room("central", [3], strict_observation=True)
+        assert s.op_data.operators["维什戴尔"].exhaust_time is None
+        s._reconcile_room_observation.assert_not_called()
+    s.swipe.assert_not_called()

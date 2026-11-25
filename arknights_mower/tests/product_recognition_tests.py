@@ -109,6 +109,39 @@ def test_manufacture_detail_requires_all_six_record_characters(partial):
         solver._product_ocr_text.assert_not_called()
 
 
+@pytest.mark.parametrize("damage_template", [False, True])
+def test_missing_manufacture_character_uses_ocr(monkeypatch, damage_template):
+    title = bytes2img((FIXTURES / "detail_exp3_20261018.webp").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[330:430, 1540:1835] = title
+    # 擦去“中级作战记录”的第三个字，保留首尾和标题外框。
+    frame[365:402, 1646:1684] = 50
+    if damage_template:
+        template = product_recognition.loadres("room/product_detail_exp3", True).copy()
+        template[:, 76:114] = 0
+        monkeypatch.setattr(product_recognition, "loadres", Mock(return_value=template))
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(side_effect=["中级战记录", ""])
+    with pytest.raises(RecognizeError, match="无法识别当前制造产物"):
+        solver.read_manufacture_product()
+    assert [call.args[0] for call in solver._product_ocr_text.call_args_list] == [
+        ((1540, 330), (1835, 430)),
+        ((430, 330), (650, 430)),
+    ]
+
+
+@pytest.mark.parametrize("score", [np.nan, np.inf, -np.inf])
+def test_room_label_with_nonfinite_match_falls_back_to_ocr(monkeypatch, score):
+    frame = bytes2img((FIXTURES / "b303_room_20261123.jpg").read_bytes())
+    monkeypatch.setattr(
+        cv2, "matchTemplate", Mock(return_value=np.array([[score]], dtype=np.float32))
+    )
+    ocr = Mock(return_value=([], []))
+    monkeypatch.setattr(base.rapidocr, "engine", ocr)
+    assert solver_for(frame)._visible_manufacture_product() is None
+    ocr.assert_called_once()
+
+
 @pytest.mark.parametrize(
     ("material", "expected"),
     [("固源岩", "orirock"), ("装置", "orirock_device"), ("", None)],
@@ -162,6 +195,26 @@ def test_partial_trade_words_request_ocr(index, roi):
 def test_disagreeing_readable_trade_fields_cannot_authorize_a_switch(index, other):
     frame = card(index)
     frame[912:1003, 1606:1694] = card(other)[912:1003, 1606:1694]
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("conflicting card"))
+    with pytest.raises(RecognizeError, match="底色不一致"):
+        solver._read_trade_product_card()
+    solver._product_ocr_text.assert_not_called()
+
+
+def test_flat_trade_template_cells_cannot_hide_conflicting_card(monkeypatch):
+    frame = card(0)
+    frame[912:1003, 1606:1694] = card(2)[912:1003, 1606:1694]
+    loadres = product_recognition.loadres
+    damaged = np.zeros_like(loadres("room/strategy_lmd", True))
+    damaged[: damaged.shape[0] // 2] = 128
+    monkeypatch.setattr(
+        product_recognition,
+        "loadres",
+        lambda name, gray: (
+            damaged if name == "room/strategy_lmd" else loadres(name, gray)
+        ),
+    )
     solver = solver_for(frame)
     solver._product_ocr_text = Mock(side_effect=AssertionError("conflicting card"))
     with pytest.raises(RecognizeError, match="底色不一致"):

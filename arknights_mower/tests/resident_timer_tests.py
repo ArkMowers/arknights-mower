@@ -93,6 +93,41 @@ def test_complete_ocr_value_requires_agreement_on_the_seconds(
     assert engine.call_count == 3
 
 
+@pytest.fixture(scope="module")
+def local_ocr():
+    return rapidocr.create_engine(0.8, threads=2)
+
+
+@pytest.mark.parametrize(
+    ("filename", "top", "clock"),
+    [
+        ("selection/room_empty_top_20261020.jpg", 690, "00:05:37"),
+        ("selection/room_empty_bottom_20261020.jpg", 460, "00:05:35"),
+        ("selection/room_crownslayer_20261103.jpg", 898, "00:19:50"),
+        ("clue/clue_reception_residents_20261019.jpg", 270, "08:03:56"),
+    ],
+)
+def test_recorded_jpeg_timer_confirms_exact_ocr_on_first_frame(
+    filename, top, clock, local_ocr, monkeypatch
+):
+    path = Path(__file__).parent / "fixtures" / filename
+    with Image.open(path) as image:
+        frame = np.array(image.convert("RGB"))
+    reader = BaseMixin()
+    reader.recog = SimpleNamespace(img=frame, update=Mock())
+    scope = ((1650, top), (1780, top + 35))
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+    hours, minutes, seconds = map(int, clock.split(":"))
+    assert reader.read_time(scope, None) == hours * 3600 + minutes * 60 + seconds
+    reader.recog.update.assert_called_once_with()
+
+    for wrong_second in (seconds - 1, seconds + 1):
+        wrong = f"{hours:02}:{minutes:02}:{wrong_second:02}"
+        monkeypatch.setattr(rapidocr, "engine", Mock(return_value=ocr_result(wrong)))
+        with pytest.raises(ValueError):
+            reader._time_seconds(reader.read_screen(frame, type="time", cord=scope))
+
+
 @pytest.mark.parametrize(
     ("name", "hallucinated"),
     [

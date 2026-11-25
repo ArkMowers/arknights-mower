@@ -127,7 +127,8 @@ def resident_timer_supports_ocr(image: np.ndarray, text: str, top: int) -> bool:
         if gray is None:
             return False
     background = int(gray[0, 0])
-    if gray.max() < 240 or background > 185:
+    darkest, brightest, _, _ = cv2.minMaxLoc(gray)
+    if brightest < 240 or background > 185:
         return False
     mask = gray > (255 + background) // 2
     _, y, _, height = cv2.boundingRect(mask.astype(np.uint8))
@@ -162,8 +163,10 @@ def resident_timer_supports_ocr(image: np.ndarray, text: str, top: int) -> bool:
     )
     # 卡片纵向移动时，笔画的亮度可落在相邻像素行之间。保留数字的横向位置。
     vertical = np.ones((3, 1), np.uint8)
-    low = cv2.erode(expected, vertical) - _MAX_PIXEL_ERROR
-    high = cv2.dilate(expected, vertical) + _MAX_PIXEL_ERROR
+    # JPEG 压缩会在灰底的白色笔画旁留下暗边和浅亮点。只在复核 OCR 时容许这些亮度偏差。
+    pixel_error = 48 if darkest < background - 3 else _MAX_PIXEL_ERROR
+    low = cv2.erode(expected, vertical) - pixel_error
+    high = cv2.dilate(expected, vertical) + pixel_error
     alpha = np.maximum(gray.astype(np.float32) - background, 0) * (
         255 / (255 - background)
     )
@@ -174,4 +177,4 @@ def resident_timer_supports_ocr(image: np.ndarray, text: str, top: int) -> bool:
         if np.count_nonzero(cell) > 4:
             return False
     strip[:] = 0
-    return np.max(alpha) <= _MAX_PIXEL_ERROR
+    return np.max(alpha) <= pixel_error

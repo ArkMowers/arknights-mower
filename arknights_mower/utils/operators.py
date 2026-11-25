@@ -2446,6 +2446,7 @@ class Operators:
             operator.resting_from_train = getattr(exist, "resting_from_train", False)
             operator.dorm_recovery_fixed = getattr(exist, "dorm_recovery_fixed", ())
             operator.dorm_recovery_roster = getattr(exist, "dorm_recovery_roster", ())
+            operator.dorm_roommate_roster = getattr(exist, "dorm_roommate_roster", ())
             operator.dorm_recovery_attempt = getattr(
                 exist, "dorm_recovery_attempt", None
             )
@@ -3819,6 +3820,7 @@ class Operator:
         # (单回宿管姓名, 床位, 移动版本)；旧缓存的全宿管姓名元组会自动失效。
         self.dorm_recovery_fixed = ()
         self.dorm_recovery_roster = ()
+        self.dorm_roommate_roster = ()
         self.dorm_recovery_attempt = None
         self.single_recovery_manager = False
         self.dorm_mood_fallback = ""
@@ -3932,6 +3934,7 @@ class Operator:
         self.dorm_recovery_index = -1
         self.dorm_recovery_fixed = ()
         self.dorm_recovery_roster = ()
+        self.dorm_roommate_roster = ()
 
     def clear_dorm_recovery(self):
         self.clear_dorm_recovery_target()

@@ -13,7 +13,10 @@ from arknights_mower.utils.dorm_candidates import (
     retained_task_reservations,
     vacant_dorm_slots,
 )
-from arknights_mower.utils.dorm_recovery import recovery_order_target
+from arknights_mower.utils.dorm_recovery import (
+    continuing_roommate,
+    recovery_order_target,
+)
 from arknights_mower.utils.furniture_task import (
     FURNITURE_EXIT_SECONDS,
     FURNITURE_RUN_SECONDS,
@@ -203,6 +206,7 @@ def replan_update_tasks(saved):
         for task in tasks
         if task.type not in ordinary
         or task.retains_execution
+        or task.plan.keys() & getattr(task, "dorm_roommate_targets", ())
         or any(getattr(task, flag, False) for flag in protected_flags)
         or hasattr(task, "emergency_original_roster")
         or hasattr(task, "run_order_original_roster")
@@ -1035,6 +1039,12 @@ def estimate_dorm_task_minutes(task, room, op_data=None, execution_time=0.75):
                 op_data,
                 room,
                 names,
+                continued=continuing_roommate(
+                    op_data,
+                    room,
+                    names,
+                    previous=getattr(task, "dorm_roommate_targets", {}).get(room),
+                ),
                 group_transitions=op_data.arrangement_group_transitions(
                     task.plan,
                     group_transitions=getattr(task, "group_shift_transitions", None),
@@ -3200,6 +3210,34 @@ def prioritize_new_dorm_recovery(
                 name,
             )
         placed.add(name)
+
+    if (
+        not configuration_changed
+        and not (op_data.runtime_conf or config.conf).dorm_isolation
+    ):
+        for room, position in first.items():
+            target = op_data.operators.get(allocations[position])
+            if not (
+                getattr(target, "dorm_recovery_room", "") == room
+                or getattr(target, "dorm_roommate_roster", ())
+            ):
+                continue
+            intended = projected.get_current_room(room, True)
+            if continuing_roommate(op_data, room, intended) != target.name:
+                continue
+            # 各房分得的人以及单回优先人选都已确定，只保留本房普通床的原换人意图。
+            room_beds = [b for b in beds if b.position[0] == room]
+            if sorted(allocations[b.position] for b in room_beds) == sorted(
+                b.name for b in room_beds
+            ) and all(
+                b.name == intended[b.position[1]]
+                and (
+                    allocations[b.position] == b.name
+                    or projected.plan[room][b.position[1]].agent == "Free"
+                )
+                for b in room_beds
+            ):
+                allocations.update((b.position, b.name) for b in room_beds)
     result = copy.deepcopy(plan)
     for bed in beds:
         name = allocations[bed.position]
@@ -3542,6 +3580,7 @@ def try_add_release_dorm(
     empty_only=False,
     reserved_names=(),
     reserved_slots=(),
+    defer_vacancy_allocation=False,
 ):
     """共用空床与层级接管；不养闲人只控制满心情清退任务创建。"""
     if plan:
@@ -3727,6 +3766,10 @@ def try_add_release_dorm(
             else TaskTypes.NOT_SPECIFIC,
         )
         task.dorm_fill_plan = copy.deepcopy(arrangement)
+        if filling_vacancies and defer_vacancy_allocation:
+            # 完整换班在下一轮连同副表和预约分床，此处只交付实际补位意图。
+            tasks.append(task)
+            return
         if filling_vacancies:
             simplify_dorm_fill(task, tasks, now, op_data)
         if not getattr(task, "simple_dorm_fill", False):

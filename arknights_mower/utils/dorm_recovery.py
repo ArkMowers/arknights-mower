@@ -1,6 +1,7 @@
 """在目标最终床位建立单回入驻顺序。"""
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from arknights_mower.utils import dorm_skills
 from arknights_mower.utils.dorm_candidates import (
@@ -181,7 +182,45 @@ def dorm_departures_sampled(observed, remaining):
     )
 
 
-def direct_recovery_arrival(agents, target, observed, stages, recipient):
+def _ordinary_roommate_change(names, agents, target, stages, *, allow_vacancy=False):
+    """目标和唯一来源留在原床，只有普通室友在原槽换人。"""
+    if (
+        len(names) != 5
+        or len(agents) != 5
+        or not target
+        or target not in names
+        or agents[names.index(target)] != target
+        or any(n in ("Current", "Free", "菲亚梅塔") for n in (*names, *agents))
+    ):
+        return False
+    changes = [(a, b) for a, b in zip(names, agents) if a != b]
+    if not changes or (not allow_vacancy and any(not a for a, _ in changes)):
+        return False
+    effects = {
+        n: dorm_skills.dorm_skill_effects(n, stages.get(n))
+        for n in set(names).union(agents) - {""}
+    }
+    if any(
+        not e.comparable or e.extra_target or e.shares_recovery
+        for e in effects.values()
+    ):
+        return False
+    providers = [n for n, e in effects.items() if any(e.single)]
+    changed = {n for pair in changes for n in pair if n}
+    return (
+        len(providers) == 1
+        and providers[0] not in changed | {target}
+        and not effects[target].affects_self
+        and all(
+            not effects[n].affects_self and not dorm_skills.is_group_recovery_manager(n)
+            for n in changed
+        )
+    )
+
+
+def direct_recovery_arrival(
+    agents, target, observed, stages, recipient, *, continued=None
+):
     """根据换班前的实读决定能否一次提交最终名单，确认后再核对受益者。"""
     names = [row["agent"] for row in observed]
     if (
@@ -229,6 +268,11 @@ def direct_recovery_arrival(agents, target, observed, stages, recipient):
             )
         )
     if recipient == target and names.index(target) == agents.index(target):
+        return True
+    if recipient is None and _ordinary_roommate_change(
+        names, agents, target, stages, allow_vacancy=continued == target
+    ):
+        # 只换室友时，旧房读不清也先完成换班。新房读明确给错再纠正。
         return True
     changes = [(a, b) for a, b in zip(names, agents) if a != b]
     if recipient and recipient != target:
@@ -355,13 +399,28 @@ def reconcile_recovery_marker(data, room, observed):
         data.operators[n]
         for n in names
         if n in data.operators
-        and getattr(data.operators[n], "dorm_recovery_room", "") == room
+        and (
+            getattr(data.operators[n], "dorm_recovery_room", "") == room
+            or getattr(data.operators[n], "dorm_roommate_roster", ())
+        )
     ]
     if not marked:
         return
     stages = known_operator_stages(data)
     recipient = observed_recovery_recipient(observed, stages)
     for op in marked:
+        seating = getattr(op, "dorm_roommate_roster", ())
+        if seating and seating == recovery_roster(data, names, stages):
+            if recipient is None:
+                continue
+            if recipient == op.name:
+                managers = recovery_managers(
+                    data, room, names, update_cache=False, stages=stages
+                )
+                record_recovery_target(
+                    data, room, op, names.index(op.name), managers, names, stages
+                )
+                continue
         if not active_recovery_position(data, op, names=names, stages=stages) or (
             recipient is not None and recipient != op.name
         ):
@@ -375,16 +434,21 @@ def record_recovery_target(data, room, target, index, managers, names, stages):
     ):
         return
     for op in data.operators.values():
-        if op is not target and getattr(op, "dorm_recovery_room", "") == room:
+        if op is not target and (
+            getattr(op, "dorm_recovery_room", "") == room
+            or op.current_room == room
+            and getattr(op, "dorm_roommate_roster", ())
+        ):
             op.clear_dorm_recovery_target()
     target.dorm_recovery_room, target.dorm_recovery_index = room, index
     target.dorm_recovery_fixed = managers
     target.dorm_recovery_roster = recovery_roster(data, names, stages)
+    target.dorm_roommate_roster = ()
     target.dorm_recovery_attempt = None
 
 
 def recovery_target(
-    op_data, room, agents, manager_names=None, *, group_transitions=None
+    op_data, room, agents, manager_names=None, *, group_transitions=None, continued=None
 ):
     slots = op_data.plan.get(room, [])
     if not room.startswith("dorm") or len(agents) != len(slots):
@@ -413,6 +477,12 @@ def recovery_target(
     )
     if index is None:
         return None
+    if (
+        continued
+        and continued in agents
+        and slots[agents.index(continued)].agent == "Free"
+    ):
+        index = agents.index(continued)
     target = op_data.operators.get(agents[index])
     if (
         target is None
@@ -429,12 +499,19 @@ def recovery_target(
     return target
 
 
-def protected_recovery_target(op_data, room, agents, managers, group_transitions):
+def protected_recovery_target(
+    op_data, room, agents, managers, group_transitions, *, continued=None
+):
     if len(managers) != 1:
         return None
     manager_names = {name for name, _, _ in managers}
     target = recovery_target(
-        op_data, room, agents, manager_names, group_transitions=group_transitions
+        op_data,
+        room,
+        agents,
+        manager_names,
+        group_transitions=group_transitions,
+        continued=continued,
     )
     if (
         target is None
@@ -445,11 +522,13 @@ def protected_recovery_target(op_data, room, agents, managers, group_transitions
     return target
 
 
-def recovery_order_target(op_data, room, agents, *, group_transitions=None):
+def recovery_order_target(
+    op_data, room, agents, *, group_transitions=None, continued=None
+):
     """只读判断完整单回排序目标，准入和执行共用相同床位有效性检查。"""
     managers = recovery_managers(op_data, room, agents, update_cache=False)
     target = protected_recovery_target(
-        op_data, room, agents, managers, group_transitions
+        op_data, room, agents, managers, group_transitions, continued=continued
     )
     if target is None:
         return None
@@ -470,18 +549,95 @@ def recovery_order_target(op_data, room, agents, *, group_transitions=None):
     return target
 
 
-def keep_measured_dorm_swap(data, room, plan, observed):
-    """清退后的分床只需对调两张普通 Free 床，目标已在原床受益时保留两人。"""
+def remember_roommate_target(task, room, agents=(), target=None):
+    if target:
+        targets = vars(task).setdefault("dorm_roommate_targets", {})
+        targets[room] = (tuple(agents), target)
+    else:
+        targets = getattr(task, "dorm_roommate_targets", None)
+        if targets is not None:
+            targets.pop(room, None)
+            if not targets:
+                del task.dorm_roommate_targets
+
+
+def continuing_roommate(data, room, agents, *, previous=None):
+    """只有普通室友换人时，找出仍应留在原床核对的目标。"""
+    from arknights_mower.utils.calculated_mood import known_operator_stages
+    from arknights_mower.utils.resting_priority import resting_key
+
+    if previous and previous[0] == tuple(agents):
+        return previous[1]
+    if len(agents) != 5 or any(
+        option.endswith("_low") for option in data.config.dorm_order
+    ):
+        return None
+    slots = data.plan.get(room, ())
+    marked = next(
+        (
+            op
+            for n in agents
+            if (op := data.operators.get(n)) is not None
+            and op.current_room == room
+            and (
+                getattr(op, "dorm_recovery_room", "") == room
+                or getattr(op, "dorm_roommate_roster", ())
+            )
+        ),
+        None,
+    )
+    if marked is None or len(slots) != len(agents):
+        return None
+    index = agents.index(marked.name)
+    free = [i for i, slot in enumerate(slots) if slot.agent == "Free"]
+    if (
+        index not in free
+        or index == free[0]
+        or marked.name in data.config.free_room_exclusions
+    ):
+        return None
+    current = data.get_current_room(room, True)
+    if any(current[i] != name and i not in free for i, name in enumerate(agents)):
+        return None
+    stages = known_operator_stages(data)
+    if not _ordinary_roommate_change(
+        current, agents, marked.name, stages, allow_vacancy=True
+    ):
+        return None
+    if getattr(marked, "dorm_roommate_roster", ()) != recovery_roster(
+        data, current, stages
+    ) and active_recovery_position(data, marked, names=current, stages=stages) != (
+        room,
+        index,
+    ):
+        return None
+    now = getattr(data, "_projection_now", None) or datetime.now()
+    rank = resting_key(data, marked.name, now)
+    if rank[0] > RestingTier.PRIORITY_REPLACEMENT:
+        return None
+    for i in free:
+        other = agents[i]
+        if not other or other == marked.name:
+            continue
+        other_rank = resting_key(data, other, now)
+        # 同层级新入住者比较恢复缺口；普通分床会优先保留首床未换走的同级住客。
+        if other_rank <= rank or (
+            i == free[0] and current[i] == other and other_rank[:2] == rank[:2]
+        ):
+            return None
+    return marked.name
+
+
+def keep_measured_dorm_swap(data, room, plan, observed=None):
+    """只需对调两张普通 Free 床时，按本次读数或仍有效的实读记录保留受益者。"""
     from arknights_mower.utils.calculated_mood import known_operator_stages
 
-    if (
-        len(plan) != 5
-        or len(observed) != 5
-        or any(option.endswith("_low") for option in data.config.dorm_order)
-    ):
+    if len(plan) != 5 or any(opt.endswith("_low") for opt in data.config.dorm_order):
         return False
-    current = [row["agent"] for row in observed]
-    if current != data.get_current_room(room, True):
+    current = data.get_current_room(room, True)
+    if len(current) != 5 or (
+        observed is not None and [row["agent"] for row in observed] != current
+    ):
         return False
     final = [old if name == "Current" else name for old, name in zip(current, plan)]
     changes = [i for i in range(5) if final[i] != current[i]]
@@ -506,18 +662,29 @@ def keep_measured_dorm_swap(data, room, plan, observed):
     ):
         return False
     target = protected_recovery_target(data, room, final, managers, {})
-    if (
-        target is None
-        or target.name != final[front]
-        or observed_recovery_recipient(observed, stages) != target.name
-    ):
+    if target is None or target.name != final[front]:
+        return False
+    if observed is None:
+        return active_recovery_position(data, target, names=current, stages=stages) == (
+            room,
+            other,
+        )
+    if observed_recovery_recipient(observed, stages) != target.name:
         return False
     record_recovery_target(data, room, target, other, managers, current, stages)
     return True
 
 
 def verify_final_recovery(
-    data, room, agents, observed, *, group_transitions, can_repair, attempted=True
+    data,
+    room,
+    agents,
+    observed,
+    *,
+    group_transitions,
+    can_repair,
+    attempted=True,
+    continued=None,
 ):
     """核对最终阵容的受益者。只在读数证明给错人且尚未调整时要求原任务修复。"""
     from arknights_mower.utils.calculated_mood import known_operator_stages
@@ -526,7 +693,9 @@ def verify_final_recovery(
         return False
     stages = known_operator_stages(data)
     managers = recovery_managers(data, room, agents, update_cache=False, stages=stages)
-    target = protected_recovery_target(data, room, agents, managers, group_transitions)
+    target = protected_recovery_target(
+        data, room, agents, managers, group_transitions, continued=continued
+    )
     if target is None:
         return False
     recipient = observed_recovery_recipient(observed, stages)
@@ -536,6 +705,15 @@ def verify_final_recovery(
         )
     else:
         target.clear_dorm_recovery_target()
+        if (
+            recipient is None
+            and continued == target.name
+            and all(row.get("observed", True) for row in observed)
+            and (target.current_room, target.current_index)
+            == (room, agents.index(continued))
+        ):
+            # 已核对新名单，但读数不足。只沿用排班座次，实测归属和回满速度保持未知。
+            target.dorm_roommate_roster = recovery_roster(data, agents, stages)
         if recipient is not None:
             signature = recovery_attempt_signature(
                 data, agents, recipient, stages, observed
@@ -549,7 +727,7 @@ def verify_final_recovery(
 
 
 def recovery_order_plan(
-    op_data, room, agents, reserved_names=(), *, group_transitions=None
+    op_data, room, agents, reserved_names=(), *, group_transitions=None, continued=None
 ):
     """建立单回时就占住最终床位，补回其他人后目标仍在原位。
 
@@ -559,7 +737,7 @@ def recovery_order_plan(
     """
     managers = recovery_managers(op_data, room, agents)
     target = recovery_order_target(
-        op_data, room, agents, group_transitions=group_transitions
+        op_data, room, agents, group_transitions=group_transitions, continued=continued
     )
     if target is None:
         return None

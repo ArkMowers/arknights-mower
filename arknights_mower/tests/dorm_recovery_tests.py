@@ -243,6 +243,69 @@ def test_recovery_setup_requires_protected_tier_without_retention(
     assert {3, 4}.issubset(solver.reads[-1])
 
 
+def test_measured_later_bed_uses_the_ordinary_room_budget(solver, monkeypatch):
+    from arknights_mower.tests.dorm_recovery_continuation_tests import (
+        NEW,
+        PEER,
+        VIP,
+        prepare_roommate_shift,
+        start_after_release,
+    )
+    from arknights_mower.utils import operation_timing
+    from arknights_mower.utils.scheduler_task import estimate_dorm_task_minutes
+
+    start_after_release(solver, monkeypatch, bed=4)
+    data = solver.op_data
+    data.config.resting_priority.append(NEW)
+    task = prepare_roommate_shift(solver, PEER, NEW, VIP)
+    monkeypatch.setattr(
+        operation_timing, "_dorm_durations", defaultdict(lambda: deque(maxlen=8))
+    )
+    before = pickle.dumps(data)
+    assert estimate_dorm_task_minutes(task, ROOM, data) == 1.0
+    assert pickle.dumps(data) == before
+    assert solver.agent_arrange(task.plan) is not False
+    assert len(solver.confirms) == 1
+    assert "dorm_roommate_targets" not in vars(task)
+
+
+def test_fill_a_vacancy_with_only_the_previous_seating_known(solver, monkeypatch):
+    from arknights_mower.tests.dorm_recovery_continuation_tests import (
+        MANAGERS,
+        NEW,
+        PEER,
+        VIP,
+        change_roommate,
+        start_after_release,
+    )
+    from arknights_mower.utils.dorm_recovery import (
+        active_recovery_position,
+        verify_final_recovery,
+    )
+
+    start_after_release(solver, monkeypatch, bed=4)
+    solver.physical[-1] = ""
+    solver.game_recipient = None
+    observed = solver.get_agent_from_room(read_dorm_evidence=True)
+    data = solver.op_data
+    verify_final_recovery(
+        data,
+        ROOM,
+        solver.physical,
+        observed,
+        group_transitions={},
+        can_repair=True,
+        continued=VIP,
+    )
+    target = data.operators[VIP]
+    assert not target.dorm_recovery_roster and target.dorm_roommate_roster
+    expected = [*MANAGERS, PEER, VIP, NEW]
+    assert change_roommate(solver, "", NEW, None) == expected
+    assert solver.confirms == [expected]
+    assert active_recovery_position(data, target) is None
+    assert [name for name, _, _ in target.dorm_roommate_roster] == expected
+
+
 def test_retention_change_still_completes_pending_roster_restoration(solver):
     assert solver.ensure_dorm_recovery_order(ROOM, FINAL.copy())
     solver.op_data.config.free_room_exclusions = ["银灰"]

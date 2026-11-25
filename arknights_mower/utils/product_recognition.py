@@ -18,8 +18,11 @@ def _word_matches(gray, resource, columns, threshold, *, rows=1):
         y = slice(row * height // rows, (row + 1) * height // rows)
         for col in range(columns):
             x = slice(col * width // columns, (col + 1) * width // columns)
-            score = cv2.matchTemplate(gray[y, x], template[y, x], cv2.TM_CCOEFF_NORMED)
-            if score.item() < threshold:
+            sample, glyph = gray[y, x], template[y, x]
+            if np.ptp(sample) == 0 or np.ptp(glyph) == 0:
+                return False
+            score = cv2.matchTemplate(sample, glyph, cv2.TM_CCOEFF_NORMED).item()
+            if not np.isfinite(score) or score < threshold:
                 return False
     return True
 
