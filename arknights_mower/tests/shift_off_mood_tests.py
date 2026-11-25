@@ -131,6 +131,8 @@ def test_shift_off_keeps_original_mood_margin_against_lower_limit(solver):
         ("incomplete_group", "感知"),
         ("different_seat", "感知"),
         ("observed_seat", "感知"),
+        ("source_observed_first", "感知"),
+        ("position_without_mood", "感知"),
         ("projected_seat", "感知"),
         ("projected_countdown", "感知"),
         ("projected_same_seat", "深海"),
@@ -165,8 +167,22 @@ def test_competing_groups_share_cover_by_time_to_personal_floor(
         fast.replacement = []
     elif evidence == "different_seat":
         fast.current_index = 4
-    elif evidence == "observed_seat":
+    elif evidence == "position_without_mood":
         fast.current_index = 2
+        fast.time_stamp = now - timedelta(hours=1)
+        data.update_detail(fast.name, 8, fast.room, fast.index, update_time=False)
+        data.update_detail(fast.name, 4, fast.room, fast.index, update_time=True)
+        data._projection_now = fast.time_stamp
+        assert fast.depletion_rate == 0
+    elif evidence in ("observed_seat", "source_observed_first"):
+        if evidence == "source_observed_first":
+            fast.current_room, fast.current_index = "room_1_1", 1
+            solver._reconcile_room_observation(
+                "room_1_1", [{"agent": "黑键"}, {"agent": ""}]
+            )
+            assert (fast.current_room, fast.time_stamp) == ("", None)
+        else:
+            fast.current_index = 2
         fast.exhaust_time = now + timedelta(minutes=1)
         data.update_detail(
             fast.name, fast.mood, fast.room, fast.index, update_time=True

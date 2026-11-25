@@ -96,6 +96,7 @@ it.each([0, -1])(
   (due) => {
     const { state, source, departure, future, fia } = fixture(due)
     const originalTime = departure.timeMicros
+    source.data.operators.B.depletionRate = 2.3
     settleRoster(state, { workRate: () => 1, recoveryRate: () => 4 })
     expect(state.events.filter((event) => event.type === 'fiammetta')).toHaveLength(1)
     expect(source.trace.slice(0, 3).map((task) => task.type)).toEqual([
@@ -106,6 +107,7 @@ it.each([0, -1])(
     expect(state.bedOccupants.dormitory_1_4).toBe('A')
     expect(state.occupants.room_1_1_0).toBe('R')
     expect(state.occupants.central_0).toBe('B')
+    expect(source.data.operators.B.depletionRate).toBe(2.3)
     expect(state.occupants.dormitory_1_0).toBe(fia)
     expect(departure.timeMicros).toBe(originalTime)
     expect(source.queue.tasks).not.toContain(departure)

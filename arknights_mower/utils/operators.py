@@ -2139,10 +2139,11 @@ class Operators:
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
-        if update_time or (agent.current_room, agent.current_index) != (
+        position_changed = (agent.current_room, agent.current_index) != (
             current_room,
             current_index,
-        ):
+        )
+        if update_time or position_changed:
             self.dorm_mood_estimates.pop(name, None)
         retained_time = None
         _, previous_bed = self.get_dorm_by_name(
@@ -2178,6 +2179,8 @@ class Operators:
                 agent.depletion_rate = learned_rate
                 logger.debug(f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}")
             agent.time_stamp = datetime.now()
+        elif position_changed:
+            agent.work_rate_sample_eligible = False
         from_dorm = agent.current_room.startswith("dorm")
         to_dorm = current_room.startswith("dorm")
         if from_dorm and not to_dorm:
@@ -2185,14 +2188,9 @@ class Operators:
                 self.time_stamp = datetime.now()
             else:
                 self.time_stamp = None
-            if not preserve_depletion_rate:
-                agent.depletion_rate = 0
         if (
-            agent.is_working()
-            and current_room
-            and not to_dorm
-            and (agent.current_room, agent.current_index)
-            != (current_room, current_index)
+            not to_dorm
+            and (from_dorm or (current_room and position_changed))
             and not preserve_depletion_rate
         ):
             agent.depletion_rate = 0
@@ -2200,10 +2198,7 @@ class Operators:
             idx, dorm = self.get_dorm_by_name(name, group_transitions=group_transitions)
             if dorm and dorm.name == name:
                 dorm.reset()
-        if update_time or (agent.current_room, agent.current_index) != (
-            current_room,
-            current_index,
-        ):
+        if update_time or position_changed:
             agent.exhaust_time = None
             logger.debug(f"{name} 观测或位置变化，清除旧工作期限")
         agent.current_room = current_room

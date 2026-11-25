@@ -20,28 +20,33 @@ export function mowerRoomReadIndexes(data:MowerSchedulingData,room:string,task?:
 export function shouldMowerReadMood(data:MowerSchedulingData,name:string,room:string,index:number,indexes:number[],task?:MowerTask,firstTask?:MowerTask):boolean {
  const op=data.operators[name]!
  if(room.startsWith('dorm')&&task?.type===T.FIAMMETTA)return (op.nativeName==='菲亚梅塔'||task.metadata===name)&&indexes.includes(index)
+ if(data.alpha&&(op.currentRoom!==room||op.currentIndex!==index))return true
  return op.needToRefresh(data.nowMicros,2,room)||firstTask?.type===T.SHIFT_ON||indexes.includes(index)
 }
 /** The native SQLite decorator discards the inner return when update_time is false. */
-export function mowerUpdateDetail(data:MowerSchedulingData,name:string,mood:number,room:string,index:number,updateTime=false,trueExhaustRooms=new Set<string>(),onRoomChanged?:(op:MowerOperatorState,startedWorking:boolean)=>void):number|undefined {
+export function mowerUpdateDetail(data:MowerSchedulingData,name:string,mood:number,room:string,index:number,updateTime=false,trueExhaustRooms=new Set<string>(),onRoomChanged?:(op:MowerOperatorState,startedWorking:boolean)=>void,preserveDepletionRate=false):number|undefined {
  const op=data.operators[name]!
- if(data.alpha&&(updateTime||op.currentRoom!==room||op.currentIndex!==index))data.dormMoodEstimates.delete(name)
+ const positionChanged=op.currentRoom!==room||op.currentIndex!==index
+ if(data.alpha&&(updateTime||positionChanged))data.dormMoodEstimates.delete(name)
  const previousBed=data.getDormByName(name)?.[1],retained=data.alpha&&previousBed?.name===name&&previousBed.position[0]===room&&previousBed.position[1]===index?previousBed.timeMicros:undefined
  const returned=data.alpha&&(op.currentRoom!==op.room||op.currentIndex!==op.index)&&room===op.room&&index===op.index
  const working=!!op.currentRoom&&!op.isResting()
  if(updateTime){
   if(data.alpha&&data.policy.predictiveMoodControl&&Number.isFinite(data.nowMicros)&&Number.isFinite(mood)&&mood>=0&&mood<=24&&data.nowMicros>=(data.calculatedMoodObservations[name]??-Infinity))data.calculatedMoodObservations[name]=data.nowMicros
   // Integration round-off below the simulator morale tolerance is not an observed decline.
-  if(op.timeStampMicros!==undefined&&op.mood-mood>1e-8){
+  if(!preserveDepletionRate&&op.timeStampMicros!==undefined&&op.mood-mood>1e-8){
    const elapsed=data.nowMicros-op.timeStampMicros
    if(elapsed>toMowerMicros(29/60))op.depletionRate=(op.mood-mood)/fromMowerMicros(elapsed)
   }
   op.timeStampMicros=data.nowMicros
   if(data.alpha){op.moodIsPrediction=false;op.idleRestCheck=undefined}
  }
- if(op.isResting()&&!room.startsWith('dorm')||data.alpha&&working&&!!room&&!room.startsWith('dorm')&&(op.currentRoom!==room||op.currentIndex!==index))op.depletionRate=0
+ const changedWorkSlot = data.alpha && !!room && positionChanged
+ if (!preserveDepletionRate && !room.startsWith('dorm') && (op.isResting() || changedWorkSlot)) {
+  op.depletionRate = 0
+ }
  if(op.isResting()){const previous=data.getDormByName(name)?.[1];if(previous?.name===name)previous.reset()}
- if(!trueExhaustRooms.has(room)||data.alpha&&(updateTime||op.currentRoom!==room||op.currentIndex!==index))op.exhaustTimeMicros=undefined
+ if(!trueExhaustRooms.has(room)||data.alpha&&(updateTime||positionChanged))op.exhaustTimeMicros=undefined
  if(op.currentRoom!==room){op.currentRoom=room;onRoomChanged?.(op,!working&&!!room&&!room.startsWith('dorm'))}
  op.currentIndex=index;op.mood=mood
  if(data.alpha){

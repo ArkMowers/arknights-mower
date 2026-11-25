@@ -6,7 +6,11 @@ import { createRosterRuntime, settleRoster } from './vendor/scheduler/rosterRunt
 import { getMowerSourceRuntime } from './vendor/scheduler/mowerSourceRuntime'
 import { calculateIncome } from './incomeWorker'
 import { planMowerOrdinary } from './vendor/scheduler/mowerOrdinaryPlanning'
-import { mowerUpdateDetail, projectMowerArrangements } from './vendor/scheduler/mowerObservations'
+import {
+  mowerUpdateDetail,
+  projectMowerArrangements,
+  shouldMowerReadMood
+} from './vendor/scheduler/mowerObservations'
 import { MowerOperatorState } from './vendor/scheduler/mowerOperatorState'
 import { MowerDormState, MowerSchedulingData } from './vendor/scheduler/mowerSchedulingData'
 import {
@@ -74,6 +78,7 @@ it.each([
   ['calculated recovering', 'B'],
   ['different seat', 'A'],
   ['observed seat', 'A'],
+  ['source observed first', 'A'],
   ['projected seat', 'A'],
   ['projected countdown', 'A'],
   ['projected same seat', 'B'],
@@ -145,9 +150,14 @@ it.each([
   if (evidence === 'above threshold') Object.assign(B, { mood: 23, depletionRate: 50 })
   if (evidence === 'equal time') B.depletionRate = 1
 
-  if (evidence === 'observed seat') {
-    B.currentIndex = 2
+  if (evidence === 'observed seat' || evidence === 'source observed first') {
+    if (evidence === 'source observed first') {
+      B.currentRoom = ''
+      B.currentIndex = -1
+      B.timeStampMicros = undefined
+    } else B.currentIndex = 2
     B.exhaustTimeMicros = 1
+    expect(shouldMowerReadMood(data, 'B', B.room, B.index, [])).toBe(true)
     mowerUpdateDetail(data, 'B', B.mood, B.room, B.index, true, new Set([B.room]))
     expect(B.exhaustTimeMicros).toBeUndefined()
     expect(B.depletionRate).toBe(0)

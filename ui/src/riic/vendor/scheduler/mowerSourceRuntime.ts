@@ -236,7 +236,12 @@ function observeRoom(s:RuntimeState,rates:RuntimeRates,room:string,task?:MowerTa
   const read=departing&&task?.type!==T.FIAMMETTA||shouldMowerReadMood(data,name,room,index,readTimes,task,queue.find({ignoreRunOrders:data.adjustForRunOrders===false}))
   const previousPosition:[string,number]=[op.currentRoom,op.currentIndex]
   const displayedMood=read?s.morale[name]!:op.currentMood(data.nowMicros)
-  const missing=mowerUpdateDetail(data,name,read?s.morale[name]!:op.mood,room,index,read,trueExhaustRooms,(changed,started)=>currentRoomChanged(s,changed,started))
+  const chargeTransition = data.alpha && task?.type === T.FIAMMETTA && Object.keys(task.plan).length > 0
+   && (room.startsWith('dorm') || op.isResting())
+  const missing = mowerUpdateDetail(
+   data, name, read ? s.morale[name]! : op.mood, room, index, read, trueExhaustRooms,
+   (changed, started) => currentRoomChanged(s, changed, started), chargeTransition
+  )
   if(read&&departing&&!room.startsWith('dorm'))measuredWorkDepartures.add(name)
   if(data.alpha&&task)recordMowerDormAdmissions(data,task,new Map([[name,previousPosition]]))
   if(data.alpha&&read&&task?.idleDormSearchNames[room]?.includes(name)){task.idleDormSearchNames[room]=task.idleDormSearchNames[room]!.filter(n=>n!==name);if(s.morale[name]!>=op.upperLimit)data.stopIdleDormSearch()}
