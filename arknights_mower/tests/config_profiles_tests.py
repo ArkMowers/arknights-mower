@@ -1569,7 +1569,7 @@ def test_only_successful_activation_resets_observed_performance_without_changing
 
 @pytest.mark.parametrize("inherit", [[], ["long"], ["other_settings"]])
 def test_copilot_queue_and_files_follow_long_task_profile_group(
-    storage, monkeypatch, inherit
+    storage, monkeypatch, inherit, tmp_path
 ):
     from arknights_mower.solvers import record
     from arknights_mower.utils import maa_copilot
@@ -1596,15 +1596,15 @@ def test_copilot_queue_and_files_follow_long_task_profile_group(
     assert path.is_file() is ("long" in inherit)
     assert record.load_maa_copilot_progress() == (progress if "long" in inherit else {})
     if "long" in inherit:
-        assert maa_copilot.build_copilot_params(config.conf.copilot)["copilot_list"][0][
-            "filename"
-        ] == str(path)
+        assert maa_copilot.build_copilot_params(config.conf.copilot, tmp_path)[
+            "copilot_list"
+        ][0]["filename"] == str(path)
     _activate(original)
     assert record.load_maa_copilot_progress() == progress
     assert config.conf.copilot.scripts[0].id == script["id"]
-    assert maa_copilot.build_copilot_params(config.conf.copilot)["copilot_list"][0][
-        "filename"
-    ] == str(path)
+    assert maa_copilot.build_copilot_params(config.conf.copilot, tmp_path)[
+        "copilot_list"
+    ][0]["filename"] == str(path)
 
 
 @pytest.mark.parametrize("inherit", [[], ["daily"], ["credit"]])

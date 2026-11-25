@@ -124,13 +124,32 @@ def list_scripts(*, sss=False, paradox=False):
     return result
 
 
+def _script_content(data):
+    return json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
+
+
+def _normalized_copilot_content(data):
+    from arknights_mower.utils.maa_copilot_normalization import normalize_copilot
+
+    normalize_copilot(data)
+    return _script_content(data)
+
+
 def store_script(raw, *, sss=False, paradox=False):
     data = parse_script(raw, sss=sss, paradox=paradox)
-    content = json.dumps(data, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    original = _script_content(data)
+    content = original if sss or paradox else _normalized_copilot_content(data)
     if len(content) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
     script_id = hashlib.sha256(content).hexdigest()
     path = script_path(script_id, sss=sss, paradox=paradox)
+    if original != content and not path.exists():
+        old_id = hashlib.sha256(original).hexdigest()
+        old_path = script_path(old_id)
+        if old_path.exists():
+            with old_path.open("rb") as stream:
+                if stream.read(MAX_SCRIPT_BYTES + 1) == original:
+                    return script_info(old_id, data)
     files = list(path.parent.glob("*.json"))
     if not path.exists() and (
         len(files) >= MAX_SCRIPTS
@@ -141,14 +160,21 @@ def store_script(raw, *, sss=False, paradox=False):
     return script_info(script_id, data, sss=sss, paradox=paradox)
 
 
-def build_copilot_params(conf):
+def build_copilot_params(conf, work_dir):
     if not conf.scripts:
         raise ValueError("请先导入并选择自动战斗作业")
     queue = []
     for item in conf.scripts:
         path = script_path(item.id)
         with path.open("rb") as stream:
-            parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
+            data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
+        before = _script_content(data)
+        content = _normalized_copilot_content(data)
+        if len(content) > MAX_SCRIPT_BYTES:
+            raise ValueError("作业文件不能超过 1 MB")
+        if before != content:
+            path = work_dir / path.name
+            write_json(path, data)
         entry = {"filename": str(path), "is_raid": item.is_raid}
         if item.nav_name_override.strip():
             entry["nav_name_override"] = item.nav_name_override.strip()

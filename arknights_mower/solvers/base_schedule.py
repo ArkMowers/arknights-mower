@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 from contextlib import ExitStack, contextmanager, nullcontext
 from datetime import datetime, timedelta
 from functools import wraps
+from tempfile import TemporaryDirectory
 from time import monotonic, perf_counter
 from typing import Literal, Optional
 from uuid import uuid4
@@ -180,7 +181,7 @@ from arknights_mower.utils.operators import (
     Operator,
     Operators,
 )
-from arknights_mower.utils.path import resolve_config_path
+from arknights_mower.utils.path import resolve_config_path, temporary_root
 from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.replacement_check import (
@@ -23204,7 +23205,7 @@ class BaseSchedulerSolver(
         mall_action=None,
         outer_idle_loop=False,
     ):
-        with maa_control.execution():
+        with maa_control.execution(), ExitStack() as run_files:
             result = self._run_maa_plan(
                 tasks,
                 one_time,
@@ -23212,6 +23213,7 @@ class BaseSchedulerSolver(
                 long_task=long_task,
                 mall_action=mall_action,
                 outer_idle_loop=outer_idle_loop,
+                run_files=run_files,
             )
         # 正常休息已经离开 MAA 执行范围，唤醒故障仍交回设备恢复。
         if result is True and not manual and not outer_idle_loop:
@@ -23219,10 +23221,19 @@ class BaseSchedulerSolver(
         return result
 
     def _run_maa_plan(
-        self, tasks, one_time, *, manual, long_task, mall_action, outer_idle_loop
+        self,
+        tasks,
+        one_time,
+        *,
+        manual,
+        long_task,
+        mall_action,
+        outer_idle_loop,
+        run_files,
     ):
         """清日常"""
         copilot_run = None
+        copilot_dir = None
         copilot_conf = None
         paradox = False
         sss_run = None
@@ -23813,7 +23824,15 @@ class BaseSchedulerSolver(
                                 copilot_conf.scripts[copilot_index], copilot_index
                             )
                         else:
-                            params = build_copilot_params(copilot_conf)
+                            if copilot_dir is None:
+                                copilot_dir = pathlib.Path(
+                                    run_files.enter_context(
+                                        TemporaryDirectory(
+                                            dir=temporary_root(), prefix="copilot-"
+                                        )
+                                    )
+                                )
+                            params = build_copilot_params(copilot_conf, copilot_dir)
                             params["copilot_list"] = [
                                 params["copilot_list"][copilot_index]
                             ]
