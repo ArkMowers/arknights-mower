@@ -23958,12 +23958,14 @@ class BaseSchedulerSolver(
                             if self.task.copilot_request["mode"] == "single"
                             else Scene.OPERATOR_CHOOSE_LEVEL
                         )
-                        if self.scene() != expected_scene:
+                        current_scene = self.scene()
+                        if not large_task_start_allowed():
+                            self.maa_stop()
+                            break
+                        if current_scene != expected_scene:
                             raise ValueError(
                                 "游戏页面已变化，请打开所选作业的关卡详情或列表的关卡地图，再提交手动作业"
                             )
-                        if not large_task_start_allowed():
-                            break
                     logger.info("启动", extra={"log_group": "maa-integration"})
                     large_task_started = True
                     self.MAA.start()
@@ -24028,6 +24030,9 @@ class BaseSchedulerSolver(
                     finally:
                         resume_dorm_releases(self)
 
+            if manual_copilot and not large_task_started:
+                # A user stop consumes the request; a shortened window retains its step.
+                return config.stop_maa.is_set()
             if not manual and (refresh := self._maa_refresh_deadline()) is not None:
                 defer_refresh(refresh)
             self.release_maa()
