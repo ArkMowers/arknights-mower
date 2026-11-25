@@ -65,6 +65,13 @@ def add_task():
             logger.debug(f"收到新增任务请求：{req}")
             if base_scheduler and mower_thread and mower_thread.is_alive():
                 if task:
+                    if str(task["task_type"]).casefold() in {
+                        "手动作业 (maa)",
+                        "manual_copilot",
+                    }:
+                        return {
+                            "message": "手动作业已移除，请使用大型任务中的「自动战斗／作业 (MAA)」"
+                        }, 400
                     utc_time = datetime.strptime(task["time"], "%Y-%m-%dT%H:%M:%S.%f%z")
                     task_time = (
                         utc_time.replace(tzinfo=pytz.utc)
@@ -114,15 +121,6 @@ def add_task():
                     if new_task.type in MANUAL_TASK_TYPES | {TaskTypes.FURNITURE}:
                         new_task.plan = {}
                         new_task.meta_data = ""
-                    if new_task.type == TaskTypes.MANUAL_COPILOT:
-                        from arknights_mower.utils import config
-                        from arknights_mower.utils.maa_copilot import (
-                            manual_copilot_request,
-                        )
-
-                        new_task.copilot_request = manual_copilot_request(
-                            config.conf.copilot, task.get("copilot")
-                        )
                     if new_task.type == TaskTypes.WORKSHOP:
                         from arknights_mower.utils import config
                         from arknights_mower.utils.workshop_automation import (
