@@ -241,6 +241,15 @@ async function restart_queue() {
       ><n-checkbox v-model:checked="copilot.formation">自动编队</n-checkbox></n-form-item
     >
     <template v-if="!paradox && copilot.formation">
+      <n-form-item :show-label="false">
+        <n-flex vertical>
+          <n-checkbox v-model:checked="copilot.operbox_assist">使用干员练度辅助编队</n-checkbox>
+          <n-text depth="3">
+            需要 MAA v6.19.0 或更新版本。请先在「养成规划」中刷新当前账号的森空岛干员练度。MAA
+            会按作业要求选择干员，无法配齐时停止执行。
+          </n-text>
+        </n-flex>
+      </n-form-item>
       <n-form-item label="使用编队"
         ><n-select v-model:value="copilot.formation_index" :options="formation_options"
       /></n-form-item>
