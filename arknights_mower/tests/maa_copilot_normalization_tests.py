@@ -47,7 +47,7 @@ def test_primary_and_group_skills_use_mower_rarity_and_amiya_form():
         None,
         None,
         {"elite": 2},
-        {"elite": 2},
+        None,
         None,
         None,
         {"elite": 1},
@@ -97,7 +97,8 @@ def test_installed_battle_data_resolves_localized_names_and_unknowns(tmp_path):
         for name in ("aMiYa", "アーミヤ", "Amiya-WARRIOR", "未知")
     ]
     rows = stored(opers=ops)["opers"]
-    assert [op["skill"] for op in rows] == [3, 3, 0, 0]
+    assert [op["skill"] for op in rows] == [3, 3, 0, 3]
+    assert "requirements" not in rows[3]
     assert rows[0]["requirements"] == rows[1]["requirements"] == {"elite": 2}
 
 
@@ -105,6 +106,9 @@ def test_installed_battle_data_resolves_localized_names_and_unknowns(tmp_path):
     "skill,level,module,elite,expected",
     [
         (0, 4, -1, 0, 0),
+        (2, -1, -1, -1, 1),
+        (0, 8, -1, -1, 2),
+        (0, -1, 3, -1, 2),
         (0, 5, 0, 0, 1),
         (0, 7, -1, 0, 1),
         (0, 8, 0, 0, 2),
@@ -121,6 +125,132 @@ def test_elite_minimum_preserves_other_requirements(
         opers=[{"name": "棘刺", "skill": skill, "requirements": requirements}]
     )["opers"][0]
     assert row["requirements"] == {**requirements, "elite": expected}
+
+
+@pytest.mark.parametrize("elite,skill_level", [(-1, 0), (0, -1), (-1, -1)])
+def test_no_requirement_sentinels_survive_import_and_legacy_execution(
+    tmp_path, elite, skill_level
+):
+    oper = {"name": "芬", "requirements": {"elite": elite, "skill_level": skill_level}}
+    assert stored(opers=[oper])["opers"] == [oper]
+    payload = raw(opers=[oper])
+    key = hashlib.sha256(payload).hexdigest()
+    source = library.script_path(key)
+    source.write_bytes(payload)
+    conf = CopilotConf(scripts=[{"id": key}])
+    params = library.build_copilot_params(conf, tmp_path / "run")
+    assert params["copilot_list"][0]["filename"] == str(source)
+    assert source.read_bytes() == payload
+
+
+@pytest.mark.parametrize("use_maa", [True, False])
+def test_role_resolves_same_name_and_leaves_ambiguous_form_unchanged(tmp_path, use_maa):
+    if use_maa:
+        path = tmp_path / "maa/resource/battle_data.json"
+        path.parent.mkdir(parents=True)
+        chars = {
+            key: {"name": "阿米娅", "name_en": "Amiya", "profession": role, "rarity": 5}
+            for key, role in (
+                ("char_1037_amiya3", "MEDIC"),
+                ("char_002_amiya", "CASTER"),
+            )
+        }
+        path.write_text(json.dumps({"chars": chars}))
+    name = "AMIYA" if use_maa else "阿米娅"
+    common = {"name": name, "skill": 3}
+    ops = [
+        common,
+        {**common, "role": "MeDiC"},
+        {**common, "role": "CASTER"},
+        {**common, "role": "sniper"},
+    ]
+    rows = stored(groups=[{"name": "替补", "opers": ops}])["groups"][0]["opers"]
+    assert rows == [
+        common,
+        {**ops[1], "skill": 0},
+        {**ops[2], "requirements": {"elite": 2}},
+        ops[3],
+    ]
+
+
+@pytest.mark.parametrize(
+    "alias,core_role",
+    [
+        ("Guard", "warrior"),
+        ("vanguard", "pioneer"),
+        ("defender", "tank"),
+        ("supporter", "support"),
+        ("specialist", "special"),
+    ],
+)
+def test_protocol_role_names_reach_formation_and_actions(tmp_path, alias, core_role):
+    path = tmp_path / "maa/resource/battle_data.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps(
+            {
+                "chars": {
+                    "char_002_amiya": {
+                        "name": "阿米娅",
+                        "profession": "CASTER",
+                        "rarity": 5,
+                    },
+                    "char_1001_amiya2": {
+                        "name": "阿米娅",
+                        "profession": "WARRIOR",
+                        "rarity": 5,
+                    },
+                }
+            }
+        )
+    )
+    op = {"name": "阿米娅", "role": alias, "skill": 3}
+    action = {"type": "Deploy", "name": "阿米娅", "role": alias, "location": [1, 2]}
+    result = stored(opers=[op], actions=[action])
+    assert result["opers"] == [
+        {**op, "role": core_role, "skill": 0 if core_role == "warrior" else 3}
+    ]
+    assert result["actions"] == [{**action, "role": core_role}]
+
+
+@pytest.mark.parametrize("android", [False, True])
+def test_new_operator_survives_older_resources_and_uses_updated_cache_at_execution(
+    tmp_path, monkeypatch, android
+):
+    target = tmp_path / "maa"
+    path = target / "resource/battle_data.json"
+    path.parent.mkdir(parents=True)
+    path.write_text('{"chars": {}}')
+    monkeypatch.setenv("MOWER_ANDROID", "1" if android else "0")
+    shared = tmp_path / "shared"
+    monkeypatch.setattr(normalization, "storage_root", lambda target: shared)
+    op = {"name": "冻河", "skill": 3, "requirements": {"elite": -1, "skill_level": -1}}
+    info = library.store_script(raw(opers=[op]))
+    source = library.script_path(info["id"])
+    assert json.loads(source.read_bytes())["opers"] == [op]
+    cache = (target if android else shared) / "cache/resource/battle_data.json"
+    cache.parent.mkdir(parents=True)
+    cache.write_text(
+        json.dumps(
+            {
+                "chars": {
+                    "char_4244_tocka": {
+                        "name": "冻河",
+                        "profession": "SUPPORT",
+                        "rarity": 6,
+                    }
+                }
+            }
+        )
+    )
+    directory = tmp_path / "run"
+    conf = CopilotConf(scripts=[{"id": info["id"]}])
+    params = library.build_copilot_params(conf, directory)
+    assert params["copilot_list"][0]["filename"] == str(directory / source.name)
+    assert json.loads((directory / source.name).read_bytes())["opers"] == [
+        {**op, "requirements": {"elite": 2, "skill_level": -1}}
+    ]
+    assert json.loads(source.read_bytes())["opers"] == [op]
 
 
 def test_coordinate_actions_and_click_keep_the_preferred_target_only():

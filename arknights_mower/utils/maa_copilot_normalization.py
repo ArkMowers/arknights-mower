@@ -1,23 +1,57 @@
 """Prepare ordinary Copilot formations and battle actions for MaaCore."""
 
 import json
+import os
 from functools import lru_cache
 from pathlib import Path
 
 from arknights_mower.utils import config
+from arknights_mower.utils.maa_storage import storage_root
 from arknights_mower.utils.path import resolve_config_path
+
+# The script protocol uses English class names; MaaCore parses its resource keys.
+_ROLE_ALIASES = {
+    "guard": "warrior",
+    "vanguard": "pioneer",
+    "defender": "tank",
+    "supporter": "support",
+    "specialist": "special",
+}
+
+
+def _normalize_role(item):
+    role = item.get("role", "")
+    if not isinstance(role, str):
+        return None
+    role = role.casefold()
+    if role in _ROLE_ALIASES:
+        role = item["role"] = _ROLE_ALIASES[role]
+    return role
+
+
+def _index_skill_limits(chars):
+    limits = {}
+    for char_id, char in chars.items():
+        limit = _skill_limit(char_id, char["rarity"])
+        role = char.get("profession", "").casefold()
+        names = {
+            char[key].casefold()
+            for key in ("name", "name_en", "name_jp", "name_kr", "name_tw")
+            if char.get(key)
+        }
+        if char.get("name") == "阿米娅" and char_id != "char_002_amiya" and role:
+            names.add(f"阿米娅-{role}")
+        for name in names:
+            for key in ((name, ""), (name, role)):
+                # Forms sharing a name can have different skill limits.
+                if limits.setdefault(key, limit) != limit:
+                    limits[key] = None
+    return limits
 
 
 @lru_cache(maxsize=2)
 def _battle_skill_limits(path, _file_version):
-    chars = json.loads(path.read_text("utf-8"))["chars"]
-    limits = {}
-    for char_id, char in chars.items():
-        limit = _skill_limit(char_id, char["rarity"])
-        for key in ("name", "name_en", "name_jp", "name_kr", "name_tw"):
-            if name := char.get(key):
-                limits.setdefault(name.casefold(), limit)
-    return limits
+    return _index_skill_limits(json.loads(path.read_text("utf-8"))["chars"])
 
 
 def _skill_limit(char_id, rarity):
@@ -28,25 +62,29 @@ def _skill_limit(char_id, rarity):
     return int(rarity >= 3)
 
 
+def battle_data_path(installation):
+    target = Path(installation)
+    cache = target / "cache"
+    if os.environ.get("MOWER_ANDROID") != "1":
+        shared_cache = storage_root(target) / "cache"
+        # Before its first load, MaaCore's launcher migrates the installation cache here.
+        if shared_cache.is_dir():
+            cache = shared_cache
+    relative = Path("resource/battle_data.json")
+    override = cache / relative
+    return override if override.is_file() else target / relative
+
+
 def _operator_limits():
-    path = Path(resolve_config_path(config.conf.maa_path)) / "resource/battle_data.json"
+    path = battle_data_path(resolve_config_path(config.conf.maa_path))
     try:
         stat = path.stat()
     except FileNotFoundError:
         from arknights_mower.utils.growth import growth_data
         from arknights_mower.utils.mastery_recommendation import get_skill_data
 
-        chars = growth_data(get_skill_data())["characters"]
-        limits = {}
-        for char_id, char in chars.items():
-            name = char["name"]
-            if name == "阿米娅" and char_id != "char_002_amiya":
-                name += "-" + char["profession"]
-            limits[name.casefold()] = _skill_limit(char_id, char["rarity"])
-        return limits, False
-    return _battle_skill_limits(
-        path, (stat.st_mtime_ns, stat.st_size, stat.st_ino)
-    ), True
+        return _index_skill_limits(growth_data(get_skill_data())["characters"])
+    return _battle_skill_limits(path, (stat.st_mtime_ns, stat.st_size, stat.st_ino))
 
 
 def _require_name(item, field):
@@ -63,13 +101,12 @@ def _integer(item, key, default, field):
     return value
 
 
-def _normalize_oper(oper, field, limits, complete):
+def _normalize_oper(oper, field, limits):
     name = _require_name(oper, field)
     skill = _integer(oper, "skill", 0, field)
     if not 0 <= skill <= 3:
         raise ValueError(f"作业的 {field}.skill 必须在 0 到 3 之间")
-    # Mower 的中文干员数据缺少部分外服名称，保留技能直到可读取 MAA 战斗资源。
-    limit = limits.get(name.casefold(), 0 if complete else None)
+    limit = limits.get((name.casefold(), _normalize_role(oper)))
     if limit is not None and skill > limit:
         oper["skill"] = skill = 0
     requirements = oper.get("requirements")
@@ -81,11 +118,11 @@ def _normalize_oper(oper, field, limits, complete):
     level = _integer(requirements, "skill_level", 0, field)
     elite = _integer(requirements, "elite", 0, field)
     module = _integer(requirements, "module", -1, field)
-    if not 0 <= level <= 10 or not 0 <= elite <= 2:
-        raise ValueError(f"作业的 {field} 要求技能等级 0 到 10、精英化等级 0 到 2")
-    skill_elite = skill - 1 if limit is not None else 0
-    level_elite = 2 if level > 7 else int(level > 4)
-    minimum = max(skill_elite, level_elite, 2 if module > 0 else 0)
+    if not -1 <= level <= 10 or not -1 <= elite <= 2:
+        raise ValueError(f"作业的 {field} 要求技能等级 -1 到 10、精英化等级 -1 到 2")
+    skill_elite = skill - 1 if limit is not None else -1
+    level_elite = 2 if level > 7 else 1 if level > 4 else -1
+    minimum = max(skill_elite, level_elite, 2 if module > 0 else -1)
     if elite < minimum:
         requirements["elite"] = minimum
         oper["requirements"] = requirements
@@ -103,11 +140,12 @@ def normalize_copilot(data):
             raise ValueError(f"作业的 {field}.opers 必须是对象列表")
         operators.extend((f"{field}.opers[{j}]", op) for j, op in enumerate(members))
     if operators:
-        limits, complete = _operator_limits()
+        limits = _operator_limits()
         for field, oper in operators:
-            _normalize_oper(oper, field, limits, complete)
+            _normalize_oper(oper, field, limits)
 
     for i, action in enumerate(data["actions"]):
+        _normalize_role(action)
         kind = action.get("type")
         if kind not in ("Skill", "Retreat", "BulletTime", "SkillUsage", "Click"):
             continue
