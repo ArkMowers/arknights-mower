@@ -19465,7 +19465,7 @@ class BaseSchedulerSolver(
                     and i in read_time_index
                     and not room.startswith("dorm")
                     and room not in ("train", "recycle")
-                    and agent.exhaust_require
+                    and getattr(agent, "exhaust_require", False)
                     and _mood <= agent.lower_limit + 2
                 ):
                     # 高下限用尽干员即使满心情也可能已进入预约范围。
@@ -19610,8 +19610,8 @@ class BaseSchedulerSolver(
                 and _mood >= 0
                 and (
                     _mood != 24
-                    or room.startswith("dorm")
-                    or room == "train"
+                    or room
+                    not in getattr(self.op_data, "true_exhaust_room", ("central",))
                     or slot_deadline is not None
                 )
             ):
