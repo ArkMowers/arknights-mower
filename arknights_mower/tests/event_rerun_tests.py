@@ -197,14 +197,8 @@ def test_ordinary_keeps_device_io_after_deadline_during_battle(
     assert config.conf.event_rerun.use_sanity_potion is True
     config.conf.event_rerun.use_sanity_potion = allow
     navigator = MagicMock()
-    navigator.scene.return_value = Scene.OPERATOR_BEFORE
-    navigator.normalize_stage_text.side_effect = lambda text: text
     monkeypatch.setattr(runner, "NavigationSolver", lambda *_: navigator)
-    monkeypatch.setattr(
-        runner,
-        "ActivityNavigation",
-        lambda _: SimpleNamespace(read=lambda: [(None, "OS-1", 0.99)]),
-    )
+    navigator.wait_for_stage_detail.return_value = True
     operation = MagicMock()
 
     def run(**kwargs):

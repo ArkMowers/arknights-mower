@@ -1304,14 +1304,15 @@ def test_unknown_internal_navigation_target_requires_stage_override(files):
         library.copilot_navigation_target(item)
 
 
-@pytest.mark.parametrize("failure", ["route", "wrong_page"])
-def test_copilot_does_not_start_without_confirmed_stage_map(scheduler, failure):
+@pytest.mark.parametrize("failure", ["route", "missing_detail"])
+def test_copilot_does_not_start_without_confirmed_stage_detail(scheduler, failure):
+    navigator = base_schedule.NavigationSolver.return_value
     if failure == "route":
-        base_schedule.NavigationSolver.return_value.run.return_value = False
+        navigator.run.return_value = False
     else:
-        scheduler.scene.side_effect = None
-        scheduler.scene.return_value = base_schedule.Scene.TERMINAL_MAIN
+        navigator.wait_for_stage_detail.return_value = False
     scheduler.maa_plan_solver([])
+    navigator.back.assert_not_called()
     scheduler.MAA.append_task.assert_not_called()
     scheduler.MAA.start.assert_not_called()
     assert scheduler.maa_copilot_progress["failed"] is True

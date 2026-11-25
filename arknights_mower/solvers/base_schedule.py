@@ -23573,19 +23573,16 @@ class BaseSchedulerSolver(
                                         target = copilot_navigation_target(
                                             copilot_conf.scripts[copilot_run["next"]]
                                         )
-                                        ready = NavigationSolver(
+                                        navigator = NavigationSolver(
                                             self.device, self.recog
-                                        ).run(target)
+                                        )
+                                        ready = navigator.run(target)
                                         navigation_remaining()
                                         if ready:
-                                            self.recog.update()
-                                            self.scene_graph_navigation(
-                                                Scene.OPERATOR_CHOOSE_LEVEL
-                                            )
-                                            ready = (
-                                                self.scene()
-                                                == Scene.OPERATOR_CHOOSE_LEVEL
-                                            )
+                                            ready = navigator.wait_for_stage_detail()
+                                        if ready:
+                                            navigation_remaining()
+                                            navigator.back()
                                     else:
                                         ready = self.scene() == Scene.TERMINAL_MAIN
                                 navigation_remaining()
@@ -23596,7 +23593,7 @@ class BaseSchedulerSolver(
                                         )
                                     if selected_long == "copilot":
                                         raise ValueError(
-                                            "未确认作业关卡地图，请检查导航关卡名与 Mower AI 配置"
+                                            "未确认作业关卡详情，请检查导航关卡名与 Mower AI 配置"
                                         )
                                     raise ValueError(
                                         "未确认终端首页，未启动 MAA 大型任务"

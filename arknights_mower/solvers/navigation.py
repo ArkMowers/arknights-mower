@@ -123,6 +123,17 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             self.persist_nav_steps()
         return self.success
 
+    def wait_for_stage_detail(self) -> bool:
+        """Wait for the Start Operation button while the selected panel opens."""
+        self.recog.update()
+        for attempt in range(5):
+            io_timeout(0)
+            if self.find("ope_start"):
+                return True
+            if attempt < 4:
+                self.sleep(io_timeout(0.4))
+        return False
+
     def transition(self):
         if (scene := self.scene()) == Scene.TERMINAL_MAIN:
             logger.debug(
