@@ -2,10 +2,12 @@
 
 import hashlib
 import json
+import os
 import re
 
-from arknights_mower.utils.path import get_path
-from arknights_mower.utils.update_runtime import write_json
+from arknights_mower.utils.maa_storage import storage_root
+from arknights_mower.utils.path import get_path, resolve_config_path
+from arknights_mower.utils.update_runtime import read_json, write_json
 
 MAX_SCRIPT_BYTES = 1024 * 1024
 MAX_SCRIPTS = 64
@@ -173,6 +175,35 @@ def build_copilot_params(conf):
     return params
 
 
+def _maa_map_code(stage_name):
+    from pathlib import Path
+
+    from arknights_mower.utils import config
+
+    installation = Path(resolve_config_path(config.conf.maa_path))
+    cache = (
+        installation / "cache"
+        if os.environ.get("MOWER_ANDROID") == "1"
+        else storage_root(installation) / "cache"
+    )
+    for root in (installation, cache):
+        index = read_json(root / "resource/Arknights-Tile-Pos/overview.json")
+        if not isinstance(index, dict):
+            continue
+        for entry in index.values():
+            if not isinstance(entry, dict):
+                continue
+            code = entry.get("code")
+            if (
+                isinstance(code, str)
+                and code
+                and stage_name
+                in (entry.get("stageId"), entry.get("levelId"), code, entry.get("name"))
+            ):
+                return code
+    return None
+
+
 def copilot_navigation_target(item):
     from arknights_mower.data import stage_data_full
 
@@ -182,6 +213,8 @@ def copilot_navigation_target(item):
             target = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))[
                 "stage_name"
             ].strip()
+        if code := _maa_map_code(target):
+            return code
     for stage in stage_data_full:
         if target in (stage.get("id"), stage.get("name")):
             return stage["id"]
