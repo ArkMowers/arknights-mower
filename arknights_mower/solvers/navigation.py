@@ -123,6 +123,50 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             self.persist_nav_steps()
         return self.success
 
+    def _read_stage_detail_code(self) -> str | None:
+        """Read the operation header only after the Start Operation button appears."""
+        self.recog.update()
+        for attempt in range(5):
+            io_timeout(0)
+            if self.find("ope_start") and rapidocr.engine:
+                title = self.recog.img[108:166, 1267:1598]
+                readings, _ = rapidocr.engine(
+                    title, use_det=True, use_cls=False, use_rec=True
+                )
+                codes = set()
+                for box, text, score in readings or ():
+                    if score < 0.8 or max(x for x, _ in box) >= title.shape[1] - 1:
+                        continue
+                    code = text.upper().replace(" ", "").removeprefix("OPERATION")
+                    if self.is_stage_code(code):
+                        codes.add(code)
+                if len(codes) == 1:
+                    return codes.pop()
+            if attempt < 4:
+                self.sleep(io_timeout(0.4))
+        return None
+
+    def confirm_selected_stage(self) -> bool:
+        target = self.normalize_stage_text(self.name)
+        observed = self._read_stage_detail_code()
+        if observed is None:
+            logger.warning("未能读取 %s 的详情页关号", target)
+            return False
+        if observed == target:
+            return True
+
+        logger.warning("目标关卡 %s，详情页显示 %s，返回地图重新选关", target, observed)
+        io_timeout(0)
+        self.back()
+        if self.find("ope_start") or not self.find_target_stage_after_entry(target):
+            return False
+        observed = self._read_stage_detail_code()
+        if observed != target:
+            logger.warning(
+                "重新选择 %s 后未确认目标关卡，详情页关号=%s", target, observed
+            )
+        return observed == target
+
     def transition(self):
         if (scene := self.scene()) == Scene.TERMINAL_MAIN:
             logger.debug(

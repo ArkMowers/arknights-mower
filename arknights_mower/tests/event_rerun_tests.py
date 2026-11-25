@@ -189,6 +189,21 @@ def test_unchanged_failed_preparation_yields_to_other_selected_stages(
     assert owner.deadline == clock.now() + timedelta(minutes=4, seconds=10)
 
 
+def test_unconfirmed_target_does_not_battle_or_record_rerun_progress(
+    scheduler, monkeypatch
+):
+    owner, _ = scheduler
+    navigator = MagicMock()
+    navigator.confirm_selected_stage.return_value = False
+    monkeypatch.setattr(runner, "NavigationSolver", lambda *_: navigator)
+    operation = MagicMock()
+    monkeypatch.setattr(runner, "OperationSolver", operation)
+
+    assert not runner.run_event_rerun(owner, lambda: owner.deadline)
+    operation.assert_not_called()
+    assert record.load_event_rerun_progress("act46sre:100") == {}
+
+
 @pytest.mark.parametrize("allow", [True, False])
 def test_ordinary_keeps_device_io_after_deadline_during_battle(
     scheduler, monkeypatch, allow
@@ -197,14 +212,8 @@ def test_ordinary_keeps_device_io_after_deadline_during_battle(
     assert config.conf.event_rerun.use_sanity_potion is True
     config.conf.event_rerun.use_sanity_potion = allow
     navigator = MagicMock()
-    navigator.scene.return_value = Scene.OPERATOR_BEFORE
-    navigator.normalize_stage_text.side_effect = lambda text: text
     monkeypatch.setattr(runner, "NavigationSolver", lambda *_: navigator)
-    monkeypatch.setattr(
-        runner,
-        "ActivityNavigation",
-        lambda _: SimpleNamespace(read=lambda: [(None, "OS-1", 0.99)]),
-    )
+    navigator.confirm_selected_stage.return_value = True
     operation = MagicMock()
 
     def run(**kwargs):

@@ -30,7 +30,11 @@ def test_large_task_enters_terminal_before_maa_submission(scheduler, kind, manua
     order.attach_mock(scheduler.back_to_index, "home")
     order.attach_mock(scheduler.scene_graph_navigation, "navigate")
     if kind == "copilot":
-        order.attach_mock(base_schedule.NavigationSolver.return_value.run, "map")
+        navigator = base_schedule.NavigationSolver.return_value
+        navigator.confirm_selected_stage.return_value = True
+        order.attach_mock(navigator.run, "map")
+        order.attach_mock(navigator.confirm_selected_stage, "detail")
+        order.attach_mock(navigator.back, "leave_detail")
     order.attach_mock(scheduler.MAA.append_task, "append")
     order.attach_mock(scheduler.MAA.start, "start")
 
@@ -38,11 +42,12 @@ def test_large_task_enters_terminal_before_maa_submission(scheduler, kind, manua
 
     assert order.mock_calls[:2] == [call.home(), call.navigate(Scene.TERMINAL_MAIN)]
     if kind == "copilot":
-        assert order.mock_calls[2:4] == [
+        assert order.mock_calls[2:5] == [
             call.map("1-7"),
-            call.navigate(Scene.OPERATOR_CHOOSE_LEVEL),
+            call.detail(),
+            call.leave_detail(),
         ]
-        append_index = 4
+        append_index = 5
     else:
         append_index = 2
     assert (

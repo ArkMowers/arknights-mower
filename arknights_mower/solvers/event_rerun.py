@@ -3,7 +3,6 @@ from datetime import datetime
 from time import monotonic
 
 from arknights_mower.solvers import record
-from arknights_mower.solvers.activity_navigation import ActivityNavigation
 from arknights_mower.solvers.navigation import NavigationSolver
 from arknights_mower.solvers.operation import OperationSolver
 from arknights_mower.utils import config
@@ -13,7 +12,6 @@ from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.event_rerun import STAGE_SECONDS, current_rerun
 from arknights_mower.utils.log import logger
-from arknights_mower.utils.scene import Scene
 
 
 def pending_rerun(scheduler, deadline):
@@ -53,16 +51,7 @@ def pending_rerun(scheduler, deadline):
 def _play_ordinary(scheduler, stage, settings, prepare, claim, complete):
     navigator = NavigationSolver(scheduler.device, scheduler.recog)
     with device_io_budget(prepare):
-        if (
-            not navigator.run(stage["code"])
-            or navigator.scene() != Scene.OPERATOR_BEFORE
-        ):
-            return "blocked"
-        target = navigator.normalize_stage_text(stage["code"])
-        if not any(
-            navigator.normalize_stage_text(text) == target
-            for _, text, _ in ActivityNavigation(navigator).read()
-        ):
+        if not navigator.run(stage["code"]) or not navigator.confirm_selected_stage():
             return "blocked"
 
     battle_started = False
