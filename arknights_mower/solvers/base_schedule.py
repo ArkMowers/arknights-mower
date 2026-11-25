@@ -23863,8 +23863,7 @@ class BaseSchedulerSolver(
                             copilot_formation_params,
                         )
 
-                        if not manual_copilot:
-                            copilot_index = copilot_run["next"]
+                        copilot_index = None if manual_copilot else copilot_run["next"]
                         if paradox:
                             params = build_paradox_params(
                                 copilot_conf.scripts[copilot_index], copilot_index
@@ -23878,11 +23877,10 @@ class BaseSchedulerSolver(
                                         )
                                     )
                                 )
-                            params = build_copilot_params(copilot_conf, copilot_dir)
+                            params = build_copilot_params(
+                                copilot_conf, copilot_dir, index=copilot_index
+                            )
                             if not manual_copilot:
-                                params["copilot_list"] = [
-                                    params["copilot_list"][copilot_index]
-                                ]
                                 params["copilot_list"][0]["nav_name_override"] = target
                             elif self.task.copilot_request["mode"] == "single":
                                 params["filename"] = params.pop("copilot_list")[0][

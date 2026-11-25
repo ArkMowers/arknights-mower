@@ -4,7 +4,7 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
-import { appendCopilotScript, copilotLibraryUrl, useCopilotDownload } from '@/utils/maaCopilotCode'
+import { appendCopilotScript, copilotLibraryUrl, useCopilotLibrary } from '@/utils/maaCopilotCode'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const store = useConfigStore()
@@ -17,12 +17,8 @@ const kind = 'sss'
 const endpoint = copilotLibraryUrl(kind)
 const library = ref([])
 const selected = ref(null)
-const loading = ref(false)
 const options = computed(() =>
   library.value.map((item) => ({ label: `${item.stage_name} · ${item.title}`, value: item.id }))
-)
-const selected_in_queue = computed(() =>
-  sss.value.scripts.some((item) => item.id === selected.value)
 )
 async function refresh() {
   try {
@@ -34,51 +30,19 @@ async function refresh() {
 onMounted(refresh)
 
 function add_script(id) {
-  if (!id || sss.value.scripts.length >= 32) return
+  if (!id) return
   appendCopilotScript(configs, kind, { id })
 }
-async function upload_blob(blob) {
-  const form = new FormData()
-  form.append('copilot', blob)
-  const { data } = await axios.post(endpoint, form)
-  await refresh()
-  selected.value = data.id
-  appendCopilotScript(configs, kind, data)
-  message.success('作业已导入并加入队列')
-}
-async function upload({ file, onFinish, onError }) {
-  loading.value = true
-  try {
-    await upload_blob(file.file)
-    onFinish()
-  } catch (error) {
-    message.error(error.response?.data?.message || '作业导入失败')
-    onError()
-  } finally {
-    loading.value = false
-  }
-}
-const { code, download, failures } = useCopilotDownload({
+const { code, canDelete, delete_script, download, failures, loading, upload } = useCopilotLibrary({
   axios,
   configs,
   kind,
-  loading,
   selected,
   library,
   refresh,
-  message
+  message,
+  store
 })
-async function delete_script() {
-  if (!selected.value || selected_in_queue.value) return
-  try {
-    await store.flush_config_saves()
-    await axios.delete(`${endpoint}/${selected.value}`)
-    selected.value = null
-    await refresh()
-  } catch (error) {
-    message.error(error.response?.data?.message || '删除作业失败')
-  }
-}
 function move(index, offset) {
   const scripts = [...sss.value.scripts]
   const target = index + offset
@@ -154,12 +118,8 @@ async function restart_queue() {
           placeholder="选择已导入的作业"
         />
         <n-flex>
-          <n-button :disabled="!selected || sss.scripts.length >= 32" @click="add_script(selected)"
-            >加入队列</n-button
-          >
-          <n-button :disabled="!selected || selected_in_queue" @click="delete_script"
-            >删除未选作业</n-button
-          >
+          <n-button :disabled="!selected" @click="add_script(selected)">加入队列</n-button>
+          <n-button :disabled="!canDelete" @click="delete_script">删除未选作业</n-button>
         </n-flex>
       </n-flex>
     </n-form-item>
@@ -226,8 +186,7 @@ async function restart_queue() {
           </n-flex>
         </n-card>
         <n-text depth="3"
-          >按顺序执行，最多 32
-          项。每次完整通关一轮才计数，可为两处关卡分别添加作业和次数。中断后保留已完成轮数，当前轮交由
+          >按顺序执行。每次完整通关一轮才计数，可为两处关卡分别添加作业和次数。中断后保留已完成轮数，当前轮交由
           MAA
           从游戏现状接续。全部完成后停止，等待手动重跑；清缓存启动保留进度。修改队列、关卡、导能单元或次数会开启新一轮。未通关时暂停本队列，等待修改队列或手动重跑。</n-text
         >

@@ -198,7 +198,7 @@ class CopilotAdditionalConf(ConfModel):
 
 class CopilotConf(ConfModel):
     run_id: str = Field(default="", max_length=64)
-    scripts: list[CopilotScriptConf] = Field(default_factory=list, max_length=32)
+    scripts: list[CopilotScriptConf] = Field(default_factory=list)
     formation: bool = False
     operbox_assist: bool = False
     formation_index: int = Field(default=0, ge=0, le=4)
@@ -276,9 +276,7 @@ class LongTaskPart(ConfModel):
         id: str = Field(pattern=r"^[a-f0-9]{64}$")
 
     class ParadoxConf(ConfModel):
-        scripts: list["LongTaskPart.ParadoxQueueItem"] = Field(
-            default_factory=list, max_length=32
-        )
+        scripts: list["LongTaskPart.ParadoxQueueItem"] = Field(default_factory=list)
         run_id: str = Field(default="", max_length=128)
 
     paradox: ParadoxConf = Field(default_factory=ParadoxConf)
@@ -407,9 +405,7 @@ class LongTaskPart(ConfModel):
         times: int = Field(default=1, ge=1, le=9999, strict=True)
 
     class SSSConf(ConfModel):
-        scripts: list["LongTaskPart.SSSQueueItem"] = Field(
-            default_factory=list, max_length=32
-        )
+        scripts: list["LongTaskPart.SSSQueueItem"] = Field(default_factory=list)
         run_id: str = Field(default="", max_length=128)
         type: int = 1
         "关卡"

@@ -51,6 +51,29 @@ def script_path(script_id, *, sss=False, paradox=False):
     return path
 
 
+def missing_new_queue_scripts(conf, updates):
+    missing = {}
+    for kind in ("copilot", "sss", "paradox"):
+        update = updates.get(kind)
+        if not isinstance(update, dict) or "scripts" not in update:
+            continue
+        current = getattr(conf, kind)
+        proposed = type(current).model_validate({"scripts": update["scripts"]})
+        added = {item.id for item in proposed.scripts} - {
+            item.id for item in current.scripts
+        }
+        absent = [
+            id_
+            for id_ in sorted(added)
+            if not script_path(
+                id_, sss=kind == "sss", paradox=kind == "paradox"
+            ).is_file()
+        ]
+        if absent:
+            missing[kind] = absent
+    return missing
+
+
 def parse_script(raw, *, sss=False, paradox=False):
     if len(raw) > MAX_SCRIPT_BYTES:
         raise ValueError("作业文件不能超过 1 MB")
@@ -276,11 +299,12 @@ def copilot_formation_params(params, conf, maa):
         yield {**params, "operbox_data_path": str(path.absolute())}
 
 
-def build_copilot_params(conf, work_dir):
+def build_copilot_params(conf, work_dir, *, index=None):
     if not conf.scripts:
         raise ValueError("请先导入并选择自动战斗作业")
     queue = []
-    for item in conf.scripts:
+    scripts = conf.scripts if index is None else [conf.scripts[index]]
+    for item in scripts:
         path = script_path(item.id)
         with path.open("rb") as stream:
             data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))
@@ -349,17 +373,18 @@ def _maa_map_code(stage_name):
 def copilot_navigation_target(item):
     from arknights_mower.data import stage_data_full
 
-    target = item.nav_name_override.strip()
+    override = item.nav_name_override.strip()
+    target = override
     if not target:
         with script_path(item.id).open("rb") as stream:
             target = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))[
                 "stage_name"
             ].strip()
-        if code := _maa_map_code(target):
-            return code
     for stage in stage_data_full:
         if target in (stage.get("id"), stage.get("name")):
             return stage["id"]
+    if not override and (code := _maa_map_code(target)):
+        return code
     main = re.fullmatch(r"main_(\d+)-(\d+)", target, re.IGNORECASE)
     if main:
         return f"{int(main[1])}-{int(main[2])}"
@@ -385,8 +410,8 @@ def manual_copilot_request(conf, selection):
     elif mode == "list" and loops == 1:
         # The UI sends queue entries by value so edits cannot retarget a pending run.
         raw = selection.get("scripts")
-        if not isinstance(raw, list) or not 1 <= len(raw) <= 32:
-            raise ValueError("请勾选 1 至 32 项作业")
+        if not isinstance(raw, list) or not raw:
+            raise ValueError("请至少勾选一项作业")
         entries = [CopilotScriptConf.model_validate(item) for item in raw]
         if any(not script_path(item.id).is_file() for item in entries):
             raise ValueError("所选作业不存在，请刷新作业库")

@@ -4,6 +4,7 @@ import json
 import logging
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -174,13 +175,20 @@ def test_missing_or_changed_script_fails_before_params_are_returned(files, tmp_p
     [
         {"formation_index": 5},
         {"support_unit_usage": 4},
-        {"scripts": [{"id": "a" * 64}] * 33},
         {"user_additional": [{"name": "棘刺", "skill": 4}]},
     ],
 )
 def test_invalid_task_options_are_rejected(kwargs):
     with pytest.raises(ValidationError):
         CopilotConf(**kwargs)
+
+
+@pytest.mark.parametrize("kind", ["copilot", "sss", "paradox"])
+def test_saved_config_round_trips_large_script_queues(kind):
+    ids = [f"{i % 3:064x}" for i in range(100)]
+    conf = Conf.model_validate({kind: {"scripts": [{"id": id_} for id_ in ids]}})
+    restored = Conf.model_validate_json(conf.model_dump_json())
+    assert [entry.id for entry in getattr(restored, kind).scripts] == ids
 
 
 @pytest.fixture
@@ -243,6 +251,155 @@ def test_authorized_upload_list_and_delete_and_selected_guard(
     monkeypatch.setattr(server, "_maa_busy_response", lambda: None)
     assert client.delete(path, headers=headers).get_json() == {"ok": True}
     assert client.get("/maa-copilot", headers=headers).get_json() == {"scripts": []}
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+@pytest.mark.parametrize("token", [None, "invalid"])
+def test_queue_save_requires_token_before_reading_script_files(
+    client, monkeypatch, method, token
+):
+    read = MagicMock()
+    monkeypatch.setattr(library, "script_path", read)
+    response = client.open(
+        "/conf",
+        method=method,
+        headers={"token": token} if token else {},
+        json={"copilot": {"scripts": [{"id": "a" * 64}]}},
+    )
+    assert response.status_code == 403
+    read.assert_not_called()
+
+
+@pytest.fixture
+def queue_config_path(client, monkeypatch, tmp_path):
+    import server
+    from arknights_mower.utils import workshop_config
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    def temp_path(name):
+        return tmp_path / name.removeprefix("@app/")
+
+    monkeypatch.setattr(library, "get_path", temp_path)
+    monkeypatch.setattr(workshop_config, "get_path", temp_path)
+    monkeypatch.setattr(weekly_plan_loader, "get_weekly_plan_manager", MagicMock())
+    conf_path = tmp_path / "conf.yaml"
+    monkeypatch.setattr(server.config, "conf_path", conf_path)
+    return conf_path
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+def test_queue_save_and_cross_client_script_deletion(client, queue_config_path, method):
+    import server
+
+    legacy = "f" * 64
+    server.config.conf = Conf(copilot={"scripts": [{"id": legacy}]})
+    server.config.save_conf()
+    original = queue_config_path.read_bytes()
+    deleted = upload()["id"]
+    kept = upload({**SCRIPT, "stage_name": "CE-6"})["id"]
+    headers = {"token": "copilot-test-token"}
+    other = server.app.test_client()
+    assert other.delete("/maa-copilot/" + deleted, headers=headers).status_code == 200
+
+    response = client.open(
+        "/conf",
+        method=method,
+        headers=headers,
+        json={
+            "copilot": {
+                "scripts": [{"id": id_} for id_ in [legacy, deleted, deleted, kept]]
+            },
+            "sss": {"scripts": [{"id": kept}]},
+            "paradox": {"scripts": [{"id": deleted}]},
+        },
+    )
+    assert response.status_code == 409
+    assert response.json["code"] == "copilot_scripts_missing"
+    assert response.json["missing_scripts"] == {
+        "copilot": [deleted],
+        "sss": [kept],
+        "paradox": [deleted],
+    }
+    assert queue_config_path.read_bytes() == original
+    assert [item.id for item in server.config.conf.copilot.scripts] == [legacy]
+
+    scripts = [{"id": kept}, {"id": legacy, "is_raid": True}]
+    response = client.open(
+        "/conf", method=method, headers=headers, json={"copilot": {"scripts": scripts}}
+    )
+    assert response.status_code == 200
+    assert [(item.id, item.is_raid) for item in server.config.conf.copilot.scripts] == [
+        (kept, False),
+        (legacy, True),
+    ]
+    assert other.delete("/maa-copilot/" + kept, headers=headers).status_code == 409
+    response = client.open(
+        "/conf", method=method, headers=headers, json={"copilot": {"scripts": []}}
+    )
+    assert response.status_code == 200
+    assert other.delete("/maa-copilot/" + kept, headers=headers).status_code == 200
+
+
+def test_delete_waits_for_inflight_queue_save(client, queue_config_path, monkeypatch):
+    import yaml
+    from flask import request
+    from yamlcore import CoreLoader
+
+    import server
+    from arknights_mower.utils.config import weekly_plan_loader
+
+    saving = threading.Event()
+    resume = threading.Event()
+    delete_blocked = threading.Event()
+
+    def get_active_plan_key():
+        saving.set()
+        assert resume.wait(10)
+        return ""
+
+    manager = weekly_plan_loader.get_weekly_plan_manager()
+    manager.get_active_plan_key.side_effect = get_active_plan_key
+    lock = server.backup_lock
+
+    def acquire():
+        if lock.acquire(blocking=False):
+            return True
+        if request.method == "DELETE":
+            delete_blocked.set()
+        return lock.acquire()
+
+    observed_lock = MagicMock(wraps=lock)
+    observed_lock.acquire.side_effect = acquire
+    observed_lock.__enter__.side_effect = lock.__enter__
+    observed_lock.__exit__.side_effect = lock.__exit__
+    monkeypatch.setattr(server, "backup_lock", observed_lock)
+    other = server.app.test_client()
+    script_id = upload()["id"]
+    scripts = [{"id": script_id, "is_raid": True}]
+    headers = {"token": "copilot-test-token"}
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        save = pool.submit(
+            client.patch,
+            "/conf",
+            headers=headers,
+            json={"copilot": {"scripts": scripts}},
+        )
+        try:
+            assert saving.wait(5)
+            delete = pool.submit(
+                other.delete, "/maa-copilot/" + script_id, headers=headers
+            )
+            assert delete_blocked.wait(5)
+            assert not delete.done()
+        finally:
+            resume.set()
+        assert save.result(timeout=5).status_code == 200
+        assert delete.result(timeout=5).status_code == 409
+
+    persisted = yaml.load(queue_config_path.read_text("utf-8"), Loader=CoreLoader)
+    assert persisted["copilot"]["scripts"] == scripts
+    assert server.config.conf.copilot.scripts[0].id == script_id
+    assert library.script_path(script_id).is_file()
 
 
 @pytest.fixture
@@ -874,6 +1031,31 @@ def test_large_task_real_dispatch_has_no_daily_or_repeat_parameters(scheduler):
     scheduler.append_maa_theme_task.assert_not_called()
 
 
+def test_idle_copilot_reads_only_the_current_queue_entry(scheduler):
+    queue_pair()
+    conf = base_schedule.config.conf.copilot
+    first, second = conf.scripts
+    raid = first.model_copy(update={"is_raid": True})
+    missing = second.model_copy(update={"id": "f" * 64})
+    conf.scripts = [second] * 98 + [raid, missing]
+    scheduler._maa_copilot_run(conf)["next"] = 98
+    scheduler.MAA.start.side_effect = lambda: emit(scheduler, 10002, 1)
+
+    scheduler.maa_plan_solver([])
+
+    scheduler.MAA.append_task.assert_called_once()
+    _, params = scheduler.MAA.append_task.call_args.args
+    assert params["copilot_list"] == [
+        {
+            "filename": str(library.script_path(raid.id)),
+            "is_raid": True,
+            "nav_name_override": "1-7",
+        }
+    ]
+    assert scheduler.maa_copilot_progress["next"] == 99
+    assert scheduler.maa_copilot_progress["failed"] is True
+
+
 def test_scheduled_preemption_stops_without_theme_restoration_or_lost_task(
     scheduler, monkeypatch
 ):
@@ -1031,6 +1213,24 @@ def test_copilot_dispatch_uses_map_code_for_internal_stage_id(
     assert library.copilot_navigation_target(item) == "1-7"
 
 
+@pytest.mark.parametrize(
+    "stage,other,expected",
+    [("高空坠物", "RI-1", "2-5"), ("蔓延", "FC-TR-2", "1-2"), ("突围", "9-16", "0-11")],
+)
+def test_copilot_navigation_keeps_known_stage_with_duplicate_map_name(
+    files, tmp_path, monkeypatch, stage, other, expected
+):
+    monkeypatch.setattr(base_schedule.config.conf, "maa_path", str(tmp_path))
+    maps = tmp_path / "resource/Arknights-Tile-Pos"
+    maps.mkdir(parents=True)
+    (maps / "overview.json").write_text(
+        json.dumps({"map": {"name": stage, "code": other}})
+    )
+    info = upload({**SCRIPT, "stage_name": stage})
+    item = CopilotConf(scripts=[{"id": info["id"]}]).scripts[0]
+    assert library.copilot_navigation_target(item) == expected
+
+
 def test_unknown_internal_navigation_target_requires_stage_override(files):
     info = upload({**SCRIPT, "stage_name": "unmapped_internal_stage"})
     item = CopilotConf(scripts=[{"id": info["id"]}]).scripts[0]
@@ -1062,6 +1262,8 @@ def test_manual_copilot_submits_from_current_screen_without_consuming_idle_queue
     queue_pair()
     conf.use_sanity_potion = True
     conf.scripts[1].is_raid = True
+    if mode == "list":
+        conf.scripts = conf.scripts * 50
     task = SchedulerTask(datetime.now(), task_type=TaskTypes.MANUAL_COPILOT)
     selection = (
         {"mode": "single", "id": conf.scripts[1].id, "loop_times": 3}
@@ -1083,7 +1285,7 @@ def test_manual_copilot_submits_from_current_screen_without_consuming_idle_queue
     name, params = scheduler.MAA.append_task.call_args.args
     assert name == "Copilot"
     if mode == "list":
-        assert [row["is_raid"] for row in params["copilot_list"]] == [False, True]
+        assert [row["is_raid"] for row in params["copilot_list"]] == [False, True] * 50
         assert params["use_sanity_potion"]
     else:
         assert params["filename"].endswith(selection["id"] + ".json")

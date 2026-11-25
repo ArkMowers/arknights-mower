@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createSSRApp, effectScope, ref } from 'vue'
+import { createSSRApp, effectScope, ref, watch } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import Component from './MaaCopilot.vue'
+import Sss from './MaaSss.vue'
 
 const state = vi.hoisted(() => ({
   config: {},
@@ -122,7 +123,7 @@ describe('ordinary Copilot library and queue', () => {
       expect(component.loading.value).toBe(false)
     }
   )
-  function mock_set(ids = ['456', '789', '456']) {
+  function mock_set(ids = ['456', '789', '456'], difficultyById = {}) {
     state.client.get.mockImplementation(async (url) => {
       if (url.endsWith('/network/maa-copilot-set/123')) return { data: { ids } }
       if (url.includes('/network/maa-copilot/')) {
@@ -131,6 +132,7 @@ describe('ordinary Copilot library and queue', () => {
             data: {
               content: JSON.stringify({
                 stage_name: url.endsWith('789') ? 'second' : 'first',
+                difficulty: difficultyById[url.split('/').at(-1)],
                 actions: []
               })
             }
@@ -157,7 +159,7 @@ describe('ordinary Copilot library and queue', () => {
       state.client.get.mock.calls
         .filter(([url]) => url.includes('/network/maa-copilot/'))
         .map(([url]) => url.split('/').at(-1))
-    ).toEqual(['456', '789', '456'])
+    ).toEqual(['456', '789'])
     expect(state.config.copilot.value.scripts).toEqual([
       original,
       { id: first.id, nav_name_override: '', is_raid: false },
@@ -199,7 +201,11 @@ describe('ordinary Copilot library and queue', () => {
       const info = { ...first, difficulty }
       state.client.post.mockResolvedValue({ data: info })
       state.client.get.mockResolvedValue({ data: { scripts: [info] } })
-      await component.upload_blob(new Blob(['{}']))
+      await component.upload({
+        file: { file: new Blob(['{}']) },
+        onFinish: vi.fn(),
+        onError: vi.fn()
+      })
       component.add_script(first.id)
       expect(state.config.copilot.value.scripts.map((item) => item.is_raid)).toEqual([
         ...expected,
@@ -207,26 +213,6 @@ describe('ordinary Copilot library and queue', () => {
       ])
     }
   )
-  it('refuses both modes as a unit if only one queue slot is free', async () => {
-    mock_set(['456'])
-    state.client.post.mockResolvedValue({ data: { ...first, difficulty: 3 } })
-    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({
-      id: second.id,
-      is_raid: true
-    }))
-    const original = [...state.config.copilot.value.scripts]
-    component.code.value = 'prts://s123'
-    await component.download()
-    expect(state.config.copilot.value.scripts).toEqual(original)
-    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('本次需加入 2 项'))
-    state.config.copilot.value.scripts.pop()
-    await component.download()
-    expect(state.config.copilot.value.scripts).toHaveLength(32)
-    expect(state.config.copilot.value.scripts.slice(-2).map((item) => item.is_raid)).toEqual([
-      false,
-      true
-    ])
-  })
   it('reports an empty set before requesting any member', async () => {
     mock_set([])
     component.code.value = 'prts://s123'
@@ -236,7 +222,7 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.error).toHaveBeenCalledWith(expect.stringContaining('作业集为空'))
   })
 
-  it('downloads, validates and queues each member before fetching the next one', async () => {
+  it('downloads and validates each member before publishing both queues', async () => {
     const calls = []
     state.client.get.mockImplementation(async (url) => {
       if (url.endsWith('/maa-copilot-set/123'))
@@ -245,7 +231,7 @@ describe('ordinary Copilot library and queue', () => {
       const id = url.split('/').at(-1)
       calls.push('get ' + id)
       if (id === '2') {
-        expect(state.config.copilot.value.scripts).toHaveLength(2)
+        expect(state.config.copilot.value.scripts).toHaveLength(0)
         throw new Error('offline')
       }
       const content =
@@ -301,31 +287,182 @@ describe('ordinary Copilot library and queue', () => {
     expect(component.code.value).toBe('')
   })
 
-  it('rechecks live capacity after upload and limits expanded entries per member', async () => {
+  it('publishes one complete queue after a paused download and keeps concurrent edits', async () => {
     mock_set(['456', '789', '456'])
-    state.client.post.mockImplementationOnce(async () => {
-      state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({
-        id: second.id,
-        is_raid: true
-      }))
-      return { data: { ...first, difficulty: 3 } }
+    const snapshots = []
+    scope.run(() =>
+      watch(
+        () => state.config.copilot.value.scripts.map(({ id }) => id),
+        (ids) => snapshots.push(ids),
+        { flush: 'sync' }
+      )
+    )
+    const paused = Promise.withResolvers()
+    const resume = Promise.withResolvers()
+    const get = state.client.get.getMockImplementation()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/789')) {
+        paused.resolve()
+        await resume.promise
+      }
+      return get(url)
     })
     component.code.value = 's123'
-    await component.download()
-    expect(state.config.copilot.value.scripts).toHaveLength(32)
-    expect(state.config.copilot.value.scripts.slice(0, 31).every(({ is_raid }) => is_raid)).toBe(
-      true
-    )
-    expect(state.config.copilot.value.scripts.at(-1)).toEqual({
-      id: second.id,
-      nav_name_override: '',
-      is_raid: false
+    const download = component.download()
+    await paused.promise
+    expect(snapshots).toEqual([])
+    component.add_script(second.id)
+    resume.resolve()
+    await download
+    expect(snapshots).toEqual([[second.id], [second.id, first.id, second.id, first.id]])
+  })
+
+  it('protects pending files in both editors until a mixed set publishes its queues', async () => {
+    const sss = scope.run(() => Sss.setup({}, { expose: () => {} }))
+    const paused = Promise.withResolvers()
+    const resume = Promise.withResolvers()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/maa-copilot-set/123')) return { data: { ids: ['1', '2', '3'] } }
+      if (url.endsWith('/3')) {
+        paused.resolve()
+        await resume.promise
+        throw new Error('offline')
+      }
+      if (url.includes('/network/')) {
+        return { data: { data: { content: url.endsWith('/2') ? '{"type":"SSS"}' : '{}' } } }
+      }
+      return { data: { scripts: [first, second] } }
     })
-    expect(component.failures.value).toEqual([
-      expect.stringContaining('本次需加入 2 项'),
-      expect.stringContaining('队列已满')
+    state.client.post.mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+    state.client.post.mockResolvedValueOnce({ data: second })
+    component.code.value = 's123'
+    const downloading = component.download()
+    await paused.promise
+    try {
+      component.selected.value = first.id
+      sss.selected.value = second.id
+      expect(state.config.copilot.value.scripts).toEqual([])
+      expect(state.config.sss.value.scripts).toEqual([])
+      await component.delete_script()
+      await sss.delete_script()
+      expect(state.client.delete).not.toHaveBeenCalled()
+      expect(component.canDelete.value).toBe(false)
+      expect(sss.canDelete.value).toBe(false)
+    } finally {
+      resume.resolve()
+      await downloading
+    }
+    expect(state.config.copilot.value.scripts.map((item) => item.is_raid)).toEqual([false, true])
+    expect(state.config.sss.value.scripts.map((item) => item.id)).toEqual([second.id])
+    state.config.sss.value.scripts = []
+    await sss.delete_script()
+    expect(state.client.delete).toHaveBeenCalledOnce()
+  })
+
+  it('finishes an in-flight deletion before a new import can restore the same file', async () => {
+    const deleting = Promise.withResolvers()
+    const finishDelete = Promise.withResolvers()
+    state.client.delete.mockImplementationOnce(() => {
+      deleting.resolve()
+      return finishDelete.promise
+    })
+    component.selected.value = first.id
+    const removal = component.delete_script()
+    await deleting.promise
+    mock_set(['456'])
+    component.code.value = 's123'
+    const downloading = component.download()
+    await Promise.resolve()
+    expect(state.client.get).not.toHaveBeenCalled()
+    finishDelete.resolve()
+    await Promise.all([downloading, removal])
+    expect(state.client.post).toHaveBeenCalledOnce()
+    expect(state.config.copilot.value.scripts.map((item) => item.id)).toEqual([first.id])
+  })
+
+  it('keeps surviving members and manual edits when another client deletes a stored file', async () => {
+    mock_set(['456', '789', '456'])
+    state.client.post.mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+    state.client.post.mockResolvedValueOnce({ data: second })
+    const saving = Promise.withResolvers()
+    const resume = Promise.withResolvers()
+    state.flush.mockImplementationOnce(async () => {
+      saving.resolve()
+      await resume.promise
+      throw {
+        response: {
+          status: 409,
+          data: {
+            code: 'copilot_scripts_missing',
+            missing_scripts: { copilot: [first.id] }
+          }
+        }
+      }
+    })
+    component.code.value = 's123'
+    const downloading = component.download()
+    await Promise.race([saving.promise, downloading])
+    expect(state.success).not.toHaveBeenCalled()
+    const manual = { id: second.id, nav_name_override: '手动编辑', is_raid: true }
+    state.config.copilot.value.scripts.unshift(manual)
+    resume.resolve()
+    await downloading
+    expect(state.config.copilot.value.scripts).toEqual([
+      manual,
+      { id: second.id, nav_name_override: '', is_raid: false }
     ])
+    expect(component.failures.value).toEqual([
+      expect.stringContaining('第 1 份（456）'),
+      expect.stringContaining('第 3 份（456）')
+    ])
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.warning).toHaveBeenCalledWith(expect.stringContaining('自动战斗 1 份'))
+    expect(state.flush).toHaveBeenCalledTimes(2)
+  })
+
+  it('reports an unconfirmed save without adding the imported entries again', async () => {
+    mock_set(['456'])
+    state.flush.mockRejectedValueOnce(new Error('connection lost'))
+    component.code.value = 's123'
+    await component.download()
+    expect(state.success).not.toHaveBeenCalled()
+    expect(state.error).toHaveBeenCalledWith(expect.stringContaining('刷新'))
+    expect(state.config.copilot.value.scripts.map((item) => item.id)).toEqual([first.id])
+    expect(state.flush).toHaveBeenCalledOnce()
+  })
+
+  it('imports a long set with repeated dual-difficulty members and keeps their order', async () => {
+    mock_set([...Array(80).fill('456'), '789'], { 456: 3 })
+    state.config.copilot.value.scripts = [{ id: second.id }]
+    state.client.post
+      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+      .mockResolvedValueOnce({ data: second })
+    component.code.value = 's123'
+    await component.download()
+    expect(state.client.get).toHaveBeenCalledTimes(3)
     expect(state.client.post).toHaveBeenCalledTimes(2)
+    expect(state.config.copilot.value.scripts).toHaveLength(162)
+    expect(
+      state.config.copilot.value.scripts.slice(1, -1).map(({ id, is_raid }) => [id, is_raid])
+    ).toEqual(Array.from({ length: 160 }, (_, i) => [first.id, i % 2 === 1]))
+    expect(state.config.copilot.value.scripts.at(-1).id).toBe(second.id)
+    expect(component.failures.value).toEqual([])
+  })
+
+  it('keeps server library errors separate from adding saved scripts to a long queue', async () => {
+    mock_set(['456', '789'])
+    const existing = Array.from({ length: 32 }, () => ({ id: second.id, is_raid: true }))
+    state.config.copilot.value.scripts = existing
+    state.client.post.mockRejectedValueOnce(new Error('作业存储已满'))
+    component.code.value = 's123'
+    await component.download()
+    component.add_script(first.id)
+    expect(state.config.copilot.value.scripts.slice(0, existing.length)).toEqual(existing)
+    expect(state.config.copilot.value.scripts.slice(existing.length).map(({ id }) => id)).toEqual([
+      second.id,
+      first.id
+    ])
+    expect(component.failures.value).toEqual(['第 1 份（456）：作业存储已满'])
   })
 
   it('ignores a duplicate download action while the current import is pending', async () => {
@@ -347,7 +484,7 @@ describe('ordinary Copilot library and queue', () => {
     complete()
     await firstDownload
     expect(state.config.copilot.value.scripts).toHaveLength(3)
-    expect(state.client.post).toHaveBeenCalledTimes(3)
+    expect(state.client.post).toHaveBeenCalledTimes(2)
   })
   it.each([
     '',
@@ -422,7 +559,7 @@ describe('ParadoxCopilot queue', () => {
     const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))
     state.client.get.mockImplementation(async (url) => ({
       data: url.includes('/maa-copilot-set/')
-        ? { ids: ['1', '2'] }
+        ? { ids: ['1', ...Array(40).fill('2')] }
         : {
             data: {
               content: url.endsWith('/2')
@@ -438,7 +575,9 @@ describe('ParadoxCopilot queue', () => {
       'maa-paradox',
       'maa-paradox'
     ])
-    expect(state.config.paradox.value.scripts).toEqual([{ id: first.id }])
+    expect(state.config.paradox.value.scripts).toEqual(
+      Array.from({ length: 40 }, () => ({ id: first.id }))
+    )
     expect(state.config.sss.value.scripts).toEqual([])
     expect(state.config.copilot.value.scripts).toEqual([])
     expect(paradox.failures.value).toEqual(['第 1 份（1）：请导入悖论模拟作业'])
@@ -446,7 +585,11 @@ describe('ParadoxCopilot queue', () => {
   it('imports through the paradox endpoint and only records the script id', async () => {
     state.config.paradox = ref({ scripts: [], run_id: '' })
     const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))
-    await paradox.upload_blob(new Blob(['{"stage_name":"mem_test_1","actions":[]}']))
+    await paradox.upload({
+      file: { file: new Blob(['{"stage_name":"mem_test_1","actions":[]}']) },
+      onFinish: vi.fn(),
+      onError: vi.fn()
+    })
     expect(state.client.post).toHaveBeenCalledWith(
       expect.stringMatching(/\/maa-paradox$/),
       expect.any(FormData)
