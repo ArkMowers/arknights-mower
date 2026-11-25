@@ -1049,3 +1049,81 @@ def test_copilot_does_not_start_without_confirmed_stage_map(scheduler, failure):
     scheduler.MAA.append_task.assert_not_called()
     scheduler.MAA.start.assert_not_called()
     assert scheduler.maa_copilot_progress["failed"] is True
+
+
+@pytest.mark.parametrize("mode", ["list", "single"])
+def test_manual_copilot_submits_from_current_screen_without_consuming_idle_queue(
+    scheduler, mode
+):
+    from arknights_mower.solvers.manual_tasks import run_manual_task
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    conf = base_schedule.config.conf.copilot
+    queue_pair()
+    conf.use_sanity_potion = True
+    conf.scripts[1].is_raid = True
+    task = SchedulerTask(datetime.now(), task_type=TaskTypes.MANUAL_COPILOT)
+    selection = (
+        {"mode": "single", "id": conf.scripts[1].id, "loop_times": 3}
+        if mode == "single"
+        else {"mode": "list", "scripts": [entry.model_dump() for entry in conf.scripts]}
+    )
+    scheduler.scene.side_effect = None
+    scheduler.scene.return_value = (
+        base_schedule.Scene.OPERATOR_BEFORE
+        if mode == "single"
+        else base_schedule.Scene.OPERATOR_CHOOSE_LEVEL
+    )
+    task.copilot_request = library.manual_copilot_request(conf, selection)
+    scheduler.task = task
+    scheduler.tasks.insert(0, task)
+    conf.scripts.clear()
+    assert run_manual_task(scheduler, task) is True
+    scheduler.MAA.append_task.assert_called_once()
+    name, params = scheduler.MAA.append_task.call_args.args
+    assert name == "Copilot"
+    if mode == "list":
+        assert [row["is_raid"] for row in params["copilot_list"]] == [False, True]
+        assert params["use_sanity_potion"]
+    else:
+        assert params["filename"].endswith(selection["id"] + ".json")
+        assert params["loop_times"] == 3
+        assert params["use_sanity_potion"] is False
+        assert "copilot_list" not in params
+    scheduler.MAA.start.assert_called_once()
+    scheduler.back_to_index.assert_not_called()
+    base_schedule.NavigationSolver.assert_not_called()
+    assert not getattr(scheduler, "maa_copilot_progress", None)
+
+
+@pytest.mark.parametrize(
+    "selection",
+    [
+        {"mode": "list", "scripts": []},
+        {"mode": "single", "id": "../../file"},
+        {"mode": "single", "id": "a" * 64, "loop_times": -1},
+        {"mode": "single", "id": "a" * 64},
+    ],
+)
+def test_reject_invalid_manual_selection(files, selection):
+    with pytest.raises(ValueError):
+        library.manual_copilot_request(CopilotConf(), selection)
+
+
+def test_deferred_manual_request_refuses_a_changed_game_screen(scheduler):
+    from arknights_mower.solvers.manual_tasks import run_manual_task
+    from arknights_mower.utils.scheduler_task import TaskTypes
+
+    conf = base_schedule.config.conf.copilot
+    task = SchedulerTask(datetime.now(), task_type=TaskTypes.MANUAL_COPILOT)
+    task.copilot_request = library.manual_copilot_request(
+        conf, {"mode": "single", "id": conf.scripts[0].id}
+    )
+    scheduler.task = task
+    scheduler.tasks.insert(0, task)
+    scheduler.scene.side_effect = None
+    scheduler.scene.return_value = base_schedule.Scene.INFRA_MAIN
+    with pytest.raises(ValueError, match="游戏页面已变化"):
+        run_manual_task(scheduler, task)
+    scheduler.MAA.start.assert_not_called()
+    scheduler.back_to_index.assert_not_called()

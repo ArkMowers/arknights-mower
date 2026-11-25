@@ -368,6 +368,34 @@ def copilot_navigation_target(item):
     raise ValueError("无法确定作业关卡，请填写导航关卡名，例如 1-7 或活动关卡编号")
 
 
+def manual_copilot_request(conf, selection):
+    from arknights_mower.utils.config.conf import CopilotScriptConf
+
+    if not isinstance(selection, dict):
+        raise ValueError("请选择要手动执行的作业")
+    mode = selection.get("mode")
+    loops = selection.get("loop_times", 1)
+    if type(loops) is not int or not 1 <= loops <= 9999:
+        raise ValueError("作业执行次数应为 1 至 9999")
+    if mode == "single":
+        item = CopilotScriptConf(id=selection.get("id"))
+        if not script_path(item.id).is_file():
+            raise ValueError("所选作业不存在，请刷新作业库")
+        entries = [item]
+    elif mode == "list" and loops == 1:
+        # The UI sends queue entries by value so edits cannot retarget a pending run.
+        raw = selection.get("scripts")
+        if not isinstance(raw, list) or not 1 <= len(raw) <= 32:
+            raise ValueError("请勾选 1 至 32 项作业")
+        entries = [CopilotScriptConf.model_validate(item) for item in raw]
+        if any(not script_path(item.id).is_file() for item in entries):
+            raise ValueError("所选作业不存在，请刷新作业库")
+    else:
+        raise ValueError("无效的手动作业模式")
+    settings = conf.model_copy(update={"scripts": entries})
+    return {"mode": mode, "loop_times": loops, "settings": settings.model_dump()}
+
+
 def build_paradox_params(item, index):
     path = script_path(item.id, paradox=True)
     with path.open("rb") as stream:
