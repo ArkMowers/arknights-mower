@@ -254,7 +254,13 @@ def test_resting_operator_shortcut_only_runs_with_adaptation_disabled(
 
 @pytest.mark.parametrize("opened", [False, True])
 def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch, opened):
-    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+    from arknights_mower.solvers.base_schedule import (
+        BaseSchedulerSolver,
+        TraineeCardUnavailable,
+    )
+    from arknights_mower.utils import schedule_roster
+
+    monkeypatch.setattr(schedule_roster, "cached_training_requirement", lambda _: None)
 
     monkeypatch.setattr(config.conf, "low_frame_rate_mode", False)
     solver = object.__new__(BaseSchedulerSolver)
@@ -278,8 +284,10 @@ def test_fast_training_search_stops_at_unchanged_end_page(monkeypatch, opened):
 
     solver.swipe_noinertia = MagicMock(side_effect=swipe)
     solver.verify_agent = MagicMock()
-    with pytest.raises(AgentSelectionNotReady, match="末尾"):
+    with pytest.raises(TraineeCardUnavailable, match="末尾") as missing:
         solver.choose_train_ope("砾")
+    assert "训练位选人时未识别到砾的可选卡片" in str(missing.value)
+    assert missing.value.source is None and "基础技能" in str(missing.value)
     assert not sidebar["opened"] and sidebar["label"] == "SPECIAL"
     solver.profession_filter.assert_called_once_with("SPECIAL")
     assert solver.device.tap.call_count == int(opened)
