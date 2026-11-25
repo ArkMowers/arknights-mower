@@ -477,6 +477,35 @@ describe('ordinary Copilot library and queue', () => {
     ])
   })
 
+  it('fills slots freed again during a later upload without replacing accepted members', async () => {
+    const third = { ...first, id: 'c'.repeat(64) }
+    mock_set(['456', '789', '111', '222'], { 456: 3 })
+    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: first.id }))
+    state.client.post
+      .mockImplementationOnce(async () => {
+        state.config.copilot.value.scripts.pop()
+        return { data: second }
+      })
+      .mockImplementationOnce(async () => {
+        state.config.copilot.value.scripts.splice(-2)
+        return { data: third }
+      })
+      .mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+    component.code.value = 's123'
+    await component.download()
+    expect(state.client.post).toHaveBeenCalledTimes(3)
+    expect(component.failures.value).toEqual([expect.stringContaining('第 4 份（222）')])
+    expect(state.config.copilot.value.scripts).toHaveLength(32)
+    expect(
+      state.config.copilot.value.scripts.slice(-4).map(({ id, is_raid }) => [id, is_raid])
+    ).toEqual([
+      [first.id, false],
+      [first.id, true],
+      [second.id, false],
+      [third.id, false]
+    ])
+  })
+
   it('reloads overflow content only for a candidate with a free slot', async () => {
     const ids = Array.from({ length: 12 }, (_, index) => String(100 + index))
     mock_set([...ids, '999'])

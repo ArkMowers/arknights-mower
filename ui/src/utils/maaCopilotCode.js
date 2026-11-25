@@ -197,8 +197,18 @@ export function useCopilotDownload({
       }
       // Complete the initial allocation first. Only unclaimed slots may fund another member.
       for (const entry of members) await admit(entry, initialSlots[entry.member.destination])
-      for (const entry of members) {
-        if (entry.waiting) await admit(entry, 32)
+      for (;;) {
+        const free = Object.fromEntries(destinations.map((key) => [key, remaining(key, 32)]))
+        const eligible = members.filter(
+          ({ waiting, member }) => waiting && member.slots <= free[member.destination]
+        )
+        if (!eligible.length) break
+        const lengths = destinations.map((key) => configs[key].value.scripts.length)
+        for (const entry of eligible) {
+          await admit(entry, 32)
+          // A new edit can make an earlier skipped member eligible before the next upload.
+          if (destinations.some((key, i) => configs[key].value.scripts.length !== lengths[i])) break
+        }
       }
       const counts = new Map()
       for (const destination of destinations) {
