@@ -7,17 +7,23 @@ import Sss from './MaaSss.vue'
 const state = vi.hoisted(() => ({
   config: {},
   client: null,
+  mountForRender: false,
   error: vi.fn(),
   warning: vi.fn(),
   success: vi.fn(),
   flush: vi.fn()
 }))
-vi.mock('vue', async (original) => ({
-  ...(await original()),
-  inject: (key) => (key === 'axios' ? state.client : false),
-  onMounted: () => {},
-  useSSRContext: () => ({ modules: new Set() })
-}))
+vi.mock('vue', async (original) => {
+  const vue = await original()
+  return {
+    ...vue,
+    inject: (key) => (key === 'axios' ? state.client : false),
+    onMounted: (callback) => {
+      if (state.mountForRender) vue.onServerPrefetch(callback)
+    },
+    useSSRContext: () => ({ modules: new Set() })
+  }
+})
 vi.mock('@/stores/config', () => ({
   useConfigStore: () => ({ ...state.config, flush_config_saves: state.flush })
 }))
@@ -43,11 +49,13 @@ vi.mock('naive-ui', async () => {
         'NFlex',
         'NForm',
         'NFormItem',
+        'NImage',
         'NInput',
         'NInputNumber',
         'NRadio',
         'NRadioGroup',
         'NSelect',
+        'NSpace',
         'NText',
         'NUpload'
       ].map((name) => [name, wrapper])
@@ -60,6 +68,7 @@ let component
 const first = { id: 'a'.repeat(64), stage_name: '1-7', title: '作业一' }
 const second = { id: 'b'.repeat(64), stage_name: 'CE-6', title: '作业二' }
 beforeEach(() => {
+  state.mountForRender = false
   vi.clearAllMocks()
   state.config = { copilot: ref({ scripts: [], user_additional: [] }), sss: ref({ scripts: [] }) }
   state.client = {
@@ -74,6 +83,51 @@ beforeEach(() => {
 afterEach(() => {
   scope.stop()
   vi.unstubAllGlobals()
+})
+
+describe('backup file count warning', () => {
+  const warning = '整机备份文件数接近上限。'
+  it.each([
+    [Component, {}, 'maa-copilot'],
+    [Component, { paradox: true }, 'maa-paradox'],
+    [Sss, {}, 'sss-copilot']
+  ])('renders the warning returned when the editor loads', async (editor, props, endpoint) => {
+    state.config.paradox = ref({ scripts: [] })
+    state.mountForRender = true
+    state.client.get.mockResolvedValueOnce({ data: { scripts: [], backup_warning: warning } })
+    const render = () => renderToString(createSSRApp(editor, props))
+    expect(await render()).toContain(warning)
+    expect(state.client.get).toHaveBeenCalledWith(
+      expect.stringMatching(new RegExp('/' + endpoint + '$'))
+    )
+    expect(await render()).not.toContain(warning)
+  })
+
+  it('updates the warning after upload and clears it after deleting the file', async () => {
+    state.client.get.mockResolvedValueOnce({ data: { scripts: [first], backup_warning: warning } })
+    await component.upload({
+      file: { file: new Blob(['{}']) },
+      onFinish: vi.fn(),
+      onError: vi.fn()
+    })
+    expect(component.backupWarning.value).toBe(warning)
+    state.config.copilot.value.scripts = []
+    await component.delete_script()
+    expect(component.backupWarning.value).toBe('')
+    expect(state.client.get).toHaveBeenCalledTimes(2)
+  })
+
+  it('preserves a successful download when the library refresh fails', async () => {
+    state.client.get
+      .mockResolvedValueOnce({ data: { data: { content: '{}' } } })
+      .mockRejectedValueOnce(new Error('offline'))
+    component.code.value = '456'
+    await component.download()
+    expect(state.config.copilot.value.scripts.map(({ id }) => id)).toEqual([first.id])
+    expect(component.failures.value).toEqual([])
+    expect(state.success).toHaveBeenCalledOnce()
+    expect(state.error).toHaveBeenCalledWith('读取作业失败')
+  })
 })
 
 describe('ordinary Copilot library and queue', () => {
@@ -139,7 +193,7 @@ describe('ordinary Copilot library and queue', () => {
           }
         }
       }
-      return { data: { scripts: [first, second] } }
+      return { data: { scripts: [first, second], backup_warning: '整机备份文件数接近上限。' } }
     })
     state.client.post.mockImplementation(async (_url, form) => {
       const content = JSON.parse(await form.get('copilot').text())
@@ -439,7 +493,8 @@ describe('ordinary Copilot library and queue', () => {
       .mockResolvedValueOnce({ data: second })
     component.code.value = 's123'
     await component.download()
-    expect(state.client.get).toHaveBeenCalledTimes(3)
+    expect(component.backupWarning.value).toBe('整机备份文件数接近上限。')
+    expect(state.client.get).toHaveBeenCalledTimes(4)
     expect(state.client.post).toHaveBeenCalledTimes(2)
     expect(state.config.copilot.value.scripts).toHaveLength(162)
     expect(
@@ -558,15 +613,17 @@ describe('ParadoxCopilot queue', () => {
     state.config.paradox = ref({ scripts: [], run_id: '' })
     const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))
     state.client.get.mockImplementation(async (url) => ({
-      data: url.includes('/maa-copilot-set/')
-        ? { ids: ['1', ...Array(40).fill('2')] }
-        : {
-            data: {
-              content: url.endsWith('/2')
-                ? '{"stage_name":"mem_test_1","actions":[]}'
-                : '{"type":"SSS"}'
+      data: url.endsWith('/maa-paradox')
+        ? { scripts: [first] }
+        : url.includes('/maa-copilot-set/')
+          ? { ids: ['1', ...Array(40).fill('2')] }
+          : {
+              data: {
+                content: url.endsWith('/2')
+                  ? '{"stage_name":"mem_test_1","actions":[]}'
+                  : '{"type":"SSS"}'
+              }
             }
-          }
     }))
     state.client.post.mockRejectedValueOnce(new Error('请导入悖论模拟作业'))
     paradox.code.value = 'S123'

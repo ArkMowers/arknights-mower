@@ -91,20 +91,29 @@ def backup_limit_label():
     return f"{get_backup_limit_bytes() / (1024 * 1024):g} MiB"
 
 
-def _local_snapshot():
-    """Read originals and index file/directory names with one directory walk."""
-    limit = get_backup_limit_bytes()
+def _config_entries():
     root = config.conf_path.parent
-    files, names = {}, {}
-    total = 0
     if root.is_symlink():
         raise LocalConfigError("本机 config 目录是符号链接，请改用普通目录后重试")
     for path in sorted(root.rglob("*")):
         if path.is_symlink():
             raise LocalConfigError("本机 config 目录包含符号链接，请移除链接后重试")
         name = path.relative_to(root).as_posix()
+        yield (
+            path,
+            name,
+            path.is_file() and name.casefold() not in EXPORT_EXCLUDED_FILES,
+        )
+
+
+def _local_snapshot():
+    """Read originals and index file/directory names with one directory walk."""
+    limit = get_backup_limit_bytes()
+    files, names = {}, {}
+    total = 0
+    for path, name, included in _config_entries():
         names[name.casefold()] = name
-        if not path.is_file() or name.casefold() in EXPORT_EXCLUDED_FILES:
+        if not included:
             continue
         if len(files) >= MAX_ARCHIVE_ENTRIES:
             raise LocalConfigError("本机配置文件数量超过 1024 个，请整理后重试")
@@ -148,14 +157,12 @@ def _copy_database(source, destination):
         reader.backup(writer, pages=256, progress=progress, sleep=0.05)
 
 
-def _tmp_snapshot(total):
-    limit = get_backup_limit_bytes()
+def _tmp_data_paths():
     root = get_path("@app/tmp")
-    files = {}
     if root.is_symlink():
         raise LocalConfigError("本机 tmp 目录是符号链接，请改用普通目录后重试")
     if not root.exists():
-        return files
+        return
     if not root.is_dir():
         raise LocalConfigError("本机 tmp 路径不是目录，请改用普通目录后重试")
     for suffix in ("-wal", "-shm", "-journal"):
@@ -174,9 +181,37 @@ def _tmp_snapshot(total):
         ):
             continue
         path = root / name
-        if not path.is_file():
-            continue
-        if name == "data.db":
+        if path.is_file():
+            yield path
+
+
+def backup_entry_warning():
+    try:
+        count = sum(included for _, _, included in _config_entries())
+        count += sum(1 for _ in _tmp_data_paths())
+    except (OSError, LocalConfigError):
+        return None
+    if count * 10 < MAX_ARCHIVE_ENTRIES * 9:
+        return None
+    usage = (
+        f"当前配置和数据共需备份 {count} 个文件，备份上限为 {MAX_ARCHIVE_ENTRIES} 个。"
+    )
+    if count > MAX_ARCHIVE_ENTRIES:
+        return (
+            usage + "导出备份、切换档案和恢复备份都会失败，请先清理不再使用的作业文件。"
+        )
+    return (
+        usage
+        + "导出和恢复备份受此上限约束。切换档案还需预留一个文件来记录当前选用的周计划。"
+        "可提前清理不再使用的作业文件。"
+    )
+
+
+def _tmp_snapshot(total):
+    limit = get_backup_limit_bytes()
+    files = {}
+    for path in _tmp_data_paths():
+        if path.name == "data.db":
             try:
                 with TemporaryDirectory(dir=temporary_root()) as directory:
                     snapshot = Path(directory) / "data.db"
@@ -194,7 +229,7 @@ def _tmp_snapshot(total):
             raise LocalConfigError(
                 f"本机配置和数据内容超过 {backup_limit_label()}，无法生成备份"
             )
-        files[name] = content
+        files[path.name] = content
     return files
 
 

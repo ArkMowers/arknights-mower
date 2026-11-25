@@ -61,16 +61,10 @@ async function importMember(axios, id, kind, mixed) {
 const mixedLibrary = { imports: ref(0), deletions: new Set() }
 const paradoxLibrary = { imports: ref(0), deletions: new Set() }
 
-export function useCopilotLibrary({
-  axios,
-  configs,
-  kind,
-  selected,
-  library,
-  refresh,
-  message,
-  store
-}) {
+export function useCopilotLibrary({ axios, configs, kind, message, store }) {
+  const library = ref([])
+  const selected = ref(null)
+  const backupWarning = ref('')
   const activity = kind === 'paradox' ? paradoxLibrary : mixedLibrary
   const endpoint = copilotLibraryUrl(kind)
   const loading = ref(false)
@@ -80,6 +74,18 @@ export function useCopilotLibrary({
       !!selected.value &&
       !configs[kind].value.scripts.some((item) => item.id === selected.value)
   )
+  let latestRefresh = 0
+  async function refresh() {
+    const request = ++latestRefresh
+    try {
+      const { data } = await axios.get(endpoint)
+      if (request !== latestRefresh) return
+      library.value = data.scripts
+      backupWarning.value = data.backup_warning || ''
+    } catch (error) {
+      if (request === latestRefresh) message.error(error.response?.data?.message || '读取作业失败')
+    }
+  }
   async function beginImport() {
     activity.imports.value++
     if (activity.deletions.size) await Promise.allSettled(activity.deletions)
@@ -228,6 +234,7 @@ export function useCopilotLibrary({
         }
       }
 
+      if (cached.size) await refresh()
       await publishImports(imports, errors)
       if (imports.has(kind)) selected.value = imports.get(kind).at(-1).script.id
       failures.value = errors.filter(Boolean)
@@ -254,5 +261,17 @@ export function useCopilotLibrary({
       loading.value = false
     }
   }
-  return { code, canDelete, delete_script, download, failures, loading, upload }
+  return {
+    backupWarning,
+    code,
+    canDelete,
+    delete_script,
+    download,
+    failures,
+    library,
+    loading,
+    refresh,
+    selected,
+    upload
+  }
 }

@@ -58,9 +58,11 @@ describe('MAA ordinary Copilot config', () => {
     await store.flush_config_saves()
     const missingId = 'a'.repeat(64)
     const retainedId = 'b'.repeat(64)
-    axios.get.mockImplementation(async (url) => ({
-      data: url.includes('copilot-set') ? { ids: ['1', '2'] } : { data: { content: '{}' } }
-    }))
+    axios.get.mockImplementation(async (url) => {
+      if (url.endsWith('/maa-copilot')) return { data: { scripts: [{ id: retainedId }] } }
+      if (url.includes('copilot-set')) return { data: { ids: ['1', '2'] } }
+      return { data: { data: { content: '{}' } } }
+    })
     axios.post.mockResolvedValueOnce({ data: { id: missingId, difficulty: 3 } })
     axios.post.mockResolvedValueOnce({ data: { id: retainedId } })
     axios.patch.mockImplementation(async (_url, patch) => {
@@ -85,9 +87,6 @@ describe('MAA ordinary Copilot config', () => {
           axios,
           configs: storeToRefs(store),
           kind: 'copilot',
-          selected: ref(null),
-          library: ref([]),
-          refresh: vi.fn(),
           message,
           store
         })

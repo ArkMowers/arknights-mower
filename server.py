@@ -3420,6 +3420,7 @@ COPILOT_LIBRARY_ROUTE = "/<any('maa-copilot','maa-paradox','sss-copilot'):librar
 @app.route(COPILOT_LIBRARY_ROUTE, methods=["GET", "POST"])
 @require_token
 def maa_copilot_library(library):
+    from arknights_mower.utils.config_backup import backup_entry_warning
     from arknights_mower.utils.maa_copilot import (
         MAX_SCRIPT_BYTES,
         list_scripts,
@@ -3431,7 +3432,11 @@ def maa_copilot_library(library):
             sss = library == "sss-copilot"
             paradox = library == "maa-paradox"
             if request.method in ("GET", "HEAD"):
-                return {"scripts": list_scripts(sss=sss, paradox=paradox)}
+                result = {"scripts": list_scripts(sss=sss, paradox=paradox)}
+                warning = backup_entry_warning()
+                if warning:
+                    result["backup_warning"] = warning
+                return result
             upload = request.files.get("copilot")
             if upload is None:
                 return {"message": "没有收到作业文件"}, 400
