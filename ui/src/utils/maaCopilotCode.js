@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 export function parseCopilotCode(value) {
   const code = value.trim()
@@ -57,16 +57,72 @@ async function importMember(axios, id, kind, mixed) {
   return { destination, script: stored }
 }
 
-export function useCopilotDownload({
+// A mixed set can write to both the ordinary and SSS libraries before publishing either queue.
+const mixedLibrary = { imports: ref(0), deletions: new Set() }
+const paradoxLibrary = { imports: ref(0), deletions: new Set() }
+
+export function useCopilotLibrary({
   axios,
   configs,
   kind,
-  loading,
   selected,
   library,
   refresh,
-  message
+  message,
+  store
 }) {
+  const activity = kind === 'paradox' ? paradoxLibrary : mixedLibrary
+  const endpoint = copilotLibraryUrl(kind)
+  const loading = ref(false)
+  const canDelete = computed(
+    () =>
+      !activity.imports.value &&
+      !!selected.value &&
+      !configs[kind].value.scripts.some((item) => item.id === selected.value)
+  )
+  async function beginImport() {
+    activity.imports.value++
+    if (activity.deletions.size) await Promise.allSettled(activity.deletions)
+  }
+  async function delete_script() {
+    if (!canDelete.value) return
+    const id = selected.value
+    try {
+      await store.flush_config_saves()
+      if (!canDelete.value || selected.value !== id) return
+      const deletion = axios.delete(`${endpoint}/${id}`)
+      activity.deletions.add(deletion)
+      try {
+        await deletion
+      } finally {
+        activity.deletions.delete(deletion)
+      }
+      if (selected.value === id) selected.value = null
+      await refresh()
+    } catch (error) {
+      message.error(error.response?.data?.message || '删除作业失败')
+    }
+  }
+  async function upload({ file, onFinish, onError }) {
+    loading.value = true
+    try {
+      await beginImport()
+      const form = new FormData()
+      form.append('copilot', file.file)
+      const { data } = await axios.post(endpoint, form)
+      await refresh()
+      selected.value = data.id
+      appendCopilotScript(configs, kind, data)
+      message.success('作业已导入并加入队列')
+      onFinish()
+    } catch (error) {
+      message.error(error.response?.data?.message || error.message || '作业导入失败')
+      onError()
+    } finally {
+      activity.imports.value--
+      loading.value = false
+    }
+  }
   const code = ref('')
   const failures = ref([])
   watch(
@@ -86,6 +142,7 @@ export function useCopilotDownload({
     loading.value = true
     failures.value = []
     try {
+      await beginImport()
       const target = parseCopilotCode(code.value)
       const mixed = target.set && kind !== 'paradox'
       const ids = target.set
@@ -145,8 +202,9 @@ export function useCopilotDownload({
         error.response?.data?.message || error.message || '作业下载失败，请检查网络代理'
       )
     } finally {
+      activity.imports.value--
       loading.value = false
     }
   }
-  return { code, download, failures }
+  return { code, canDelete, delete_script, download, failures, loading, upload }
 }

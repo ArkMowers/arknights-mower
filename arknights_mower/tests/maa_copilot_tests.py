@@ -881,6 +881,31 @@ def test_large_task_real_dispatch_has_no_daily_or_repeat_parameters(scheduler):
     scheduler.append_maa_theme_task.assert_not_called()
 
 
+def test_idle_copilot_reads_only_the_current_queue_entry(scheduler):
+    queue_pair()
+    conf = base_schedule.config.conf.copilot
+    first, second = conf.scripts
+    raid = first.model_copy(update={"is_raid": True})
+    missing = second.model_copy(update={"id": "f" * 64})
+    conf.scripts = [second] * 98 + [raid, missing]
+    scheduler._maa_copilot_run(conf)["next"] = 98
+    scheduler.MAA.start.side_effect = lambda: emit(scheduler, 10002, 1)
+
+    scheduler.maa_plan_solver([])
+
+    scheduler.MAA.append_task.assert_called_once()
+    _, params = scheduler.MAA.append_task.call_args.args
+    assert params["copilot_list"] == [
+        {
+            "filename": str(library.script_path(raid.id)),
+            "is_raid": True,
+            "nav_name_override": "1-7",
+        }
+    ]
+    assert scheduler.maa_copilot_progress["next"] == 99
+    assert scheduler.maa_copilot_progress["failed"] is True
+
+
 def test_scheduled_preemption_stops_without_theme_restoration_or_lost_task(
     scheduler, monkeypatch
 ):

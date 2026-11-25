@@ -276,11 +276,12 @@ def copilot_formation_params(params, conf, maa):
         yield {**params, "operbox_data_path": str(path.absolute())}
 
 
-def build_copilot_params(conf, work_dir):
+def build_copilot_params(conf, work_dir, *, index=None):
     if not conf.scripts:
         raise ValueError("请先导入并选择自动战斗作业")
     queue = []
-    for item in conf.scripts:
+    scripts = conf.scripts if index is None else [conf.scripts[index]]
+    for item in scripts:
         path = script_path(item.id)
         with path.open("rb") as stream:
             data = parse_script(stream.read(MAX_SCRIPT_BYTES + 1))

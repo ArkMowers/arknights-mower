@@ -37,15 +37,16 @@ const canRun = computed(() =>
 )
 async function submit() {
   if (submitting.value || !canRun.value) return
-  const copilot =
-    mode.value === 'single'
-      ? { mode: 'single', id: props.selected, loop_times: times.value }
-      : {
-          mode: 'list',
-          scripts: props.scripts
-            .filter((_, i) => chosen.value.includes(i))
-            .map((item) => ({ ...item }))
-        }
+  let copilot
+  if (mode.value === 'single') {
+    copilot = { mode: 'single', id: props.selected, loop_times: times.value }
+  } else {
+    const selected = new Set(chosen.value)
+    copilot = {
+      mode: 'list',
+      scripts: props.scripts.filter((_, index) => selected.has(index)).map((item) => ({ ...item }))
+    }
+  }
   submitting.value = true
   try {
     await store.flush_config_saves()

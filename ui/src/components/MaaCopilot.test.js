@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSSRApp, effectScope, ref, watch } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import Component from './MaaCopilot.vue'
+import Sss from './MaaSss.vue'
 
 const state = vi.hoisted(() => ({
   config: {},
@@ -200,7 +201,11 @@ describe('ordinary Copilot library and queue', () => {
       const info = { ...first, difficulty }
       state.client.post.mockResolvedValue({ data: info })
       state.client.get.mockResolvedValue({ data: { scripts: [info] } })
-      await component.upload_blob(new Blob(['{}']))
+      await component.upload({
+        file: { file: new Blob(['{}']) },
+        onFinish: vi.fn(),
+        onError: vi.fn()
+      })
       component.add_script(first.id)
       expect(state.config.copilot.value.scripts.map((item) => item.is_raid)).toEqual([
         ...expected,
@@ -310,6 +315,69 @@ describe('ordinary Copilot library and queue', () => {
     resume.resolve()
     await download
     expect(snapshots).toEqual([[second.id], [second.id, first.id, second.id, first.id]])
+  })
+
+  it('protects pending files in both editors until a mixed set publishes its queues', async () => {
+    const sss = scope.run(() => Sss.setup({}, { expose: () => {} }))
+    const paused = Promise.withResolvers()
+    const resume = Promise.withResolvers()
+    state.client.get.mockImplementation(async (url) => {
+      if (url.endsWith('/maa-copilot-set/123')) return { data: { ids: ['1', '2', '3'] } }
+      if (url.endsWith('/3')) {
+        paused.resolve()
+        await resume.promise
+        throw new Error('offline')
+      }
+      if (url.includes('/network/')) {
+        return { data: { data: { content: url.endsWith('/2') ? '{"type":"SSS"}' : '{}' } } }
+      }
+      return { data: { scripts: [first, second] } }
+    })
+    state.client.post.mockResolvedValueOnce({ data: { ...first, difficulty: 3 } })
+    state.client.post.mockResolvedValueOnce({ data: second })
+    component.code.value = 's123'
+    const downloading = component.download()
+    await paused.promise
+    try {
+      component.selected.value = first.id
+      sss.selected.value = second.id
+      expect(state.config.copilot.value.scripts).toEqual([])
+      expect(state.config.sss.value.scripts).toEqual([])
+      await component.delete_script()
+      await sss.delete_script()
+      expect(state.client.delete).not.toHaveBeenCalled()
+      expect(component.canDelete.value).toBe(false)
+      expect(sss.canDelete.value).toBe(false)
+    } finally {
+      resume.resolve()
+      await downloading
+    }
+    expect(state.config.copilot.value.scripts.map((item) => item.is_raid)).toEqual([false, true])
+    expect(state.config.sss.value.scripts.map((item) => item.id)).toEqual([second.id])
+    state.config.sss.value.scripts = []
+    await sss.delete_script()
+    expect(state.client.delete).toHaveBeenCalledOnce()
+  })
+
+  it('finishes an in-flight deletion before a new import can restore the same file', async () => {
+    const deleting = Promise.withResolvers()
+    const finishDelete = Promise.withResolvers()
+    state.client.delete.mockImplementationOnce(() => {
+      deleting.resolve()
+      return finishDelete.promise
+    })
+    component.selected.value = first.id
+    const removal = component.delete_script()
+    await deleting.promise
+    mock_set(['456'])
+    component.code.value = 's123'
+    const downloading = component.download()
+    await Promise.resolve()
+    expect(state.client.get).not.toHaveBeenCalled()
+    finishDelete.resolve()
+    await Promise.all([downloading, removal])
+    expect(state.client.post).toHaveBeenCalledOnce()
+    expect(state.config.copilot.value.scripts.map((item) => item.id)).toEqual([first.id])
   })
 
   it('imports a long set with repeated dual-difficulty members and keeps their order', async () => {
@@ -466,7 +534,11 @@ describe('ParadoxCopilot queue', () => {
   it('imports through the paradox endpoint and only records the script id', async () => {
     state.config.paradox = ref({ scripts: [], run_id: '' })
     const paradox = scope.run(() => Component.setup({ paradox: true }, { expose: () => {} }))
-    await paradox.upload_blob(new Blob(['{"stage_name":"mem_test_1","actions":[]}']))
+    await paradox.upload({
+      file: { file: new Blob(['{"stage_name":"mem_test_1","actions":[]}']) },
+      onFinish: vi.fn(),
+      onError: vi.fn()
+    })
     expect(state.client.post).toHaveBeenCalledWith(
       expect.stringMatching(/\/maa-paradox$/),
       expect.any(FormData)

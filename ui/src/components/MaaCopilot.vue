@@ -3,7 +3,7 @@ import { computed, inject, onMounted, ref } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useMessage } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
-import { appendCopilotScript, copilotLibraryUrl, useCopilotDownload } from '@/utils/maaCopilotCode'
+import { appendCopilotScript, copilotLibraryUrl, useCopilotLibrary } from '@/utils/maaCopilotCode'
 import MaaManualCopilot from './MaaManualCopilot.vue'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
@@ -18,12 +18,8 @@ const kind = props.paradox ? 'paradox' : 'copilot'
 const endpoint = copilotLibraryUrl(kind)
 const library = ref([])
 const selected = ref(null)
-const loading = ref(false)
 const options = computed(() =>
   library.value.map((item) => ({ label: `${item.stage_name} · ${item.title}`, value: item.id }))
-)
-const selected_in_queue = computed(() =>
-  copilot.value.scripts.some((item) => item.id === selected.value)
 )
 const formation_options = [0, 1, 2, 3, 4].map((value) => ({
   value,
@@ -54,48 +50,16 @@ function add_script(id) {
   if (!script) return
   appendCopilotScript(configs, kind, script)
 }
-async function upload_blob(blob) {
-  const form = new FormData()
-  form.append('copilot', blob)
-  const { data } = await axios.post(endpoint, form)
-  await refresh()
-  selected.value = data.id
-  appendCopilotScript(configs, kind, data)
-  message.success('作业已导入并加入队列')
-}
-async function upload({ file, onFinish, onError }) {
-  loading.value = true
-  try {
-    await upload_blob(file.file)
-    onFinish()
-  } catch (error) {
-    message.error(error.response?.data?.message || error.message || '作业导入失败')
-    onError()
-  } finally {
-    loading.value = false
-  }
-}
-const { code, download, failures } = useCopilotDownload({
+const { code, canDelete, delete_script, download, failures, loading, upload } = useCopilotLibrary({
   axios,
   configs,
   kind,
-  loading,
   selected,
   library,
   refresh,
-  message
+  message,
+  store
 })
-async function delete_script() {
-  if (!selected.value || selected_in_queue.value) return
-  try {
-    await store.flush_config_saves()
-    await axios.delete(`${endpoint}/${selected.value}`)
-    selected.value = null
-    await refresh()
-  } catch (error) {
-    message.error(error.response?.data?.message || '删除作业失败')
-  }
-}
 function move(index, offset) {
   const scripts = [...copilot.value.scripts]
   const target = index + offset
@@ -180,9 +144,7 @@ async function restart_queue() {
         />
         <n-flex>
           <n-button :disabled="!selected" @click="add_script(selected)">加入队列</n-button>
-          <n-button :disabled="!selected || selected_in_queue" @click="delete_script"
-            >删除未选作业</n-button
-          >
+          <n-button :disabled="!canDelete" @click="delete_script">删除未选作业</n-button>
         </n-flex>
       </n-flex>
     </n-form-item>
