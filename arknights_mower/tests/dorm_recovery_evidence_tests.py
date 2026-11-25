@@ -700,6 +700,33 @@ def test_bedside_button_requires_the_named_visible_card(
     solver.tap.assert_not_called()
 
 
+@pytest.mark.parametrize("asset", ["missing", "blank", "broken"])
+def test_unusable_bedside_template_uses_conventional_order(
+    full_dorm_with_wrong_recipient, monkeypatch, asset
+):
+    import numpy as np
+
+    from arknights_mower.solvers import base_schedule
+
+    solver, final, _ = full_dorm_with_wrong_recipient
+    load = base_schedule.loadres
+
+    def load_icon(resource, gray=False):
+        if resource != "dorm_remove_resident":
+            return load(resource, gray)
+        if asset == "missing":
+            raise FileNotFoundError(resource)
+        if asset == "blank":
+            return np.zeros((47, 47), np.uint8)
+        return None
+
+    monkeypatch.setattr(base_schedule, "loadres", load_icon)
+    arrange(solver)
+    solver.tap.assert_not_called()
+    assert solver.confirms == [final[:3] + ["", ""], final]
+    assert solver.physical == final and not solver.task.plan
+
+
 @pytest.mark.parametrize("enabled", [False, True])
 @pytest.mark.parametrize("outcome", ["delivered", "missed", "disconnected"])
 def test_bedside_correction_from_original_task(solver, monkeypatch, enabled, outcome):

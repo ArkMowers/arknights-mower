@@ -19210,11 +19210,18 @@ class BaseSchedulerSolver(
         elif room.startswith("dorm") or room == "central":
             maximum = 5
         length = min(length, maximum)
-        count = (
-            room_occupancy(counted_gray, length)
-            if training_observation is None
-            else None
-        )
+        if room.startswith("room_") and not self.op_data.plan.get(room):
+            # 初始化也会扫描未排班的工作间，清晰的人数栏给出实有岗位数。
+            actual = read_room_occupancy(counted_gray)
+            count = None
+            if actual is not None and actual[1] <= maximum:
+                count, length = actual
+        else:
+            count = (
+                room_occupancy(counted_gray, length)
+                if training_observation is None
+                else None
+            )
 
         def visible_work_slots(gray):
             if (
@@ -19244,8 +19251,9 @@ class BaseSchedulerSolver(
             first_end = self.scroll_room_operators(bottom=None, room=room)
         elif length > 3:
             self.scroll_room_operators(bottom=False)
+        lower_visible = ((2, 323), (3, 532), (4, 741))
         visible = (
-            [(2, 323), (3, 532), (4, 741)]
+            lower_visible
             if first_end is True
             else [(i, 135 + i * 209) for i in range(min(length, 4))]
         )
@@ -19344,11 +19352,18 @@ class BaseSchedulerSolver(
             if length < maximum and visible_work_slots(gray) > length:
                 raise RecognizeError(f"换帧后房间 {room} 出现额外岗位，重新读房")
             if counted_names is not None:
+                expected = [""] * length
+                for j, _ in visible:
+                    expected[j] = counted_names[j]
                 matches = room_occupancy(gray, length) == count and (
                     BaseSchedulerSolver._count_visible_room_names(
-                        self, gray, count, length, visible
+                        self,
+                        gray,
+                        sum(bool(name) for name in expected),
+                        length,
+                        visible,
                     )
-                    == counted_names
+                    == expected
                 )
             else:
                 # 人数栏看不清时，只复核前面已实读的岗位和正在重读的岗位。
@@ -19405,7 +19420,7 @@ class BaseSchedulerSolver(
             except (ValueError, OverflowError):
                 return None
 
-        def read_slot_time(i, name):
+        def read_slot_time(i, name, *, same_frame_only=False):
             if not isinstance(first_end, bool) and counted_names is None:
                 deadline = self.read_operator_time(room, i, time_p[i])
                 if short_fallback:
@@ -19433,6 +19448,8 @@ class BaseSchedulerSolver(
                         return captured_at + timedelta(seconds=seconds)
                     except OverflowError:
                         pass
+            if same_frame_only:
+                return None
             if saved:
                 open_lower_slots()
             deadline = self.read_operator_time(room, i, time_p[i])
@@ -19457,7 +19474,9 @@ class BaseSchedulerSolver(
 
         result = []
         observation_complete = True
-        for i in range(0, length):
+        reread_fourth = False
+        while len(result) < length:
+            i = len(result)
             if length == 5 and config.stop_mower.is_set():
                 raise MowerExit
             if (
@@ -19708,7 +19727,32 @@ class BaseSchedulerSolver(
                                 needs_time or update_time or full_bar_with_timer
                             )
                     if needs_time and slot_deadline is None:
-                        slot_deadline = read_slot_time(i, _name)
+                        same_frame_only = (
+                            retain_dorm_time
+                            and i == 3
+                            and (offsets[i] > 0 or reread_fourth)
+                        )
+                        slot_deadline = read_slot_time(
+                            i, _name, same_frame_only=same_frame_only
+                        )
+                        if same_frame_only and slot_deadline is None:
+                            if reread_fourth:
+                                raise RecognizeError(
+                                    f"房间 {room} 第 4 床的到满倒计时未核实"
+                                )
+                            # 上端第 4 床的计时在遮罩内。换端核实名单后，重读同一人的整张卡。
+                            first_end = self.scroll_room_operators(bottom=True)
+                            if same_capture(counted_gray, counted_rgb, counted_at):
+                                raise RecognizeError(f"房间 {room} 的下端画面未刷新")
+                            visible = lower_visible
+                            check_roster_frame()
+                            dy = offsets[i]
+                            offsets[i] = 0
+                            slot_y[i] = tuple(y - dy for y in slot_y[i])
+                            for scopes in (slot_p, name_p, time_p, mood_p):
+                                scopes[i] = tuple((x, y - dy) for x, y in scopes[i])
+                            reread_fourth = True
+                            continue
                 if (
                     facility_observation
                     and update_time
@@ -20309,7 +20353,17 @@ class BaseSchedulerSolver(
         )
         if name != resident:
             raise RecognizeError(f"{room} 第{index + 1}床住客已变化，重新核对房间")
-        icon = loadres("dorm_remove_resident", gray=True)
+        try:
+            icon = loadres("dorm_remove_resident", gray=True)
+        except (OSError, cv2.error):
+            return None
+        if (
+            not isinstance(icon, np.ndarray)
+            or icon.dtype != np.uint8
+            or icon.shape != (47, 47)
+            or not np.ptp(icon)
+        ):
+            return None
         button = cropimg(gray, ((1804, top + 64), (1862, top + 132)))
         _, score, _, (left, upper) = cv2.minMaxLoc(
             cv2.matchTemplate(button, icon, cv2.TM_CCOEFF_NORMED)

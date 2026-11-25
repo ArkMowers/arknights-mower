@@ -214,6 +214,30 @@ def test_small_facilities_keep_physical_slots_without_extra_room_title_read(
     s.swipe.assert_not_called()
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("tag", ["m203-empty1", "m302-empty2", "b102-empty3"])
+def test_unplanned_work_room_reads_only_existing_slots(room_reader, tag, enabled):
+    s, _ = room_reader(tag)
+    room, expected = CASES[tag]
+    del s.op_data.plan[room]
+    s.op_data.mood_calculation_enabled = enabled
+    result = s.get_agent_from_room(room, strict_observation=True)
+    assert tuple(row["agent"] for row in result) == expected
+    assert full_icon_searches(s) == 0
+    s.sleep.assert_not_called()
+    s.swipe.assert_not_called()
+
+
+def test_unplanned_work_room_rechecks_cards_beyond_a_short_footer(room_reader, frame):
+    s, _ = room_reader("b102-empty1")
+    del s.op_data.plan[B102]
+    s.recog.gray[1003:1060, 1595:] = frame("m203-initial")[1003:1060, 1595:]
+    result = s.get_agent_from_room(B102, strict_observation=True)
+    assert tuple(row["agent"] for row in result) == CASES["b102-empty1"][1]
+    assert full_icon_searches(s) == 3
+    s.swipe.assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("tag", "swipes"),
     [
@@ -647,3 +671,56 @@ def test_edge_card_name_mood_and_raw_countdown_follow_same_offset(
     assert rows[i]["time"] == captured_at + timedelta(seconds=seconds)
     s.swipe.assert_not_called()
     s.read_operator_time.assert_not_called()
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("evidence", [False, True])
+@pytest.mark.parametrize("outcome", ["readable", "changed", "still_masked"])
+def test_unreadable_upper_fourth_deadline_reads_the_resident_at_the_lower_end(
+    room_reader, frame, local_ocr, monkeypatch, enabled, evidence, outcome
+):
+    from arknights_mower.utils import rapidocr
+
+    monkeypatch.setattr(rapidocr, "engine", local_ocr)
+    s, install = room_reader("clear-hi-off-pair_top")
+    s.op_data.mood_calculation_enabled = enabled
+    gray = frame("clear-hi-off-pair_top")
+    # 上端第 4 床的残字来自计时样本。区分两帧条宽，以核对最终心情的来源。
+    with Image.open(
+        Path(__file__).parent / "fixtures/resident_timers_20261125.png"
+    ) as im:
+        masked_clock = np.asarray(im.convert("L"))[9 * 36 : 9 * 36 + 35, :130]
+    gray[898:933, 1650:1780] = masked_clock
+    gray[845, 1750:1780] = 0
+    install(gray)
+    lower = frame("clear-hi-off-pair_bottom")
+    if outcome == "changed":
+        lower[557:612, 1460:1785] = frame("b102-initial")[160:215, 1460:1785]
+    elif outcome == "still_masked":
+        lower[668:703, 1650:1780] = masked_clock
+    s.swipe.side_effect = lambda *args, **kwargs: install(lower)
+    s.read_operator_time = BaseSchedulerSolver.read_operator_time.__get__(s)
+    if outcome == "readable":
+        rows = s.get_agent_from_room(DORM, [3], read_dorm_evidence=evidence)
+        assert tuple(row["agent"] for row in rows) == PAIR
+        assert rows[3]["recovery_seconds"] == 34 * 60 + 35
+        assert rows[3]["time"] == s.recog.capture_started_at + timedelta(
+            minutes=34, seconds=35
+        )
+        assert rows[3]["measured_mood"] == pytest.approx(293 * 24 / 310)
+    else:
+        with pytest.raises(RecognizeError):
+            s.get_agent_from_room(DORM, [3], read_dorm_evidence=evidence)
+        assert all(c.args[3] < 3 for c in s.op_data.update_detail.call_args_list)
+        s.op_data.refresh_dorm_time.assert_not_called()
+        s._reconcile_room_observation.assert_not_called()
+    timer_rows = [
+        c.kwargs["cord"][0][1]
+        for c in s.read_screen.call_args_list
+        if c.kwargs["type"] == "time"
+    ]
+    assert timer_rows.count(898) == 1 and timer_rows.count(668) == int(
+        outcome != "changed"
+    )
+    s.swipe.assert_called_once()
+    assert s.detect_room.call_count == 2
