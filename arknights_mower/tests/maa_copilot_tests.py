@@ -223,7 +223,13 @@ def test_every_library_method_rejects_unauthenticated_work(
     monkeypatch.setattr(
         config_backup, "backup_entry_warning", lambda: calls.append("backup")
     )
-    for name in ("get_path", "list_scripts", "store_script", "script_path"):
+    for name in (
+        "get_path",
+        "list_scripts",
+        "parse_script",
+        "store_parsed_script",
+        "script_path",
+    ):
         monkeypatch.setattr(library, name, lambda *a: calls.append(a))
     response = client.open(
         path, method=method, headers={} if token is None else {"token": token}
@@ -290,6 +296,61 @@ def test_library_imports_and_lists_more_than_64_distinct_files(
     assert [entry["id"] for entry in response.get_json()["scripts"]] == sorted(ids)
 
 
+def test_import_check_error_still_allows_saving_the_queue(
+    client, queue_config_path, monkeypatch
+):
+    import server
+    from arknights_mower.utils import maa_copilot_roster
+
+    def unavailable(data):
+        raise RuntimeError("roster unavailable")
+
+    monkeypatch.setattr(maa_copilot_roster, "check_copilot_roster", unavailable)
+    headers = {"token": "copilot-test-token"}
+    imported = client.post(
+        "/maa-copilot",
+        headers=headers,
+        data={"copilot": (io.BytesIO(json.dumps(SCRIPT).encode()), "copilot.json")},
+    )
+    assert imported.status_code == 200
+    info = imported.get_json()
+    assert info["roster_check"]["status"] == "unknown"
+    assert library.script_path(info["id"]).is_file()
+    response = client.patch(
+        "/conf", headers=headers, json={"copilot": {"scripts": [{"id": info["id"]}]}}
+    )
+    assert response.status_code == 200
+    assert server.config.conf.copilot.scripts[0].id == info["id"]
+
+
+def test_library_reloads_the_current_roster_for_existing_queue_items(
+    client, monkeypatch
+):
+    from arknights_mower.utils import maa_copilot_roster
+
+    results = [
+        {"status": "shortfall", "gaps": [], "can_borrow": True},
+        {"status": "ready", "gaps": [], "can_borrow": False},
+    ]
+    checker = MagicMock(side_effect=results)
+    monkeypatch.setattr(maa_copilot_roster, "check_copilot_roster", checker)
+    headers = {"token": "copilot-test-token"}
+    saved = client.post(
+        "/maa-copilot",
+        headers=headers,
+        data={"copilot": (io.BytesIO(json.dumps(SCRIPT).encode()), "copilot.json")},
+    ).get_json()
+    assert saved["roster_check"] == results[0]
+    current = client.get("/maa-copilot", headers=headers).get_json()["scripts"]
+    assert [(row["id"], row["roster_check"]) for row in current] == [
+        (saved["id"], results[1])
+    ]
+    assert (
+        checker.call_args_list[0].args[0]["opers"]
+        == checker.call_args_list[1].args[0]["opers"]
+    )
+
+
 def test_authorized_upload_list_and_delete_and_selected_guard(
     client, monkeypatch, files
 ):
@@ -307,6 +368,7 @@ def test_authorized_upload_list_and_delete_and_selected_guard(
     info = response.get_json()
     assert info["title"] == "离线作业"
     assert client.head("/maa-copilot", headers=headers).status_code == 200
+    assert "roster_check" in info
     assert client.get("/maa-copilot", headers=headers).get_json()["scripts"] == [info]
     server.config.conf = Conf(copilot={"scripts": [{"id": info["id"]}]})
     path = "/maa-copilot/" + info["id"]
@@ -523,247 +585,61 @@ def scheduler(monkeypatch, files, tmp_path):
     return solver
 
 
-@pytest.fixture
-def roster_cache(scheduler, tmp_path, monkeypatch):
+def test_legacy_roster_setting_does_not_block_native_formation(scheduler, monkeypatch):
     from arknights_mower.utils import mastery_recommendation
 
-    root = tmp_path / "当前实例" / "tmp"
-    root.mkdir(parents=True)
-    cache = root / "cultivate.json"
-    monkeypatch.setattr(mastery_recommendation, "get_path", lambda _: cache)
-    original = library.get_path
-    monkeypatch.setattr(
-        library, "get_path", lambda key: root if key == "@app/tmp" else original(key)
-    )
-    installation = tmp_path / "maa"
-    resource = installation / "resource"
-    resource.mkdir(parents=True)
-    (resource / "battle_data.json").write_text(
-        json.dumps(
-            {
-                "chars": {
-                    "char_2012_typhon": {
-                        "name": "提丰",
-                        "profession": "SNIPER",
-                        "rarity": 6,
-                    },
-                    "char_293_thorns": {
-                        "name": "棘刺",
-                        "profession": "WARRIOR",
-                        "rarity": 6,
-                    },
-                }
-            }
-        )
-    )
-    base_schedule.config.conf.maa_path = str(installation)
-    settings = base_schedule.config.conf.copilot
-    settings.formation = settings.operbox_assist = True
-    scheduler.MAA.get_version.return_value = "v6.23.0"
-    roster = {
-        "id": "char_2012_typhon",
-        "evolvePhase": 2,
-        "level": 85,
-        "potentialRank": 2,
-        "mainSkillLevel": 7,
-        "private": "secret",
-        "skills": [{"level": 0}, {"level": 2}, {"level": 3}],
-        "equips": [
-            {"id": "uniequip_001_typhon", "level": 1},
-            {"id": "uniequip_002_typhon", "level": 2},
-            {"id": "uniequip_003_typhon", "level": 0},
-        ],
-    }
-    cache.write_text(
-        json.dumps(
-            {
-                "_mower_player": {"uid": "secret", "nickName": "secret"},
-                "data": {"characters": [roster], "items": [{"id": "secret"}]},
-            }
-        )
-    )
-    return cache
-
-
-@pytest.mark.parametrize("core_rejects", [True, False])
-def test_worker_receives_private_instance_formation_data_during_append(
-    scheduler, roster_cache, core_rejects
-):
-    received = []
-
-    def append(task, params):
-        assert task == "Copilot" and params["formation"]
-        path = Path(params["operbox_data_path"])
-        assert path.is_absolute() and path.parent.parent == roster_cache.parent
-        received.append(json.loads(path.read_text("utf-8")))
-        if core_rejects:
-            raise ValueError("MAA 拒绝编队")
-        return 1
-
-    scheduler.MAA.append_task.side_effect = append
+    settings = base_schedule.config.conf.copilot.model_dump()
+    conf = CopilotConf(**settings, operbox_assist=True)
+    conf.formation = True
+    conf.support_unit_usage = 1
+    base_schedule.config.conf.copilot = conf
+    read_snapshot = MagicMock(side_effect=AssertionError("unexpected roster read"))
+    monkeypatch.setattr(mastery_recommendation, "get_cultivate_snapshot", read_snapshot)
     scheduler.maa_plan_solver()
-    assert received == [
-        {
-            "own_opers": [
-                {
-                    "id": "char_2012_typhon",
-                    "name": "提丰",
-                    "elite": 2,
-                    "level": 85,
-                    "potential": 3,
-                    "mainSkillLevel": 7,
-                    "rarity": 6,
-                    "own": True,
-                    "skills": [{"level": 0}, {"level": 2}, {"level": 3}],
-                    "equips": [{"id": "uniequip_002_typhon", "type": "X", "level": 2}],
-                }
-            ]
-        }
-    ]
-    assert list(roster_cache.parent.iterdir()) == [roster_cache]
-    assert scheduler.MAA.start.called is not core_rejects
-
-
-@pytest.mark.parametrize(
-    "problem", ["inventory", "no_skills", "invalid", "duplicate", "old_core", "missing"]
-)
-def test_enabled_formation_assistance_requires_usable_roster_and_core(
-    scheduler, roster_cache, problem
-):
-    payload = json.loads(roster_cache.read_text())
-    if problem == "inventory":
-        del payload["data"]["characters"]
-    elif problem == "no_skills":
-        payload["data"]["characters"][0]["skills"] = []
-    elif problem == "invalid":
-        payload["data"]["characters"][0]["skills"][0]["level"] = "2"
-    elif problem == "duplicate":
-        payload["data"]["characters"] *= 2
-    elif problem == "old_core":
-        scheduler.MAA.get_version.return_value = "v6.18.0"
-    roster_cache.write_text(json.dumps(payload))
-    if problem == "missing":
-        roster_cache.unlink()
-    scheduler.maa_plan_solver()
-    scheduler.MAA.append_task.assert_not_called()
-    scheduler.MAA.start.assert_not_called()
-    assert scheduler.maa_copilot_progress["failed"]
-    assert scheduler.maa_copilot_progress["next"] == 0
-    assert not list(roster_cache.parent.glob("copilot-*"))
-
-
-def test_older_core_receives_only_owned_operators_in_its_battle_table(
-    scheduler, roster_cache
-):
-    scheduler.MAA.get_version.return_value = "v6.19.0"
-    data = json.loads(roster_cache.read_text())
-    data["data"]["characters"].append(
-        {
-            **data["data"]["characters"][0],
-            "id": "char_4244_tocka",
-        }
-    )
-    roster_cache.write_text(json.dumps(data))
-
-    def append(_, params):
-        rows = json.loads(Path(params["operbox_data_path"]).read_bytes())["own_opers"]
-        assert [op["id"] for op in rows] == ["char_2012_typhon"]
-        return 1
-
-    scheduler.MAA.append_task.side_effect = append
-    scheduler.maa_plan_solver()
+    assert "operbox_assist" not in conf.model_dump()
+    read_snapshot.assert_not_called()
+    scheduler.MAA.get_version.assert_not_called()
+    params = scheduler.MAA.append_task.call_args.args[1]
+    assert "operbox_data_path" not in params
+    assert params["formation"] and params["support_unit_usage"] == 1
+    assert not params["ignore_requirements"]
     scheduler.MAA.start.assert_called_once()
 
 
-def test_roster_refresh_resumes_failed_item_without_replaying_completed_prefix(
-    scheduler, roster_cache, monkeypatch
+@pytest.mark.parametrize("roster_wait", [True, False])
+@pytest.mark.parametrize("separate_settings_key", [True, False])
+def test_legacy_roster_wait_resumes_but_native_failure_remains_paused(
+    scheduler, roster_wait, separate_settings_key
 ):
     from arknights_mower.solvers import record
 
     queue_pair()
-    contents = roster_cache.read_bytes()
-
-    def complete_first():
-        emit(scheduler, 10002, 1)
-        roster_cache.unlink()
-        return False
-
-    scheduler.MAA.running.side_effect = complete_first
-    scheduler.maa_plan_solver()
-    assert scheduler.MAA.start.call_count == 1
-    assert scheduler.maa_copilot_progress["next"] == 1
-    assert record.load_maa_copilot_progress()["waiting_for_roster"]
-    assert scheduler.maa_copilot_progress["failed"]
-
-    monkeypatch.delattr(scheduler, "_maa_copilot_progress_loaded")
-    scheduler.maa_copilot_progress = {}
-    scheduler.MAA.running.side_effect = None
-    navigation = base_schedule.NavigationSolver.return_value.run
-    navigation.reset_mock()
-    for broken in (None, b"{}", b'{"data":{"characters":[]}}'):
-        if broken:
-            roster_cache.write_bytes(broken)
-        scheduler.maa_plan_solver()
-        navigation.assert_not_called()
-        assert scheduler.MAA.start.call_count == 1
-        assert scheduler.maa_copilot_progress["next"] == 1
-
-    roster_cache.write_bytes(contents)
-    scheduler.maa_plan_solver()
-    navigation.assert_called_once_with("CE-6")
-    params = scheduler.MAA.append_task.call_args.args[1]
-    assert params["copilot_list"][0]["nav_name_override"] == "CE-6"
-    assert scheduler.MAA.start.call_count == 2
-    assert not scheduler.maa_copilot_progress["failed"]
-    assert "waiting_for_roster" not in record.load_maa_copilot_progress()
-
-
-def test_roster_refresh_does_not_retry_native_formation_failure(
-    scheduler, roster_cache
-):
-    scheduler.MAA.append_task.side_effect = ValueError("核心拒绝作业")
-    scheduler.maa_plan_solver()
-    assert scheduler.maa_copilot_progress["failed"]
-    assert "waiting_for_roster" not in scheduler.maa_copilot_progress
-    payload = json.loads(roster_cache.read_bytes())
-    payload["data"]["characters"][0]["level"] += 1
-    roster_cache.write_text(json.dumps(payload))
-    scheduler.maa_plan_solver()
-    assert scheduler.MAA.append_task.call_count == 1
-
-
-def test_formation_deadline_still_checked_after_roster_preparation(
-    scheduler, roster_cache, monkeypatch
-):
-    read_roster = library.copilot_operators
-
-    def read_at_deadline():
-        rows = read_roster()
-        scheduler.tasks[0].time = datetime.now() + timedelta(seconds=10)
-        return rows
-
-    monkeypatch.setattr(library, "copilot_operators", read_at_deadline)
-    scheduler.maa_plan_solver()
-    scheduler.MAA.append_task.assert_not_called()
-    scheduler.MAA.start.assert_not_called()
-    assert not scheduler.maa_copilot_progress["failed"]
-    assert scheduler.maa_copilot_progress["next"] == 0
-    assert list(roster_cache.parent.iterdir()) == [roster_cache]
-
-
-def test_formation_disabled_ignores_saved_assistance_and_legacy_key_is_preserved(
-    scheduler,
-):
-    conf = base_schedule.config.conf.copilot
-    old = conf.model_dump(exclude={"operbox_assist"})
+    settings = base_schedule.config.conf.copilot
+    legacy = {**settings.model_dump(), "operbox_assist": True}
     old_key = hashlib.sha256(
-        json.dumps(old, sort_keys=True, ensure_ascii=False).encode()
+        json.dumps(legacy, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
-    assert library.run_key(conf) == old_key
-    conf.operbox_assist = True
+    saved = {"key": old_key, "next": 1, "failed": True}
+    if separate_settings_key:
+        saved.update(key=library.queue_key(settings), settings_key=old_key)
+    if roster_wait:
+        saved["waiting_for_roster"] = True
+    record.save_maa_copilot_progress(saved)
+    assert record.copilot_item_statuses(settings, saved) == [
+        "completed",
+        "pending" if roster_wait else "failed",
+    ]
     scheduler.maa_plan_solver()
-    scheduler.MAA.get_version.assert_not_called()
-    assert "operbox_data_path" not in scheduler.MAA.append_task.call_args.args[1]
+    migrated = record.load_maa_copilot_progress()
+    assert migrated["next"] == 1 and migrated["failed"] is not roster_wait
+    assert migrated["settings_key"] == library.run_key(settings)
+    assert "waiting_for_roster" not in migrated
+    if roster_wait:
+        scheduler.MAA.start.assert_called_once()
+        params = scheduler.MAA.append_task.call_args.args[1]
+        assert params["copilot_list"][0]["nav_name_override"] == "CE-6"
+    else:
+        scheduler.MAA.start.assert_not_called()
 
 
 @pytest.mark.parametrize("start_error", [False, True])

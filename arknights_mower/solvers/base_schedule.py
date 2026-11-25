@@ -22398,11 +22398,6 @@ class BaseSchedulerSolver(
             self.recog.reset_after_external_control()
 
     def _maa_copilot_run(self, conf, *, paradox=False):
-        from arknights_mower.utils.maa_copilot import (
-            CopilotRosterError,
-            copilot_operators,
-        )
-
         attr = "maa_paradox_progress" if paradox else "maa_copilot_progress"
         pending_attr = "_unsaved_" + attr
         if pending := getattr(self, pending_attr, None):
@@ -22414,13 +22409,6 @@ class BaseSchedulerSolver(
         progress = prepare_copilot_progress(conf, fallback, paradox=paradox)
         if not paradox:
             self._maa_copilot_progress_loaded = True
-            if progress.get("waiting_for_roster"):
-                try:
-                    copilot_operators()
-                except CopilotRosterError:
-                    pass
-                else:
-                    progress = prepare_copilot_progress(conf, {}, roster_ready=True)
         setattr(self, attr, progress)
         return progress
 
@@ -23855,7 +23843,6 @@ class BaseSchedulerSolver(
                         from arknights_mower.utils.maa_copilot import (
                             build_copilot_params,
                             build_paradox_params,
-                            copilot_formation_params,
                         )
 
                         if paradox:
@@ -23875,14 +23862,11 @@ class BaseSchedulerSolver(
                                 copilot_conf, copilot_dir, index=copilot_index
                             )
                             params["copilot_list"][0]["nav_name_override"] = target
-                        with copilot_formation_params(
-                            params, copilot_conf, self.MAA
-                        ) as params:
-                            if not large_task_start_allowed():
-                                break
-                            task_id = self.MAA.append_task(
-                                "ParadoxCopilot" if paradox else "Copilot", params
-                            )
+                        if not large_task_start_allowed():
+                            break
+                        task_id = self.MAA.append_task(
+                            "ParadoxCopilot" if paradox else "Copilot", params
+                        )
                         if not task_id:
                             raise ValueError("MAA 未接受作业，请检查核心版本和作业文件")
                         setattr(
@@ -24021,16 +24005,9 @@ class BaseSchedulerSolver(
                         extra={"log_group": "maa-integration"},
                     )
             if copilot_token is not None:
-                from arknights_mower.utils.maa_copilot import CopilotRosterError
-
-                outcome = (
-                    "waiting_for_roster"
-                    if isinstance(e, CopilotRosterError)
-                    else "failed"
-                )
                 try:
                     self._finish_copilot_item(
-                        copilot_run, copilot_token, outcome, paradox=paradox
+                        copilot_run, copilot_token, "failed", paradox=paradox
                     )
                 except Exception:
                     logger.exception(

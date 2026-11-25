@@ -6,6 +6,7 @@ import { useMessage, useThemeVars } from 'naive-ui'
 import { useConfigStore } from '@/stores/config'
 import { appendCopilotScript, useCopilotLibrary } from '@/utils/maaCopilotCode'
 import StageProgressButton from './StageProgressButton.vue'
+import CopilotRosterReport from './CopilotRosterReport.vue'
 import MaaTaskStatus from '@/components/MaaTaskStatus.vue'
 
 const props = defineProps({ paradox: { type: Boolean, default: false } })
@@ -53,6 +54,24 @@ const savingProgress = ref(false)
 const expandedItem = ref(null)
 const theme = useThemeVars()
 const scriptsById = computed(() => new Map(library.value.map((script) => [script.id, script])))
+const reportItem = ref(null)
+const selectedReport = computed(() => {
+  if (!copilot.value.scripts.includes(reportItem.value)) return null
+  return scriptsById.value.get(reportItem.value.id)?.roster_check
+})
+function rosterHint(report) {
+  if (!report || report.status === 'ready') return ''
+  if (report.message) return report.message
+  if (report.status === 'unknown') return '练度资料不足，暂时无法核对'
+  const gaps = report.gaps
+  const first = gaps?.[0]
+  if (!first) return '作业编队要求未满足'
+  if (gaps.length === 1 && first.candidates.length === 1) {
+    const oper = first.candidates[0]
+    return `${oper.name} · ${oper.reasons[0]}`
+  }
+  return `${first.slot}${gaps.length > 1 ? `等 ${gaps.length} 个位置` : ''}缺少符合要求的干员`
+}
 const queueProgress = computed(() => {
   const detail = taskStatus.value?.detail
   const { scripts, run_id } = copilot.value
@@ -118,12 +137,6 @@ function add_operator() {
 
 <template>
   <n-form :label-placement="mobile ? 'top' : 'left'" :show-feedback="false">
-    <n-form-item v-if="!paradox" :show-label="false">
-      <n-alert type="warning" :show-icon="false">
-        请先在“AI 助手与模型服务”中配置 Mower AI 使用的模型服务，再使用普通作业的自动地图导航。Mower
-        会先进入目标关卡地图，导航失败时不启动 MAA。
-      </n-alert>
-    </n-form-item>
     <n-form-item label="目前状态">
       <MaaTaskStatus ref="taskStatus" :kind="kind" :settings="copilot" />
     </n-form-item>
@@ -224,6 +237,21 @@ function add_operator() {
                 ></template>
               </n-button>
             </div>
+            <div
+              v-if="!paradox && rosterHint(scriptsById.get(item.id)?.roster_check)"
+              class="queue-roster"
+            >
+              <n-text type="warning">{{
+                rosterHint(scriptsById.get(item.id).roster_check)
+              }}</n-text>
+              <n-button
+                text
+                size="small"
+                :aria-label="`查看第 ${index + 1} 项作业的练度详情`"
+                @click="reportItem = item"
+                >查看详情</n-button
+              >
+            </div>
             <div v-if="expandedItem === item" class="queue-editor">
               <label v-if="!paradox" class="queue-navigation">
                 导航关卡名
@@ -289,17 +317,11 @@ function add_operator() {
             </label>
           </div>
           <n-flex :size="[20, 8]">
-            <n-checkbox v-model:checked="copilot.operbox_assist">使用干员练度辅助编队</n-checkbox>
             <n-checkbox v-model:checked="copilot.add_trust">空位补充低信赖干员</n-checkbox>
             <n-checkbox v-model:checked="copilot.ignore_requirements"
               >忽略可跳过的干员练度要求</n-checkbox
             >
           </n-flex>
-          <n-text v-if="copilot.operbox_assist" depth="3">
-            练度辅助需要 MAA v6.19.0
-            或更新版本。请先在「养成规划」中刷新当前账号的森空岛干员练度。MAA
-            会按作业要求选择干员，无法配齐时停止执行。
-          </n-text>
           <div class="formation-field">
             <span>补充干员</span>
             <div
@@ -327,6 +349,26 @@ function add_operator() {
       </div>
     </n-form-item>
   </n-form>
+  <n-modal
+    :show="!!selectedReport && selectedReport.status !== 'ready'"
+    preset="dialog"
+    type="warning"
+    title="作业练度检查"
+    positive-text="关闭"
+    style="width: min(520px, calc(100vw - 32px))"
+    @update:show="
+      (show) => {
+        if (!show) reportItem = null
+      }
+    "
+    @positive-click="reportItem = null"
+  >
+    <CopilotRosterReport
+      v-if="selectedReport && reportItem"
+      :script="scriptsById.get(reportItem.id)"
+      :settings="copilot"
+    />
+  </n-modal>
 </template>
 
 <style scoped>
@@ -401,6 +443,15 @@ function add_operator() {
 }
 .queue-disclosure[aria-expanded='true'] :deep(svg) {
   transform: rotate(180deg);
+}
+.queue-roster {
+  display: flex;
+  gap: 4px 12px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin: 0 12px 10px 40px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .queue-editor {
   display: grid;

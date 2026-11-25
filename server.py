@@ -3482,6 +3482,27 @@ def update_copilot_item_status():
 COPILOT_LIBRARY_ROUTE = "/<any('maa-copilot','maa-paradox','sss-copilot'):library>"
 
 
+def _copilot_roster_report(data, *, saved=False):
+    try:
+        from arknights_mower.utils.maa_copilot_roster import check_copilot_roster
+
+        if saved:
+            from arknights_mower.utils.maa_copilot_normalization import (
+                normalize_copilot,
+            )
+
+            normalize_copilot(data)
+        return check_copilot_roster(data)
+    except Exception:
+        logger.exception("无法完成普通作业练度检查")
+        return {
+            "status": "unknown",
+            "message": "暂时无法核对这份作业的干员练度。",
+            "gaps": [],
+            "can_borrow": False,
+        }
+
+
 @app.route(COPILOT_LIBRARY_ROUTE, methods=["GET", "POST"])
 @require_token
 def maa_copilot_library(library):
@@ -3489,32 +3510,44 @@ def maa_copilot_library(library):
     from arknights_mower.utils.maa_copilot import (
         MAX_SCRIPT_BYTES,
         list_scripts,
-        store_script,
+        parse_script,
+        store_parsed_script,
     )
 
-    with backup_lock:
-        try:
-            sss = library == "sss-copilot"
-            paradox = library == "maa-paradox"
-            if request.method in ("GET", "HEAD"):
-                result = {"scripts": list_scripts(sss=sss, paradox=paradox)}
+    sss = library == "sss-copilot"
+    paradox = library == "maa-paradox"
+    try:
+        if request.method in ("GET", "HEAD"):
+            formations = {}
+            with backup_lock:
+                scripts = list_scripts(sss=sss, paradox=paradox, formations=formations)
                 warning = backup_entry_warning()
-                if warning:
-                    result["backup_warning"] = warning
-                return result
-            upload = request.files.get("copilot")
-            if upload is None:
-                return {"message": "没有收到作业文件"}, 400
-            return store_script(
-                upload.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
-            )
-        except (ValueError, TypeError, RecursionError):
-            label = "保全作业" if sss else "作业"
-            return {
-                "message": f"{label}格式无效或存储已满，请检查文件并清理不再使用的作业"
-            }, 400
-        except OSError:
-            return {"message": "作业读写失败，请检查目录权限"}, 500
+            for script in scripts:
+                if script["id"] in formations:
+                    script["roster_check"] = _copilot_roster_report(
+                        formations[script["id"]], saved=True
+                    )
+            result = {"scripts": scripts}
+            if warning:
+                result["backup_warning"] = warning
+            return result
+        upload = request.files.get("copilot")
+        if upload is None:
+            return {"message": "没有收到作业文件"}, 400
+        data = parse_script(upload.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox)
+        with backup_lock:
+            result = store_parsed_script(data, sss=sss, paradox=paradox)
+    except (ValueError, TypeError, RecursionError):
+        label = "保全作业" if sss else "作业"
+        return {
+            "message": f"{label}格式无效或存储已满，请检查文件并清理不再使用的作业"
+        }, 400
+    except OSError:
+        return {"message": "作业读写失败，请检查目录权限"}, 500
+
+    if not (sss or paradox):
+        result["roster_check"] = _copilot_roster_report(data)
+    return result
 
 
 @app.delete(COPILOT_LIBRARY_ROUTE + "/<script_id>")

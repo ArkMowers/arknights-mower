@@ -521,7 +521,20 @@ def _clear_copilot_failure(progress):
     progress.pop("waiting_for_roster", None)
 
 
-def _prepare_copilot_progress(progress, key, settings_key):
+def _prepare_copilot_progress(progress, conf, key, *, paradox):
+    from arknights_mower.utils.maa_copilot import run_key
+
+    settings_key = key if paradox else run_key(conf)
+    if not paradox:
+        # Older ordinary queues hashed the opt-in roster setting only when enabled.
+        field = "settings_key" if "settings_key" in progress else "key"
+        previous = progress.get(field)
+        if previous and previous not in (key, settings_key):
+            if previous == run_key(conf, legacy_roster=True):
+                progress[field] = settings_key
+        if progress.get("waiting_for_roster"):
+            _clear_copilot_failure(progress)
+
     if "settings_key" not in progress and progress.get("key") == settings_key:
         progress.update(key=key, settings_key=settings_key)
     if progress.get("key") != key:
@@ -533,17 +546,14 @@ def _prepare_copilot_progress(progress, key, settings_key):
         progress["settings_key"] = settings_key
 
 
-def prepare_copilot_progress(conf, fallback, *, paradox=False, roster_ready=False):
-    from arknights_mower.utils.maa_copilot import queue_key, run_key
+def prepare_copilot_progress(conf, fallback, *, paradox=False):
+    from arknights_mower.utils.maa_copilot import queue_key
 
     key = queue_key(conf)
-    settings_key = key if paradox else run_key(conf)
     with _edit_copilot_progress(paradox) as progress:
         if not progress:
             progress.update(fallback)
-        _prepare_copilot_progress(progress, key, settings_key)
-        if roster_ready and progress.get("waiting_for_roster"):
-            _clear_copilot_failure(progress)
+        _prepare_copilot_progress(progress, conf, key, paradox=paradox)
     return progress
 
 
@@ -565,11 +575,11 @@ def _running_copilot_item(progress, paradox):
 
 
 def copilot_item_statuses(conf, saved, *, paradox=False):
-    from arknights_mower.utils.maa_copilot import queue_key, run_key
+    from arknights_mower.utils.maa_copilot import queue_key
 
     key = queue_key(conf)
     saved = saved.copy()
-    _prepare_copilot_progress(saved, key, key if paradox else run_key(conf))
+    _prepare_copilot_progress(saved, conf, key, paradox=paradox)
     first = saved.get("next", 0)
     if type(first) is not int or not 0 <= first <= len(conf.scripts):
         return ["pending"] * len(conf.scripts)
@@ -603,7 +613,7 @@ def _mark_copilot_item(progress, index, completed):
 def set_copilot_item_completion(
     conf, key, index, expected, completed, *, paradox=False
 ):
-    from arknights_mower.utils.maa_copilot import queue_key, run_key
+    from arknights_mower.utils.maa_copilot import queue_key
 
     if (
         key != queue_key(conf)
@@ -618,7 +628,7 @@ def set_copilot_item_completion(
             return False
         if current == desired:
             return True
-        _prepare_copilot_progress(progress, key, key if paradox else run_key(conf))
+        _prepare_copilot_progress(progress, conf, key, paradox=paradox)
         if progress.get("failed"):
             failed = progress.get("failed_index", progress["next"])
             if index == failed:
@@ -632,17 +642,16 @@ def set_copilot_item_completion(
 
 
 def claim_copilot_item(conf, expected_key, token, *, paradox=False):
-    from arknights_mower.utils.maa_copilot import queue_key, run_key
+    from arknights_mower.utils.maa_copilot import queue_key
     from arknights_mower.utils.update_runtime import process_identity, write_json
 
     key = queue_key(conf)
     if key != expected_key:
         return None
-    settings_key = key if paradox else run_key(conf)
     with _edit_copilot_progress(paradox) as progress:
         if progress.get("key") != key:
             return None
-        _prepare_copilot_progress(progress, key, settings_key)
+        _prepare_copilot_progress(progress, conf, key, paradox=paradox)
         if (
             progress["failed"]
             or progress["next"] >= len(conf.scripts)
@@ -674,10 +683,8 @@ def apply_copilot_result(progress, key, token, outcome):
         progress.pop("attempt")
         if outcome == "completed":
             _mark_copilot_item(progress, index, True)
-        elif outcome in ("failed", "waiting_for_roster"):
+        elif outcome == "failed":
             progress.update(failed=True, failed_index=index)
-            if outcome == "waiting_for_roster":
-                progress["waiting_for_roster"] = True
 
 
 def finish_copilot_item(key, token, outcome, *, paradox=False):

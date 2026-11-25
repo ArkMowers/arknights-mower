@@ -4,9 +4,6 @@ import hashlib
 import json
 import os
 import re
-import tempfile
-from contextlib import contextmanager
-from pathlib import Path
 
 from arknights_mower.utils.maa_storage import storage_root
 from arknights_mower.utils.path import get_path, resolve_config_path
@@ -16,10 +13,10 @@ MAX_SCRIPT_BYTES = 1024 * 1024
 MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
 
-def run_key(conf):
+def run_key(conf, *, legacy_roster=False):
     settings = conf.model_dump()
-    if settings.get("operbox_assist") is False:
-        del settings["operbox_assist"]  # Preserve pre-existing progress when disabled.
+    if legacy_roster:
+        settings["operbox_assist"] = True
     return hashlib.sha256(
         json.dumps(settings, sort_keys=True, ensure_ascii=False).encode()
     ).hexdigest()
@@ -133,7 +130,7 @@ def script_info(script_id, data, *, sss=False, paradox=False):
     return info
 
 
-def list_scripts(*, sss=False, paradox=False):
+def list_scripts(*, sss=False, paradox=False, formations=None):
     root = script_root(sss=sss, paradox=paradox)
     if root.is_symlink():
         raise ValueError("作业目录不能使用符号链接")
@@ -146,6 +143,12 @@ def list_scripts(*, sss=False, paradox=False):
                 stream.read(MAX_SCRIPT_BYTES + 1), sss=sss, paradox=paradox
             )
         result.append(script_info(script_id, data, sss=sss, paradox=paradox))
+        if formations is not None and not (sss or paradox):
+            formations[script_id] = {
+                "opers": data.get("opers", []),
+                "groups": data.get("groups", []),
+                "actions": [],
+            }
     return result
 
 
@@ -162,6 +165,10 @@ def _normalized_copilot_content(data):
 
 def store_script(raw, *, sss=False, paradox=False):
     data = parse_script(raw, sss=sss, paradox=paradox)
+    return store_parsed_script(data, sss=sss, paradox=paradox)
+
+
+def store_parsed_script(data, *, sss=False, paradox=False):
     original = _script_content(data)
     content = original if sss or paradox else _normalized_copilot_content(data)
     if len(content) > MAX_SCRIPT_BYTES:
@@ -181,116 +188,6 @@ def store_script(raw, *, sss=False, paradox=False):
             raise ValueError("作业存储已满，请先删除不再使用的作业")
     write_json(path, data)
     return script_info(script_id, data, sss=sss, paradox=paradox)
-
-
-class CopilotRosterError(ValueError):
-    """Formation cannot use the current roster or operator resources."""
-
-
-def copilot_operators():
-    from arknights_mower.utils import config
-    from arknights_mower.utils.maa_copilot_normalization import battle_data_path
-    from arknights_mower.utils.mastery_recommendation import (
-        get_cultivate_snapshot,
-        get_skill_data,
-    )
-
-    snapshot = get_cultivate_snapshot()
-    error = "请先在「养成规划」中刷新森空岛干员练度，再使用辅助编队"
-
-    def integer(entry, key, low, high):
-        value = entry.get(key) if isinstance(entry, dict) else None
-        if type(value) is not int or not low <= value <= high:
-            raise CopilotRosterError(error)
-        return value
-
-    if snapshot is None:
-        raise CopilotRosterError(error)
-    target = Path(resolve_config_path(config.conf.maa_path))
-    battle_data = read_json(battle_data_path(target))
-    known_ids = battle_data.get("chars") if isinstance(battle_data, dict) else None
-    if not isinstance(known_ids, dict) or not known_ids:
-        raise CopilotRosterError(
-            "无法读取 MAA 战斗干员表，请更新 MAA 资源后再使用辅助编队"
-        )
-    definitions = get_skill_data().get("growth", {}).get("characters", {})
-    operators = []
-    seen = set()
-    for char in snapshot["data"]["characters"]:
-        if char["id"] not in known_ids:
-            continue
-        if char["id"] in seen:
-            raise CopilotRosterError(error)
-        seen.add(char["id"])
-        definition = definitions.get(char["id"])
-        if not definition:
-            continue
-        skills = char.get("skills", [])
-        equips = char.get("equips", [])
-        if not isinstance(skills, list) or not isinstance(equips, list):
-            raise CopilotRosterError(error)
-
-        modules = {module["id"]: module["type"] for module in definition["modules"]}
-        equipped = []
-        for equip in equips:
-            level = integer(equip, "level", 0, 3)
-            equip_id = equip.get("id")
-            if not isinstance(equip_id, str):
-                raise CopilotRosterError(error)
-            if not level or equip_id.startswith("uniequip_001_"):
-                continue
-            branch = modules.get(equip_id, "").rsplit("-", 1)[-1]
-            if branch not in {"A", "B", "D", "X", "Y"}:
-                raise CopilotRosterError(
-                    "缺少模组资源，请更新 Mower 资源后再使用辅助编队"
-                )
-            equipped.append({"id": equip_id, "type": branch, "level": level})
-        operators.append(
-            {
-                "id": char["id"],
-                "name": definition["name"],
-                "own": True,
-                "rarity": definition["rarity"],
-                "elite": integer(char, "evolvePhase", 0, 2),
-                "level": integer(char, "level", 1, 90),
-                "potential": integer(char, "potentialRank", 0, 5) + 1,
-                "mainSkillLevel": integer(char, "mainSkillLevel", 1, 7)
-                if skills
-                else 0,
-                "skills": [
-                    {"level": integer(skill, "level", 0, 3)} for skill in skills
-                ],
-                "equips": equipped,
-            }
-        )
-    if not operators:
-        raise CopilotRosterError(
-            "MAA 战斗干员表与当前练度数据没有匹配项，请更新资源或刷新森空岛干员练度"
-        )
-    if not any(oper["skills"] for oper in operators):
-        raise CopilotRosterError(error)
-    return operators
-
-
-@contextmanager
-def copilot_formation_params(params, conf, maa):
-    if not params.get("formation") or not conf.operbox_assist:
-        yield params
-        return
-
-    from arknights_mower.utils.maa_update import is_maa_version_newer
-
-    if is_maa_version_newer("v6.19.0", maa.get_version()):
-        raise ValueError("使用干员练度辅助编队需要 MAA v6.19.0 或更新版本")
-    operators = copilot_operators()
-    root = get_path("@app/tmp")
-    root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=root, prefix="copilot-") as directory:
-        path = Path(directory) / "OperBoxData.json"
-        path.write_text(
-            json.dumps({"own_opers": operators}, ensure_ascii=False), "utf-8"
-        )
-        yield {**params, "operbox_data_path": str(path.absolute())}
 
 
 def build_copilot_params(conf, work_dir, *, index=0):

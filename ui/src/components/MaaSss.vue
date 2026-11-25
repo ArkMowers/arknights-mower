@@ -21,12 +21,16 @@ const {
   delete_script,
   download,
   failures,
+  rosterReports,
   library,
   loading,
   refresh,
   selected,
   upload
 } = useCopilotLibrary({ axios, configs, kind, message, store })
+const rosterIssues = computed(
+  () => rosterReports.value.filter((script) => script.roster_check.status !== 'ready').length
+)
 onMounted(refresh)
 const options = computed(() =>
   library.value.map((item) => ({ label: `${item.stage_name} · ${item.title}`, value: item.id }))
@@ -93,6 +97,9 @@ async function restart_queue() {
           MB。请提前在游戏中准备编队。
         </n-text>
         <n-alert v-if="backupWarning" type="warning">{{ backupWarning }}</n-alert>
+        <n-text v-if="rosterIssues" type="warning">
+          本次导入的普通作业中，有 {{ rosterIssues }} 份需要核对练度，可在普通自动战斗队列查看详情。
+        </n-text>
         <details v-if="failures.length">
           <summary>导入结果 · {{ failures.length }} 份作业未加入队列</summary>
           <ul>
