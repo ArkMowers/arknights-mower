@@ -22422,7 +22422,12 @@ class BaseSchedulerSolver(
             self.recog.reset_after_external_control()
 
     def _maa_copilot_run(self, conf):
-        from arknights_mower.utils.maa_copilot import queue_key, run_key
+        from arknights_mower.utils.maa_copilot import (
+            CopilotRosterError,
+            copilot_operators,
+            queue_key,
+            run_key,
+        )
 
         if not getattr(self, "_maa_copilot_progress_loaded", False):
             self.maa_copilot_progress = load_maa_copilot_progress() or getattr(
@@ -22441,6 +22446,14 @@ class BaseSchedulerSolver(
             progress.update(key=key, next=0, failed=False, settings_key=settings_key)
         elif progress.get("settings_key") != settings_key:
             progress.update(failed=False, settings_key=settings_key)
+            progress.pop("waiting_for_roster", None)
+        elif progress.get("waiting_for_roster"):
+            try:
+                copilot_operators()
+            except CopilotRosterError:
+                return progress
+            progress.pop("waiting_for_roster")
+            progress["failed"] = False
         if progress != previous:
             save_maa_copilot_progress(progress)
         return progress
@@ -24040,7 +24053,11 @@ class BaseSchedulerSolver(
                         extra={"log_group": "maa-integration"},
                     )
             if copilot_run is not None:
+                from arknights_mower.utils.maa_copilot import CopilotRosterError
+
                 copilot_run["failed"] = True
+                if isinstance(e, CopilotRosterError):
+                    copilot_run["waiting_for_roster"] = True
                 try:
                     (
                         save_maa_paradox_progress
