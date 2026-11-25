@@ -31,7 +31,7 @@ export function appendCopilotScript(configs, kind, script) {
   appendToQueue(configs[kind].value.scripts, kind, script)
 }
 
-function appendToQueue(queue, kind, { id, difficulty }, existingLength = 0) {
+function appendToQueue(queue, kind, { id, difficulty }) {
   let items
   if (kind === 'sss') {
     items = [{ id, type: 1, ec: 1, times: 1 }]
@@ -41,7 +41,7 @@ function appendToQueue(queue, kind, { id, difficulty }, existingLength = 0) {
     const modes = difficulty === 3 ? [false, true] : [difficulty === 2]
     items = modes.map((is_raid) => ({ id, nav_name_override: '', is_raid }))
   }
-  checkCapacity(kind, existingLength + queue.length, items.length)
+  checkCapacity(kind, queue.length, items.length)
   queue.push(...items)
 }
 
@@ -135,65 +135,83 @@ export function useCopilotDownload({
       }
 
       const destinations = mixed ? ['copilot', 'sss'] : [kind]
-      let counts
-      for (;;) {
-        const plans = Object.fromEntries(
-          destinations.map((key) => [
-            key,
-            { startLength: configs[key].value.scripts.length, added: [] }
-          ])
-        )
-        const edited = () =>
-          destinations.some((key) => configs[key].value.scripts.length !== plans[key].startLength)
-        const results = [...errors]
-        counts = new Map()
-        for (const { index, member } of members) {
-          if (errors[index]) continue
-          const { destination } = member
-          const { startLength, added } = plans[destination]
-          try {
-            checkCapacity(destination, startLength + added.length, member.slots)
-          } catch (error) {
-            results[index] = formatFailure(index, error)
-            continue
-          }
-          try {
-            if (!member.script) {
-              let blob = member.blob
-              if (!blob) {
-                const fresh = await downloadMember(axios, ids[index], kind, mixed)
-                if (fresh.destination !== destination || fresh.slots !== member.slots) {
-                  throw new Error('下载期间作业的类型或难度已变化，请重新导入')
-                }
-                blob = fresh.blob
-                if (edited()) break
-              }
-              const form = new FormData()
-              form.append('copilot', blob)
-              const { data } = await axios.post(copilotLibraryUrl(destination), form)
-              member.blob = null
-              member.script = data
-              member.slots = destination === 'copilot' && data.difficulty === 3 ? 2 : 1
-              if (destination === kind) {
-                if (!library.value.some((item) => item.id === data.id)) library.value.push(data)
-              }
-              if (edited()) break
-            }
-            appendToQueue(added, destination, member.script, startLength)
-            if (destination === kind) selected.value = member.script.id
-            counts.set(destination, (counts.get(destination) || 0) + 1)
-          } catch (error) {
-            errors[index] = results[index] = formatFailure(index, error)
-            if (edited()) break
-          }
+      const admitted = Object.fromEntries(destinations.map((key) => [key, []]))
+      const initialSlots = Object.fromEntries(
+        destinations.map((key) => [key, 32 - configs[key].value.scripts.length])
+      )
+      function fits(entry, slots) {
+        try {
+          checkCapacity(entry.member.destination, 32 - slots, entry.member.slots)
+          return true
+        } catch (error) {
+          entry.waiting = true
+          errors[entry.index] ??= formatFailure(entry.index, error)
+          return false
         }
-        if (edited()) continue
-        for (const destination of counts.keys()) {
-          configs[destination].value.scripts.push(...plans[destination].added)
-        }
-        failures.value = results.filter(Boolean)
-        break
       }
+      function remaining(destination, limit) {
+        const liveSlots = 32 - configs[destination].value.scripts.length
+        let used = 0
+        // Live edits can take slots; keep accepted uploads in admission order.
+        admitted[destination] = admitted[destination].filter((entry) => {
+          if (!fits(entry, liveSlots - used)) return false
+          used += entry.member.slots
+          return true
+        })
+        return Math.min(limit, liveSlots) - used
+      }
+      async function admit(entry, limit) {
+        const { member, index } = entry
+        const { destination } = member
+        const hasRoom = () => fits(entry, remaining(destination, limit))
+        if (!hasRoom()) return
+        try {
+          if (!member.script) {
+            let blob = member.blob
+            if (!blob) {
+              const fresh = await downloadMember(axios, ids[index], kind, mixed)
+              if (fresh.destination !== destination || fresh.slots !== member.slots) {
+                throw new Error('下载期间作业的类型或难度已变化，请重新导入')
+              }
+              blob = fresh.blob
+              if (!hasRoom()) return
+            }
+            const form = new FormData()
+            form.append('copilot', blob)
+            const { data } = await axios.post(copilotLibraryUrl(destination), form)
+            member.blob = null
+            member.script = data
+            member.slots = destination === 'copilot' && data.difficulty === 3 ? 2 : 1
+            if (destination === kind && !library.value.some((item) => item.id === data.id)) {
+              library.value.push(data)
+            }
+            if (!hasRoom()) return
+          }
+          admitted[destination].push(entry)
+          entry.waiting = false
+          delete errors[index]
+        } catch (error) {
+          entry.waiting = false
+          errors[index] = formatFailure(index, error)
+        }
+      }
+      // Complete the initial allocation first. Only unclaimed slots may fund another member.
+      for (const entry of members) await admit(entry, initialSlots[entry.member.destination])
+      for (const entry of members) {
+        if (entry.waiting) await admit(entry, 32)
+      }
+      const counts = new Map()
+      for (const destination of destinations) {
+        remaining(destination, 32)
+        const entries = admitted[destination].sort((a, b) => a.index - b.index)
+        if (!entries.length) continue
+        const added = []
+        for (const { member } of entries) appendToQueue(added, destination, member.script)
+        configs[destination].value.scripts.push(...added)
+        if (destination === kind) selected.value = entries.at(-1).member.script.id
+        counts.set(destination, entries.length)
+      }
+      failures.value = errors.filter(Boolean)
       if (counts.size) {
         code.value = ''
         const added = [...counts].map(([key, count]) => `${queueNames[key]} ${count} 份`).join('、')

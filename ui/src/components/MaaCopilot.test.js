@@ -398,6 +398,65 @@ describe('ordinary Copilot library and queue', () => {
     expect(state.config.copilot.value.scripts.at(-1).id).toBe(second.id)
   })
 
+  it.each([0, 63])(
+    'keeps the uploaded single-slot member when one slot opens (library size %i)',
+    async (initial) => {
+      mock_set(['456', '789'], { 456: 3 })
+      let stored = initial
+      state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: second.id }))
+      const snapshots = []
+      scope.run(() =>
+        watch(
+          () => state.config.copilot.value.scripts.length,
+          (size) => snapshots.push(size),
+          { flush: 'sync' }
+        )
+      )
+      state.client.post.mockImplementation(async (_url, form) => {
+        if (stored === 64) throw new Error('作业存储已满')
+        stored++
+        const script = JSON.parse(await form.get('copilot').text())
+        if (script.difficulty === 3) return { data: { ...first, difficulty: 3 } }
+        state.config.copilot.value.scripts.shift()
+        return { data: second }
+      })
+      component.code.value = 's123'
+      await component.download()
+      expect(state.client.post).toHaveBeenCalledTimes(1)
+      expect(stored).toBe(initial + 1)
+      expect(snapshots).toEqual([30, 31])
+      expect(state.config.copilot.value.scripts.at(-1)).toMatchObject({
+        id: second.id,
+        is_raid: false
+      })
+      expect(component.failures.value).toEqual([expect.stringContaining('第 1 份（456）')])
+    }
+  )
+
+  it('spends an additional single slot on the next fitting member', async () => {
+    const third = { ...first, id: 'c'.repeat(64) }
+    mock_set(['456', '789', '111'], { 456: 3 })
+    state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: first.id }))
+    state.client.post.mockImplementation(async (_url, form) => {
+      const script = JSON.parse(await form.get('copilot').text())
+      if (script.stage_name === 'second') {
+        state.config.copilot.value.scripts.pop()
+        state.config.copilot.value.scripts[0] = { id: second.id, is_raid: true }
+        return { data: second }
+      }
+      return { data: script.difficulty === 3 ? { ...first, difficulty: 3 } : third }
+    })
+    component.code.value = 's123'
+    await component.download()
+    expect(state.client.post).toHaveBeenCalledTimes(2)
+    expect(state.config.copilot.value.scripts[0]).toEqual({ id: second.id, is_raid: true })
+    expect(state.config.copilot.value.scripts.slice(-2).map(({ id }) => id)).toEqual([
+      second.id,
+      third.id
+    ])
+    expect(component.failures.value).toEqual([expect.stringContaining('第 1 份（456）')])
+  })
+
   it('reconsiders earlier skipped members when slots open during a different upload', async () => {
     mock_set(['456', '789'], { 456: 3 })
     state.config.copilot.value.scripts = Array.from({ length: 31 }, () => ({ id: second.id }))
