@@ -23503,8 +23503,11 @@ class BaseSchedulerSolver(
                 if blackflow_run.get("completed") is True:
                     selected_long = None
             if selected_long in ("copilot", "paradox"):
-                copilot_conf = conf.paradox if paradox else conf.copilot
-                copilot_run = self._maa_copilot_run(copilot_conf, paradox=paradox)
+                from arknights_mower.utils.config_backup import backup_lock
+
+                with backup_lock:
+                    copilot_conf = getattr(config.conf, selected_long)
+                    copilot_run = self._maa_copilot_run(copilot_conf, paradox=paradox)
             if selected_long == "sss":
                 sss_run = self._maa_sss_run(conf.sss)
             if (
@@ -23533,12 +23536,19 @@ class BaseSchedulerSolver(
                         return defer_refresh(refresh)
                     if copilot_run is not None:
                         token = uuid4().hex
-                        claim = claim_copilot_item(
-                            copilot_run["key"],
-                            len(copilot_conf.scripts),
-                            token,
-                            paradox=paradox,
-                        )
+                        with backup_lock:
+                            conf = config.conf
+                            if not manual:
+                                current_long, cutoff, _ = long_task_schedule(
+                                    conf, datetime.now()
+                                )
+                                if current_long != selected_long:
+                                    break
+                                long_limit = min(long_limit, cutoff)
+                            copilot_conf = getattr(conf, selected_long)
+                            claim = claim_copilot_item(
+                                copilot_conf, copilot_run["key"], token, paradox=paradox
+                            )
                         if claim is None:
                             break
                         copilot_token = token

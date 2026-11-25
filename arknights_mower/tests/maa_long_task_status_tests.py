@@ -239,7 +239,7 @@ def test_item_edits_allow_other_rows_while_current_attempt_runs(client, status, 
     setattr(server.config.conf, kind, settings)
     key = queue_key(settings)
     record.prepare_copilot_progress(settings, {}, paradox=paradox)
-    assert record.claim_copilot_item(key, 2, "test-attempt", paradox=paradox)
+    assert record.claim_copilot_item(settings, key, "test-attempt", paradox=paradox)
     url = f"/maa-long-task-status?kind={kind}"
     headers = {"token": "copilot-test-token"}
     assert client.get(url, headers=headers).get_json()["items"] == [

@@ -631,14 +631,21 @@ def set_copilot_item_completion(
         return True
 
 
-def claim_copilot_item(key, count, token, *, paradox=False):
+def claim_copilot_item(conf, expected_key, token, *, paradox=False):
+    from arknights_mower.utils.maa_copilot import queue_key, run_key
     from arknights_mower.utils.update_runtime import process_identity, write_json
 
+    key = queue_key(conf)
+    if key != expected_key:
+        return None
+    settings_key = key if paradox else run_key(conf)
     with _edit_copilot_progress(paradox) as progress:
+        if progress.get("key") != key:
+            return None
+        _prepare_copilot_progress(progress, key, settings_key)
         if (
-            progress.get("key") != key
-            or progress["failed"]
-            or progress["next"] >= count
+            progress["failed"]
+            or progress["next"] >= len(conf.scripts)
             or _running_copilot_item(progress, paradox) is not None
         ):
             return None

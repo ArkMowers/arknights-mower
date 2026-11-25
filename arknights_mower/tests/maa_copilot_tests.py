@@ -1391,11 +1391,17 @@ def test_queue_dispatch_preserves_other_row_edits_during_execution(
     assert scheduler.MAA.start.call_count == 3
 
 
-def _hold_copilot_claim(connection, tmp_path, key):
+def _hold_copilot_claim(connection, tmp_path, settings):
     from arknights_mower.solvers import record
 
     record.get_path = lambda value: tmp_path / value[5:]
-    connection.send(bool(record.claim_copilot_item(key, 2, "child-process")))
+    connection.send(
+        bool(
+            record.claim_copilot_item(
+                settings, library.queue_key(settings), "child-process"
+            )
+        )
+    )
     connection.recv()
 
 
@@ -1410,14 +1416,14 @@ def test_process_exit_releases_only_the_running_row(scheduler, tmp_path):
     scheduler._maa_copilot_run(settings)
     ctx = multiprocessing.get_context("spawn")
     parent, child = ctx.Pipe()
-    worker = ctx.Process(target=_hold_copilot_claim, args=(child, tmp_path, key))
+    worker = ctx.Process(target=_hold_copilot_claim, args=(child, tmp_path, settings))
     worker.start()
     child.close()
     try:
         assert parent.poll(15) and parent.recv()
         assert not record.set_copilot_item_completion(settings, key, 0, "pending", True)
         assert record.set_copilot_item_completion(settings, key, 1, "pending", True)
-        assert record.claim_copilot_item(key, 2, "duplicate") is None
+        assert record.claim_copilot_item(settings, key, "duplicate") is None
     finally:
         worker.terminate()
         worker.join(5)
@@ -1437,7 +1443,7 @@ def test_restoring_running_progress_does_not_restore_its_owner(scheduler):
 
     settings = base_schedule.config.conf.copilot
     key = scheduler._maa_copilot_run(settings)["key"]
-    backup = record.claim_copilot_item(key, 1, "original")
+    backup = record.claim_copilot_item(settings, key, "original")
     record.finish_copilot_item(key, "original", "stopped")
     record.save_maa_copilot_progress(backup)
     assert record.copilot_item_statuses(settings, backup) == ["pending"]
@@ -1446,3 +1452,104 @@ def test_restoring_running_progress_does_not_restore_its_owner(scheduler):
     assert record.copilot_item_statuses(
         settings, record.load_maa_copilot_progress()
     ) == ["completed"]
+
+
+def test_next_claim_uses_saved_copilot_options_and_keeps_its_failure(
+    client, queue_config_path, scheduler
+):
+    queue_pair()
+    base_schedule.config.conf.copilot.use_sanity_potion = True
+
+    def finish():
+        task_id = scheduler.MAA.append_task.call_count
+        if task_id == 1:
+            changed = client.patch(
+                "/conf",
+                headers={"token": "copilot-test-token"},
+                json={"copilot": {"use_sanity_potion": False, "formation": True}},
+            )
+            assert changed.status_code == 200
+        emit(scheduler, 10002 if task_id == 1 else 10000, task_id)
+        return False
+
+    scheduler.MAA.running.side_effect = finish
+    scheduler.maa_plan_solver()
+    scheduler.maa_plan_solver()
+    assert [
+        (call.args[1]["use_sanity_potion"], call.args[1]["formation"])
+        for call in scheduler.MAA.append_task.call_args_list
+    ] == [(True, False), (False, True)]
+
+
+@pytest.mark.parametrize("paradox", [False, True])
+def test_removing_next_item_during_execution_ends_old_queue(
+    client, queue_config_path, scheduler, monkeypatch, paradox
+):
+    config = base_schedule.config.conf
+    kind = "paradox" if paradox else "copilot"
+    if paradox:
+        config.maa_long_task_type = kind
+        items = [
+            library.store_script(
+                json.dumps({"stage_name": stage, "actions": []}).encode(), paradox=True
+            )
+            for stage in ("mem_test_1", "mem_other_2")
+        ]
+        config.paradox = Conf(
+            paradox={"scripts": [{"id": item["id"]} for item in items]}
+        ).paradox
+        monkeypatch.setattr(scheduler, "to_operator_list", MagicMock(return_value=True))
+    else:
+        queue_pair()
+    first = getattr(config, kind).scripts[0]
+
+    def finish():
+        task_id = scheduler.MAA.append_task.call_count
+        if task_id == 1:
+            changed = client.patch(
+                "/conf",
+                headers={"token": "copilot-test-token"},
+                json={kind: {"scripts": [first.model_dump()]}},
+            )
+            assert changed.status_code == 200
+        scheduler.on_maa_callback(
+            10002,
+            json.dumps(
+                {
+                    "taskchain": "ParadoxCopilot" if paradox else "Copilot",
+                    "taskid": task_id,
+                }
+            ).encode(),
+            None,
+        )
+        return False
+
+    scheduler.MAA.running.side_effect = finish
+    scheduler.maa_plan_solver()
+    scheduler.MAA.append_task.assert_called_once()
+    scheduler.maa_plan_solver()
+    assert scheduler.MAA.append_task.call_count == 2
+    params = scheduler.MAA.append_task.call_args.args[1]
+    row = params["list" if paradox else "copilot_list"][0]
+    assert Path(row["filename"]).stem == first.id
+
+
+def test_disabling_scheduled_large_tasks_prevents_the_next_claim(
+    client, queue_config_path, scheduler
+):
+    queue_pair()
+
+    def finish_first():
+        changed = client.patch(
+            "/conf",
+            headers={"token": "copilot-test-token"},
+            json={"maa_rg_enable": 0},
+        )
+        assert changed.status_code == 200
+        emit(scheduler, 10002, 1)
+        return False
+
+    scheduler.MAA.running.side_effect = finish_first
+    scheduler.maa_plan_solver()
+    scheduler.MAA.append_task.assert_called_once()
+    assert scheduler.maa_copilot_progress["next"] == 1
