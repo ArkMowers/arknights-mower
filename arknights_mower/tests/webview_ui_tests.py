@@ -290,7 +290,7 @@ class TestWindowTitle(unittest.TestCase):
 
 
 class TestWindowInstanceControls(unittest.TestCase):
-    def test_main_window_does_not_expose_instance_management(self):
+    def run_window(self, channel=None, *, wait_for_startup=False, backend_error=None):
         import webview
 
         import webview_ui
@@ -319,7 +319,10 @@ class TestWindowInstanceControls(unittest.TestCase):
                 return_value=window_shell.WindowSize(600, 400),
             ),
             mock.patch.object(
-                window_backend, "prepare_window_backend", return_value="gtk"
+                window_backend,
+                "prepare_window_backend",
+                return_value="gtk",
+                side_effect=backend_error,
             ),
             mock.patch.object(window_shell, "attach_window_shell", return_value=shell),
             mock.patch.object(
@@ -327,7 +330,8 @@ class TestWindowInstanceControls(unittest.TestCase):
             ),
             mock.patch.object(webview_ui, "title_version", return_value="test-version"),
             mock.patch.object(webview, "create_window", return_value=window),
-            mock.patch.object(webview, "start"),
+            mock.patch.object(webview, "start") as start,
+            mock.patch("webbrowser.open") as browser,
             mock.patch("threading.Thread"),
             mock.patch.object(
                 controls,
@@ -338,15 +342,101 @@ class TestWindowInstanceControls(unittest.TestCase):
                 controls.runtime, "state_dir", return_value=Path(directory) / "runtime"
             ),
         ):
-            with self.assertRaises(SystemExit):
+            try:
                 webview_ui.webview_window(
-                    mock.Mock(), "", "current", "127.0.0.1", 58000, "http://local", True
+                    channel or mock.Mock(),
+                    "",
+                    "current",
+                    "127.0.0.1",
+                    58000,
+                    "http://local",
+                    True,
+                    wait_for_startup=wait_for_startup,
                 )
-            options = webview.create_window.call_args.kwargs
-            self.assertIs(options.get("draggable"), True)
-            self.assertIs(options["easy_drag"], False)
-            window.expose.assert_not_called()
+            except SystemExit as exit:
+                self.assertIsNone(exit.code)
             self.assertFalse((Path(directory) / "instances.json").exists())
+            return webview.create_window, start, browser, window, shell
+
+    def test_main_window_does_not_expose_instance_management(self):
+        create, start, browser, window, _ = self.run_window()
+        start.assert_called_once()
+        browser.assert_not_called()
+        options = create.call_args.kwargs
+        self.assertIs(options.get("draggable"), True)
+        self.assertIs(options["easy_drag"], False)
+        window.expose.assert_not_called()
+
+    def test_slow_parent_can_still_open_the_prepared_window(self):
+        from multiprocessing import Pipe
+        from threading import Event, Thread
+
+        from arknights_mower.utils import instance_supervisor
+
+        parent, child = Pipe()
+        with (
+            parent,
+            child,
+            mock.patch.object(instance_supervisor, "STARTUP_TIMEOUT", 0),
+        ):
+            channel = mock.Mock(wraps=child)
+            waiting = Event()
+
+            def receive():
+                waiting.set()
+                return child.recv()
+
+            def poll(timeout):
+                result = child.poll(timeout)
+                waiting.set()
+                return result
+
+            def allow_open():
+                if waiting.wait(5):
+                    parent.send("open")
+                else:
+                    parent.close()
+
+            channel.recv.side_effect = receive
+            channel.poll.side_effect = poll
+            sender = Thread(target=allow_open)
+            sender.start()
+            try:
+                _, start, browser, _, _ = self.run_window(
+                    channel, wait_for_startup=True
+                )
+            finally:
+                sender.join(6)
+            self.assertFalse(sender.is_alive())
+            start.assert_called_once()
+            browser.assert_not_called()
+
+    def test_initial_window_and_browser_fallback_require_the_open_command(self):
+        for failed_backend in (False, True):
+            for result in ("open", "exit", EOFError(), OSError()):
+                with self.subTest(failed_backend=failed_backend, result=result):
+                    channel = mock.Mock()
+                    if isinstance(result, Exception):
+                        channel.recv.side_effect = result
+                    else:
+                        channel.recv.return_value = result
+                    create, start, browser, _, shell = self.run_window(
+                        channel,
+                        wait_for_startup=True,
+                        backend_error=RuntimeError("no renderer")
+                        if failed_backend
+                        else None,
+                    )
+                    channel.recv.assert_called_once_with()
+                    self.assertEqual(create.call_count, int(not failed_backend))
+                    self.assertEqual(
+                        start.call_count, int(result == "open" and not failed_backend)
+                    )
+                    self.assertEqual(
+                        browser.call_count, int(result == "open" and failed_backend)
+                    )
+                    if not failed_backend:
+                        shell.dispose.assert_called_once()
 
 
 if __name__ == "__main__":
