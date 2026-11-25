@@ -756,6 +756,38 @@ def test_navigation_target_uses_explicit_stage_and_supported_identifiers(
     assert library.copilot_navigation_target(item) == expected
 
 
+@pytest.mark.parametrize("incremental", [False, True])
+def test_copilot_dispatch_uses_map_code_for_internal_stage_id(
+    scheduler, tmp_path, monkeypatch, incremental
+):
+    conf = base_schedule.config.conf
+    installation = tmp_path / "maa"
+    conf.maa_path = str(installation)
+    monkeypatch.delenv("MOWER_ANDROID", raising=False)
+    monkeypatch.setattr(library, "storage_root", lambda _: tmp_path / "runtime")
+    root = tmp_path / "runtime/cache" if incremental else installation
+    maps = root / "resource/Arknights-Tile-Pos"
+    maps.mkdir(parents=True)
+    (maps / "overview.json").write_text(
+        json.dumps({"map": {"stageId": "act46side_ex08", "code": "OS-EX-8"}})
+    )
+    info = upload({**SCRIPT, "stage_name": "act46side_ex08"})
+    item = conf.copilot.scripts[0]
+    item.id = info["id"]
+    item.is_raid = True
+    scheduler.MAA.start.side_effect = lambda: emit(scheduler, 10002, 1)
+
+    scheduler.maa_plan_solver([])
+    base_schedule.NavigationSolver.return_value.run.assert_called_once()
+    assert (
+        base_schedule.NavigationSolver.return_value.run.call_args.args[0] == "OS-EX-8"
+    )
+    entry = scheduler.MAA.append_task.call_args.args[1]["copilot_list"][0]
+    assert (entry["nav_name_override"], entry["is_raid"]) == ("OS-EX-8", True)
+    item.nav_name_override = "1-7"
+    assert library.copilot_navigation_target(item) == "1-7"
+
+
 def test_unknown_internal_navigation_target_requires_stage_override(files):
     info = upload({**SCRIPT, "stage_name": "unmapped_internal_stage"})
     item = CopilotConf(scripts=[{"id": info["id"]}]).scripts[0]
