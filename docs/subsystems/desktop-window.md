@@ -4,7 +4,7 @@ The desktop entry in [`webview_ui.py`](../../webview_ui.py) owns window creation
 
 ## Initial window on Windows
 
-A foreground launch prepares the window child while the parent loads the HTTP server. After the server and instance registration are ready, the parent sends the first command over the child's private pipe to allow native navigation or browser fallback. Only then can other callers use the window channel. If startup fails, desktop shutdown closes the prepared child and its channel. A background instance creates its window on request.
+A foreground launch prepares the window child while the parent loads the HTTP server. The Windows supervisor owns the startup deadline. The child waits for a parent command or a closed pipe. After the server and instance registration are ready, the parent sends the first command over the child's private pipe to allow native navigation or browser fallback. Only then can other callers use the window channel. If startup fails or shutdown is already underway when the parent would open the window, desktop shutdown closes the prepared child and its channel. A background instance creates its window on request.
 
 ## Backend selection and capabilities
 

@@ -367,12 +367,55 @@ class TestWindowInstanceControls(unittest.TestCase):
         self.assertIs(options["easy_drag"], False)
         window.expose.assert_not_called()
 
+    def test_slow_parent_can_still_open_the_prepared_window(self):
+        from multiprocessing import Pipe
+        from threading import Event, Thread
+
+        from arknights_mower.utils import instance_supervisor
+
+        parent, child = Pipe()
+        with (
+            parent,
+            child,
+            mock.patch.object(instance_supervisor, "STARTUP_TIMEOUT", 0),
+        ):
+            channel = mock.Mock(wraps=child)
+            waiting = Event()
+
+            def receive():
+                waiting.set()
+                return child.recv()
+
+            def poll(timeout):
+                result = child.poll(timeout)
+                waiting.set()
+                return result
+
+            def allow_open():
+                if waiting.wait(5):
+                    parent.send("open")
+                else:
+                    parent.close()
+
+            channel.recv.side_effect = receive
+            channel.poll.side_effect = poll
+            sender = Thread(target=allow_open)
+            sender.start()
+            try:
+                _, start, browser, _, _ = self.run_window(
+                    channel, wait_for_startup=True
+                )
+            finally:
+                sender.join(6)
+            self.assertFalse(sender.is_alive())
+            start.assert_called_once()
+            browser.assert_not_called()
+
     def test_initial_window_and_browser_fallback_require_the_open_command(self):
         for failed_backend in (False, True):
-            for result in ("open", "exit", EOFError(), None):
+            for result in ("open", "exit", EOFError(), OSError()):
                 with self.subTest(failed_backend=failed_backend, result=result):
                     channel = mock.Mock()
-                    channel.poll.return_value = result is not None
                     if isinstance(result, Exception):
                         channel.recv.side_effect = result
                     else:
@@ -384,8 +427,7 @@ class TestWindowInstanceControls(unittest.TestCase):
                         if failed_backend
                         else None,
                     )
-                    channel.poll.assert_called_once()
-                    self.assertGreater(channel.poll.call_args.args[0], 0)
+                    channel.recv.assert_called_once_with()
                     self.assertEqual(create.call_count, int(not failed_backend))
                     self.assertEqual(
                         start.call_count, int(result == "open" and not failed_backend)

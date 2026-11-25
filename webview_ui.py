@@ -371,11 +371,10 @@ def webview_window(
     def can_open():
         if not wait_for_startup:
             return True
-        from arknights_mower.utils.instance_supervisor import STARTUP_TIMEOUT
-
-        # Until the parent publishes this pipe, its only other command is exit.
+        # The supervisor owns the startup deadline. A separate timeout here can
+        # discard an open command while the child still owns its pipe.
         try:
-            return child_conn.poll(STARTUP_TIMEOUT) and child_conn.recv() == "open"
+            return child_conn.recv() == "open"
         except (EOFError, OSError):
             return False
 
@@ -1093,6 +1092,8 @@ def _run_desktop():
 
     def ensure_tray():
         nonlocal tray_process, tray_queue, tray_retry_at
+        if shutdown.closing:
+            return
         if tray_process is not None and tray_process.is_alive():
             return
         close_tray()
@@ -1117,6 +1118,8 @@ def _run_desktop():
         close_channel(config.parent_conn)
         config.webview_process, config.parent_conn = launch_window()
 
+    if shutdown.closing:
+        return
     if prepared_window is not None:
         process, connection = prepared_window
         try:

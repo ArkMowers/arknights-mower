@@ -422,6 +422,7 @@ class DesktopStartupTests(unittest.TestCase):
                 ),
                 patch("arknights_mower.utils.lifecycle.shutdown", shutdown),
                 patch.object(webview_ui, "start_desktop_child", server.desktop_child),
+                patch.object(webview_ui.mp, "Queue"),
                 patch.object(software_update, "request_auto_check"),
                 patch.object(desktop_process, "log_channel", return_value=Mock()),
                 patch.multiple(
@@ -548,6 +549,36 @@ class DesktopStartupTests(unittest.TestCase):
         process.close.assert_called_once()
         parent.close.assert_called_once()
         child.close.assert_called_once()
+
+    def test_shutdown_after_http_ready_keeps_the_prepared_window_closed(self):
+        from arknights_mower.utils import instance_supervisor, lifecycle
+
+        def request_exit(stack, task_server, server, config, events):
+            stack.enter_context(patch.object(sys, "platform", "win32"))
+            stack.enter_context(
+                patch.object(
+                    instance_supervisor,
+                    "child_ready",
+                    side_effect=lambda *args, **kwargs: lifecycle.shutdown.request(
+                        "runtime_request"
+                    ),
+                )
+            )
+
+        for managed in (False, True):
+            with self.subTest(managed=managed):
+                _, server = self.launch(
+                    automatic=False,
+                    managed=managed,
+                    commands=[],
+                    configure_startup=request_exit,
+                )
+                self.assertEqual(
+                    [call.args[0] for call in server.desktop_child.call_args_list],
+                    ["splash", "window"],
+                )
+                _, pending = server.desktop_child.return_value
+                pending.send.assert_not_called()
 
     def test_closed_preparation_pipe_launches_one_ready_window(self):
         def close_pipe(stack, task_server, server, config, events):

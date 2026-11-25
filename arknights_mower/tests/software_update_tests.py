@@ -1930,6 +1930,8 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                     background=background,
                     tray=tray_enabled,
                     restart=restart,
+                    managed=managed,
+                    automatic=automatic,
                 ),
                 ExitStack() as stack,
             ):
@@ -2028,9 +2030,11 @@ class ArchiveAndLauncherTests(unittest.TestCase):
                 )
                 targets = [call.args[0] for call in process.call_args_list]
                 expected = [] if background else ["splash"]
+                if system == "win32" and not background:
+                    expected.append("window")
                 if (tray_enabled or background) and not managed:
                     expected.append("tray")
-                if not background:
+                if system != "win32" and not background:
                     expected.append("window")
                 self.assertEqual(targets, expected)
                 if system == "darwin":
