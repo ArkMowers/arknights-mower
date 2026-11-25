@@ -441,6 +441,50 @@ def test_unchanged_training_read_during_dorm_shift_does_not_resubmit(pending_tra
     assert instance.tap_confirm.call_args_list == submissions
 
 
+@pytest.mark.parametrize("during_recovery_read", [False, True])
+def test_new_trainee_after_reload_releases_unconfirmed_submission(
+    pending_trainee, during_recovery_read
+):
+    instance, task, depot, occupants = pending_trainee
+    instance.task = task
+    instance.infra_main()
+    assert occupants[ROOM][2] == "深巡"
+    task = pickle.loads(pickle.dumps(task))
+    instance.task, instance.tasks = task, [task, depot]
+    original_time = task.time
+    assert task.confirmation_recovery_rooms["train"] == "consumed"
+    for _ in range(2):
+        instance.get_agent_from_room("train", strict_observation=True)
+        instance._resume_failed_tasks()
+        assert find_next_task(instance.tasks) is depot
+    submissions = instance.tap_confirm.call_args_list.copy()
+    occupants["train"][1] = "余"
+    if during_recovery_read:
+        # 新载入的原任务尚有一次补读机会。
+        del task.confirmation_recovery_rooms
+        assert instance._observe_failed_arrangement_confirmation()
+    else:
+        instance.get_agent_from_room("train", strict_observation=True)
+        instance._resume_failed_tasks()
+    assert find_next_task([task]) is task
+    assert instance.tap_confirm.call_args_list == submissions
+
+    def settle(room, *, training_slot):
+        assert (room, training_slot) == ("train", 1)
+        occupants[room][training_slot] = "迷迭香"
+        instance.scene.return_value = base.Scene.INFRA_DETAILS
+
+    instance.tap_confirm.side_effect = settle
+    instance.task = task
+    instance.infra_main()
+    assert (
+        all(queued is not task for queued in instance.tasks)
+        and task.time == original_time
+    )
+    assert instance.tap_confirm.call_count == len(submissions) + 1
+    assert instance.op_data.get_current_room("train", True) == ["虎狼丸", "迷迭香"]
+
+
 def test_product_reserved_bed_keeps_exhausted_training_room_held(
     training_dispatch, training_reader, monkeypatch
 ):

@@ -1313,8 +1313,11 @@ class BaseSchedulerSolver(
                     )
                     if complete and room == "train" and training_slot is not None:
                         index, target = training_slot
+                        occupant = rows[index]["agent"]
                         complete = self._training_slot_matches(
-                            index, target, rows[index]["agent"]
+                            index, target, occupant
+                        ) or self._submitted_training_occupant_changed(
+                            failure, index, occupant
                         )
                 except (MowerExit, DeviceRecoveryError, SharedADBError):
                     raise
@@ -1322,7 +1325,7 @@ class BaseSchedulerSolver(
                     logger.warning("确认结果补充实读未完成，保留原任务：%s", exc)
                 finally:
                     if not complete:
-                        # 补读不完整或提交的岗位仍不符时，本次读数不解除失败。
+                        # 补读不完整或仍为原驻员时，本次读数不解除失败。
                         failure["snapshot"] = self._task_failure_snapshot(
                             task,
                             failure["rooms"],
@@ -1500,6 +1503,21 @@ class BaseSchedulerSolver(
         logger.debug("相关观测已更新，重新计算原纠错任务：%s", task.plan)
         return True
 
+    def _submitted_training_occupant_changed(self, failure, index, occupant):
+        previous = next(
+            (
+                name
+                for name, observation in failure["snapshot"]["observations"].items()
+                if tuple(observation[:2]) == ("train", index)
+            ),
+            "",
+        )
+        saved_revision = (
+            failure["snapshot"].get("room_observations", {}).get("train") or 0
+        )
+        revision = getattr(self.op_data, "room_observations", {}).get("train", 0)
+        return revision > saved_revision and occupant != previous
+
     def _failure_snapshot_changed(self, task, failure):
         if wait := failure.get("training_selection_wait"):
             from arknights_mower.utils.training_selection_recovery import (
@@ -1512,9 +1530,12 @@ class BaseSchedulerSolver(
         if submitted := TrainingSubmissionUnconfirmed.retained_slot(task, failure):
             index, target = submitted
             if task.plan.get("train", [])[index : index + 1] == [target]:
-                occupant = self.op_data.get_current_operator("train", index)
+                operator = self.op_data.get_current_operator("train", index)
+                occupant = operator.name if operator is not None else ""
                 if not self._training_slot_matches(
-                    index, target, occupant.name if occupant else ""
+                    index, target, occupant
+                ) and not self._submitted_training_occupant_changed(
+                    failure, index, occupant
                 ):
                     return False
         current_snapshot = self._task_failure_snapshot(
