@@ -22804,7 +22804,19 @@ class BaseSchedulerSolver(
                         while self.find("confirm_blue") is None:
                             if error_count > 3:
                                 raise Exception("未成功进入干员选择界面")
-                            if ordinary_work_room and error_count == 0:
+                            guarded_selection = self._is_ordinary_facility_arrangement(
+                                self.task
+                            )
+                            # 显式换人读完生产详情后，进驻面板可能仍关闭。
+                            if error_count == 0 and (
+                                ordinary_work_room
+                                or (
+                                    guarded_selection
+                                    and self.task.type == TaskTypes.NOT_SPECIFIC
+                                    and room.startswith("room_")
+                                    and not self.find("room_detail")
+                                )
+                            ):
                                 self.turn_on_room_detail(room)
                             if room.startswith("room") and len(plan[room]) == 2:
                                 two_slot_room = (
@@ -22813,7 +22825,7 @@ class BaseSchedulerSolver(
                                     )
                                     and self.detect_room() == room
                                 )
-                            if self._is_ordinary_facility_arrangement(self.task):
+                            if guarded_selection:
                                 self._open_room_selection(room)
                             else:
                                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))
