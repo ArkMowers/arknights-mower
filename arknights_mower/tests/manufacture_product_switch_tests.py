@@ -396,12 +396,89 @@ def test_shift_projection_sees_hongxue_leaving_before_changing_real_staff(monkey
 
 def test_adjusted_manufacture_timer_reads_real_screenshot():
     fixture = Path(__file__).parent / "fixtures/manufacture/adjusted_total.jpg"
-    screenshot = cv2.imread(str(fixture))
+    screenshot = cv2.cvtColor(cv2.imread(str(fixture)), cv2.COLOR_BGR2RGB)
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(img=screenshot, h=1080, w=1920)
 
     assert solver._read_manufacture_adjusted_total_seconds() == 72 * 3600 + 46 * 60 + 52
     assert solver._read_manufacture_speed() == pytest.approx(1.63)
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("adjusted_total.jpg", 72 * 3600 + 46 * 60 + 52),
+        ("b303_product_settled_20261123.jpg", 118 * 3600 + 21 * 60 + 30),
+    ],
+)
+def test_adjusted_manufacture_timer_matches_without_ocr(name, expected):
+    screenshot = cv2.imread(str(Path(__file__).parent / "fixtures/manufacture" / name))
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(
+        img=cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB), h=1080, w=1920
+    )
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver._read_manufacture_adjusted_total_seconds() == expected
+
+
+@pytest.mark.parametrize("case", ["paused", "zero", "clipped_hours"])
+def test_adjusted_manufacture_timer_preserves_zero_and_validates_hours(case):
+    fixtures = Path(__file__).parent / "fixtures/manufacture"
+    paused = cv2.imread(str(fixtures / "adjusted_time_paused.png"))
+    if case == "zero":
+        # 两位小时的布局来自正常截图，数字 0 来自暂停时的计时器。
+        normal = cv2.imread(str(fixtures / "adjusted_total.jpg"))[615:680, 1580:1790]
+        crop = np.zeros_like(paused)
+        for start in (27, 51, 83, 107, 139, 163):
+            crop[22:55, start : start + 22] = paused[22:55, 164:186]
+        crop[:, 73:81] = normal[:, 73:81]
+        crop[:, 130:137] = normal[:, 130:137]
+    else:
+        crop = paused.copy()
+        if case == "clipped_hours":
+            crop[:, :50] = 0
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[615:680, 1580:1790] = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(img=frame, h=1080, w=1920)
+    solver._product_ocr_text = MagicMock(return_value="94:47:07")
+
+    if case == "clipped_hours":
+        with pytest.raises(base.RecognizeError, match="制造站实际剩余时间"):
+            solver._read_manufacture_adjusted_total_seconds()
+        solver._product_ocr_text.assert_not_called()
+    else:
+        expected = 0 if case == "zero" else 294 * 3600 + 47 * 60 + 7
+        assert solver._read_manufacture_adjusted_total_seconds() == expected
+        solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("时间118：21：30", 118 * 3600 + 21 * 60 + 30),
+        ("18:21:30", None),
+        ("1118:21:30", None),
+        ("118:60:01", None),
+        ("", None),
+    ],
+)
+def test_adjusted_manufacture_timer_falls_back_on_opening_frame(text, expected):
+    fixture = (
+        Path(__file__).parent / "fixtures/manufacture/b303_product_opening_20261123.jpg"
+    )
+    screenshot = cv2.cvtColor(cv2.imread(str(fixture)), cv2.COLOR_BGR2RGB)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(img=screenshot, h=1080, w=1920)
+    solver._product_ocr_text = MagicMock(return_value=text)
+
+    if expected is None:
+        with pytest.raises(base.RecognizeError, match="制造站实际剩余时间"):
+            solver._read_manufacture_adjusted_total_seconds()
+    else:
+        assert solver._read_manufacture_adjusted_total_seconds() == expected
+    solver._product_ocr_text.assert_called_once_with(((1580, 615), (1790, 680)))
 
 
 def test_manufacture_survey_uses_operator_speed_with_base_countdown():
@@ -1641,11 +1718,12 @@ def product_condition_room():
     solver.turn_on_room_detail = MagicMock()
     solver.wait_product_complete = MagicMock()
     solver.back = MagicMock()
-    solver.recog.gray = MagicMock()
+    solver.recog.img = np.zeros((1080, 1920, 3), np.uint8)
+    solver.recog.gray = np.zeros((1080, 1920), np.uint8)
+    solver.read_screen = MagicMock(return_value="陈")
+    solver.read_accurate_mood = MagicMock(return_value=24)
     solver.find = MagicMock(
-        side_effect=lambda resource, **kwargs: (
-            resource in {"infra_no_operator", "arrange_check_in"}
-        )
+        side_effect=lambda resource, **kwargs: resource == "arrange_check_in"
     )
     return room, solver
 
@@ -1660,14 +1738,12 @@ def test_patrol_product_reaches_next_backup_check(product_condition_room, source
     if source == "unreadable":
         solver.read_manufacture_product.side_effect = base.RecognizeError("配方未确认")
 
-    def find(resource, **kwargs):
-        if resource == "infra_no_operator":
-            assert solver.op_data.plan_condition == [False]
-            assert solver.op_data.evaluate_backup_selection().conditions == [False]
-            return True
-        return resource == "arrange_check_in"
+    def read_name(*args, **kwargs):
+        assert solver.op_data.plan_condition == [False]
+        assert solver.op_data.evaluate_backup_selection().conditions == [False]
+        return "陈"
 
-    solver.find = MagicMock(side_effect=find)
+    solver.read_screen.side_effect = read_name
     solver._read_room_mood(room)
     assert solver.op_data.plan_condition == [False]
     solver.backup_plan_solver()
@@ -1934,7 +2010,9 @@ def test_ambiguous_room_product_requires_recipe_detail(monkeypatch, line):
     assert solver._visible_manufacture_product() is None
 
 
-@pytest.mark.parametrize("feedback", ["delayed", "dropped", "unknown", "wrong_room"])
+@pytest.mark.parametrize(
+    "feedback", ["delayed", "dropped", "unknown", "wrong_room", "wrong_detail"]
+)
 def test_mood_room_visit_returns_from_recognized_product_to_the_same_facility(
     feedback, monkeypatch
 ):
@@ -1950,7 +2028,12 @@ def test_mood_room_visit_returns_from_recognized_product_to_the_same_facility(
     solver.op_data = Operators(plan)
     solver.recog = Recognizer(None, returned)
     solver.recog.gray[925:975, 225:478] = 0
-    solver.tap = MagicMock(side_effect=lambda *_args, **_kwargs: install(opening))
+    detail = (
+        (fixtures / "adjusted_total.jpg").read_bytes()
+        if feedback == "wrong_detail"
+        else opening
+    )
+    solver.tap = MagicMock(side_effect=lambda *_args, **_kwargs: install(detail))
     solver.read_manufacture_product = MagicMock(return_value="gold")
     solver.scene_graph_navigation = MagicMock()
     solver.selection_transition_timing = MagicMock(return_value=(0.1, 3))
@@ -1987,6 +2070,16 @@ def test_mood_room_visit_returns_from_recognized_product_to_the_same_facility(
             install(pending.pop(0))
 
     solver.sleep = MagicMock(side_effect=sleep)
+    if feedback == "wrong_detail":
+        pause = base._RoutineDronePause()
+        solver._routine_drone_pauses = {room: pause}
+        assert not solver.refresh_facility_state(room)
+        assert solver.op_data.facility_product(room) is None
+        assert solver._routine_drone_pauses[room] is pause
+        solver.read_manufacture_product.assert_not_called()
+        solver.back.assert_not_called()
+        solver.scene_graph_navigation.assert_called_once()
+        return
     if feedback in ("unknown", "wrong_room"):
         with pytest.raises(RecognizeError, match="返回"):
             solver.refresh_facility_state(room)
@@ -3475,16 +3568,17 @@ def test_manufacture_product_change_never_accepts_one_unit_on_factory_page():
 @pytest.mark.parametrize("verified", [False, True])
 def test_product_switch_retry_verifies_queue_when_recipe_already_matches(verified):
     solver = object.__new__(base.BaseSchedulerSolver)
+    room, plan = product_plan()
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
-        meta_data=product_task_meta("room_3_1", "gold"),
+        meta_data=product_task_meta(room, "gold"),
     )
     solver.tasks = [task]
-    solver.op_data = SimpleNamespace()
+    solver.op_data = Operators(plan)
+    solver.op_data.update_facility_state(room, "manufacture", "gold")
     solver.recog = SimpleNamespace(update=MagicMock())
     solver._open_manufacture_product_detail = MagicMock()
     solver.read_manufacture_product = MagicMock(return_value="gold")
-    solver._cache_facility_state = MagicMock()
     solver._select_manufacture_product = MagicMock()
     solver.sleep = MagicMock()
     solver.find = MagicMock(return_value=False)
@@ -3495,9 +3589,27 @@ def test_product_switch_retry_verifies_queue_when_recipe_already_matches(verifie
         solver.switch_base_products([task])
         assert solver.tasks == []
     else:
-        with pytest.raises(base.ProductSwitchFailed, match="制造站生产份数验证失败"):
+        with pytest.raises(
+            base.ProductSwitchFailed, match="制造站生产份数验证失败"
+        ) as failure:
             solver.switch_base_products([task])
-        assert solver.tasks == [task]
+        solver._retain_failed_task(task, str(failure.value), failure.value.rooms)
+        original_time = task.time
+        for _ in range(3):
+            solver._resume_failed_tasks()
+            solver.queue_product_switches()
+            assert len(solver.tasks) == 1 and solver.tasks[0] is task
+            assert task.time is original_time
+            assert task.execution_failure
+
+        solver.op_data.room_observations[room] = 1
+        solver._resume_failed_tasks()
+        assert not hasattr(task, "execution_failure")
+        solver.queue_product_switches()
+        assert len(solver.tasks) == 1 and solver.tasks[0] is task
+        solver._read_manufacture_queue_count.return_value = 99
+        solver.switch_base_products([task])
+        assert solver.tasks == []
     solver._select_manufacture_product.assert_not_called()
     assert solver._read_manufacture_queue_count.called
 
@@ -3526,6 +3638,81 @@ def test_read_manufacture_queue_count_from_capture(
     monkeypatch.setattr(base.rapidocr, "engine", queue_ocr_engine)
 
     assert solver._read_manufacture_queue_count() == expected
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("queue_one", 1),
+        ("queue_max", 99),
+        ("queue_one_suffix", 1),
+        ("dualchip_queue_1", 1),
+        ("dualchip_queue_2", 2),
+        ("dualchip_queue_3", 3),
+        ("dualchip_queue_4", 4),
+    ],
+)
+def test_read_manufacture_queue_count_matches_without_ocr(name, expected):
+    crop = cv2.imread(
+        str(Path(__file__).parent / "fixtures/manufacture" / f"{name}.png")
+    )
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver._read_manufacture_queue_count() == expected
+
+
+def test_read_manufacture_queue_count_matches_zero_without_ocr():
+    crop = cv2.imread(str(Path(__file__).parent / "fixtures/manufacture/queue_one.png"))
+    crop[12:72, 70:115] = crop[12:72, 27:72].copy()
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver._read_manufacture_queue_count() == 0
+
+
+@pytest.mark.parametrize("kind", ["blank", "one_digit", "three_digits"])
+def test_read_manufacture_queue_count_rejects_incomplete_layout(kind):
+    fixture = Path(__file__).parent / "fixtures/manufacture/queue_max.png"
+    crop = cv2.imread(str(fixture))
+    if kind == "blank":
+        crop[:] = 0
+    elif kind == "one_digit":
+        crop[:, :70] = 0
+    else:
+        crop[:, :38] = crop[:, 73:111]
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(return_value="9")
+
+    with pytest.raises(base.RecognizeError, match="生产份数"):
+        solver._read_manufacture_queue_count()
+    solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize("text, expected", [("99", 99), ("9", None)])
+def test_read_manufacture_queue_ocr_requires_both_digits(monkeypatch, text, expected):
+    from arknights_mower.utils import manufacture_digits
+
+    fixture = Path(__file__).parent / "fixtures/manufacture/queue_max.png"
+    crop = cv2.imread(str(fixture))
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(return_value=text)
+    monkeypatch.setattr(manufacture_digits, "_digit_templates", lambda: None)
+
+    if expected is None:
+        with pytest.raises(base.RecognizeError, match="生产份数"):
+            solver._read_manufacture_queue_count()
+    else:
+        assert solver._read_manufacture_queue_count() == expected
+    solver._product_ocr_text.assert_called_once_with(((1280, 450), (1415, 530)))
 
 
 @pytest.mark.parametrize("product", ["orirock", "orirock_device"])
@@ -3670,9 +3857,7 @@ def test_reload_preserves_failure_time_and_continues_other_rooms(monkeypatch):
 
 
 @pytest.mark.parametrize("entry", ["switch", "reload"])
-def test_manufacture_max_precedes_quantity_ocr_from_capture(
-    monkeypatch, queue_ocr_engine, entry
-):
+def test_manufacture_max_precedes_quantity_read_from_capture(monkeypatch, entry):
     solver = reload_test_solver(SimpleNamespace(products={"room_1_2": "orirock"}))
     del solver._read_manufacture_queue_count
     fixtures = Path(__file__).parent / "fixtures" / "manufacture"
@@ -3698,21 +3883,22 @@ def test_manufacture_max_precedes_quantity_ocr_from_capture(
             events.append("confirm")
             pending = False
 
-    read_text = solver._product_ocr_text
+    read_quantity = solver._read_manufacture_queue_count
 
-    def quantity_text(scope):
+    def quantity_read():
         events.append("read")
-        return read_text(scope)
+        return read_quantity()
 
     solver.tap.side_effect = tap
-    solver._product_ocr_text = quantity_text
+    solver._read_manufacture_queue_count = quantity_read
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
     solver.find.side_effect = lambda resource: (
         resource == "manufacture_product_change_confirm" and pending
     )
-    monkeypatch.setattr(base.rapidocr, "engine", queue_ocr_engine)
     if entry == "switch":
         solver._select_manufacture_product("exp3")
     else:
         solver.reload()
         assert solver.reload_time is not None
     assert events == ["max", "read", "confirm", "read"]
+    solver._product_ocr_text.assert_not_called()

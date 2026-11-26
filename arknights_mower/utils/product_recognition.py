@@ -164,3 +164,18 @@ def trade_order_is_paused(frame):
         return False
     label = cv2.cvtColor(frame[361:397, 460:667], cv2.COLOR_RGB2GRAY)
     return cv2.matchTemplate(label, template, cv2.TM_CCOEFF_NORMED).max() >= 0.93
+
+
+def manufacture_detail_pause_state(frame) -> bool | None:
+    """识别制造详情页上的暂停横条。遮挡或画面未稳定时不确认状态。"""
+    if getattr(frame, "shape", None) != (1080, 1920, 3):
+        return None
+    sides = [cv2.mean(frame[483:502, x : x + 24])[:3] for x in (1560, 1790)]
+    if all(r >= 200 and 80 <= g <= 160 and b <= 50 for r, g, b in sides):
+        word = cv2.cvtColor(frame[480:511, 1615:1755], cv2.COLOR_RGB2GRAY)
+        if _word_matches(word, "room/manufacture_paused", 5, 0.92):
+            return True
+    if all(25 <= min(rgb) and max(rgb) <= 90 and np.ptp(rgb) <= 28 for rgb in sides):
+        # 已确认的产物页露出横条两侧的底色，可重新核验能否加速。
+        return False
+    return None

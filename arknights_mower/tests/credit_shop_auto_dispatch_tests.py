@@ -127,7 +127,7 @@ def test_shop_only_reset_exclusion_preserves_time_and_other_ready_work(automatic
     shop.run.assert_not_called()
     scheduler.clue_new.assert_not_called()
     assert scheduler.last_clue == previous_check
-    scheduler.drone.assert_called_once_with("room_1_1")
+    scheduler.drone.assert_called_once_with("room_1_1", routine=True)
     scheduler.reload.assert_called_once_with()
     state.now = state.now.replace(hour=4, minute=0)
     scheduler.daily_visit_friend_attempt = get_server_time().date()

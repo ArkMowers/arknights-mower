@@ -468,7 +468,7 @@ def test_periodic_stuck_access_record_preserves_interval_and_other_work(
     assert scheduler.party_time == party_end
     assert scheduler.tasks == []
     assert scheduler.tap.call_count == 1
-    scheduler.drone.assert_called_once_with("room_1_1")
+    scheduler.drone.assert_called_once_with("room_1_1", routine=True)
     scheduler.reload.assert_called_once_with()
     assert scheduler.todo_task is True
 
@@ -580,7 +580,7 @@ def test_periodic_clue_skip_preserves_interval_and_other_work(
 
     assert scheduler.last_clue == (previous_check if active else clock.now())
     assert scheduler.clue_new.call_count == int(not active)
-    scheduler.drone.assert_called_once_with("room_1_1")
+    scheduler.drone.assert_called_once_with("room_1_1", routine=True)
     scheduler.reload.assert_called_once_with()
     assert scheduler.todo_task is True
     state.now = datetime.fromisoformat("2026-10-14T04:00:00+08:00")

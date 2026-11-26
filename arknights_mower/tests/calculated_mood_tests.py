@@ -633,6 +633,115 @@ def test_catalog_change_alone_invalidates_saved_calculated_mood(tmp_path, monkey
     assert value.restore().moods == {}
 
 
+@pytest.mark.parametrize(
+    ("case", "visited", "drags"),
+    [
+        ("all", ["factory", "recycle", "meeting", "room_1_3", "room_1_1"], 0),
+        ("unavailable_recycle", ["factory", "meeting", "room_1_3", "room_1_1"], 0),
+        ("cached_meeting", ["factory", "recycle", "room_1_1", "room_1_3"], 1),
+        (
+            "moved_occupant",
+            ["factory", "recycle", "meeting", "room_1_3", "room_1_1"],
+            0,
+        ),
+        (
+            "gaming_room",
+            ["factory", "gaming_1", "meeting", "recycle", "room_1_1", "room_1_3"],
+            1,
+        ),
+    ],
+)
+def test_mood_patrol_reads_each_room_with_fewer_map_drags(solver, case, visited, drags):
+    from arknights_mower.utils import segment
+    from arknights_mower.utils.operators import Operator
+    from arknights_mower.utils.scene import Scene
+
+    dorms = ["dormitory_1", "dormitory_2"]
+    rooms = {*dorms, "factory", "meeting", "recycle", "room_1_1", "room_1_3"}
+    if case == "gaming_room":
+        rooms.add("gaming_1")
+    solver.op_data.facility_levels["train"] = 0
+    solver._recycle_unavailable = case == "unavailable_recycle"
+    solver.op_data.operators = {
+        room: Operator(room, room, current_room=room) for room in rooms
+    }
+    if case == "cached_meeting":
+        # 两小时后进入巡检候选，房内心情缓存仍在两小时半的复用窗口内。
+        solver.op_data.operators["meeting"].time_stamp = NOW - timedelta(minutes=135)
+    if case == "moved_occupant":
+        solver.op_data.operators["银灰"] = Operator(
+            "银灰", "room_1_1", current_room="room_1_1", time_stamp=NOW
+        )
+
+    anchor_x = 1030
+    current_room = None
+    swipes = []
+    entries = []
+    solver.recog = SimpleNamespace(img=None, w=1920, h=1080)
+    del solver.enter_room
+
+    def anchor():
+        return ((anchor_x, 150), (anchor_x + 100, 262))
+
+    def tap(rectangle, **_):
+        nonlocal current_room
+        x, y = rectangle.mean(axis=0)
+        (current_room,) = (
+            room
+            for room, bounds in segment.base(None, anchor()).items()
+            if room in rooms
+            and bounds[0][0] < x < bounds[2][0]
+            and bounds[0][1] < y < bounds[2][1]
+        )
+        entries.append(current_room)
+
+    def back():
+        nonlocal anchor_x, current_room
+        # 模拟房间返回后地图保留的可见范围。会客室返回时能看到 B103。
+        if current_room == "meeting":
+            anchor_x = 260
+        elif current_room in ("factory", "recycle"):
+            anchor_x = 150
+        elif current_room in ("room_1_1", "room_1_3"):
+            anchor_x = 1630
+        current_room = None
+
+    def swipe(_start, offset, **_):
+        nonlocal anchor_x
+        swipes.append(offset)
+        anchor_x = 1030
+
+    def unexpected_device_action(*args, **kwargs):
+        pytest.fail("离线巡检不应等待画面或恢复基建入口")
+
+    solver.scene = lambda: (
+        Scene.INFRA_MAIN if current_room is None else Scene.INFRA_DETAILS
+    )
+    solver.find = lambda name: (
+        anchor() if name == "control_central" and current_room is None else None
+    )
+    solver.detect_room = lambda: current_room
+    solver.tap, solver.back, solver.swipe_noinertia = tap, back, swipe
+    solver.sleep = solver.back_to_index = solver.back_to_infrastructure = (
+        unexpected_device_action
+    )
+
+    def read_room(room, **_):
+        if case == "moved_occupant" and room == "room_1_3":
+            solver.op_data.operators["room_1_1"].current_room = "room_1_3"
+
+    solver._read_room_mood = MagicMock(side_effect=read_room)
+
+    assert solver._read_agent_mood() is None
+    assert len(swipes) == drags
+    assert entries == dorms + visited
+    assert [call.args[0] for call in solver._read_room_mood.call_args_list] == entries
+    assert all(
+        not call.kwargs["force_mood"] for call in solver._read_room_mood.call_args_list
+    )
+    assert current_room is None
+
+
 def test_initialization_reads_all_staffed_facilities_once_despite_recent_cache(
     solver, monkeypatch
 ):
@@ -827,26 +936,40 @@ def test_cached_priority_rooms_continue_without_imminent_initial_work(
     solver.back_to_infrastructure.assert_not_called()
 
 
+@pytest.mark.parametrize("task_type", ["RUN_ORDER", "SKILL_UPGRADE", "SWAP_SUPPORT"])
 def test_cached_priority_yield_retains_unfinished_reads_until_task_finishes(
-    cached_priority_reader,
+    cached_priority_reader, task_type
 ):
     from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
     solver = cached_priority_reader
-    task = SchedulerTask(NOW + timedelta(seconds=30), task_type=TaskTypes.RUN_ORDER)
+    pending = {"factory", "meeting", "recycle", "room_1_2", "room_1_3"}
+    for room in pending:
+        solver.op_data.plan.setdefault(room, [])
+    solver._initial_mood_refresh_rooms.update(pending)
+    task = SchedulerTask(NOW + timedelta(seconds=30), task_type=TaskTypes[task_type])
     solver.tasks = [task]
     for _ in range(2):
         assert solver._read_agent_mood() is False
-        assert solver._initial_mood_refresh_rooms == {"room_1_2"}
-        assert solver.tasks == [task]
+        assert solver._initial_mood_refresh_rooms == pending
+        assert len(solver.tasks) == 1 and solver.tasks[0] is task
         assert task.time == NOW + timedelta(seconds=30)
     solver._read_room_mood.assert_called_once_with("room_1_1", force_mood=True)
 
     solver.tasks.remove(task)
     assert solver._read_agent_mood() is None
     assert solver._initial_mood_refresh_rooms == set()
-    assert solver._read_room_mood.call_args.args == ("room_1_2",)
-    assert solver._read_room_mood.call_count == 2
+    assert [call.args[0] for call in solver._read_room_mood.call_args_list] == [
+        "room_1_1",
+        "factory",
+        "recycle",
+        "meeting",
+        "room_1_3",
+        "room_1_2",
+    ]
+    assert all(
+        call.kwargs["force_mood"] for call in solver._read_room_mood.call_args_list
+    )
 
 
 def test_cached_last_priority_room_yields_even_without_other_rooms_to_read(

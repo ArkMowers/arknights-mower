@@ -252,6 +252,75 @@ def test_unplanned_work_room_reads_only_existing_slots(room_reader, tag, enabled
     s.swipe.assert_not_called()
 
 
+@pytest.mark.parametrize("panel", ["open", "closed"])
+@pytest.mark.parametrize("footer", [True, False])
+def test_empty_manufacture_roster_skips_unreadable_product_detail(
+    room_reader, frame, panel, footer
+):
+    s, install = room_reader("b102-empty3")
+    del s.refresh_facility_state
+    s._product_switching_enabled = Mock(return_value=True)
+    s._log_room_mood = Mock()
+    s.op_data.true_exhaust_room = ()
+    s._start_facility_observation = Mock()
+    s.detect_room_type = Mock(return_value="制造站")
+    s._visible_manufacture_product = Mock(return_value=None)
+    s._wait_drone_interface = Mock(side_effect=RecognizeError("未出现制造详情"))
+    s.scene_graph_navigation = Mock()
+    find = s.find.side_effect
+
+    def find_panel(resource, **kwargs):
+        if resource == "arrange_check_in_on":
+            return panel == "open"
+        if resource == "arrange_check_in":
+            return panel == "closed"
+        return find(resource, **kwargs)
+
+    s.find.side_effect = find_panel
+
+    def open_panel(room):
+        nonlocal panel
+        assert room == B102
+        gray = frame("b102-empty3")
+        if not footer:
+            gray[1003:1060, 1595:] = 0
+        install(gray)
+        panel = "open"
+
+    if not footer or panel == "closed":
+        s.turn_on_room_detail.side_effect = open_panel
+    if panel == "closed":
+        install(np.zeros_like(s.recog.gray))
+
+    rows = s._read_room_mood(B102)
+
+    assert [row["agent"] for row in rows] == [""] * 3
+    assert all(row.get("observed", True) for row in rows)
+    s._reconcile_room_observation.assert_called_once()
+    s._wait_drone_interface.assert_not_called()
+    s.scene_graph_navigation.assert_not_called()
+
+
+@pytest.mark.parametrize("same_room", [True, False])
+def test_legacy_drone_room_only_learns_manufacture_type_from_its_own_empty_roster(
+    room_reader, same_room
+):
+    s, _ = room_reader("b102-empty3")
+    s.drone_room = B102
+    s.op_data.config = SimpleNamespace(drone_room=None)
+    s.op_data.facility_states = {}
+    s.detect_room.return_value = B102 if same_room else B302
+    s.detect_room_type = Mock(return_value="制造站")
+
+    rows = s.get_agent_from_room(B102)
+
+    assert [row["agent"] for row in rows] == [""] * 3
+    if same_room:
+        s.op_data.update_facility_state.assert_called_once_with(B102, "manufacture")
+    else:
+        s.op_data.update_facility_state.assert_not_called()
+
+
 def test_unplanned_work_room_rechecks_cards_beyond_a_short_footer(room_reader, frame):
     s, _ = room_reader("b102-empty1")
     del s.op_data.plan[B102]

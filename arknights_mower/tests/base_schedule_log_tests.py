@@ -387,7 +387,14 @@ def test_mood_patrol_updates_one_facility_observation(
 
     instance.scene_graph_navigation = MagicMock(side_effect=return_to_room)
     instance.back = MagicMock(side_effect=return_to_room)
-    instance.detect_room = MagicMock(side_effect=lambda: room if in_room else "")
+    instance.detect_room = MagicMock(
+        side_effect=lambda: (
+            room
+            if in_room
+            or (facility == "manufacture" and instance._wait_drone_interface.called)
+            else ""
+        )
+    )
     instance._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     instance.turn_on_room_detail = MagicMock()
     instance.wait_product_complete = MagicMock()
@@ -482,7 +489,7 @@ def test_mood_patrol_updates_one_facility_observation(
 @pytest.mark.parametrize(
     "task_type", [base.TaskTypes.SELF_CORRECTION, base.TaskTypes.NOT_SPECIFIC]
 )
-def test_staffing_reads_room_product_once_before_using_factory_detail(
+def test_staffing_reads_visible_product_once_in_an_empty_factory(
     monkeypatch, visible, next_frame, task_type
 ):
     monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
@@ -540,11 +547,10 @@ def test_staffing_reads_room_product_once_before_using_factory_detail(
         if next_frame:
             expected.append("panel")
         expected.append("label")
-        if not visible:
-            expected.append("detail")
         assert events == expected
-        assert observed == {room}
-        assert solver.op_data.facility_product(room) == "exp3"
+        assert observed == ({room} if visible else set())
+        assert solver.op_data.facility_states[room]["product"] == visible
+        solver._wait_drone_interface.assert_not_called()
         solver._visible_manufacture_product.assert_called_once_with()
     solver.detect_room_type.assert_called_once_with()
 

@@ -552,7 +552,7 @@ class TestBaseScheduler(unittest.TestCase):
         solver.reload = MagicMock()
         solver.infra_main()
         solver.clue_new.assert_called_once()
-        solver.drone.assert_called_once_with("room_1_1")
+        solver.drone.assert_called_once_with("room_1_1", routine=True)
         solver.reload.assert_called_once()
         self.assertTrue(solver.todo_task)
 
