@@ -115,7 +115,7 @@ def scheduler(monkeypatch, database):
         device=object(),
         recog=recog,
         tasks=[],
-        deadline=Clock.now() + timedelta(minutes=4, seconds=10),
+        deadline=Clock.now() + timedelta(seconds=10),
     )
     return owner, Clock
 
@@ -126,11 +126,11 @@ def test_budget_is_checked_before_each_claim_and_completion_survives_restart(
     owner, clock = scheduler
     play = MagicMock()
     monkeypatch.setattr(runner, "_play_ordinary", play)
-    owner.deadline -= timedelta(seconds=11)
+    owner.deadline -= timedelta(seconds=10)
     assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     play.assert_not_called()
 
-    owner.deadline += timedelta(seconds=11)
+    owner.deadline += timedelta(seconds=10)
 
     def fight(owner, stage, settings, prepare, claim, complete):
         assert prepare() > 0
@@ -150,7 +150,9 @@ def test_budget_is_checked_before_each_claim_and_completion_survives_restart(
     assert not runner.run_event_rerun(next_owner, lambda: next_owner.deadline)
 
 
-def test_navigation_cannot_spend_the_battle_reserve(scheduler, monkeypatch):
+def test_navigation_reaching_scheduler_deadline_keeps_stage_pending(
+    scheduler, monkeypatch
+):
     owner, clock = scheduler
 
     def prepare_stage(owner, stage, settings, prepare, claim, complete):
@@ -165,6 +167,30 @@ def test_navigation_cannot_spend_the_battle_reserve(scheduler, monkeypatch):
     play.assert_called_once()
     assert record.load_event_rerun_progress("act46sre:100") == {}
     assert not owner.event_rerun_blocked[1]
+
+
+def test_stage_closing_time_limits_preparation_and_claim(scheduler, monkeypatch):
+    owner, _ = scheduler
+    opening = event()
+    stage = opening["stages"][0]
+    stage["end_ts"] = opening["now"] + 2
+    opening["stages"] = [stage]
+    monkeypatch.setattr(runner, "current_rerun", lambda: opening)
+    elapsed = 0
+    monkeypatch.setattr(runner, "monotonic", lambda: elapsed)
+
+    def play(owner, stage, settings, prepare, claim, complete):
+        nonlocal elapsed
+        assert prepare() == 2
+        elapsed = 2
+        with pytest.raises(InterruptedError):
+            prepare()
+        assert not claim()
+        return "defer"
+
+    monkeypatch.setattr(runner, "_play_ordinary", play)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline) is False
+    assert record.load_event_rerun_progress(opening["key"]) == {}
 
 
 def test_unchanged_failed_preparation_yields_to_other_selected_stages(
@@ -186,7 +212,7 @@ def test_unchanged_failed_preparation_yields_to_other_selected_stages(
     assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     assert order == ["OS-1", "OS-10"]
     assert record.load_event_rerun_progress("act46sre:100") == {"OS-10": "completed"}
-    assert owner.deadline == clock.now() + timedelta(minutes=4, seconds=10)
+    assert owner.deadline == clock.now() + timedelta(seconds=10)
 
 
 def test_unconfirmed_target_does_not_battle_or_record_rerun_progress(

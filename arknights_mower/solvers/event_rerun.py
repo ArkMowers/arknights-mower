@@ -10,7 +10,7 @@ from arknights_mower.utils.csleep import MowerExit, check_cancelled
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
-from arknights_mower.utils.event_rerun import STAGE_SECONDS, current_rerun
+from arknights_mower.utils.event_rerun import current_rerun
 from arknights_mower.utils.log import logger
 
 
@@ -19,7 +19,7 @@ def pending_rerun(scheduler, deadline):
     settings = getattr(conf, "event_rerun", None)
     if not settings or not settings.enabled or not conf.stage_plan_enable:
         return None
-    if (deadline() - datetime.now()).total_seconds() < STAGE_SECONDS:
+    if deadline() <= datetime.now():
         return None
     observed_at = monotonic()
     try:
@@ -41,8 +41,7 @@ def pending_rerun(scheduler, deadline):
         if (
             code not in progress
             and code not in blocked
-            and stage["start_ts"] <= event["now"]
-            and stage["end_ts"] - event["now"] >= STAGE_SECONDS
+            and stage["start_ts"] <= event["now"] < stage["end_ts"]
         ):
             return event, stage, settings.model_copy(deep=True), blocked, observed_at
     return None
@@ -106,19 +105,19 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
                 and not config.maintenance_recheck.is_set()
                 and config.conf.stage_plan_enable
                 and config.conf.event_rerun == settings
-                and available() >= STAGE_SECONDS
+                and available() > 0
             )
 
         def prepare():
             if not can_start():
                 raise InterruptedError
-            spare = available() - STAGE_SECONDS
-            if spare <= 0:
+            time_left = available()
+            if time_left <= 0:
                 raise InterruptedError
             navigation_left = navigation_deadline - monotonic()
             if navigation_left <= 0:
                 raise TimeoutError("复刻SS活动导航超时")
-            return min(spare, navigation_left)
+            return min(time_left, navigation_left)
 
         claimed = False
         already_claimed = False
