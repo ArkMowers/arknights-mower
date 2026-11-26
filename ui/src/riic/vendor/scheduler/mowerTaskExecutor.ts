@@ -150,6 +150,7 @@ function handoffHoursToLimit(op: MowerOperatorState, { data, workRate }: Handoff
 
 function plannedHandoffHours(plan: MowerTaskPlan, ordered: string[], counts: Map<string, number>, handoff: HandoffObservations): Map<string, number> {
   const workTargets = new Set(Object.entries(plan).filter(([room]) => !room.startsWith('dormitory_')).flatMap(([, names]) => names))
+  const beds = new Set(Object.entries(plan).filter(([room]) => room.startsWith('dormitory_')).flatMap(([, names]) => names.filter(name => counts.get(name) === 1)))
   const occupants = new Map<string, Map<number, MowerOperatorState | undefined>>()
   for (const op of Object.values(handoff.data.operators)) {
     if (!(op.currentRoom in plan) || op.currentIndex < 0) continue
@@ -170,7 +171,7 @@ function plannedHandoffHours(plan: MowerTaskPlan, ordered: string[], counts: Map
       if (!op) return false
       if (target === 'Current') return !counts.has(op.name)
       if (target !== undefined && counts.get(target) !== 1) return false
-      if (op.isHigh() && !op.workaholic && op.room === room && !workTargets.has(op.name)) workers.push(op)
+      if (op.isHigh() && !op.workaholic && !workTargets.has(op.name) && !op.room.startsWith('dormitory_') && (op.room === room || beds.has(op.name))) workers.push(op)
       return true
     })
     if (confirmed && workers.length) departing.set(room, workers)
@@ -197,26 +198,30 @@ function workRoomOrder(work: string[], dependencies: Map<string, Set<string>>): 
 
 function handoffDetourFits(original: string[], proposed: string[], work: string[], dependencies: Map<string, Set<string>>): boolean {
   const dorms = original.slice(work.length), stops = [...routableRooms]
-  function remaining(done: Set<string>): [string, number] {
+  function remaining(done: Set<string>): string[] {
     const [ready, cyclic] = workRoomOrder(work.filter(room => !done.has(room)), dependencies)
-    const rest = [...ready, ...cyclic, ...dorms]
-    return [rest[0]!, rest.slice(1).filter((room, i) => needsMapDrag(rest[i]!, room)).length]
+    return [...ready, ...cyclic, ...dorms]
   }
+  const outbound = (old: string, next: string) => Number(old !== next && stops.some(room => needsMapDrag(next, room) && !needsMapDrag(old, room)))
+  const inbound = (old: string, next: string) => Number(old !== next && stops.some(room => needsMapDrag(room, next) && !needsMapDrag(room, old)))
   const before = new Set<string>(), after = new Set<string>()
-  let extra = 0
+  let prefix = 0
   for (let i = 0; i < Math.min(work.length, original.length - 1); i++) {
     const old = original[i]!, next = proposed[i]!
-    if (i) extra += Number(needsMapDrag(proposed[i - 1]!, next)) - Number(needsMapDrag(original[i - 1]!, old))
+    if (i) prefix += Number(needsMapDrag(proposed[i - 1]!, next)) - Number(needsMapDrag(original[i - 1]!, old))
     before.add(old)
     after.add(next)
-    let detour = extra
-    if (old !== next && stops.some(room => needsMapDrag(next, room) && !needsMapDrag(old, room))) detour++
+    let worst = prefix + outbound(old, next)
     if ([...before].some(room => !after.has(room))) {
-      const [oldNext, oldCost] = remaining(before), [newNext, newCost] = remaining(after)
-      detour += newCost - oldCost
-      if (oldNext !== newNext && stops.some(room => needsMapDrag(room, newNext) && !needsMapDrag(room, oldNext))) detour++
+      const oldRest = remaining(before), newRest = remaining(after)
+      worst += inbound(oldRest[0]!, newRest[0]!)
+      for (let j = 1; j < oldRest.length; j++) {
+        const oldFrom = oldRest[j - 1]!, oldTo = oldRest[j]!, newFrom = newRest[j - 1]!, newTo = newRest[j]!
+        const direct = Number(needsMapDrag(newFrom, newTo)) - Number(needsMapDrag(oldFrom, oldTo))
+        worst += Math.max(direct, outbound(oldFrom, newFrom) + inbound(oldTo, newTo))
+      }
     }
-    if (detour > 0) return false
+    if (worst > 0) return false
   }
   return true
 }

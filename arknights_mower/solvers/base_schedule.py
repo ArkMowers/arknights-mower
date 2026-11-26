@@ -494,45 +494,57 @@ def _work_room_order(work, dependencies):
     return ordered, pending
 
 
+@cache
+def _extra_detour_drags(old, new):
+    if old == new:
+        return 0, 0
+    outbound = any(
+        _needs_map_drag(new, room) and not _needs_map_drag(old, room)
+        for room in _ROUTABLE_ROOMS
+    )
+    inbound = any(
+        _needs_map_drag(room, new) and not _needs_map_drag(room, old)
+        for room in _ROUTABLE_ROOMS
+    )
+    return outbound, inbound
+
+
 def _handoff_detour_fits(original, proposed, work, dependencies):
-    """逐站比较插队后按剩余计划续做的拖图费用。"""
     dorms = original[len(work) :]
 
     def remaining(done):
         ready, cyclic = _work_room_order(
             (room for room in work if room not in done), dependencies
         )
-        rest = ready + cyclic + dorms
-        return rest[0], sum(_needs_map_drag(a, b) for a, b in zip(rest, rest[1:]))
+        return ready + cyclic + dorms
 
     before, after = set(), set()
-    extra = 0
+    prefix = 0
     for index in range(min(len(work), len(original) - 1)):
         old, new = original[index], proposed[index]
         if index:
-            extra += _needs_map_drag(proposed[index - 1], new) - _needs_map_drag(
+            prefix += _needs_map_drag(proposed[index - 1], new) - _needs_map_drag(
                 original[index - 1], old
             )
         before.add(old)
         after.add(new)
-        # 插队设施可能从另一处返回，分别计入去程和回程。
-        detour = extra
-        if old != new:
-            detour += any(
-                _needs_map_drag(new, room) and not _needs_map_drag(old, room)
-                for room in _ROUTABLE_ROOMS
-            )
+        # 首次让出后，余下房间按原计划续做。此后每一段都可能再次让出。
+        worst = prefix + _extra_detour_drags(old, new)[0]
         if before != after:
-            old_next, old_cost = remaining(before)
-            new_next, new_cost = remaining(after)
-            detour += new_cost - old_cost
-            if old_next != new_next:
-                detour += any(
-                    _needs_map_drag(room, new_next)
-                    and not _needs_map_drag(room, old_next)
-                    for room in _ROUTABLE_ROOMS
+            old_rest, new_rest = remaining(before), remaining(after)
+            worst += _extra_detour_drags(old_rest[0], new_rest[0])[1]
+            for old_from, old_to, new_from, new_to in zip(
+                old_rest, old_rest[1:], new_rest, new_rest[1:]
+            ):
+                direct = _needs_map_drag(new_from, new_to) - _needs_map_drag(
+                    old_from, old_to
                 )
-        if detour > 0:
+                detour = (
+                    _extra_detour_drags(old_from, new_from)[0]
+                    + _extra_detour_drags(old_to, new_to)[1]
+                )
+                worst += max(direct, detour)
+        if worst > 0:
             return False
     return True
 
@@ -654,6 +666,13 @@ def _handoff_hours_to_limit(op, data, now, calculated_rates):
 def _planned_handoff_hours(plan, ordered, counts, data):
     """从本次已排定的交接中找出即将离岗的主班，每间房取最早到下限的时长。"""
     work_targets = _assigned_operator_names(plan)
+    beds = {
+        name
+        for room, names in plan.items()
+        if room.startswith("dormitory_")
+        for name in names
+        if counts[name] == 1
+    }
     occupants = {}
     for op in data.operators.values():
         if op.current_room in plan and op.current_index >= 0:
@@ -681,7 +700,8 @@ def _planned_handoff_hours(plan, ordered, counts, data):
                 op.is_high()
                 and op.name not in work_targets
                 and not op.workaholic
-                and op.room == room
+                and not op.room.startswith("dormitory_")
+                and (op.room == room or op.name in beds)
             ):
                 workers.append(op)
         else:

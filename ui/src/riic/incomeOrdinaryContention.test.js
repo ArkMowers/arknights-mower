@@ -119,8 +119,8 @@ it.each([
     for (const op of Object.values(data.operators)) op.calculatedMoodSnapshot = snapshot
     A.depletionRate = 8
     B.depletionRate = 0.1
-    options.coordinationRates = (roster, moods) => {
-      if (moods) rateInputs.push([roster, moods])
+    options.coordinationRates = (roster) => {
+      rateInputs.push(roster)
       const rate = { calculated: 0.5, 'calculated zero': 0, 'calculated recovering': -0.1 }[
         evidence
       ]
@@ -152,7 +152,6 @@ it.each([
   }
   if (evidence === 'at floor') A.mood = A.lowerLimit
   if (evidence === 'above threshold') Object.assign(B, { mood: 23, depletionRate: 50 })
-  const workRates = { A: 0.5, B: 2 }
   if (evidence === 'equal time') B.depletionRate = 1
 
   if (evidence === 'observed seat' || evidence === 'source observed first') {
@@ -231,6 +230,8 @@ it.each([
   ['positive floor with zero display', true],
   ['model missing but timer known', false],
   ['observed swapped seats', true],
+  ['observed in another room', true],
+  ['borrowed cover goes idle', false],
   ['workaholic', false],
   ['source first', false]
 ])('orders confirmations in the generated task using %s', (evidence, fastFirst) => {
@@ -341,6 +342,18 @@ it.each([
     delete plan[A.room]
     plan[A.room] = first
   }
+  if (evidence === 'observed in another room' || evidence === 'borrowed cover goes idle') {
+    A.lowerLimit = 0
+    data.nowMicros -= toMowerMicros(1)
+    mowerUpdateDetail(data, 'A', 6, B.room, 0, true)
+    mowerUpdateDetail(data, 'B', 3.5, A.room, 0, true)
+    data.nowMicros += toMowerMicros(1)
+    mowerUpdateDetail(data, 'A', 1, B.room, 0, true)
+    mowerUpdateDetail(data, 'B', 3, A.room, 0, true)
+    expect([A.depletionRate, B.depletionRate]).toEqual([5, 0.5])
+    if (evidence === 'borrowed cover goes idle')
+      plan.dormitory_1[plan.dormitory_1.indexOf('A')] = 'Free'
+  }
   if (evidence === 'observed swapped seats' || evidence === 'workaholic') {
     const swap = evidence === 'observed swapped seats'
     B.currentIndex = swap ? 1 : 0
@@ -388,10 +401,16 @@ it.each([
   expect(task.plan).toEqual({})
 })
 
-it('counts the order visit and remaining rooms when a run order interrupts a shift', () => {
+it.each([
+  [['contact', 'room_1_3', 'recycle', 'meeting'], [3, 1, 2, 4], ['room_2_1']],
+  [
+    ['contact', 'meeting', 'recycle'],
+    [3, 1, 2],
+    ['room_2_1', 'room_1_3']
+  ]
+])('keeps the drag budget when run orders interrupt %j', (rooms, hours, interruptions) => {
   const { data, queue } = contention(true)
-  const rooms = ['contact', 'room_1_3', 'recycle', 'meeting']
-  const names = ['A', 'B', 'C', 'D']
+  const names = ['A', 'B', 'C', 'D'].slice(0, rooms.length)
   data.operators = Object.fromEntries(
     rooms.map((room, i) => {
       const name = names[i]
@@ -405,7 +424,7 @@ it('counts the order visit and remaining rooms when a run order interrupts a shi
           currentIndex: 0,
           operatorType: 'high',
           timeStampMicros: 0,
-          mood: [3, 1, 2, 4][i],
+          mood: hours[i],
           depletionRate: 1
         })
       ]
@@ -423,16 +442,21 @@ it('counts the order visit and remaining rooms when a run order interrupts a shi
     handoff: { data, workRate: () => 1 },
     backup: () => ({ changed: false, generated: [] }),
     metadata() {},
-    deferRoom: () => visits.length === 1,
+    deferRoom: () => visits.length % 2 === 1 && visits.length < 2 * interruptions.length,
     arrangeRoom: (room) => {
       visits.push(room)
     }
   }
   const deadline = task.timeMicros
-  expect(executeMowerTaskArrangement(task, queue, hooks)).toBe(false)
-  visits.push('room_2_1')
+  for (const stop of interruptions) {
+    expect(executeMowerTaskArrangement(task, queue, hooks)).toBe(false)
+    visits.push(stop)
+  }
   expect(executeMowerTaskArrangement(task, queue, hooks)).toBe(true)
-  expect(visits).toEqual(['contact', 'room_2_1', 'room_1_3', 'recycle', 'meeting', 'dormitory_1'])
+  expect(visits).toEqual([
+    ...rooms.flatMap((room, i) => (interruptions[i] ? [room, interruptions[i]] : [room])),
+    'dormitory_1'
+  ])
   expect(task.timeMicros).toBe(deadline)
   expect(task.plan).toEqual({})
 })

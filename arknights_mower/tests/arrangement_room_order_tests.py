@@ -3,6 +3,7 @@
 import json
 from copy import deepcopy
 from datetime import timedelta
+from functools import cache
 from itertools import permutations
 from pathlib import Path
 from types import SimpleNamespace
@@ -157,6 +158,7 @@ def test_route_matches_exhaustive_search_from_every_endpoint(staffed_order, open
         ("positive_floor", True),
         ("missing_model", False),
         ("swapped_seats", True),
+        ("borrowed_cover", False),
         ("workaholic", False),
         ("short_targets", True),
     ],
@@ -204,6 +206,9 @@ def test_actual_departures_supply_the_room_deadline(staffed_order, case, fast_fi
                 slow_room: plan[slow_room],
                 "dormitory_1": plan["dormitory_1"],
             }
+    elif case == "borrowed_cover":
+        fast.room = "contact"
+        plan["dormitory_1"].remove(fast.name)
     elif case == "short_targets":
         fast.depletion_rate = 0.5
         other.depletion_rate = 24
@@ -276,25 +281,41 @@ def test_generated_handoffs_match_all_feasible_routes(staffed_order, end):
     def drag_count(route):
         return sum(drag(a, b) for a, b in zip(route, route[1:]))
 
-    def detour_costs(route, original, dorms):
+    @cache
+    def detour_difference(old_from, old_to, new_from, new_to):
         stops = ["room_2_1", "room_1_3", "meeting", "contact", "central"]
-        for count in range(1, min(len(route) + 1, len(route) + len(dorms))):
-            done = route[:count]
-            pending = [room for room in original if room not in done]
+        return max(
+            drag_count([new_from, first, last, new_to])
+            - drag_count([old_from, first, last, old_to])
+            for first in stops
+            for last in stops
+        )
+
+    def no_extra_drags(route, candidate, original, dorms):
+        def resume(left):
+            pending = [room for room in original if room in left]
             rest = []
             while pending:
-                next_room = next(
-                    room
-                    for room in pending
-                    if room != "contact" or "room_3_1" not in pending
+                room = next(
+                    r for r in pending if r != "contact" or "room_3_1" not in pending
                 )
-                rest.append(next_room)
-                pending.remove(next_room)
-            rest.extend(dorms)
-            fixed_cost = drag_count(done) + drag_count(rest)
-            for first in stops:
-                for last in stops:
-                    yield fixed_cost + drag(done[-1], first) + drag(last, rest[0])
+                rest.append(room)
+                pending.remove(room)
+            return (*rest, *(room for room in dorms if room in left))
+
+        @cache
+        def worst(old, new):
+            if len(old) < 2 or old == new:
+                return 0
+            straight = drag(new[0], new[1]) - drag(old[0], old[1])
+            old_left, new_left = resume(old[1:]), resume(new[1:])
+            via_task = detour_difference(old[0], old_left[0], new[0], new_left[0])
+            return max(
+                straight + worst(old[1:], new[1:]),
+                via_task + worst(old_left, new_left),
+            )
+
+        return worst((*route, *dorms), (*candidate, *dorms)) <= 0
 
     feasible = [
         (r, drag_count(r))
@@ -324,13 +345,7 @@ def test_generated_handoffs_match_all_feasible_routes(staffed_order, end):
             plan, data, allow_open_end=end == "open", shift_off=True
         )
         dorms = route[len(work) :]
-        fits = all(
-            new <= old
-            for new, old in zip(
-                detour_costs(expected, original, dorms),
-                detour_costs(work, original, dorms),
-            )
-        )
+        fits = no_extra_drags(work, expected, original, dorms)
         assert result == [*(expected if fits else work), *dorms]
 
 
@@ -473,6 +488,51 @@ def test_generated_shift_keeps_assignments_and_only_reorders_confirmations(
     assert task.plan == {} and task.time == scheduled
 
 
+def test_generated_shift_uses_observations_from_the_current_workplace(staffed_order):
+    from arknights_mower.utils.plan import Plan, PlanConfig, Room
+
+    ui = staffed_order
+    left, right, dorm = "room_1_1", "room_3_1", "dormitory_1"
+    rows = {
+        left: [Room("鸿雪", "自定组", ["孑"])],
+        right: [Room("图耶", "自定组", ["锏"])],
+        dorm: [Room("杜林", "", []), Room("蜜莓", "", [])]
+        + [Room("Free", "", []) for _ in range(3)],
+    }
+    ui.config.conf.test_mood_calculation = False
+    ui.config.conf.rescue_threshold = 0
+    ui.solver.op_data = data = ui.operators(
+        {"default_plan": Plan(rows, PlanConfig("", "", "")), "backup_plans": []}
+    )
+    assert data.init_and_validate() is None
+    data.run_order_rooms.clear()
+    for op in data.operators.values():
+        op.current_room, op.current_index = op.room, op.index
+        op.mood, op.time_stamp = 24, ui.clock.now()
+    data.update_detail("鸿雪", 6, right, 0, True)
+    data.update_detail("图耶", 3.5, left, 0, True)
+    ui.clock.current += timedelta(hours=1)
+    data.update_detail("鸿雪", 1, right, 0, True)
+    data.update_detail("图耶", 3, left, 0, True)
+    for room in rows:
+        ui.occupants[room] = data.get_current_room(room, bypass=True)
+    ui.states[right], ui.durations[right] = "active", 20
+    ui.solver._plan_primary_recovery(scan_moods=False)
+    task = next(t for t in ui.solver.tasks if t.type == ui.task_type.SHIFT_OFF)
+    ui.solver.task = task
+    assert ui.solver._prepare_ordinary_departure(task)
+    start = task.time
+    assert ui.solver.agent_arrange(task.plan) is not False
+    assert [room for event, room, _ in ui.events if event == "staffed"] == [
+        right,
+        left,
+        dorm,
+    ]
+    assert (ui.occupants[left], ui.occupants[right]) == (["孑"], ["锏"])
+    assert ui.occupants[dorm][2:4] == ["鸿雪", "图耶"]
+    assert task.time == start and task.plan == {}
+
+
 def test_urgent_order_interrupts_the_shorter_route_and_resumes_remaining_rooms(
     four_workplaces,
 ):
@@ -516,19 +576,25 @@ def test_urgent_order_interrupts_the_shorter_route_and_resumes_remaining_rooms(
 
 
 @pytest.mark.parametrize("ordinary", [False, True])
-def test_priority_visit_after_first_handoff_keeps_the_two_drag_route(
-    staffed_order, ordinary
+@pytest.mark.parametrize(
+    "rooms,hours,interruptions,drags",
+    [
+        (["contact", "room_1_3", "recycle", "meeting"], [3, 1, 2, 4], ["room_2_1"], 2),
+        (["contact", "meeting", "recycle"], [3, 1, 2], ["room_2_1", "room_1_3"], 3),
+    ],
+)
+def test_priority_visits_during_a_handoff_keep_the_original_drag_budget(
+    staffed_order, ordinary, rooms, hours, interruptions, drags
 ):
     from arknights_mower.utils.operators import Operator
     from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY, Room
 
     ui = staffed_order
     solver, data = ui.solver, ui.solver.op_data
-    rooms = ["contact", "room_1_3", "recycle", "meeting"]
-    primaries = ["白面鸮", "鸿雪", "红", "图耶"]
+    primaries = ["白面鸮", "鸿雪", "红", "图耶"][: len(rooms)]
     replacements = ["孑", "但书", "龙舌兰", "锏"]
     plan = {}
-    for room, name, cover, hours in zip(rooms, primaries, replacements, [3, 1, 2, 4]):
+    for room, name, cover, remaining in zip(rooms, primaries, replacements, hours):
         data.plan[room] = [Room(name, "", [cover])]
         data.operators[name] = Operator(
             name,
@@ -537,14 +603,14 @@ def test_priority_visit_after_first_handoff_keeps_the_two_drag_route(
             current_room=room,
             current_index=0,
             operator_type="high",
-            mood=hours,
+            mood=remaining,
             depletion_rate=1,
             time_stamp=ui.clock.now(),
         )
         ui.occupants[room] = [name] + [""] * (RIGHT_SIDE_ROOM_CAPACITY.get(room, 1) - 1)
         ui.durations[room] = 20
         plan[room] = [cover]
-    plan["dormitory_1"] = primaries + ["Free"]
+    plan["dormitory_1"] = primaries + ["Free"] * (5 - len(primaries))
     data.run_order_rooms.clear()
     task = ui.task(
         time=ui.clock.now(), task_type=ui.task_type.SHIFT_OFF, task_plan=plan
@@ -552,11 +618,13 @@ def test_priority_visit_after_first_handoff_keeps_the_two_drag_route(
     task.ordinary_coordination = ordinary
     solver.task = task
     solver.tasks.append(task)
-    order = ui.task(
-        time=task.time, task_type=ui.task_type.RUN_ORDER, meta_data="room_2_1"
-    )
+    orders = [
+        ui.task(time=task.time, task_type=ui.task_type.RUN_ORDER, meta_data=room)
+        for room in interruptions
+    ]
     confirm = solver.tap_confirm.side_effect
     visits = []
+    confirmed = []
 
     def confirm_then_queue(room, new_plan):
         confirm(room, new_plan)
@@ -564,16 +632,20 @@ def test_priority_visit_after_first_handoff_keeps_the_two_drag_route(
             [""] * (RIGHT_SIDE_ROOM_CAPACITY.get(room, 1) - len(ui.occupants[room]))
         )
         visits.append(room)
-        if len(visits) == 1:
-            solver.tasks.append(order)
+        confirmed.append(room)
+        if len(confirmed) <= len(orders):
+            solver.tasks.append(orders[len(confirmed) - 1])
 
     solver.tap_confirm.side_effect = confirm_then_queue
     start = task.time
-    assert solver.agent_arrange(task.plan) is False
-    assert task.retains_execution
-    visits.append(order.meta_data)
-    solver.tasks.remove(order)
+    for order in orders:
+        assert solver.agent_arrange(task.plan) is False
+        assert task.retains_execution
+        visits.append(order.meta_data)
+        solver.tasks.remove(order)
     assert solver.agent_arrange(task.plan) is not False
-    assert visits == [rooms[0], order.meta_data, *rooms[1:], "dormitory_1"]
-    assert sum(ui.base._needs_map_drag(a, b) for a, b in zip(visits, visits[1:])) == 2
+    assert confirmed == [*rooms, "dormitory_1"]
+    assert (
+        sum(ui.base._needs_map_drag(a, b) for a, b in zip(visits, visits[1:])) == drags
+    )
     assert task.time == start and task.plan == {}

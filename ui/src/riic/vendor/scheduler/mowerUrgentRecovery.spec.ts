@@ -12,8 +12,9 @@ import {cloneMowerShiftTask,coalesceMowerBackupTransition} from './mowerShiftCyc
 import {reconcileMowerUrgentRecovery,mowerUrgentRecallBlocked,recordMowerUrgentRecovery,recordMowerUrgentSupport} from './mowerUrgentRecovery'
 
 const rates={workRate:()=>1,recoveryRate:()=>4,forecastRates:(state:RuntimeState)=>({work:Object.fromEntries(Object.keys(state.morale).map(name=>[name,1])),recovery:Object.fromEntries(Object.keys(state.morale).map(name=>[name,4]))})}
-function fixture(two=false,fixed=false){
+function fixture(two=false,fixed=false,groupMate=false){
  const rows:NonNullable<RuntimeConfig['mowerSourcePlan']>={
+  ...(groupMate?{room_3_2:[{agent:'P',group:'a',replacement:['W']}]}:{}),
   room_1_1:[{agent:'A',group:'a',replacement:[fixed?'L':'X']}],
   room_1_2:[{agent:'B',group:'b',replacement:['Y']}],
   ...(two?{room_1_3:[{agent:'C',group:'c',replacement:['Z']}]}:{}),
@@ -22,7 +23,7 @@ function fixture(two=false,fixed=false){
   dormitory_1:[{agent:fixed?'M':'K1',group:fixed?'b':'',replacement:fixed?['L']:[]},{agent:'K2',group:'',replacement:[]},...['Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]}))],
   dormitory_2:['K3','K4','Free','Free','Free'].map(agent=>({agent,group:'',replacement:[]})),
  }
- const config:RuntimeConfig={mowerAlpha:true,mowerSourcePlan:rows,positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((slot,index)=>slot.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:slot.agent,candidates:slot.replacement,group:slot.group,permanent:room.startsWith('dorm'),dormitory:room.startsWith('dorm')}])),beds:['dormitory_1','dormitory_2'].flatMap(room=>[2,3,4].map(index=>({id:room+'_'+index,roomId:room,vip:index===2}))),initialMorale:{A:0,B:1,C:1,S:23,S2:23,M:10},idleOperators:Array.from({length:12},(_,i)=>'Idle'+i),mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},mowerSourceRules:{workaholic:[],exhaustRequire:['A','B','C'],restInFull:[],lowPriority:[],standby:['S','S2'],refreshDrained:[],lingMode:0},mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000}}
+ const config:RuntimeConfig={mowerAlpha:true,mowerSourcePlan:rows,positions:Object.entries(rows).flatMap(([room,row])=>row.flatMap((slot,index)=>slot.agent==='Free'?[]:[{id:room+'_'+index,roomId:room,primary:slot.agent,candidates:slot.replacement,group:slot.group,permanent:room.startsWith('dorm'),dormitory:room.startsWith('dorm')}])),beds:['dormitory_1','dormitory_2'].flatMap(room=>[2,3,4].map(index=>({id:room+'_'+index,roomId:room,vip:index===2}))),initialMorale:{...(groupMate?{P:3}:{}),A:0,B:1,C:1,S:23,S2:23,M:10},idleOperators:Array.from({length:12},(_,i)=>'Idle'+i),mowerPolicy:{restingThreshold:.65,powerPlantCount:2,opeRestingPriority:[]},mowerSourceRules:{workaholic:[],exhaustRequire:['A','B','C'],restInFull:[],lowPriority:[],standby:['S','S2'],refreshDrained:[],lingMode:0},mowerRunLoopClock:{minimumClockStepMicros:1,notificationSleepMicros:1_000_000}}
  const state=createRosterRuntime(config),source=getMowerSourceRuntime(state),data=source.data
  source.initial=false
  for(const position of config.positions)Object.assign(data.operators[position.primary]!,{currentRoom:position.roomId,currentIndex:Number(position.id.slice(-1)),mood:state.morale[position.primary]??24,timeStampMicros:0,depletionRate:1})
@@ -88,12 +89,33 @@ describe('urgent dependency recall and observed recovery ownership',()=>{
   drive(state,()=>Object.values(state.bedOccupants).includes('A'))
   expect(source.data.urgentRecoverySupporters.A).toContain('B')
  })
- it('keeps an explicit independent recovery owner after its prepared departure receives further support',()=>{
+ it.each(['P','A,P'])('registers confirmed covers and beds to the current requester despite a later %s request',futureOrigins=>{
+  const {state,source,request}=fixture(false,false,true)
+  state.config.mowerDeviceTiming={roomReturnMicros:500_000}
+  const future=new MowerTask({time:3,type:T.EXHAUST_OFF,metadata:futureOrigins})
+  source.queue.tasks.push(future)
+  drive(state,()=>request.urgentRecoveryReservedNames.length>0||future.urgentRecoveryReservedNames.length>0)
+  const bed='dormitory_1\0'+'2'
+  expect(state.occupants.room_1_2_0).toBe('B')
+  expect([...request.urgentRecoveryRequestNames].sort()).toEqual(['A','P'])
+  expect(request.urgentRecoveryReservedNames).toEqual(['Y'])
+  expect(request.urgentRecoveryReservedSlots).toEqual([bed])
+  expect(future.urgentRecoveryReservedNames).toEqual([])
+  expect(future.urgentRecoveryReservedSlots).toEqual([])
+  expect(source.queue.tasks).toContain(future)
+  const locks=mowerReplacementReservations(source.data,source.queue.tasks,request)
+  expect(locks.reservedNames.has('Y')).toBe(false)
+  expect(locks.reservedSlots.has(bed)).toBe(false)
+  drive(state,()=>Object.values(state.bedOccupants).includes('A')&&Object.values(state.bedOccupants).includes('P'))
+  expect(future.time).toBe(3)
+ })
+ it.each([false,true])('keeps the independent recovery owner on a later handoff (partially completed=%s)',partial=>{
   const {source,request}=fixture(),data=projectMowerArrangements(source.data,[{room_1_2:['B']}])
   Object.assign(data.operators.A!,{group:'',groupBindings:[{group:'',replacement:['X']},{group:'c',replacement:['X']}]})
   request.type=T.SHIFT_OFF;request.metadata='';request.urgentRecoveryRequestNames=['A']
   const support=new MowerTask({type:T.SELF_CORRECTION,plan:{room_1_2:['B']}})
   support.exhaustSupport=true;support.coordinationRequestNames=['A']
+  if(partial){request.ordinaryCoordination=support.ordinaryCoordination=true;request.coordinationRequestNames=['Other','A'];request.coordinationCompletedRequestNames=['Other']}
   recordMowerUrgentSupport(data,support,[request],{B:['dormitory_1',2]})
   expect(request.urgentRecoverySupportNames).toContain('B')
   expect(request.urgentRecoveryRequestNames).toEqual(['A'])
