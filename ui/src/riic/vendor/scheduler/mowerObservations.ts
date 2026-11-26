@@ -34,12 +34,20 @@ export function mowerUpdateDetail(data:MowerSchedulingData,name:string,mood:numb
  if(updateTime){
   if(data.alpha&&data.policy.predictiveMoodControl&&Number.isFinite(data.nowMicros)&&Number.isFinite(mood)&&mood>=0&&mood<=24&&data.nowMicros>=(data.calculatedMoodObservations[name]??-Infinity))data.calculatedMoodObservations[name]=data.nowMicros
   // Integration round-off below the simulator morale tolerance is not an observed decline.
-  if(!preserveDepletionRate&&op.timeStampMicros!==undefined&&op.mood-mood>1e-8){
+  const validWorkSample = !data.alpha || (
+   working && !positionChanged && op.workRateSampleEligible && !op.moodIsPrediction && mood > 0 && op.mood < 24
+  )
+  if(validWorkSample&&!preserveDepletionRate&&op.timeStampMicros!==undefined&&op.mood-mood>1e-8){
    const elapsed=data.nowMicros-op.timeStampMicros
    if(elapsed>toMowerMicros(29/60))op.depletionRate=(op.mood-mood)/fromMowerMicros(elapsed)
   }
   op.timeStampMicros=data.nowMicros
-  if(data.alpha){op.moodIsPrediction=false;op.idleRestCheck=undefined}
+  if(data.alpha){
+   op.workRateSampleEligible = !preserveDepletionRate && mood > 0 && mood < 24
+   op.moodIsPrediction=false;op.idleRestCheck=undefined
+  }
+ }else if(data.alpha&&positionChanged){
+  op.workRateSampleEligible=false
  }
  const changedWorkSlot = data.alpha && !!room && positionChanged
  if (!preserveDepletionRate && !room.startsWith('dorm') && (op.isResting() || changedWorkSlot)) {

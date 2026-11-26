@@ -83,6 +83,7 @@ it.each([
   ['projected countdown', 'A'],
   ['projected same seat', 'B'],
   ['legacy full mood timer', 'B'],
+  ['previous full working mood', 'A'],
   ['crafting primary', 'B'],
   ['crafting primary without cover', 'A'],
   ['prediction and card', 'A'],
@@ -168,6 +169,14 @@ it.each([
     if (evidence === 'projected countdown') B.exhaustTimeMicros = toMowerMicros(1 / 60)
     planning = projectMowerArrangements(projectMowerArrangements(data, [{ [B.room]: ['B'] }]), [])
     expect(B.currentIndex).toBe(evidence === 'projected same seat' ? 0 : 2)
+  }
+  if (evidence === 'previous full working mood') {
+    const previousTime = -toMowerMicros(3)
+    Object.assign(A, { mood: 7.5, timeStampMicros: previousTime })
+    Object.assign(B, { mood: 24, timeStampMicros: previousTime, lowerLimit: 8, depletionRate: 0.5 })
+    mowerUpdateDetail(data, 'A', 6, A.room, A.index, true)
+    mowerUpdateDetail(data, 'B', 12, B.room, B.index, true)
+    expect([A.depletionRate, B.depletionRate]).toEqual([0.5, 0.5])
   }
   if (evidence === 'legacy full mood timer') {
     Object.assign(A, {

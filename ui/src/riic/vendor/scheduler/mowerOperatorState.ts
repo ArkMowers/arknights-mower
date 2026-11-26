@@ -7,6 +7,7 @@ export interface MowerOperatorOptions {
  calculatedMoodSnapshot?:MowerCalculatedMoodSnapshot
  projectedMoodResting?:boolean
  projectedWorkPositionChanged?:boolean
+ workRateSampleEligible?:boolean
  groupBindings?:MowerGroupBinding[]
  alpha?:boolean;temporaryDormFill?:boolean;dormMoodFallback?:string;restMoodReleaseLimit?:number;moodIsPrediction?:boolean
  dormMoodPeers?:Record<string,unknown>
@@ -30,6 +31,7 @@ export class MowerOperatorState {
  /** Position-only projections retain the room context of the source mood. */
  projectedMoodResting:boolean|undefined
  projectedWorkPositionChanged:boolean
+ workRateSampleEligible:boolean
  temporaryDormFill=false;dormMoodFallback='';restMoodReleaseLimit:number|undefined;moodIsPrediction=false
  customMoodLimit=false
  dormMoodPeers:Record<string,unknown>={}
@@ -48,6 +50,7 @@ export class MowerOperatorState {
   this.calculatedMoodSnapshot=o.calculatedMoodSnapshot
   this.projectedMoodResting=o.projectedMoodResting
   this.projectedWorkPositionChanged=o.projectedWorkPositionChanged??false
+  this.workRateSampleEligible=o.workRateSampleEligible??true
   this.alpha=o.alpha??false
   this.groupBindings=(o.groupBindings??[]).map(binding=>({group:binding.group,replacement:[...binding.replacement]}))
   this.setProjectedPosition=(room,index)=>{this.#observedRoom=room;this.currentIndex=index}
@@ -67,6 +70,7 @@ export class MowerOperatorState {
    alpha:this.alpha,projectedMoodResting:this.projectedMoodResting??this.isResting(),projectedWorkPositionChanged:this.projectedWorkPositionChanged,
    currentRoom:this.currentRoom,currentIndex:this.currentIndex,mood:this.mood,
    calculatedMoodSnapshot:this.calculatedMoodSnapshot,
+   workRateSampleEligible:this.workRateSampleEligible,
    timeStampMicros:this.timeStampMicros,depletionRate:this.depletionRate,exhaustTimeMicros:this.exhaustTimeMicros,
    temporaryDormFill:this.temporaryDormFill,dormMoodFallback:this.dormMoodFallback,
    restMoodReleaseLimit:this.restMoodReleaseLimit,moodIsPrediction:this.moodIsPrediction,
