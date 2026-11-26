@@ -404,6 +404,77 @@ def test_adjusted_manufacture_timer_reads_real_screenshot():
     assert solver._read_manufacture_speed() == pytest.approx(1.63)
 
 
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("adjusted_total.jpg", 72 * 3600 + 46 * 60 + 52),
+        ("b303_product_settled_20261123.jpg", 118 * 3600 + 21 * 60 + 30),
+    ],
+)
+def test_adjusted_manufacture_timer_matches_without_ocr(name, expected):
+    screenshot = cv2.imread(str(Path(__file__).parent / "fixtures/manufacture" / name))
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(
+        img=cv2.cvtColor(screenshot, cv2.COLOR_BGR2RGB), h=1080, w=1920
+    )
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver._read_manufacture_adjusted_total_seconds() == expected
+
+
+@pytest.mark.parametrize("case", ["paused", "zero", "clipped_hours"])
+def test_adjusted_manufacture_timer_preserves_zero_and_validates_hours(case):
+    fixtures = Path(__file__).parent / "fixtures/manufacture"
+    paused = cv2.imread(str(fixtures / "adjusted_time_paused.png"))
+    if case == "zero":
+        # 两位小时的布局来自正常截图，数字 0 来自暂停时的计时器。
+        normal = cv2.imread(str(fixtures / "adjusted_total.jpg"))[615:680, 1580:1790]
+        crop = np.zeros_like(paused)
+        for start in (27, 51, 83, 107, 139, 163):
+            crop[22:55, start : start + 22] = paused[22:55, 164:186]
+        crop[:, 73:81] = normal[:, 73:81]
+        crop[:, 130:137] = normal[:, 130:137]
+    else:
+        crop = paused.copy()
+        if case == "clipped_hours":
+            crop[:, :50] = 0
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[615:680, 1580:1790] = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(img=frame, h=1080, w=1920)
+    solver._product_ocr_text = MagicMock(return_value="")
+
+    if case == "clipped_hours":
+        with pytest.raises(base.RecognizeError, match="制造站实际剩余时间"):
+            solver._read_manufacture_adjusted_total_seconds()
+        solver._product_ocr_text.assert_called_once()
+    else:
+        expected = 0 if case == "zero" else 294 * 3600 + 47 * 60 + 7
+        assert solver._read_manufacture_adjusted_total_seconds() == expected
+        solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [("时间00：00：00", 0), ("72:46:52", 262012), ("72:60:01", None), ("", None)],
+)
+def test_adjusted_manufacture_timer_falls_back_on_opening_frame(text, expected):
+    fixture = (
+        Path(__file__).parent / "fixtures/manufacture/b303_product_opening_20261123.jpg"
+    )
+    screenshot = cv2.cvtColor(cv2.imread(str(fixture)), cv2.COLOR_BGR2RGB)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(img=screenshot, h=1080, w=1920)
+    solver._product_ocr_text = MagicMock(return_value=text)
+
+    if expected is None:
+        with pytest.raises(base.RecognizeError, match="制造站实际剩余时间"):
+            solver._read_manufacture_adjusted_total_seconds()
+    else:
+        assert solver._read_manufacture_adjusted_total_seconds() == expected
+    solver._product_ocr_text.assert_called_once_with(((1580, 615), (1790, 680)))
+
+
 def test_manufacture_survey_uses_operator_speed_with_base_countdown():
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.op_data = SimpleNamespace()
@@ -3526,6 +3597,61 @@ def test_read_manufacture_queue_count_from_capture(
     monkeypatch.setattr(base.rapidocr, "engine", queue_ocr_engine)
 
     assert solver._read_manufacture_queue_count() == expected
+
+
+@pytest.mark.parametrize(
+    "name, expected",
+    [
+        ("queue_one", 1),
+        ("queue_max", 99),
+        ("queue_one_suffix", 1),
+        ("dualchip_queue_1", 1),
+        ("dualchip_queue_2", 2),
+        ("dualchip_queue_3", 3),
+        ("dualchip_queue_4", 4),
+    ],
+)
+def test_read_manufacture_queue_count_matches_without_ocr(name, expected):
+    crop = cv2.imread(
+        str(Path(__file__).parent / "fixtures/manufacture" / f"{name}.png")
+    )
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver._read_manufacture_queue_count() == expected
+
+
+def test_read_manufacture_queue_count_matches_zero_without_ocr():
+    crop = cv2.imread(str(Path(__file__).parent / "fixtures/manufacture/queue_one.png"))
+    crop[12:72, 70:115] = crop[12:72, 27:72].copy()
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver._read_manufacture_queue_count() == 0
+
+
+@pytest.mark.parametrize("kind", ["blank", "one_digit", "three_digits"])
+def test_read_manufacture_queue_count_defers_unclear_field_to_ocr(kind):
+    fixture = Path(__file__).parent / "fixtures/manufacture/queue_max.png"
+    crop = cv2.imread(str(fixture))
+    if kind == "blank":
+        crop[:] = 0
+    elif kind == "one_digit":
+        crop[:, :70] = 0
+    else:
+        crop[:, :38] = crop[:, 73:111]
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(return_value="")
+
+    with pytest.raises(base.RecognizeError, match="生产份数"):
+        solver._read_manufacture_queue_count()
+    solver._product_ocr_text.assert_called_once_with(((1280, 450), (1415, 530)))
 
 
 @pytest.mark.parametrize("product", ["orirock", "orirock_device"])

@@ -15264,10 +15264,18 @@ class BaseSchedulerSolver(
         raise RecognizeError("制造站生产份数验证失败，未确认 MAX 补货生效")
 
     def _read_manufacture_queue_count(self) -> int:
+        from arknights_mower.utils.manufacture_digits import read_manufacture_quantity
+
         scope = (
             (self.recog.w * 1280 // 1920, self.recog.h * 450 // 1080),
             (self.recog.w * 1415 // 1920, self.recog.h * 530 // 1080),
         )
+        if (self.recog.w, self.recog.h) == (1920, 1080) and isinstance(
+            frame := getattr(self.recog, "img", None), np.ndarray
+        ):
+            count = read_manufacture_quantity(cropimg(frame, scope))
+            if count is not None:
+                return count
         text = self._product_ocr_text(scope)
         digits = re.sub(r"[^0-9]", "", text)
         if re.fullmatch(r"[0-9]{1,2}", digits):
@@ -15289,10 +15297,20 @@ class BaseSchedulerSolver(
 
     def _read_manufacture_adjusted_total_seconds(self) -> int:
         """读取制造站产品卡上计入生产力加成的总剩余时间。"""
+        from arknights_mower.utils.manufacture_digits import (
+            read_manufacture_adjusted_clock,
+        )
+
         scope = (
             (self.recog.w * 1580 // 1920, self.recog.h * 615 // 1080),
             (self.recog.w * 1790 // 1920, self.recog.h * 680 // 1080),
         )
+        if (self.recog.w, self.recog.h) == (1920, 1080) and isinstance(
+            frame := getattr(self.recog, "img", None), np.ndarray
+        ):
+            clock = read_manufacture_adjusted_clock(cropimg(frame, scope))
+            if clock is not None:
+                return self._time_seconds(clock)
         text = self._product_ocr_text(scope).replace("：", ":")
         match = re.search(r"(\d{1,3}):(\d{2}):(\d{2})", text)
         if not match:
