@@ -3796,9 +3796,7 @@ def test_reload_preserves_failure_time_and_continues_other_rooms(monkeypatch):
 
 
 @pytest.mark.parametrize("entry", ["switch", "reload"])
-def test_manufacture_max_precedes_quantity_ocr_from_capture(
-    monkeypatch, queue_ocr_engine, entry
-):
+def test_manufacture_max_precedes_quantity_read_from_capture(monkeypatch, entry):
     solver = reload_test_solver(SimpleNamespace(products={"room_1_2": "orirock"}))
     del solver._read_manufacture_queue_count
     fixtures = Path(__file__).parent / "fixtures" / "manufacture"
@@ -3824,21 +3822,22 @@ def test_manufacture_max_precedes_quantity_ocr_from_capture(
             events.append("confirm")
             pending = False
 
-    read_text = solver._product_ocr_text
+    read_quantity = solver._read_manufacture_queue_count
 
-    def quantity_text(scope):
+    def quantity_read():
         events.append("read")
-        return read_text(scope)
+        return read_quantity()
 
     solver.tap.side_effect = tap
-    solver._product_ocr_text = quantity_text
+    solver._read_manufacture_queue_count = quantity_read
+    solver._product_ocr_text = MagicMock(side_effect=AssertionError("unexpected OCR"))
     solver.find.side_effect = lambda resource: (
         resource == "manufacture_product_change_confirm" and pending
     )
-    monkeypatch.setattr(base.rapidocr, "engine", queue_ocr_engine)
     if entry == "switch":
         solver._select_manufacture_product("exp3")
     else:
         solver.reload()
         assert solver.reload_time is not None
     assert events == ["max", "read", "confirm", "read"]
+    solver._product_ocr_text.assert_not_called()
