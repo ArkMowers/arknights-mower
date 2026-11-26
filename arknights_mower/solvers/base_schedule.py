@@ -223,7 +223,10 @@ from arknights_mower.utils.run_order_network import (
     run_order_network_scope,
     with_run_order_network,
 )
-from arknights_mower.utils.scene_recovery import recover_base_scene
+from arknights_mower.utils.scene_recovery import (
+    SceneRecoveryExhausted,
+    recover_base_scene,
+)
 from arknights_mower.utils.scheduler_task import (
     MAINTENANCE_TASK_TYPES,
     MANUAL_TASK_TYPES,
@@ -25088,7 +25091,12 @@ class BaseSchedulerSolver(
                 if "Fight" in tasks and not one_time:
                     from arknights_mower.solvers.event_rerun import run_event_rerun
 
-                    if run_event_rerun(self, deadline) is not None:
+                    try:
+                        rerun_played = run_event_rerun(self, deadline)
+                    except SceneRecoveryExhausted:
+                        logger.warning("复刻SS活动的场景恢复次数已用完，结束本轮刷理智")
+                        return
+                    if rerun_played is not None:
                         if (
                             config.maintenance_recheck.is_set()
                             or (deadline() - datetime.now()).total_seconds() < 300

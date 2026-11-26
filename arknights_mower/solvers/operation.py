@@ -11,6 +11,7 @@ from arknights_mower.solvers.local_operation import (
     compute_next_threshold_time,
 )
 from arknights_mower.solvers.record import (
+    EVENT_RERUN_PROXY_LOCKED,
     apply_workshop_inventory,
     battle_inventory_active,
     get_inventory_counts,
@@ -37,6 +38,7 @@ class OperationSolver(SceneGraphSolver):
     use_sanity_potion: bool | None = None
     before_single_battle: Callable[[], bool] | None = None
     on_single_battle_settlement: Callable[[], None] | None = None
+    on_single_battle_failure: Callable[[str], None] | None = None
 
     def run(
         self,
@@ -53,10 +55,12 @@ class OperationSolver(SceneGraphSolver):
         use_sanity_potion: bool | None = None,
         before_single_battle: Callable[[], bool] | None = None,
         on_single_battle_settlement: Callable[[], None] | None = None,
+        on_single_battle_failure: Callable[[str], None] | None = None,
     ):
         self.use_sanity_potion = use_sanity_potion
         self.before_single_battle = before_single_battle
         self.on_single_battle_settlement = on_single_battle_settlement
+        self.on_single_battle_failure = on_single_battle_failure
         self.single_battle_started = False
         self.single_battle_confirmed_at = None
         if before_single_battle is not None:
@@ -456,6 +460,8 @@ class OperationSolver(SceneGraphSolver):
     def transition(self):
         if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
             if self.before_single_battle is not None and self.find("ope_agency_lock"):
+                if self.on_single_battle_failure and not self.single_battle_started:
+                    self.on_single_battle_failure(EVENT_RERUN_PROXY_LOCKED)
                 return True
             if self.recog.gray[907][1600] < 127:
                 self.tap((1776, 908))
@@ -519,6 +525,8 @@ class OperationSolver(SceneGraphSolver):
                     return True
                 if self.number(((1515, 870), (1545, 910)), 28) != 1:
                     logger.warning("无法确认单次代理，结束 %s 的准备", self.stage_id)
+                    if self.on_single_battle_failure:
+                        self.on_single_battle_failure("未能确认代理次数为一次")
                     return True
                 self.current_batch_repeat_count = 1
             self._mark_battle_started()
@@ -557,6 +565,8 @@ class OperationSolver(SceneGraphSolver):
             self.tap((310, 330))
             return True
         elif scene == Scene.OPERATOR_FAILED:
+            if self.on_single_battle_failure and self.single_battle_started:
+                self.on_single_battle_failure("代理作战失败")
             self._finish_batch(False)
             logger.warning("%s 代理作战失败", self.stage_id)
             logger.debug(
@@ -579,7 +589,13 @@ class OperationSolver(SceneGraphSolver):
                 self.stage_id,
                 self.current_batch_repeat_count,
             )
-            self.tap_element("double_confirm/main", x_rate=1)
+            confirmed = self.tap_element("double_confirm/main", x_rate=1)
+            if (
+                confirmed
+                and self.on_single_battle_failure
+                and self.single_battle_started
+            ):
+                self.on_single_battle_failure("代理作战已放弃行动")
             return True
         elif scene == Scene.OPERATOR_RECOVER_POTION:
             if self.use_sanity_potion is True or (

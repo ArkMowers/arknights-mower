@@ -2169,17 +2169,27 @@ def _event_rerun_status(event):
     from arknights_mower.solvers import record
     from arknights_mower.utils.event_rerun import STAGE_SECONDS
 
-    progress = record.event_rerun_status(event["key"]) if event else {}
+    reasons = {}
+    progress = (
+        record.event_rerun_status(event["key"], failure_reasons=reasons)
+        if event
+        else {}
+    )
+    stages = {stage["code"] for stage in event["stages"]} if event else set()
     return {
         "event": event,
         "stage_seconds": STAGE_SECONDS,
-        "progress": {
-            stage["code"]: progress[stage["code"]]
-            for stage in event["stages"]
-            if stage["code"] in progress
-        }
-        if event
-        else {},
+        "progress": {code: value for code, value in progress.items() if code in stages},
+        "failure_reasons": {
+            code: reason for code, reason in reasons.items() if code in stages
+        },
+        "retryable_failures": [
+            code
+            for code, status in progress.items()
+            if code in stages
+            and status == "failed"
+            and record.event_rerun_failure_retries(reasons.get(code))
+        ],
     }
 
 
@@ -2211,7 +2221,7 @@ def update_event_rerun_stage():
         not isinstance(data, dict)
         or not isinstance(data.get("event_key"), str)
         or not isinstance(data.get("stage"), str)
-        or data.get("expected") not in ("pending", "attempted", "completed")
+        or data.get("expected") not in ("pending", "attempted", "completed", "failed")
         or type(data.get("completed")) is not bool
     ):
         return {"message": "关卡状态无效"}, 400
@@ -2226,14 +2236,6 @@ def update_event_rerun_stage():
             event["key"], code, data["expected"], data["completed"]
         ):
             return {"message": "关卡正在执行或状态已变更，请刷新后重试"}, 409
-        if not data["completed"]:
-            from arknights_mower.__main__ import base_scheduler
-
-            fingerprint, blocked = getattr(
-                base_scheduler, "event_rerun_blocked", (None, None)
-            )
-            if fingerprint and fingerprint[0] == event["key"]:
-                blocked.discard(code)
         return _event_rerun_status(event)
 
 
