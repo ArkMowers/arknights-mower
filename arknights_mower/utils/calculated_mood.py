@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
+from types import MappingProxyType
 from uuid import uuid4
 
 _runtime = threading.local()
@@ -418,31 +419,33 @@ class CalculatedMood:
         check_cancelled()
         if name not in self.moods:
             return None
-        if now is not None:
-            if now == self.at and self._signature(self.moods) == getattr(
-                self, "_rate_signature", None
-            ):
-                return (
-                    self.moods[name]
-                    if self._cached_rates.get(name) is not None
-                    else None
-                )
-            if not hasattr(_runtime, "future_values"):
-                _runtime.future_values = OrderedDict()
-            cached = _runtime.future_values
-            key = self._projection_key(now)
-            if key not in cached:
-                projected = copy.deepcopy(self)
-                projected.advance(now)
-                cached[key] = (projected.moods, projected._rates())
-                if len(cached) > 32:
-                    cached.popitem(last=False)
-            cached.move_to_end(key)
-            moods, rates = cached[key]
-            return moods.get(name) if rates.get(name) is not None else None
-        now = max(datetime.now(), self.at or datetime.min)
-        self.advance(now)
-        return self.moods.get(name) if self._rates().get(name) is not None else None
+        moods, rates = self._snapshot(now)
+        return moods.get(name) if rates.get(name) is not None else None
+
+    def snapshot(self, now=None):
+        moods, rates = self._snapshot(now)
+        return MappingProxyType(moods), MappingProxyType(rates)
+
+    def _snapshot(self, now=None):
+        if now is None:
+            self.advance(max(datetime.now(), self.at or datetime.min))
+            return self.moods, self._rates()
+        if now == self.at and self._signature(self.moods) == getattr(
+            self, "_rate_signature", None
+        ):
+            return self.moods, self._cached_rates
+        if not hasattr(_runtime, "future_values"):
+            _runtime.future_values = OrderedDict()
+        cached = _runtime.future_values
+        key = self._projection_key(now)
+        if key not in cached:
+            projected = copy.deepcopy(self)
+            projected.advance(now)
+            cached[key] = (projected.moods, projected._rates())
+            if len(cached) > 32:
+                cached.popitem(last=False)
+        cached.move_to_end(key)
+        return cached[key]
 
     def observe(self, name, value, observed_at=None):
         observed_at = observed_at or datetime.now()

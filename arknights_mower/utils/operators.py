@@ -1007,17 +1007,22 @@ class Operators:
         ).value(name, now or getattr(self, "_projection_now", None))
 
     @measure_mood_calculation(MOOD_ESTIMATE)
-    def calculated_mood_rate(self, name, now=None):
+    def _calculated_mood_snapshot(self, now=None):
         if not self.mood_calculation_enabled:
-            return None
+            return {}, {}
         from arknights_mower.utils.calculated_mood import sync_model
 
-        now = now or getattr(self, "_projection_now", None)
-        model = sync_model(self, getattr(self, "_projection_now", None))
-        if now is not None:
-            model = copy.deepcopy(model)
-            model.advance(now)
-        return model._rates().get(name) if name in model.moods else None
+        projection = getattr(self, "_projection_now", None)
+        model = sync_model(self, projection, advance_clock=False)
+        return model.snapshot(now or projection)
+
+    def calculated_mood_rates(self, now=None):
+        moods, rates = self._calculated_mood_snapshot(now)
+        return {name: rates[name] for name in moods if name in rates}
+
+    def calculated_mood_rate(self, name, now=None):
+        moods, rates = self._calculated_mood_snapshot(now)
+        return rates.get(name) if name in moods else None
 
     def calculated_mood_deadline(self, name, target, now=None, max_hours=240):
         if not self.mood_calculation_enabled:
@@ -2134,10 +2139,11 @@ class Operators:
 
         返回: index 如果需要读取时间 None"""
         agent = self.operators[name]
-        if update_time or (agent.current_room, agent.current_index) != (
+        position_changed = (agent.current_room, agent.current_index) != (
             current_room,
             current_index,
-        ):
+        )
+        if update_time or position_changed:
             self.dorm_mood_estimates.pop(name, None)
         retained_time = None
         _, previous_bed = self.get_dorm_by_name(
@@ -2173,6 +2179,8 @@ class Operators:
                 agent.depletion_rate = learned_rate
                 logger.debug(f"更新 {agent.name} 心情掉率为：{agent.depletion_rate}")
             agent.time_stamp = datetime.now()
+        elif position_changed:
+            agent.work_rate_sample_eligible = False
         from_dorm = agent.current_room.startswith("dorm")
         to_dorm = current_room.startswith("dorm")
         if from_dorm and not to_dorm:
@@ -2180,16 +2188,17 @@ class Operators:
                 self.time_stamp = datetime.now()
             else:
                 self.time_stamp = None
-            if not preserve_depletion_rate:
-                agent.depletion_rate = 0
+        if (
+            not to_dorm
+            and (from_dorm or (current_room and position_changed))
+            and not preserve_depletion_rate
+        ):
+            agent.depletion_rate = 0
         if from_dorm:
             idx, dorm = self.get_dorm_by_name(name, group_transitions=group_transitions)
             if dorm and dorm.name == name:
                 dorm.reset()
-        if update_time or (agent.current_room, agent.current_index) != (
-            current_room,
-            current_index,
-        ):
+        if update_time or position_changed:
             agent.exhaust_time = None
             logger.debug(f"{name} 观测或位置变化，清除旧工作期限")
         agent.current_room = current_room
@@ -2420,6 +2429,8 @@ class Operators:
                 )
             if hasattr(exist, "_projected_mood_resting"):
                 operator._projected_mood_resting = exist._projected_mood_resting
+            if getattr(exist, "_projected_work_position_changed", False):
+                operator._projected_work_position_changed = True
             operator.mood = exist.mood
             operator.time_stamp = exist.time_stamp
             operator.mood_is_prediction = getattr(exist, "mood_is_prediction", False)
@@ -2827,6 +2838,7 @@ class Operators:
                         op.rest_mood_release_limit = None
             for op in self.operators.values():
                 if previous_positions[op.name] != (op.current_room, op.current_index):
+                    op._projected_work_position_changed = True
                     op.clear_dorm_recovery()
                     op.dorm_position_version = (
                         getattr(op, "dorm_position_version", 0) + 1

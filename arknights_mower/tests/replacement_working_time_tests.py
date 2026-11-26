@@ -93,12 +93,13 @@ def test_recycle_never_reads_operator_countdown(room_reader, mood, request_timer
 
 
 def test_ordinary_full_mood_read_keeps_existing_timer_shortcut(room_reader):
-    solver, _, _ = room_reader(room="contact", name="红", mood=24)
+    solver, cover, _ = room_reader(room="contact", name="红", mood=24)
     before = datetime.now()
 
     observed = solver.get_agent_from_room("contact", [0], force_mood=True)[0]
 
     assert before <= observed["time"] <= datetime.now()
+    assert cover.exhaust_time is None
     solver.read_operator_time.assert_not_called()
 
 

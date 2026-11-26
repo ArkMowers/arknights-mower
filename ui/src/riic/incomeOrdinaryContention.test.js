@@ -2,9 +2,15 @@ import process from 'node:process'
 import { expect, it } from 'vitest'
 import plan from './fixtures/income-shared-ordinary-contention.json'
 import { defaultIncomeSettings } from './income'
+import { createRosterRuntime, settleRoster } from './vendor/scheduler/rosterRuntime'
+import { getMowerSourceRuntime } from './vendor/scheduler/mowerSourceRuntime'
 import { calculateIncome } from './incomeWorker'
 import { planMowerOrdinary } from './vendor/scheduler/mowerOrdinaryPlanning'
-import { projectMowerArrangements } from './vendor/scheduler/mowerObservations'
+import {
+  mowerUpdateDetail,
+  projectMowerArrangements,
+  shouldMowerReadMood
+} from './vendor/scheduler/mowerObservations'
 import { MowerOperatorState } from './vendor/scheduler/mowerOperatorState'
 import { MowerDormState, MowerSchedulingData } from './vendor/scheduler/mowerSchedulingData'
 import {
@@ -61,6 +67,183 @@ function contention(alternate = false) {
   })
   return { data, queue: new MowerTaskQueue() }
 }
+
+it.each([
+  ['rate', 'B'],
+  ['countdown', 'B'],
+  ['unknown after', 'B'],
+  ['unknown between', 'A'],
+  ['calculated', 'B'],
+  ['calculated zero', 'B'],
+  ['calculated recovering', 'B'],
+  ['different seat', 'A'],
+  ['observed seat', 'A'],
+  ['source observed first', 'A'],
+  ['projected seat', 'A'],
+  ['projected countdown', 'A'],
+  ['projected same seat', 'B'],
+  ['legacy full mood timer', 'B'],
+  ['previous full working mood', 'A'],
+  ['crafting primary', 'B'],
+  ['crafting primary without cover', 'A'],
+  ['prediction and card', 'A'],
+  ['unknown', 'A'],
+  ['newer card', 'A'],
+  ['at floor', 'A'],
+  ['above threshold', 'A'],
+  ['equal time', 'A']
+])('assigns the last bed using %s evidence', (evidence, expected) => {
+  const { data, queue } = contention(true)
+  const { A, B, X } = data.operators
+  Object.assign(A, { mood: 6, lowerLimit: 4, depletionRate: 0.5 })
+  Object.assign(B, {
+    mood: 4,
+    depletionRate: 2,
+    currentRoom: B.room,
+    currentIndex: B.index,
+    replacement: ['Y']
+  })
+  X.currentRoom = ''
+  data.dorms = [new MowerDormState(['dormitory_1', 0])]
+  if (evidence === 'countdown')
+    Object.assign(B, { depletionRate: 0.25, exhaustTimeMicros: toMowerMicros(2) })
+  const options = {}
+  const rateInputs = []
+  if (evidence.startsWith('calculated')) {
+    data.policy.predictiveMoodControl = true
+    const snapshot = { timeMicros: data.nowMicros, values: { A: 6, B: 4, X: 24, Y: 24 } }
+    data.calculatedMoodSnapshot = snapshot
+    for (const op of Object.values(data.operators)) op.calculatedMoodSnapshot = snapshot
+    A.depletionRate = 8
+    B.depletionRate = 0.1
+    options.coordinationRates = (roster, moods) => {
+      if (moods) rateInputs.push([roster, moods])
+      const rate = { calculated: 0.5, 'calculated zero': 0, 'calculated recovering': -0.1 }[
+        evidence
+      ]
+      return { work: { A: rate, B: 2 }, recovery: {} }
+    }
+  }
+  if (evidence.startsWith('unknown ')) {
+    data.operators.C = new MowerOperatorState({
+      name: 'C',
+      operatorType: 'high',
+      room: 'room_2_1',
+      currentRoom: 'room_2_1',
+      index: 0,
+      currentIndex: 0,
+      mood: evidence === 'unknown after' ? 8 : 3,
+      timeStampMicros: 0
+    })
+    data.plan.room_2_1 = ['C']
+  }
+  if (evidence === 'different seat') B.currentIndex = 2
+  if (evidence === 'prediction and card') {
+    A.moodIsPrediction = true
+    data.dormMoodEstimates.set('A', [6, 0])
+  }
+  if (evidence === 'unknown') A.depletionRate = 0
+  if (evidence === 'newer card') {
+    A.timeStampMicros = -toMowerMicros(5 / 60)
+    data.dormMoodEstimates.set('A', [6, 0])
+  }
+  if (evidence === 'at floor') A.mood = A.lowerLimit
+  if (evidence === 'above threshold') Object.assign(B, { mood: 23, depletionRate: 50 })
+  if (evidence === 'equal time') B.depletionRate = 1
+
+  if (evidence === 'observed seat' || evidence === 'source observed first') {
+    if (evidence === 'source observed first') {
+      B.currentRoom = ''
+      B.currentIndex = -1
+      B.timeStampMicros = undefined
+    } else B.currentIndex = 2
+    B.exhaustTimeMicros = 1
+    expect(shouldMowerReadMood(data, 'B', B.room, B.index, [])).toBe(true)
+    mowerUpdateDetail(data, 'B', B.mood, B.room, B.index, true, new Set([B.room]))
+    expect(B.exhaustTimeMicros).toBeUndefined()
+    expect(B.depletionRate).toBe(0)
+  }
+  let planning = data
+  if (evidence.startsWith('projected ')) {
+    if (evidence !== 'projected same seat') B.currentIndex = 2
+    if (evidence === 'projected countdown') B.exhaustTimeMicros = toMowerMicros(1 / 60)
+    planning = projectMowerArrangements(projectMowerArrangements(data, [{ [B.room]: ['B'] }]), [])
+    expect(B.currentIndex).toBe(evidence === 'projected same seat' ? 0 : 2)
+  }
+  if (evidence === 'previous full working mood') {
+    const previousTime = -toMowerMicros(3)
+    Object.assign(A, { mood: 7.5, timeStampMicros: previousTime })
+    Object.assign(B, { mood: 24, timeStampMicros: previousTime, lowerLimit: 8, depletionRate: 0.5 })
+    mowerUpdateDetail(data, 'A', 6, A.room, A.index, true)
+    mowerUpdateDetail(data, 'B', 12, B.room, B.index, true)
+    expect([A.depletionRate, B.depletionRate]).toEqual([0.5, 0.5])
+  }
+  if (evidence === 'legacy full mood timer') {
+    Object.assign(A, {
+      mood: 24,
+      lowerLimit: 19,
+      depletionRate: 1,
+      timeStampMicros: -toMowerMicros(2),
+      exhaustTimeMicros: -toMowerMicros(2) + 2000
+    })
+    B.depletionRate = 4
+  }
+  if (evidence.startsWith('crafting primary')) {
+    B.nativeName = '年'
+    B.workshop = true
+    if (evidence.endsWith('without cover')) B.replacement = []
+  }
+
+  const plan = planMowerOrdinary(planning, queue, options)
+  if (evidence.startsWith('calculated')) {
+    expect(rateInputs).toHaveLength(1)
+    expect(rateInputs[0][0]).toBe(data)
+    expect(rateInputs[0][1]).toBe(data.calculatedMoodSnapshot.values)
+  }
+  expect(plan.dormitory_1[0]).toBe(expected)
+  expect(plan[expected === 'A' ? A.room : B.room]).toEqual([expected === 'A' ? 'X' : 'Y'])
+  expect(plan[expected === 'A' ? B.room : A.room]).toBeUndefined()
+})
+
+it.each([
+  [24, 1, 0, undefined],
+  [20, 0, 0, undefined],
+  [20, 1, 0, 20],
+  [24, 1, 22, 2]
+])('reads control-center mood %s at rate %s and floor %s', (mood, rate, floor, hours) => {
+  const state = createRosterRuntime({
+    positions: [
+      {
+        id: 'central_0',
+        roomId: 'central',
+        primary: 'A',
+        candidates: ['R'],
+        lowerLimit: floor,
+        upperLimit: 24,
+        shiftOffThreshold: 1
+      }
+    ],
+    beds: [],
+    initialMorale: { A: mood, R: 24 },
+    mowerMoodLimits: { operators: { A: { lower: floor, upper: 24 } } },
+    idleOperators: [],
+    mowerAlpha: true,
+    mowerPolicy: { restingThreshold: 0.05, powerPlantCount: 2, opeRestingPriority: [] },
+    mowerSourcePlan: { central: [{ agent: 'A', group: '', replacement: ['R'] }] },
+    mowerSourceRules: {
+      workaholic: [],
+      exhaustRequire: floor ? ['A'] : [],
+      restInFull: [],
+      lowPriority: [],
+      refreshDrained: [],
+      lingMode: 0
+    }
+  })
+  settleRoster(state, { workRate: () => rate, recoveryRate: () => 4 })
+  const op = getMowerSourceRuntime(state).data.operators.A
+  expect([op.currentRoom, op.mood, op.lowerLimit]).toEqual(['central', mood, floor])
+  expect(op.exhaustTimeMicros).toBe(hours === undefined ? undefined : toMowerMicros(hours))
+})
 
 it('leaves ordinary contention in planning until the shared cover is released', () => {
   const { data, queue } = contention()

@@ -59,6 +59,18 @@ def test_exhausted_global_skill_stops_at_exact_zero_and_query_splits_agree():
     assert split.moods == pytest.approx(direct.moods, abs=1e-10)
 
 
+@pytest.mark.parametrize("hours", [0, 1])
+def test_mood_snapshot_protects_shared_moods_and_rates(hours):
+    value = central_model()
+    now = NOW + timedelta(hours=hours)
+    previous = value.value("阿米娅", now)
+    moods, rates = value.snapshot(now)
+    for values in (moods, rates):
+        with pytest.raises(TypeError):
+            values["阿米娅"] = 42
+    assert value.value("阿米娅", now) == previous
+
+
 def test_future_queries_and_deadlines_leave_live_state_unchanged():
     value = central_model()
     old = pickle.dumps(value)
@@ -681,6 +693,23 @@ def test_facility_level_uses_startup_snapshot_during_live_plan_edit(
     assert data.mood_model.rooms["dormitory_1"]["level"] == 2
     projected = data.project_arrangements([])
     assert projected.mood_model.rooms["dormitory_1"]["level"] == 2
+
+
+def test_shift_rate_batch_uses_the_mood_query_clock_and_only_observed_operators(
+    solver, monkeypatch
+):
+    data = enable(solver, monkeypatch)
+    del data.mood_model.moods["伊内丝"]
+    now = NOW + timedelta(hours=2)
+    before = data.mood_model.moods.copy()
+    name = next(name for name in before if data.calculated_mood(name, now) is not None)
+    _, expected = data.mood_model.snapshot(now)
+    rates = data.calculated_mood_rates(now)
+    assert name in rates and rates[name] == expected[name]
+    assert "伊内丝" not in rates and data.calculated_mood_rate("伊内丝", now) is None
+    assert (data.mood_model.at, data.mood_model.moods) == (NOW, before)
+    rates[name] = 999
+    assert data.calculated_mood_rate(name, now) == expected[name]
 
 
 def test_unrecognized_occupied_facility_keeps_rate_and_scheduling_mood_unknown(
