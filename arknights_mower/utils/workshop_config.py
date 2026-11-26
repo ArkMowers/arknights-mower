@@ -5,7 +5,10 @@ from threading import RLock
 
 from arknights_mower.utils import config
 from arknights_mower.utils.config.conf import RIICPart
-from arknights_mower.utils.long_task_windows import parse_long_task_clock
+from arknights_mower.utils.long_task_windows import (
+    automatic_long_tasks_enabled,
+    parse_long_task_clock,
+)
 from arknights_mower.utils.path import get_path
 
 workshop_lock = RLock()
@@ -195,7 +198,7 @@ def save_user_config(req):
             from arknights_mower.solvers.record import workshop_inventory_changed
 
             workshop_inventory_changed.set()
-        long_windows_changed = (previous.maa_rg_enable or conf.maa_rg_enable) and any(
+        long_windows_changed = automatic_long_tasks_enabled(conf) and any(
             getattr(previous, key) != getattr(conf, key)
             for key in (
                 "maa_rg_enable",
@@ -212,7 +215,11 @@ def save_user_config(req):
             or previous.version_update_threshold_advance_hours
             != conf.version_update_threshold_advance_hours
         )
-        if growth_switch_changed or long_windows_changed or maintenance_policy_changed:
+        growth_switch_enabled = conf.enable_crafting and (
+            (conf.enable_mastery and not previous.enable_mastery)
+            or (conf.maa_growth_enable and not previous.maa_growth_enable)
+        )
+        if growth_switch_enabled or long_windows_changed or maintenance_policy_changed:
             # Let a sleeping running scheduler re-evaluate and hot-apply the policy.
             _wake_scheduler_if_running()
         if conf.workshop_preset_migrated:
