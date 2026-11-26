@@ -195,12 +195,60 @@ def test_routine_drone_rechecks_same_roster_after_fresh_read(routine_drone, prod
     assert sum(call.args[0] == accelerate for call in solver.tap.call_args_list) == (
         production == "resumed"
     )
+    assert solver.sleep.call_count == (2 if production == "unreadable" else 0)
     if production == "resumed":
         solver._confirm_drone_count.assert_called_once()
         assert solver.drone_time == clock.current
     else:
         solver._confirm_drone_count.assert_not_called()
         assert solver.drone_time is previous_drone_time
+
+
+@pytest.mark.parametrize("first_resample_has_accelerate", [True, False])
+def test_routine_drone_resamples_uncertain_detail_during_recheck(
+    routine_drone, first_resample_has_accelerate
+):
+    solver, state, frames, clock, accelerate = routine_drone
+    soldier = solver.op_data.operators[WORKER]
+    soldier.current_room, soldier.current_index = ROOM, 0
+    roster = [{"agent": WORKER, "mood": 24}]
+    solver._reconcile_room_observation(ROOM, roster)
+    solver.infra_main()
+
+    state.paused = False
+    resumed_frame = frames[False]
+    unsettled_frame = resumed_frame.copy()
+    unsettled_frame[483:502, 1560:1584] = (255, 255, 255)
+    frames[False] = unsettled_frame
+    assert manufacture_detail_pause_state(unsettled_frame) is None
+
+    find = solver.find.side_effect
+
+    def find_in_frame(resource):
+        if (
+            resource == "manufacture_accelerate"
+            and solver.sleep.call_count == 1
+            and not first_resample_has_accelerate
+        ):
+            return None
+        return find(resource)
+
+    def read_resumed_frame(_interval):
+        assert state.page == "product"
+        solver.recog.img = resumed_frame
+        solver.recog.gray = cv2.cvtColor(resumed_frame, cv2.COLOR_RGB2GRAY)
+
+    solver.find.side_effect = find_in_frame
+    solver.sleep.side_effect = read_resumed_frame
+    solver._reconcile_room_observation(ROOM, roster)
+    solver.todo_task = False
+    solver.infra_main()
+
+    assert solver.enter_room.call_count == 2
+    assert solver.sleep.call_count == (1 if first_resample_has_accelerate else 2)
+    assert sum(call.args[0] == accelerate for call in solver.tap.call_args_list) == 1
+    solver._confirm_drone_count.assert_called_once()
+    assert solver.drone_time == clock.current
 
 
 @pytest.mark.parametrize("future_return", [False, True])

@@ -16681,6 +16681,17 @@ class BaseSchedulerSolver(
         )
         if accelerate:
             paused = manufacture_detail_pause_state(self.recog.img) if routine else None
+            if pause is not None:
+                for _ in range(2):
+                    if paused is not None:
+                        break
+                    self.sleep(0.2)
+                    if self.find("connecting"):
+                        continue
+                    refreshed_accelerate = self.find("manufacture_accelerate")
+                    if refreshed_accelerate is not None:
+                        accelerate = refreshed_accelerate
+                        paused = manufacture_detail_pause_state(self.recog.img)
             self._cache_facility_state_from_current_page(room, "manufacture")
             if paused is True or (pause is not None and paused is None):
                 if pause is None:
