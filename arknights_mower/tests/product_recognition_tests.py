@@ -301,3 +301,64 @@ def test_unconfirmed_trade_title_reads_strategy_card(monkeypatch, constant_templ
 
     solver._cache_facility_state.assert_called_once_with("room_1_1", "trade", "orundum")
     solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize("level", [1, 2])
+def test_configured_trade_level_skips_detail_during_room_observation(
+    monkeypatch, level
+):
+    room = "room_1_1"
+    solver = solver_for(np.zeros((1080, 1920, 3), dtype=np.uint8))
+    solver.op_data = SimpleNamespace(
+        facility_levels={room: level}, update_facility_state=Mock()
+    )
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._work_room_panel = Mock(return_value="closed")
+    solver.scene_graph_navigation = Mock()
+    solver.detect_room_type = Mock(return_value="贸易站")
+    solver._wait_drone_interface = Mock(side_effect=AssertionError("opened orders"))
+    solver._read_trade_product_card = Mock(side_effect=AssertionError("read card"))
+    title_level = Mock(return_value=None)
+    monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
+
+    assert solver.refresh_facility_state(room)
+
+    assert solver.op_data.update_facility_state.call_args.args == (room, "trade", "lmd")
+    title_level.assert_not_called()
+    solver._wait_drone_interface.assert_not_called()
+    solver.scene_graph_navigation.assert_not_called()
+    solver._read_trade_product_card.assert_not_called()
+
+
+@pytest.mark.parametrize(("level", "product"), [(1, "lmd"), (2, "lmd"), (3, "orundum")])
+def test_order_page_uses_configured_level_before_title(monkeypatch, level, product):
+    room = "room_1_1"
+    solver = solver_for(card(2))
+    solver.op_data = SimpleNamespace(facility_levels={room: level})
+    solver._cache_facility_state = Mock()
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver.detect_room = Mock(return_value=room)
+    title_level = Mock(return_value=None)
+    monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver._cache_facility_state_from_current_page(room, "trade", defer_log=True)
+
+    solver._cache_facility_state.assert_called_once_with(room, "trade", product)
+    title_level.assert_not_called()
+
+
+def test_trade_switch_uses_actual_strategy_even_with_outdated_configured_level():
+    room = "room_1_1"
+    solver = solver_for(card(2))
+    solver.op_data = SimpleNamespace(facility_levels={room: 1})
+    solver._open_trade_product_detail = Mock()
+    solver._cache_facility_state = Mock()
+    solver._start_product_switch_log = Mock()
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    observation = solver._survey_trade_switch(room, "lmd")
+
+    assert observation["current_product"] == "orundum"
+    assert observation["needs_switch"] is True
+    assert observation["switchable"] is True

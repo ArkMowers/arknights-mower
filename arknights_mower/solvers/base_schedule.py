@@ -14978,7 +14978,7 @@ class BaseSchedulerSolver(
             and facility_observation is not None
         )
         if facility == "trade" and panel:
-            room_product = self._fixed_trade_product(room, panel=panel)
+            room_product = self._fixed_trade_product(room, panel=panel, use_plan=True)
         if read_with_countdown or (after_roster is not None and panel == "open"):
             if read_with_countdown:
                 facility_observation["order_pending"] = True
@@ -15722,17 +15722,22 @@ class BaseSchedulerSolver(
             **({"room_product": room_product} if room_product else {}),
         )
 
-    def _fixed_trade_product(self, room, *, panel=None):
+    def _fixed_trade_product(self, room, *, panel=None, use_plan=False):
         from arknights_mower.utils.product_recognition import trade_title_level
 
+        if use_plan:
+            op_data = getattr(self, "op_data", None)
+            level = getattr(op_data, "facility_levels", {}).get(room)
+            if level in (1, 2, 3):
+                return "lmd" if level < 3 else None
         recog = getattr(self, "recog", None)
+        if panel == "open":
+            occupancy = read_room_occupancy(getattr(recog, "gray", None))
+            if occupancy is not None and occupancy[1] in (1, 2, 3):
+                return "lmd" if occupancy[1] < 3 else None
         level = trade_title_level(getattr(recog, "img", None))
         if level in (1, 2) and (panel is not None or self.detect_room() == room):
             return "lmd"
-        if level is None and panel == "open":
-            occupancy = read_room_occupancy(getattr(recog, "gray", None))
-            if occupancy is not None and occupancy[1] in (1, 2):
-                return "lmd"
         return None
 
     def _read_trade_product_card(self) -> tuple[str, bool]:
@@ -15787,7 +15792,7 @@ class BaseSchedulerSolver(
             else:
                 product = (
                     room_product
-                    or self._fixed_trade_product(room)
+                    or self._fixed_trade_product(room, use_plan=True)
                     or self._read_trade_product_card()[0]
                 )
                 label = TRADE_PRODUCTS[product].strategy_name

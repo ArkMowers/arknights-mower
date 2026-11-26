@@ -12,7 +12,7 @@ from PIL import Image
 
 from arknights_mower.solvers import base_schedule
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
-from arknights_mower.utils import selection_order
+from arknights_mower.utils import product_recognition, selection_order
 from arknights_mower.utils.image import loadres
 from arknights_mower.utils.recognize import RecognizeError, Recognizer
 
@@ -82,6 +82,30 @@ def test_recorded_occupancy_and_capacity(frame, tag):
     for capacity in (1, 2, 3, 5):
         expected = count if capacity == len(names) else None
         assert selection_order.room_occupancy(rgb, capacity) == expected
+
+
+@pytest.mark.parametrize(
+    ("tag", "fixed"),
+    [
+        ("m203-empty1", "lmd"),
+        ("m302-empty2", "lmd"),
+        ("b102-empty2", None),
+        ("b102-empty3", None),
+    ],
+)
+def test_trade_level_fallback_uses_total_capacity(frame, monkeypatch, tag, fixed):
+    gray = frame(tag)
+    solver = object.__new__(BaseSchedulerSolver)
+    solver.op_data = SimpleNamespace(facility_levels={})
+    solver.recog = SimpleNamespace(
+        img=cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB), gray=gray
+    )
+    title_level = Mock(return_value=None)
+    monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
+
+    assert solver._fixed_trade_product("room_1_1", panel="open") == fixed
+
+    title_level.assert_not_called()
 
 
 @pytest.mark.parametrize("band", [(-62, -3), (15, 95), (146, 169), (177, 210)])
