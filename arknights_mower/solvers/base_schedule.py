@@ -190,6 +190,7 @@ from arknights_mower.utils.operation_timing import (
     timed_step,
 )
 from arknights_mower.utils.operators import (
+    FACILITY_TYPE_IDS,
     TRADE_ORDER_AGENTS,
     Dormitory,
     Operator,
@@ -1117,6 +1118,7 @@ class BaseSchedulerSolver(
         self.party_time = None
         self.drone_time = None
         self._routine_drone_pauses: dict[str, frozenset[tuple[int, str]]] = {}
+        self._confirmed_empty_work_rooms: set[str] = set()
         self.reload_time = None
         self.clue_count_limit = 9
         self.enable_party = True
@@ -1913,6 +1915,10 @@ class BaseSchedulerSolver(
         return revision > saved_revision and occupant != previous
 
     def _failure_snapshot_changed(self, task, failure):
+        if room := failure.get("manufacture_staffing_wait"):
+            return not self._confirmed_empty_manufacture_room(room) and any(
+                op.current_room == room for op in self.op_data.operators.values()
+            )
         if wait := failure.get("training_selection_wait"):
             from arknights_mower.utils.training_selection_recovery import (
                 training_selection_ready,
@@ -2264,6 +2270,7 @@ class BaseSchedulerSolver(
                     continue
             if getattr(task, "arrangement_failures", None):
                 self._resume_arrangement_rooms(task)
+        self._hold_empty_manufacture_switches()
 
     def _prepare_manual_maintenance(self, info):
         """先执行完提前跑单、原班恢复及换人，再暂停或停服。"""
@@ -4625,10 +4632,19 @@ class BaseSchedulerSolver(
         if self._observe_failed_arrangement_confirmation():
             self.skip()
             return True
-        if getattr(self.task, "execution_failure", None):
+        if getattr(self.task, "execution_failure", None) and not getattr(
+            self.task, "execution_failure", {}
+        ).get("manufacture_staffing_wait"):
             self.task = None
         if not self._product_switching_enabled():
             self._discard_product_switches()
+        self._initialize_startup_facilities()
+        self._reconcile_initial_staffing()
+        self._hold_empty_manufacture_switches()
+        if self.task is not None and getattr(self.task, "execution_failure", None):
+            self.task = self.find_next_task()
+            if self.task is not None and self.task.time > datetime.now():
+                self.task = None
         if self.task is not None and self.task.type == TaskTypes.SWITCH_PRODUCT:
             # 到期换班先收敛最终阵容，再由该任务执行前置切产物。
             # 独立切换仍留在队列，收敛或换班失败不能丢失其执行责任。
@@ -4669,8 +4685,6 @@ class BaseSchedulerSolver(
                 )
                 self.skip()
                 return True
-        self._initialize_startup_facilities()
-        self._reconcile_initial_staffing()
         initial_fia_pending = any(
             getattr(task, "initial_fia", False) for task in self.tasks
         )
@@ -5388,6 +5402,7 @@ class BaseSchedulerSolver(
             if (
                 drone_room is not None
                 and drone_room not in self.op_data.run_order_rooms
+                and not self._confirmed_empty_manufacture_room(drone_room)
                 and drone_room not in getattr(self, "_routine_drone_pauses", ())
                 and (
                     self.drone_time is None
@@ -8613,6 +8628,7 @@ class BaseSchedulerSolver(
         ]
         desired_products, desired_plan = self._products_after_arrangement({})
         targets = {}
+        staffing_first = set()
         for room, target in desired_products.items():
             if target == self.op_data.products.get(room):
                 continue
@@ -8628,6 +8644,12 @@ class BaseSchedulerSolver(
             ):
                 continue
             targets[room] = target
+            if (
+                facility == "制造站"
+                and self._confirmed_empty_manufacture_room(room)
+                and any(slot.agent in self.op_data.operators for slot in room_plan)
+            ):
+                staffing_first.add(room)
         existing = {}
         stale_ids = set()
         for task in pending:
@@ -8640,6 +8662,10 @@ class BaseSchedulerSolver(
         waiting = False
         for room, target in targets.items():
             current = existing.get(room)
+            if room in staffing_first:
+                if current is not None:
+                    self._hold_manufacture_switch_for_staffing(current, room)
+                continue
             if current is not None:
                 waiting = True
                 continue
@@ -10324,6 +10350,7 @@ class BaseSchedulerSolver(
             return True
 
     def initialize_operators(self):
+        self._confirmed_empty_work_rooms = set()
         self.op_data = Operators(
             self.global_plan,
             facility_levels=getattr(self, "source_plan", {}).get("facility_levels"),
@@ -10398,12 +10425,17 @@ class BaseSchedulerSolver(
                 if task.type == TaskTypes.SWITCH_PRODUCT
                 and task.meta_data.split(",", 1)[0] == room
             ]
+            target_meta = product_task_meta(room, target_product)
+            empty_manufacture = (
+                facility == "制造站" and self._confirmed_empty_manufacture_room(room)
+            )
             if room in pending_targets:
                 # 关联换班或副表前置任务负责切换，不能被旧排班反向覆盖。
                 obsolete_ids = {
                     id(task)
                     for task in existing
                     if not getattr(task, "pending_backup_product_switch", False)
+                    and not (empty_manufacture and task.meta_data == target_meta)
                 }
                 self.tasks[:] = [
                     task for task in self.tasks if id(task) not in obsolete_ids
@@ -10434,7 +10466,14 @@ class BaseSchedulerSolver(
                     )
                 continue
 
-            target_meta = product_task_meta(room, target_product)
+            if empty_manufacture and state.get("product") is None:
+                obsolete = {
+                    id(task) for task in existing if task.meta_data != target_meta
+                }
+                self.tasks[:] = [
+                    task for task in self.tasks if id(task) not in obsolete
+                ]
+                continue
             if len(existing) == 1 and existing[0].meta_data == target_meta:
                 continue
             self.tasks[:] = [
@@ -10458,6 +10497,7 @@ class BaseSchedulerSolver(
             if task.type != TaskTypes.SWITCH_PRODUCT
             or task.meta_data.split(",", 1)[0] in configured_rooms
         ]
+        self._hold_empty_manufacture_switches()
         selected = getattr(self, "task", None)
         if (
             selected is not None
@@ -10465,6 +10505,34 @@ class BaseSchedulerSolver(
             and selected not in self.tasks
         ):
             self.task = None
+
+    def _hold_manufacture_switch_for_staffing(self, task, room):
+        if getattr(task, "execution_failure", None):
+            return
+        self._retain_failed_task(
+            task,
+            f"{self.translate_room(room)}无人进驻，等待有干员上岗后切换产物",
+            (room,),
+            dependency=True,
+        )
+        task.execution_failure["manufacture_staffing_wait"] = room
+
+    def _hold_empty_manufacture_switches(self):
+        if not getattr(self, "_confirmed_empty_work_rooms", ()):
+            return
+        for task in self.tasks:
+            if task.type != TaskTypes.SWITCH_PRODUCT:
+                continue
+            room, product = parse_product_task_meta(task.meta_data)
+            if (
+                product in MANUFACTURE_PRODUCTS
+                and self._confirmed_empty_manufacture_room(room)
+                and any(
+                    slot.agent in self.op_data.operators
+                    for slot in self.op_data.plan.get(room, ())
+                )
+            ):
+                self._hold_manufacture_switch_for_staffing(task, room)
 
     def _products_after_arrangement(self, plan):
         """在排班快照上推演换班后的副表，不改动真实排班缓存。"""
@@ -13288,6 +13356,13 @@ class BaseSchedulerSolver(
                 actual is None and target == self.op_data.products.get(room)
             ):
                 continue
+            if (
+                facility == "制造站"
+                and self._confirmed_empty_manufacture_room(room)
+                and any(slot.agent in self.op_data.operators for slot in room_plan)
+            ):
+                # 空站先等排班补岗，其他房间的换班可以继续执行。
+                continue
             targets[room] = target
             switches.append(
                 SchedulerTask(
@@ -14998,6 +15073,7 @@ class BaseSchedulerSolver(
         facility_observation_scope: ExitStack | None = None,
         defer_trade_order=False,
         after_roster=None,
+        manufacture_after_roster=None,
     ) -> bool:
         """进入房间读取心情时，按标题栏刷新实际设施类型、产物或订单。"""
         if not self._product_switching_enabled() and not getattr(
@@ -15073,7 +15149,20 @@ class BaseSchedulerSolver(
             )
             if trade_level in (1, 2):
                 room_product = "lmd"
-        if read_with_countdown or (after_roster is not None and panel == "open"):
+        if facility == "manufacture":
+            if after_roster is None:
+                after_roster = manufacture_after_roster
+            if panel == "closed":
+                room_product = self._visible_manufacture_product()
+        if read_with_countdown or (
+            after_roster is not None
+            and (
+                panel == "open"
+                or (
+                    facility == "manufacture" and panel == "closed" and not room_product
+                )
+            )
+        ):
             if read_with_countdown:
                 facility_observation["order_pending"] = True
                 if trade_level is not None:
@@ -15097,7 +15186,7 @@ class BaseSchedulerSolver(
                     f"{state_name}待确认",
                 )
             return False
-        if facility == "manufacture" and panel:
+        if facility == "manufacture" and panel == "open":
             room_product = self._visible_manufacture_product()
         return self._read_room_facility_product(
             room,
@@ -20164,6 +20253,8 @@ class BaseSchedulerSolver(
                     observation_args["defer_trade_order"] = True
             elif observed_facilities is not None and room.startswith("room_"):
                 observation_args["after_roster"] = after_roster
+            elif room.startswith("room_"):
+                observation_args["manufacture_after_roster"] = after_roster
             observed = self.refresh_facility_state(room, **observation_args)
             if observed and observed_facilities is not None:
                 observed_facilities.add(room)
@@ -21005,22 +21096,42 @@ class BaseSchedulerSolver(
             self._check_room_roster_frame(room, after_roster)
         if counted_names is not None or short_fallback:
             check_roster_frame()
+        empty_roster = (
+            bool(result)
+            and observation_complete
+            and not any(item["agent"] for item in result)
+        )
         if after_roster and facility:
             room_product = (
                 self._visible_manufacture_product()
                 if facility == "manufacture"
                 else after_roster["room_product"]
             )
-            observed = self._read_room_facility_product(
-                room,
-                facility,
-                room_product,
-                facility_observation,
-                facility_observation_scope,
-                trade_level=after_roster.get("trade_level"),
-            )
-            if observed and observed_facilities is not None:
-                observed_facilities.add(room)
+            if facility == "manufacture" and empty_roster and not room_product:
+                if facility_observation is not None:
+                    facility_observation["state_summary"] = "无人进驻，跳过产物详情"
+            else:
+                observed = self._read_room_facility_product(
+                    room,
+                    facility,
+                    room_product,
+                    facility_observation,
+                    facility_observation_scope,
+                    trade_level=after_roster.get("trade_level"),
+                )
+                if observed and observed_facilities is not None:
+                    observed_facilities.add(room)
+        if (
+            empty_roster
+            and room.startswith("room_")
+            and room == self.drone_room
+            and isinstance(counted_rgb, np.ndarray)
+            and self._work_room_facility(room) is None
+            and self.detect_room() == room
+            and self.detect_room_type() == "制造站"
+        ):
+            # 旧排班可能未标注设施类型，直接核对刚读完的房间标题。
+            self.op_data.update_facility_state(room, "manufacture")
         self._reconcile_room_observation(
             room, result, expected_agents=expected_agents, **recovery_context
         )
@@ -21043,6 +21154,21 @@ class BaseSchedulerSolver(
             self.last_train_mood_read = datetime.now()
         return result
 
+    def _work_room_facility(self, room):
+        state = getattr(self.op_data, "facility_states", {}).get(room, {})
+        if (facility := state.get("facility")) is not None:
+            return facility
+        slots = self.op_data.plan.get(room, ())
+        return (
+            FACILITY_TYPE_IDS.get(getattr(slots[0], "facility", "")) if slots else None
+        )
+
+    def _confirmed_empty_manufacture_room(self, room):
+        return (
+            room in getattr(self, "_confirmed_empty_work_rooms", ())
+            and self._work_room_facility(room) == "manufacture"
+        )
+
     def _reconcile_room_observation(
         self, room, observed, *, group_transitions=None, expected_agents=None
     ):
@@ -21053,6 +21179,15 @@ class BaseSchedulerSolver(
             if item.get("observed", True)
         }
         complete = len(slots) == len(observed)
+        if room.startswith("room_") and observed:
+            empty_rooms = getattr(self, "_confirmed_empty_work_rooms", None)
+            if any(slots.values()):
+                if empty_rooms is not None:
+                    empty_rooms.discard(room)
+            elif complete:
+                if empty_rooms is None:
+                    self._confirmed_empty_work_rooms = empty_rooms = set()
+                empty_rooms.add(room)
         task = self.task
         if expected_agents is not None and room.startswith("dorm"):
             # 两人充能等短名单会清空其余床位，读房仍返回完整宿舍。
@@ -21144,6 +21279,15 @@ class BaseSchedulerSolver(
             self._emergency_sync_compensation({room: confirmed})
         if room.startswith("dorm") and slots:
             self._recovery_plan_dirty = True
+        pauses = getattr(self, "_routine_drone_pauses", {})
+        if room in pauses:
+            roster = frozenset((index, name) for index, name in slots.items() if name)
+            if roster and (
+                complete and roster != pauses[room] or roster - pauses[room]
+            ):
+                del pauses[room]
+            elif complete and not roster:
+                pauses[room] = roster
         if not complete:
             logger.warning("%s 名单识别未决，保留未确认驻员与床位缓存", room)
             return
@@ -21151,14 +21295,6 @@ class BaseSchedulerSolver(
         observations = getattr(self.op_data, "room_observations", {})
         observations[room] = observations.get(room, 0) + 1
         self.op_data.room_observations = observations
-        pauses = getattr(self, "_routine_drone_pauses", {})
-        if room in pauses:
-            roster = frozenset((index, name) for index, name in slots.items() if name)
-            if roster and roster != pauses[room]:
-                del pauses[room]
-            elif not roster:
-                # 用完整的空房观测校正旧名单，复派仍须等到实际驻员或产物页变化。
-                pauses[room] = roster
         self._observe_rescue_staffing_log(room, observed)
 
     def refresh_current_room(self, room, current_index=None):

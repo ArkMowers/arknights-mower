@@ -9,12 +9,14 @@ import cv2
 import pytest
 
 from arknights_mower.solvers import base_schedule as base
-from arknights_mower.utils import config
+from arknights_mower.utils import config, scheduler_task
 from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.manufacture_product import product_task_meta
 from arknights_mower.utils.operators import Operators
 from arknights_mower.utils.plan import Plan, PlanConfig, Room
 from arknights_mower.utils.product_recognition import manufacture_detail_pause_state
 from arknights_mower.utils.recognize import RecognizeError, Scene
+from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
 
 ROOM = "room_1_2"
 WORKER = "鸿雪"
@@ -31,6 +33,7 @@ def routine_drone(monkeypatch, offline_maintenance):
             return cls.current
 
     monkeypatch.setattr(base, "datetime", Clock)
+    monkeypatch.setattr(scheduler_task, "datetime", Clock)
     monkeypatch.setattr(
         config, "conf", config.Conf(drone_interval=1, maa_mall_enable=False)
     )
@@ -39,7 +42,8 @@ def routine_drone(monkeypatch, offline_maintenance):
     solver.op_data = Operators(
         {
             "default_plan": Plan(
-                {ROOM: [Room(WORKER, "", ["图耶"])]}, PlanConfig("", "", "")
+                {ROOM: [Room(WORKER, "", ["图耶"], "制造站")]},
+                PlanConfig("", "", ""),
             ),
             "backup_plans": [],
         }
@@ -157,6 +161,159 @@ def test_routine_drone_releases_dispatch_until_actual_staffing_changes(routine_d
     solver.todo_task = False
     solver.infra_main()
     assert solver.enter_room.call_count == 2
+
+
+@pytest.mark.parametrize("future_return", [False, True])
+def test_routine_drone_skips_confirmed_empty_room_before_entering(
+    routine_drone, future_return
+):
+    solver, state, _, clock, accelerate = routine_drone
+    previous_drone_time = solver.drone_time
+    if future_return:
+        returning = SchedulerTask(
+            time=clock.current + timedelta(hours=5),
+            task_type=TaskTypes.SHIFT_ON,
+            task_plan={ROOM: [WORKER]},
+        )
+        solver.tasks.append(returning)
+        original_return_time = returning.time
+    for _ in range(3):
+        solver._reconcile_room_observation(ROOM, [{"agent": "", "mood": -1}])
+        solver.todo_task = False
+        solver.infra_main()
+        clock.current += timedelta(minutes=30)
+
+    solver.enter_room.assert_not_called()
+    solver.tap.assert_not_called()
+    solver.reload.assert_called_once()
+    assert solver.drone_time is previous_drone_time
+    assert len(solver.tasks) == int(future_return)
+    if future_return:
+        assert solver.tasks[0] is returning
+        assert returning.time is original_return_time
+        assert returning.plan == {ROOM: [WORKER]}
+    solver._reconcile_room_observation(
+        ROOM, [{"agent": WORKER, "mood": -1, "observed": False}]
+    )
+    solver._reconcile_room_observation("room_1_1", [{"agent": WORKER, "mood": 24}])
+    solver.todo_task = False
+    solver.infra_main()
+    solver.enter_room.assert_not_called()
+
+    state.paused = False
+    worker = solver.op_data.operators[WORKER]
+    worker.current_room, worker.current_index = ROOM, 0
+    solver._reconcile_room_observation(ROOM, [{"agent": WORKER, "mood": 24}])
+    solver.todo_task = False
+    solver.infra_main()
+
+    solver.enter_room.assert_called_once_with(ROOM)
+    assert sum(call.args[0] == accelerate for call in solver.tap.call_args_list) == 1
+    assert solver.drone_time == clock.current
+
+
+@pytest.mark.parametrize("has_pending_switch", [False, True])
+def test_unknown_product_of_empty_room_does_not_generate_a_switch(
+    routine_drone, monkeypatch, has_pending_switch
+):
+    solver, _, _, _, _ = routine_drone
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
+    solver.op_data.products[ROOM] = "exp3"
+    solver.op_data.update_facility_state(ROOM, "manufacture")
+    solver._reconcile_room_observation(ROOM, [{"agent": "", "mood": -1}])
+    switch = SchedulerTask(
+        task_type=TaskTypes.SWITCH_PRODUCT, meta_data=product_task_meta(ROOM, "exp3")
+    )
+    original_time = switch.time
+    if has_pending_switch:
+        solver.tasks.append(switch)
+    for _ in range(3):
+        solver.queue_product_switches()
+    assert len(solver.tasks) == int(has_pending_switch)
+    if has_pending_switch:
+        assert solver.tasks[0] is switch and switch.time is original_time
+
+    worker = solver.op_data.operators[WORKER]
+    worker.current_room, worker.current_index = ROOM, 0
+    solver._reconcile_room_observation(ROOM, [{"agent": WORKER, "mood": 24}])
+    solver.op_data.update_facility_state(ROOM, "manufacture", "gold")
+    solver.queue_product_switches()
+    (selected,) = solver.tasks
+    assert selected.meta_data == switch.meta_data
+    if has_pending_switch:
+        assert selected is switch and selected.time is original_time
+
+
+@pytest.mark.parametrize("startup", [True, False])
+def test_existing_staffing_repair_unblocks_product_switch_in_empty_room(
+    routine_drone, monkeypatch, startup
+):
+    solver, _, _, clock, _ = routine_drone
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
+    solver.op_data.update_facility_state(ROOM, "manufacture", "gold")
+    solver.op_data.products[ROOM] = "exp3"
+    solver._initial_staffing_pending = startup
+    solver.refresh_connecting = False
+    solver._complete_group_shift = Mock(return_value=True)
+    solver.plan_metadata = Mock()
+    vacancy = [{"agent": "", "mood": -1}]
+    solver._read_agent_mood = Mock(
+        side_effect=lambda: solver._reconcile_room_observation(ROOM, vacancy)
+    )
+    if startup:
+        solver._reconcile_room_observation(ROOM, vacancy)
+        assert solver._reconcile_initial_staffing()
+    else:
+        assert solver.agent_get_mood() == "self_correction"
+    (correction,) = solver.tasks
+    assert correction.type == TaskTypes.SELF_CORRECTION
+    assert correction.plan[ROOM] == [WORKER]
+    assert correction.initial_staffing is startup
+    solver.agent_get_mood(force=True, read_rooms=False)
+    assert len(solver.tasks) == 1 and solver.tasks[0] is correction
+
+    switch = SchedulerTask(
+        time=clock.current - timedelta(minutes=1),
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=product_task_meta(ROOM, "exp3"),
+    )
+    solver.tasks.insert(0, switch)
+    solver.task = switch
+    original_time = switch.time
+    sequence = []
+
+    def arrange(plan, *args, **kwargs):
+        sequence.append("staffing")
+        assert plan[ROOM] == [WORKER]
+        worker = solver.op_data.operators[WORKER]
+        worker.current_room, worker.current_index = ROOM, 0
+        solver._reconcile_room_observation(ROOM, [{"agent": WORKER, "mood": 24}])
+        return True
+
+    def switch_products(tasks, *, before_arrangement=False):
+        if before_arrangement:
+            raise base.ProductSwitchFailed("制造暂停，无法加速当前队列", [ROOM])
+        sequence.append("product")
+        assert solver.op_data.get_current_room(ROOM) == [WORKER]
+        assert len(tasks) == 1 and tasks[0] is switch
+        solver.op_data.update_facility_state(ROOM, "manufacture", "exp3")
+        solver.tasks.remove(switch)
+
+    solver.agent_arrange = Mock(side_effect=arrange)
+    solver.switch_base_products = Mock(side_effect=switch_products)
+    solver.infra_main()
+
+    assert sequence == ["staffing"]
+    assert len(solver.tasks) == 1 and solver.tasks[0] is switch
+    assert switch.time is original_time
+    assert solver.op_data.facility_states[ROOM]["product"] == "gold"
+
+    solver.task = switch
+    solver.infra_main()
+
+    assert sequence == ["staffing", "product"]
+    assert solver.tasks == []
+    assert switch.time is original_time
 
 
 def test_confirmed_product_page_can_release_routine_drone_without_staffing_change(

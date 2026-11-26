@@ -1712,11 +1712,12 @@ def product_condition_room():
     solver.turn_on_room_detail = MagicMock()
     solver.wait_product_complete = MagicMock()
     solver.back = MagicMock()
-    solver.recog.gray = MagicMock()
+    solver.recog.img = np.zeros((1080, 1920, 3), np.uint8)
+    solver.recog.gray = np.zeros((1080, 1920), np.uint8)
+    solver.read_screen = MagicMock(return_value="陈")
+    solver.read_accurate_mood = MagicMock(return_value=24)
     solver.find = MagicMock(
-        side_effect=lambda resource, **kwargs: (
-            resource in {"infra_no_operator", "arrange_check_in"}
-        )
+        side_effect=lambda resource, **kwargs: resource == "arrange_check_in"
     )
     return room, solver
 
@@ -1731,14 +1732,12 @@ def test_patrol_product_reaches_next_backup_check(product_condition_room, source
     if source == "unreadable":
         solver.read_manufacture_product.side_effect = base.RecognizeError("配方未确认")
 
-    def find(resource, **kwargs):
-        if resource == "infra_no_operator":
-            assert solver.op_data.plan_condition == [False]
-            assert solver.op_data.evaluate_backup_selection().conditions == [False]
-            return True
-        return resource == "arrange_check_in"
+    def read_name(*args, **kwargs):
+        assert solver.op_data.plan_condition == [False]
+        assert solver.op_data.evaluate_backup_selection().conditions == [False]
+        return "陈"
 
-    solver.find = MagicMock(side_effect=find)
+    solver.read_screen.side_effect = read_name
     solver._read_room_mood(room)
     assert solver.op_data.plan_condition == [False]
     solver.backup_plan_solver()
