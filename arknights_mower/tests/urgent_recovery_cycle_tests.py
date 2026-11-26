@@ -80,8 +80,9 @@ def test_low_mood_supporters_cannot_reverse_or_chain_recall(solver):
     assert plan["room_2_2"] == ["槐琥"]
 
 
+@pytest.mark.parametrize("saved_without_origins", [False, True])
 def test_confirmed_support_protects_all_recovering_anchors_without_expanding_sources(
-    solver,
+    solver, saved_without_origins
 ):
     request, support = start_handoff(solver, peers=["能天使"])
     assert support.coordination_request_names == ["机械师"]
@@ -93,6 +94,9 @@ def test_confirmed_support_protects_all_recovering_anchors_without_expanding_sou
     solver.overtake_room()
     departure = next(task for task in solver.tasks if task.type == TaskTypes.SHIFT_OFF)
     assert set(departure.urgent_recovery_request_names) == {"机械师", "能天使"}
+    assert departure.coordination_request_names == ["机械师"]
+    if saved_without_origins:
+        del departure.coordination_request_names
     confirm_arrangement(solver, departure)
     assert solver.op_data.operators["机械师"].is_resting()
     assert solver.op_data.operators["能天使"].is_resting()
@@ -122,6 +126,39 @@ def test_pending_handoff_reserves_freed_resources_for_original_request(solver):
     )
     assert not plan
     assert request.time <= datetime.now()
+
+
+@pytest.mark.parametrize(
+    "relation", ["same", "overlap", "ordinary", "ambiguous", "shared"]
+)
+def test_later_support_can_use_only_its_original_departures_reservation(
+    solver, relation
+):
+    request, first = start_handoff(solver, peers=["能天使"])
+    confirm_arrangement(solver, first)
+    later = SchedulerTask(task_type=TaskTypes.SELF_CORRECTION)
+    later.exhaust_support = True
+    later.coordination_request_names = (
+        ["机械师", "能天使"] if relation == "overlap" else ["机械师"]
+    )
+    later.ordinary_coordination = relation == "ordinary"
+    pending = [request, later]
+    if relation == "ambiguous":
+        pending.append(deepcopy(request))
+    if relation == "shared":
+        other = deepcopy(request)
+        other.coordination_request_names = ["能天使"]
+        other.urgent_recovery_reserved_names = ["红"]
+        other.urgent_recovery_reserved_slots = [("dormitory_2", 4)]
+        pending.append(other)
+    names, slots = retained_task_reservations(
+        solver.op_data, pending, current_task=later
+    )
+    if relation == "shared":
+        assert "红" in names and ("dormitory_2", 4) in slots
+    assert ("槐琥" in names) == (relation not in {"same", "shared"})
+    assert (("dormitory_1", 2) in slots) == (relation not in {"same", "shared"})
+    assert "槐琥" in request.urgent_recovery_reserved_names
 
 
 def test_recovery_protection_isolated_and_requires_observed_completion(solver):

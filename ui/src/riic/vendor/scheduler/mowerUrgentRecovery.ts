@@ -2,12 +2,45 @@ import {hasObservedFullMood} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask} from './mowerTaskQueue'
 
+function requestOrigins(request:MowerTask):string[] {
+ return request.coordinationRequestNames.length ? request.coordinationRequestNames : request.type===T.EXHAUST_OFF ? request.metadata.split(',') : request.urgentRecoveryRequestNames
+}
+
 /** A prepared departure retains the recovery request that released its covers. */
 export function mowerSupportRequestMatches(request:MowerTask,support:MowerTask):boolean {
  if(request===support||request.ordinaryCoordination!==support.ordinaryCoordination)return false
- const origins=request.coordinationRequestNames.length?request.coordinationRequestNames:request.type===T.EXHAUST_OFF?request.metadata.split(','):request.urgentRecoveryRequestNames
+ const origins=requestOrigins(request)
  return request.type===T.EXHAUST_OFF&&origins.some(name=>support.coordinationRequestNames.includes(name))
   ||request.type===T.SHIFT_OFF&&origins.length>0&&origins.every(name=>support.coordinationRequestNames.includes(name))
+}
+
+function reservationOrigins(task: MowerTask): string[] {
+  const names = requestOrigins(task).filter(Boolean)
+  return task.ordinaryCoordination ? names.filter(name => !task.coordinationCompletedRequestNames?.includes(name)) : names
+}
+
+function sameNames(left: readonly string[], right: readonly string[]): boolean {
+  return left.every(name => right.includes(name)) && right.every(name => left.includes(name))
+}
+
+/** Only the originating departure may reuse a support's freed covers and beds. */
+export function mowerReservationOwners(current: MowerTask | undefined, pending: readonly MowerTask[]): Set<MowerTask> {
+  if (!current) return new Set()
+  const own = current.urgentRecoveryRequestNames
+  if (!own.length && (current.ordinaryCoordination || !current.exhaustSupport)) return new Set()
+  const origins = reservationOrigins(current)
+  if (!origins.length) return new Set()
+  const candidates = pending.filter(task => task !== current && task.urgentRecoveryRequestNames.length && task.ordinaryCoordination === current.ordinaryCoordination)
+  if (own.length) {
+    const affected = candidates.filter(task => sameNames(task.urgentRecoveryRequestNames, own))
+    if (current.type === T.SHIFT_OFF && !current.coordinationRequestNames.length && (current.urgentRecoveryReservedNames.length || current.urgentRecoveryReservedSlots.length)) {
+      const copies = affected.filter(task => sameNames(task.urgentRecoveryReservedNames, current.urgentRecoveryReservedNames) && sameNames(task.urgentRecoveryReservedSlots, current.urgentRecoveryReservedSlots))
+      return new Set(copies.length === 1 ? copies : [])
+    }
+    return new Set(affected.filter(task => sameNames(reservationOrigins(task), origins)))
+  }
+  const parents = candidates.filter(task => (task.type === T.EXHAUST_OFF || task.type === T.SHIFT_OFF) && sameNames(reservationOrigins(task), origins))
+  return new Set(parents.length === 1 ? parents : [])
 }
 
 /** Observed returns and completed recovery release this round's recall dependency. */
@@ -33,7 +66,10 @@ export function recordMowerUrgentSupport(data:MowerSchedulingData,task:MowerTask
  if(!task.exhaustSupport||!task.coordinationRequestNames.length)return
  const supporters=Object.values(data.operators).filter(op=>(data.isGroupShiftAnchor(op)||op.independentRest&&!data.canStandby(op))&&!op.room.startsWith('dorm')&&positions[op.name]?.[0].startsWith('dorm')&&op.currentRoom===op.room&&op.currentIndex===op.index).map(op=>op.name)
  if(!supporters.length)return
- const owner=pending.find(request=>mowerSupportRequestMatches(request,task))??(task.ordinaryCoordination?task:undefined)
+ const parents = pending.filter(request => request !== task && request.ordinaryCoordination === task.ordinaryCoordination &&
+   (request.type === T.EXHAUST_OFF || request.type === T.SHIFT_OFF) && sameNames(reservationOrigins(request), task.coordinationRequestNames))
+ if (parents.length > 1) return
+ const owner = parents[0] ?? (task.ordinaryCoordination ? task : undefined)
  if(!owner)return
  const explicit=new Set([...owner.metadata.split(','),...owner.urgentRecoveryRequestNames,...(owner===task?task.coordinationRequestNames:[])])
  const requestGroups=new Set(data.shiftRequestGroups(task.coordinationRequestNames))

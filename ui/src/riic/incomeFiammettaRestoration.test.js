@@ -12,6 +12,8 @@ import { mowerUpdateDetail, projectMowerArrangements } from './vendor/scheduler/
 import { retainMowerFailedTask } from './vendor/scheduler/mowerTaskFailure'
 import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './vendor/scheduler/mowerTaskQueue'
 
+import { mowerReplacementReservations } from './vendor/scheduler/mowerReplacementCoordination'
+
 function fixture(due = 0) {
   const fia = 'char_300_phenxi'
   const keepers = [fia, 'K2', 'K3', 'K4']
@@ -199,6 +201,69 @@ it.each(['failed', 'future'])('allows ready work past a %s restoration', (condit
   expect(source.trace.some((task) => task.type === 'FIAMMETTA')).toBe(false)
 })
 
+it('dispatches the ready replacement when two entry revisions remove their selected tasks', () => {
+  const { state, source, future } = fixture()
+  const obsolete = new MowerTask({ plan: { central: ['B'] }, metadata: 'original' })
+  const revised = new MowerTask({ plan: { central: ['B'] }, metadata: 'revised' })
+  const ready = new MowerTask({ plan: { central: ['Current'] }, metadata: 'ready' })
+  source.queue.tasks = [obsolete, future]
+  const rates = { workRate: () => 1, recoveryRate: () => 4 }
+  settleRoster(state, rates, 0, (phase) => {
+    const selected = source.activeTask
+    if (phase === 'BEGINNING' && (selected === obsolete || selected === revised)) {
+      source.queue.consume(selected)
+      source.queue.tasks.push(selected === obsolete ? revised : ready)
+    }
+    return false
+  })
+  expect(
+    source.trace
+      .filter((entry) => ['original', 'revised', 'ready'].includes(entry.metadata))
+      .map((entry) => entry.metadata)
+  ).toEqual(['ready'])
+  expect(source.queue.tasks).toContain(future)
+  expect(future.time).toBe(4)
+  expect(state.time).toBe(0)
+})
+
+it.each(['same', 'overlap', 'ordinary', 'ambiguous', 'shared beneficiaries'])(
+  'resolves the reservation for a subsequent %s support',
+  (relation) => {
+    const { source } = fixture()
+    const owner = new MowerTask({ type: T.EXHAUST_OFF, metadata: 'A' })
+    owner.urgentRecoveryRequestNames = ['A', 'B']
+    owner.urgentRecoveryReservedNames = ['X']
+    owner.urgentRecoveryReservedSlots = ['dormitory_1\0' + '4']
+    const support = new MowerTask({ type: T.SELF_CORRECTION })
+    support.exhaustSupport = true
+    support.ordinaryCoordination = relation === 'ordinary'
+    support.coordinationRequestNames = relation === 'overlap' ? ['A', 'B'] : ['A']
+    const pending = [support, owner]
+    if (relation === 'ambiguous') {
+      const other = new MowerTask({ type: T.EXHAUST_OFF, metadata: 'A' })
+      other.urgentRecoveryRequestNames = ['A', 'C']
+      pending.push(other)
+    }
+    const otherSlot = 'dormitory_2\0' + '4'
+    if (relation === 'shared beneficiaries') {
+      const other = new MowerTask({ type: T.EXHAUST_OFF, metadata: 'B' })
+      other.urgentRecoveryRequestNames = ['B', 'A']
+      other.urgentRecoveryReservedNames = ['Y']
+      other.urgentRecoveryReservedSlots = [otherSlot]
+      pending.push(other)
+    }
+    const locks = mowerReplacementReservations(source.data, pending, support)
+    if (relation === 'shared beneficiaries') {
+      expect(locks.reservedNames.has('Y')).toBe(true)
+      expect(locks.reservedSlots.has(otherSlot)).toBe(true)
+    }
+    const protectsOwner = !['same', 'shared beneficiaries'].includes(relation)
+    expect(locks.reservedNames.has('X')).toBe(protectsOwner)
+    expect(locks.reservedSlots.has(owner.urgentRecoveryReservedSlots[0])).toBe(protectsOwner)
+    expect(owner.urgentRecoveryReservedNames).toEqual(['X'])
+  }
+)
+
 const longRun = process.env.MOWER_INCOME_LONG_TEST === '1'
 it(
   'keeps the supplied automation group rotating after Fiammetta restoration',
@@ -216,10 +281,52 @@ it(
     expect(result.success, result.error).toBe(true)
     expect(result.observedHours).toBeCloseTo(longRun ? 672 : 24, 6)
     const names = ['森蚺', '绮良', '鸿雪', '图耶', '承曦格雷伊', '清流', '温蒂']
-    for (const name of names) {
-      const op = result.simulationReport.operators.find((op) => op.operatorName === name)
-      expect(op.exhaustedHours, name).toBe(0)
-      expect(op.restHours, name).toBeGreaterThan(0)
+    const report = result.simulationReport
+    const members = names.map((name) => report.operators.find((op) => op.operatorName === name))
+    for (const op of members) {
+      expect(op.restHours, op.operatorName).toBeGreaterThan(0)
+      if (!longRun || ['森蚺', '绮良', '鸿雪'].includes(op.operatorName))
+        expect(op.exhaustedHours, op.operatorName).toBe(0)
+    }
+    if (longRun) {
+      const stays = new Map(members.map((op) => [op.operatorId, []]))
+      for (const { start, end, occupants, bedOccupants } of report.segments) {
+        const inDorm = new Set(Object.values(bedOccupants))
+        for (const [slot, id] of Object.entries(occupants))
+          if (slot.startsWith('dormitory_')) inDorm.add(id)
+        for (const id of inDorm) {
+          const periods = stays.get(id)
+          if (!periods) continue
+          const last = periods.at(-1)
+          if (last && Math.abs(last.end - start) < 1e-7) last.end = end
+          else periods.push({ start, end })
+        }
+      }
+      let groupShifts
+      for (const op of members) {
+        const shifts = report.events
+          .filter(
+            (e) => ['shift-off', 'shift-on'].includes(e.type) && e.operators.includes(op.operatorId)
+          )
+          .map(({ time, type }) => [time, type])
+        groupShifts ??= shifts
+        expect(shifts, op.operatorName).toEqual(groupShifts)
+        const periods = stays.get(op.operatorId)
+        expect(periods, op.operatorName).toHaveLength(30)
+        expect(shifts, op.operatorName).toHaveLength(2 * periods.length)
+        let rest = 0
+        for (const [i, { start, end }] of periods.entries()) {
+          const [off, on] = shifts.slice(2 * i, 2 * i + 2)
+          expect([off[1], on[1]]).toEqual(['shift-off', 'shift-on'])
+          expect(start).toBeCloseTo(off[0], 6)
+          expect(end).toBeGreaterThan(start)
+          expect(end).toBeLessThanOrEqual(on[0] + 1e-7)
+          rest += end - start
+        }
+        expect(rest, op.operatorName).toBeCloseTo(op.restHours, 6)
+      }
+      // 验证一直轮休到采样末日，避免前几轮成功掩盖后续长期停摆。
+      expect(groupShifts.at(-1)[0]).toBeGreaterThan(report.segments.at(-1).end - 24)
     }
     expect(plan).toEqual(original)
   },
