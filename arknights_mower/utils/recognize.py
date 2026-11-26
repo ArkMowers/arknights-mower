@@ -528,7 +528,10 @@ class Recognizer:
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
         elif self.find("factory_tag"):
-            self.scene = Scene.FACTORY_ROOM
+            # 贸易站订单页淡入时，加工站标题也可能命中。
+            self.scene = (
+                Scene.ORDER_LIST if self.find("bill_accelerate") else Scene.FACTORY_ROOM
+            )
 
         # 没弄完的
         # elif self.find("ope_elimi_finished"):

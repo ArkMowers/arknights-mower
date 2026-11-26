@@ -370,3 +370,14 @@ def test_trade_switch_uses_actual_strategy_even_with_outdated_configured_level()
     assert observation["current_product"] == "orundum"
     assert observation["needs_switch"] is True
     assert observation["switchable"] is True
+
+
+def test_trade_order_opening_keeps_its_scene_when_factory_tag_also_matches():
+    from arknights_mower.utils.recognize import Recognizer
+    from arknights_mower.utils.scene import Scene
+
+    recog = Recognizer(None, (FIXTURES / "trade_order_opening.webp").read_bytes())
+    assert recog.find("order_label") is None
+    assert recog.find("factory_tag") is not None
+    assert recog.find("bill_accelerate") is not None
+    assert recog.get_scene() == Scene.ORDER_LIST
