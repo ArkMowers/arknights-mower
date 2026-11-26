@@ -85,15 +85,15 @@ def test_recorded_occupancy_and_capacity(frame, tag):
 
 
 @pytest.mark.parametrize(
-    ("tag", "fixed"),
+    ("tag", "level"),
     [
-        ("m203-empty1", "lmd"),
-        ("m302-empty2", "lmd"),
-        ("b102-empty2", None),
-        ("b102-empty3", None),
+        ("m203-empty1", 1),
+        ("m302-empty2", 2),
+        ("b102-empty2", 3),
+        ("b102-empty3", 3),
     ],
 )
-def test_trade_level_fallback_uses_total_capacity(frame, monkeypatch, tag, fixed):
+def test_trade_level_fallback_uses_total_capacity(frame, monkeypatch, tag, level):
     gray = frame(tag)
     solver = object.__new__(BaseSchedulerSolver)
     solver.op_data = SimpleNamespace(facility_levels={})
@@ -103,7 +103,7 @@ def test_trade_level_fallback_uses_total_capacity(frame, monkeypatch, tag, fixed
     title_level = Mock(return_value=None)
     monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
 
-    assert solver._fixed_trade_product("room_1_1", panel="open") == fixed
+    assert solver._observed_trade_level("room_1_1", panel="open") == level
 
     title_level.assert_not_called()
 

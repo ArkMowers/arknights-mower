@@ -13627,11 +13627,20 @@ class BaseSchedulerSolver(
             if not hasattr(self, "_startup_mood_observations"):
                 self._startup_mood_observations = {}
             self._startup_mood_observations[room] = self._room_mood_signature(room)
-        # 进入房间详情
+        trade_level = pending_order.get("trade_level")
+        if trade_level is None and (
+            getattr(getattr(self.recog, "gray", None), "shape", None) == (1080, 1920)
+            and self.find("arrange_check_in_on")
+            and self.detect_room() == room
+        ):
+            trade_level = self._observed_trade_level(room, panel="open")
         observed_product = None
         try:
             observed_product = self._observe_trade_strategy(
-                room, room_product=pending_order.get("room_product"), retry_after=3
+                room,
+                room_product=pending_order.get("room_product"),
+                retry_after=3,
+                **({"trade_level": trade_level} if trade_level is not None else {}),
             )
         finally:
             if pending_order.get("order_pending"):
@@ -14977,17 +14986,51 @@ class BaseSchedulerSolver(
             and defer_trade_order
             and facility_observation is not None
         )
+        trade_level = None
         if facility == "trade" and panel:
-            room_product = self._fixed_trade_product(room, panel=panel, use_plan=True)
+            planned_level = getattr(self.op_data, "facility_levels", {}).get(room)
+            actual_product = (
+                getattr(self.op_data, "facility_states", {})
+                .get(room, {})
+                .get("product")
+            )
+            target_product = getattr(self.op_data, "products", {}).get(room)
+            needs_observed_order = (
+                read_with_countdown
+                or (
+                    self._product_switching_enabled()
+                    and target_product in TRADE_PRODUCTS
+                )
+                or actual_product == "orundum"
+            )
+            if planned_level in (1, 2) and not needs_observed_order:
+                if facility_observation is not None:
+                    self._start_facility_observation(
+                        room,
+                        facility_observation,
+                        facility_observation_scope,
+                        "按排班表，订单类型为龙门商法",
+                    )
+                return True
+            trade_level = (
+                3
+                if planned_level == 3 and not needs_observed_order
+                else self._observed_trade_level(room, panel=panel)
+            )
+            if trade_level in (1, 2):
+                room_product = "lmd"
         if read_with_countdown or (after_roster is not None and panel == "open"):
             if read_with_countdown:
                 facility_observation["order_pending"] = True
+                if trade_level is not None:
+                    facility_observation["trade_level"] = trade_level
                 if room_product:
                     facility_observation["room_product"] = room_product
             else:
                 after_roster.update(
                     facility=facility,
                     room_product=room_product,
+                    trade_level=trade_level,
                     captured_at=getattr(self.recog, "capture_started_at", None),
                     frame=getattr(self.recog, "_img", None),
                 )
@@ -15008,6 +15051,7 @@ class BaseSchedulerSolver(
             room_product,
             facility_observation,
             facility_observation_scope,
+            trade_level=trade_level,
         )
 
     def _check_room_roster_frame(self, room, observation, *, sampled=False):
@@ -15026,12 +15070,23 @@ class BaseSchedulerSolver(
         observation.update(frame=verified_frame, captured_at=verified_at)
 
     def _read_room_facility_product(
-        self, room, facility, room_product, observation, observation_scope
+        self,
+        room,
+        facility,
+        room_product,
+        observation,
+        observation_scope,
+        *,
+        trade_level=None,
     ):
         observed_product = None
         try:
             if facility == "trade" and not room_product:
-                observed_product = self._observe_trade_strategy(room, retry_after=3)
+                observed_product = self._observe_trade_strategy(
+                    room,
+                    retry_after=3,
+                    **({"trade_level": trade_level} if trade_level is not None else {}),
+                )
             else:
                 if not room_product:
                     self._wait_drone_interface(
@@ -15709,7 +15764,9 @@ class BaseSchedulerSolver(
             page_template="order_label",
         )
 
-    def _observe_trade_strategy(self, room, *, room_product=None, **navigation):
+    def _observe_trade_strategy(
+        self, room, *, room_product=None, trade_level=None, **navigation
+    ):
         self._wait_drone_interface(
             accelerate_template="bill_accelerate",
             page_template="order_label",
@@ -15720,23 +15777,24 @@ class BaseSchedulerSolver(
             "trade",
             defer_log=True,
             **({"room_product": room_product} if room_product else {}),
+            **({"trade_level": trade_level} if trade_level is not None else {}),
         )
 
-    def _fixed_trade_product(self, room, *, panel=None, use_plan=False):
+    def _observed_trade_level(self, room, *, panel=None):
         from arknights_mower.utils.product_recognition import trade_title_level
 
-        if use_plan:
-            op_data = getattr(self, "op_data", None)
-            level = getattr(op_data, "facility_levels", {}).get(room)
-            if level in (1, 2, 3):
-                return "lmd" if level < 3 else None
         recog = getattr(self, "recog", None)
         if panel == "open":
             occupancy = read_room_occupancy(getattr(recog, "gray", None))
             if occupancy is not None and occupancy[1] in (1, 2, 3):
-                return "lmd" if occupancy[1] < 3 else None
+                return occupancy[1]
         level = trade_title_level(getattr(recog, "img", None))
-        if level in (1, 2) and (panel is not None or self.detect_room() == room):
+        if level is not None and (panel is not None or self.detect_room() == room):
+            return level
+        return None
+
+    def _fixed_trade_product(self, room):
+        if self._observed_trade_level(room) in (1, 2):
             return "lmd"
         return None
 
@@ -15777,6 +15835,7 @@ class BaseSchedulerSolver(
         *,
         defer_log: bool = False,
         room_product: str | None = None,
+        trade_level: int | None = None,
     ) -> tuple[str, str] | None:
         """在当前生产页面顺带更新设施状态，不进入或退出任何页面。"""
         if not self._product_switching_enabled() and not getattr(
@@ -15790,11 +15849,15 @@ class BaseSchedulerSolver(
                 product = room_product or self.read_manufacture_product()
                 label = MANUFACTURE_PRODUCTS[product].name
             else:
-                product = (
-                    room_product
-                    or self._fixed_trade_product(room, use_plan=True)
-                    or self._read_trade_product_card()[0]
-                )
+                product = room_product
+                if product is None:
+                    if trade_level is None:
+                        trade_level = self._observed_trade_level(room)
+                    product = (
+                        "lmd"
+                        if trade_level in (1, 2)
+                        else self._read_trade_product_card()[0]
+                    )
                 label = TRADE_PRODUCTS[product].strategy_name
             self._cache_facility_state(room, facility, product)
             description = "识别产物" if facility == "manufacture" else "识别订单类型"
@@ -20847,6 +20910,7 @@ class BaseSchedulerSolver(
                 room_product,
                 facility_observation,
                 facility_observation_scope,
+                trade_level=after_roster.get("trade_level"),
             )
             if observed and observed_facilities is not None:
                 observed_facilities.add(room)

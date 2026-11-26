@@ -6,17 +6,23 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
+import cv2
+import numpy as np
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule, mastery_reader  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.tests.product_recognition_tests import FIXTURES, card  # noqa: E402
+from arknights_mower.tests.room_occupancy_tests import atlas as atlas  # noqa: E402
+from arknights_mower.tests.room_occupancy_tests import frame as frame  # noqa: E402
 from arknights_mower.utils import (  # noqa: E402
     config,
     mastery_recommendation,  # noqa: E402
     scheduler_task,
 )
+from arknights_mower.utils.image import bytes2img  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
@@ -637,6 +643,123 @@ def use_order_pages(solver, order_states):
         return_value=datetime.now() + timedelta(hours=1)
     )
     solver.get_agent_from_room = MagicMock(side_effect=get_agent)
+
+
+def use_trade_frames(solver, room, order_frame, *, panel_gray=None):
+    use_order_pages(solver, {room: "active"})
+    del solver._cache_facility_state_from_current_page
+    del solver.get_agent_from_room
+    solver.detect_room = MagicMock(return_value=room)
+    solver.detect_room_type = MagicMock(return_value="贸易站")
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.recog.update = MagicMock()
+    solver._read_trade_product_card = MagicMock(wraps=solver._read_trade_product_card)
+
+    closed_frame = np.zeros_like(order_frame)
+    open_button = ((1560, 1020), (1590, 1050))
+    closed_button = ((1530, 1020), (1560, 1050))
+    enter_room, find_order_marker, open_orders = (
+        solver.enter_room,
+        solver.find,
+        solver.tap,
+    )
+    panel_open = False
+
+    def show_frame(rgb):
+        solver.recog._img = solver.recog.img = rgb
+        solver.recog.gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+
+    def enter(target):
+        nonlocal panel_open
+        enter_room(target)
+        panel_open = panel_gray is not None
+        show_frame(
+            cv2.cvtColor(panel_gray, cv2.COLOR_GRAY2RGB) if panel_open else closed_frame
+        )
+
+    def find(resource, **kwargs):
+        if solver.scene() == Scene.INFRA_DETAILS:
+            if panel_open and resource in ("arrange_check_in_on", "infra_no_operator"):
+                return open_button
+            if not panel_open and resource == "arrange_check_in":
+                return closed_button
+        return find_order_marker(resource)
+
+    def tap(position, **kwargs):
+        nonlocal panel_open
+        if position == open_button:
+            assert panel_open
+            panel_open = False
+            show_frame(closed_frame)
+            return
+        assert not panel_open
+        open_orders(position, **kwargs)
+        show_frame(order_frame)
+
+    solver.enter_room = MagicMock(side_effect=enter)
+    solver.find = MagicMock(side_effect=find)
+    solver.tap = MagicMock(side_effect=tap)
+
+
+def test_stale_trade_level_does_not_admit_run_order(solver):
+    room = "room_1_1"
+    solver.op_data.facility_levels[room] = 1
+    use_trade_frames(solver, room, card(2))
+
+    solver.plan_run_order(room)
+
+    assert not solver.tasks
+    assert room not in solver.op_data.run_order_rooms
+    assert solver.op_data.facility_product(room) == "orundum"
+
+
+def test_stale_trade_level_preserves_observed_order_and_queued_switch(solver):
+    room = "room_1_1"
+    solver.op_data.facility_levels[room] = 1
+    solver.op_data.plan[room][0].facility = "贸易站"
+    solver.op_data.update_facility_state(room, "trade", "orundum")
+    del solver.queue_product_switches
+    use_trade_frames(solver, room, card(2))
+    solver.queue_product_switches()
+    (pending,) = solver.tasks
+    assert pending.type == TaskTypes.SWITCH_PRODUCT
+
+    assert solver.get_run_order_time(room) is not None
+    solver.queue_product_switches()
+
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0] is pending
+    assert solver.op_data.facility_product(room) == "orundum"
+
+
+def test_countdown_uses_open_panel_capacity_without_mood(solver, frame):
+    room = "room_1_1"
+    solver.op_data.facility_levels.pop(room, None)
+    use_trade_frames(solver, room, card(1), panel_gray=frame("m302-empty2"))
+
+    assert solver.get_run_order_time(room) is not None
+
+    assert solver.op_data.facility_product(room) == "lmd"
+    solver._read_trade_product_card.assert_not_called()
+
+
+@pytest.mark.parametrize("read_mood", [False, True])
+def test_three_slot_panel_requires_strategy_card_with_low_order_page_title(
+    solver, frame, read_mood
+):
+    room = "room_1_1"
+    solver.op_data.facility_levels.pop(room, None)
+    order_frame = card(2)
+    marks = bytes2img((FIXTURES / "trade_level_marks.png").read_bytes())
+    order_frame[28:86, 876:944] = marks[116:174]
+    use_trade_frames(solver, room, order_frame, panel_gray=frame("b102-empty3"))
+
+    assert solver.get_run_order_time(room, read_mood=read_mood) is not None
+
+    assert solver.op_data.facility_product(room) == "orundum"
+    solver._read_trade_product_card.assert_called_once()
 
 
 def use_mood_pages(solver, monkeypatch, occupants):

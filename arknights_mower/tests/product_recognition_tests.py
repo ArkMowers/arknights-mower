@@ -323,28 +323,36 @@ def test_configured_trade_level_skips_detail_during_room_observation(
 
     assert solver.refresh_facility_state(room)
 
-    assert solver.op_data.update_facility_state.call_args.args == (room, "trade", "lmd")
+    solver.op_data.update_facility_state.assert_called_once_with(room, "trade")
     title_level.assert_not_called()
     solver._wait_drone_interface.assert_not_called()
     solver.scene_graph_navigation.assert_not_called()
     solver._read_trade_product_card.assert_not_called()
 
 
-@pytest.mark.parametrize(("level", "product"), [(1, "lmd"), (2, "lmd"), (3, "orundum")])
-def test_order_page_uses_configured_level_before_title(monkeypatch, level, product):
+def test_configured_third_level_reads_card_without_matching_title_level(monkeypatch):
     room = "room_1_1"
     solver = solver_for(card(2))
-    solver.op_data = SimpleNamespace(facility_levels={room: level})
-    solver._cache_facility_state = Mock()
+    solver.op_data = SimpleNamespace(
+        facility_levels={room: 3}, update_facility_state=Mock()
+    )
     solver._product_switching_enabled = Mock(return_value=True)
-    solver.detect_room = Mock(return_value=room)
-    title_level = Mock(return_value=None)
+    solver._work_room_panel = Mock(return_value="closed")
+    solver.detect_room_type = Mock(return_value="贸易站")
+    solver._wait_drone_interface = Mock()
+    solver.scene_graph_navigation = Mock()
+    title_level = Mock(return_value=1)
     monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
     solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
 
-    assert solver._cache_facility_state_from_current_page(room, "trade", defer_log=True)
+    assert solver.refresh_facility_state(room)
 
-    solver._cache_facility_state.assert_called_once_with(room, "trade", product)
+    assert solver.op_data.update_facility_state.call_args.args == (
+        room,
+        "trade",
+        "orundum",
+    )
+    solver._wait_drone_interface.assert_called_once()
     title_level.assert_not_called()
 
 
