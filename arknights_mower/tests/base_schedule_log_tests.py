@@ -387,7 +387,14 @@ def test_mood_patrol_updates_one_facility_observation(
 
     instance.scene_graph_navigation = MagicMock(side_effect=return_to_room)
     instance.back = MagicMock(side_effect=return_to_room)
-    instance.detect_room = MagicMock(side_effect=lambda: room if in_room else "")
+    instance.detect_room = MagicMock(
+        side_effect=lambda: (
+            room
+            if in_room
+            or (facility == "manufacture" and instance._wait_drone_interface.called)
+            else ""
+        )
+    )
     instance._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     instance.turn_on_room_detail = MagicMock()
     instance.wait_product_complete = MagicMock()
