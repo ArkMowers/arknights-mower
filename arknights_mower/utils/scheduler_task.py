@@ -15,6 +15,7 @@ from arknights_mower.utils.dorm_candidates import (
 )
 from arknights_mower.utils.dorm_recovery import (
     continuing_roommate,
+    has_pending_roommate_readback,
     recovery_order_target,
 )
 from arknights_mower.utils.furniture_task import (
@@ -206,7 +207,7 @@ def replan_update_tasks(saved):
         for task in tasks
         if task.type not in ordinary
         or task.retains_execution
-        or task.plan.keys() & getattr(task, "dorm_roommate_targets", ())
+        or has_pending_roommate_readback(task)
         or any(getattr(task, flag, False) for flag in protected_flags)
         or hasattr(task, "emergency_original_roster")
         or hasattr(task, "run_order_original_roster")
@@ -448,7 +449,7 @@ def protect_priority_tasks(
         batch_ids = {id(task) for task in batch}
         tasks = [task for task in tasks if id(task) not in batch_ids] + [product_batch]
     for index, task in enumerate(tasks):
-        if task.retains_execution:
+        if task.retains_execution or has_pending_roommate_readback(task):
             projected = copy.copy(task)
             projected.plan = copy.deepcopy(task.plan)
             originals[id(projected)] = task
@@ -836,6 +837,7 @@ def simplify_dorm_fill(task, tasks, time_now=None, op_data=None):
         or (task.type != TaskTypes.FILL_DORM)
         or getattr(task, "simple_dorm_fill", False)
         or getattr(task, "dorm_recovery_restore", [])
+        or has_pending_roommate_readback(task)
     ):
         return
     now = time_now or datetime.now()
@@ -882,7 +884,7 @@ def defer_dorm_before_priority_task(task, tasks, room, time_now=None, op_data=No
     )
     if deadline is None:
         return False
-    if task.retains_execution:
+    if task.retains_execution or has_pending_roommate_readback(task):
         tasks[:] = [queued for queued in tasks if queued is not task]
         tasks.insert(
             next(i for i, queued in enumerate(tasks) if queued is deadline) + 1, task
@@ -2392,7 +2394,9 @@ def plan_metadata(
         [
             task
             for task in tasks
-            if task.type != TaskTypes.FILL_DORM or task.retains_execution
+            if task.type != TaskTypes.FILL_DORM
+            or task.retains_execution
+            or has_pending_roommate_readback(task)
         ],
     )
     vacancies = vacant_dorm_slots(op_data, reserved_slots)
@@ -2402,6 +2406,7 @@ def plan_metadata(
         if task.type != TaskTypes.FILL_DORM
         or id(task) in locked_ids
         or getattr(task, "dorm_recovery_restore", [])
+        or has_pending_roommate_readback(task)
         or bool(_arrangement_resources(getattr(task, "dorm_fill_plan", task.plan))[1])
         and _arrangement_resources(getattr(task, "dorm_fill_plan", task.plan))[1]
         <= vacancies

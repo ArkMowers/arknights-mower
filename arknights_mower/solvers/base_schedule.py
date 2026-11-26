@@ -146,6 +146,7 @@ from arknights_mower.utils.dorm_recovery import (
     DormRecoveryPaddingUnavailable,
     continuing_roommate,
     dorm_departures_sampled,
+    has_pending_roommate_readback,
     keep_measured_dorm_swap,
     recovery_target,
     remember_roommate_target,
@@ -3314,7 +3315,7 @@ class BaseSchedulerSolver(
                 self.tasks, self.__dict__.setdefault("waiting_group_shifts", [])
             )
             for task in self.tasks:
-                if task.plan.keys() & getattr(task, "dorm_roommate_targets", ()):
+                if has_pending_roommate_readback(task):
                     preserved_ids.add(id(task))
                 if getattr(task, "run_order_restore_pending", False):
                     task.prepare_run_order_restoration()
@@ -11123,7 +11124,7 @@ class BaseSchedulerSolver(
                     "等待停服前提前跑单及原班恢复完成后再换班", dependencies=pending
                 )
             self.maintenance_entry_pending = False
-        if task.plan.keys() & getattr(task, "dorm_roommate_targets", ()):
+        if has_pending_roommate_readback(task):
             # 名单相同仍可能给错单回，原任务需要进房核对。
             return
         if task.retains_execution or (
@@ -11302,7 +11303,7 @@ class BaseSchedulerSolver(
             and t.time <= datetime.now()
             and not getattr(t, "strict_mood_limit", False)
             and not getattr(t, "dorm_recovery_restore", [])
-            and not (t.plan.keys() & getattr(t, "dorm_roommate_targets", ()))
+            and not has_pending_roommate_readback(t)
         ]
         consumed = set()
         ordinary_requests = list(
@@ -23274,9 +23275,7 @@ class BaseSchedulerSolver(
             self.task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.FILL_DORM)
             and hasattr(self.task, "dorm_fill_plan")
             and not self.task.retains_execution
-            and not (
-                self.task.plan.keys() & getattr(self.task, "dorm_roommate_targets", ())
-            )
+            and not has_pending_roommate_readback(self.task)
             and not getattr(self.task, "emergency_dorm", False)
             and not any(
                 getattr(self.task, attribute, False)

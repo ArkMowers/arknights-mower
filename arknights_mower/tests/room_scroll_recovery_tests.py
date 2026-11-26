@@ -918,3 +918,50 @@ def test_confirmed_distracted_fourth_uses_the_status_capture(central_fourth, tim
         assert s.op_data.operators["维什戴尔"].exhaust_time is None
         s._reconcile_room_observation.assert_not_called()
     s.swipe.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "readable_upper_clock,use_up",
+    [(False, False), (True, False), (False, True)],
+    ids=["clipped-ordinary", "readable-ordinary", "clipped-use-up"],
+)
+def test_full_fourth_work_slot_only_records_a_required_countdown(
+    central_fourth, monkeypatch, readable_upper_clock, use_up
+):
+    from arknights_mower.solvers import record
+    from arknights_mower.utils import operators
+
+    s, install, upper, lower = central_fourth
+    upper[845, 1470:1780] = 255
+    lower[615, 1470:1780] = 255
+    if readable_upper_clock:
+        upper[898:933, 1650:1780] = lower[668:703, 1650:1780]
+    install(upper)
+
+    class FrameClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return s.recog.capture_started_at
+
+    monkeypatch.setattr(operators, "datetime", FrameClock)
+    monkeypatch.setattr(record, "save_agent_action", Mock())
+    s.op_data.update_detail.side_effect = Operators.update_detail.__get__(s.op_data)
+    op = s.op_data.operators["维什戴尔"]
+    op.lower_limit, op.exhaust_require = 22, use_up
+    op.exhaust_time = op.time_stamp + timedelta(days=2)
+
+    fourth = s._read_room_mood("central", strict_observation=True)[3]
+
+    assert fourth["agent"] == op.name
+    assert fourth["mood"] == op.mood == 24
+    assert s.swipe.call_count == (0 if readable_upper_clock else 1)
+    if use_up:
+        captured_at = s.recog.capture_started_at
+        assert fourth["time"] == captured_at + timedelta(hours=27, minutes=3)
+        assert op.exhaust_time == captured_at + timedelta(
+            hours=2, minutes=15, seconds=15
+        )
+    else:
+        assert "time" not in fourth
+        assert op.exhaust_time is None
+        assert all(c.args[1] != 3 for c in s.op_data.refresh_dorm_time.call_args_list)

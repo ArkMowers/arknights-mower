@@ -549,6 +549,11 @@ def recovery_order_target(
     return target
 
 
+def has_pending_roommate_readback(task):
+    targets = getattr(task, "dorm_roommate_targets", None)
+    return bool(targets and not task.plan.keys().isdisjoint(targets))
+
+
 def remember_roommate_target(task, room, agents=(), target=None):
     if target:
         targets = vars(task).setdefault("dorm_roommate_targets", {})
