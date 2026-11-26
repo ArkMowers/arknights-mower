@@ -137,6 +137,11 @@ def test_facility_state_refresh_uses_title_over_conflicting_icon(facility):
         )
         if facility == "power":
             solver._wait_drone_interface.assert_not_called()
+        elif facility == "trade":
+            solver._wait_drone_interface.assert_not_called()
+            solver._cache_facility_state_from_current_page.assert_called_once_with(
+                "room_1_3", facility, defer_log=True, room_product="lmd"
+            )
         else:
             solver._cache_facility_state_from_current_page.assert_called_once_with(
                 "room_1_3", facility, defer_log=True
@@ -1658,9 +1663,7 @@ def test_patrol_product_reaches_next_backup_check(product_condition_room, source
     def find(resource, **kwargs):
         if resource == "infra_no_operator":
             assert solver.op_data.plan_condition == [False]
-            assert solver.op_data.evaluate_backup_selection().conditions == [
-                source == "room_label"
-            ]
+            assert solver.op_data.evaluate_backup_selection().conditions == [False]
             return True
         return resource == "arrange_check_in"
 

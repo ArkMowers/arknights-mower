@@ -425,8 +425,8 @@ def test_mood_patrol_updates_one_facility_observation(
     assert start.log_event["id"] == end.log_event["id"]
     parent = {"type": "facility-observation", "id": start.log_event["id"]}
     assert start.log_parent == end.log_parent == parent
-    interrupted_before_order = panel == "open" and outcome == "interrupted"
-    if interrupted_before_order:
+    interrupted_before_product = panel == "open" and outcome == "interrupted"
+    if interrupted_before_product:
         assert navigation == []
         instance._wait_drone_interface.assert_not_called()
     else:
@@ -450,7 +450,7 @@ def test_mood_patrol_updates_one_facility_observation(
         "cached_mood": f"[[operator:{name}]]（心情未实读）",
         "interrupted": "干员心情读取未完成",
     }.get(outcome, f"[[operator:{name}]]（心情16.124）")
-    final_state = initial_state if interrupted_before_order else state
+    final_state = initial_state if interrupted_before_product else state
     assert end.getMessage() == f"{room_label}：{final_state}，{expected_detail}"
     assert end.log_event["phase"] == (
         "failed" if outcome == "interrupted" else "completed"
@@ -462,14 +462,16 @@ def test_mood_patrol_updates_one_facility_observation(
     )
     assert instance.op_data.facility_states[room]["product"] == (
         previous
-        if outcome == "unknown_product" or interrupted_before_order
+        if outcome == "unknown_product" or interrupted_before_product
         else observed
     )
     if outcome == "cached_mood":
         instance.read_accurate_mood.assert_not_called()
     instance._work_room_panel.assert_called_once_with(room)
     assert instance._visible_manufacture_product.call_count == (
-        1 if facility == "manufacture" and panel else 0
+        1
+        if facility == "manufacture" and panel and not interrupted_before_product
+        else 0
     )
 
 
@@ -492,6 +494,10 @@ def test_staffing_reads_room_product_once_before_using_factory_detail(
     solver.recog = SimpleNamespace(gray=MagicMock(), capture_started_at=1)
     events = []
 
+    def visible_product():
+        events.append("label")
+        return visible
+
     def observe_panel(target):
         assert target == room
         events.append("panel")
@@ -508,7 +514,7 @@ def test_staffing_reads_room_product_once_before_using_factory_detail(
         return resource == "arrange_check_in"
 
     solver._work_room_panel = MagicMock(side_effect=observe_panel)
-    solver._visible_manufacture_product = MagicMock(return_value=visible)
+    solver._visible_manufacture_product = MagicMock(side_effect=visible_product)
     solver.detect_room_type = MagicMock(return_value="制造站")
     solver.detect_room = MagicMock(return_value=room)
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
@@ -526,18 +532,20 @@ def test_staffing_reads_room_product_once_before_using_factory_detail(
             solver.get_agent_from_room(room, observed_facilities=observed)
         assert events == ["panel", "slot", "panel"]
         assert observed == set()
+        solver._visible_manufacture_product.assert_not_called()
     else:
         result = solver.get_agent_from_room(room, observed_facilities=observed)
         assert [item["agent"] for item in result] == [""]
         expected = ["panel", "slot"]
         if next_frame:
             expected.append("panel")
+        expected.append("label")
         if not visible:
             expected.append("detail")
         assert events == expected
         assert observed == {room}
         assert solver.op_data.facility_product(room) == "exp3"
-    solver._visible_manufacture_product.assert_called_once_with()
+        solver._visible_manufacture_product.assert_called_once_with()
     solver.detect_room_type.assert_called_once_with()
 
 

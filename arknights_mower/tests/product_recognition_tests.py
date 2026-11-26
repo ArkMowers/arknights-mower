@@ -245,3 +245,25 @@ def test_orange_banner_without_pause_text_does_not_skip_countdown():
     frame[351:411, 405:725] = crops[:60]
     frame[366:391, 465:660] = frame[374, 430]
     assert not product_recognition.trade_order_is_paused(frame)
+
+
+@pytest.mark.parametrize(
+    ("index", "expected"), [(0, 1), (1, 1), (2, 1), (3, 3), (4, 3)]
+)
+def test_trade_level_marks_in_room_panel_and_order_views(index, expected):
+    crops = bytes2img((FIXTURES / "trade_level_marks.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[28:86, 876:944] = crops[index * 58 : (index + 1) * 58]
+    assert product_recognition.trade_title_level(frame) == expected
+    frame[46:70, 915:937] = 85
+    assert product_recognition.trade_title_level(frame) is None
+
+
+def test_two_trade_level_marks_allow_room_confirmed_fixed_product():
+    title = bytes2img((FIXTURES.parent / "room_titles/trade_20261013.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[18:95, 568:957] = title
+    assert product_recognition.trade_title_level(frame) == 2
+    solver = solver_for(frame)
+    assert solver._fixed_trade_product("room_1_1") == "lmd"
+    assert solver._fixed_trade_product("room_2_2") is None

@@ -1314,6 +1314,34 @@ def test_failed_paused_room_read_preserves_cache_and_existing_tasks(solver):
     assert solver.op_data.operators["鸿雪"].time_stamp == timestamp
 
 
+def test_wrong_room_after_paused_order_keeps_roster_and_refresh(solver, monkeypatch):
+    from arknights_mower.utils import product_recognition
+
+    room = "room_1_1"
+    use_order_pages(solver, {room: "paused"})
+    monkeypatch.setattr(product_recognition, "trade_order_is_paused", lambda _: True)
+    solver._cache_facility_state_from_current_page.return_value = ("龙门商法", "读单")
+    solver.get_agent_from_room = BaseSchedulerSolver.get_agent_from_room.__get__(solver)
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver._work_room_panel = MagicMock(side_effect=RecognizeError("返回了 B202"))
+    refresh = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
+    solver.tasks = [refresh]
+    due = refresh.time
+    operator = solver.op_data.operators["鸿雪"]
+    timestamp = operator.time_stamp
+
+    with pytest.raises(RecognizeError, match="返回了 B202"):
+        solver.plan_run_order(room)
+
+    assert solver.op_data.get_current_room(room, True) == ["鸿雪"]
+    assert operator.time_stamp == timestamp
+    assert solver.tasks == [refresh]
+    assert refresh.time == due
+    solver._cache_facility_state_from_current_page.assert_called_once()
+
+
 def test_two_paused_empty_rooms_keep_independent_refresh_responsibilities(
     solver, monkeypatch
 ):

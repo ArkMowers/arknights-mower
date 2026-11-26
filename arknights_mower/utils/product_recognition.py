@@ -74,6 +74,49 @@ def manufacture_detail_product(frame):
     return None
 
 
+def trade_title_level(frame):
+    if getattr(frame, "shape", None) != (1080, 1920, 3):
+        return None
+    try:
+        template = loadres("room/trade_level_mark", True)
+    except (OSError, cv2.error):
+        return None
+    if template is None or template.shape != (38, 15):
+        return None
+
+    def mark_color(sample):
+        red, green, blue, _ = cv2.mean(sample)
+        if blue >= 90 and blue - red >= 70 and green - red >= 45:
+            return True
+        if (
+            min(red, green, blue) >= 65
+            and max(red, green, blue) - min(red, green, blue) <= 12
+        ):
+            return False
+        return None
+
+    # 订单页的标题向左移动。三个标记都须清楚可见，亮蓝标记在灰色标记之前。
+    for left in (894, 886):
+        marks = []
+        for x in (left, left + 18, left + 36):
+            scope = frame[36:80, x - 9 : x + 10, 1]
+            scores = cv2.matchTemplate(scope, template, cv2.TM_CCOEFF_NORMED)
+            if cv2.minMaxLoc(scores)[1] < 0.85:
+                break
+            mark = mark_color(frame[46:70, x - 2 : x + 3])
+            if (
+                mark is None
+                or mark_color(frame[43:46, x - 2 : x + 3]) is not mark
+                or mark_color(frame[70:74, x - 2 : x + 3]) is not mark
+            ):
+                break
+            marks.append(mark)
+        level = sum(marks)
+        if len(marks) == 3 and level and marks == sorted(marks, reverse=True):
+            return level
+    return None
+
+
 def trade_strategy_card(frame):
     if getattr(frame, "shape", None) != (1080, 1920, 3):
         return None
