@@ -809,19 +809,22 @@ def test_failed_exhaust_preview_retains_original_ordinary_request(
 
 
 def seed_observed_recall_rates(data):
-    from arknights_mower.utils.dorm_recovery import recovery_managers
+    from arknights_mower.utils.calculated_mood import known_operator_stages
+    from arknights_mower.utils.dorm_recovery import (
+        record_recovery_target,
+        recovery_managers,
+    )
 
     for op in data.operators.values():
         op.depletion_rate = 0.5
         op.recall_work_rate = (0.5, op.time_stamp)
     room = "dormitory_1"
-    names = [
-        data.get_current_operator(room, index) for index in range(len(data.plan[room]))
-    ]
+    names = data.get_current_room(room, True)
     target = data.operators["苍苔"]
-    target.dorm_recovery_room, target.dorm_recovery_index = room, 2
-    target.dorm_recovery_fixed = recovery_managers(
-        data, room, [op.name if op else "" for op in names]
+    stages = known_operator_stages(data)
+    managers = recovery_managers(data, room, names, stages=stages)
+    record_recovery_target(
+        data, room, target, target.current_index, managers, names, stages
     )
 
 

@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -12,6 +13,15 @@ from arknights_mower.solvers.base_mixin import (
     _resolve_operator_room_prefix,
     _room_name_candidates,
 )
+from arknights_mower.utils.image import loadimg, rgb2gray
+
+
+def locked_honeyberry():
+    # B304 上端原图的第二床姓名框，坐标从 (1460, 369) 到 (1785, 424)。
+    path = (
+        Path(__file__).parent / "fixtures/selection/room_honeyberry_lock_20261126.png"
+    )
+    return rgb2gray(loadimg(str(path)))
 
 
 class TestOperatorRoomRecognition(unittest.TestCase):
@@ -107,6 +117,34 @@ class TestOperatorRoomRecognition(unittest.TestCase):
         noise[10:15, 20:60] = 255
         noise[30:35, 40:80] = 255
         self.assertEqual(solver.read_operator_in_room(noise), "")
+
+    def test_recorded_honeyberry_with_and_without_resident_lock(self):
+        name = locked_honeyberry()
+        solver = BaseMixin()
+        self.assertEqual(solver.read_screen(name[:, :90], type="name"), "蜜莓")
+        self.assertEqual(solver.read_screen(name[:, 90:], type="name"), "")
+        self.assertEqual(solver.read_screen(name, type="name"), "蜜莓")
+
+    def test_unrecognized_symbol_on_resident_badge_keeps_name_unknown(self):
+        name = locked_honeyberry()
+        name[15:38, 98:119] = 255
+        self.assertEqual(BaseMixin().read_screen(name, type="name"), "")
+
+    def test_resident_lock_preserves_similar_names_and_separate_glyphs(self):
+        source = locked_honeyberry()
+        lock = source[:, 90:127]
+        solver = BaseMixin()
+        for name in ("W", "蜜蜡", "波卜", "凯尔希", "凯尔希·思衡托"):
+            with self.subTest(name=name):
+                sample = np.zeros_like(source)
+                template = OP_ROOM[name]
+                h, w = template.shape
+                sample[6 : 6 + h, 8 : 8 + w] = template
+                self.assertEqual(solver.read_screen(sample, type="name"), name)
+                x, _, width, _ = cv2.boundingRect(sample)
+                left = x + width + 9
+                sample[:, left : left + lock.shape[1]] = lock
+                self.assertEqual(solver.read_screen(sample, type="name"), name)
 
     def test_read_screen_uses_entire_pre_cropped_room_name(self):
         sample = np.zeros((55, 325), dtype=np.uint8)

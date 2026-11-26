@@ -24,6 +24,11 @@ from arknights_mower.utils.performance import (
     effective_performance_profile,
     lower_performance_mode,
 )
+from arknights_mower.utils.resident_timer import (
+    is_resident_timer_scope,
+    read_resident_timer,
+    resident_timer_supports_ocr,
+)
 from arknights_mower.utils.resource_pkg import (
     register_resource_reload,
     resource_pkg_path,
@@ -36,6 +41,7 @@ from arknights_mower.utils.selection_branch import (
     set_branch_menu_open,
 )
 from arknights_mower.utils.selection_order import selection_slot
+from arknights_mower.utils.station_filter import read_station_filter
 from arknights_mower.utils.swipe import NOINERTIA_OFFSET
 
 
@@ -250,6 +256,29 @@ _ARRANGE_ORDER_X_DORM = {
     "信赖值": 1490,
 }
 _ARRANGE_ORDER_X_TRAINEE = {"等级": 1291, "稀有度": 1438, "信赖值": 1585}
+
+
+def _room_name_mask(gray):
+    text = thres2(gray, 200)
+    left, _, width, _ = cv2.boundingRect(text)
+    if not width:
+        return text
+
+    # 从最右侧的白点查找挂锁底色。进驻面板上的橙色方块约为 34×34 像素。
+    right = left + width - 1
+    seed = (right, int(text[:, right].argmax()))
+    area, _, _, (x, y, w, h) = cv2.floodFill(thres2(gray, 100), None, seed, 0)
+    if not (30 <= w <= 37 and 30 <= h <= 37):
+        return text
+    badge = text[y : y + h, x : x + w]
+    if area - cv2.countNonZero(badge) > w * h // 2:
+        # 底色占方块过半，白色挂锁轮廓内有锁梁和锁孔两处空隙。
+        contours, hierarchy = cv2.findContours(
+            badge, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if len(contours) == 3 and np.count_nonzero(hierarchy[0, :, 3] >= 0) == 2:
+            badge.fill(0)
+    return text
 
 
 def _foreground_width(img):
@@ -527,8 +556,21 @@ class BaseMixin:
         ):
             # 加工站、办公室及训练室协助位没有清空按钮，逐卡取消实读蓝框。
             self.require_agent_selection_page()
+            before_sort = getattr(self.recog, "_img", None)
             self.switch_arrange_order("技能", room)
-            page = self.wait_for_agent_page()
+            sorted_image = getattr(self.recog, "_img", None)
+            observation = None
+            if (
+                isinstance(sorted_image, np.ndarray)
+                and sorted_image is not before_sort
+                and not self.low_frame_rate_mode
+                and not self.find("connecting")
+            ):
+                self.require_agent_selection_page()
+                observation = self.current_search_page(full_scan=True)
+            page = self.wait_for_agent_page(
+                observation=observation, wait_after_observation=True
+            )
             self.require_agent_selection_page()
             if (
                 not page
@@ -844,6 +886,7 @@ class BaseMixin:
         before=None,
         observation=None,
         exclude_sidebar=False,
+        wait_after_observation=False,
     ):
         """先复核当前页；滑动后不把连续两张相同的旧画面当成新页。"""
         seed_image = observation.image if observation is not None else None
@@ -865,7 +908,8 @@ class BaseMixin:
         capture_time = 0
         poll_interval, max_attempts = self.selection_observation_timing()
         for attempt in range(max_attempts):
-            if attempt:
+            # 排序箭头先于卡片到位，两次姓名观测仍须按原间隔取帧。
+            if attempt or (wait_after_observation and previous):
                 self.wait_for_next_observation(capture_time, poll_interval)
             elif previous != ():
                 self.recog.update()
@@ -1573,19 +1617,7 @@ class BaseMixin:
             if config.stop_mower.is_set():
                 raise MowerExit
             self.require_agent_selection_page()
-            text = self.read_screen(
-                self.recog.img, type="text", cord=((1600, 35), (1715, 82))
-            )
-            current = "全部" if text == "进驻状态" else text
-            if current not in options:
-                return None, False
-            opened = menu and (
-                self.read_screen(
-                    self.recog.img, type="text", cord=((1645, 115), (1710, 163))
-                )
-                == "全部"
-            )
-            return current, opened
+            return read_station_filter(self.recog.img, self.read_screen, menu=menu)
 
         poll_interval, max_attempts = self.selection_transition_timing()
 
@@ -2077,7 +2109,7 @@ class BaseMixin:
         return True
 
     def read_operator_in_room(self, img):
-        img = thres2(img, 200)
+        img = _room_name_mask(img)
         img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(img, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -2118,8 +2150,18 @@ class BaseMixin:
 
     @timed_step("room_read")
     def read_screen(self, img, type="mood", limit=24, cord=None):
+        resident_time = (
+            type == "time"
+            and cord is not None
+            and is_resident_timer_scope(cord)
+            and isinstance(img, np.ndarray)
+            and img.dtype == np.uint8
+            and img.shape in ((1080, 1920, 3), (1080, 1920))
+        )
         if cord is not None:
             img = cropimg(img, cord)
+        if resident_time and (clock := read_resident_timer(img)) is not None:
+            return clock
         if type == "name":
             return self.read_operator_in_room(img)
         try:
@@ -2140,7 +2182,12 @@ class BaseMixin:
             elif "time" in type:
                 if "." in ret:
                     ret = ret.replace(".", ":")
-                return ret.strip()
+                text = ret.strip()
+                if resident_time and not resident_timer_supports_ocr(
+                    img, text, cord[0][1]
+                ):
+                    return limit + 1
+                return text
             else:
                 return ret
         except Exception:

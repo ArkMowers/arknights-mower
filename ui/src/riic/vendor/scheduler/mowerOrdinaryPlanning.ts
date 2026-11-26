@@ -175,23 +175,27 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
  const ideal=mowerAverageMood(data)>data.policy.restingThreshold*data.policy.rescueThreshold?Math.min(4,effective):effective
  const ordinaryRequests:string[]=[],replacements:string[]=[],plan:MowerTaskPlan={},used=new Set<number>(),attempted=new Set<string>();let highDone=false
  const exhaustGroups=mowerExhaustGroups(data),working=mowerForcedWorkGroups(data)
- for(const op of [...total.filter(op=>op.isHigh()),...total.filter(op=>!op.isHigh())]){
-  if(working.has(op.group))continue
-  if(data.alpha&&(moods.get(op.name)===undefined||data.reservedProductReplacements.has(op.name)||options.returning?.has(op.name)||options.returningGroups?.has(op.group)||op.group&&data.group(op.group).some(n=>options.returning?.has(n))||replacements.includes(op.name)||alphaRestingTier(data,op.name)===7))continue
-  if(op.isHigh()&&!op.workshop){
+ const eligible = (op: MowerOperatorState) => {
+  if (working.has(op.group) || op.workaholic || op.isResting() || data.isStandby(op.name) || [op.room, op.currentRoom].includes('factory') || options.hasActiveMastery && [op.room, op.currentRoom].includes('train')) return false
+  if (data.alpha && (op.multiGroup && !op.shiftGroup && !op.independentRest || op.group && !data.isGroupShiftAnchor(op) || data.reservedProductReplacements.has(op.name) || options.returning?.has(op.name) || options.returningGroups?.has(op.group) || op.group && data.group(op.group).some(n => options.returning?.has(n)) || alphaRestingTier(data, op.name) === 7)) return false
+  const mood = moods.get(op.name)
+  if (mood === undefined || ((data.alpha ? op.customMoodLimit : op.restMoodLimit) ? mood >= op.upperLimit : op.upperLimit - mood < 2)) return false
+  const threshold = (op.upperLimit - op.lowerLimit) * restingThresholdFor(op, data.policy) + op.lowerLimit
+  return !op.exhaustRequire && (!op.isHigh() || !op.group || !exhaustGroups.has(op.group)) && mood <= (data.alpha && op.customMoodLimit ? threshold : Math.floor(threshold))
+ }
+ const candidates = data.alpha ? total.filter(eligible) : [...total.filter(op=>op.isHigh()),...total.filter(op=>!op.isHigh())]
+ for(const op of candidates){
+  if (working.has(op.group) || data.alpha && replacements.includes(op.name)) continue
+  if(op.isHigh()&&(data.alpha||!op.workshop)){
    const standby=mowerStandbyCandidates(data,op.group?data.group(op.group):[op.name])
    const canPreempt=data.alpha&&alphaRestingTier(data,op.name)<=2&&data.dorms.some(b=>b.name&&alphaRestingTier(data,b.name)>alphaRestingTier(data,op.name)&&alphaSlotTakable(data,b,op.name))
    const groupBed=data.alpha&&op.group&&(data.dorms.some(b=>b.autoFree&&data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group===op.group)||data.groupDorms.some(b=>data.operators[data.plan[b.position[0]]?.[b.position[1]]??'']?.group===op.group))
    if(highDone&&!standby.size&&!canPreempt&&!groupBed)continue
    if(!standby.size&&!canPreempt&&!groupBed&&current+replacements.length>=ideal&&mowerAvailableFree(data)===0){highDone=true;continue}
   }else if(mowerAvailableFree(data,'low')===0)break
-  if(op.multiGroup&&!op.shiftGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length)||op.workaholic||op.isResting()||data.isStandby(op.name)||op.currentRoom==='factory'||op.room==='factory'||options.hasActiveMastery&&[op.room,op.currentRoom].includes('train'))continue
-  const mood=moods.get(op.name)!
-  if((data.alpha?op.customMoodLimit:op.restMoodLimit)?mood>=op.upperLimit:op.upperLimit-mood<2)continue
-  const threshold=(op.upperLimit-op.lowerLimit)*restingThresholdFor(op,data.policy)+op.lowerLimit
-  if(op.exhaustRequire||mood>(data.alpha&&op.customMoodLimit?threshold:Math.floor(threshold)))continue
+  if(op.multiGroup&&!op.shiftGroup&&(!op.independentRest||mowerRestingBindingGroups(data,op).length))continue
+  if(!data.alpha && !eligible(op))continue
   if(!op.isHigh()){mowerAssignDorm(data,op.name,used);continue}
-  if(op.group&&exhaustGroups.has(op.group))continue
   if((data.alpha||data.adjustForRunOrders===false)&&op.group){if(attempted.has(op.group))continue;attempted.add(op.group)}
   const members=op.group?data.shiftGroupMembers(op.group):[op.name]
   if(mowerPendingExhaustDeparture(data,[...new Set([...queue.tasks,...options.tasks??[]])],members,[op.name]))continue

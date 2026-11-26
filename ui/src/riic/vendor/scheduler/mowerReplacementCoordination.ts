@@ -1,7 +1,7 @@
 import {mowerCoordinationReturn} from './mowerCoordinationReturn'
 import {mowerForcedGroupCoverReservations,mowerHeldRestGroups} from './mowerBackupGroupTasks'
 import {mowerDormCandidateMood} from './mowerSchedulingMood'
-import {mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
+import {mowerReservationOwners,mowerUrgentRecallBlocked} from './mowerUrgentRecovery'
 import {alphaPosition,mowerMatchReplacements} from './mowerAlphaDorm'
 import {mowerGroupRecoveryDeadline,mowerRecoveryReady} from './mowerGroupRecovery'
 import {hasObservedFullMood,mowerReplacementCandidates,rescueMoodThreshold,MowerOperatorState} from './mowerOperatorState'
@@ -208,10 +208,11 @@ export function mowerRecallCanSustain(original:MowerSchedulingData,admitted:Mowe
 }
 
 /** Active explicit arrangements and product reservations take precedence over coordination. */
-export function mowerReplacementReservations(data:MowerSchedulingData,tasks:readonly MowerTask[],ownRecovery:readonly string[]=[]):{reservedNames:Set<string>;reservedSlots:Set<string>}{
+export function mowerReplacementReservations(data:MowerSchedulingData,tasks:readonly MowerTask[],current?:MowerTask):{reservedNames:Set<string>;reservedSlots:Set<string>}{
  const reservedNames=new Set([...data.busyRestingNames,...data.reservedProductReplacements]),reservedSlots=new Set(data.reservedProductBeds.keys())
+ const owners=mowerReservationOwners(current,tasks)
  for(const task of tasks){
-  if(!ownRecovery.length||task.urgentRecoveryRequestNames.length!==ownRecovery.length||!task.urgentRecoveryRequestNames.every(name=>ownRecovery.includes(name))){
+  if(task!==current&&!owners.has(task)){
    task.urgentRecoveryReservedNames.forEach(name=>reservedNames.add(name))
    task.urgentRecoveryReservedSlots.forEach(slot=>reservedSlots.add(slot))
   }

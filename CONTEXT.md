@@ -143,7 +143,7 @@ Authoritative domain terminology, code mappings, and invariants for Arknights Mo
 - **Code Mapping**: [`resting_key`](arknights_mower/utils/resting_priority.py)
 
 ### Off-Shift Candidate Order
-- **Definition**: Consider operators in ascending order of current mood minus the effective lower limit, then check replacements, beds, groups, and exhaustion rules. Bed priority does not directly determine off-shift order.
+- **Definition**: When creating an ordinary off-shift task, consider operators in ascending order of current mood minus their personal lower limit and check replacements, beds, groups, and exhaustion rules. Reordering facility handoffs in a generated task preserves its staffing and bed assignments.
 - **Code Mapping**: [`BaseSchedulerSolver.resting`](arknights_mower/solvers/base_schedule.py)
 
 ### Single-Target Recovery Manager and Target

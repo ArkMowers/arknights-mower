@@ -217,6 +217,8 @@ def test_single_recovery_submission_timeout_restarts_reads_and_restores_roster(
     def tap(*args, **kwargs):
         if state["page"] == "selection":
             solver.physical = solver.selected + [""] * (5 - len(solver.selected))
+            if solver.physical == temporary:
+                solver.game_recipient = "银灰"
             solver.confirms.append(solver.physical.copy())
             state["page"] = "connecting" if len(solver.confirms) == 1 else "details"
         else:

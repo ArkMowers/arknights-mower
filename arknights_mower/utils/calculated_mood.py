@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 from time import perf_counter
+from types import MappingProxyType
 from uuid import uuid4
 
 _runtime = threading.local()
@@ -240,6 +241,7 @@ class CalculatedMood:
         self.at = None
         self.enabled = False
         self.moods = {}
+        self.uncertain_recovery = frozenset()
         self.observed = {}
         self.barriers = {}
         self.positions = {}
@@ -298,8 +300,23 @@ class CalculatedMood:
         _runtime.mood_bands = (thresholds, source.copy(), bands)
         return inputs, bands
 
+    def _known_moods(self):
+        if not self.uncertain_recovery:
+            return self.moods
+        return {
+            name: mood
+            for name, mood in self.moods.items()
+            if name not in self.uncertain_recovery
+        }
+
+    def _in_dorm(self, name):
+        return any(
+            key.startswith("dormitory_") and name in room["roster"]
+            for key, room in self.rooms.items()
+        )
+
     def _rates(self, moods=None):
-        source = self.moods if moods is None else moods
+        source = self._known_moods() if moods is None else moods
         signature = self._signature(source)
         if signature == getattr(self, "_rate_signature", None):
             return self._cached_rates
@@ -350,6 +367,13 @@ class CalculatedMood:
                 if remaining <= 1e-12 or not self.moods:
                     break
                 rates = self._rates()
+                if None in rates.values():
+                    # 保留上次读数，一段未知恢复经过后只能用新读数继续推算。
+                    self.uncertain_recovery |= {
+                        name
+                        for name, rate in rates.items()
+                        if rate is None and self._in_dorm(name)
+                    }
                 step = remaining
                 for name, value in self.moods.items():
                     rate = rates.get(name) or 0
@@ -387,7 +411,7 @@ class CalculatedMood:
             self.at,
             now,
             self._input_signature(),
-            tuple(sorted(self.moods.items())),
+            tuple(sorted(self._known_moods().items())),
             tuple(getattr(self, "thresholds", ())),
         )
 
@@ -418,31 +442,37 @@ class CalculatedMood:
         check_cancelled()
         if name not in self.moods:
             return None
-        if now is not None:
-            if now == self.at and self._signature(self.moods) == getattr(
-                self, "_rate_signature", None
-            ):
-                return (
-                    self.moods[name]
-                    if self._cached_rates.get(name) is not None
-                    else None
-                )
-            if not hasattr(_runtime, "future_values"):
-                _runtime.future_values = OrderedDict()
-            cached = _runtime.future_values
-            key = self._projection_key(now)
-            if key not in cached:
-                projected = copy.deepcopy(self)
-                projected.advance(now)
-                cached[key] = (projected.moods, projected._rates())
-                if len(cached) > 32:
-                    cached.popitem(last=False)
-            cached.move_to_end(key)
-            moods, rates = cached[key]
-            return moods.get(name) if rates.get(name) is not None else None
-        now = max(datetime.now(), self.at or datetime.min)
-        self.advance(now)
-        return self.moods.get(name) if self._rates().get(name) is not None else None
+        moods, rates = self._snapshot(now)
+        if name in rates and (rates[name] is not None or self._in_dorm(name)):
+            return moods.get(name)
+        return None
+
+    def snapshot(self, now=None):
+        moods, rates = self._snapshot(now)
+        return MappingProxyType(moods), MappingProxyType(rates)
+
+    def _snapshot(self, now=None):
+        if now is None:
+            self.advance(max(datetime.now(), self.at or datetime.min))
+            moods = self._known_moods()
+            return moods, self._rates(moods)
+        if now == self.at:
+            moods = self._known_moods()
+            if self._signature(moods) == getattr(self, "_rate_signature", None):
+                return moods, self._cached_rates
+        if not hasattr(_runtime, "future_values"):
+            _runtime.future_values = OrderedDict()
+        cached = _runtime.future_values
+        key = self._projection_key(now)
+        if key not in cached:
+            projected = copy.deepcopy(self)
+            projected.advance(now)
+            moods = projected._known_moods()
+            cached[key] = (moods, projected._rates(moods))
+            if len(cached) > 32:
+                cached.popitem(last=False)
+        cached.move_to_end(key)
+        return cached[key]
 
     def observe(self, name, value, observed_at=None):
         observed_at = observed_at or datetime.now()
@@ -470,6 +500,8 @@ class CalculatedMood:
             return False
         self.advance(observed_at)
         self.moods[name] = float(value)
+        if name in self.uncertain_recovery:
+            self.uncertain_recovery -= {name}
         self.observed[name] = observed_at
         for key, pending in tuple(self.pending_events.items()):
             if name in pending["changes"] and pending["started_at"] <= observed_at:
@@ -486,7 +518,11 @@ class CalculatedMood:
         self.advance(now)
         self.positions[name] = position
         self.versions[name] = self.versions.get(name, 0) + 1
-        for data in self.rooms.values():
+        for key, data in self.rooms.items():
+            if key.startswith("dormitory_") and (key == room or name in data["roster"]):
+                data.pop("singleRecipient", None)
+                for resident in data["roster"]:
+                    self.single_targets.pop(resident, None)
             data["roster"] = [
                 occupant for occupant in data["roster"] if occupant != name
             ]
@@ -570,7 +606,11 @@ class CalculatedMood:
         projected, rates, _ = nodes[0]
         value = projected.moods.get(name)
         initial_rate = rates.get(name)
-        if value is None or initial_rate is None:
+        if value is None:
+            return None
+        if initial_rate is None:
+            if name in rates and 0 <= target <= value and projected._in_dorm(name):
+                return now
             return None
         recovering = initial_rate <= 0
         if (
@@ -588,7 +628,9 @@ class CalculatedMood:
         for index in range(4096):
             check_cancelled()
             projected, rates, boundary_hours = node
-            rate = rates.get(name) or 0
+            rate = rates.get(name)
+            if rate is None:
+                return None
             target_hours = (
                 (projected.moods[name] - target) / rate
                 if rate and recovering != (rate > 0)
@@ -645,6 +687,33 @@ class CalculatedMood:
         return None
 
 
+def known_operator_stages(owner=None):
+    """宿舍读房和心情推算共用本地练度，未同步的干员保留未知。"""
+    from arknights_mower.utils.building_skills import load_skill_snapshot
+    from arknights_mower.utils.dorm_skills import resource_generation
+    from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
+
+    if owner is not None and getattr(owner, "_mood_frozen_inputs", False):
+        return owner.mood_model.stages
+    payload = get_cultivate_snapshot()
+    if (
+        not hasattr(_runtime, "growth_payload")
+        or _runtime.growth_payload is not payload
+        or _runtime.growth_generation != resource_generation
+    ):
+        cached = load_skill_snapshot(payload or {})
+        _runtime.growth_payload = payload
+        _runtime.growth_generation = resource_generation
+        _runtime.growth_stages = {
+            entry["name"]: (entry["phase"], entry["level"])
+            for entry in cached["operators"]
+            if entry["owned"]
+            and type(entry["phase"]) is int
+            and type(entry["level"]) is int
+        }
+    return _runtime.growth_stages
+
+
 @measure_mood_calculation(_MOOD_INPUTS)
 def sync_model(owner, now=None, *, advance_clock=True):
     from arknights_mower.utils.csleep import check_cancelled
@@ -654,27 +723,7 @@ def sync_model(owner, now=None, *, advance_clock=True):
 
     model = owner.mood_model
     now = now or getattr(owner, "_projection_now", None) or datetime.now()
-    from arknights_mower.utils.building_skills import load_skill_snapshot
-    from arknights_mower.utils.mastery_recommendation import get_cultivate_snapshot
-
-    if getattr(owner, "_mood_frozen_inputs", False):
-        stages = dict(model.stages)
-    else:
-        payload = get_cultivate_snapshot()
-        if (
-            not hasattr(_runtime, "growth_payload")
-            or _runtime.growth_payload is not payload
-        ):
-            cached = load_skill_snapshot(payload or {})
-            _runtime.growth_payload = payload
-            _runtime.growth_stages = {
-                entry["name"]: (entry["phase"], entry["level"])
-                for entry in cached["operators"]
-                if entry["owned"]
-                and type(entry["phase"]) is int
-                and type(entry["level"]) is int
-            }
-        stages = dict(_runtime.growth_stages)
+    stages = dict(known_operator_stages(owner))
     levels = _facility_levels(owner)
     observed_rooms = (
         set(owner.plan)
@@ -704,15 +753,24 @@ def sync_model(owner, now=None, *, advance_clock=True):
         op.name: getattr(op, "dorm_position_version", 0)
         for op in owner.operators.values()
     }
-    single_targets = {
-        manager[0]: op.name
-        for op in owner.operators.values()
-        if op.current_room.startswith("dorm")
-        and (op.current_room, op.current_index)
-        == (op.dorm_recovery_room, op.dorm_recovery_index)
-        for manager in getattr(op, "dorm_recovery_fixed", ())
-        if len(manager) == 3
-    }
+    from arknights_mower.utils.dorm_recovery import recovery_managers, recovery_roster
+
+    single_targets = {}
+    for op in owner.operators.values():
+        room = op.current_room
+        reading = getattr(op, "dorm_recipient_roster", ())
+        if not reading or room not in owner.plan or not room.startswith("dorm"):
+            continue
+        names = owner.get_current_room(room, True)
+        if reading != recovery_roster(owner, names, stages):
+            continue
+        managers = recovery_managers(
+            owner, room, names, update_cache=False, stages=stages
+        )
+        if managers:
+            rooms[room]["singleRecipient"] = op.name
+            if len(managers) == 1:
+                single_targets[managers[0][0]] = op.name
     if advance_clock or any(
         (
             model.stages != stages,

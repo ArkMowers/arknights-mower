@@ -14,7 +14,7 @@ Base work can interrupt a rerun before all selected stages have settled. Restart
 
 ## Proposal
 
-Offer an opt-in stage-plan setting that runs all ordinary battles once per active SS rerun through local operation. EX-8 raids use the existing Copilot workflow. Save each attempt by instance, activity opening and stage. Reserve four minutes before starting a stage. Apply the scheduling deadline again after that stage settles.
+Offer an opt-in stage-plan setting that runs all ordinary battles once per active SS rerun through local operation. EX-8 raids use the existing Copilot workflow. Save progress by instance, activity opening and stage. Show the cause of a stage failure. Retry temporary failures on a later stage-plan run, allowing one attempt per stage per run. If proxy operation is locked, the user can reset the stage to pending after unlocking it. Keep started battles with unknown outcomes awaiting confirmation. Start a stage while the scheduling window and the stage are still open. Apply the scheduling deadline again after that stage settles.
 
 ## Alternatives considered
 
@@ -22,8 +22,8 @@ MAA's whole-activity Fight entry always starts at the first stage. The weekly pl
 
 ## Acceptance criteria
 
-Check selection, authenticated reads, durable stage admission, single-battle completion and the four-minute boundary offline. Verify ordinary-stage navigation on a device.
+Check selection, authenticated reads, durable stage admission, single-battle completion and expiry of the scheduling window or the stage offline. Verify ordinary-stage navigation on a device.
 
 ## Risks
 
-A battle that exceeds its estimate can delay the next task. A process interruption can leave an attempt without a confirmed result for the user to review.
+A battle still running at the scheduling deadline can delay the next task. A process interruption can leave an attempt without a confirmed result for the user to review.

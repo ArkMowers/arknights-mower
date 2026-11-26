@@ -427,3 +427,22 @@ def test_refresh_releases_wait_recorded_while_clock_crosses_deadline(run, monkey
     assert manual_tasks.run_manual_task(solver, original)
     solver.MAA.start.assert_called_once()
     assert original.manual_steps == []
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_rerun_scene_recovery_yields_before_starting_daily_tasks(
+    run, monkeypatch, manual
+):
+    from arknights_mower.solvers import event_rerun
+
+    configure(run, "daily", manual)
+    preflight = MagicMock(side_effect=event_rerun.SceneRecoveryExhausted)
+    monkeypatch.setattr(event_rerun, "run_event_rerun", preflight)
+    run.solver.maa_plan_solver(tasks=["Fight", "Award"], manual=manual)
+    preflight.assert_called_once()
+    run.solver.initialize_maa.assert_not_called()
+    run.solver.MAA.start.assert_not_called()
+    run.solver.maa_stop.assert_not_called()
+    run.module.send_message.assert_not_called()
+    run.module.save_exception.assert_not_called()
+    assert run.solver.last_execution["maa"] is None

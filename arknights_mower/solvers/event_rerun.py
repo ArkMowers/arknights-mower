@@ -10,49 +10,50 @@ from arknights_mower.utils.csleep import MowerExit, check_cancelled
 from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
-from arknights_mower.utils.event_rerun import STAGE_SECONDS, current_rerun
+from arknights_mower.utils.event_rerun import current_rerun
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.scene_recovery import SceneRecoveryExhausted
 
 
-def pending_rerun(scheduler, deadline):
+def pending_rerun(scheduler, deadline, visited=()):
     conf = config.conf
     settings = getattr(conf, "event_rerun", None)
     if not settings or not settings.enabled or not conf.stage_plan_enable:
         return None
-    if (deadline() - datetime.now()).total_seconds() < STAGE_SECONDS:
+    if deadline() <= datetime.now():
         return None
     observed_at = monotonic()
     try:
         event = current_rerun()
         if not event:
             return None
-        progress = record.event_rerun_status(event["key"])
+        reasons = {}
+        progress = record.event_rerun_status(event["key"], failure_reasons=reasons)
     except (OSError, ValueError, sqlite3.Error):
         logger.exception("读取复刻SS活动关卡或进度失败，本轮继续执行周计划")
         return None
-    fingerprint = (event["key"], settings.use_sanity_potion)
-    blocked_key, blocked = getattr(scheduler, "event_rerun_blocked", (None, set()))
-    if blocked_key != fingerprint:
-        blocked = set()
-        scheduler.event_rerun_blocked = fingerprint, blocked
-
     for stage in event["stages"]:
         code = stage["code"]
-        if (
-            code not in progress
-            and code not in blocked
-            and stage["start_ts"] <= event["now"]
-            and stage["end_ts"] - event["now"] >= STAGE_SECONDS
-        ):
-            return event, stage, settings.model_copy(deep=True), blocked, observed_at
+        if (event["key"], code) in visited:
+            continue
+        eligible = code not in progress or (
+            progress[code] == "failed"
+            and record.event_rerun_failure_retries(reasons.get(code))
+        )
+        if eligible and stage["start_ts"] <= event["now"] < stage["end_ts"]:
+            return event, stage, settings.model_copy(deep=True), observed_at
     return None
 
 
-def _play_ordinary(scheduler, stage, settings, prepare, claim, complete):
+def _play_ordinary(scheduler, stage, settings, prepare, claim, complete, fail):
     navigator = NavigationSolver(scheduler.device, scheduler.recog)
     with device_io_budget(prepare):
-        if not navigator.run(stage["code"]) or not navigator.confirm_selected_stage():
-            return "blocked"
+        if not navigator.run(stage["code"]):
+            fail("未能导航到目标关卡")
+            return
+        if not navigator.confirm_selected_stage():
+            fail("未能在详情页确认目标关卡")
+            return
 
     battle_started = False
 
@@ -72,25 +73,28 @@ def _play_ordinary(scheduler, stage, settings, prepare, claim, complete):
             use_sanity_potion=settings.use_sanity_potion,
             before_single_battle=start_single_battle,
             on_single_battle_settlement=complete,
+            on_single_battle_failure=fail,
         )
-    if result["executed_runs"]:
-        return "completed"
-    if result["sanity_drain"]:
+    if result["executed_runs"] and battle_started:
+        return
+    if result["sanity_drain"] or result.get("stopped_by_deadline"):
         return "defer"
-    return "blocked"
+    if not battle_started:
+        fail("未能完成单次代理作战准备")
 
 
 def run_event_rerun(scheduler, deadline) -> bool | None:
     """Return None if no stage was eligible, otherwise whether a battle was admitted."""
-    pending = pending_rerun(scheduler, deadline)
+    visited = set()
+    pending = pending_rerun(scheduler, deadline, visited)
     if pending is None:
         return None
     started_any = False
 
     while pending is not None:
-        event, stage, settings, blocked, observed_at = pending
+        event, stage, settings, observed_at = pending
         key, code = event["key"], stage["code"]
-        navigation_deadline = monotonic() + 60
+        visited.add((key, code))
 
         def available():
             now = datetime.now()
@@ -106,28 +110,26 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
                 and not config.maintenance_recheck.is_set()
                 and config.conf.stage_plan_enable
                 and config.conf.event_rerun == settings
-                and available() >= STAGE_SECONDS
+                and available() > 0
             )
 
         def prepare():
             if not can_start():
                 raise InterruptedError
-            spare = available() - STAGE_SECONDS
-            if spare <= 0:
+            time_left = available()
+            if time_left <= 0:
                 raise InterruptedError
-            navigation_left = navigation_deadline - monotonic()
-            if navigation_left <= 0:
-                raise TimeoutError("复刻SS活动导航超时")
-            return min(spare, navigation_left)
+            return time_left
 
         claimed = False
         already_claimed = False
+        reported_failure = False
 
         def claim():
             nonlocal claimed, already_claimed
             if not can_start():
                 return False
-            if not record.claim_event_rerun_stage(key, code):
+            if not record.claim_event_rerun_stage(key, code, previous):
                 already_claimed = True
                 return False
             try:
@@ -135,32 +137,50 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
                 return claimed
             finally:
                 if not claimed:
-                    record.release_event_rerun_stage(key, code)
+                    record.release_event_rerun_stage(key, code, previous)
 
         def complete(key=key, code=code):
             record.complete_event_rerun_stage(key, code)
 
+        def fail(reason):
+            nonlocal reported_failure
+            if reported_failure or already_claimed or (not claimed and not can_start()):
+                return
+            record.fail_event_rerun_stage(
+                key, code, reason, attempted=claimed, previous=previous
+            )
+            reported_failure = True
+
         try:
-            with record.event_rerun_execution(key, code) as active:
-                if active:
-                    outcome = _play_ordinary(
-                        scheduler, stage, settings, prepare, claim, complete
-                    )
-                else:
-                    outcome = "skipped"
-        except (MowerExit, SharedADBError, DeviceRecoveryError):
-            raise
+            with record.event_rerun_execution(key, code) as previous:
+                outcome = None
+                if previous is not None:
+                    try:
+                        outcome = _play_ordinary(
+                            scheduler, stage, settings, prepare, claim, complete, fail
+                        )
+                    except (
+                        MowerExit,
+                        SharedADBError,
+                        DeviceRecoveryError,
+                        SceneRecoveryExhausted,
+                        InterruptedError,
+                        sqlite3.Error,
+                    ):
+                        raise
+                    except Exception:
+                        logger.exception("复刻SS活动关卡 %s 未完成", code)
+                        if not claimed:
+                            fail("准备关卡时发生异常，详情请查看日志")
         except InterruptedError:
             started_any |= claimed
             break
-        except Exception:
-            logger.exception("复刻SS活动关卡 %s 未完成", code)
-            outcome = "blocked"
+        except sqlite3.Error:
+            logger.exception("读写复刻SS活动关卡 %s 进度失败", code)
+            started_any |= claimed
+            break
         started_any |= claimed
         if outcome == "defer" or not can_start():
             break
-        if outcome == "blocked" and not claimed and not already_claimed:
-            logger.warning("复刻SS活动关卡 %s 未能开始", code)
-            blocked.add(code)
-        pending = pending_rerun(scheduler, deadline)
+        pending = pending_rerun(scheduler, deadline, visited)
     return started_any

@@ -1,7 +1,7 @@
-"""下班按剩余心情，宿舍优先级只参与床位分配。"""
+"""普通下班按心情余量分配替班和床位。"""
 
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -16,7 +16,7 @@ from arknights_mower.utils.scheduler_task import try_reorder  # noqa: E402
 
 
 @pytest.fixture
-def solver(monkeypatch):
+def solver(monkeypatch, request):
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base, "_is_mastery_busy", lambda name: False)
@@ -53,6 +53,11 @@ def solver(monkeypatch):
         ),
         "backup_plans": [],
     }
+    aliases = getattr(request, "param", None)
+    if isinstance(aliases, dict):
+        for slots in instance.global_plan["default_plan"].plan.values():
+            for slot in slots:
+                slot.group = aliases.get(slot.group, slot.group)
     assert instance.initialize_operators() is None
     monkeypatch.setattr(operators.Operators, "current_room_changed_callback", None)
     for op in instance.op_data.operators.values():
@@ -113,6 +118,151 @@ def test_shift_off_keeps_original_mood_margin_against_lower_limit(solver):
 
     assert plan["central"] == ["Mon3tr", "Current"]
     assert plan["room_1_1"] == ["伺夜"]
+
+
+@pytest.mark.parametrize(
+    "evidence",
+    [
+        "rate",
+        "countdown",
+        "different_member",
+        "unknown_after",
+        "unknown_between",
+        "incomplete_group",
+        "different_seat",
+        "observed_seat",
+        "source_observed_first",
+        "position_without_mood",
+        "projected_seat",
+        "projected_countdown",
+        "projected_same_seat",
+        "legacy_full_mood_timer",
+        "prediction_and_card",
+        "unknown",
+        "newer_card",
+        "at_floor",
+        "above_threshold",
+        "equal_time",
+        "smaller_margin",
+    ],
+)
+def test_shared_cover_is_assigned_by_mood_margin(solver, evidence):
+    data = solver.op_data
+    now = data._projection_now = datetime.now()
+    slow, fast = (data.operators[name] for name in ("令", "歌蕾蒂娅"))
+    slow.mood, slow.lower_limit, slow.depletion_rate = 6, 4, 0.5
+    fast.mood, fast.lower_limit, fast.depletion_rate = 4, 0, 2
+    slow.time_stamp = fast.time_stamp = now
+    if evidence == "countdown":
+        fast.depletion_rate = 0.25
+        fast.exhaust_time = now + timedelta(hours=2)
+    elif evidence == "different_member":
+        fast.mood = 23
+        other = data.operators["幽灵鲨"]
+        other.mood, other.time_stamp, other.depletion_rate = 4, now, 2
+    elif evidence in ("unknown_after", "unknown_between"):
+        data.operators["黑键"].mood = 8 if evidence == "unknown_after" else 3
+    elif evidence == "incomplete_group":
+        fast.replacement = []
+    elif evidence == "different_seat":
+        fast.current_index = 4
+    elif evidence == "position_without_mood":
+        fast.current_index = 2
+        fast.time_stamp = now - timedelta(hours=1)
+        data.update_detail(fast.name, 8, fast.room, fast.index, update_time=False)
+        data.update_detail(fast.name, 4, fast.room, fast.index, update_time=True)
+        data._projection_now = fast.time_stamp
+        assert fast.depletion_rate == 0
+    elif evidence in ("observed_seat", "source_observed_first"):
+        if evidence == "source_observed_first":
+            fast.current_room, fast.current_index = "room_1_1", 1
+            solver._reconcile_room_observation(
+                "room_1_1", [{"agent": "黑键"}, {"agent": ""}]
+            )
+            assert (fast.current_room, fast.time_stamp) == ("", None)
+        else:
+            fast.current_index = 2
+        fast.exhaust_time = now + timedelta(minutes=1)
+        data.update_detail(
+            fast.name, fast.mood, fast.room, fast.index, update_time=True
+        )
+        data._projection_now = fast.time_stamp
+        assert fast.depletion_rate == 0 and fast.exhaust_time is None
+    elif evidence.startswith("projected_"):
+        if evidence != "projected_same_seat":
+            fast.current_index = 2
+        if evidence == "projected_countdown":
+            fast.exhaust_time = now + timedelta(minutes=1)
+        projected = data.project_arrangements(
+            [{"central": ["Current", fast.name]}], now=now
+        ).project_arrangements([], now=now)
+        assert fast.current_index == (1 if evidence == "projected_same_seat" else 2)
+        solver.op_data = data = projected
+        solver.total_agent = [data.operators[op.name] for op in solver.total_agent]
+    elif evidence == "legacy_full_mood_timer":
+        data.config.resting_threshold = 0.9
+        slow.mood, slow.lower_limit, slow.depletion_rate = 24, 19, 1
+        slow.time_stamp = now - timedelta(hours=2)
+        slow.exhaust_time = slow.time_stamp + timedelta(milliseconds=2)
+        fast.mood, fast.depletion_rate = 4, 4
+    elif evidence == "prediction_and_card":
+        slow.mood_is_prediction = True
+        data.dorm_mood_estimates[slow.name] = (6, now)
+    elif evidence == "unknown":
+        slow.depletion_rate = 0
+    elif evidence == "newer_card":
+        slow.time_stamp -= timedelta(minutes=5)
+        data.dorm_mood_estimates[slow.name] = (6, now)
+    elif evidence == "at_floor":
+        slow.mood = slow.lower_limit
+    elif evidence == "above_threshold":
+        fast.mood, fast.depletion_rate = 23, 50
+    elif evidence == "equal_time":
+        fast.depletion_rate = 1
+    elif evidence == "smaller_margin":
+        fast.mood = 1
+
+    plan = solver.resting()
+
+    if evidence == "smaller_margin":
+        assert plan["central"] == ["Current", "夕"]
+        assert plan["room_2_1"] == ["伺夜"]
+        assert {bed.name for bed in data.dorm if bed.name} == {"歌蕾蒂娅", "幽灵鲨"}
+    else:
+        assert plan["central"] == ["Mon3tr", "Current"]
+        assert plan["room_1_1"] == ["伺夜"]
+        assert {bed.name for bed in data.dorm if bed.name} == {"令", "黑键"}
+
+
+@pytest.mark.parametrize("solver", [{"深海": "甲", "感知": "乙"}], indirect=True)
+@pytest.mark.parametrize("hunter_in_dorm", [False, True])
+def test_tidal_watch_keeps_shared_cover_with_the_smaller_mood_margin(
+    solver, monkeypatch, hunter_in_dorm
+):
+    from arknights_mower.tests.mood_calculation_consumers_tests import set_e0_box
+
+    data = solver.op_data
+    now = data._projection_now = datetime.now()
+    for room, slots in data.plan.items():
+        if room.startswith("room_"):
+            for slot in slots:
+                slot.facility = "manufacture"
+    hunter = operators.Operator("斯卡蒂", "")
+    data.add(hunter)
+    hunter.current_room, hunter.current_index = (
+        ("dormitory_2", 4) if hunter_in_dorm else ("room_1_1", 1)
+    )
+    set_e0_box(monkeypatch, data.operators)
+    monkeypatch.setattr(data.runtime_conf or config.conf, "test_mood_calculation", True)
+    slow, fast = data.operators["令"], data.operators["歌蕾蒂娅"]
+    slow.lower_limit = fast.lower_limit = 0
+    for name in data.operators:
+        data.mood_model.observe(name, {slow.name: 2, fast.name: 3}.get(name, 24), now)
+
+    plan = solver.resting()
+
+    assert plan["central"] == ["Mon3tr", "Current"]
+    assert {bed.name for bed in data.dorm if bed.name} == {"令", "黑键"}
 
 
 def test_dorm_priority_still_assigns_first_bed_within_selected_group(solver):

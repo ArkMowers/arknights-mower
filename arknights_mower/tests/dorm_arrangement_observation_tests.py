@@ -148,6 +148,31 @@ def incident(monkeypatch, offline_maintenance):
     return solver, physical, snapshots
 
 
+@pytest.mark.parametrize("use_up", [False, True])
+def test_full_control_center_mood_only_reads_a_required_use_up_countdown(
+    incident, use_up
+):
+    solver, physical, _ = incident
+    name = "歌蕾蒂娅"
+    physical["central"] = [name]
+    op = solver.op_data.operators[name]
+    op.current_room, op.current_index = "central", 0
+    op.mood, op.exhaust_time = 24, datetime.now()
+    op.exhaust_require, op.lower_limit = use_up, 22
+
+    reading = solver.get_agent_from_room("central", [0])
+
+    assert reading[0]["mood"] == 24
+    if use_up:
+        assert reading[0]["time"] == solver.read_operator_time.return_value
+        assert op.time_stamp < op.exhaust_time < reading[0]["time"]
+        solver.read_operator_time.assert_called_once()
+    else:
+        assert reading[0].get("time") is None
+        assert op.exhaust_time is None
+        solver.read_operator_time.assert_not_called()
+
+
 @pytest.mark.parametrize("first_read_fails", [False, True])
 @pytest.mark.parametrize("already_in_selection", [False, True])
 def test_staffing_reuses_only_product_read_in_this_visit(
@@ -381,6 +406,15 @@ def test_generated_idle_release_preserves_resting_group(
 ):
     solver, physical, snapshots = incident
     data = solver.op_data
+    # 满心情室友的计时栏是清晰灰底，陈的心情条显示她仍未满。
+    solver.recog.gray[:, 1650:1780] = 137
+    solver.recog.img = np.repeat(solver.recog.gray[:, :, None], 3, axis=2)
+    solver.recog.capture_started_at = datetime.now()
+    read_name = solver.read_screen.side_effect
+    solver.read_screen.side_effect = lambda *args, **kw: (
+        "06:20:00" if kw.get("type") == "time" else read_name(*args, **kw)
+    )
+    solver.scroll_room_operators.side_effect = lambda *, bottom, **kwargs: bool(bottom)
     if single_target:
         data.config.ope_resting_priority.append("陈")
     before = [
@@ -403,7 +437,8 @@ def test_generated_idle_release_preserves_resting_group(
     for _ in range(3):
         assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
         assert len(solver.tasks) == count
-    assert any("" in row for row in snapshots) == single_target
+    # 全满原班直接换入，离队室友和仍在轮休的同组干员各保留原有记录。
+    assert all("" not in row for row in snapshots)
     completed = data.operators["斯卡蒂"]
     assert not completed.current_room
     assert completed.time_stamp is not None
@@ -503,7 +538,8 @@ def test_only_adding_residents_reuses_single_recovery_readback(incident):
 
     assert snapshots == [empty, temporary, target]
     assert solver.choose_agent.call_count == solver.tap_confirm.call_count == 2
-    assert solver.op_data.operators["歌蕾蒂娅"].dorm_recovery_index == 2
+    assert solver.op_data.operators["歌蕾蒂娅"].current_index == 2
+    assert solver.op_data.operators["歌蕾蒂娅"].dorm_recovery_index == -1
     assert not solver.task.plan
 
 

@@ -22,6 +22,7 @@ from arknights_mower.tests import (  # noqa: E402
 )
 from arknights_mower.utils import config  # noqa: E402
 from arknights_mower.utils.image import loadres  # noqa: E402
+from arknights_mower.utils.operators import Operator  # noqa: E402
 from arknights_mower.utils.recognize import Recognizer  # noqa: E402
 from arknights_mower.utils.scene import Scene  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
@@ -68,6 +69,318 @@ def training_dispatch(scheduler, training_reader, monkeypatch):
     )
     monkeypatch.setattr(base, "save_exception", MagicMock())
     return instance, task, depot
+
+
+@pytest.mark.parametrize("failed_room", ["train", "dormitory_1"])
+def test_one_room_failure_releases_independent_rooms_in_either_order(
+    training_dispatch, monkeypatch, failed_room
+):
+    solver, task, depot = training_dispatch
+    original_time = task.time
+    task.type = TaskTypes.RE_ORDER
+    task.meta_data = "副表内存收敛"
+    task.plan = {"dormitory_1": ["深巡"], "train": ["Current", "迷迭香"]}
+    targets = list(task.plan[failed_room])
+    other = next(room for room in task.plan if room != failed_room)
+    # 两种既定顺序都让故障房间先执行。
+    monkeypatch.setattr(
+        base,
+        "_arrangement_room_order",
+        lambda plan, _, **kwargs: [
+            room for room in (failed_room, other) if room in plan
+        ],
+    )
+    visits = []
+    failing = True
+
+    def arrange(new_plan, room, plan, **kwargs):
+        visits.append(room)
+        if room == failed_room and failing:
+            raise base.RoomArrangementDeferred(
+                room, base.AgentPageNotAdvanced("选人失败")
+            )
+        del plan[room]
+        return new_plan
+
+    solver.agent_arrange_room = arrange
+    solver.infra_main()
+    assert visits == [failed_room]
+    assert find_next_task(solver.tasks) is task
+    solver.task = task
+    solver.infra_main()
+    assert visits == [failed_room, other]
+    assert task.plan == {failed_room: targets} and task.time == original_time
+    assert task.execution_failure["rooms"] == (failed_room,)
+    solver._complete_group_shift.assert_not_called()
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert find_next_task(solver.tasks) is depot
+    task = pickle.loads(pickle.dumps(task))
+    solver.tasks = [task, depot]
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is depot
+    failing = False
+    solver.op_data.room_observations[failed_room] += 1
+    solver._resume_failed_tasks()
+    assert find_next_task([task]) is task
+    solver.task = task
+    solver.infra_main()
+    assert visits == [failed_room, other, failed_room]
+    assert task not in solver.tasks and task.plan == {} and task.time == original_time
+    solver._complete_group_shift.assert_called_once_with(task)
+
+
+def test_room_failures_resume_separately_after_reload(training_dispatch):
+    solver, task, depot = training_dispatch
+    task.plan.update(dormitory_1=["深巡"], dormitory_2=["伺夜"])
+    visits = []
+    unavailable = {"train", "dormitory_1"}
+
+    def arrange(new_plan, room, plan, **kwargs):
+        visits.append(room)
+        if room in unavailable:
+            raise base.RoomArrangementDeferred(
+                room, base.AgentPageNotAdvanced("选人失败")
+            )
+        del plan[room]
+        return new_plan
+
+    solver.agent_arrange_room = arrange
+    for _ in range(3):
+        solver.task = task
+        solver.infra_main()
+    assert visits == ["train", "dormitory_1", "dormitory_2"]
+    assert set(task.arrangement_failures) == set(task.plan) == unavailable
+    task = pickle.loads(pickle.dumps(task))
+    solver.tasks = [task, depot]
+    solver.op_data.room_observations["dormitory_2"] = 5
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert find_next_task(solver.tasks) is depot
+    solver.op_data.room_observations["dormitory_1"] += 1
+    unavailable.remove("dormitory_1")
+    solver.task = task
+    solver.infra_main()
+    assert visits == ["train", "dormitory_1", "dormitory_2", "dormitory_1"]
+    assert set(task.plan) == set(task.arrangement_failures) == {"train"}
+    assert find_next_task(solver.tasks) is depot
+    solver._complete_group_shift.assert_not_called()
+
+
+def test_shared_targets_and_occupants_wait_for_the_failed_room(training_dispatch):
+    solver, task, depot = training_dispatch
+    solver.op_data.add(Operator("凛冬", "", current_room="meeting", current_index=0))
+    task.plan.update(
+        meeting=["余"],
+        dormitory_1=["克莱门莎"],
+        dormitory_2=["凛冬"],
+        dormitory_3=["伺夜"],
+    )
+    visits = []
+
+    def arrange(new_plan, room, plan, **kwargs):
+        visits.append(room)
+        if room == "train":
+            raise base.RoomArrangementDeferred(room, ValueError("选人失败"))
+        del plan[room]
+        return new_plan
+
+    solver.agent_arrange_room = arrange
+    solver.infra_main()
+    solver.task = task
+    solver.infra_main()
+    assert visits == ["train", "dormitory_3"]
+    assert set(task.plan) == {"train", "meeting", "dormitory_1", "dormitory_2"}
+    assert find_next_task(solver.tasks) is depot
+    # 克莱门莎实际离开训练室后，宿舍一自行恢复，无需等其他房间。
+    solver.op_data.operators["克莱门莎"].current_room = ""
+    solver.op_data.operators["克莱门莎"].current_index = -1
+    solver.task = task
+    solver.infra_main()
+    solver.task = task
+    solver.infra_main()
+    assert visits == ["train", "dormitory_3", "train", "dormitory_1"]
+    assert find_next_task(solver.tasks) is depot
+
+
+def test_source_bed_release_allows_a_new_training_selection(
+    training_dispatch, monkeypatch
+):
+    solver, task, _ = training_dispatch
+    source = "dormitory_2"
+    solver.op_data.plan[source] = solver.op_data.plan["dormitory_1"].copy()
+    trainee = Operator("迷迭香", "", current_room=source, current_index=2)
+    solver.op_data.add(trainee)
+    task.plan = {
+        "train": ["Current", trainee.name],
+        source: ["Current", "Current", "伺夜", "Current", "Current"],
+    }
+    time = task.time
+    occupants = ["望", "冻河"]
+    searches = []
+    solver.get_agent_from_room = MagicMock(
+        side_effect=lambda *a, **kw: [{"agent": name} for name in occupants]
+    )
+    monkeypatch.setattr(
+        "arknights_mower.utils.schedule_roster.cached_training_requirement",
+        lambda _: None,
+    )
+
+    def search(*args, **kwargs):
+        searches.append(trainee.current_room)
+        if trainee.current_room == source:
+            raise base.TraineeCardUnavailable(
+                trainee.name,
+                solver.op_data,
+                base.AgentPageNotAdvanced("训练干员列表已到末尾"),
+            )
+        occupants[1] = trainee.name
+
+    solver.choose_train = MagicMock(side_effect=search)
+    arrange_room = solver.agent_arrange_room
+
+    def arrange(new_plan, room, plan, **kwargs):
+        if room == "train":
+            return arrange_room(new_plan, room, plan, **kwargs)
+        assert room == source and plan[room][2] == "伺夜"
+        trainee.current_room, trainee.current_index = "", -1
+        del plan[room]
+        return new_plan
+
+    solver.agent_arrange_room = arrange
+    solver.infra_main()
+    assert searches == [source]
+    reason = task.arrangement_failures["train"]["reason"]
+    assert "迷迭香" in reason and "宿舍2第3位" in reason and "基础技能" in reason
+    solver.task = task
+    solver.infra_main()
+    assert list(task.plan) == ["train"] and find_next_task([task]) is task
+    solver.task = task
+    solver.infra_main()
+    assert searches == [source, ""]
+    assert task not in solver.tasks and task.time == time
+    solver._complete_group_shift.assert_called_once_with(task)
+
+
+@pytest.mark.parametrize(
+    "reason",
+    [
+        "检测到干员选择错误，重新选择",
+        "检测到安排干员未成功",
+        "训练干员列表已到末尾，返回房间重试",
+    ],
+)
+@pytest.mark.parametrize("changed_room", ["dormitory_1", "train"])
+def test_legacy_failure_compares_only_saved_room_evidence(
+    training_dispatch, reason, changed_room
+):
+    solver, task, _ = training_dispatch
+    task.plan["dormitory_1"] = ["杜林"]
+    op = Operator(
+        "杜林", "", current_room="dormitory_1", current_index=0, time_stamp=task.time
+    )
+    solver.op_data.add(op)
+    task.arrangement_retry_room, task.arrangement_retry_count = "train", 1
+    solver._retain_failed_task(task, reason, ["train"])
+    task = pickle.loads(pickle.dumps(task))
+    solver.tasks = [task]
+    if changed_room == "dormitory_1":
+        op.time_stamp = None
+        solver.op_data.room_observations[changed_room] += 1
+    else:
+        solver.op_data.room_observations["train"] += 1
+    solver._resume_failed_tasks()
+    assert find_next_task([task]) is task
+    expected = {"train"} if changed_room == "dormitory_1" else set()
+    assert solver._blocked_arrangement_rooms(task) == expected
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert solver._blocked_arrangement_rooms(task) == expected
+
+
+@pytest.mark.parametrize("saved_with_metadata", [False, True])
+def test_other_bed_metadata_does_not_retry_training(
+    training_dispatch, saved_with_metadata
+):
+    solver, task, _ = training_dispatch
+    task.type = TaskTypes.SHIFT_ON
+    task.plan["dormitory_1"] = ["深巡"]
+    task.meta_data = "dorm0,dorm1"
+    solver._retain_failed_task(task, "选人失败", ["train"], arrangement_room="train")
+    if saved_with_metadata:
+        task.execution_failure["snapshot"]["meta_data"] = task.meta_data
+        task = pickle.loads(pickle.dumps(task))
+        solver.tasks = [task]
+    solver._resume_failed_tasks()
+    task.meta_data = "dorm1"
+    solver._resume_failed_tasks()
+    assert solver._blocked_arrangement_rooms(task) == {"train"}
+
+
+def test_old_room_failure_releases_dorm_but_preserves_product_wait(training_dispatch):
+    solver, task, depot = training_dispatch
+    task.plan["dormitory_1"] = ["深巡"]
+    task.arrangement_retry_room, task.arrangement_retry_count = "train", 1
+    solver._retain_failed_task(task, "训练干员列表已到末尾，返回房间重试", ["train"])
+    task = pickle.loads(pickle.dumps(task))
+    solver.tasks = [task, depot]
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is task
+    assert set(task.arrangement_failures) == {"train"}
+    solver._retain_failed_task(
+        task, "换班等待制造站切换产物", ["dormitory_1"], dependency=True
+    )
+    product_wait = task.execution_failure
+    for _ in range(3):
+        solver._resume_failed_tasks()
+        assert (
+            task.execution_failure is product_wait
+            and find_next_task(solver.tasks) is depot
+        )
+    solver.op_data.room_observations["dormitory_1"] += 1
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is task
+    assert solver._blocked_arrangement_rooms(task) == {"train"}
+
+
+def test_submitted_training_slot_can_be_read_while_a_second_room_is_held(
+    training_dispatch, monkeypatch
+):
+    solver, task, depot = training_dispatch
+    task.plan["dormitory_1"] = ["深巡"]
+    # 调整测试中的失败次序，使训练室先前的补读记录排在另一间房的失败之后。
+    for room in ("dormitory_1", "train"):
+        error = (
+            base.TrainingSubmissionUnconfirmed(1, "余")
+            if room == "train"
+            else ValueError("选人失败")
+        )
+        solver._retain_failed_task(task, str(error), [room], arrangement_room=room)
+        if room == "train":
+            task.execution_failure["submitted_training_slot"] = error.slot
+    solver._resume_failed_tasks()
+    assert task.execution_failure["rooms"] == ("dormitory_1",)
+    assert find_next_task(solver.tasks) is depot
+
+    def read(room, *, strict_observation):
+        assert room == "train" and strict_observation
+        for index, name in enumerate(("望", "余")):
+            old = solver.op_data.get_current_operator(room, index)
+            if old:
+                old.current_room, old.current_index = "", -1
+            if name not in solver.op_data.operators:
+                solver.op_data.add(Operator(name, ""))
+            solver.op_data.update_detail(name, 18, room, index)
+        solver.op_data.room_observations[room] += 1
+        return [{"agent": "望"}, {"agent": "余"}]
+
+    solver.get_agent_from_room = MagicMock(side_effect=read)
+    monkeypatch.setattr(base, "save_current_state", lambda: True)
+    assert solver._observe_failed_arrangement_confirmation()
+    assert solver._observe_failed_arrangement_confirmation() is False
+    solver.get_agent_from_room.assert_called_once()
+    assert solver._blocked_arrangement_rooms(task) == {"dormitory_1"}
+    assert find_next_task(solver.tasks) is task
 
 
 def test_failure_before_training_submit_yields_to_independent_task(

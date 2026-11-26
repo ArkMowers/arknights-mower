@@ -143,7 +143,7 @@ Arknights Mower 权威领域术语、代码映射与不变式规范。所有技�
 - **代码映射**: [`resting_key`](arknights_mower/utils/resting_priority.py)
 
 ### 下班候选顺序 (`Off-Shift Candidate Order`)
-- **定义**: 按当前心情减去有效下限，从小到大尝试安排休息，再检查替班、床位、编组和用尽等条件。宿舍分床优先级不直接让某人提前下班。
+- **定义**: 生成普通下班任务时，按当前心情减去个人下限的差值从小到大尝试安排休息，并检查替班、床位、编组和用尽条件。调整已生成任务的设施交接顺序时，沿用任务中的人员和床位安排。
 - **代码映射**: [`BaseSchedulerSolver.resting`](arknights_mower/solvers/base_schedule.py)
 
 ### 单回宿管／单回目标 (`Single-Target Recovery Manager and Target`)

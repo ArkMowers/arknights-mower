@@ -832,6 +832,10 @@ def simulate(saved):
                     ("temporary_dorm_fill", False),
                     ("recall_work_rate", None),
                     ("recall_work_rate_checked", False),
+                    ("dorm_recovery_attempt", None),
+                    ("dorm_recovery_roster", ()),
+                    ("dorm_roommate_roster", ()),
+                    ("dorm_recipient_roster", getattr(v, "dorm_recovery_roster", ())),
                 ):
                     setattr(
                         base_scheduler.op_data.operators[k],

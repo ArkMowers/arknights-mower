@@ -244,6 +244,25 @@ def test_primary_bed_move_releases_return_and_is_pruned_after_observation(
     assert task.time is time and task.execution_failure is failure
 
 
+def test_room_observation_reconciles_an_incidental_dorm_assignment(
+    retained, native_solver
+):
+    data, task = retained
+    set_tier(data, "讯使", RestingTier.MAIN, 24)
+    native_solver.op_data = data
+    native_solver.tasks = [task]
+    native_solver._retain_failed_task(
+        task, "宿舍选人失败", [ROOM], arrangement_room=ROOM
+    )
+    native_solver._resume_failed_tasks()
+    assert not getattr(task, "execution_failure", None)
+    assert task.plan[ROOM][4] == "讯使"
+    observed_return(data, "伊内丝", "讯使")
+    native_solver._resume_failed_tasks()
+    assert task.plan[ROOM][4] == "Current" and task.plan["meeting"] == ["红"]
+    assert not native_solver._blocked_arrangement_rooms(task)
+
+
 @pytest.mark.parametrize("exhausted", [False, True])
 def test_scheduler_resume_prunes_a_returned_primary_without_replacing_task(
     retained, native_solver, exhausted

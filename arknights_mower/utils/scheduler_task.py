@@ -13,7 +13,11 @@ from arknights_mower.utils.dorm_candidates import (
     retained_task_reservations,
     vacant_dorm_slots,
 )
-from arknights_mower.utils.dorm_recovery import recovery_order_target
+from arknights_mower.utils.dorm_recovery import (
+    continuing_roommate,
+    has_pending_roommate_readback,
+    recovery_order_target,
+)
 from arknights_mower.utils.furniture_task import (
     FURNITURE_EXIT_SECONDS,
     FURNITURE_RUN_SECONDS,
@@ -203,6 +207,7 @@ def replan_update_tasks(saved):
         for task in tasks
         if task.type not in ordinary
         or task.retains_execution
+        or has_pending_roommate_readback(task)
         or any(getattr(task, flag, False) for flag in protected_flags)
         or hasattr(task, "emergency_original_roster")
         or hasattr(task, "run_order_original_roster")
@@ -444,7 +449,7 @@ def protect_priority_tasks(
         batch_ids = {id(task) for task in batch}
         tasks = [task for task in tasks if id(task) not in batch_ids] + [product_batch]
     for index, task in enumerate(tasks):
-        if task.retains_execution:
+        if task.retains_execution or has_pending_roommate_readback(task):
             projected = copy.copy(task)
             projected.plan = copy.deepcopy(task.plan)
             originals[id(projected)] = task
@@ -832,6 +837,7 @@ def simplify_dorm_fill(task, tasks, time_now=None, op_data=None):
         or (task.type != TaskTypes.FILL_DORM)
         or getattr(task, "simple_dorm_fill", False)
         or getattr(task, "dorm_recovery_restore", [])
+        or has_pending_roommate_readback(task)
     ):
         return
     now = time_now or datetime.now()
@@ -878,7 +884,7 @@ def defer_dorm_before_priority_task(task, tasks, room, time_now=None, op_data=No
     )
     if deadline is None:
         return False
-    if task.retains_execution:
+    if task.retains_execution or has_pending_roommate_readback(task):
         tasks[:] = [queued for queued in tasks if queued is not task]
         tasks.insert(
             next(i for i, queued in enumerate(tasks) if queued is deadline) + 1, task
@@ -1035,6 +1041,12 @@ def estimate_dorm_task_minutes(task, room, op_data=None, execution_time=0.75):
                 op_data,
                 room,
                 names,
+                continued=continuing_roommate(
+                    op_data,
+                    room,
+                    names,
+                    previous=getattr(task, "dorm_roommate_targets", {}).get(room),
+                ),
                 group_transitions=op_data.arrangement_group_transitions(
                     task.plan,
                     group_transitions=getattr(task, "group_shift_transitions", None),
@@ -1603,7 +1615,7 @@ def _active_recovery_room(op_data, name):
     """只有实际床位仍匹配的单回标记参与豁免。"""
     from arknights_mower.utils.dorm_recovery import active_recovery_position
 
-    position = active_recovery_position(op_data.operators[name])
+    position = active_recovery_position(op_data, op_data.operators[name])
     return position[0] if position else ""
 
 
@@ -1704,10 +1716,13 @@ def _recovery_aware_assignments(
         candidate[2]: position for position, candidate in assignments.items()
     }
     if clear_invalid_recovery:
-        for name in protected:
+        for _, _, name, _, _ in candidates:
             op = op_data.operators[name]
-            if assigned_positions.get(name) != (op.current_room, op.current_index):
-                op_data.operators[name].clear_dorm_recovery()
+            if getattr(op, "dorm_recovery_room", "") and (
+                name not in protected
+                or assigned_positions.get(name) != (op.current_room, op.current_index)
+            ):
+                op.clear_dorm_recovery_target()
     return assignments, dropped
 
 
@@ -2379,7 +2394,9 @@ def plan_metadata(
         [
             task
             for task in tasks
-            if task.type != TaskTypes.FILL_DORM or task.retains_execution
+            if task.type != TaskTypes.FILL_DORM
+            or task.retains_execution
+            or has_pending_roommate_readback(task)
         ],
     )
     vacancies = vacant_dorm_slots(op_data, reserved_slots)
@@ -2389,6 +2406,7 @@ def plan_metadata(
         if task.type != TaskTypes.FILL_DORM
         or id(task) in locked_ids
         or getattr(task, "dorm_recovery_restore", [])
+        or has_pending_roommate_readback(task)
         or bool(_arrangement_resources(getattr(task, "dorm_fill_plan", task.plan))[1])
         and _arrangement_resources(getattr(task, "dorm_fill_plan", task.plan))[1]
         <= vacancies
@@ -2975,8 +2993,10 @@ def prioritize_new_dorm_recovery(
     执行后传入变化房间的原驻员，以当前实读阵容分床，不重放离宿意图。
     只修改投影计划，保留住客集合、预约和真实恢复标记。
     """
-    from arknights_mower.utils.dorm_recovery import single_recovery_bed_cost
-    from arknights_mower.utils.dorm_skills import is_single_recovery_manager
+    from arknights_mower.utils.dorm_recovery import (
+        possible_recovery_provider,
+        single_recovery_bed_cost,
+    )
 
     if (
         not plan
@@ -3166,7 +3186,9 @@ def prioritize_new_dorm_recovery(
     providers = [
         name
         for name in allocations.values()
-        if name and tier(name) != filler_tier and is_single_recovery_manager(name)
+        if name
+        and tier(name) != filler_tier
+        and possible_recovery_provider(projected, name)
     ]
     providers.sort(key=lambda name: resting_key(projected, name, now))
     placed = set()
@@ -3193,6 +3215,34 @@ def prioritize_new_dorm_recovery(
                 name,
             )
         placed.add(name)
+
+    if (
+        not configuration_changed
+        and not (op_data.runtime_conf or config.conf).dorm_isolation
+    ):
+        for room, position in first.items():
+            target = op_data.operators.get(allocations[position])
+            if not (
+                getattr(target, "dorm_recovery_room", "") == room
+                or getattr(target, "dorm_roommate_roster", ())
+            ):
+                continue
+            intended = projected.get_current_room(room, True)
+            if continuing_roommate(op_data, room, intended) != target.name:
+                continue
+            # 各房分得的人以及单回优先人选都已确定，只保留本房普通床的原换人意图。
+            room_beds = [b for b in beds if b.position[0] == room]
+            if sorted(allocations[b.position] for b in room_beds) == sorted(
+                b.name for b in room_beds
+            ) and all(
+                b.name == intended[b.position[1]]
+                and (
+                    allocations[b.position] == b.name
+                    or projected.plan[room][b.position[1]].agent == "Free"
+                )
+                for b in room_beds
+            ):
+                allocations.update((b.position, b.name) for b in room_beds)
     result = copy.deepcopy(plan)
     for bed in beds:
         name = allocations[bed.position]
@@ -3535,6 +3585,7 @@ def try_add_release_dorm(
     empty_only=False,
     reserved_names=(),
     reserved_slots=(),
+    defer_vacancy_allocation=False,
 ):
     """共用空床与层级接管；不养闲人只控制满心情清退任务创建。"""
     if plan:
@@ -3720,6 +3771,10 @@ def try_add_release_dorm(
             else TaskTypes.NOT_SPECIFIC,
         )
         task.dorm_fill_plan = copy.deepcopy(arrangement)
+        if filling_vacancies and defer_vacancy_allocation:
+            # 完整换班在下一轮连同副表和预约分床，此处只交付实际补位意图。
+            tasks.append(task)
+            return
         if filling_vacancies:
             simplify_dorm_fill(task, tasks, now, op_data)
         if not getattr(task, "simple_dorm_fill", False):

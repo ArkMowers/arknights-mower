@@ -8,6 +8,8 @@ const axios = inject('axios')
 const statusUrl = `${import.meta.env.VITE_HTTP_URL || ''}/stage/event-rerun`
 const event = ref(null)
 const progress = ref({})
+const failureReasons = ref({})
+const retryableFailures = ref(null)
 const loaded = ref(false)
 const loadError = ref('')
 const saving = ref(false)
@@ -18,7 +20,16 @@ let timer
 function applyStatus(data) {
   event.value = data.event
   progress.value = data.progress
+  failureReasons.value = data.failure_reasons ?? {}
+  retryableFailures.value = data.retryable_failures ?? null
   loadError.value = ''
+}
+
+function failureRetryHint(stage) {
+  if (!retryableFailures.value) return ''
+  return retryableFailures.value.includes(stage)
+    ? '下次刷理智时会自动重试'
+    : '需手动处理，点击关卡可更改状态'
 }
 
 async function refreshStatus() {
@@ -78,15 +89,39 @@ watch(() => resourceVersion.info.current_version, refreshStatus)
   <template v-else>
     <n-text>{{ event.name }}</n-text>
     <n-flex>
-      <StageProgressButton
-        v-for="stage in event.stages"
-        :key="stage.code"
-        :stage="stage.code"
-        :status="progress[stage.code] || 'pending'"
-        :disabled="saving"
-        @set-completed="setCompleted(stage.code, $event)"
-      />
+      <div v-for="stage in event.stages" :key="stage.code" class="rerun-stage">
+        <StageProgressButton
+          :stage="stage.code"
+          :status="progress[stage.code] || 'pending'"
+          :disabled="saving"
+          @set-completed="setCompleted(stage.code, $event)"
+        />
+        <div
+          v-if="
+            progress[stage.code] === 'failed' && (failureReasons[stage.code] || retryableFailures)
+          "
+          class="rerun-failure"
+        >
+          <n-text v-if="failureReasons[stage.code]" type="warning">
+            {{ failureReasons[stage.code] }}
+          </n-text>
+          <n-text v-if="retryableFailures" depth="2">{{ failureRetryHint(stage.code) }}</n-text>
+        </div>
+      </div>
     </n-flex>
   </template>
   <n-alert v-if="saveError" type="error">{{ saveError }}</n-alert>
 </template>
+
+<style scoped>
+.rerun-stage {
+  max-width: 100%;
+}
+.rerun-failure {
+  display: grid;
+  margin-top: 4px;
+  max-width: 26em;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+</style>

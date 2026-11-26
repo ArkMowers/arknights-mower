@@ -1,0 +1,50 @@
+[
+  {
+    "case": "use the control center between the last left and first right facility",
+    "rooms": ["room_2_1", "factory", "central", "room_1_3", "contact", "meeting"],
+    "expected": ["room_2_1", "room_1_3", "central", "factory", "contact", "meeting"]
+  },
+  {
+    "case": "group consecutive facilities on each side",
+    "rooms": ["room_2_1", "factory", "room_2_2", "contact", "room_2_3", "meeting"],
+    "expected": ["room_2_1", "room_2_2", "room_2_3", "factory", "contact", "meeting"]
+  },
+  {
+    "case": "refill the source even when the destination is already visible",
+    "rooms": ["room_2_1", "factory", "room_2_2", "contact", "room_2_3", "meeting"],
+    "positions": {"room_2_2": "factory"},
+    "expected": ["room_2_1", "factory", "room_2_2", "room_2_3", "contact", "meeting"]
+  },
+  {
+    "case": "leave an unresolved exchange and numbered dorms at the end",
+    "rooms": ["room_2_1", "dormitory_4", "factory", "recycle", "room_2_2", "room_3_3", "contact", "dormitory_1"],
+    "positions": {"recycle": "room_3_3", "room_3_3": "recycle"},
+    "expected": ["room_2_1", "room_2_2", "factory", "contact", "recycle", "room_3_3", "dormitory_1", "dormitory_4"]
+  },
+  {
+    "case": "finish the left facilities before crossing via the control center",
+    "rooms": ["room_1_1", "factory", "central", "room_1_2", "contact"],
+    "expected": ["room_1_1", "room_1_2", "central", "factory", "contact"]
+  },
+  {
+    "case": "B103 and B303 are visible from reception",
+    "rooms": ["meeting", "factory", "room_1_3", "contact", "room_3_3", "dormitory_1"],
+    "expected": ["meeting", "factory", "contact", "room_1_3", "room_3_3", "dormitory_1"]
+  },
+  {
+    "case": "keep the original route when a swipe from reception is already avoidable",
+    "rooms": ["room_1_1", "meeting", "room_1_3", "central"],
+    "expected": ["room_1_1", "meeting", "room_1_3", "central"]
+  },
+  {
+    "case": "keep training in place",
+    "rooms": ["room_2_1", "train", "room_2_2", "factory"],
+    "expected": ["room_2_1", "train", "room_2_2", "factory"]
+  },
+  {
+    "case": "preserve competing explicit targets",
+    "rooms": ["room_2_1", "factory", "room_2_2", "contact"],
+    "targets": {"factory": ["same"], "room_2_2": ["same"]},
+    "expected": ["room_2_1", "factory", "room_2_2", "contact"]
+  }
+]

@@ -7,7 +7,11 @@ from types import SimpleNamespace
 import pytest
 
 from arknights_mower.tests import native_group_recovery_sync_tests as native
-from arknights_mower.utils.dorm_recovery import recovery_managers
+from arknights_mower.utils.calculated_mood import known_operator_stages
+from arknights_mower.utils.dorm_recovery import (
+    record_recovery_target,
+    recovery_managers,
+)
 from arknights_mower.utils.operators import Dormitory, Operator, Operators
 from arknights_mower.utils.recall_estimates import (
     estimated_recall_rates,
@@ -91,9 +95,16 @@ def sampled_dorm(resting):
         op.mood, op.time_stamp = 12, now
         data.get_dorm_by_name(name)[1].time = now + timedelta(hours=6)
     single = data.operators["伊内丝"]
-    single.dorm_recovery_room = single.current_room
-    single.dorm_recovery_index = single.current_index
-    single.dorm_recovery_fixed = recovery_managers(data, "dormitory_1", names)
+    room = single.current_room
+    record_recovery_target(
+        data,
+        room,
+        single,
+        single.current_index,
+        recovery_managers(data, room, names),
+        names,
+        known_operator_stages(data),
+    )
     data.get_dorm_by_name(single.name)[1].time = now + timedelta(hours=3)
     return data, now
 

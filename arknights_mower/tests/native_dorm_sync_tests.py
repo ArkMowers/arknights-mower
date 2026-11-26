@@ -80,7 +80,7 @@ def test_old_skill_target_marker_is_not_a_valid_recovery_position(residents, nam
     op = set_tier(residents, name, RestingTier.MAIN, 5)
     op.current_room, op.current_index = ROOM, 4
     op.dorm_recovery_room, op.dorm_recovery_index = ROOM, 4
-    assert active_recovery_position(op) is None
+    assert active_recovery_position(residents, op) is None
 
 
 def test_skill_routing_keeps_higher_tier_resident(residents):

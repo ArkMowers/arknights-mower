@@ -1891,22 +1891,31 @@ def test_returning_resident_rebalances_all_resting_agents_before_closing_bed(sol
 
 
 def test_closing_bed_keeps_existing_single_recovery_target(solver):
+    from arknights_mower.utils.calculated_mood import known_operator_stages
+    from arknights_mower.utils.dorm_recovery import (
+        record_recovery_target,
+        recovery_managers,
+    )
+
     configure_explicit_free_bed(solver)
     data = solver.op_data
+    room = "dormitory_1"
+    names = ["泥岩", "闪灵", "陈", "能天使", "年"]
+    data.add(Operator("闪灵", ""))
+    apply_plan(solver, {room: names})
     now = datetime.now()
-    occupants = ["泥岩", "陈", "能天使", "年"]
-    for bed, name in zip(data.dorm, occupants):
-        bed.name = name
+    for bed in data.dorm:
         bed.time = now + timedelta(hours=4)
-        op = data.operators[name]
-        op.current_room, op.current_index = bed.position
+        op = data.operators[bed.name]
         op.time_stamp = now
         op.mood = 2
     target = data.operators["年"]
     target.mood = 23
-    target.dorm_recovery_room = "dormitory_1"
-    target.dorm_recovery_index = target.current_index
-    target.dorm_recovery_fixed = ("塑心",)
+    stages = known_operator_stages(data)
+    managers = recovery_managers(data, room, names, stages=stages)
+    record_recovery_target(
+        data, room, target, target.current_index, managers, names, stages
+    )
     plan = {
         "meeting": ["伊内丝", "银灰"],
         "contact": ["讯使"],
