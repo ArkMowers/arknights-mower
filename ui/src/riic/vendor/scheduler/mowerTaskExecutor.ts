@@ -83,15 +83,10 @@ function sameMapEntry(first: string, other: string): boolean {
   return ['factory', 'contact', 'recycle'].includes(first) && ['factory', 'contact', 'recycle'].includes(other)
 }
 
-function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>>, keepLast: boolean, handoffHours?: ReadonlyMap<string, number>): string[] {
+function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>>, keepLast: boolean): string[] {
   const original = rooms.slice(1).filter((room, index) => needsMapDrag(rooms[index]!, room)).length
-  if (!handoffHours && !original) return rooms
+  if (!original) return rooms
   const middle = rooms.slice(1, keepLast ? -1 : undefined)
-  const preference = [...middle.keys()]
-  if (handoffHours) {
-    preference.sort((a, b) => handoffHours.get(middle[a]!)! - handoffHours.get(middle[b]!)!)
-    if (preference.every((index, offset) => index === offset)) return rooms
-  }
   const bits = new Map(middle.map((room, index) => [room, 1 << index]))
   const required = middle.map(room => [...dependencies.get(room)!].reduce((mask, source) => mask | (bits.get(source) ?? 0), 0))
   const endBit = 1 << middle.length
@@ -104,9 +99,7 @@ function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>
     if (!pending) return budget > 0 || !(dragMask & endBit)
     const key = `${pending}:${dragMask}:${budget}`
     if (failed.has(key)) return false
-    for (const index of preference) {
-      const room = middle[index]!
-      if (!rooms[0] && pending === endBit - 1 && !sameMapEntry(middle[0]!, room)) continue
+    for (const [index, room] of middle.entries()) {
       const bit = 1 << index
       if (!(pending & bit) || (required[index]! & pending)) continue
       const cost = (dragMask & bit) ? 1 : 0
@@ -118,8 +111,7 @@ function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>
     failed.add(key)
     return false
   }
-  const firstBudget = handoffHours ? original : 0, lastBudget = handoffHours ? original : original - 1
-  for (let budget = firstBudget; budget <= lastBudget; budget++) {
+  for (let budget = 0; budget < original; budget++) {
     if (visit(endBit - 1, drags(rooms[0]!), budget)) return [rooms[0]!, ...path, ...(keepLast ? rooms.slice(-1) : [])]
   }
   return rooms
@@ -196,34 +188,64 @@ function workRoomOrder(work: string[], dependencies: Map<string, Set<string>>): 
   return [ordered, pending]
 }
 
-function handoffDetourFits(original: string[], proposed: string[], work: string[], dependencies: Map<string, Set<string>>): boolean {
-  const dorms = original.slice(work.length), stops = [...routableRooms]
-  function remaining(done: Set<string>): string[] {
-    const [ready, cyclic] = workRoomOrder(work.filter(room => !done.has(room)), dependencies)
-    return [...ready, ...cyclic, ...dorms]
+function handoffRoomOrder(original: string[], work: string[], dependencies: Map<string, Set<string>>, hours: ReadonlyMap<string, number>): string[] {
+  const choices = original.map(room => [room])
+  let canImprove = false
+  for (let first = 0; first < original.length;) {
+    let after = first
+    while (after < original.length && hours.has(original[after]!)) after++
+    if (after - first > 1) {
+      const preferred = original.slice(first, after).sort((a, b) => hours.get(a)! - hours.get(b)!)
+      choices.fill(preferred, first, after)
+      if (preferred.some((room, i) => room !== original[first + i])) canImprove = true
+    }
+    first = after + 1
   }
+  if (!canImprove) return original
+  const dorms = original.slice(work.length), stops = [...routableRooms]
   const outbound = (old: string, next: string) => Number(old !== next && stops.some(room => needsMapDrag(next, room) && !needsMapDrag(old, room)))
   const inbound = (old: string, next: string) => Number(old !== next && stops.some(room => needsMapDrag(room, next) && !needsMapDrag(room, old)))
-  const before = new Set<string>(), after = new Set<string>()
-  let prefix = 0
-  for (let i = 0; i < Math.min(work.length, original.length - 1); i++) {
-    const old = original[i]!, next = proposed[i]!
-    if (i) prefix += Number(needsMapDrag(proposed[i - 1]!, next)) - Number(needsMapDrag(original[i - 1]!, old))
-    before.add(old)
-    after.add(next)
-    let worst = prefix + outbound(old, next)
-    if ([...before].some(room => !after.has(room))) {
-      const oldRest = remaining(before), newRest = remaining(after)
-      worst += inbound(oldRest[0]!, newRest[0]!)
-      for (let j = 1; j < oldRest.length; j++) {
-        const oldFrom = oldRest[j - 1]!, oldTo = oldRest[j]!, newFrom = newRest[j - 1]!, newTo = newRest[j]!
-        const direct = Number(needsMapDrag(newFrom, newTo)) - Number(needsMapDrag(oldFrom, oldTo))
-        worst += Math.max(direct, outbound(oldFrom, newFrom) + inbound(oldTo, newTo))
-      }
-    }
-    if (worst > 0) return false
+  function resumed(pending: string[]): string[] {
+    const [ready, cyclic] = workRoomOrder(work.filter(room => pending.includes(room)), dependencies)
+    return [...ready, ...cyclic, ...dorms]
   }
-  return true
+  const returns = new Map<string, number>()
+  // After the first priority task, either retained route can yield again at every handoff.
+  function returnCost(pending: string[]): number {
+    const index = original.length - pending.length
+    if (pending.every((room, i) => room === original[index + i])) return 0
+    const key = pending.join('|'), seen = returns.get(key)
+    if (seen !== undefined) return seen
+    const old = resumed(original.slice(index)), next = resumed(pending)
+    let extra = inbound(old[0]!, next[0]!)
+    for (let j = 1; j < old.length; j++) {
+      const oldFrom = old[j - 1]!, oldTo = old[j]!, newFrom = next[j - 1]!, newTo = next[j]!
+      const direct = Number(needsMapDrag(newFrom, newTo)) - Number(needsMapDrag(oldFrom, oldTo))
+      extra += Math.max(direct, outbound(oldFrom, newFrom) + inbound(oldTo, newTo))
+    }
+    returns.set(key, extra)
+    return extra
+  }
+  const failed = new Set<string>(), path: string[] = []
+  function visit(pending: string[], previous: string, extra: number): boolean {
+    if (!pending.length) return extra <= 0
+    const index = original.length - pending.length, old = original[index]!, order = choices[index]!
+    const key = `${previous}:${extra}:${pending.join('|')}`
+    if (failed.has(key)) return false
+    for (const room of order) {
+      if (!pending.includes(room) || order.length > 1 && pending.some(source => dependencies.get(room)!.has(source))) continue
+      if (index === 0 && !sameMapEntry(old, room)) continue
+      const direct = extra + (index ? Number(needsMapDrag(previous, room)) - Number(needsMapDrag(original[index - 1]!, old)) : 0)
+      const rest = pending.filter(other => other !== room)
+      if (rest.length && index < work.length && direct + outbound(old, room) + returnCost(rest) > 0) continue
+      path.push(room)
+      if (visit(rest, room, direct)) return true
+      path.pop()
+    }
+    failed.add(key)
+    return false
+  }
+  return visit(original, '', 0) ? path : original
 }
 
 /** Refill source workplaces first and preserve stops needed after the arrangement. */
@@ -261,19 +283,9 @@ export function mowerArrangementRoomOrder(
     }
   }
   if (handoff) {
-    const original = [...rooms]
     const hours = plannedHandoffHours(plan, ordered, counts, handoff)
     if (!openEnd) hours.delete(rooms[rooms.length - 1]!)
-    for (let first = 0; first < rooms.length;) {
-      let after = first
-      while (after < rooms.length && hours.has(rooms[after]!)) after++
-      if (after - first > 1) {
-        const window = [rooms[first - 1] ?? '', ...rooms.slice(first, after), rooms[after] ?? '']
-        rooms.splice(first, after - first, ...shortestMapRoute(window, dependencies, true, hours).slice(1, -1))
-      }
-      first = after + 1
-    }
-    if (rooms.some((room, i) => room !== original[i]) && !handoffDetourFits(original, rooms, work, dependencies)) return original
+    return handoffRoomOrder(rooms, work, dependencies, hours)
   }
   return rooms
 }

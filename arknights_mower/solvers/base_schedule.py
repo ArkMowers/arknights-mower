@@ -416,25 +416,13 @@ def _same_map_entry(first: str, other: str) -> bool:
 
 
 def _shortest_map_route(
-    rooms: list[str],
-    dependencies: dict[str, set[str]],
-    *,
-    keep_last: bool,
-    handoff_hours: dict[str, float] | None = None,
+    rooms: list[str], dependencies: dict[str, set[str]], *, keep_last: bool
 ) -> list[str]:
-    """在补位和端点允许的拖图预算内，按给定顺序尝试可行路线。"""
+    """从首个设施出发，在满足原岗位和末房要求的路线中选择拖图最少的一条。"""
     original = sum(_needs_map_drag(a, b) for a, b in zip(rooms, rooms[1:]))
+    if not original:
+        return rooms
     middle = rooms[1:-1] if keep_last else rooms[1:]
-    if handoff_hours is None:
-        if not original:
-            return rooms
-        preference = middle
-        drag_budgets = range(original)
-    else:
-        preference = sorted(middle, key=handoff_hours.__getitem__)
-        drag_budgets = (original,)
-        if preference == middle:
-            return rooms
     bits = {room: 1 << i for i, room in enumerate(middle)}
     required = {
         room: sum(bits.get(source, 0) for source in dependencies[room])
@@ -455,14 +443,7 @@ def _shortest_map_route(
     def visit(pending, drag_mask, budget):
         if not pending:
             return () if budget or not drag_mask & end_bit else None
-        for room in preference:
-            bit = bits[room]
-            if (
-                not rooms[0]
-                and pending == end_bit - 1
-                and not _same_map_entry(middle[0], room)
-            ):
-                continue
+        for room, bit in bits.items():
             if not pending & bit or required[room] & pending:
                 continue
             cost = int(bool(drag_mask & bit))
@@ -472,7 +453,7 @@ def _shortest_map_route(
                     return (room, *tail)
         return None
 
-    for budget in drag_budgets:
+    for budget in range(original):
         path = visit(end_bit - 1, drags[rooms[0]], budget)
         if path is not None:
             return [rooms[0], *path, *(rooms[-1:] if keep_last else ())]
@@ -509,44 +490,85 @@ def _extra_detour_drags(old, new):
     return outbound, inbound
 
 
-def _handoff_detour_fits(original, proposed, work, dependencies):
+def _handoff_room_order(original, work, dependencies, hours):
+    """按离岗紧迫程度尝试下一房，保留能承受整程和逐站插队的路线。"""
+    choices = [[room] for room in original]
+    can_improve = False
+    first = 0
+    while first < len(original):
+        after = first
+        while after < len(original) and original[after] in hours:
+            after += 1
+        if after - first > 1:
+            window = original[first:after]
+            preferred = sorted(window, key=hours.__getitem__)
+            choices[first:after] = [preferred] * len(window)
+            can_improve = can_improve or preferred != window
+        first = after + 1
+    if not can_improve:
+        return original
+
     dorms = original[len(work) :]
 
-    def remaining(done):
+    @cache
+    def resumed(pending):
         ready, cyclic = _work_room_order(
-            (room for room in work if room not in done), dependencies
+            (room for room in work if room in pending), dependencies
         )
         return ready + cyclic + dorms
 
-    before, after = set(), set()
-    prefix = 0
-    for index in range(min(len(work), len(original) - 1)):
-        old, new = original[index], proposed[index]
-        if index:
-            prefix += _needs_map_drag(proposed[index - 1], new) - _needs_map_drag(
-                original[index - 1], old
+    @cache
+    def return_cost(pending):
+        """此处插队后，比较两条路线回程及其后任意多次插队的最大拖图差。"""
+        old_pending = tuple(original[len(original) - len(pending) :])
+        if pending == old_pending:
+            return 0
+        old, new = resumed(old_pending), resumed(pending)
+        extra = _extra_detour_drags(old[0], new[0])[1]
+        for old_from, old_to, new_from, new_to in zip(old, old[1:], new, new[1:]):
+            direct = _needs_map_drag(new_from, new_to) - _needs_map_drag(
+                old_from, old_to
             )
-        before.add(old)
-        after.add(new)
-        # 首次让出后，余下房间按原计划续做。此后每一段都可能再次让出。
-        worst = prefix + _extra_detour_drags(old, new)[0]
-        if before != after:
-            old_rest, new_rest = remaining(before), remaining(after)
-            worst += _extra_detour_drags(old_rest[0], new_rest[0])[1]
-            for old_from, old_to, new_from, new_to in zip(
-                old_rest, old_rest[1:], new_rest, new_rest[1:]
+            detour = (
+                _extra_detour_drags(old_from, new_from)[0]
+                + _extra_detour_drags(old_to, new_to)[1]
+            )
+            extra += max(direct, detour)
+        return extra
+
+    @cache
+    def visit(pending, previous, extra):
+        if not pending:
+            return () if extra <= 0 else None
+        index = len(original) - len(pending)
+        old = original[index]
+        for room in choices[index]:
+            if room not in pending:
+                continue
+            if len(choices[index]) > 1 and dependencies[room].intersection(pending):
+                continue
+            if index == 0 and not _same_map_entry(old, room):
+                continue
+            direct = extra
+            if index:
+                direct += _needs_map_drag(previous, room) - _needs_map_drag(
+                    original[index - 1], old
+                )
+            rest = tuple(r for r in pending if r != room)
+            # 首次让出后余房按原计划续做，每一段仍可再次让出。
+            if (
+                rest
+                and index < len(work)
+                and direct + _extra_detour_drags(old, room)[0] + return_cost(rest) > 0
             ):
-                direct = _needs_map_drag(new_from, new_to) - _needs_map_drag(
-                    old_from, old_to
-                )
-                detour = (
-                    _extra_detour_drags(old_from, new_from)[0]
-                    + _extra_detour_drags(old_to, new_to)[1]
-                )
-                worst += max(direct, detour)
-        if worst > 0:
-            return False
-    return True
+                continue
+            tail = visit(rest, room, direct)
+            if tail is not None:
+                return (room, *tail)
+        return None
+
+    route = visit(tuple(original), "", 0)
+    return list(route) if route is not None else original
 
 
 def _arrangement_room_order(
@@ -602,28 +624,10 @@ def _arrangement_room_order(
                 )
             start = end
     if shift_off:
-        # 只在已排好的路线内比较下班时长，未确定的交接和需要读时的末站仍固定。
-        original = rooms.copy()
         hours = _planned_handoff_hours(plan, ordered, counts, op_data)
         if not open_end:
             hours.pop(rooms[-1], None)
-        first = 0
-        while first < len(rooms):
-            after = first
-            while after < len(rooms) and rooms[after] in hours:
-                after += 1
-            if after - first > 1:
-                before = rooms[first - 1] if first else ""
-                following = rooms[after] if after < len(rooms) else ""
-                window = [before, *rooms[first:after], following]
-                rooms[first:after] = _shortest_map_route(
-                    window, dependencies, keep_last=True, handoff_hours=hours
-                )[1:-1]
-            first = after + 1
-        if rooms != original and not _handoff_detour_fits(
-            original, rooms, work, dependencies
-        ):
-            return original
+        return _handoff_room_order(rooms, work, dependencies, hours)
     return rooms
 
 

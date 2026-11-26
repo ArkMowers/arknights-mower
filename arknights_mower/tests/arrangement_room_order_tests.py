@@ -338,15 +338,15 @@ def test_generated_handoffs_match_all_feasible_routes(staffed_order, end):
             and entry[r[0]] == entry[work[0]]
             and (end != "fixed" or r[-1] == work[-1])
         )
-        expected = min(
+        dorms = route[len(work) :]
+        ranked = sorted(
             legal, key=lambda r: tuple((hours[room], work.index(room)) for room in r)
         )
+        expected = next(r for r in ranked if no_extra_drags(work, r, original, dorms))
         result = base._arrangement_room_order(
             plan, data, allow_open_end=end == "open", shift_off=True
         )
-        dorms = route[len(work) :]
-        fits = no_extra_drags(work, expected, original, dorms)
-        assert result == [*(expected if fits else work), *dorms]
+        assert result == [*expected, *dorms]
 
 
 @pytest.mark.parametrize("target", ["Current", "Free", "_", ""])
@@ -577,14 +577,33 @@ def test_urgent_order_interrupts_the_shorter_route_and_resumes_remaining_rooms(
 
 @pytest.mark.parametrize("ordinary", [False, True])
 @pytest.mark.parametrize(
-    "rooms,hours,interruptions,drags",
+    "rooms,hours,interruptions,drags,preferred",
     [
-        (["contact", "room_1_3", "recycle", "meeting"], [3, 1, 2, 4], ["room_2_1"], 2),
-        (["contact", "meeting", "recycle"], [3, 1, 2], ["room_2_1", "room_1_3"], 3),
+        (
+            ["contact", "room_1_3", "recycle", "meeting"],
+            [3, 1, 2, 4],
+            ["room_2_1"],
+            2,
+            None,
+        ),
+        (
+            ["contact", "meeting", "recycle"],
+            [3, 1, 2],
+            ["room_2_1", "room_1_3"],
+            3,
+            None,
+        ),
+        (
+            ["contact", "recycle", "central"],
+            [3, 2, 1],
+            [],
+            0,
+            ["recycle", "contact", "central"],
+        ),
     ],
 )
 def test_priority_visits_during_a_handoff_keep_the_original_drag_budget(
-    staffed_order, ordinary, rooms, hours, interruptions, drags
+    staffed_order, ordinary, rooms, hours, interruptions, drags, preferred
 ):
     from arknights_mower.utils.operators import Operator
     from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY, Room
@@ -644,7 +663,8 @@ def test_priority_visits_during_a_handoff_keep_the_original_drag_budget(
         visits.append(order.meta_data)
         solver.tasks.remove(order)
     assert solver.agent_arrange(task.plan) is not False
-    assert confirmed == [*rooms, "dormitory_1"]
+    expected = preferred if ordinary and preferred else rooms
+    assert confirmed == [*expected, "dormitory_1"]
     assert (
         sum(ui.base._needs_map_drag(a, b) for a, b in zip(visits, visits[1:])) == drags
     )

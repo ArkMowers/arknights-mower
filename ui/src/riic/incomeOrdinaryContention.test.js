@@ -407,59 +407,63 @@ it.each([
     ['contact', 'meeting', 'recycle'],
     [3, 1, 2],
     ['room_2_1', 'room_1_3']
-  ]
-])('keeps the drag budget when run orders interrupt %j', (rooms, hours, interruptions) => {
-  const { data, queue } = contention(true)
-  const names = ['A', 'B', 'C', 'D'].slice(0, rooms.length)
-  data.operators = Object.fromEntries(
-    rooms.map((room, i) => {
-      const name = names[i]
-      return [
-        name,
-        new MowerOperatorState({
+  ],
+  [['contact', 'recycle', 'central'], [3, 2, 1], [], ['recycle', 'contact', 'central']]
+])(
+  'keeps the drag budget when run orders may interrupt %j',
+  (rooms, hours, interruptions, preferred = rooms) => {
+    const { data, queue } = contention(true)
+    const names = ['A', 'B', 'C', 'D'].slice(0, rooms.length)
+    data.operators = Object.fromEntries(
+      rooms.map((room, i) => {
+        const name = names[i]
+        return [
           name,
-          room,
-          currentRoom: room,
-          index: 0,
-          currentIndex: 0,
-          operatorType: 'high',
-          timeStampMicros: 0,
-          mood: hours[i],
-          depletionRate: 1
-        })
-      ]
-    })
-  )
-  const plan = Object.fromEntries(rooms.map((room, i) => [room, [['X', 'Y', 'Z', 'W'][i]]]))
-  plan.dormitory_1 = names
-  const task = new MowerTask({ type: T.SHIFT_OFF, plan })
-  task.ordinaryCoordination = true
-  queue.tasks.push(task)
-  const visits = []
-  const hooks = {
-    alpha: true,
-    currentRoom: (name) => data.operators[name]?.currentRoom,
-    handoff: { data, workRate: () => 1 },
-    backup: () => ({ changed: false, generated: [] }),
-    metadata() {},
-    deferRoom: () => visits.length % 2 === 1 && visits.length < 2 * interruptions.length,
-    arrangeRoom: (room) => {
-      visits.push(room)
+          new MowerOperatorState({
+            name,
+            room,
+            currentRoom: room,
+            index: 0,
+            currentIndex: 0,
+            operatorType: 'high',
+            timeStampMicros: 0,
+            mood: hours[i],
+            depletionRate: 1
+          })
+        ]
+      })
+    )
+    const plan = Object.fromEntries(rooms.map((room, i) => [room, [['X', 'Y', 'Z', 'W'][i]]]))
+    plan.dormitory_1 = names
+    const task = new MowerTask({ type: T.SHIFT_OFF, plan })
+    task.ordinaryCoordination = true
+    queue.tasks.push(task)
+    const visits = []
+    const hooks = {
+      alpha: true,
+      currentRoom: (name) => data.operators[name]?.currentRoom,
+      handoff: { data, workRate: () => 1 },
+      backup: () => ({ changed: false, generated: [] }),
+      metadata() {},
+      deferRoom: () => visits.length % 2 === 1 && visits.length < 2 * interruptions.length,
+      arrangeRoom: (room) => {
+        visits.push(room)
+      }
     }
+    const deadline = task.timeMicros
+    for (const stop of interruptions) {
+      expect(executeMowerTaskArrangement(task, queue, hooks)).toBe(false)
+      visits.push(stop)
+    }
+    expect(executeMowerTaskArrangement(task, queue, hooks)).toBe(true)
+    expect(visits).toEqual([
+      ...preferred.flatMap((room, i) => (interruptions[i] ? [room, interruptions[i]] : [room])),
+      'dormitory_1'
+    ])
+    expect(task.timeMicros).toBe(deadline)
+    expect(task.plan).toEqual({})
   }
-  const deadline = task.timeMicros
-  for (const stop of interruptions) {
-    expect(executeMowerTaskArrangement(task, queue, hooks)).toBe(false)
-    visits.push(stop)
-  }
-  expect(executeMowerTaskArrangement(task, queue, hooks)).toBe(true)
-  expect(visits).toEqual([
-    ...rooms.flatMap((room, i) => (interruptions[i] ? [room, interruptions[i]] : [room])),
-    'dormitory_1'
-  ])
-  expect(task.timeMicros).toBe(deadline)
-  expect(task.plan).toEqual({})
-})
+)
 
 it.each([
   [2, 'room_3_1'],
