@@ -23120,6 +23120,9 @@ class BaseSchedulerSolver(
             self.task.type in (TaskTypes.NOT_SPECIFIC, TaskTypes.FILL_DORM)
             and hasattr(self.task, "dorm_fill_plan")
             and not self.task.retains_execution
+            and not (
+                self.task.plan.keys() & getattr(self.task, "dorm_roommate_targets", ())
+            )
             and not getattr(self.task, "emergency_dorm", False)
             and not any(
                 getattr(self.task, attribute, False)

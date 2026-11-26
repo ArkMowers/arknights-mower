@@ -104,6 +104,8 @@ def test_ordinary_room_read_after_ambiguous_shift(
         pytest.param("planned", VIP, 1, id="planned-before-entry"),
         pytest.param("submitted", VIP, 0, id="already-delivered"),
         pytest.param("submitted", None, 0, id="unknown-recipient"),
+        pytest.param("explicit", NEW, 0, id="new-explicit-bed-order"),
+        pytest.param("priority", NEW, 0, id="new-recovery-priority"),
         pytest.param("read", OTHER, 2, id="room-already-cached"),
         pytest.param("stale", None, 0, id="overdue-room-read"),
         pytest.param("initial", None, 0, id="before-initial-mood-read"),
@@ -114,7 +116,10 @@ def test_update_resumes_roommate_shift_from_actual_room(
     dorm_dispatch, scheduler, monkeypatch, checkpoint, recipient, extra_confirms
 ):
     dispatch, _, scan = dorm_dispatch
-    start_after_release(dispatch, monkeypatch, bed=4)
+    changed_policy = checkpoint in ("explicit", "priority")
+    start_after_release(
+        dispatch, monkeypatch, bed=4, priority=f"{VIP},{NEW}" if changed_policy else VIP
+    )
     before = dispatch.physical.copy()
     final = [*MANAGERS, NEW, VIP, OTHER]
     scheduled = scheduler.clock.now() - timedelta(seconds=1)
@@ -165,6 +170,10 @@ def test_update_resumes_roommate_shift_from_actual_room(
     dispatch.tasks = prepared["tasks"]
     dispatch.task = None
     dispatch.op_data = pickle.loads(cached)
+    if checkpoint == "explicit":
+        dispatch.op_data.config.dorm_order.append(ROOM + "_low")
+    if checkpoint == "priority":
+        dispatch.op_data.config.ope_resting_priority.reverse()
     assert dispatch.op_data.get_current_room(ROOM, True) == (
         final if checkpoint == "read" else before
     )
@@ -228,6 +237,10 @@ def test_update_resumes_roommate_shift_from_actual_room(
         dispatch.run()
         dispatch.tap_confirm.assert_not_called()
         dispatch.choose_agent.assert_not_called()
+    elif changed_policy:
+        assert active_recovery_position(dispatch.op_data, target) is None
+        front = dispatch.op_data.operators[NEW]
+        assert active_recovery_position(dispatch.op_data, front) == (ROOM, 2)
     else:
         assert active_recovery_position(dispatch.op_data, target) == (ROOM, 3)
     scheduler.io.assert_not_called()

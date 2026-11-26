@@ -566,51 +566,54 @@ def continuing_roommate(data, room, agents, *, previous=None):
     from arknights_mower.utils.calculated_mood import known_operator_stages
     from arknights_mower.utils.resting_priority import resting_key
 
-    if previous and previous[0] == tuple(agents):
-        return previous[1]
-    if len(agents) != 5 or any(
-        option.endswith("_low") for option in data.config.dorm_order
-    ):
+    if len(agents) != 5:
         return None
     slots = data.plan.get(room, ())
-    marked = next(
-        (
-            op
-            for n in agents
-            if (op := data.operators.get(n)) is not None
-            and op.current_room == room
-            and (
-                getattr(op, "dorm_recovery_room", "") == room
-                or getattr(op, "dorm_roommate_roster", ())
-            )
-        ),
-        None,
-    )
-    if marked is None or len(slots) != len(agents):
+    if len(slots) != len(agents):
+        return None
+    saved = previous[1] if previous and previous[0] == tuple(agents) else None
+    if saved:
+        marked = data.operators.get(saved)
+    else:
+        marked = next(
+            (
+                op
+                for n in agents
+                if (op := data.operators.get(n)) is not None
+                and op.current_room == room
+                and (
+                    getattr(op, "dorm_recovery_room", "") == room
+                    or getattr(op, "dorm_roommate_roster", ())
+                )
+            ),
+            None,
+        )
+    if marked is None or marked.name not in agents:
         return None
     index = agents.index(marked.name)
     free = [i for i, slot in enumerate(slots) if slot.agent == "Free"]
     if (
-        index not in free
-        or index == free[0]
+        index not in free[1:]
+        or any(option.endswith("_low") for option in data.config.dorm_order)
         or marked.name in data.config.free_room_exclusions
     ):
         return None
     current = data.get_current_room(room, True)
-    if any(current[i] != name and i not in free for i, name in enumerate(agents)):
-        return None
-    stages = known_operator_stages(data)
-    if not _ordinary_roommate_change(
-        current, agents, marked.name, stages, allow_vacancy=True
-    ):
-        return None
-    if getattr(marked, "dorm_roommate_roster", ()) != recovery_roster(
-        data, current, stages
-    ) and active_recovery_position(data, marked, names=current, stages=stages) != (
-        room,
-        index,
-    ):
-        return None
+    if not saved:
+        if any(current[i] != name and i not in free for i, name in enumerate(agents)):
+            return None
+        stages = known_operator_stages(data)
+        if not _ordinary_roommate_change(
+            current, agents, marked.name, stages, allow_vacancy=True
+        ):
+            return None
+        if getattr(marked, "dorm_roommate_roster", ()) != recovery_roster(
+            data, current, stages
+        ) and active_recovery_position(data, marked, names=current, stages=stages) != (
+            room,
+            index,
+        ):
+            return None
     now = getattr(data, "_projection_now", None) or datetime.now()
     rank = resting_key(data, marked.name, now)
     if rank[0] > RestingTier.PRIORITY_REPLACEMENT:
@@ -620,8 +623,11 @@ def continuing_roommate(data, room, agents, *, previous=None):
         if not other or other == marked.name:
             continue
         other_rank = resting_key(data, other, now)
-        # 同层级新入住者比较恢复缺口；普通分床会优先保留首床未换走的同级住客。
-        if other_rank <= rank or (
+        if saved:
+            # 续做时服从当前层级和显式优先顺序。入住后的心情变化不重开同一次分床。
+            if other_rank[:2] < rank[:2]:
+                return None
+        elif other_rank <= rank or (
             i == free[0] and current[i] == other and other_rank[:2] == rank[:2]
         ):
             return None
