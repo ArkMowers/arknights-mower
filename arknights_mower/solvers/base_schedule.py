@@ -20052,6 +20052,7 @@ class BaseSchedulerSolver(
                 )
             return deadline
 
+        true_exhaust_rooms = getattr(self.op_data, "true_exhaust_room", ("central",))
         result = []
         observation_complete = True
         reread_fourth = False
@@ -20266,11 +20267,6 @@ class BaseSchedulerSolver(
                     and getattr(agent, "exhaust_require", False)
                     and _mood <= agent.lower_limit + 2
                 )
-                skip_full_work_time = (
-                    full_work_mood
-                    and room in getattr(self.op_data, "true_exhaust_room", ("central",))
-                    and not full_work_deadline
-                )
                 needs_time = False
                 verify_working_zero = (
                     training_observation is None
@@ -20302,7 +20298,9 @@ class BaseSchedulerSolver(
                 elif requested_fourth_work:
                     # 上端第 4 岗可能只露出半张卡，换端核实后再决定是否记录满心情的期限。
                     needs_time = 0 <= _mood <= 24 and (
-                        not skip_full_work_time or offsets[i] > 0
+                        offsets[i] > 0
+                        or not full_work_mood
+                        or room not in true_exhaust_rooms
                     )
                 elif (
                     isinstance(first_end, bool)
@@ -20476,7 +20474,11 @@ class BaseSchedulerSolver(
                 and _name != ""
                 and room != "recycle"
                 and (_mood >= 0 or full_bar_with_timer)
-                and not skip_full_work_time
+                and (
+                    not full_work_mood
+                    or full_work_deadline
+                    or room not in true_exhaust_rooms
+                )
             ):
                 if training_observation is not None:
                     data["time"] = training_observation[i]["time"]
