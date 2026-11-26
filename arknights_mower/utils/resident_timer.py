@@ -55,6 +55,19 @@ def _timer_gray(image):
     return None
 
 
+def resident_timer_is_blank(gray, top):
+    """满心情卡的计时栏只留灰底。上端第四岗有逐行渐变的遮罩。"""
+    low, high, _, _ = cv2.minMaxLoc(gray)
+    if 133 <= low <= high <= 141:
+        return True
+    return (
+        top == 898
+        and 125 <= low <= high <= 175
+        and np.ptp(gray, axis=1).max() <= 16
+        and int(gray[-1, 0]) - int(gray[0, 0]) >= 8
+    )
+
+
 def read_resident_timer(image: np.ndarray) -> str | None:
     """六个数字和两个冒号须逐像素吻合。空栏、遮盖或滚动中的残字交回 OCR。"""
     gray = _timer_gray(image)

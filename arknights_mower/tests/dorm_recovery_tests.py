@@ -784,6 +784,170 @@ def test_multiple_possible_providers_complete_roster_without_claiming_first(
     assert not solver.task.plan
 
 
+@pytest.fixture
+def readback_solver(solver):
+    """只返回本次读房实际请求的数据，名单核对不附赠全房倒计时。"""
+    read = solver.get_agent_from_room.side_effect
+
+    def observe(room=ROOM, read_time_index=None, **kwargs):
+        rows = read(room, read_time_index, **kwargs)
+        for bed in solver.op_data.dorm:
+            bed.name = solver.physical[bed.position[1]]
+        if not (kwargs.get("read_dorm_evidence") or kwargs.get("record_dorm_evidence")):
+            for index, row in enumerate(rows):
+                if index not in (read_time_index or ()):
+                    row.pop("recovery_seconds", None)
+                    if not solver.op_data.mood_calculation_enabled:
+                        row.pop("measured_mood", None)
+        return rows
+
+    solver.get_agent_from_room.side_effect = observe
+    return solver
+
+
+@pytest.mark.parametrize("calculated", [False, True], ids=["measured", "calculated"])
+@pytest.mark.parametrize(
+    "winner, policy, keep",
+    [
+        ("银灰", "default", True),
+        ("陈", "default", False),
+        (None, "default", False),
+        ("银灰", "explicit_beds", False),
+    ],
+)
+def test_release_uses_measured_recipient_with_two_providers(
+    readback_solver, monkeypatch, calculated, winner, policy, keep
+):
+    from arknights_mower.utils.calculated_mood import sync_model
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    solver = readback_solver
+    data = solver.op_data
+    monkeypatch.setattr(config.conf, "test_mood_calculation", calculated)
+    data.add(Operator("安赛尔", ROOM, 0, mood=24, time_stamp=datetime.now()))
+    data.plan[ROOM][0] = Room("安赛尔", "", [])
+    data.operators["红"].mood = 24
+    if policy == "explicit_beds":
+        data.config.dorm_order.append(ROOM + "_low")
+    before = ["安赛尔", "琴柳", "红", "黑角", "银灰"]
+    after = [*before[:3], "陈", "银灰"]
+    solver.physical = before.copy()
+    solver.game_recipient = winner
+    solver.get_agent_from_room()
+    if calculated:
+        for op in data.operators.values():
+            data.mood_model.observe(op.name, op.mood)
+    task = SchedulerTask(
+        task_plan={ROOM: ["Current"] * 3 + ["陈", "Current"]},
+        task_type=TaskTypes.RELEASE_DORM,
+        meta_data="黑角",
+    )
+    solver.task, solver.tasks = task, [task]
+    solver.prepare_release_dorm = MagicMock(return_value=True)
+
+    assert solver.arrange_release_dorm()[0] is not False
+
+    reorders = [t.plan for t in solver.tasks if t.type == TaskTypes.RE_ORDER]
+    assert reorders == ([] if keep else [{ROOM: ["Current"] * 3 + ["银灰", "陈"]}])
+    assert not task.plan and solver.confirms == [after]
+    target = data.operators["银灰"]
+    assert active_recovery_position(data, target) == ((ROOM, 4) if keep else None)
+    assert active_recovery_position(data, data.operators["陈"]) is None
+    if keep:
+        assert [name for name, _, _ in target.dorm_recovery_fixed] == ["安赛尔", "琴柳"]
+        assert [name for name, _, _ in target.dorm_recovery_roster] == after
+    if calculated:
+        assert sync_model(data).single_targets == {}
+
+
+@pytest.mark.parametrize("winner", ["银灰", "陈", None])
+@pytest.mark.parametrize("current", [False, True])
+def test_multi_source_final_read_only_records_the_scheduled_target(
+    readback_solver, winner, current
+):
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    solver = readback_solver
+    data = solver.op_data
+    data.add(Operator("安赛尔", ROOM, 0, mood=24, time_stamp=datetime.now()))
+    data.plan[ROOM][0] = Room("安赛尔", "", [])
+    data.operators["红"].mood = 24
+    solver.physical = ["安赛尔", *FINAL[1:]]
+    solver.game_recipient = winner
+    solver.get_agent_from_room()
+    solver.task.plan = {ROOM: ["Current"] * 5 if current else solver.physical.copy()}
+    solver.get_agent_from_room.reset_mock()
+
+    assert solver.agent_arrange(solver.task.plan) is not False
+
+    assert not solver.task.plan
+    assert solver.get_agent_from_room.call_count == 1
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    assert active_recovery_position(data, data.operators["银灰"]) == (
+        (ROOM, 3) if winner == "银灰" else None
+    )
+    assert all(op.dorm_recovery_attempt is None for op in data.operators.values())
+    assert active_recovery_position(data, data.operators["陈"]) is None
+
+
+@pytest.mark.parametrize("recipient", ["银灰", "陈", None])
+def test_two_source_confirmation_delivered_before_disconnect(
+    readback_solver, recipient
+):
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    solver = readback_solver
+    data = solver.op_data
+    data.add(Operator("安赛尔", ROOM, 0, mood=24, time_stamp=datetime.now()))
+    data.plan[ROOM][0] = Room("安赛尔", "", [])
+    data.operators["红"].mood = 24
+    final = ["安赛尔", *FINAL[1:]]
+    solver.task.plan = {ROOM: final.copy()}
+    confirm = solver.tap_confirm.side_effect
+
+    def deliver(room, plan):
+        confirm(room, plan)
+        solver.game_recipient = recipient
+        raise RuntimeError("确认已送达，结果画面丢失")
+
+    solver.tap_confirm.side_effect = deliver
+    assert solver.agent_arrange(solver.task.plan) is not False
+
+    assert solver.confirms == [final] and not solver.task.plan
+    assert solver.enter_room.call_count == 2
+    assert solver.get_agent_from_room.call_args.kwargs.get("read_dorm_evidence")
+    assert active_recovery_position(data, data.operators["银灰"]) == (
+        (ROOM, 3) if recipient == "银灰" else None
+    )
+
+
+def test_scheduled_resident_can_receive_a_roommates_bonus_despite_own_skill(
+    readback_solver,
+):
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    solver = readback_solver
+    data = solver.op_data
+    data.add(Operator("安赛尔", ROOM, 0, mood=24, time_stamp=datetime.now()))
+    data.add(Operator("波登可", "", mood=8, time_stamp=datetime.now()))
+    data.config.ope_resting_priority.append("波登可")
+    data.plan[ROOM][0] = Room("安赛尔", "", [])
+    data.operators["红"].mood = data.operators["陈"].mood = 24
+    solver.physical = ["安赛尔", "琴柳", "红", "波登可", "陈"]
+    solver.get_agent_from_room()
+    solver.task.plan = {ROOM: solver.physical.copy()}
+    solver.get_agent_from_room.reset_mock()
+
+    assert solver.agent_arrange(solver.task.plan) is not False
+
+    target = data.operators["波登可"]
+    assert active_recovery_position(data, target) == (ROOM, 3)
+    assert solver.get_agent_from_room.call_count == 1
+    solver.tap_confirm.assert_not_called()
+    solver.choose_agent.assert_not_called()
+
+
 def test_later_single_manager_in_free_slot_is_not_proactively_confirmed(solver):
     from arknights_mower.utils.dorm_recovery import recovery_target
 
@@ -1096,13 +1260,80 @@ def test_first_shift_does_not_clear_for_occupant_replaced_by_pending_bed_task(so
     assert len(solver.confirms) == 2
 
 
-def test_same_target_and_only_full_fixed_occupants_needs_no_extra_confirmation(solver):
-    solver.op_data.operators["红"].mood = 24
-    solver.physical = ["杜林", "琴柳", "红", "银灰", ""]
+@pytest.mark.parametrize("calculated", [False, True], ids=["measured", "calculated"])
+@pytest.mark.parametrize("current", [False, True])
+def test_only_unfinished_target_is_recorded_without_confirmation(
+    readback_solver, monkeypatch, calculated, current
+):
+    from arknights_mower.utils.calculated_mood import sync_model
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    solver = readback_solver
+    data = solver.op_data
+    monkeypatch.setattr(config.conf, "test_mood_calculation", calculated)
+    for name in ("陈", "红"):
+        data.operators[name].mood = 24
+    if calculated:
+        for op in data.operators.values():
+            data.mood_model.observe(op.name, op.mood)
+    solver.physical = FINAL.copy()
+    solver.game_recipient = "银灰"
+    solver.get_agent_from_room()
+    if current:
+        solver.task.plan = {ROOM: ["Current"] * 5}
+    solver.get_agent_from_room.reset_mock()
+
+    assert solver.agent_arrange(solver.task.plan) is not False
+
+    target = data.operators["银灰"]
+    assert not solver.task.plan
+    assert solver.get_agent_from_room.call_count == 1
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()
+    assert active_recovery_position(data, target) == (ROOM, 3)
+    assert [name for name, _, _ in target.dorm_recovery_roster] == FINAL
+    if calculated:
+        assert sync_model(data).single_targets == {"琴柳": "银灰"}
+
+
+@pytest.mark.parametrize(
+    "after", ["银灰", "陈", None], ids=["same", "changed", "unknown"]
+)
+def test_only_unfinished_target_in_temporary_roster_is_checked_after_restoration(
+    solver, after
+):
+    from arknights_mower.utils.dorm_recovery import active_recovery_position
+
+    data = solver.op_data
+    data.operators["红"].mood = 24
+    temporary = ["杜林", "琴柳", "红", "银灰", ""]
+    solver.physical = temporary.copy()
     solver.get_agent_from_room()
     assert solver.ensure_dorm_recovery_order(ROOM, FINAL)
+    target = data.operators["银灰"]
+    assert active_recovery_position(data, target) == (ROOM, 3)
+    assert [name for name, _, _ in target.dorm_recovery_roster] == temporary
+    assert solver.task.dorm_recovery_restore == [ROOM] and solver.task.plan == {
+        ROOM: FINAL
+    }
     solver.tap_confirm.assert_not_called()
-    assert not solver.op_data.operators["银灰"].dorm_recovery_room
+
+    confirm = solver.tap_confirm.side_effect
+
+    def restore(room, plan):
+        confirm(room, plan)
+        solver.game_recipient = after
+
+    solver.tap_confirm.side_effect = restore
+    assert solver.agent_arrange(solver.task.plan) is not False
+    assert solver.confirms == [FINAL]
+    assert not solver.task.plan and not solver.task.dorm_recovery_restore
+    assert active_recovery_position(data, target) == (
+        (ROOM, 3) if after == "银灰" else None
+    )
+    assert [name for name, _, _ in target.dorm_recovery_roster] == (
+        FINAL if after == "银灰" else []
+    )
 
 
 def test_readback_with_remaining_competitor_never_marks_success(solver):
@@ -1383,3 +1614,127 @@ def test_retained_full_resident_readback_must_not_compete_with_target(solver):
     arrange(solver)
     assert solver.physical == FINAL
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
+
+
+@pytest.mark.parametrize(
+    "name, boosted, unboosted",
+    [("波登可", 14400, 18783), ("子月", 11676, 14400)],
+)
+@pytest.mark.parametrize("case", ["target", "explicit_beds", "other", "unclear"])
+def test_release_keeps_last_bed_for_measured_target_with_own_skill(
+    readback_solver, name, boosted, unboosted, case
+):
+    from arknights_mower.utils.dorm_recovery import (
+        active_recovery_position,
+        keep_measured_dorm_swap,
+        observed_recovery_recipient,
+    )
+
+    solver = readback_solver
+    data = solver.op_data
+    now = datetime.now()
+    data.add(Operator("安赛尔", ROOM, 0, mood=24, time_stamp=now))
+    data.plan[ROOM][0] = Room("安赛尔", "", [])
+    data.add(Operator(name, "", mood=12, time_stamp=now))
+    data.config.ope_resting_priority.append(name)
+    if case == "explicit_beds":
+        data.config.dorm_order.append(ROOM + "_low")
+    data.operators["红"].mood, data.operators["陈"].mood = 24, 12
+    before = ["安赛尔", "琴柳", "红", "黑角", name]
+    after = [*before[:3], "陈", name]
+    solver.physical = before.copy()
+    solver.get_agent_from_room()
+    read = solver.get_agent_from_room.side_effect
+    last_read = []
+
+    def observe(*args, **kwargs):
+        rows = read(*args, **kwargs)
+        if solver.physical == after:
+            # 两人心情均为 12。子月的两组计时都含自回，只有一组另含室友单回。
+            for row, seconds in zip(
+                rows[3:], (14400, unboosted) if case == "other" else (18783, boosted)
+            ):
+                if "recovery_seconds" in row:
+                    row["recovery_seconds"] = seconds
+            if case == "unclear":
+                rows[3].pop("recovery_seconds", None)
+            last_read[:] = rows
+        return rows
+
+    solver.get_agent_from_room.side_effect = observe
+    task = SchedulerTask(
+        task_type=TaskTypes.RELEASE_DORM,
+        task_plan={ROOM: ["Current"] * 3 + ["陈", "Current"]},
+        meta_data="黑角",
+    )
+    solver.task, solver.tasks = task, [task]
+    solver.prepare_release_dorm = MagicMock(return_value=True)
+
+    assert solver.arrange_release_dorm()[0] is not False
+    assert not task.plan and solver.confirms == [after]
+    assert data.get_current_room(ROOM, True) == after
+    recipient = {"other": "陈", "unclear": None}.get(case, name)
+    assert observed_recovery_recipient(last_read, {}) == recipient
+    swap = ["Current"] * 3 + [name, "陈"]
+    reorders = [t.plan for t in solver.tasks if t.type == TaskTypes.RE_ORDER]
+    assert reorders == ([] if case == "target" else [{ROOM: swap}])
+    position = active_recovery_position(data, data.operators[name])
+    assert position == ((ROOM, 4) if case == "target" else None)
+    if case == "target":
+        assert keep_measured_dorm_swap(data, ROOM, swap)
+        for other_clock in (14400, None):
+            reading = [row.copy() for row in last_read]
+            reading[3]["recovery_seconds"] = other_clock
+            reading[4]["recovery_seconds"] = unboosted
+            assert not keep_measured_dorm_swap(data, ROOM, swap, reading)
+
+
+@pytest.mark.parametrize("current", [False, True], ids=["named", "current"])
+def test_ownership_only_check_preserves_another_residents_deadline(
+    readback_solver, current
+):
+    solver = readback_solver
+    data = solver.op_data
+    solver.physical = FINAL.copy()
+    solver.game_recipient = "银灰"
+    solver.get_agent_from_room()
+    bed = next(bed for bed in data.all_dorms() if bed.position == (ROOM, 4))
+    bed.time = deadline = datetime.now() + timedelta(hours=7)
+    solver.get_agent_from_room.reset_mock()
+    if current:
+        solver.task.plan[ROOM] = ["Current", "Current", "Current", "银灰", "Current"]
+
+    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=False)
+
+    assert not solver.task.plan and solver.get_agent_from_room.call_count == 1
+    assert (bed.name, bed.time) == ("陈", deadline)
+    solver.tap_confirm.assert_not_called()
+
+
+@pytest.mark.parametrize("calculated", [False, True])
+def test_cold_multi_source_dorm_reads_occupants_and_deadlines_together(
+    readback_solver, monkeypatch, calculated
+):
+    solver = readback_solver
+    data = solver.op_data
+    monkeypatch.setattr(config.conf, "test_mood_calculation", calculated)
+    data.add(Operator("安赛尔", ROOM, 0, mood=24, time_stamp=datetime.now()))
+    data.plan[ROOM][0] = Room("安赛尔", "", [])
+    solver.physical = ["安赛尔", *FINAL[1:]]
+    solver.game_recipient = "银灰"
+    for op in data.operators.values():
+        op.current_room, op.current_index = "", -1
+    for bed in data.all_dorms():
+        bed.reset()
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=True)
+    solver.task.plan = {ROOM: solver.physical.copy()}
+
+    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+
+    assert not solver.task.plan
+    solver.get_agent_from_room.assert_called_once()
+    observed = solver.get_agent_from_room.call_args.kwargs
+    assert observed["read_dorm_evidence"] and observed["read_time_index"] == [3, 4]
+    assert data.operators["银灰"].dorm_recovery_room == ROOM
+    solver.choose_agent.assert_not_called()
+    solver.tap_confirm.assert_not_called()

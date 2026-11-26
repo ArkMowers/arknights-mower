@@ -1,14 +1,123 @@
 import { createDefaultConfig, createRoom } from './vendor/domain/defaults'
-import { OPERATORS } from './vendor/domain/operators'
+import { OPERATORS, type OperatorRecord } from './vendor/domain/operators'
+import type { AppConfig } from './vendor/domain/types'
 import { selectUnlockedSkills } from './vendor/domain/operatorInventory'
 import { currentMoraleRates } from './vendor/engine/morale'
 import { evaluateDormitoryRecovery } from './vendor/engine/dormitoryRecovery'
 import { buildRiicGlobalContext, type RiicGlobalContext } from './vendor/engine/globalContext'
 import { eligibleSingleRecoveryTargets, hasSingleRecoverySkill } from './vendor/engine/singleRecoveryEligibility'
-import { MORALE_SKILL_THRESHOLDS, MORALE_RATE_EPSILON, retainedRecoveryTarget } from './vendor/engine/moraleThresholds'
+import { MORALE_SKILL_THRESHOLDS, MORALE_RATE_EPSILON } from './vendor/engine/moraleThresholds'
 import { importMowerJson } from './vendor/workbench/compat/mowerJson'
 
 const byName = new Map(OPERATORS.map(operator => [operator.name, operator]))
+
+type AutomaticTarget = { room: string; target: string; providerPosition: string; targetPosition: string }
+type DormitoryInput = {
+  rooms: Record<string, { singleRecipient?: string }>
+  singleTargets?: Record<string, string>
+  automaticTargets?: Record<string, AutomaticTarget>
+  versions?: Record<string, number>
+}
+
+// The shared evaluator also reads self and room-wide effects from these skills.
+// Omit only their ordinary single-target clause when evaluating an inactive source.
+function withoutOrdinaryBonus(operator: OperatorRecord): OperatorRecord {
+  return {
+    ...operator,
+    skills: operator.skills.map(skill => {
+      if (skill.roomType !== 'DORMITORY') return skill
+      const description = skill.description.replace(/某个干员(?:的心情)?每小时恢复\+[\d.]+.*?(?=[；，]同时|$)/, '')
+      return description === skill.description ? skill : { ...skill, description }
+    }),
+  }
+}
+
+function automaticRoomRecipient(
+  occupants: OperatorRecord[], providers: OperatorRecord[], room: string,
+  previous: Record<string, AutomaticTarget>, position: (id: string) => string, mood: (id: string) => number,
+) {
+  const eligible = new Set<string>()
+  const retained = new Set<string>()
+  for (const provider of providers) {
+    const cached = previous[provider.charId]
+    const sameBeds = cached?.room === room && cached.providerPosition === position(provider.charId)
+      && cached.targetPosition === position(cached.target)
+    const candidates = eligibleSingleRecoveryTargets(occupants, provider.charId, id => {
+      const value = mood(id)
+      // A missing baseline alone cannot release a previously occupied single-target slot.
+      return sameBeds && id === cached.target && Number.isNaN(value) ? 0 : value
+    })
+    for (const { charId } of candidates) {
+      if (sameBeds && cached.target === charId) retained.add(charId)
+      if (Number.isFinite(mood(charId))) eligible.add(charId)
+    }
+  }
+  if (retained.size === 1) return [...retained][0]
+  const ids = occupants.map(op => op.charId).filter(id => eligible.has(id))
+  return ids.sort((a, b) => mood(a) - mood(b))[0]
+}
+
+function dormitoryRates(
+  config: AppConfig, index: number, values: Map<string, number>, context: RiicGlobalContext,
+  input: DormitoryInput, automaticTargets: Record<string, AutomaticTarget>, unknown: Set<string>,
+) {
+  const room = `dormitory_${index + 1}`
+  const records = config.operatorRecords!
+  const occupants = config.facilityOperatorIds.dormitories[index].map(id => records[id])
+  const providers = occupants.filter(hasSingleRecoverySkill)
+  const mood = (id: string) => values.get(id) ?? Number.NaN
+  const position = (id: string) => {
+    const slot = occupants.findIndex(operator => operator.charId === id)
+    return `${room}:${slot}:${input.versions?.[occupants[slot]?.name] ?? 0}`
+  }
+  const candidates = occupants.filter(operator => {
+    const value = mood(operator.charId)
+    return (Number.isNaN(value) || value < 24 - MORALE_RATE_EPSILON)
+      && !operator.skills.some(skill => skill.buffId === 'dorm_recExcludeOther[000]')
+      && providers.some(provider => provider !== operator)
+  })
+  const observed = candidates.find(operator => operator.name === input.rooms[room].singleRecipient)
+  const observedTargets = new Set(providers.map(provider =>
+    candidates.find(operator => operator !== provider && operator.name === input.singleTargets?.[provider.name])?.charId,
+  ).filter((id): id is string => id !== undefined))
+  const target = observed?.charId ?? (observedTargets.size === 1 ? [...observedTargets][0] : undefined)
+
+  const evaluate = (scenario: AppConfig, targets?: ReadonlyMap<string, string>, moods = values) =>
+    evaluateDormitoryRecovery(scenario, index, moods, config.facilities.dormitories[index] * 1000, targets, false, context)
+  if (!providers.length || !candidates.length) return evaluate(config)
+
+  const recipient = target ?? automaticRoomRecipient(occupants, providers, room, input.automaticTargets ?? {}, position, mood)
+  if (!recipient) return evaluate(config)
+  const possibleSources = providers.filter(provider => provider.charId !== recipient)
+  const knownSources = target ? possibleSources.filter(provider => input.singleTargets?.[provider.name] === records[target].name) : []
+  const sources = knownSources.length ? knownSources : possibleSources
+  if (!target) {
+    for (const provider of sources) {
+      automaticTargets[provider.charId] = {
+        room, target: recipient, providerPosition: position(provider.charId), targetPosition: position(recipient),
+      }
+    }
+  }
+  const targets = new Map(sources.map(source => [source.charId, recipient]))
+  if (providers.length === 1 && Number.isFinite(mood(recipient))) return evaluate(config, targets)
+  const inactive = { ...records }
+  for (const provider of providers) inactive[provider.charId] = withoutOrdinaryBonus(provider)
+  if (!Number.isFinite(mood(recipient))) {
+    // Count the unfinished recipient for shared effects. Only residents with a baseline publish a rate.
+    return evaluate({ ...config, operatorRecords: inactive }, undefined, new Map(values).set(recipient, 0))
+  }
+
+  // Compare the full room rate with each possible source supplying its ordinary bonus alone.
+  const scenarios = sources.map(provider => evaluate(
+    { ...config, operatorRecords: { ...inactive, [provider.charId]: provider } }, targets,
+  ))
+  const warnings = new Set(scenarios.flatMap(result => result.unquantified))
+  if (scenarios.some(result => result.rates.get(recipient) !== scenarios[0].rates.get(recipient))) {
+    unknown.add(recipient)
+    warnings.add(`${records[recipient].name}的单回来源尚未确定，可能的恢复速率不同`)
+  }
+  return { ...scenarios[0], unquantified: [...warnings] }
+}
 
 // 共享运行时仅接收 JSON；嵌入式引擎没有浏览器的克隆 API。
 if (typeof globalThis.structuredClone !== 'function') {
@@ -86,31 +195,12 @@ export function rates(input: any) {
   }
   if (adjusted) result = currentMoraleRates(config)
   const values = new Map(Object.entries(config.operatorMorale))
-  const targets = new Map<string, string>()
-  for (const [provider, target] of Object.entries(input.singleTargets ?? {})) {
-    const p = byName.get(provider), t = byName.get(target as string)
-    if (p && t) targets.set(p.charId, t.charId)
-  }
-  const automaticTargets: Record<string, any> = {}
+  const automaticTargets: Record<string, AutomaticTarget> = {}
   let recoveryContext: RiicGlobalContext | undefined
   for (let index = 0; index < 4; index++) {
     if (!config.facilities.dormitories[index]) continue
     recoveryContext ??= buildRiicGlobalContext(config, undefined, values)
-    const room = `dormitory_${index + 1}`
-    const occupants = config.facilityOperatorIds.dormitories[index].map(id => config.operatorRecords![id]!)
-    const position = (id: string) => `${room}:${occupants.findIndex(operator => operator.charId === id)}:${input.versions?.[names.get(id) ?? ''] ?? 0}`
-    for (const provider of occupants) {
-      if (!hasSingleRecoverySkill(provider)) continue
-      const candidates = eligibleSingleRecoveryTargets(occupants, provider.charId, id => values.get(id) ?? Number.NaN).map(operator => operator.charId)
-      if (!candidates.includes(targets.get(provider.charId)!)) {
-        const target = retainedRecoveryTarget(candidates, input.automaticTargets?.[provider.charId], room, provider.charId, position, id => values.get(id) ?? Number.NaN)
-        if (target) {
-          targets.set(provider.charId, target)
-          automaticTargets[provider.charId] = { room, target, providerPosition: position(provider.charId), targetPosition: position(target) }
-        }
-      }
-    }
-    const recovery = evaluateDormitoryRecovery(config, index, values, config.facilities.dormitories[index] * 1000, targets, false, recoveryContext)
+    const recovery = dormitoryRates(config, index, values, recoveryContext, input, automaticTargets, unknown)
     for (const [id, rate] of recovery.rates) result.rates[id] = -rate
     result.unquantified.push(...recovery.unquantified)
   }

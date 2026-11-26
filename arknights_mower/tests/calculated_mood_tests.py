@@ -143,6 +143,166 @@ def enable(solver, monkeypatch):
     return data
 
 
+def observed_single_room(solver, monkeypatch, second, *, growth=None):
+    from arknights_mower.utils.dorm_recovery import (
+        record_recovery_target,
+        recovery_managers,
+    )
+    from arknights_mower.utils.operators import Operator
+
+    data = enable(solver, monkeypatch)
+    if growth is not None:
+        monkeypatch.setattr(
+            "arknights_mower.utils.mastery_recommendation.get_cultivate_snapshot",
+            lambda: growth,
+        )
+    room = "dormitory_1"
+    data.facility_levels[room] = 5
+    for name in data.get_current_room(room, True):
+        if name:
+            data.operators[name].current_room = ""
+    names = ["安赛尔", second, "芬", "香草", "黑角"]
+    for index, (name, mood) in enumerate(zip(names, (24, 24, 12, 4, 24), strict=True)):
+        data.add(
+            Operator(
+                name,
+                "",
+                current_room=room,
+                current_index=index,
+                mood=mood,
+                time_stamp=NOW,
+            )
+        )
+        data.mood_model.observe(name, mood, NOW)
+    assert data.get_current_room(room, True) == names
+    stages = calculated_mood.known_operator_stages(data)
+    managers = recovery_managers(data, room, names, stages=stages)
+    record_recovery_target(data, room, data.operators["芬"], 2, managers, names, stages)
+    return data
+
+
+@pytest.mark.parametrize(
+    "second,expected_rate,targets",
+    [("夜刀", -4.55, {"安赛尔": "芬"}), ("芙蓉", -4.55, {}), ("琴柳", None, {})],
+)
+def test_sync_model_forecasts_one_observed_recipient(
+    solver, monkeypatch, second, expected_rate, targets
+):
+    data = observed_single_room(solver, monkeypatch, second)
+    value = sync_model(data, NOW)
+    assert value.rooms["dormitory_1"]["singleRecipient"] == "芬"
+    assert value.single_targets == targets
+    assert data.calculated_mood("芬", NOW) == 12
+    assert data.calculated_mood_rate("芬", NOW) == expected_rate
+    assert data.calculated_mood_rate("香草", NOW) == -4
+    assert data.calculated_mood_deadline("芬", 12, NOW) == NOW
+    assert data.calculated_mood_deadline("香草", 8, NOW) == NOW + timedelta(hours=1)
+    deadline = data.calculated_mood_deadline("芬", 16, NOW)
+    if expected_rate is None:
+        assert deadline is None
+    else:
+        assert deadline == pytest.approx(
+            NOW + timedelta(hours=4 / -expected_rate), abs=timedelta(microseconds=1)
+        )
+    assert value.automatic_targets == {}
+    assert data.operators["芬"].mood == 12 and data.operators["香草"].mood == 4
+
+
+def test_new_room_read_overrides_a_cached_recipient_after_promotion(
+    solver, monkeypatch
+):
+    from arknights_mower.utils.dorm_recovery import (
+        record_recovery_target,
+        recovery_managers,
+    )
+    from arknights_mower.utils.schedule_roster import _operator_ids_by_name
+
+    operator_id = next(iter(_operator_ids_by_name()["波登可"]))
+    growth = {
+        "data": {"characters": [{"id": operator_id, "evolvePhase": 0, "level": 1}]}
+    }
+    data = observed_single_room(solver, monkeypatch, "波登可", growth=growth)
+    room = "dormitory_1"
+    assert data.calculated_mood_rate("芬", NOW) == pytest.approx(-4.55)
+    assert data.calculated_mood_rate("香草", NOW) == -4
+    assert data.mood_model.single_targets == {}
+
+    promoted = {
+        "data": {"characters": [{"id": operator_id, "evolvePhase": 1, "level": 1}]}
+    }
+    monkeypatch.setattr(
+        "arknights_mower.utils.mastery_recommendation.get_cultivate_snapshot",
+        lambda: promoted,
+    )
+    assert data.calculated_mood_rates()["香草"] is None
+    assert data.mood_model.automatic_targets
+    assert "singleRecipient" not in data.mood_model.rooms[room]
+
+    stages = calculated_mood.known_operator_stages(data)
+    names = data.get_current_room(room, True)
+    record_recovery_target(
+        data,
+        room,
+        data.operators["芬"],
+        2,
+        recovery_managers(data, room, names, stages=stages),
+        names,
+        stages,
+    )
+    rates = data.calculated_mood_rates()
+    assert rates["芬"] is None and rates["香草"] == pytest.approx(-4.15)
+    assert data.mood_model.rooms[room]["singleRecipient"] == "芬"
+    assert data.mood_model.single_targets == data.mood_model.automatic_targets == {}
+
+
+@pytest.mark.parametrize("minutes", [0, 30])
+def test_dorm_move_does_not_reuse_a_baseline_after_unknown_recovery(
+    solver, monkeypatch, minutes
+):
+    data = observed_single_room(solver, monkeypatch, "琴柳")
+    value = sync_model(data, NOW)
+    assert data.calculated_mood_rate("芬", NOW) is None
+    at = NOW + timedelta(minutes=minutes)
+    sync_model(data, at)
+    data.operators["琴柳"].current_index = 4
+    data.operators["黑角"].current_index = 1
+    assert "singleRecipient" not in value.rooms["dormitory_1"]
+    assert "singleRecipient" not in sync_model(data, at).rooms["dormitory_1"]
+    assert data.calculated_mood("芬", at) == (None if minutes else 12)
+    if minutes:
+        assert data.calculated_mood_deadline("芬", 20, at) is None
+        assert (data.operators["芬"].mood, data.operators["芬"].time_stamp) == (12, NOW)
+        restored = pickle.loads(pickle.dumps(value)).restore()
+        assert restored.value("芬", at) is None
+        assert restored.observed["芬"] == NOW
+        assert value.observe("芬", 14.3, at)
+        assert data.calculated_mood("芬", at) == 14.3
+
+
+def test_automatic_recipient_stays_unknown_alone_across_forecast_steps(
+    solver, monkeypatch
+):
+    data = observed_single_room(solver, monkeypatch, "琴柳")
+    data.operators["芬"].clear_dorm_recovery_target()
+    value = sync_model(data, NOW)
+    assert data.calculated_mood_rate("香草", NOW) is None
+    at = NOW + timedelta(hours=1)
+    assert data.calculated_mood("芬", at) == 16
+    assert data.calculated_mood_rate("芬", at) == -4
+    assert data.calculated_mood("香草", at) is None
+    assert data.calculated_mood_deadline("芬", 16, NOW) == at
+    assert value.at == NOW and value.moods["芬"] == 12
+    assert (
+        value.single_targets == {}
+        and "singleRecipient" not in value.rooms["dormitory_1"]
+    )
+    sync_model(data, at)
+    assert data.calculated_mood("芬", at) == 16
+    assert value.observe("香草", 24, at)
+    assert data.calculated_mood_rate("芬", at) is None
+    assert data.calculated_mood("香草", at) == 24
+
+
 def test_projection_moves_same_index_between_rooms_and_keeps_live_roster(
     solver, monkeypatch
 ):
