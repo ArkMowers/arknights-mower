@@ -229,3 +229,19 @@ def test_foreign_layout_can_recover_through_scaled_trade_ocr():
     solver._product_ocr_text = Mock(return_value="贸易站3级后可切换")
     assert solver._read_trade_product_card() == ("lmd", False)
     solver._product_ocr_text.assert_called_once_with(((933, 560), (1206, 693)))
+
+
+@pytest.mark.parametrize(("crop", "matches"), [(0, True), (1, False), (2, False)])
+def test_trade_order_pause_banner_distinguishes_recorded_pages(crop, matches):
+    crops = bytes2img((FIXTURES / "trade_order_status_crops.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[351:411, 405:725] = crops[crop * 60 : (crop + 1) * 60]
+    assert bool(product_recognition.trade_order_is_paused(frame)) is matches
+
+
+def test_orange_banner_without_pause_text_does_not_skip_countdown():
+    crops = bytes2img((FIXTURES / "trade_order_status_crops.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[351:411, 405:725] = crops[:60]
+    frame[366:391, 465:660] = frame[374, 430]
+    assert not product_recognition.trade_order_is_paused(frame)

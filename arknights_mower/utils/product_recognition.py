@@ -105,3 +105,19 @@ def trade_strategy_card(frame):
         if _word_matches(words, other, 2, 0.93, rows=2):
             raise RecognizeError("贸易站订单名称与卡片底色不一致")
     return None
+
+
+def trade_order_is_paused(frame):
+    if getattr(frame, "shape", None) != (1080, 1920, 3):
+        return False
+    red, green, blue, _ = cv2.mean(frame[374:386, 430:451])
+    if not (red >= 195 and 65 <= green <= 180 and blue <= 75):
+        return False
+    try:
+        template = loadres("room/order_acquisition_paused", gray=True)
+    except (OSError, cv2.error):
+        return False
+    if getattr(template, "shape", None) != (25, 195) or np.ptp(template) == 0:
+        return False
+    label = cv2.cvtColor(frame[361:397, 460:667], cv2.COLOR_RGB2GRAY)
+    return cv2.matchTemplate(label, template, cv2.TM_CCOEFF_NORMED).max() >= 0.93

@@ -5752,15 +5752,25 @@ class BaseSchedulerSolver(
         return True
 
     def _read_room_mood(
-        self, room, *, force_mood=False, strict_observation=False, pending_order=None
+        self,
+        room,
+        *,
+        force_mood=False,
+        strict_observation=False,
+        pending_order=None,
+        observed_facilities=None,
     ):
         """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
         if room == "recycle" and getattr(self, "_recycle_unavailable", False) is True:
             return
         observation = {} if pending_order is None else pending_order
-        capture = room.startswith("room_") and (
-            self._product_switching_enabled()
-            or getattr(self.op_data, "mood_calculation_enabled", False)
+        capture = (
+            room.startswith("room_")
+            and room not in (observed_facilities or ())
+            and (
+                self._product_switching_enabled()
+                or getattr(self.op_data, "mood_calculation_enabled", False)
+            )
         )
         with ExitStack() as observation_scope:
             observation_args = {}
@@ -5779,6 +5789,11 @@ class BaseSchedulerSolver(
                     else None,
                     **({"force_mood": True} if force_mood else {}),
                     **({"strict_observation": True} if strict_observation else {}),
+                    **(
+                        {"observed_facilities": observed_facilities}
+                        if observed_facilities is not None
+                        else {}
+                    ),
                     **observation_args,
                 )
             except BaseException:
@@ -13575,7 +13590,9 @@ class BaseSchedulerSolver(
                 self._active_order_read_log = previous
 
     def _read_run_order_time(self, room, *, read_mood=False) -> datetime | None:
-        """读取跑单时刻；确认订单暂停时，本轮不安排跑单。"""
+        """读取跑单时刻，确认订单暂停时本轮不安排跑单。"""
+        from arknights_mower.utils.product_recognition import trade_order_is_paused
+
         finish_mood_calculation()
         # 点击进入该房间
         self.enter_room(room)
@@ -13593,7 +13610,9 @@ class BaseSchedulerSolver(
         # 进入房间详情
         observed_product = None
         try:
-            observed_product = self._observe_trade_strategy(room, interval=1)
+            observed_product = self._observe_trade_strategy(
+                room, room_product=pending_order.get("room_product"), retry_after=3
+            )
         finally:
             if pending_order.get("order_pending"):
                 pending_order["state_summary"] = (
@@ -13610,24 +13629,30 @@ class BaseSchedulerSolver(
         with log_parent_context({"type": "order-read", "id": cohort["id"]}):
             if observed_product:
                 logger.info(observed_product[1], extra={"log_room": room})
-            # 正常倒计时用数字模板读取，失败后才 OCR 确认订单暂停。
-            remaining = self.read_time(
-                self._run_order_time_region(),
-                None,
-                use_digit_reader=True,
-            )
-            if remaining is None:
-                status_scope = (
-                    (self.recog.w * 405 // 1920, self.recog.h * 350 // 1080),
-                    (self.recog.w * 725 // 1920, self.recog.h * 410 // 1080),
+            paused = trade_order_is_paused(getattr(self.recog, "img", None))
+            remaining = None
+            if not paused:
+                remaining = self.read_time(
+                    self._run_order_time_region(), None, use_digit_reader=True
                 )
-                if "订单暂停获取中" in self._product_ocr_text(status_scope):
+                if remaining is None:
+                    status_scope = (
+                        (self.recog.w * 405 // 1920, self.recog.h * 350 // 1080),
+                        (self.recog.w * 725 // 1920, self.recog.h * 410 // 1080),
+                    )
+                    paused = trade_order_is_paused(
+                        getattr(self.recog, "img", None)
+                    ) or ("订单暂停获取中" in self._product_ocr_text(status_scope))
+            if remaining is None:
+                if paused:
                     logger.info(
                         f"房间 {self.translate_room(room)} 订单暂停获取，检查是否缺少进驻干员"
                     )
                     if not read_mood:
                         self.scene_graph_navigation(Scene.INFRA_DETAILS)
-                        self._read_room_mood(room, force_mood=True)
+                        self._read_room_mood(
+                            room, force_mood=True, observed_facilities={room}
+                        )
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
                     self._resolve_order_read_log(cohort, room, "paused")
                     return None
@@ -14933,11 +14958,17 @@ class BaseSchedulerSolver(
             and defer_trade_order
             and facility_observation is not None
         )
+        if facility == "trade" and panel == "open":
+            occupancy = read_room_occupancy(getattr(self.recog, "gray", None))
+            if occupancy is not None and occupancy[1] in (1, 2):
+                room_product = "lmd"
         if read_with_countdown or (
             after_roster is not None and panel == "open" and not room_product
         ):
             if read_with_countdown:
                 facility_observation["order_pending"] = True
+                if room_product:
+                    facility_observation["room_product"] = room_product
             else:
                 after_roster.update(
                     facility=facility,
@@ -14981,7 +15012,7 @@ class BaseSchedulerSolver(
     ):
         observed_product = None
         try:
-            if facility == "trade":
+            if facility == "trade" and not room_product:
                 observed_product = self._observe_trade_strategy(room, retry_after=3)
             else:
                 if not room_product:
@@ -15660,14 +15691,17 @@ class BaseSchedulerSolver(
             page_template="order_label",
         )
 
-    def _observe_trade_strategy(self, room, **navigation):
+    def _observe_trade_strategy(self, room, *, room_product=None, **navigation):
         self._wait_drone_interface(
             accelerate_template="bill_accelerate",
             page_template="order_label",
             **navigation,
         )
         return self._cache_facility_state_from_current_page(
-            room, "trade", defer_log=True
+            room,
+            "trade",
+            defer_log=True,
+            **({"room_product": room_product} if room_product else {}),
         )
 
     def _read_trade_product_card(self) -> tuple[str, bool]:
@@ -15720,7 +15754,7 @@ class BaseSchedulerSolver(
                 product = room_product or self.read_manufacture_product()
                 label = MANUFACTURE_PRODUCTS[product].name
             else:
-                product, _ = self._read_trade_product_card()
+                product = room_product or self._read_trade_product_card()[0]
                 label = TRADE_PRODUCTS[product].strategy_name
             self._cache_facility_state(room, facility, product)
             description = "识别产物" if facility == "manufacture" else "识别订单类型"
@@ -19910,7 +19944,7 @@ class BaseSchedulerSolver(
                 )
                 if defer_trade_order:
                     observation_args["defer_trade_order"] = True
-            elif observed_facilities is not None and self._ordinary_work_room(room):
+            elif observed_facilities is not None and room.startswith("room_"):
                 observation_args["after_roster"] = after_roster
             observed = self.refresh_facility_state(room, **observation_args)
             if observed and observed_facilities is not None:

@@ -984,6 +984,25 @@ def test_order_resumes_after_an_inactive_page_without_losing_room_eligibility(so
     solver.double_read_time.assert_not_called()
 
 
+def test_confirmed_pause_skips_digit_retries_and_reuses_order_observation(
+    solver, monkeypatch
+):
+    from arknights_mower.utils import product_recognition
+
+    room = "room_1_1"
+    use_order_pages(solver, {room: "paused"})
+    monkeypatch.setattr(
+        product_recognition, "trade_order_is_paused", lambda frame: True, raising=False
+    )
+    assert solver.get_run_order_time(room) is None
+
+    solver.read_time.assert_not_called()
+    solver._product_ocr_text.assert_not_called()
+    solver.tap.assert_called_once()
+    assert solver.get_agent_from_room.call_args.kwargs["observed_facilities"] == {room}
+    assert solver.scene() == Scene.INFRA_MAIN
+
+
 @pytest.mark.parametrize("state", ["active", "active_without_button", "unknown"])
 def test_valid_countdown_admits_order_without_requiring_accelerate_button(
     solver, state
