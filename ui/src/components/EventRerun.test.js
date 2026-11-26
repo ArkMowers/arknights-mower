@@ -47,6 +47,7 @@ it('reads the current opening and displays each ordinary stage outcome', async (
   expect(panel.event.value.key).toBe(live.event.key)
   expect(panel.progress.value['OS-1']).toBe('completed')
   expect(panel.progress.value['OS-10']).toBe('attempted')
+  expect(panel.failureReasons.value).toEqual({})
 })
 
 it('saves and clears a completion for the displayed opening', async () => {
@@ -74,4 +75,47 @@ it('refreshes conflicting edits and prevents changes during a battle', async () 
   expect(panel.progress.value['OS-10']).toBe('running')
   await panel.setCompleted('OS-10', true)
   expect(state.client.patch).toHaveBeenCalledTimes(1)
+})
+
+it.each([false, true])(
+  'keeps the failed state as the edit precondition and clears its reason (completed=%s)',
+  async (completed) => {
+    state.client.get.mockResolvedValueOnce({
+      data: {
+        ...live,
+        progress: { 'OS-10': 'failed' },
+        failure_reasons: { 'OS-10': '未能确认关卡详情' }
+      }
+    })
+    await panel.refreshStatus()
+    expect(panel.failureReasons.value['OS-10']).toBe('未能确认关卡详情')
+    const progress = completed ? { 'OS-10': 'completed' } : {}
+    state.client.patch = vi
+      .fn()
+      .mockResolvedValue({ data: { ...live, progress, failure_reasons: {} } })
+    await panel.setCompleted('OS-10', completed)
+    expect(state.client.patch).toHaveBeenCalledWith(expect.stringMatching(/event-rerun$/), {
+      event_key: live.event.key,
+      stage: 'OS-10',
+      expected: 'failed',
+      completed
+    })
+    expect(panel.progress.value).toEqual(progress)
+    expect(panel.failureReasons.value).toEqual({})
+  }
+)
+
+it('clears prior failure reasons on refresh when the event ends or a response lacks reasons', async () => {
+  state.client.get
+    .mockResolvedValueOnce({
+      data: { ...live, progress: { 'OS-10': 'failed' }, failure_reasons: { 'OS-10': '未通过关卡' } }
+    })
+    .mockResolvedValueOnce({ data: { ...live, progress: { 'OS-10': 'failed' } } })
+    .mockResolvedValueOnce({ data: { event: null, progress: {} } })
+  await panel.refreshStatus()
+  await panel.refreshStatus()
+  expect(panel.progress.value['OS-10']).toBe('failed')
+  expect(panel.failureReasons.value).toEqual({})
+  await panel.refreshStatus()
+  expect(panel.event.value).toBe(null)
 })

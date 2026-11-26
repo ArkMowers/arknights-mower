@@ -8,6 +8,7 @@ const axios = inject('axios')
 const statusUrl = `${import.meta.env.VITE_HTTP_URL || ''}/stage/event-rerun`
 const event = ref(null)
 const progress = ref({})
+const failureReasons = ref({})
 const loaded = ref(false)
 const loadError = ref('')
 const saving = ref(false)
@@ -18,6 +19,7 @@ let timer
 function applyStatus(data) {
   event.value = data.event
   progress.value = data.progress
+  failureReasons.value = data.failure_reasons ?? {}
   loadError.value = ''
 }
 
@@ -78,15 +80,35 @@ watch(() => resourceVersion.info.current_version, refreshStatus)
   <template v-else>
     <n-text>{{ event.name }}</n-text>
     <n-flex>
-      <StageProgressButton
-        v-for="stage in event.stages"
-        :key="stage.code"
-        :stage="stage.code"
-        :status="progress[stage.code] || 'pending'"
-        :disabled="saving"
-        @set-completed="setCompleted(stage.code, $event)"
-      />
+      <div v-for="stage in event.stages" :key="stage.code" class="rerun-stage">
+        <StageProgressButton
+          :stage="stage.code"
+          :status="progress[stage.code] || 'pending'"
+          :disabled="saving"
+          @set-completed="setCompleted(stage.code, $event)"
+        />
+        <n-text
+          v-if="progress[stage.code] === 'failed' && failureReasons[stage.code]"
+          type="warning"
+          class="rerun-failure"
+        >
+          {{ failureReasons[stage.code] }}
+        </n-text>
+      </div>
     </n-flex>
   </template>
   <n-alert v-if="saveError" type="error">{{ saveError }}</n-alert>
 </template>
+
+<style scoped>
+.rerun-stage {
+  max-width: 100%;
+}
+.rerun-failure {
+  display: block;
+  max-width: 26em;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+</style>

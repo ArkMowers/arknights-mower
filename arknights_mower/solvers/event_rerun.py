@@ -30,28 +30,22 @@ def pending_rerun(scheduler, deadline):
     except (OSError, ValueError, sqlite3.Error):
         logger.exception("读取复刻SS活动关卡或进度失败，本轮继续执行周计划")
         return None
-    fingerprint = (event["key"], settings.use_sanity_potion)
-    blocked_key, blocked = getattr(scheduler, "event_rerun_blocked", (None, set()))
-    if blocked_key != fingerprint:
-        blocked = set()
-        scheduler.event_rerun_blocked = fingerprint, blocked
-
     for stage in event["stages"]:
         code = stage["code"]
-        if (
-            code not in progress
-            and code not in blocked
-            and stage["start_ts"] <= event["now"] < stage["end_ts"]
-        ):
-            return event, stage, settings.model_copy(deep=True), blocked, observed_at
+        if code not in progress and stage["start_ts"] <= event["now"] < stage["end_ts"]:
+            return event, stage, settings.model_copy(deep=True), observed_at
     return None
 
 
-def _play_ordinary(scheduler, stage, settings, prepare, claim, complete):
+def _play_ordinary(scheduler, stage, settings, prepare, claim, complete, fail):
     navigator = NavigationSolver(scheduler.device, scheduler.recog)
     with device_io_budget(prepare):
-        if not navigator.run(stage["code"]) or not navigator.confirm_selected_stage():
-            return "blocked"
+        if not navigator.run(stage["code"]):
+            fail("未能导航到目标关卡")
+            return
+        if not navigator.confirm_selected_stage():
+            fail("未能在详情页确认目标关卡")
+            return
 
     battle_started = False
 
@@ -71,12 +65,14 @@ def _play_ordinary(scheduler, stage, settings, prepare, claim, complete):
             use_sanity_potion=settings.use_sanity_potion,
             before_single_battle=start_single_battle,
             on_single_battle_settlement=complete,
+            on_single_battle_failure=fail,
         )
-    if result["executed_runs"]:
-        return "completed"
-    if result["sanity_drain"]:
+    if result["executed_runs"] and battle_started:
+        return
+    if result["sanity_drain"] or result.get("stopped_by_deadline"):
         return "defer"
-    return "blocked"
+    if not battle_started:
+        fail("未能完成单次代理作战准备")
 
 
 def run_event_rerun(scheduler, deadline) -> bool | None:
@@ -87,7 +83,7 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
     started_any = False
 
     while pending is not None:
-        event, stage, settings, blocked, observed_at = pending
+        event, stage, settings, observed_at = pending
         key, code = event["key"], stage["code"]
 
         def available():
@@ -135,27 +131,42 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
         def complete(key=key, code=code):
             record.complete_event_rerun_stage(key, code)
 
+        def fail(reason):
+            if already_claimed or (not claimed and not can_start()):
+                return
+            record.fail_event_rerun_stage(key, code, reason, attempted=claimed)
+
         try:
             with record.event_rerun_execution(key, code) as active:
+                outcome = None
                 if active:
-                    outcome = _play_ordinary(
-                        scheduler, stage, settings, prepare, claim, complete
-                    )
-                else:
-                    outcome = "skipped"
+                    try:
+                        outcome = _play_ordinary(
+                            scheduler, stage, settings, prepare, claim, complete, fail
+                        )
+                    except (
+                        MowerExit,
+                        SharedADBError,
+                        DeviceRecoveryError,
+                        InterruptedError,
+                        sqlite3.Error,
+                    ):
+                        raise
+                    except Exception:
+                        logger.exception("复刻SS活动关卡 %s 未完成", code)
+                        if not claimed:
+                            fail("准备关卡时发生异常，详情请查看日志")
         except (MowerExit, SharedADBError, DeviceRecoveryError):
             raise
         except InterruptedError:
             started_any |= claimed
             break
-        except Exception:
-            logger.exception("复刻SS活动关卡 %s 未完成", code)
-            outcome = "blocked"
+        except sqlite3.Error:
+            logger.exception("读写复刻SS活动关卡 %s 进度失败", code)
+            started_any |= claimed
+            break
         started_any |= claimed
         if outcome == "defer" or not can_start():
             break
-        if outcome == "blocked" and not claimed and not already_claimed:
-            logger.warning("复刻SS活动关卡 %s 未能开始", code)
-            blocked.add(code)
         pending = pending_rerun(scheduler, deadline)
     return started_any

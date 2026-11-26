@@ -804,7 +804,8 @@ export function createPreviewAdapter(data, requests = []) {
       name: '雪山降临1101 · 复刻',
       stages: Array.from({ length: 10 }, (_, i) => ({ code: `OS-${i + 1}` }))
     },
-    progress: { 'OS-1': 'completed', 'OS-3': 'attempted' },
+    progress: { 'OS-1': 'completed', 'OS-3': 'attempted', 'OS-7': 'failed' },
+    failure_reasons: { 'OS-7': '未能在地图上找到目标关卡' },
     stage_seconds: 240
   }
   const previousMonthEnd = previewSklandDate(`${data.skland.today.slice(0, 7)}-01`, -1)
@@ -1086,6 +1087,7 @@ export function createPreviewAdapter(data, requests = []) {
           fail(config, '关卡状态无效')
         if ((rerunStatus.progress[body.stage] || 'pending') !== body.expected)
           fail(config, '关卡状态已变更，请刷新后重试', 409)
+        delete rerunStatus.failure_reasons[body.stage]
         if (body.completed) rerunStatus.progress[body.stage] = 'completed'
         else delete rerunStatus.progress[body.stage]
       }

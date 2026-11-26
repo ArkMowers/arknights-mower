@@ -14,7 +14,7 @@ Base work can interrupt a rerun before all selected stages have settled. Restart
 
 ## Proposal
 
-Offer an opt-in stage-plan setting that runs all ordinary battles once per active SS rerun through local operation. EX-8 raids use the existing Copilot workflow. Save each attempt by instance, activity opening and stage. Start a stage while the scheduling window and the stage are still open. Apply the scheduling deadline again after that stage settles.
+Offer an opt-in stage-plan setting that runs all ordinary battles once per active SS rerun through local operation. EX-8 raids use the existing Copilot workflow. Save progress by instance, activity opening and stage. Show the reason for a confirmed failure and let the user reset the stage to pending or mark it completed. Keep started battles with unknown outcomes awaiting confirmation. Start a stage while the scheduling window and the stage are still open. Apply the scheduling deadline again after that stage settles.
 
 ## Alternatives considered
 

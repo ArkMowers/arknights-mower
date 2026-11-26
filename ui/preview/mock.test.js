@@ -87,6 +87,22 @@ describe('offline preview', () => {
     await expect(client.patch(url, change)).rejects.toMatchObject({ response: { status: 409 } })
   })
 
+  it.each([false, true])(
+    'updates a failed rerun stage and clears its reason (completed=%s)',
+    async (completed) => {
+      const client = axios.create({ adapter: createPreviewAdapter(createPreviewData({})) })
+      const url = '/stage/event-rerun'
+      const { data } = await client.get(url)
+      expect(data.progress['OS-7']).toBe('failed')
+      expect(data.failure_reasons['OS-7']).toBeTruthy()
+      const change = { event_key: data.event.key, stage: 'OS-7', expected: 'failed', completed }
+      const saved = (await client.patch(url, change)).data
+      expect(saved.progress['OS-7'] || 'pending').toBe(completed ? 'completed' : 'pending')
+      expect(saved.failure_reasons).not.toHaveProperty('OS-7')
+      expect((await client.get(url)).data).toEqual(saved)
+    }
+  )
+
   it('keeps depot choices across independent edits and ignores a later migration', async () => {
     const data = createPreviewData({ theme: 'light' })
     const client = axios.create({ adapter: createPreviewAdapter(data) })

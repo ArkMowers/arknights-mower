@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import datetime, timedelta
 from threading import Event
 from types import SimpleNamespace
@@ -132,7 +133,7 @@ def test_budget_is_checked_before_each_claim_and_completion_survives_restart(
 
     owner.deadline += timedelta(seconds=10)
 
-    def fight(owner, stage, settings, prepare, claim, complete):
+    def fight(owner, stage, settings, prepare, claim, complete, fail):
         assert prepare() > 0
         assert claim()
         clock.current += timedelta(minutes=5)
@@ -155,7 +156,7 @@ def test_navigation_reaching_scheduler_deadline_keeps_stage_pending(
 ):
     owner, clock = scheduler
 
-    def prepare_stage(owner, stage, settings, prepare, claim, complete):
+    def prepare_stage(owner, stage, settings, prepare, claim, complete, fail):
         assert prepare() > 0
         clock.current += timedelta(seconds=11)
         assert not claim()
@@ -166,7 +167,6 @@ def test_navigation_reaching_scheduler_deadline_keeps_stage_pending(
     assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     play.assert_called_once()
     assert record.load_event_rerun_progress("act46sre:100") == {}
-    assert not owner.event_rerun_blocked[1]
 
 
 def test_stage_closing_time_limits_preparation_and_claim(scheduler, monkeypatch):
@@ -179,7 +179,7 @@ def test_stage_closing_time_limits_preparation_and_claim(scheduler, monkeypatch)
     elapsed = 0
     monkeypatch.setattr(runner, "monotonic", lambda: elapsed)
 
-    def play(owner, stage, settings, prepare, claim, complete):
+    def play(owner, stage, settings, prepare, claim, complete, fail):
         nonlocal elapsed
         assert prepare() == 2
         elapsed = 2
@@ -235,10 +235,11 @@ def test_unchanged_failed_preparation_yields_to_other_selected_stages(
     owner, clock = scheduler
     order = []
 
-    def play(owner, stage, settings, prepare, claim, complete):
+    def play(owner, stage, settings, prepare, claim, complete, fail):
         order.append(stage["code"])
         if stage["code"] == "OS-1":
-            return "blocked"
+            fail("未能导航到目标关卡")
+            return
         assert claim()
         complete()
         return "completed"
@@ -247,11 +248,14 @@ def test_unchanged_failed_preparation_yields_to_other_selected_stages(
     assert runner.run_event_rerun(owner, lambda: owner.deadline)
     assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     assert order == ["OS-1", "OS-10"]
-    assert record.load_event_rerun_progress("act46sre:100") == {"OS-10": "completed"}
+    assert record.load_event_rerun_progress("act46sre:100") == {
+        "OS-1": "failed",
+        "OS-10": "completed",
+    }
     assert owner.deadline == clock.now() + timedelta(seconds=10)
 
 
-def test_unconfirmed_target_does_not_battle_or_record_rerun_progress(
+def test_unconfirmed_target_is_reported_and_skipped_after_restart(
     scheduler, monkeypatch
 ):
     owner, _ = scheduler
@@ -263,7 +267,14 @@ def test_unconfirmed_target_does_not_battle_or_record_rerun_progress(
 
     assert not runner.run_event_rerun(owner, lambda: owner.deadline)
     operation.assert_not_called()
-    assert record.load_event_rerun_progress("act46sre:100") == {}
+    reasons = {}
+    assert record.event_rerun_status("act46sre:100", failure_reasons=reasons) == {
+        "OS-1": "failed",
+        "OS-10": "failed",
+    }
+    assert reasons == dict.fromkeys(["OS-1", "OS-10"], "未能在详情页确认目标关卡")
+    assert runner.run_event_rerun(SimpleNamespace(), lambda: owner.deadline) is None
+    assert record.load_event_rerun_progress("act46sre:200") == {}
 
 
 @pytest.mark.parametrize("allow", [True, False])
@@ -297,7 +308,7 @@ def test_ordinary_keeps_device_io_after_deadline_during_battle(
 def test_unconfirmed_attempt_stays_claimed_after_new_scheduler(scheduler, monkeypatch):
     owner, clock = scheduler
 
-    def play(owner, stage, settings, prepare, claim, complete):
+    def play(owner, stage, settings, prepare, claim, complete, fail):
         assert claim()
         return "defer"
 
@@ -322,10 +333,40 @@ def test_single_proxy_guard_disallows_unconfirmed_multipliers():
     solver.auto_repeat = False
     solver.stage_id = "OS-1"
     solver.number = MagicMock(return_value=2)
+    solver.on_single_battle_failure = MagicMock()
     solver.tap_element = MagicMock()
     assert solver.transition()
     solver.before_single_battle.assert_not_called()
+    solver.on_single_battle_failure.assert_called_once_with("未能确认代理次数为一次")
     solver.tap_element.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "scene, clicked, reason",
+    [
+        (Scene.OPERATOR_FAILED, False, "代理作战失败"),
+        (Scene.OPERATOR_GIVEUP, True, "代理作战已放弃行动"),
+        (Scene.OPERATOR_GIVEUP, False, None),
+    ],
+)
+@pytest.mark.parametrize("started", [False, True])
+def test_only_owned_and_confirmed_battle_losses_are_reported(
+    scene, clicked, reason, started
+):
+    solver = object.__new__(OperationSolver)
+    solver.scene = lambda: scene
+    solver.on_single_battle_failure = MagicMock()
+    solver.single_battle_started = started
+    solver.stage_id = "OS-1"
+    solver.current_batch_repeat_count = 1
+    solver._finish_batch = MagicMock()
+    solver.tap = MagicMock()
+    solver.tap_element = MagicMock(return_value=clicked)
+    assert solver.transition()
+    if reason and started:
+        solver.on_single_battle_failure.assert_called_once_with(reason)
+    else:
+        solver.on_single_battle_failure.assert_not_called()
 
 
 def test_single_proxy_confirms_battle_once_and_records_before_closing_settlement():
@@ -440,7 +481,7 @@ def test_expired_budget_during_database_claim_keeps_stage_pending(
 
     monkeypatch.setattr(record, "claim_event_rerun_stage", delayed_claim)
 
-    def play(owner, stage, settings, prepare, claim, complete):
+    def play(owner, stage, settings, prepare, claim, complete, fail):
         assert not claim()
         return "defer"
 
@@ -454,7 +495,7 @@ def test_next_opening_runs_all_ordinary_stages_with_previous_opening_complete(
 ):
     owner, _ = scheduler
 
-    def play(owner, stage, settings, prepare, claim, complete):
+    def play(owner, stage, settings, prepare, claim, complete, fail):
         assert claim()
         complete()
         return "completed"
@@ -518,13 +559,37 @@ def test_invalid_stage_edits_leave_progress_untouched(
     assert not database.exists()
 
 
+def test_read_legacy_three_column_progress_and_keep_legacy_writes(
+    client, database, monkeypatch
+):
+    monkeypatch.setattr(event_rerun, "current_rerun", event)
+    key = event()["key"]
+    database.parent.mkdir(exist_ok=True)
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            "CREATE TABLE event_rerun_progress (event_key TEXT, stage TEXT, status TEXT, PRIMARY KEY(event_key, stage))"
+        )
+        conn.execute(
+            "INSERT INTO event_rerun_progress VALUES (?, 'OS-1', 'completed')", (key,)
+        )
+    headers = {"token": "copilot-test-token"}
+    state = client.get(RERUN_URL, headers=headers).json
+    assert state["progress"] == {"OS-1": "completed"}
+    assert state["failure_reasons"] == {}
+    record.fail_event_rerun_stage(key, "OS-10", "未能导航到目标关卡", attempted=False)
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            "INSERT INTO event_rerun_progress VALUES (?, 'OS-2', 'attempted')", (key,)
+        )
+    state = client.get(RERUN_URL, headers=headers).json
+    assert state["progress"] == {"OS-1": "completed", "OS-10": "failed"}
+    assert state["failure_reasons"] == {"OS-10": "未能导航到目标关卡"}
+
+
 def test_manual_completion_skips_stage_and_reset_allows_another_battle(
     client, scheduler, monkeypatch
 ):
-    import arknights_mower.__main__ as main
-
     owner, _ = scheduler
-    monkeypatch.setattr(main, "base_scheduler", owner)
     monkeypatch.setattr(event_rerun, "current_rerun", event)
     headers = {"token": "copilot-test-token"}
 
@@ -538,7 +603,6 @@ def test_manual_completion_skips_stage_and_reset_allows_another_battle(
     assert change("pending", True).json["progress"] == {"OS-1": "completed"}
     assert change("pending", True).status_code == 200
     assert runner.pending_rerun(owner, lambda: owner.deadline)[1]["code"] == "OS-10"
-    owner.event_rerun_blocked[1].add("OS-1")
     assert change("completed", False).json["progress"] == {}
     assert runner.pending_rerun(owner, lambda: owner.deadline)[1]["code"] == "OS-1"
 
@@ -606,7 +670,7 @@ def test_preparation_before_potions_rejects_edits_without_durable_battle_claim(
     owner, _ = scheduler
     monkeypatch.setattr(event_rerun, "current_rerun", event)
 
-    def preparing(_owner, stage, settings, prepare, claim, complete):
+    def preparing(_owner, stage, settings, prepare, claim, complete, fail):
         assert settings.use_sanity_potion
         assert record.load_event_rerun_progress(STAGE_CHANGE["event_key"]) == {}
         response = client.patch(
@@ -624,3 +688,68 @@ def test_preparation_before_potions_rejects_edits_without_durable_battle_claim(
         ).status_code
         == 200
     )
+
+
+@pytest.mark.parametrize("completed", [False, True])
+def test_persisted_failure_is_editable_only_after_execution(
+    client, scheduler, monkeypatch, completed
+):
+    owner, _ = scheduler
+    key = STAGE_CHANGE["event_key"]
+    monkeypatch.setattr(event_rerun, "current_rerun", event)
+    headers = {"token": "copilot-test-token"}
+    change = dict(STAGE_CHANGE, expected="failed", completed=completed)
+
+    def play(_owner, stage, settings, prepare, claim, complete, fail):
+        assert claim()
+        fail("代理作战失败")
+        assert client.patch(RERUN_URL, json=change, headers=headers).status_code == 409
+        raise RuntimeError("closing settlement failed")
+
+    monkeypatch.setattr(runner, "_play_ordinary", play)
+    # Leave only one eligible stage in this opening.
+    assert record.set_event_rerun_completion(key, "OS-10", "pending", True)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
+    record.complete_event_rerun_stage(key, "OS-1")
+    for url in (RERUN_URL, "/maa-long-task-status?kind=event_rerun"):
+        state = client.get(url, headers=headers).json
+        assert state["progress"] == {"OS-1": "failed", "OS-10": "completed"}
+        assert state["failure_reasons"] == {"OS-1": "代理作战失败"}
+    edit = client.patch(RERUN_URL, json=change, headers=headers)
+    assert edit.status_code == 200
+    assert edit.json["failure_reasons"] == {}
+    assert edit.json["progress"].get("OS-1", "pending") == (
+        "completed" if completed else "pending"
+    )
+    record.fail_event_rerun_stage(key, "OS-1", "代理作战失败", attempted=True)
+    assert record.event_rerun_status(key).get("OS-1", "pending") == (
+        "completed" if completed else "pending"
+    )
+
+
+@pytest.mark.parametrize(
+    "outcome", ["sanity", "cancel", "deadline", "setup_error", "unknown_battle"]
+)
+def test_only_preparation_errors_become_failed(scheduler, monkeypatch, outcome):
+    owner, clock = scheduler
+    navigator = MagicMock()
+    monkeypatch.setattr(runner, "NavigationSolver", lambda *_: navigator)
+    operation = MagicMock()
+
+    def fight(**kwargs):
+        if outcome == "unknown_battle":
+            assert kwargs["before_single_battle"]()
+        if outcome in ("setup_error", "unknown_battle"):
+            raise RuntimeError("screen unavailable")
+        if outcome == "cancel":
+            config.stop_maa.set()
+        if outcome == "deadline":
+            clock.current = owner.deadline
+        return {"executed_runs": 0, "sanity_drain": outcome == "sanity"}
+
+    operation.run.side_effect = fight
+    monkeypatch.setattr(runner, "OperationSolver", lambda *_: operation)
+    runner.run_event_rerun(owner, lambda: owner.deadline)
+    status = {"setup_error": "failed", "unknown_battle": "attempted"}.get(outcome)
+    expected = dict.fromkeys(["OS-1", "OS-10"], status) if status else {}
+    assert record.load_event_rerun_progress(STAGE_CHANGE["event_key"]) == expected

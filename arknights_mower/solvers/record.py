@@ -759,7 +759,7 @@ def save_maa_sss_progress(progress):
         connection.commit()
 
 
-def load_event_rerun_progress(event_key):
+def load_event_rerun_progress(event_key, *, failure_reasons=None):
     path = get_path("@app/tmp/data.db")
     try:
         path.stat()
@@ -773,12 +773,16 @@ def load_event_rerun_progress(event_key):
             "AND name = 'event_rerun_progress'"
         ).fetchone():
             return {}
-        return dict(
-            conn.execute(
-                "SELECT stage, status FROM event_rerun_progress WHERE event_key = ?",
-                (event_key,),
-            )
-        )
+        progress = {}
+        for stage, value in conn.execute(
+            "SELECT stage, status FROM event_rerun_progress WHERE event_key = ?",
+            (event_key,),
+        ):
+            status, _, reason = value.partition(":")
+            progress[stage] = status
+            if failure_reasons is not None and status == "failed" and reason:
+                failure_reasons[stage] = reason
+        return progress
 
 
 def claim_event_rerun_stage(event_key, stage):
@@ -814,12 +818,14 @@ def event_rerun_execution(event_key, stage):
                 _active_rerun_stages.discard(key)
 
 
-def event_rerun_status(event_key):
+def event_rerun_status(event_key, *, failure_reasons=None):
     with _event_rerun_lock:
-        progress = load_event_rerun_progress(event_key)
+        progress = load_event_rerun_progress(event_key, failure_reasons=failure_reasons)
         for opening, stage in _active_rerun_stages:
             if opening == event_key:
                 progress[stage] = "running"
+                if failure_reasons is not None:
+                    failure_reasons.pop(stage, None)
         return progress
 
 
@@ -834,7 +840,7 @@ def set_event_rerun_completion(event_key, stage, expected, completed):
                 "SELECT status FROM event_rerun_progress WHERE event_key = ? AND stage = ?",
                 key,
             ).fetchone()
-            current = row[0] if row else "pending"
+            current = row[0].partition(":")[0] if row else "pending"
             desired = "completed" if completed else "pending"
             if current == desired:
                 return True
@@ -862,11 +868,27 @@ def release_event_rerun_stage(event_key, stage):
         )
 
 
+def fail_event_rerun_stage(event_key, stage, reason, *, attempted):
+    status = f"failed:{reason}"
+    with _conn() as connection, connection:
+        if attempted:
+            connection.execute(
+                "UPDATE event_rerun_progress SET status = ? "
+                "WHERE event_key = ? AND stage = ? AND status = 'attempted'",
+                (status, event_key, stage),
+            )
+        else:
+            connection.execute(
+                "INSERT OR IGNORE INTO event_rerun_progress VALUES (?, ?, ?)",
+                (event_key, stage, status),
+            )
+
+
 def complete_event_rerun_stage(event_key, stage):
     with _conn() as connection, connection:
         connection.execute(
             "UPDATE event_rerun_progress SET status = 'completed' "
-            "WHERE event_key = ? AND stage = ?",
+            "WHERE event_key = ? AND stage = ? AND status = 'attempted'",
             (event_key, stage),
         )
 
