@@ -753,17 +753,22 @@ def sync_model(owner, now=None, *, advance_clock=True):
         op.name: getattr(op, "dorm_position_version", 0)
         for op in owner.operators.values()
     }
-    from arknights_mower.utils.dorm_recovery import active_recovery_position
+    from arknights_mower.utils.dorm_recovery import recovery_managers, recovery_roster
 
     single_targets = {}
     for op in owner.operators.values():
-        managers = getattr(op, "dorm_recovery_fixed", ())
-        if (
-            managers
-            and op.current_room.startswith("dorm")
-            and active_recovery_position(owner, op, stages=stages)
-        ):
-            rooms[op.current_room]["singleRecipient"] = op.name
+        room = op.current_room
+        reading = getattr(op, "dorm_recipient_roster", ())
+        if not reading or room not in owner.plan or not room.startswith("dorm"):
+            continue
+        names = owner.get_current_room(room, True)
+        if reading != recovery_roster(owner, names, stages):
+            continue
+        managers = recovery_managers(
+            owner, room, names, update_cache=False, stages=stages
+        )
+        if managers:
+            rooms[room]["singleRecipient"] = op.name
             if len(managers) == 1:
                 single_targets[managers[0][0]] = op.name
     if advance_clock or any(

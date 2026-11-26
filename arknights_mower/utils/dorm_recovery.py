@@ -440,6 +440,30 @@ def recovery_roster(data, names, stages):
     )
 
 
+def _read_room_recipient(data, room, names, observed, stages, *, final=False):
+    """记录实读受益者供心情计算使用。是否保护床位由排班决定。"""
+    recipient = observed_recovery_recipient(observed, stages)
+    for index, row in enumerate(observed):
+        op = data.operators.get(row["agent"])
+        if op is None or (op.current_room, op.current_index) != (room, index):
+            continue
+        if final:
+            op.clear_dorm_recovery_target()
+        if row["agent"] == recipient:
+            op.dorm_recipient_roster = recovery_roster(data, names, stages)
+        elif (
+            recipient is not None
+            or final
+            or (
+                row.get("observed", True)
+                and row.get("measured_mood") == 24
+                and row.get("recovery_seconds") is None
+            )
+        ):
+            op.dorm_recipient_roster = ()
+    return recipient
+
+
 def reconcile_recovery_marker(data, room, observed):
     """普通读房中，实际名单或读数推翻旧标记时作废，不为核验另开房间。"""
     from arknights_mower.utils.calculated_mood import known_operator_stages
@@ -454,10 +478,10 @@ def reconcile_recovery_marker(data, room, observed):
             or getattr(op, "dorm_roommate_roster", ())
         )
     ]
-    if not marked:
+    if not marked and not any("measured_mood" in row for row in observed):
         return
     stages = known_operator_stages(data)
-    recipient = observed_recovery_recipient(observed, stages)
+    recipient = _read_room_recipient(data, room, names, observed, stages)
     for op, row in marked:
         if (
             row.get("observed", True)
@@ -488,6 +512,8 @@ def record_recovery_target(data, room, target, index, managers, names, stages):
     if not managers or (target.current_room, target.current_index) != (room, index):
         return
     for op in data.operators.values():
+        if op is not target and op.current_room == room:
+            op.dorm_recipient_roster = ()
         if op is not target and (
             getattr(op, "dorm_recovery_room", "") == room
             or op.current_room == room
@@ -497,6 +523,7 @@ def record_recovery_target(data, room, target, index, managers, names, stages):
     target.dorm_recovery_room, target.dorm_recovery_index = room, index
     target.dorm_recovery_fixed = managers
     target.dorm_recovery_roster = recovery_roster(data, names, stages)
+    target.dorm_recipient_roster = target.dorm_recovery_roster
     target.dorm_roommate_roster = ()
     target.dorm_recovery_attempt = None
 
@@ -755,12 +782,12 @@ def verify_final_recovery(
         return False
     stages = known_operator_stages(data)
     managers = recovery_managers(data, room, agents, update_cache=False, stages=stages)
+    recipient = _read_room_recipient(data, room, agents, observed, stages, final=True)
     target = protected_recovery_target(
         data, room, agents, managers, group_transitions, continued=continued
     )
     if target is None:
         return False
-    recipient = observed_recovery_recipient(observed, stages)
     if recipient == target.name:
         record_recovery_target(
             data, room, target, agents.index(target.name), managers, agents, stages

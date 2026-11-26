@@ -1738,3 +1738,69 @@ def test_cold_multi_source_dorm_reads_occupants_and_deadlines_together(
     assert data.operators["银灰"].dorm_recovery_room == ROOM
     solver.choose_agent.assert_not_called()
     solver.tap_confirm.assert_not_called()
+
+
+@pytest.mark.parametrize("calculated", [False, True], ids=["measured", "calculated"])
+@pytest.mark.parametrize("occupant", ["森蚺", "琴柳"], ids=["departing", "staying"])
+def test_cold_dorm_reads_fixed_bed_deadline_for_its_actual_cover(
+    solver, monkeypatch, occupant, calculated
+):
+    from arknights_mower.tests.room_scroll_recovery_tests import five_slot_room
+
+    monkeypatch.setattr(config.conf, "test_mood_calculation", calculated)
+    plan = solver.global_plan["default_plan"].plan
+    plan[ROOM][:2] = [Room("安赛尔", "", []), Room("森蚺", "换班", ["琴柳"])]
+    plan["contact"] = [Room("琴柳", "换班", ["森蚺"])]
+    assert solver.initialize_operators() is None
+    data = solver.op_data
+    data.add(Operator("陈", ""))
+    final = ["安赛尔", *FINAL[1:]]
+    solver.physical = final.copy()
+    solver.physical[1] = occupant
+    solver.task.plan = {ROOM: final.copy()}
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=True)
+    assert not any(data.get_current_room(ROOM, True))
+    assert all(bed.time is None for bed in data.all_dorms())
+
+    reader, _, _, screen_names, _ = five_slot_room.__wrapped__()(False)
+    reader.op_data, reader.task, reader.tasks = data, solver.task, solver.tasks
+    reader.detect_room.return_value = ROOM
+    reader.sleep = lambda _: reader.recog.update()
+    monkeypatch.setattr("arknights_mower.solvers.record.save_agent_action", MagicMock())
+    read_frame = reader.read_screen.side_effect
+
+    def read(image, *, type, cord=None):
+        if type == "time" and cord[0][1] == 480 and screen_names[1] == "森蚺":
+            return "?"
+        return read_frame(image, type=type, cord=cord)
+
+    reader.read_screen.side_effect = read
+    reader.read_time.side_effect = base_schedule.RecognizeError("森蚺的倒计时被遮挡")
+    observations = []
+
+    def observe(*args, **kwargs):
+        screen_names[:] = solver.physical
+        rows = reader.get_agent_from_room(*args, **kwargs)
+        if not observations:
+            solver.choose_agent.assert_not_called()
+            assert rows[1]["agent"] == occupant and rows[1]["mood_sampled"]
+            assert data.operators[occupant].mood == rows[1]["measured_mood"] == 12
+        observations.append(
+            {row["agent"]: row["time"] for row in rows if "time" in row}
+        )
+        return rows
+
+    solver.get_agent_from_room.side_effect = observe
+    solver.agent_arrange_room({}, ROOM, solver.task.plan, get_time=True)
+
+    assert not solver.task.plan
+    assert solver.confirms == ([final] if occupant == "森蚺" else [])
+    assert len(observations) == 1 + len(solver.confirms)
+    assert set(observations[0]) == (
+        {"银灰", "陈"} if occupant == "森蚺" else {"琴柳", "银灰", "陈"}
+    )
+    assert set(observations[-1]) == {"琴柳", "银灰", "陈"}
+    for name, deadline in observations[-1].items():
+        bed = data.get_dorm_by_name(name)[1]
+        assert bed.name == name and bed.time == deadline
+    reader.read_time.assert_not_called()

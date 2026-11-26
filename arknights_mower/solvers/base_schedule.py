@@ -19818,9 +19818,9 @@ class BaseSchedulerSolver(
         """
         if room == "recycle" and getattr(self, "_recycle_unavailable", False) is True:
             return []
-        force_mood = force_mood or getattr(
-            self.op_data, "mood_calculation_enabled", False
-        )
+        require_mood_sample = strict_observation and force_mood
+        calculated_mood = getattr(self.op_data, "mood_calculation_enabled", False)
+        force_mood = force_mood or calculated_mood
         training_observation = None
         if room == "train":
             training_observation = BaseSchedulerSolver._observe_training_room(
@@ -20176,7 +20176,8 @@ class BaseSchedulerSolver(
         def read_slot_time(i, name, *, same_frame_only=False):
             fourth_work_slot = i == 3 and not retain_dorm_time
             if (
-                not isinstance(first_end, bool)
+                not same_frame_only
+                and not isinstance(first_end, bool)
                 and counted_names is None
                 and not fourth_work_slot
             ):
@@ -20187,7 +20188,6 @@ class BaseSchedulerSolver(
                     check_roster_frame((i, name))
                 return deadline
             saved = i >= 3 and lower_frame is not None
-            frame = lower_frame if saved else self.recog.img
             captured_at = (
                 lower_captured_at
                 if saved
@@ -20197,7 +20197,7 @@ class BaseSchedulerSolver(
                 seconds = (
                     data["recovery_seconds"]
                     if "recovery_seconds" in data
-                    else frame_seconds(i, frame)
+                    else frame_seconds(i, lower_frame if saved else self.recog.img)
                 )
                 if seconds is not None and seconds >= 0:
                     if "measured_mood" in data:
@@ -20401,14 +20401,10 @@ class BaseSchedulerSolver(
                             ):
                                 frame = lower_frame if saved else self.recog.img
                                 data["recovery_seconds"] = frame_seconds(i, frame)
-                            if unconfirmed_full_mood and data.get("recovery_seconds"):
-                                captured_at = (
-                                    lower_captured_at
-                                    if saved
-                                    else getattr(self.recog, "capture_started_at", None)
+                            if data.get("recovery_seconds"):
+                                slot_deadline = read_slot_time(
+                                    i, _name, same_frame_only=True
                                 )
-                                if isinstance(captured_at, datetime):
-                                    slot_deadline = read_slot_time(i, _name)
                             if unconfirmed_full_mood:
                                 # 条宽已取整。同帧计时可用于床位期限，不能据此写入满心情。
                                 if not data.get("recovery_seconds"):
@@ -20423,18 +20419,16 @@ class BaseSchedulerSolver(
                     update_time = training_observation[i]["update_time"]
                 elif should_read_mood and not unconfirmed_full_mood:
                     _mood = measured
-                    if strict_observation and (
-                        not isinstance(_mood, (int, float))
-                        or not math.isfinite(_mood)
-                        or not 0 <= _mood <= 24
-                    ):
-                        raise RecognizeError(f"房间 {room} 第 {i + 1} 槽位心情未核实")
                     update_time = True
-                    if getattr(self.op_data, "mood_calculation_enabled", False) and (
+                    if (strict_observation or calculated_mood) and (
                         not isinstance(_mood, (int, float))
                         or not math.isfinite(_mood)
                         or not 0 <= _mood <= 24
                     ):
+                        if require_mood_sample:
+                            raise RecognizeError(
+                                f"房间 {room} 第 {i + 1} 槽位心情未核实"
+                            )
                         _mood, update_time = agent.mood, False
                 else:
                     _mood = agent.current_mood()
@@ -20542,7 +20536,7 @@ class BaseSchedulerSolver(
                         continue
                     if verify_working_zero:
                         working_time = slot_deadline
-                if strict_observation and should_read_mood and unconfirmed_full_mood:
+                if require_mood_sample and unconfirmed_full_mood:
                     # 重连后必须取得新的心情采样。带读秒或被遮挡的满条仍未核实。
                     raise RecognizeError(f"房间 {room} 第 {i + 1} 槽位心情未核实")
                 if verify_working_zero and after_roster:
@@ -20657,6 +20651,18 @@ class BaseSchedulerSolver(
                         and slot_deadline is not None
                     ):
                         bed.time = slot_deadline
+                    elif (
+                        not unconfirmed_full_mood
+                        and slot_deadline is not None
+                        and data.get("recovery_seconds")
+                    ):
+                        remaining = timedelta(seconds=data["recovery_seconds"])
+                        sampled_at = slot_deadline - remaining
+                        if bed.time <= sampled_at and 0 <= measured < agent.upper_limit:
+                            # 旧期限已到，但这张图上仍低于个人上限，按同帧心情和倒计时换算。
+                            bed.time = sampled_at + remaining * (
+                                (agent.upper_limit - measured) / (24 - measured)
+                            )
                     data["time"] = bed.time
                     result.append(data)
                     continue
@@ -22663,7 +22669,6 @@ class BaseSchedulerSolver(
                         )
                     )
                 ):
-                    # 冷启动时本房床位期限全空。第一次核对离宿者时顺便读齐本班所需的期限。
                     cold_dorm = (
                         multiple_recovery_sources
                         and get_time
@@ -22674,10 +22679,18 @@ class BaseSchedulerSolver(
                             if bed.position[0] == room
                         )
                     )
+                    departure_read = {}
+                    if cold_dorm:
+                        # 固定床是否需要读期限，取决于首读时实际在床的干员。
+                        departure_read["read_time_index"] = [
+                            i
+                            for i in read_time_index
+                            if self.op_data.plan[room][i].agent == "Free"
+                        ]
                     before = self.get_agent_from_room(
                         room,
                         departing_plan=plan[room],
-                        **({"read_time_index": read_time_index} if cold_dorm else {}),
+                        **departure_read,
                         **observation_context,
                     )
                     self._remember_facility_idle_origin(room, before)

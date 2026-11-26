@@ -29,7 +29,9 @@ def test_real_remaining_recovery_requires_positive_representable_time(
 ):
     value = model({"机械师": upper - deficit})
     value.thresholds = [0, 12, 24]
-    monkeypatch.setattr(CalculatedMood, "_rates", lambda self: {"机械师": -4})
+    monkeypatch.setattr(
+        CalculatedMood, "_rates", lambda self, moods=None: {"机械师": -4}
+    )
     now = value.at
     before = pickle.dumps(value)
     due = value.deadline("机械师", upper, now)
@@ -46,7 +48,9 @@ def test_zero_or_unknown_recovery_cannot_turn_a_deficit_into_full(
 ):
     value = model({"机械师": upper - 1e-8})
     value.thresholds = [0, 12, 24]
-    monkeypatch.setattr(CalculatedMood, "_rates", lambda self: {"机械师": rate})
+    monkeypatch.setattr(
+        CalculatedMood, "_rates", lambda self, moods=None: {"机械师": rate}
+    )
     assert value.deadline("机械师", upper, value.at) is None
 
 
@@ -116,7 +120,9 @@ def test_recovery_deadline_does_not_authorize_a_real_deficit_before_horizon(
 ):
     value = model({"机械师": upper - 0.001})
     value.thresholds = [0, 12, 24]
-    monkeypatch.setattr(CalculatedMood, "_rates", lambda self: {"机械师": -4})
+    monkeypatch.setattr(
+        CalculatedMood, "_rates", lambda self, moods=None: {"机械师": -4}
+    )
     due = value.deadline("机械师", upper, value.at)
     assert due is not None and due >= value.at + timedelta(milliseconds=900)
     assert value.value("机械师", value.at + timedelta(milliseconds=899)) < upper
@@ -127,7 +133,9 @@ def test_recovery_deadline_does_not_authorize_a_real_deficit_before_horizon(
 def test_recovery_microsecond_rounding_respects_exact_query_horizon(monkeypatch, upper):
     value = model({"机械师": upper - 1e-10})
     value.thresholds = [0, 12, 24]
-    monkeypatch.setattr(CalculatedMood, "_rates", lambda self: {"机械师": -4})
+    monkeypatch.setattr(
+        CalculatedMood, "_rates", lambda self, moods=None: {"机械师": -4}
+    )
     assert value.deadline(
         "机械师", upper, value.at, max_hours=1 / 3_600_000_000
     ) == value.at + timedelta(microseconds=1)
@@ -145,7 +153,7 @@ def test_recovery_and_work_deadlines_are_independent_of_query_order(
     value.at = FIXED
     value.thresholds = [0, 12, 24]
     monkeypatch.setattr(
-        CalculatedMood, "_rates", lambda self: {"机械师": -4.55, "陈": 0.95}
+        CalculatedMood, "_rates", lambda self, moods=None: {"机械师": -4.55, "陈": 0.95}
     )
     results = []
     before = pickle.dumps(value)
@@ -201,7 +209,9 @@ def test_known_zero_rate_keeps_full_evidence_but_unknown_rate_does_not(
 ):
     value = model({"机械师": upper})
     value.thresholds = [0, 12, 24]
-    monkeypatch.setattr(CalculatedMood, "_rates", lambda self: {"机械师": rate})
+    monkeypatch.setattr(
+        CalculatedMood, "_rates", lambda self, moods=None: {"机械师": rate}
+    )
     assert value.deadline("机械师", upper, value.at) == (
         value.at if rate == 0 else None
     )

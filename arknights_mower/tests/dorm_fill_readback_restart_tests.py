@@ -11,6 +11,7 @@ from arknights_mower.tests.dorm_recovery_continuation_tests import (
     OTHER,
     PEER,
     VIP,
+    change_roommate,
     start_after_release,
 )
 from arknights_mower.tests.dorm_recovery_tests import ROOM
@@ -20,6 +21,7 @@ from arknights_mower.utils import (
     operation_timing,
     resting_priority,
 )
+from arknights_mower.utils.calculated_mood import sync_model
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.dorm_recovery import (
     active_recovery_position,
@@ -75,6 +77,73 @@ def restore_and_dispatch(dispatch, scheduler, monkeypatch, restart_at, check_res
         startup.setattr(main.NewsChecker, "get_effective_maintenance", lambda: None)
         startup.setattr(crash_recovery, "checkpoint_start", check_restored)
         main.simulate(saved)
+
+
+def restore_before_room_read(dispatch, scheduler, monkeypatch):
+    checkpoint = Mock(side_effect=MowerExit)
+    dispatch.get_agent_from_room.reset_mock()
+    restore_and_dispatch(
+        dispatch, scheduler, monkeypatch, scheduler.clock.now(), checkpoint
+    )
+    checkpoint.assert_called_once_with(dispatch)
+    dispatch.get_agent_from_room.assert_not_called()
+    scheduler.io.assert_not_called()
+    return dispatch.op_data
+
+
+@pytest.mark.usefixtures("income_db")
+@pytest.mark.parametrize(
+    "roommate_returned", [False, True], ids=["unchanged", "returned"]
+)
+def test_restart_recipient_without_bed_protection(
+    scheduler, dorm_dispatch, monkeypatch, roommate_returned
+):
+    dispatch, _, _ = dorm_dispatch
+    start_after_release(dispatch, monkeypatch, bed=4)
+    dispatch.game_recipient = PEER
+    dispatch.get_agent_from_room(ROOM, read_dorm_evidence=True)
+    data = dispatch.op_data
+    target = data.operators[PEER]
+    reading = target.dorm_recipient_roster
+    assert [name for name, _, _ in reading] == dispatch.physical
+    assert not target.dorm_recovery_roster
+    if roommate_returned:
+        roommate = data.operators[OTHER]
+        index = roommate.current_index
+        roommate.current_room, roommate.current_index = "", -1
+        roommate.current_room, roommate.current_index = ROOM, index
+
+    restored = restore_before_room_read(dispatch, scheduler, monkeypatch)
+    assert restored.get_current_room(ROOM, True) == dispatch.physical
+    target = restored.operators[PEER]
+    assert active_recovery_position(restored, target) is None
+    if not roommate_returned:
+        assert target.dorm_recipient_roster == reading
+    room = sync_model(restored, scheduler.clock.now()).rooms[ROOM]
+    assert room.get("singleRecipient") == (None if roommate_returned else PEER)
+
+
+@pytest.mark.usefixtures("income_db")
+@pytest.mark.parametrize("verified", [True, False], ids=["verified", "seating-only"])
+def test_restart_legacy_recipient_requires_verified_roster(
+    scheduler, dorm_dispatch, monkeypatch, verified
+):
+    dispatch, _, _ = dorm_dispatch
+    start_after_release(dispatch, monkeypatch, bed=4)
+    if not verified:
+        change_roommate(dispatch, PEER, NEW, None)
+    target = dispatch.op_data.operators[VIP]
+    reading = target.dorm_recovery_roster
+    assert bool(reading) == verified
+    roster = reading if verified else target.dorm_roommate_roster
+    assert [name for name, _, _ in roster] == dispatch.physical
+    for op in dispatch.op_data.operators.values():
+        del op.dorm_recipient_roster
+
+    restored = restore_before_room_read(dispatch, scheduler, monkeypatch)
+    assert restored.operators[VIP].dorm_recipient_roster == reading
+    room = sync_model(restored, scheduler.clock.now()).rooms[ROOM]
+    assert room.get("singleRecipient") == (VIP if verified else None)
 
 
 def interrupt_dorm_fill(

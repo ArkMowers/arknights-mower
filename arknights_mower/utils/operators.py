@@ -2458,6 +2458,9 @@ class Operators:
             operator.dorm_recovery_fixed = getattr(exist, "dorm_recovery_fixed", ())
             operator.dorm_recovery_roster = getattr(exist, "dorm_recovery_roster", ())
             operator.dorm_roommate_roster = getattr(exist, "dorm_roommate_roster", ())
+            operator.dorm_recipient_roster = getattr(
+                exist, "dorm_recipient_roster", operator.dorm_recovery_roster
+            )
             operator.dorm_recovery_attempt = getattr(
                 exist, "dorm_recovery_attempt", None
             )
@@ -3833,6 +3836,7 @@ class Operator:
         self.dorm_recovery_fixed = ()
         self.dorm_recovery_roster = ()
         self.dorm_roommate_roster = ()
+        self.dorm_recipient_roster = ()
         self.dorm_recovery_attempt = None
         self.single_recovery_manager = False
         self.dorm_mood_fallback = ""
@@ -3950,6 +3954,7 @@ class Operator:
 
     def clear_dorm_recovery(self):
         self.clear_dorm_recovery_target()
+        self.dorm_recipient_roster = ()
         self.dorm_recovery_attempt = None
         self.dorm_recovery_observation = None
 
