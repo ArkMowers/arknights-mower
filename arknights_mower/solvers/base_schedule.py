@@ -197,6 +197,7 @@ from arknights_mower.utils.operators import (
 )
 from arknights_mower.utils.path import resolve_config_path, temporary_root
 from arknights_mower.utils.plan import RIGHT_SIDE_ROOM_CAPACITY
+from arknights_mower.utils.product_recognition import manufacture_detail_pause_state
 from arknights_mower.utils.recognize import RecognizeError, Recognizer, Scene
 from arknights_mower.utils.replacement_check import (
     invalidate_replacement_checks,
@@ -1089,6 +1090,7 @@ class BaseSchedulerSolver(
         self.op_data = None
         self.party_time = None
         self.drone_time = None
+        self._routine_drone_pauses: dict[str, frozenset[tuple[int, str]]] = {}
         self.reload_time = None
         self.clue_count_limit = 9
         self.enable_party = True
@@ -5356,19 +5358,22 @@ class BaseSchedulerSolver(
                 else:
                     if clue_result is not False:
                         self.last_clue = datetime.now()
+            drone_room = self.drone_room
             if (
-                self.drone_room not in self.op_data.run_order_rooms
+                drone_room is not None
+                and drone_room not in self.op_data.run_order_rooms
+                and drone_room not in getattr(self, "_routine_drone_pauses", ())
                 and (
                     self.drone_time is None
                     or self.drone_time
                     < datetime.now() - timedelta(hours=config.conf.drone_interval)
                 )
-                and self.drone_room is not None
                 and self.no_pending_task(2)
             ):
-                self.drone(self.drone_room)
-                logger.info(f"记录本次无人机使用时间为:{datetime.now()}")
-                self.drone_time = datetime.now()
+                self.drone(drone_room, routine=True)
+                if drone_room not in getattr(self, "_routine_drone_pauses", ()):
+                    self.drone_time = datetime.now()
+                    logger.info(f"记录本次无人机使用时间为:{self.drone_time}")
             if self.no_pending_task(2) and (
                 self.reload_time is None
                 or self.reload_time
@@ -14970,6 +14975,8 @@ class BaseSchedulerSolver(
         if facility is None:
             return False
         self.op_data.update_facility_state(room, facility)
+        if facility != "manufacture":
+            getattr(self, "_routine_drone_pauses", {}).pop(room, None)
         if facility == "power":
             return True
         if (
@@ -15098,6 +15105,15 @@ class BaseSchedulerSolver(
                     defer_log=True,
                     **({"room_product": room_product} if room_product else {}),
                 )
+            pauses = getattr(self, "_routine_drone_pauses", {})
+            if (
+                facility == "manufacture"
+                and room in pauses
+                and not room_product
+                and observed_product
+                and manufacture_detail_pause_state(self.recog.img) is False
+            ):
+                del pauses[room]
             if observed_product and observation is None:
                 logger.info(observed_product[1], extra={"log_room": room})
         except MowerExit:
@@ -15316,6 +15332,13 @@ class BaseSchedulerSolver(
             wait = max(0, remaining - count * DRONE_SECONDS)
         return count, wait
 
+    def _require_manufacture_acceleration(self, room):
+        frame = getattr(getattr(self, "recog", None), "img", None)
+        if manufacture_detail_pause_state(frame) is True:
+            raise RecognizeError(
+                f"{self.translate_room(room)}制造暂停，无法加速当前制造队列"
+            )
+
     def _survey_manufacture_switch(
         self, room: str, target_product: str, *, growth_chip=False
     ) -> dict:
@@ -15348,6 +15371,7 @@ class BaseSchedulerSolver(
             )
             logger.info(f"{self.translate_room(room)}当前空闲，无需使用无人机")
             return observation
+        self._require_manufacture_acceleration(room)
         rate = 1.0
         adjusted_total = None
         rate = None
@@ -15577,6 +15601,7 @@ class BaseSchedulerSolver(
             )
             return 0
 
+        self._require_manufacture_acceleration(observation["room"])
         available_drones = self.digit_reader.get_drone(
             self.recog.gray, self.recog.h, self.recog.w
         )
@@ -15665,6 +15690,7 @@ class BaseSchedulerSolver(
             return
         confirm_after = None
         if (not direct) and not self._manufacture_is_idle():
+            self._require_manufacture_acceleration(observation["room"])
             state = observation.get("switch_progress")
             remaining_base = None
             if "accelerated_at" not in observation or state is not None:
@@ -16446,6 +16472,8 @@ class BaseSchedulerSolver(
         adjust_time=False,
         skip_enter=False,
         order_tasks=None,
+        *,
+        routine=False,
     ):
         if self.op_data.is_orundum_trade_room(room):
             logger.info("卖玉贸易站不使用无人机加速：%s", room)
@@ -16464,7 +16492,21 @@ class BaseSchedulerSolver(
 
         accelerate = self.find("manufacture_accelerate")
         if accelerate:
+            paused = routine and manufacture_detail_pause_state(self.recog.img) is True
             self._cache_facility_state_from_current_page(room, "manufacture")
+            if paused:
+                self._routine_drone_pauses[room] = frozenset(
+                    (operator.current_index, name)
+                    for name, operator in self.op_data.operators.items()
+                    if operator.current_room == room
+                )
+                logger.info(
+                    "%s制造暂停，等待驻员或生产状态变化后再进行定期无人机加速",
+                    self.translate_room(room),
+                    extra={"log_room": room},
+                )
+                self.scene_graph_navigation(Scene.INFRA_MAIN)
+                return
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
             if drone_count < self.drone_count_limit or (
@@ -21044,6 +21086,14 @@ class BaseSchedulerSolver(
         observations = getattr(self.op_data, "room_observations", {})
         observations[room] = observations.get(room, 0) + 1
         self.op_data.room_observations = observations
+        pauses = getattr(self, "_routine_drone_pauses", {})
+        if room in pauses:
+            roster = frozenset((index, name) for index, name in slots.items() if name)
+            if roster and roster != pauses[room]:
+                del pauses[room]
+            elif not roster:
+                # 用完整的空房观测校正旧名单，复派仍须等到实际驻员或产物页变化。
+                pauses[room] = roster
         self._observe_rescue_staffing_log(room, observed)
 
     def refresh_current_room(self, room, current_index=None):
