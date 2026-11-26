@@ -89,7 +89,6 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
     while pending is not None:
         event, stage, settings, blocked, observed_at = pending
         key, code = event["key"], stage["code"]
-        navigation_deadline = monotonic() + 60
 
         def available():
             now = datetime.now()
@@ -114,10 +113,7 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
             time_left = available()
             if time_left <= 0:
                 raise InterruptedError
-            navigation_left = navigation_deadline - monotonic()
-            if navigation_left <= 0:
-                raise TimeoutError("复刻SS活动导航超时")
-            return min(time_left, navigation_left)
+            return time_left
 
         claimed = False
         already_claimed = False

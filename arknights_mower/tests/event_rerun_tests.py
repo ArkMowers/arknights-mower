@@ -193,6 +193,42 @@ def test_stage_closing_time_limits_preparation_and_claim(scheduler, monkeypatch)
     assert record.load_event_rerun_progress(opening["key"]) == {}
 
 
+def test_cold_start_can_navigate_past_one_minute_and_settle_once(
+    scheduler, monkeypatch
+):
+    owner, clock = scheduler
+    owner.deadline = clock.now() + timedelta(seconds=100)
+    elapsed = 0
+    monkeypatch.setattr(runner, "monotonic", lambda: elapsed)
+    navigator = MagicMock()
+
+    def navigate(code):
+        nonlocal elapsed
+        assert code == "OS-1"
+        assert io_timeout(120) == 100
+        elapsed = 75
+        clock.current += timedelta(seconds=elapsed)
+        assert io_timeout(120) == 25
+        return True
+
+    navigator.run.side_effect = navigate
+    monkeypatch.setattr(runner, "NavigationSolver", lambda *_: navigator)
+    operation = MagicMock()
+
+    def fight(**kwargs):
+        assert kwargs["before_single_battle"]()
+        clock.current += timedelta(seconds=30)
+        kwargs["on_single_battle_settlement"]()
+        return {"executed_runs": 1}
+
+    operation.run.side_effect = fight
+    monkeypatch.setattr(runner, "OperationSolver", lambda *_: operation)
+    assert runner.run_event_rerun(owner, lambda: owner.deadline)
+    navigator.confirm_selected_stage.assert_called_once()
+    operation.run.assert_called_once()
+    assert record.load_event_rerun_progress("act46sre:100") == {"OS-1": "completed"}
+
+
 def test_unchanged_failed_preparation_yields_to_other_selected_stages(
     scheduler, monkeypatch
 ):
