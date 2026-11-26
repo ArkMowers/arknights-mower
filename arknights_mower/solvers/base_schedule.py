@@ -13651,7 +13651,9 @@ class BaseSchedulerSolver(
                     if not read_mood:
                         self.scene_graph_navigation(Scene.INFRA_DETAILS)
                         self._read_room_mood(
-                            room, force_mood=True, observed_facilities={room}
+                            room,
+                            force_mood=True,
+                            observed_facilities={room} if observed_product else set(),
                         )
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
                     self._resolve_order_read_log(cohort, room, "paused")

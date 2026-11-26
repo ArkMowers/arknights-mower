@@ -991,6 +991,10 @@ def test_confirmed_pause_skips_digit_retries_and_reuses_order_observation(
 
     room = "room_1_1"
     use_order_pages(solver, {room: "paused"})
+    solver._cache_facility_state_from_current_page.return_value = (
+        "龙门商法",
+        "已确认订单类型",
+    )
     monkeypatch.setattr(
         product_recognition, "trade_order_is_paused", lambda frame: True, raising=False
     )
@@ -1000,6 +1004,54 @@ def test_confirmed_pause_skips_digit_retries_and_reuses_order_observation(
     solver._product_ocr_text.assert_not_called()
     solver.tap.assert_called_once()
     assert solver.get_agent_from_room.call_args.kwargs["observed_facilities"] == {room}
+    assert solver.scene() == Scene.INFRA_MAIN
+
+
+@pytest.mark.parametrize("occupancy", [(0, 2), None])
+def test_confirmed_pause_recovers_unreadable_order_type(solver, monkeypatch, occupancy):
+    from arknights_mower.utils import product_recognition
+
+    room = "room_1_1"
+    use_order_pages(solver, {room: "empty"})
+    del solver.get_agent_from_room
+    del solver._cache_facility_state_from_current_page
+    solver.op_data.update_facility_state(room, "trade", "orundum")
+    monkeypatch.setattr(product_recognition, "trade_order_is_paused", lambda _: True)
+    monkeypatch.setattr(base_schedule, "read_room_occupancy", lambda _: occupancy)
+    solver._work_room_panel = MagicMock(return_value="open")
+    solver.detect_room_type = MagicMock(return_value="贸易站")
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    find_order_marker = solver.find
+    roster_read = False
+
+    def find(resource, **kwargs):
+        nonlocal roster_read
+        if resource == "infra_no_operator":
+            assert solver.scene() == Scene.INFRA_DETAILS
+            roster_read = True
+            return True
+        return find_order_marker(resource)
+
+    def read_card():
+        if not roster_read:
+            raise RecognizeError("未读到订单类型")
+        assert solver.scene() == Scene.ORDER_LIST
+        return "lmd", True
+
+    solver.find = MagicMock(side_effect=find)
+    solver._read_trade_product_card = MagicMock(side_effect=read_card)
+
+    assert solver.get_run_order_time(room) is None
+
+    assert roster_read
+    assert solver.op_data.operators["鸿雪"].current_room == ""
+    assert solver.op_data.facility_product(room) == "lmd"
+    assert solver._read_trade_product_card.call_count == (2 if occupancy is None else 1)
+    assert solver.tap.call_count == (2 if occupancy is None else 1)
+    solver.read_time.assert_not_called()
+    solver._product_ocr_text.assert_not_called()
     assert solver.scene() == Scene.INFRA_MAIN
 
 
