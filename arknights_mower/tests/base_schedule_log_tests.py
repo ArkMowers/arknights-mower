@@ -425,8 +425,8 @@ def test_mood_patrol_updates_one_facility_observation(
     assert start.log_event["id"] == end.log_event["id"]
     parent = {"type": "facility-observation", "id": start.log_event["id"]}
     assert start.log_parent == end.log_parent == parent
-    interrupted_before_order = panel == "open" and outcome == "interrupted"
-    if interrupted_before_order:
+    interrupted_before_product = panel == "open" and outcome == "interrupted"
+    if interrupted_before_product:
         assert navigation == []
         instance._wait_drone_interface.assert_not_called()
     else:
@@ -450,7 +450,7 @@ def test_mood_patrol_updates_one_facility_observation(
         "cached_mood": f"[[operator:{name}]]（心情未实读）",
         "interrupted": "干员心情读取未完成",
     }.get(outcome, f"[[operator:{name}]]（心情16.124）")
-    final_state = initial_state if interrupted_before_order else state
+    final_state = initial_state if interrupted_before_product else state
     assert end.getMessage() == f"{room_label}：{final_state}，{expected_detail}"
     assert end.log_event["phase"] == (
         "failed" if outcome == "interrupted" else "completed"
@@ -462,14 +462,16 @@ def test_mood_patrol_updates_one_facility_observation(
     )
     assert instance.op_data.facility_states[room]["product"] == (
         previous
-        if outcome == "unknown_product" or interrupted_before_order
+        if outcome == "unknown_product" or interrupted_before_product
         else observed
     )
     if outcome == "cached_mood":
         instance.read_accurate_mood.assert_not_called()
     instance._work_room_panel.assert_called_once_with(room)
     assert instance._visible_manufacture_product.call_count == (
-        1 if facility == "manufacture" and panel else 0
+        1
+        if facility == "manufacture" and panel and not interrupted_before_product
+        else 0
     )
 
 
@@ -477,17 +479,24 @@ def test_mood_patrol_updates_one_facility_observation(
     ("visible", "next_frame"),
     [("exp3", None), (None, None), (None, "same_room"), (None, "wrong_room")],
 )
+@pytest.mark.parametrize(
+    "task_type", [base.TaskTypes.SELF_CORRECTION, base.TaskTypes.NOT_SPECIFIC]
+)
 def test_staffing_reads_room_product_once_before_using_factory_detail(
-    monkeypatch, visible, next_frame
+    monkeypatch, visible, next_frame, task_type
 ):
     monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     room, plan = product_plan()
     solver = object.__new__(base.BaseSchedulerSolver)
-    solver.task = SimpleNamespace(type=base.TaskTypes.SELF_CORRECTION)
+    solver.task = SimpleNamespace(type=task_type)
     solver.tasks = []
     solver.op_data = Operators(plan)
     solver.recog = SimpleNamespace(gray=MagicMock(), capture_started_at=1)
     events = []
+
+    def visible_product():
+        events.append("label")
+        return visible
 
     def observe_panel(target):
         assert target == room
@@ -505,7 +514,7 @@ def test_staffing_reads_room_product_once_before_using_factory_detail(
         return resource == "arrange_check_in"
 
     solver._work_room_panel = MagicMock(side_effect=observe_panel)
-    solver._visible_manufacture_product = MagicMock(return_value=visible)
+    solver._visible_manufacture_product = MagicMock(side_effect=visible_product)
     solver.detect_room_type = MagicMock(return_value="制造站")
     solver.detect_room = MagicMock(return_value=room)
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
@@ -523,19 +532,64 @@ def test_staffing_reads_room_product_once_before_using_factory_detail(
             solver.get_agent_from_room(room, observed_facilities=observed)
         assert events == ["panel", "slot", "panel"]
         assert observed == set()
+        solver._visible_manufacture_product.assert_not_called()
     else:
         result = solver.get_agent_from_room(room, observed_facilities=observed)
         assert [item["agent"] for item in result] == [""]
         expected = ["panel", "slot"]
         if next_frame:
             expected.append("panel")
+        expected.append("label")
         if not visible:
             expected.append("detail")
         assert events == expected
         assert observed == {room}
         assert solver.op_data.facility_product(room) == "exp3"
-    solver._visible_manufacture_product.assert_called_once_with()
+        solver._visible_manufacture_product.assert_called_once_with()
     solver.detect_room_type.assert_called_once_with()
+
+
+@pytest.mark.parametrize("occupancy", [(0, 1), (2, 2), (0, 3), None])
+@pytest.mark.parametrize("countdown", [True, False])
+def test_verified_trade_capacity_controls_strategy_read(
+    monkeypatch, occupancy, countdown
+):
+    monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
+    monkeypatch.setattr(base, "read_room_occupancy", lambda _: occupancy)
+    room, plan = product_plan()
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.task = None
+    solver.op_data = Operators(plan)
+    solver.recog = SimpleNamespace(gray=None)
+    solver._work_room_panel = MagicMock(return_value="open")
+    solver.detect_room_type = MagicMock(return_value="贸易站")
+    solver._read_trade_product_card = MagicMock(return_value=("orundum", True))
+    solver._wait_drone_interface = MagicMock()
+    solver.scene_graph_navigation = MagicMock()
+    solver._start_facility_observation = MagicMock()
+    observation = {} if countdown else None
+    fixed_strategy = occupancy is not None and occupancy[1] < 3
+
+    refreshed = solver.refresh_facility_state(
+        room, facility_observation=observation, defer_trade_order=countdown
+    )
+
+    if countdown:
+        assert not refreshed
+        assert observation["order_pending"] is True
+        assert observation.get("room_product") == ("lmd" if fixed_strategy else None)
+        solver._wait_drone_interface.assert_not_called()
+        solver._observe_trade_strategy(
+            room, room_product=observation.get("room_product")
+        )
+        solver._wait_drone_interface.assert_called_once()
+    else:
+        assert refreshed
+        assert solver._wait_drone_interface.call_count == (0 if fixed_strategy else 1)
+    assert solver._read_trade_product_card.call_count == (0 if fixed_strategy else 1)
+    assert solver.op_data.facility_product(room) == (
+        "lmd" if fixed_strategy else "orundum"
+    )
 
 
 @pytest.mark.parametrize("transition", ["open_panel", "retry_name"])

@@ -319,6 +319,85 @@ def test_blocked_order_allows_independent_final_refresh(order_navigation):
     assert restoration in solver.tasks and restoration.run_order_restore_pending
 
 
+@pytest.mark.parametrize("panel_open", [False, True])
+def test_failed_order_open_yields_to_other_rooms_within_baseline_budget(
+    order_navigation, monkeypatch, panel_open
+):
+    from types import SimpleNamespace
+
+    from arknights_mower.utils import solver as runtime
+
+    ui = order_navigation
+    solver = ui.solver
+    room, next_room = "room_1_1", "room_2_2"
+    refresh = ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data=room)
+    next_refresh = ui.task(task_type=ui.task_type.REFRESH_TIME, meta_data=next_room)
+    solver.tasks = [refresh, next_refresh]
+    ui.states.update({room: "unrecognized", next_room: "active"})
+    ui.config.conf.selection_transition_timeout = 6.0
+    started_at = ui.clock.now()
+    original_time = refresh.time
+
+    def elapsed():
+        return (ui.clock.now() - started_at).total_seconds()
+
+    def sleep(seconds):
+        ui.clock.current += timedelta(seconds=seconds)
+
+    previous_find = solver.find
+    taps = []
+    close_panel = (1400, 200)
+    open_orders = (96, 1026)
+
+    def find(resource, *args):
+        if (
+            panel_open
+            and solver._page["room"] == room
+            and resource == "arrange_check_in_on"
+            and ((room, close_panel) not in taps or elapsed() < 2)
+        ):
+            return close_panel
+        return previous_find(resource)
+
+    def tap(point):
+        tapped_room = solver._page["room"]
+        taps.append((tapped_room, point))
+        if tapped_room == next_room and point == open_orders:
+            solver._page["open"] = True
+
+    monkeypatch.setattr(ui.base, "monotonic", elapsed)
+    monkeypatch.setattr(runtime, "time", SimpleNamespace(monotonic=elapsed))
+    monkeypatch.setattr(runtime, "csleep", sleep)
+    solver.recog.find = find
+    solver.device = SimpleNamespace(tap=tap)
+    solver.find = runtime.BaseSolver.find.__get__(solver)
+    solver.tap = runtime.BaseSolver.tap.__get__(solver)
+    solver.sleep = runtime.BaseSolver.sleep.__get__(solver)
+
+    solver._read_pending_order_times(room)
+
+    assert any(task is refresh for task in solver.tasks)
+    assert refresh.time == original_time
+    assert refresh.execution_failure["reason"] == "未成功进入订单或制造详情界面"
+    ((observed_room, observed_at),) = [
+        event[1:] for event in ui.events if event[0] == "read"
+    ]
+    assert observed_room == next_room
+    # 6 秒基线失败预算另加下一间房首次点击的 0.2 秒。
+    assert (observed_at - started_at).total_seconds() <= 6.2
+    failed_taps = [point for tapped_room, point in taps if tapped_room == room]
+    assert failed_taps[0] == (close_panel if panel_open else open_orders)
+    assert failed_taps.count(open_orders) >= 2
+    assert [point for tapped_room, point in taps if tapped_room == next_room] == [
+        open_orders
+    ]
+    assert all(task is not next_refresh for task in solver.tasks)
+    assert any(
+        task.type == ui.task_type.RUN_ORDER and task.meta_data == next_room
+        for task in solver.tasks
+    )
+
+
 @pytest.mark.parametrize("next_room", ["room_2_2", "dormitory_1"])
 @pytest.mark.parametrize("failed_stage", ["countdown", "return_to_map"])
 def test_failed_final_order_read_restores_navigation_before_next_task(

@@ -229,3 +229,144 @@ def test_foreign_layout_can_recover_through_scaled_trade_ocr():
     solver._product_ocr_text = Mock(return_value="贸易站3级后可切换")
     assert solver._read_trade_product_card() == ("lmd", False)
     solver._product_ocr_text.assert_called_once_with(((933, 560), (1206, 693)))
+
+
+@pytest.mark.parametrize(("crop", "matches"), [(0, True), (1, False), (2, False)])
+def test_trade_order_pause_banner_distinguishes_recorded_pages(crop, matches):
+    crops = bytes2img((FIXTURES / "trade_order_status_crops.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[351:411, 405:725] = crops[crop * 60 : (crop + 1) * 60]
+    assert bool(product_recognition.trade_order_is_paused(frame)) is matches
+
+
+def test_orange_banner_without_pause_text_does_not_skip_countdown():
+    crops = bytes2img((FIXTURES / "trade_order_status_crops.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[351:411, 405:725] = crops[:60]
+    frame[366:391, 465:660] = frame[374, 430]
+    assert not product_recognition.trade_order_is_paused(frame)
+
+
+@pytest.mark.parametrize(
+    ("index", "expected"), [(0, 1), (1, 1), (2, 1), (3, 3), (4, 3)]
+)
+def test_trade_level_marks_in_room_panel_and_order_views(index, expected):
+    crops = bytes2img((FIXTURES / "trade_level_marks.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[28:86, 876:944] = crops[index * 58 : (index + 1) * 58]
+    assert product_recognition.trade_title_level(frame) == expected
+    frame[46:70, 915:937] = 85
+    assert product_recognition.trade_title_level(frame) is None
+
+
+def test_two_trade_level_marks_allow_room_confirmed_fixed_product():
+    title = bytes2img((FIXTURES.parent / "room_titles/trade_20261013.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[18:95, 568:957] = title
+    assert product_recognition.trade_title_level(frame) == 2
+    solver = solver_for(frame)
+    assert solver._fixed_trade_product("room_1_1") == "lmd"
+    assert solver._fixed_trade_product("room_2_2") is None
+
+
+@pytest.mark.parametrize("constant_template", [False, True])
+def test_unconfirmed_trade_title_reads_strategy_card(monkeypatch, constant_template):
+    title = bytes2img((FIXTURES.parent / "room_titles/trade_20261013.png").read_bytes())
+    frame = card(2)
+    frame[18:95, 568:957] = title
+    frame[36:80, 880:945] = (46, 46, 46)
+    for x, rgb in (
+        (894, (34, 187, 255)),
+        (912, (34, 187, 255)),
+        (930, (153, 153, 153)),
+    ):
+        frame[43:74, x - 7 : x + 8] = rgb
+
+    if constant_template:
+        loadres = product_recognition.loadres
+
+        def load_template(resource, *args, **kwargs):
+            if resource == "room/trade_level_mark":
+                return np.full((38, 15), 153, dtype=np.uint8)
+            return loadres(resource, *args, **kwargs)
+
+        monkeypatch.setattr(product_recognition, "loadres", load_template)
+    solver = solver_for(frame)
+    solver.op_data = SimpleNamespace()
+    solver._cache_facility_state = Mock()
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    solver._cache_facility_state_from_current_page("room_1_1", "trade", defer_log=True)
+
+    solver._cache_facility_state.assert_called_once_with("room_1_1", "trade", "orundum")
+    solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize("level", [1, 2])
+def test_configured_trade_level_skips_detail_during_room_observation(
+    monkeypatch, level
+):
+    room = "room_1_1"
+    solver = solver_for(np.zeros((1080, 1920, 3), dtype=np.uint8))
+    solver.op_data = SimpleNamespace(
+        facility_levels={room: level}, update_facility_state=Mock()
+    )
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._work_room_panel = Mock(return_value="closed")
+    solver.scene_graph_navigation = Mock()
+    solver.detect_room_type = Mock(return_value="贸易站")
+    solver._wait_drone_interface = Mock(side_effect=AssertionError("opened orders"))
+    solver._read_trade_product_card = Mock(side_effect=AssertionError("read card"))
+    title_level = Mock(return_value=None)
+    monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
+
+    assert solver.refresh_facility_state(room)
+
+    solver.op_data.update_facility_state.assert_called_once_with(room, "trade")
+    title_level.assert_not_called()
+    solver._wait_drone_interface.assert_not_called()
+    solver.scene_graph_navigation.assert_not_called()
+    solver._read_trade_product_card.assert_not_called()
+
+
+def test_configured_third_level_reads_card_without_matching_title_level(monkeypatch):
+    room = "room_1_1"
+    solver = solver_for(card(2))
+    solver.op_data = SimpleNamespace(
+        facility_levels={room: 3}, update_facility_state=Mock()
+    )
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._work_room_panel = Mock(return_value="closed")
+    solver.detect_room_type = Mock(return_value="贸易站")
+    solver._wait_drone_interface = Mock()
+    solver.scene_graph_navigation = Mock()
+    title_level = Mock(return_value=1)
+    monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver.refresh_facility_state(room)
+
+    assert solver.op_data.update_facility_state.call_args.args == (
+        room,
+        "trade",
+        "orundum",
+    )
+    solver._wait_drone_interface.assert_called_once()
+    title_level.assert_not_called()
+
+
+def test_trade_switch_uses_actual_strategy_even_with_outdated_configured_level():
+    room = "room_1_1"
+    solver = solver_for(card(2))
+    solver.op_data = SimpleNamespace(facility_levels={room: 1})
+    solver._open_trade_product_detail = Mock()
+    solver._cache_facility_state = Mock()
+    solver._start_product_switch_log = Mock()
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    observation = solver._survey_trade_switch(room, "lmd")
+
+    assert observation["current_product"] == "orundum"
+    assert observation["needs_switch"] is True
+    assert observation["switchable"] is True

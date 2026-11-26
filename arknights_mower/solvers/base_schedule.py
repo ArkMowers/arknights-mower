@@ -5752,15 +5752,25 @@ class BaseSchedulerSolver(
         return True
 
     def _read_room_mood(
-        self, room, *, force_mood=False, strict_observation=False, pending_order=None
+        self,
+        room,
+        *,
+        force_mood=False,
+        strict_observation=False,
+        pending_order=None,
+        observed_facilities=None,
     ):
         """实读普通房间的驻员与心情，清除已离开房间的缓存驻员。"""
         if room == "recycle" and getattr(self, "_recycle_unavailable", False) is True:
             return
         observation = {} if pending_order is None else pending_order
-        capture = room.startswith("room_") and (
-            self._product_switching_enabled()
-            or getattr(self.op_data, "mood_calculation_enabled", False)
+        capture = (
+            room.startswith("room_")
+            and room not in (observed_facilities or ())
+            and (
+                self._product_switching_enabled()
+                or getattr(self.op_data, "mood_calculation_enabled", False)
+            )
         )
         with ExitStack() as observation_scope:
             observation_args = {}
@@ -5779,6 +5789,11 @@ class BaseSchedulerSolver(
                     else None,
                     **({"force_mood": True} if force_mood else {}),
                     **({"strict_observation": True} if strict_observation else {}),
+                    **(
+                        {"observed_facilities": observed_facilities}
+                        if observed_facilities is not None
+                        else {}
+                    ),
                     **observation_args,
                 )
             except BaseException:
@@ -13332,50 +13347,70 @@ class BaseSchedulerSolver(
             if accelerate_template is not None
             else ("manufacture_accelerate", "bill_accelerate")
         )
-        pending = None
-        retry_ready = False
-        retry_at = 0
-        attempts_left = 10
-        while attempts_left:
-            if self.find("connecting"):
-                attempts_left -= 1
+        deadline = None
+        if page_template == "order_label" and retry_after:
+            # 关闭进驻面板和打开订单页共用期限。基线无反馈时，五次点击各用
+            # 1 秒等待和 0.2 秒补读，最多等待 6 秒。
+            budget = min(2 * self.performance_profile.transition_timeout, 6.0)
+            deadline = monotonic() + budget
+            retry_after = min(retry_after, budget / 2)
+        observation = (
+            self.observation_deadline(deadline)
+            if deadline is not None
+            else nullcontext()
+        )
+        failure = "未成功进入订单或制造详情界面"
+        try:
+            with observation:
+                pending = None
                 retry_ready = False
-                self.sleep()
-                continue
-            if any(self.find(template) is not None for template in templates):
-                return
-            close = self.find("arrange_check_in_on")
-            action = "close_detail" if close is not None else "open_order"
-            if (
-                page_template is not None
-                and pending == "open_order"
-                and self.find(page_template) is not None
-            ):
-                return
-            if pending == action and (remaining := retry_at - monotonic()) > 0:
-                retry_ready = True
-                self.sleep(min(0.2, remaining))
-                continue
-            attempts_left -= 1
-            if pending == action and not retry_ready:
-                # 等上次点击的反馈；旧面板仍在时先换帧，不连续戳同一入口。
-                retry_ready = True
-                self.sleep(0.2)
-                continue
-            retry_at = monotonic() + retry_after
-            self.tap(
-                close
-                if close is not None
-                else (self.recog.w * 0.05, self.recog.h * 0.95),
-                interval=interval,
-            )
-            pending, retry_ready = action, False
-        # 最后一次点击之后也要读到结果，再交回原有房间恢复流程。
-        ready = any(self.find(template) is not None for template in templates)
-        if page_template is not None and pending == "open_order":
-            ready = ready or self.find(page_template) is not None
-        if self.find("connecting") or not ready:
-            raise RecognizeError("未成功进入订单或制造详情界面")
+                retry_at = 0
+                attempts_left = 10
+                while attempts_left:
+                    if self.find("connecting"):
+                        attempts_left -= 1
+                        retry_ready = False
+                        self.sleep()
+                        continue
+                    if any(self.find(template) is not None for template in templates):
+                        return
+                    close = self.find("arrange_check_in_on")
+                    action = "close_detail" if close is not None else "open_order"
+                    if (
+                        page_template is not None
+                        and pending == "open_order"
+                        and self.find(page_template) is not None
+                    ):
+                        return
+                    if pending == action and (remaining := retry_at - monotonic()) > 0:
+                        retry_ready = True
+                        self.sleep(min(0.2, remaining))
+                        continue
+                    attempts_left -= 1
+                    if pending == action and not retry_ready:
+                        # 等上次点击的反馈；旧面板仍在时先换帧，不连续戳同一入口。
+                        retry_ready = True
+                        self.sleep(0.2)
+                        continue
+                    retry_at = monotonic() + retry_after
+                    self.tap(
+                        close
+                        if close is not None
+                        else (self.recog.w * 0.05, self.recog.h * 0.95),
+                        interval=interval,
+                    )
+                    pending, retry_ready = action, False
+                # 最后一次点击之后也要读到结果，再交回原有房间恢复流程。
+                ready = any(self.find(template) is not None for template in templates)
+                if page_template is not None and pending == "open_order":
+                    ready = ready or self.find(page_template) is not None
+                if not self.find("connecting") and ready:
+                    return
+        except ObservationTimeout as error:
+            if deadline is None or monotonic() < deadline:
+                raise
+            raise RecognizeError(failure) from error
+        raise RecognizeError(failure)
 
     def _remember_order_read_log_cohort(self, refreshes):
         """关联本轮实际保留的读取对象；展示状态不写入任务或存储。"""
@@ -13575,7 +13610,9 @@ class BaseSchedulerSolver(
                 self._active_order_read_log = previous
 
     def _read_run_order_time(self, room, *, read_mood=False) -> datetime | None:
-        """读取跑单时刻；确认订单暂停时，本轮不安排跑单。"""
+        """读取跑单时刻，确认订单暂停时本轮不安排跑单。"""
+        from arknights_mower.utils.product_recognition import trade_order_is_paused
+
         finish_mood_calculation()
         # 点击进入该房间
         self.enter_room(room)
@@ -13590,10 +13627,21 @@ class BaseSchedulerSolver(
             if not hasattr(self, "_startup_mood_observations"):
                 self._startup_mood_observations = {}
             self._startup_mood_observations[room] = self._room_mood_signature(room)
-        # 进入房间详情
+        trade_level = pending_order.get("trade_level")
+        if trade_level is None and (
+            getattr(getattr(self.recog, "gray", None), "shape", None) == (1080, 1920)
+            and self.find("arrange_check_in_on")
+            and self.detect_room() == room
+        ):
+            trade_level = self._observed_trade_level(room, panel="open")
         observed_product = None
         try:
-            observed_product = self._observe_trade_strategy(room, interval=1)
+            observed_product = self._observe_trade_strategy(
+                room,
+                room_product=pending_order.get("room_product"),
+                retry_after=3,
+                **({"trade_level": trade_level} if trade_level is not None else {}),
+            )
         finally:
             if pending_order.get("order_pending"):
                 pending_order["state_summary"] = (
@@ -13610,24 +13658,33 @@ class BaseSchedulerSolver(
         with log_parent_context({"type": "order-read", "id": cohort["id"]}):
             if observed_product:
                 logger.info(observed_product[1], extra={"log_room": room})
-            # 正常倒计时用数字模板读取，失败后才 OCR 确认订单暂停。
-            remaining = self.read_time(
-                self._run_order_time_region(),
-                None,
-                use_digit_reader=True,
-            )
-            if remaining is None:
-                status_scope = (
-                    (self.recog.w * 405 // 1920, self.recog.h * 350 // 1080),
-                    (self.recog.w * 725 // 1920, self.recog.h * 410 // 1080),
+            paused = trade_order_is_paused(getattr(self.recog, "img", None))
+            remaining = None
+            if not paused:
+                remaining = self.read_time(
+                    self._run_order_time_region(), None, use_digit_reader=True
                 )
-                if "订单暂停获取中" in self._product_ocr_text(status_scope):
+                if remaining is None:
+                    status_scope = (
+                        (self.recog.w * 405 // 1920, self.recog.h * 350 // 1080),
+                        (self.recog.w * 725 // 1920, self.recog.h * 410 // 1080),
+                    )
+                    paused = trade_order_is_paused(
+                        getattr(self.recog, "img", None)
+                    ) or ("订单暂停获取中" in self._product_ocr_text(status_scope))
+            if remaining is None:
+                if paused:
                     logger.info(
                         f"房间 {self.translate_room(room)} 订单暂停获取，检查是否缺少进驻干员"
                     )
                     if not read_mood:
                         self.scene_graph_navigation(Scene.INFRA_DETAILS)
-                        self._read_room_mood(room, force_mood=True)
+                        self._read_room_mood(
+                            room,
+                            force_mood=True,
+                            strict_observation=True,
+                            observed_facilities={room} if observed_product else set(),
+                        )
                     self.scene_graph_navigation(Scene.INFRA_MAIN)
                     self._resolve_order_read_log(cohort, room, "paused")
                     return None
@@ -14923,24 +14980,57 @@ class BaseSchedulerSolver(
             logger.debug("跑单换人后跳过贸易站订单类型刷新")
             return False
 
-        room_product = (
-            self._visible_manufacture_product()
-            if facility == "manufacture" and panel
-            else None
-        )
+        room_product = None
         read_with_countdown = (
             facility == "trade"
             and defer_trade_order
             and facility_observation is not None
         )
-        if read_with_countdown or (
-            after_roster is not None and panel == "open" and not room_product
-        ):
+        trade_level = None
+        if facility == "trade" and panel:
+            planned_level = getattr(self.op_data, "facility_levels", {}).get(room)
+            actual_product = (
+                getattr(self.op_data, "facility_states", {})
+                .get(room, {})
+                .get("product")
+            )
+            target_product = getattr(self.op_data, "products", {}).get(room)
+            needs_observed_order = (
+                read_with_countdown
+                or (
+                    self._product_switching_enabled()
+                    and target_product in TRADE_PRODUCTS
+                )
+                or actual_product == "orundum"
+            )
+            if planned_level in (1, 2) and not needs_observed_order:
+                if facility_observation is not None:
+                    self._start_facility_observation(
+                        room,
+                        facility_observation,
+                        facility_observation_scope,
+                        "按排班表，订单类型为龙门商法",
+                    )
+                return True
+            trade_level = (
+                3
+                if planned_level == 3 and not needs_observed_order
+                else self._observed_trade_level(room, panel=panel)
+            )
+            if trade_level in (1, 2):
+                room_product = "lmd"
+        if read_with_countdown or (after_roster is not None and panel == "open"):
             if read_with_countdown:
                 facility_observation["order_pending"] = True
+                if trade_level is not None:
+                    facility_observation["trade_level"] = trade_level
+                if room_product:
+                    facility_observation["room_product"] = room_product
             else:
                 after_roster.update(
                     facility=facility,
+                    room_product=room_product,
+                    trade_level=trade_level,
                     captured_at=getattr(self.recog, "capture_started_at", None),
                     frame=getattr(self.recog, "_img", None),
                 )
@@ -14953,12 +15043,15 @@ class BaseSchedulerSolver(
                     f"{state_name}待确认",
                 )
             return False
+        if facility == "manufacture" and panel:
+            room_product = self._visible_manufacture_product()
         return self._read_room_facility_product(
             room,
             facility,
             room_product,
             facility_observation,
             facility_observation_scope,
+            trade_level=trade_level,
         )
 
     def _check_room_roster_frame(self, room, observation, *, sampled=False):
@@ -14977,12 +15070,23 @@ class BaseSchedulerSolver(
         observation.update(frame=verified_frame, captured_at=verified_at)
 
     def _read_room_facility_product(
-        self, room, facility, room_product, observation, observation_scope
+        self,
+        room,
+        facility,
+        room_product,
+        observation,
+        observation_scope,
+        *,
+        trade_level=None,
     ):
         observed_product = None
         try:
-            if facility == "trade":
-                observed_product = self._observe_trade_strategy(room, retry_after=3)
+            if facility == "trade" and not room_product:
+                observed_product = self._observe_trade_strategy(
+                    room,
+                    retry_after=3,
+                    **({"trade_level": trade_level} if trade_level is not None else {}),
+                )
             else:
                 if not room_product:
                     self._wait_drone_interface(
@@ -15660,15 +15764,39 @@ class BaseSchedulerSolver(
             page_template="order_label",
         )
 
-    def _observe_trade_strategy(self, room, **navigation):
+    def _observe_trade_strategy(
+        self, room, *, room_product=None, trade_level=None, **navigation
+    ):
         self._wait_drone_interface(
             accelerate_template="bill_accelerate",
             page_template="order_label",
             **navigation,
         )
         return self._cache_facility_state_from_current_page(
-            room, "trade", defer_log=True
+            room,
+            "trade",
+            defer_log=True,
+            **({"room_product": room_product} if room_product else {}),
+            **({"trade_level": trade_level} if trade_level is not None else {}),
         )
+
+    def _observed_trade_level(self, room, *, panel=None):
+        from arknights_mower.utils.product_recognition import trade_title_level
+
+        recog = getattr(self, "recog", None)
+        if panel == "open":
+            occupancy = read_room_occupancy(getattr(recog, "gray", None))
+            if occupancy is not None and occupancy[1] in (1, 2, 3):
+                return occupancy[1]
+        level = trade_title_level(getattr(recog, "img", None))
+        if level is not None and (panel is not None or self.detect_room() == room):
+            return level
+        return None
+
+    def _fixed_trade_product(self, room):
+        if self._observed_trade_level(room) in (1, 2):
+            return "lmd"
+        return None
 
     def _read_trade_product_card(self) -> tuple[str, bool]:
         """从订单列表右下角卡片读取订单类型及是否允许切换。"""
@@ -15707,6 +15835,7 @@ class BaseSchedulerSolver(
         *,
         defer_log: bool = False,
         room_product: str | None = None,
+        trade_level: int | None = None,
     ) -> tuple[str, str] | None:
         """在当前生产页面顺带更新设施状态，不进入或退出任何页面。"""
         if not self._product_switching_enabled() and not getattr(
@@ -15720,7 +15849,15 @@ class BaseSchedulerSolver(
                 product = room_product or self.read_manufacture_product()
                 label = MANUFACTURE_PRODUCTS[product].name
             else:
-                product, _ = self._read_trade_product_card()
+                product = room_product
+                if product is None:
+                    if trade_level is None:
+                        trade_level = self._observed_trade_level(room)
+                    product = (
+                        "lmd"
+                        if trade_level in (1, 2)
+                        else self._read_trade_product_card()[0]
+                    )
                 label = TRADE_PRODUCTS[product].strategy_name
             self._cache_facility_state(room, facility, product)
             description = "识别产物" if facility == "manufacture" else "识别订单类型"
@@ -15740,7 +15877,10 @@ class BaseSchedulerSolver(
 
     def _survey_trade_switch(self, room: str, target_product: str) -> dict:
         self._open_trade_product_detail(room)
-        current_product, switchable = self._read_trade_product_card()
+        fixed = self._fixed_trade_product(room)
+        current_product, switchable = (
+            (fixed, False) if fixed else self._read_trade_product_card()
+        )
         self._cache_facility_state(room, "trade", current_product)
         self._start_product_switch_log(room, target_product, current_product)
         return {
@@ -15754,7 +15894,10 @@ class BaseSchedulerSolver(
 
     def _change_trade_product(self, observation: dict):
         self._open_trade_product_detail(observation["room"])
-        current_product, switchable = self._read_trade_product_card()
+        fixed = self._fixed_trade_product(observation["room"])
+        current_product, switchable = (
+            (fixed, False) if fixed else self._read_trade_product_card()
+        )
         self._cache_facility_state(observation["room"], "trade", current_product)
         self._start_product_switch_log(
             observation["room"], observation["target_product"], current_product
@@ -16341,7 +16484,9 @@ class BaseSchedulerSolver(
                 self.tap(all_in_scope)
                 self.tap(accelerate, y_rate=1)
         else:
-            product, _ = self._read_trade_product_card()
+            product = (
+                self._fixed_trade_product(room) or self._read_trade_product_card()[0]
+            )
             self.op_data.update_facility_state(room, "trade", product)
             if self.op_data.is_orundum_trade_room(room):
                 self.scene_graph_navigation(Scene.INFRA_MAIN)
@@ -19910,7 +20055,7 @@ class BaseSchedulerSolver(
                 )
                 if defer_trade_order:
                     observation_args["defer_trade_order"] = True
-            elif observed_facilities is not None and self._ordinary_work_room(room):
+            elif observed_facilities is not None and room.startswith("room_"):
                 observation_args["after_roster"] = after_roster
             observed = self.refresh_facility_state(room, **observation_args)
             if observed and observed_facilities is not None:
@@ -19935,6 +20080,17 @@ class BaseSchedulerSolver(
                 )
         if training_observation is None:
             self.wait_product_complete()
+        if strict_observation and room in (observed_facilities or ()):
+            panel = self._work_room_panel(room)
+            if panel is not None:
+                if panel != "open":
+                    raise RecognizeError(
+                        f"未确认{self.translate_room(room)}已展开的进驻面板"
+                    )
+                after_roster.update(
+                    frame=getattr(self.recog, "_img", None),
+                    captured_at=getattr(self.recog, "capture_started_at", None),
+                )
         if room in RIGHT_SIDE_ROOM_CAPACITY:
             length = (
                 1
@@ -20732,8 +20888,8 @@ class BaseSchedulerSolver(
                 current_time=swap_recorded_at,
             )
         if after_roster:
-            facility = after_roster["facility"]
-            if facility_observation is not None:
+            facility = after_roster.get("facility")
+            if facility and facility_observation is not None:
                 facility_observation["failure_detail"] = (
                     "订单详情读取未完成"
                     if facility == "trade"
@@ -20742,9 +20898,19 @@ class BaseSchedulerSolver(
             self._check_room_roster_frame(room, after_roster)
         if counted_names is not None or short_fallback:
             check_roster_frame()
-        if after_roster:
+        if after_roster and facility:
+            room_product = (
+                self._visible_manufacture_product()
+                if facility == "manufacture"
+                else after_roster["room_product"]
+            )
             observed = self._read_room_facility_product(
-                room, facility, None, facility_observation, facility_observation_scope
+                room,
+                facility,
+                room_product,
+                facility_observation,
+                facility_observation_scope,
+                trade_level=after_roster.get("trade_level"),
             )
             if observed and observed_facilities is not None:
                 observed_facilities.add(room)
@@ -22768,7 +22934,19 @@ class BaseSchedulerSolver(
                         while self.find("confirm_blue") is None:
                             if error_count > 3:
                                 raise Exception("未成功进入干员选择界面")
-                            if ordinary_work_room and error_count == 0:
+                            guarded_selection = self._is_ordinary_facility_arrangement(
+                                self.task
+                            )
+                            # 显式换人读完生产详情后，进驻面板可能仍关闭。
+                            if error_count == 0 and (
+                                ordinary_work_room
+                                or (
+                                    guarded_selection
+                                    and self.task.type == TaskTypes.NOT_SPECIFIC
+                                    and room.startswith("room_")
+                                    and not self.find("room_detail")
+                                )
+                            ):
                                 self.turn_on_room_detail(room)
                             if room.startswith("room") and len(plan[room]) == 2:
                                 two_slot_room = (
@@ -22777,7 +22955,7 @@ class BaseSchedulerSolver(
                                     )
                                     and self.detect_room() == room
                                 )
-                            if self._is_ordinary_facility_arrangement(self.task):
+                            if guarded_selection:
                                 self._open_room_selection(room)
                             else:
                                 self.tap((self.recog.w * 0.82, self.recog.h * 0.2))

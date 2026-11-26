@@ -6,17 +6,23 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import MagicMock, call
 
+import cv2
+import numpy as np
 import pytest
 
 sys.modules.setdefault("arknights_mower.utils.skland", MagicMock())
 
 from arknights_mower.solvers import base_schedule, mastery_reader  # noqa: E402
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
+from arknights_mower.tests.product_recognition_tests import FIXTURES, card  # noqa: E402
+from arknights_mower.tests.room_occupancy_tests import atlas as atlas  # noqa: E402
+from arknights_mower.tests.room_occupancy_tests import frame as frame  # noqa: E402
 from arknights_mower.utils import (  # noqa: E402
     config,
     mastery_recommendation,  # noqa: E402
     scheduler_task,
 )
+from arknights_mower.utils.image import bytes2img  # noqa: E402
 from arknights_mower.utils.logic_expression import LogicExpression  # noqa: E402
 from arknights_mower.utils.operators import Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
@@ -639,6 +645,123 @@ def use_order_pages(solver, order_states):
     solver.get_agent_from_room = MagicMock(side_effect=get_agent)
 
 
+def use_trade_frames(solver, room, order_frame, *, panel_gray=None):
+    use_order_pages(solver, {room: "active"})
+    del solver._cache_facility_state_from_current_page
+    del solver.get_agent_from_room
+    solver.detect_room = MagicMock(return_value=room)
+    solver.detect_room_type = MagicMock(return_value="贸易站")
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver.recog.update = MagicMock()
+    solver._read_trade_product_card = MagicMock(wraps=solver._read_trade_product_card)
+
+    closed_frame = np.zeros_like(order_frame)
+    open_button = ((1560, 1020), (1590, 1050))
+    closed_button = ((1530, 1020), (1560, 1050))
+    enter_room, find_order_marker, open_orders = (
+        solver.enter_room,
+        solver.find,
+        solver.tap,
+    )
+    panel_open = False
+
+    def show_frame(rgb):
+        solver.recog._img = solver.recog.img = rgb
+        solver.recog.gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+
+    def enter(target):
+        nonlocal panel_open
+        enter_room(target)
+        panel_open = panel_gray is not None
+        show_frame(
+            cv2.cvtColor(panel_gray, cv2.COLOR_GRAY2RGB) if panel_open else closed_frame
+        )
+
+    def find(resource, **kwargs):
+        if solver.scene() == Scene.INFRA_DETAILS:
+            if panel_open and resource in ("arrange_check_in_on", "infra_no_operator"):
+                return open_button
+            if not panel_open and resource == "arrange_check_in":
+                return closed_button
+        return find_order_marker(resource)
+
+    def tap(position, **kwargs):
+        nonlocal panel_open
+        if position == open_button:
+            assert panel_open
+            panel_open = False
+            show_frame(closed_frame)
+            return
+        assert not panel_open
+        open_orders(position, **kwargs)
+        show_frame(order_frame)
+
+    solver.enter_room = MagicMock(side_effect=enter)
+    solver.find = MagicMock(side_effect=find)
+    solver.tap = MagicMock(side_effect=tap)
+
+
+def test_stale_trade_level_does_not_admit_run_order(solver):
+    room = "room_1_1"
+    solver.op_data.facility_levels[room] = 1
+    use_trade_frames(solver, room, card(2))
+
+    solver.plan_run_order(room)
+
+    assert not solver.tasks
+    assert room not in solver.op_data.run_order_rooms
+    assert solver.op_data.facility_product(room) == "orundum"
+
+
+def test_stale_trade_level_preserves_observed_order_and_queued_switch(solver):
+    room = "room_1_1"
+    solver.op_data.facility_levels[room] = 1
+    solver.op_data.plan[room][0].facility = "贸易站"
+    solver.op_data.update_facility_state(room, "trade", "orundum")
+    del solver.queue_product_switches
+    use_trade_frames(solver, room, card(2))
+    solver.queue_product_switches()
+    (pending,) = solver.tasks
+    assert pending.type == TaskTypes.SWITCH_PRODUCT
+
+    assert solver.get_run_order_time(room) is not None
+    solver.queue_product_switches()
+
+    assert len(solver.tasks) == 1
+    assert solver.tasks[0] is pending
+    assert solver.op_data.facility_product(room) == "orundum"
+
+
+def test_countdown_uses_open_panel_capacity_without_mood(solver, frame):
+    room = "room_1_1"
+    solver.op_data.facility_levels.pop(room, None)
+    use_trade_frames(solver, room, card(1), panel_gray=frame("m302-empty2"))
+
+    assert solver.get_run_order_time(room) is not None
+
+    assert solver.op_data.facility_product(room) == "lmd"
+    solver._read_trade_product_card.assert_not_called()
+
+
+@pytest.mark.parametrize("read_mood", [False, True])
+def test_three_slot_panel_requires_strategy_card_with_low_order_page_title(
+    solver, frame, read_mood
+):
+    room = "room_1_1"
+    solver.op_data.facility_levels.pop(room, None)
+    order_frame = card(2)
+    marks = bytes2img((FIXTURES / "trade_level_marks.png").read_bytes())
+    order_frame[28:86, 876:944] = marks[116:174]
+    use_trade_frames(solver, room, order_frame, panel_gray=frame("b102-empty3"))
+
+    assert solver.get_run_order_time(room, read_mood=read_mood) is not None
+
+    assert solver.op_data.facility_product(room) == "orundum"
+    solver._read_trade_product_card.assert_called_once()
+
+
 def use_mood_pages(solver, monkeypatch, occupants):
     solver.op_data.facility_levels["train"] = 0
     monkeypatch.setattr(base_schedule, "try_workshop_tasks", MagicMock())
@@ -984,6 +1107,77 @@ def test_order_resumes_after_an_inactive_page_without_losing_room_eligibility(so
     solver.double_read_time.assert_not_called()
 
 
+def test_confirmed_pause_skips_digit_retries_and_reuses_order_observation(
+    solver, monkeypatch
+):
+    from arknights_mower.utils import product_recognition
+
+    room = "room_1_1"
+    use_order_pages(solver, {room: "paused"})
+    solver._cache_facility_state_from_current_page.return_value = (
+        "龙门商法",
+        "已确认订单类型",
+    )
+    monkeypatch.setattr(
+        product_recognition, "trade_order_is_paused", lambda frame: True, raising=False
+    )
+    assert solver.get_run_order_time(room) is None
+
+    solver.read_time.assert_not_called()
+    solver._product_ocr_text.assert_not_called()
+    solver.tap.assert_called_once()
+    assert solver.get_agent_from_room.call_args.kwargs["observed_facilities"] == {room}
+    assert solver.scene() == Scene.INFRA_MAIN
+
+
+@pytest.mark.parametrize("occupancy", [(0, 2), None])
+def test_confirmed_pause_recovers_unreadable_order_type(solver, monkeypatch, occupancy):
+    from arknights_mower.utils import product_recognition
+
+    room = "room_1_1"
+    use_order_pages(solver, {room: "empty"})
+    del solver.get_agent_from_room
+    del solver._cache_facility_state_from_current_page
+    solver.op_data.update_facility_state(room, "trade", "orundum")
+    monkeypatch.setattr(product_recognition, "trade_order_is_paused", lambda _: True)
+    monkeypatch.setattr(base_schedule, "read_room_occupancy", lambda _: occupancy)
+    solver._work_room_panel = MagicMock(return_value="open")
+    solver.detect_room_type = MagicMock(return_value="贸易站")
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    find_order_marker = solver.find
+    roster_read = False
+
+    def find(resource, **kwargs):
+        nonlocal roster_read
+        if resource == "infra_no_operator":
+            assert solver.scene() == Scene.INFRA_DETAILS
+            roster_read = True
+            return True
+        return find_order_marker(resource)
+
+    def read_card():
+        if not roster_read:
+            raise RecognizeError("未读到订单类型")
+        assert solver.scene() == Scene.ORDER_LIST
+        return "lmd", True
+
+    solver.find = MagicMock(side_effect=find)
+    solver._read_trade_product_card = MagicMock(side_effect=read_card)
+
+    assert solver.get_run_order_time(room) is None
+
+    assert roster_read
+    assert solver.op_data.operators["鸿雪"].current_room == ""
+    assert solver.op_data.facility_product(room) == "lmd"
+    assert solver._read_trade_product_card.call_count == (2 if occupancy is None else 1)
+    assert solver.tap.call_count == (2 if occupancy is None else 1)
+    solver.read_time.assert_not_called()
+    solver._product_ocr_text.assert_not_called()
+    assert solver.scene() == Scene.INFRA_MAIN
+
+
 @pytest.mark.parametrize("state", ["active", "active_without_button", "unknown"])
 def test_valid_countdown_admits_order_without_requiring_accelerate_button(
     solver, state
@@ -1241,6 +1435,34 @@ def test_failed_paused_room_read_preserves_cache_and_existing_tasks(solver):
     assert solver.tasks == [shift]
     assert solver.op_data.get_current_room("room_1_1", True) == ["鸿雪"]
     assert solver.op_data.operators["鸿雪"].time_stamp == timestamp
+
+
+def test_wrong_room_after_paused_order_keeps_roster_and_refresh(solver, monkeypatch):
+    from arknights_mower.utils import product_recognition
+
+    room = "room_1_1"
+    use_order_pages(solver, {room: "paused"})
+    monkeypatch.setattr(product_recognition, "trade_order_is_paused", lambda _: True)
+    solver._cache_facility_state_from_current_page.return_value = ("龙门商法", "读单")
+    solver.get_agent_from_room = BaseSchedulerSolver.get_agent_from_room.__get__(solver)
+    solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
+    solver.turn_on_room_detail = MagicMock()
+    solver.wait_product_complete = MagicMock()
+    solver._work_room_panel = MagicMock(side_effect=RecognizeError("返回了 B202"))
+    refresh = SchedulerTask(task_type=TaskTypes.REFRESH_TIME, meta_data=room)
+    solver.tasks = [refresh]
+    due = refresh.time
+    operator = solver.op_data.operators["鸿雪"]
+    timestamp = operator.time_stamp
+
+    with pytest.raises(RecognizeError, match="返回了 B202"):
+        solver.plan_run_order(room)
+
+    assert solver.op_data.get_current_room(room, True) == ["鸿雪"]
+    assert operator.time_stamp == timestamp
+    assert solver.tasks == [refresh]
+    assert refresh.time == due
+    solver._cache_facility_state_from_current_page.assert_called_once()
 
 
 def test_two_paused_empty_rooms_keep_independent_refresh_responsibilities(
