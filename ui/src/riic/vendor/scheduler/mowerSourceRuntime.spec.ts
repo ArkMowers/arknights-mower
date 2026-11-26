@@ -296,8 +296,8 @@ describe('integrated Mower source scheduler',()=>{
   expect(source.queue.tasks.some(task=>task.type===T.FIAMMETTA)).toBe(false)
  })
 
- it('resets learned working depletion after Fiammetta charge-room restoration',()=>{
-  const config=fixture(),fia='char_300_phenxi';config.mowerAlpha=true
+ it.each([true,false])('restores the learned working depletion rate for alpha=%s after a Fiammetta exchange',(alpha)=>{
+  const config=fixture(),fia='char_300_phenxi';config.mowerAlpha=alpha
   config.positions[1]!.primary=fia;config.mowerSourcePlan!.dormitory_1![0]!.agent=fia
   config.initialMorale={A:24,R:24,[fia]:24};config.fiammetta={operatorId:fia,orderedTargets:['A'],fool:true,threshold:21.6}
   const state=createRosterRuntime(config);settleRoster(state,rates)
@@ -306,7 +306,7 @@ describe('integrated Mower source scheduler',()=>{
   settleRoster(state,rates)
   expect(state.events.some(e=>e.type==='fiammetta')).toBe(true)
   expect(state.occupants.room_1_1_0).toBe('A')
-  expect(source.data.operators.A!.depletionRate).toBe(0)
+  expect(source.data.operators.A!.depletionRate).toBe(alpha ? 0.7 : 0)
  })
 
  it.each([false,true])('refreshes alpha dorm timers after a confirmed arrangement (exact no-op=%s)',same=>{

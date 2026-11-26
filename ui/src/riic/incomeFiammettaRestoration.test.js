@@ -3,10 +3,14 @@ import process from 'node:process'
 import plan from './fixtures/income-automation-rest.json'
 import { calculateIncome } from './incomeWorker'
 import { defaultIncomeSettings } from './income'
-import { createRosterRuntime, settleRoster } from './vendor/scheduler/rosterRuntime'
-import { getMowerSourceRuntime } from './vendor/scheduler/mowerSourceRuntime'
+import { advanceRoster, createRosterRuntime, settleRoster } from './vendor/scheduler/rosterRuntime'
+import {
+  getMowerSourceRuntime,
+  makeMowerSchedulingData
+} from './vendor/scheduler/mowerSourceRuntime'
+import { mowerUpdateDetail, projectMowerArrangements } from './vendor/scheduler/mowerObservations'
 import { retainMowerFailedTask } from './vendor/scheduler/mowerTaskFailure'
-import { MowerTask, MOWER_TASK_TYPES as T } from './vendor/scheduler/mowerTaskQueue'
+import { MowerTask, MOWER_TASK_TYPES as T, toMowerMicros } from './vendor/scheduler/mowerTaskQueue'
 
 function fixture(due = 0) {
   const fia = 'char_300_phenxi'
@@ -96,6 +100,7 @@ it.each([0, -1])(
   (due) => {
     const { state, source, departure, future, fia } = fixture(due)
     const originalTime = departure.timeMicros
+    source.data.operators.B.depletionRate = 2.3
     settleRoster(state, { workRate: () => 1, recoveryRate: () => 4 })
     expect(state.events.filter((event) => event.type === 'fiammetta')).toHaveLength(1)
     expect(source.trace.slice(0, 3).map((task) => task.type)).toEqual([
@@ -106,6 +111,7 @@ it.each([0, -1])(
     expect(state.bedOccupants.dormitory_1_4).toBe('A')
     expect(state.occupants.room_1_1_0).toBe('R')
     expect(state.occupants.central_0).toBe('B')
+    expect(source.data.operators.B.depletionRate).toBe(2.3)
     expect(state.occupants.dormitory_1_0).toBe(fia)
     expect(departure.timeMicros).toBe(originalTime)
     expect(source.queue.tasks).not.toContain(departure)
@@ -114,6 +120,57 @@ it.each([0, -1])(
     expect(state.diagnostics.filter((d) => d.code === 'mower-task-exception')).toEqual([])
   }
 )
+
+it('relearns the working rate from two ordinary readings after charging', () => {
+  const { state, source } = fixture()
+  const rates = { workRate: () => 1, recoveryRate: () => 4 }
+  const target = source.data.operators.B
+  target.depletionRate = 2.3
+  settleRoster(state, rates)
+  expect([target.currentRoom, target.mood, target.depletionRate]).toEqual(['central', 24, 2.3])
+
+  advanceRoster(state, 4, rates)
+  settleRoster(state, rates)
+  expect([target.mood, target.depletionRate]).toEqual([20, 2.3])
+
+  advanceRoster(state, 4, rates)
+  source.queue.tasks.push(new MowerTask({ time: state.time }))
+  settleRoster(state, rates)
+  expect([target.mood, target.depletionRate]).toEqual([16, 1])
+})
+
+it.each([
+  'partial charge',
+  'position only',
+  'estimated mood',
+  'legacy full mood',
+  'ordinary reading'
+])('preserves %s sampling eligibility across a plan rebuild and projection', (evidence) => {
+  const { state, source } = fixture()
+  const target = source.data.operators.B
+  target.mood = 19
+  target.depletionRate = 2.3
+  if (evidence === 'partial charge') {
+    mowerUpdateDetail(source.data, 'B', 19, 'central', 0, true, undefined, undefined, true)
+  } else if (evidence === 'position only') {
+    target.currentIndex = 1
+    mowerUpdateDetail(source.data, 'B', 19, 'central', 0, false)
+  } else if (evidence === 'estimated mood') {
+    target.moodIsPrediction = true
+  } else if (evidence === 'legacy full mood') {
+    target.mood = 24
+  }
+  const rebuilt = makeMowerSchedulingData(state, source)
+  const data = projectMowerArrangements(rebuilt, [])
+  const previousRate = evidence === 'position only' ? 0 : 2.3
+  data.nowMicros = toMowerMicros(1)
+  mowerUpdateDetail(data, 'B', 17, 'central', 0, true)
+  expect(data.operators.B.depletionRate).toBe(evidence === 'ordinary reading' ? 2 : previousRate)
+  data.nowMicros = toMowerMicros(2)
+  mowerUpdateDetail(data, 'B', 16, 'central', 0, true)
+  expect(data.operators.B.depletionRate).toBe(1)
+  expect(target.mood).toBe(evidence === 'legacy full mood' ? 24 : 19)
+})
 
 it.each(['failed', 'future'])('allows ready work past a %s restoration', (condition) => {
   const { state, source } = fixture()

@@ -148,6 +148,31 @@ def incident(monkeypatch, offline_maintenance):
     return solver, physical, snapshots
 
 
+@pytest.mark.parametrize("use_up", [False, True])
+def test_full_control_center_mood_only_reads_a_required_use_up_countdown(
+    incident, use_up
+):
+    solver, physical, _ = incident
+    name = "歌蕾蒂娅"
+    physical["central"] = [name]
+    op = solver.op_data.operators[name]
+    op.current_room, op.current_index = "central", 0
+    op.mood, op.exhaust_time = 24, datetime.now()
+    op.exhaust_require, op.lower_limit = use_up, 22
+
+    reading = solver.get_agent_from_room("central", [0])
+
+    assert reading[0]["mood"] == 24
+    if use_up:
+        assert reading[0]["time"] == solver.read_operator_time.return_value
+        assert op.time_stamp < op.exhaust_time < reading[0]["time"]
+        solver.read_operator_time.assert_called_once()
+    else:
+        assert reading[0].get("time") is None
+        assert op.exhaust_time is None
+        solver.read_operator_time.assert_not_called()
+
+
 @pytest.mark.parametrize("first_read_fails", [False, True])
 @pytest.mark.parametrize("already_in_selection", [False, True])
 def test_staffing_reuses_only_product_read_in_this_visit(
