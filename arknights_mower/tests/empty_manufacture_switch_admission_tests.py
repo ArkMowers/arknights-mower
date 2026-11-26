@@ -94,9 +94,12 @@ def base_schedule(monkeypatch, offline_maintenance):
     def dispatch():
         solver._resume_failed_tasks()
         scheduler_task.scheduling(solver.tasks, op_data=solver.op_data)
-        solver.task = solver.find_next_task()
-        if solver.task is not None and solver.task.time <= Clock.now():
-            solver.infra_main()
+        task = solver.find_next_task()
+        solver.task = task
+        if task is None or task.time > Clock.now():
+            return None
+        solver.infra_main()
+        return task
 
     def survey(room, target):
         events.append(("survey", room))
@@ -284,35 +287,116 @@ def test_overdue_paused_switch_waits_through_repeated_vacancy_observations(
     assert switch.time == original_time
 
 
-def test_backup_activation_does_not_wait_for_empty_factory_switch(base_schedule):
+@pytest.fixture
+def backup_switch_waiting_for_staffing(base_schedule):
+    from arknights_mower.utils.logic_expression import LogicExpression
+    from arknights_mower.utils.operators import Operators
+    from arknights_mower.utils.plan import Plan
+
     ui = base_schedule
-    switch = ui.add_switch(EMPTY_ROOM)
-    original_time = switch.time
-    switch.pending_backup_product_switch = True
-    switch.pending_product_targets = {EMPTY_ROOM: TARGET}
-    planned, plan = dict(ui.solver.op_data.products), ui.solver.op_data.plan
-    ui.solver.op_data.products[EMPTY_ROOM] = "gold"
-    ui.solver._products_after_arrangement = Mock(return_value=(planned, plan))
-    ui.observe_roster(EMPTY_ROOM)
-
-    assert ui.solver._switch_products_before_backup_plan()
-    assert_switch_retained(ui.solver, switch, original_time)
-    assert switch.execution_failure["manufacture_staffing_wait"] == EMPTY_ROOM
-
-    ui.solver.op_data.products[EMPTY_ROOM] = TARGET
-    ui.solver.tasks.append(
-        ui.tasks.SchedulerTask(
-            task_type=ui.tasks.TaskTypes.SELF_CORRECTION,
-            task_plan={EMPTY_ROOM: [WORKERS[EMPTY_ROOM]]},
-        )
+    solver = ui.solver
+    primary = solver.op_data.global_plan["default_plan"]
+    primary.plan[EMPTY_ROOM][0].product = "gold"
+    primary.products[EMPTY_ROOM] = "gold"
+    backup = Plan(
+        {},
+        primary.config,
+        trigger=LogicExpression("op_data.party_time", "is not", "None"),
+        task={EMPTY_ROOM: [WORKERS[EMPTY_ROOM]]},
+        products={EMPTY_ROOM: TARGET},
     )
+    solver.op_data = Operators({"default_plan": primary, "backup_plans": [backup]})
+    assert solver.op_data.init_and_validate() is None
+    ui.observe_roster(OTHER_ROOM, WORKERS[OTHER_ROOM])
+    solver.op_data.update_facility_state(OTHER_ROOM, "manufacture", TARGET)
+    solver.op_data.update_facility_state(EMPTY_ROOM, "manufacture", "gold")
+    solver.set_detected_party_time(ui.clock.now() + timedelta(hours=1))
+
+    assert solver.backup_plan_solver() is False
+    assert solver.op_data.plan_condition == [False]
+    (switch,) = solver.tasks
+    original_time = switch.time
+    assert switch.type == ui.tasks.TaskTypes.SWITCH_PRODUCT
+    assert switch.pending_backup_product_switch
+    assert switch.pending_product_targets == {EMPTY_ROOM: TARGET}
+
+    ui.observe_roster(EMPTY_ROOM)
+    assert solver.backup_plan_solver()
+    assert solver.op_data.plan_condition == [True]
+    assert solver.op_data.products[EMPTY_ROOM] == TARGET
+    assert_switch_retained(solver, switch, original_time)
+    assert switch.execution_failure["manufacture_staffing_wait"] == EMPTY_ROOM
+    return ui, switch, original_time
+
+
+def test_backup_activation_does_not_wait_for_empty_factory_switch(
+    backup_switch_waiting_for_staffing,
+):
+    ui, switch, original_time = backup_switch_waiting_for_staffing
+    solver = ui.solver
+    ui.clock.current += timedelta(minutes=1)
+    assert solver.backup_plan_solver() is False
+    solver.queue_product_switches()
+    assert solver.op_data.plan_condition == [True]
+    assert_switch_retained(solver, switch, original_time)
+
+    independent = ui.add_switch(OTHER_ROOM, overdue_minutes=2)
+    ui.dispatch()
+    assert ui.events == [
+        ("survey", OTHER_ROOM),
+        ("accelerate", OTHER_ROOM),
+        ("change", OTHER_ROOM),
+    ]
+    assert all(task is not independent for task in solver.tasks)
+    assert solver.op_data.get_current_operator(EMPTY_ROOM, 0) is None
+    assert_switch_retained(solver, switch, original_time)
+
+    ui.events.clear()
     ui.dispatch()
     assert ui.events == [("staffing", EMPTY_ROOM)]
-    assert_switch_retained(ui.solver, switch, original_time)
+    assert (
+        solver.op_data.get_current_operator(EMPTY_ROOM, 0).name == WORKERS[EMPTY_ROOM]
+    )
+    assert_switch_retained(solver, switch, original_time)
 
-    ui.dispatch()
-    assert ui.events[-1] == ("change", EMPTY_ROOM)
-    assert all(task is not switch for task in ui.solver.tasks)
+    solver.switch_base_products = Mock(wraps=solver.switch_base_products)
+    dispatched = ui.dispatch()
+    if dispatched is not switch:
+        assert dispatched is not None
+        assert dispatched.type == ui.tasks.TaskTypes.NOT_SPECIFIC
+        assert not dispatched.plan
+        assert all(task is not dispatched for task in solver.tasks)
+        assert ui.events == [("staffing", EMPTY_ROOM)]
+        assert_switch_retained(solver, switch, original_time)
+        assert solver.find_next_task(task_type=switch.type) is switch
+        assert ui.dispatch() is switch
+
+    assert ui.events == [
+        ("staffing", EMPTY_ROOM),
+        ("survey", EMPTY_ROOM),
+        ("accelerate", EMPTY_ROOM),
+        ("change", EMPTY_ROOM),
+    ]
+    solver.switch_base_products.assert_called_once()
+    (batch,) = solver.switch_base_products.call_args.args
+    assert len(batch) == 1 and batch[0] is switch
+    assert all(task is not switch for task in solver.tasks)
+    assert switch.time == original_time
+
+
+def test_reverted_backup_discards_switch_waiting_for_empty_factory_staffing(
+    backup_switch_waiting_for_staffing,
+):
+    ui, switch, _ = backup_switch_waiting_for_staffing
+    solver = ui.solver
+    solver.set_detected_party_time(None)
+    solver.backup_plan_solver()
+    solver.queue_product_switches()
+
+    assert solver.op_data.plan_condition == [False]
+    assert solver.op_data.products[EMPTY_ROOM] == "gold"
+    assert not any(task.type == switch.type for task in solver.tasks)
+    assert ui.events == []
 
 
 def test_empty_factory_does_not_replace_a_retained_product_failure(base_schedule):

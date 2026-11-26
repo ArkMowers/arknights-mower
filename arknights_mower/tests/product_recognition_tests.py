@@ -8,8 +8,9 @@ import pytest
 
 from arknights_mower.solvers import base_schedule as base
 from arknights_mower.utils import product_recognition
-from arknights_mower.utils.image import bytes2img
+from arknights_mower.utils.image import bytes2img, loadres
 from arknights_mower.utils.recognize import RecognizeError, Recognizer
+from arknights_mower.utils.scene import Scene
 
 FIXTURES = Path(__file__).parent / "fixtures/manufacture"
 
@@ -372,12 +373,40 @@ def test_trade_switch_uses_actual_strategy_even_with_outdated_configured_level()
     assert observation["switchable"] is True
 
 
-def test_trade_order_opening_keeps_its_scene_when_factory_tag_also_matches():
-    from arknights_mower.utils.recognize import Recognizer
-    from arknights_mower.utils.scene import Scene
-
+@pytest.mark.parametrize("first_reader", ["get_scene", "get_factory_scene"])
+def test_trade_order_opening_caches_order_scene(first_reader):
     recog = Recognizer(None, (FIXTURES / "trade_order_opening.webp").read_bytes())
+
+    assert recog.find("order_label") == ((404, 137), (556, 195))
+    assert getattr(recog, first_reader)() == Scene.ORDER_LIST
+    assert recog.get_scene() == recog.get_factory_scene() == Scene.ORDER_LIST
+
+
+@pytest.mark.parametrize("first_reader", ["get_scene", "get_factory_scene"])
+def test_trade_order_keeps_drone_dialog_priority(first_reader):
+    frame = bytes2img((FIXTURES / "trade_order_opening.webp").read_bytes()) // 2
+    drone = loadres("drone")
+    height, width = drone.shape[:2]
+    frame[437 : 437 + height, 274 : 274 + width] = drone
+    encoded = cv2.imencode(".png", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))[1]
+    recog = Recognizer(None, encoded.tobytes())
+
+    assert recog.find("order_label") is not None
+    assert recog.find("drone") is not None
+    assert getattr(recog, first_reader)() == Scene.DRONE_ACCELERATE
+    assert recog.get_scene() == recog.get_factory_scene() == Scene.DRONE_ACCELERATE
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("workshop/deer_dashboard_20261103.jpg", Scene.FACTORY_DASHBOARD),
+        ("workshop/deer_formula_transition_20261103.jpg", Scene.FACTORY_FORMULA),
+        ("login/login_cancelled_20261021.jpg", Scene.LOGIN_CANCELLED),
+    ],
+)
+def test_order_title_matching_preserves_other_scenes(filename, expected):
+    recog = Recognizer(None, (FIXTURES.parent / filename).read_bytes())
+
     assert recog.find("order_label") is None
-    assert recog.find("factory_tag") is not None
-    assert recog.find("bill_accelerate") is not None
-    assert recog.get_scene() == Scene.ORDER_LIST
+    assert recog.get_scene() == expected

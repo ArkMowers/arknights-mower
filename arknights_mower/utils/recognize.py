@@ -312,7 +312,7 @@ class Recognizer:
         elif self.find("login_connecting"):
             self.scene = Scene.LOGIN_LOADING
 
-        # 平均色匹配
+        # 固定区域匹配
         elif self.find("trade_strategy_select"):
             self.scene = Scene.TRADE_STRATEGY_SELECT
         elif self.find("manufacture_product_change_confirm"):
@@ -321,10 +321,10 @@ class Recognizer:
             self.scene = Scene.MANUFACTURE_PRODUCT_SELECT
         elif self.find("confirm"):
             self.scene = Scene.CONFIRM
-        elif self.find("order_label"):
-            self.scene = Scene.ORDER_LIST
         elif self.find("drone"):
             self.scene = Scene.DRONE_ACCELERATE
+        elif self.find("order_label"):
+            self.scene = Scene.ORDER_LIST
         elif self.find("factory_collect"):
             self.scene = Scene.FACTORY_ROOMS
         elif self.find("read_mail"):
@@ -528,10 +528,7 @@ class Recognizer:
         elif self.find("factory_product_collect"):
             self.scene = Scene.FACTORY_PRODUCT_COLLECT
         elif self.find("factory_tag"):
-            # 贸易站订单页淡入时，加工站标题也可能命中。
-            self.scene = (
-                Scene.ORDER_LIST if self.find("bill_accelerate") else Scene.FACTORY_ROOM
-            )
+            self.scene = Scene.FACTORY_ROOM
 
         # 没弄完的
         # elif self.find("ope_elimi_finished"):
@@ -823,6 +820,11 @@ class Recognizer:
         # 连接中，优先级最高
         if self.find("connecting"):
             self.scene = Scene.CONNECTING
+        elif self.find("order_label"):
+            # 已离开连接画面，清除加工站的连续等待计数。
+            self.loading_time = 0
+            # 订单标题在弹窗后仍可能可见，沿用通用场景的识别顺序。
+            return self.get_scene()
         elif self.find("factory_dashboard"):
             self.scene = Scene.FACTORY_DASHBOARD
         elif self.find("factory_formula") or self.find("factory_furniture"):
@@ -968,7 +970,6 @@ class Recognizer:
             "operation/x3": (1477, 601),
             "operation/x4": (1478, 509),
             "open_recruitment": (192, 143),
-            "order_label": (404, 137),
             "pull_once": (1260, 950),
             "read_and_agree": (1115, 767),
             "recruiting_instructions": (343, 179),
@@ -1085,6 +1086,7 @@ class Recognizer:
             "manufacture_product_select": ((1150, 15), (1900, 110)),
             "manufacture_product_change_confirm": ((1190, 750), (1510, 840)),
             "trade_strategy_select": ((590, 850), (1330, 970)),
+            "order_label": (404, 137),
             "clue_next_black": ((1600, 850), (1920, 1030)),
             # 会客室信息板页面：底栏「访问人次」固定在左下角
             "clue/message_board_page": ((0, 960), (540, 1080)),

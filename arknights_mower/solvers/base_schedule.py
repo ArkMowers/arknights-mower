@@ -1063,6 +1063,17 @@ class GroupShiftBlocked(ProductSwitchDeferred):
         super().__init__(f"绑组依赖未解除，挂起换班，等待{waiting}")
 
 
+@dataclass(slots=True)
+class _RoutineDronePause:
+    checked_roster: frozenset[tuple[int, str]] | None = None
+    observed_roster: frozenset[tuple[int, str]] | None = None
+
+    def can_recheck(self) -> bool:
+        return (
+            bool(self.observed_roster) and self.observed_roster != self.checked_roster
+        )
+
+
 @dataclass(eq=False, slots=True)
 class _DormRemovalFrame:
     task: SchedulerTask
@@ -1117,7 +1128,7 @@ class BaseSchedulerSolver(
         self.op_data = None
         self.party_time = None
         self.drone_time = None
-        self._routine_drone_pauses: dict[str, frozenset[tuple[int, str]]] = {}
+        self._routine_drone_pauses: dict[str, _RoutineDronePause] = {}
         self._confirmed_empty_work_rooms: set[str] = set()
         self.reload_time = None
         self.clue_count_limit = 9
@@ -5399,11 +5410,13 @@ class BaseSchedulerSolver(
                     if clue_result is not False:
                         self.last_clue = datetime.now()
             drone_room = self.drone_room
+            pauses = getattr(self, "_routine_drone_pauses", {})
+            pause = pauses.get(drone_room)
             if (
                 drone_room is not None
                 and drone_room not in self.op_data.run_order_rooms
                 and not self._confirmed_empty_manufacture_room(drone_room)
-                and drone_room not in getattr(self, "_routine_drone_pauses", ())
+                and (pause is None or pause.can_recheck())
                 and (
                     self.drone_time is None
                     or self.drone_time
@@ -5411,8 +5424,10 @@ class BaseSchedulerSolver(
                 )
                 and self.no_pending_task(2)
             ):
+                if pause is not None:
+                    pause.checked_roster = pause.observed_roster
                 self.drone(drone_room, routine=True)
-                if drone_room not in getattr(self, "_routine_drone_pauses", ()):
+                if drone_room not in pauses:
                     self.drone_time = datetime.now()
                     logger.info(f"记录本次无人机使用时间为:{self.drone_time}")
             if self.no_pending_task(2) and (
@@ -8617,7 +8632,7 @@ class BaseSchedulerSolver(
         return result, group_dorm_positions, replacement_positions, joining_resting
 
     def _switch_products_before_backup_plan(self):
-        """独立条件触发副表时，等切产物任务完成再切表。"""
+        """安排副表所需的产物切换，允许副表先为已确认的空站补岗。"""
         if not self._product_switching_enabled():
             self._discard_product_switches()
             return True
@@ -8630,8 +8645,6 @@ class BaseSchedulerSolver(
         targets = {}
         staffing_first = set()
         for room, target in desired_products.items():
-            if target == self.op_data.products.get(room):
-                continue
             room_plan = desired_plan.get(room) or []
             if not room_plan:
                 continue
@@ -8661,6 +8674,9 @@ class BaseSchedulerSolver(
         self.tasks[:] = [task for task in self.tasks if id(task) not in stale_ids]
         waiting = False
         for room, target in targets.items():
+            # 副表已生效时，保留目标一致的原任务，由补岗后的派发继续处理。
+            if target == self.op_data.products.get(room):
+                continue
             current = existing.get(room)
             if room in staffing_first:
                 if current is not None:
@@ -10454,11 +10470,17 @@ class BaseSchedulerSolver(
                 )
                 continue
             if state.get("product") == target_product:
-                if existing:
+                # 保留待续的制造切换，配方一致时仍需确认补货。
+                obsolete_ids = {
+                    id(task)
+                    for task in existing
+                    if facility != "制造站"
+                    or task.meta_data != target_meta
+                    or not task.retains_execution
+                }
+                if obsolete_ids:
                     self.tasks[:] = [
-                        task
-                        for task in self.tasks
-                        if all(task is not previous for previous in existing)
+                        task for task in self.tasks if id(task) not in obsolete_ids
                     ]
                     logger.info(
                         f"{self.translate_room(room)}实际产物或订单已符合排班，"
@@ -15406,15 +15428,19 @@ class BaseSchedulerSolver(
             (self.recog.w * 1280 // 1920, self.recog.h * 450 // 1080),
             (self.recog.w * 1415 // 1920, self.recog.h * 530 // 1080),
         )
+        minimum_digits = 1
         if (self.recog.w, self.recog.h) == (1920, 1080) and isinstance(
             frame := getattr(self.recog, "img", None), np.ndarray
         ):
-            count = read_manufacture_quantity(cropimg(frame, scope))
+            count, complete = read_manufacture_quantity(cropimg(frame, scope))
             if count is not None:
                 return count
+            if not complete:
+                raise RecognizeError("无法识别制造站生产份数：数字布局不完整")
+            minimum_digits = 2
         text = self._product_ocr_text(scope)
         digits = re.sub(r"[^0-9]", "", text)
-        if re.fullmatch(r"[0-9]{1,2}", digits):
+        if minimum_digits <= len(digits) <= 2:
             return int(digits)
         raise RecognizeError(f"无法识别制造站生产份数：{text or 'OCR 无结果'}")
 
@@ -15441,15 +15467,20 @@ class BaseSchedulerSolver(
             (self.recog.w * 1580 // 1920, self.recog.h * 615 // 1080),
             (self.recog.w * 1790 // 1920, self.recog.h * 680 // 1080),
         )
+        hour_digits = None
         if (self.recog.w, self.recog.h) == (1920, 1080) and isinstance(
             frame := getattr(self.recog, "img", None), np.ndarray
         ):
-            clock = read_manufacture_adjusted_clock(cropimg(frame, scope))
+            clock, hour_digits = read_manufacture_adjusted_clock(cropimg(frame, scope))
             if clock is not None:
                 return self._time_seconds(clock)
+            if hour_digits is None:
+                raise RecognizeError("无法识别制造站实际剩余时间：数字布局不完整")
         text = self._product_ocr_text(scope).replace("：", ":")
-        match = re.search(r"(\d{1,3}):(\d{2}):(\d{2})", text)
-        if not match:
+        match = re.search(
+            r"(?<![0-9])([0-9]{1,3}):([0-9]{2}):([0-9]{2})(?![0-9])", text
+        )
+        if not match or (hour_digits is not None and len(match[1]) != hour_digits):
             raise RecognizeError(f"无法识别制造站实际剩余时间：{text}")
         hours, minutes, seconds = map(int, match.groups())
         if minutes >= 60 or seconds >= 60:
@@ -16645,22 +16676,27 @@ class BaseSchedulerSolver(
         self._wait_drone_interface(interval=3)
 
         accelerate = self.find("manufacture_accelerate")
+        pause = (
+            getattr(self, "_routine_drone_pauses", {}).get(room) if routine else None
+        )
         if accelerate:
-            paused = routine and manufacture_detail_pause_state(self.recog.img) is True
+            paused = manufacture_detail_pause_state(self.recog.img) if routine else None
             self._cache_facility_state_from_current_page(room, "manufacture")
-            if paused:
-                self._routine_drone_pauses[room] = frozenset(
-                    (operator.current_index, name)
-                    for name, operator in self.op_data.operators.items()
-                    if operator.current_room == room
-                )
+            if paused is True or (pause is not None and paused is None):
+                if pause is None:
+                    # 暂停前的缓存名单无法证明当前进驻情况。
+                    self._routine_drone_pauses[room] = _RoutineDronePause()
+                reason = "制造暂停" if paused else "未确认制造已恢复"
                 logger.info(
-                    "%s制造暂停，等待驻员或生产状态变化后再进行定期无人机加速",
+                    "%s%s，等待驻员或生产状态变化后再进行定期无人机加速",
                     self.translate_room(room),
+                    reason,
                     extra={"log_room": room},
                 )
                 self.scene_graph_navigation(Scene.INFRA_MAIN)
                 return
+            if pause is not None:
+                del self._routine_drone_pauses[room]
             drone_count = self.digit_reader.get_drone(self.recog.gray)
             logger.info(f"当前无人机数量为：{drone_count}")
             if drone_count < self.drone_count_limit or (
@@ -16684,6 +16720,8 @@ class BaseSchedulerSolver(
                 self._fixed_trade_product(room) or self._read_trade_product_card()[0]
             )
             self.op_data.update_facility_state(room, "trade", product)
+            if pause is not None:
+                del self._routine_drone_pauses[room]
             if self.op_data.is_orundum_trade_room(room):
                 self.scene_graph_navigation(Scene.INFRA_MAIN)
                 return False
@@ -21279,15 +21317,19 @@ class BaseSchedulerSolver(
             self._emergency_sync_compensation({room: confirmed})
         if room.startswith("dorm") and slots:
             self._recovery_plan_dirty = True
-        pauses = getattr(self, "_routine_drone_pauses", {})
-        if room in pauses:
+        pause = getattr(self, "_routine_drone_pauses", {}).get(room)
+        if pause is not None and observed:
             roster = frozenset((index, name) for index, name in slots.items() if name)
-            if roster and (
-                complete and roster != pauses[room] or roster - pauses[room]
-            ):
-                del pauses[room]
-            elif complete and not roster:
-                pauses[room] = roster
+            if complete:
+                pause.observed_roster = roster
+                if not roster:
+                    pause.checked_roster = roster
+            elif pause.observed_roster is not None and roster - pause.observed_roster:
+                pause.observed_roster = roster.union(
+                    (index, name)
+                    for index, name in pause.observed_roster
+                    if index not in slots
+                )
         if not complete:
             logger.warning("%s 名单识别未决，保留未确认驻员与床位缓存", room)
             return

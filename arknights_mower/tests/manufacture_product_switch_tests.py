@@ -396,7 +396,7 @@ def test_shift_projection_sees_hongxue_leaving_before_changing_real_staff(monkey
 
 def test_adjusted_manufacture_timer_reads_real_screenshot():
     fixture = Path(__file__).parent / "fixtures/manufacture/adjusted_total.jpg"
-    screenshot = cv2.imread(str(fixture))
+    screenshot = cv2.cvtColor(cv2.imread(str(fixture)), cv2.COLOR_BGR2RGB)
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(img=screenshot, h=1080, w=1920)
 
@@ -442,12 +442,12 @@ def test_adjusted_manufacture_timer_preserves_zero_and_validates_hours(case):
     frame[615:680, 1580:1790] = cv2.cvtColor(crop, cv2.COLOR_BGR2RGB)
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(img=frame, h=1080, w=1920)
-    solver._product_ocr_text = MagicMock(return_value="")
+    solver._product_ocr_text = MagicMock(return_value="94:47:07")
 
     if case == "clipped_hours":
         with pytest.raises(base.RecognizeError, match="制造站实际剩余时间"):
             solver._read_manufacture_adjusted_total_seconds()
-        solver._product_ocr_text.assert_called_once()
+        solver._product_ocr_text.assert_not_called()
     else:
         expected = 0 if case == "zero" else 294 * 3600 + 47 * 60 + 7
         assert solver._read_manufacture_adjusted_total_seconds() == expected
@@ -456,7 +456,13 @@ def test_adjusted_manufacture_timer_preserves_zero_and_validates_hours(case):
 
 @pytest.mark.parametrize(
     "text, expected",
-    [("时间00：00：00", 0), ("72:46:52", 262012), ("72:60:01", None), ("", None)],
+    [
+        ("时间118：21：30", 118 * 3600 + 21 * 60 + 30),
+        ("18:21:30", None),
+        ("1118:21:30", None),
+        ("118:60:01", None),
+        ("", None),
+    ],
 )
 def test_adjusted_manufacture_timer_falls_back_on_opening_frame(text, expected):
     fixture = (
@@ -3545,16 +3551,17 @@ def test_manufacture_product_change_never_accepts_one_unit_on_factory_page():
 @pytest.mark.parametrize("verified", [False, True])
 def test_product_switch_retry_verifies_queue_when_recipe_already_matches(verified):
     solver = object.__new__(base.BaseSchedulerSolver)
+    room, plan = product_plan()
     task = SchedulerTask(
         task_type=TaskTypes.SWITCH_PRODUCT,
-        meta_data=product_task_meta("room_3_1", "gold"),
+        meta_data=product_task_meta(room, "gold"),
     )
     solver.tasks = [task]
-    solver.op_data = SimpleNamespace()
+    solver.op_data = Operators(plan)
+    solver.op_data.update_facility_state(room, "manufacture", "gold")
     solver.recog = SimpleNamespace(update=MagicMock())
     solver._open_manufacture_product_detail = MagicMock()
     solver.read_manufacture_product = MagicMock(return_value="gold")
-    solver._cache_facility_state = MagicMock()
     solver._select_manufacture_product = MagicMock()
     solver.sleep = MagicMock()
     solver.find = MagicMock(return_value=False)
@@ -3565,9 +3572,27 @@ def test_product_switch_retry_verifies_queue_when_recipe_already_matches(verifie
         solver.switch_base_products([task])
         assert solver.tasks == []
     else:
-        with pytest.raises(base.ProductSwitchFailed, match="制造站生产份数验证失败"):
+        with pytest.raises(
+            base.ProductSwitchFailed, match="制造站生产份数验证失败"
+        ) as failure:
             solver.switch_base_products([task])
-        assert solver.tasks == [task]
+        solver._retain_failed_task(task, str(failure.value), failure.value.rooms)
+        original_time = task.time
+        for _ in range(3):
+            solver._resume_failed_tasks()
+            solver.queue_product_switches()
+            assert len(solver.tasks) == 1 and solver.tasks[0] is task
+            assert task.time is original_time
+            assert task.execution_failure
+
+        solver.op_data.room_observations[room] = 1
+        solver._resume_failed_tasks()
+        assert not hasattr(task, "execution_failure")
+        solver.queue_product_switches()
+        assert len(solver.tasks) == 1 and solver.tasks[0] is task
+        solver._read_manufacture_queue_count.return_value = 99
+        solver.switch_base_products([task])
+        assert solver.tasks == []
     solver._select_manufacture_product.assert_not_called()
     assert solver._read_manufacture_queue_count.called
 
@@ -3634,7 +3659,7 @@ def test_read_manufacture_queue_count_matches_zero_without_ocr():
 
 
 @pytest.mark.parametrize("kind", ["blank", "one_digit", "three_digits"])
-def test_read_manufacture_queue_count_defers_unclear_field_to_ocr(kind):
+def test_read_manufacture_queue_count_rejects_incomplete_layout(kind):
     fixture = Path(__file__).parent / "fixtures/manufacture/queue_max.png"
     crop = cv2.imread(str(fixture))
     if kind == "blank":
@@ -3646,10 +3671,30 @@ def test_read_manufacture_queue_count_defers_unclear_field_to_ocr(kind):
     frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
     solver = object.__new__(base.BaseSchedulerSolver)
     solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
-    solver._product_ocr_text = MagicMock(return_value="")
+    solver._product_ocr_text = MagicMock(return_value="9")
 
     with pytest.raises(base.RecognizeError, match="生产份数"):
         solver._read_manufacture_queue_count()
+    solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize("text, expected", [("99", 99), ("9", None)])
+def test_read_manufacture_queue_ocr_requires_both_digits(monkeypatch, text, expected):
+    from arknights_mower.utils import manufacture_digits
+
+    fixture = Path(__file__).parent / "fixtures/manufacture/queue_max.png"
+    crop = cv2.imread(str(fixture))
+    frame = cv2.copyMakeBorder(crop, 450, 550, 1280, 505, cv2.BORDER_CONSTANT)
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(w=1920, h=1080, img=frame)
+    solver._product_ocr_text = MagicMock(return_value=text)
+    monkeypatch.setattr(manufacture_digits, "_digit_templates", lambda: None)
+
+    if expected is None:
+        with pytest.raises(base.RecognizeError, match="生产份数"):
+            solver._read_manufacture_queue_count()
+    else:
+        assert solver._read_manufacture_queue_count() == expected
     solver._product_ocr_text.assert_called_once_with(((1280, 450), (1415, 530)))
 
 

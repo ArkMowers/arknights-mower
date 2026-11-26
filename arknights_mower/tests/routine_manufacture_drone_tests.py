@@ -163,6 +163,46 @@ def test_routine_drone_releases_dispatch_until_actual_staffing_changes(routine_d
     assert solver.enter_room.call_count == 2
 
 
+@pytest.mark.parametrize("production", ["resumed", "paused", "unreadable"])
+def test_routine_drone_rechecks_same_roster_after_fresh_read(routine_drone, production):
+    solver, state, frames, clock, accelerate = routine_drone
+    assert not solver._product_switching_enabled()
+    assert not solver.op_data.mood_calculation_enabled
+    roster = [{"agent": WORKER, "mood": 24}]
+    worker = solver.op_data.operators[WORKER]
+    worker.current_room, worker.current_index = ROOM, 0
+    solver._reconcile_room_observation(ROOM, roster)
+    previous_drone_time = solver.drone_time
+
+    # 实际已离岗，暂停画面与上次读到的驻员名单不再一致。
+    solver.infra_main()
+    assert solver.enter_room.call_count == 1
+    assert solver.drone_time is previous_drone_time
+    solver.todo_task = False
+    solver.infra_main()
+    assert solver.enter_room.call_count == 1
+
+    # 再次观测时已经有人进驻，期间没有读到空房。
+    state.paused = production != "resumed"
+    if production == "unreadable":
+        frames[True][480:511, 1615:1755] = (255, 121, 0)
+    for _ in range(3):
+        solver._reconcile_room_observation(ROOM, roster)
+        solver.todo_task = False
+        solver.infra_main()
+
+    assert solver.enter_room.call_count == 2
+    assert sum(call.args[0] == accelerate for call in solver.tap.call_args_list) == (
+        production == "resumed"
+    )
+    if production == "resumed":
+        solver._confirm_drone_count.assert_called_once()
+        assert solver.drone_time == clock.current
+    else:
+        solver._confirm_drone_count.assert_not_called()
+        assert solver.drone_time is previous_drone_time
+
+
 @pytest.mark.parametrize("future_return", [False, True])
 def test_routine_drone_skips_confirmed_empty_room_before_entering(
     routine_drone, future_return
