@@ -267,3 +267,37 @@ def test_two_trade_level_marks_allow_room_confirmed_fixed_product():
     solver = solver_for(frame)
     assert solver._fixed_trade_product("room_1_1") == "lmd"
     assert solver._fixed_trade_product("room_2_2") is None
+
+
+@pytest.mark.parametrize("constant_template", [False, True])
+def test_unconfirmed_trade_title_reads_strategy_card(monkeypatch, constant_template):
+    title = bytes2img((FIXTURES.parent / "room_titles/trade_20261013.png").read_bytes())
+    frame = card(2)
+    frame[18:95, 568:957] = title
+    frame[36:80, 880:945] = (46, 46, 46)
+    for x, rgb in (
+        (894, (34, 187, 255)),
+        (912, (34, 187, 255)),
+        (930, (153, 153, 153)),
+    ):
+        frame[43:74, x - 7 : x + 8] = rgb
+
+    if constant_template:
+        loadres = product_recognition.loadres
+
+        def load_template(resource, *args, **kwargs):
+            if resource == "room/trade_level_mark":
+                return np.full((38, 15), 153, dtype=np.uint8)
+            return loadres(resource, *args, **kwargs)
+
+        monkeypatch.setattr(product_recognition, "loadres", load_template)
+    solver = solver_for(frame)
+    solver.op_data = SimpleNamespace()
+    solver._cache_facility_state = Mock()
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    solver._cache_facility_state_from_current_page("room_1_1", "trade", defer_log=True)
+
+    solver._cache_facility_state.assert_called_once_with("room_1_1", "trade", "orundum")
+    solver._product_ocr_text.assert_not_called()

@@ -81,7 +81,7 @@ def trade_title_level(frame):
         template = loadres("room/trade_level_mark", True)
     except (OSError, cv2.error):
         return None
-    if template is None or template.shape != (38, 15):
+    if template is None or template.shape != (38, 15) or np.ptp(template) == 0:
         return None
 
     def mark_color(sample):
