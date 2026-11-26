@@ -15257,6 +15257,10 @@ class BaseSchedulerSolver(
                     self._wait_drone_interface(
                         accelerate_template="manufacture_accelerate", retry_after=3
                     )
+                    if self.detect_room() != room:
+                        raise RecognizeError(
+                            f"未确认{self.translate_room(room)}的制造详情页房号"
+                        )
                 observed_product = self._cache_facility_state_from_current_page(
                     room,
                     facility,
@@ -16679,33 +16683,44 @@ class BaseSchedulerSolver(
         pause = (
             getattr(self, "_routine_drone_pauses", {}).get(room) if routine else None
         )
-        if accelerate:
-            paused = manufacture_detail_pause_state(self.recog.img) if routine else None
-            if pause is not None:
-                for _ in range(2):
+        paused = None
+        reason = None
+        if pause is not None:
+            for sample in range(3):
+                if sample:
+                    self.sleep(0.2)
+                    accelerate = self.find("manufacture_accelerate")
+                if self.find("connecting") or self.detect_room() != room:
+                    continue
+                if accelerate:
+                    paused = manufacture_detail_pause_state(self.recog.img)
                     if paused is not None:
                         break
-                    self.sleep(0.2)
-                    if self.find("connecting"):
-                        continue
-                    refreshed_accelerate = self.find("manufacture_accelerate")
-                    if refreshed_accelerate is not None:
-                        accelerate = refreshed_accelerate
-                        paused = manufacture_detail_pause_state(self.recog.img)
+                elif (
+                    self.find("bill_accelerate") and self.detect_room_type() == "贸易站"
+                ):
+                    break
+            else:
+                reason = "未确认制造已恢复"
+        elif routine and accelerate:
+            paused = manufacture_detail_pause_state(self.recog.img)
+        if reason is None and accelerate:
             self._cache_facility_state_from_current_page(room, "manufacture")
-            if paused is True or (pause is not None and paused is None):
-                if pause is None:
-                    # 暂停前的缓存名单无法证明当前进驻情况。
-                    self._routine_drone_pauses[room] = _RoutineDronePause()
-                reason = "制造暂停" if paused else "未确认制造已恢复"
-                logger.info(
-                    "%s%s，等待驻员或生产状态变化后再进行定期无人机加速",
-                    self.translate_room(room),
-                    reason,
-                    extra={"log_room": room},
-                )
-                self.scene_graph_navigation(Scene.INFRA_MAIN)
-                return
+        if paused is True:
+            if pause is None:
+                # 暂停前的缓存名单无法证明当前进驻情况。
+                self._routine_drone_pauses[room] = _RoutineDronePause()
+            reason = "制造暂停"
+        if reason is not None:
+            logger.info(
+                "%s%s，等待驻员或生产状态变化后再进行定期无人机加速",
+                self.translate_room(room),
+                reason,
+                extra={"log_room": room},
+            )
+            self.scene_graph_navigation(Scene.INFRA_MAIN)
+            return
+        if accelerate:
             if pause is not None:
                 del self._routine_drone_pauses[room]
             drone_count = self.digit_reader.get_drone(self.recog.gray)

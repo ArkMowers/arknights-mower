@@ -24,7 +24,9 @@ MANUFACTURE_FIXTURES = Path(__file__).parent / "fixtures" / "manufacture"
 
 
 @pytest.fixture
-def routine_drone(monkeypatch, offline_maintenance):
+def routine_drone(monkeypatch, offline_maintenance, request):
+    room = getattr(request, "param", ROOM)
+
     class Clock(datetime):
         current = datetime(2026, 11, 26, 19, 15, 10)
 
@@ -42,7 +44,7 @@ def routine_drone(monkeypatch, offline_maintenance):
     solver.op_data = Operators(
         {
             "default_plan": Plan(
-                {ROOM: [Room(WORKER, "", ["图耶"], "制造站")]},
+                {room: [Room(WORKER, "", ["图耶"], "制造站")]},
                 PlanConfig("", "", ""),
             ),
             "backup_plans": [],
@@ -54,7 +56,7 @@ def routine_drone(monkeypatch, offline_maintenance):
     solver.tasks, solver.task = [], None
     solver.planned, solver.todo_task = True, False
     solver.enable_party = False
-    solver.drone_room = ROOM
+    solver.drone_room = room
     solver.drone_time = Clock.current - timedelta(hours=2)
     solver._routine_drone_pauses = {}
     solver.reload_time = None
@@ -77,8 +79,8 @@ def routine_drone(monkeypatch, offline_maintenance):
     solver.recog = SimpleNamespace(w=1920, h=1080, img=None, gray=None)
     accelerate = ((1300, 900), (1350, 950))
 
-    def enter(room):
-        assert room == ROOM and state.page == "overview"
+    def enter(target_room):
+        assert target_room == room and state.page == "overview"
         state.page = "room"
 
     def find(resource):
@@ -108,7 +110,7 @@ def routine_drone(monkeypatch, offline_maintenance):
         state.page = "room"
 
     solver.enter_room = Mock(side_effect=enter)
-    solver.detect_room = Mock(return_value=ROOM)
+    solver.detect_room = Mock(return_value=room)
     solver.back = Mock(side_effect=back)
     solver.find = Mock(side_effect=find)
     solver.tap = Mock(side_effect=tap)
@@ -249,6 +251,47 @@ def test_routine_drone_resamples_uncertain_detail_during_recheck(
     assert sum(call.args[0] == accelerate for call in solver.tap.call_args_list) == 1
     solver._confirm_drone_count.assert_called_once()
     assert solver.drone_time == clock.current
+
+
+@pytest.mark.parametrize("routine_drone", ["room_3_3"], indirect=True)
+def test_routine_drone_ignores_wrong_room_during_pause_recheck(routine_drone):
+    solver, state, frames, _, accelerate = routine_drone
+    room = solver.drone_room
+    original_time = solver.drone_time
+    solver.detect_room = base.BaseSchedulerSolver.detect_room.__get__(solver)
+
+    solver.infra_main()
+    assert solver.detect_room() == room
+    pause = solver._routine_drone_pauses[room]
+
+    unsettled_frame = frames[True].copy()
+    unsettled_frame[480:511, 1615:1755] = (255, 121, 0)
+    assert manufacture_detail_pause_state(unsettled_frame) is None
+    frames[True] = unsettled_frame
+    wrong_room_frame = frames[False]
+    assert manufacture_detail_pause_state(wrong_room_frame) is False
+
+    def read_other_room(_interval):
+        assert state.page == "product"
+        solver.recog.img = wrong_room_frame
+        solver.recog.gray = cv2.cvtColor(wrong_room_frame, cv2.COLOR_RGB2GRAY)
+        state.paused = False
+        assert solver.detect_room() == ROOM
+
+    solver.sleep.side_effect = read_other_room
+    worker = solver.op_data.operators[WORKER]
+    worker.current_room, worker.current_index = room, 0
+    solver._reconcile_room_observation(room, [{"agent": WORKER, "mood": 24}])
+    solver.todo_task = False
+    solver.infra_main()
+
+    assert all(call.args[0] != accelerate for call in solver.tap.call_args_list)
+    solver._confirm_drone_count.assert_not_called()
+    assert solver.enter_room.call_count == 2
+    assert solver.sleep.call_count == 2
+    assert solver._routine_drone_pauses[room] is pause
+    assert solver.drone_time is original_time
+    assert solver.todo_task and state.page == "overview"
 
 
 @pytest.mark.parametrize("future_return", [False, True])

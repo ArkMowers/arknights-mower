@@ -2010,7 +2010,9 @@ def test_ambiguous_room_product_requires_recipe_detail(monkeypatch, line):
     assert solver._visible_manufacture_product() is None
 
 
-@pytest.mark.parametrize("feedback", ["delayed", "dropped", "unknown", "wrong_room"])
+@pytest.mark.parametrize(
+    "feedback", ["delayed", "dropped", "unknown", "wrong_room", "wrong_detail"]
+)
 def test_mood_room_visit_returns_from_recognized_product_to_the_same_facility(
     feedback, monkeypatch
 ):
@@ -2026,7 +2028,12 @@ def test_mood_room_visit_returns_from_recognized_product_to_the_same_facility(
     solver.op_data = Operators(plan)
     solver.recog = Recognizer(None, returned)
     solver.recog.gray[925:975, 225:478] = 0
-    solver.tap = MagicMock(side_effect=lambda *_args, **_kwargs: install(opening))
+    detail = (
+        (fixtures / "adjusted_total.jpg").read_bytes()
+        if feedback == "wrong_detail"
+        else opening
+    )
+    solver.tap = MagicMock(side_effect=lambda *_args, **_kwargs: install(detail))
     solver.read_manufacture_product = MagicMock(return_value="gold")
     solver.scene_graph_navigation = MagicMock()
     solver.selection_transition_timing = MagicMock(return_value=(0.1, 3))
@@ -2063,6 +2070,16 @@ def test_mood_room_visit_returns_from_recognized_product_to_the_same_facility(
             install(pending.pop(0))
 
     solver.sleep = MagicMock(side_effect=sleep)
+    if feedback == "wrong_detail":
+        pause = base._RoutineDronePause()
+        solver._routine_drone_pauses = {room: pause}
+        assert not solver.refresh_facility_state(room)
+        assert solver.op_data.facility_product(room) is None
+        assert solver._routine_drone_pauses[room] is pause
+        solver.read_manufacture_product.assert_not_called()
+        solver.back.assert_not_called()
+        solver.scene_graph_navigation.assert_called_once()
+        return
     if feedback in ("unknown", "wrong_room"):
         with pytest.raises(RecognizeError, match="返回"):
             solver.refresh_facility_state(room)
