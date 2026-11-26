@@ -16,7 +16,7 @@ from arknights_mower.solvers.base_mixin import AgentSelectionNotReady  # noqa: E
 from arknights_mower.solvers.base_schedule import BaseSchedulerSolver  # noqa: E402
 from arknights_mower.utils import config, performance  # noqa: E402
 from arknights_mower.utils.dorm_recovery import recovery_order_plan  # noqa: E402
-from arknights_mower.utils.operators import Operator  # noqa: E402
+from arknights_mower.utils.operators import Operator, Operators  # noqa: E402
 from arknights_mower.utils.plan import Plan, PlanConfig, Room  # noqa: E402
 from arknights_mower.utils.scheduler_task import (  # noqa: E402
     SchedulerTask,
@@ -28,13 +28,35 @@ ROOM = "dormitory_1"
 FINAL = ["杜林", "琴柳", "红", "银灰", "陈"]
 
 
+def room_readings(operators, names, recipient, bonus=0.7):
+    """模拟未换算为个人上限的宿舍读数；受益者由游戏夹具指定，不从排班推导。"""
+    rows = []
+    for name in names:
+        row = {"agent": name}
+        if name and operators[name].time_stamp is not None:
+            mood = operators[name].mood
+            if type(mood) in (int, float) and 0 <= mood <= 24:
+                row["measured_mood"] = mood
+                row["mood_sampled"] = True
+                if mood < 24:
+                    row["recovery_seconds"] = round(
+                        (24 - mood) * 3600 / (2.3 + (bonus if name == recipient else 0))
+                    )
+        rows.append(row)
+    return rows
+
+
 @pytest.fixture
 def solver(monkeypatch):
+    return prepare_dorm_solver(object.__new__(BaseSchedulerSolver), monkeypatch)
+
+
+def prepare_dorm_solver(instance, monkeypatch):
+    monkeypatch.setattr(Operators, "current_room_changed_callback", None)
     monkeypatch.setattr(config, "conf", config.Conf())
     monkeypatch.setattr(config, "save_conf", lambda: None)
     monkeypatch.setattr(base_schedule, "save_exception", lambda e: None)
     config.conf.enable_mastery = False
-    instance = object.__new__(BaseSchedulerSolver)
     instance.global_plan = {
         "default_plan": Plan(
             {
@@ -71,6 +93,7 @@ def solver(monkeypatch):
     instance.confirms = []
     instance.reads = []
     instance.selected = []
+    instance.game_recipient = None
     instance.physical = ["杜林", "琴柳", "红", "陈", "银灰"]
 
     def observe(
@@ -80,6 +103,8 @@ def solver(monkeypatch):
         departing_plan=None,
         expected_agents=None,
         observed_facilities=None,
+        read_dorm_evidence=False,
+        record_dorm_evidence=False,
     ):
         instance.reads.append(list(read_time_index or []))
         for op in instance.op_data.operators.values():
@@ -91,7 +116,9 @@ def solver(monkeypatch):
                 op = instance.op_data.operators[name]
                 op.current_room = room
                 op.current_index = index
-        return [{"agent": name} for name in instance.physical]
+        return room_readings(
+            instance.op_data.operators, instance.physical, instance.game_recipient
+        )
 
     def choose(agents, room, fast_mode=True, **kwargs):
         if kwargs.get("recovery_padding") and "Free" in agents:
@@ -117,10 +144,29 @@ def solver(monkeypatch):
         instance.selected = agents.copy()
 
     def confirm(room, new_plan):
+        before = instance.physical
         instance.physical = instance.selected + [""] * (5 - len(instance.selected))
+        name = instance.game_recipient
+        if (
+            name not in before
+            or name not in instance.physical
+            or before.index(name) != instance.physical.index(name)
+        ):
+            instance.game_recipient = next(
+                (
+                    n
+                    for n in instance.physical
+                    if n
+                    and n not in ("菲亚梅塔", "琴柳", "闪灵")
+                    and instance.op_data.operators[n].mood < 24
+                ),
+                None,
+            )
         instance.confirms.append(instance.physical.copy())
 
     instance.get_agent_from_room = MagicMock(side_effect=observe)
+    # 此夹具用选人页提交临时名单，床边按钮由对应的实图测试提供。
+    instance._remove_trailing_dorm_recipient = MagicMock(return_value=False)
     instance.choose_agent = MagicMock(side_effect=choose)
     instance.tap_confirm = MagicMock(side_effect=confirm)
     observe()
@@ -195,6 +241,69 @@ def test_recovery_setup_requires_protected_tier_without_retention(
         ROOM if locked else ""
     )
     assert {3, 4}.issubset(solver.reads[-1])
+
+
+def test_measured_later_bed_uses_the_ordinary_room_budget(solver, monkeypatch):
+    from arknights_mower.tests.dorm_recovery_continuation_tests import (
+        NEW,
+        PEER,
+        VIP,
+        prepare_roommate_shift,
+        start_after_release,
+    )
+    from arknights_mower.utils import operation_timing
+    from arknights_mower.utils.scheduler_task import estimate_dorm_task_minutes
+
+    start_after_release(solver, monkeypatch, bed=4)
+    data = solver.op_data
+    data.config.resting_priority.append(NEW)
+    task = prepare_roommate_shift(solver, PEER, NEW, VIP)
+    monkeypatch.setattr(
+        operation_timing, "_dorm_durations", defaultdict(lambda: deque(maxlen=8))
+    )
+    before = pickle.dumps(data)
+    assert estimate_dorm_task_minutes(task, ROOM, data) == 1.0
+    assert pickle.dumps(data) == before
+    assert solver.agent_arrange(task.plan) is not False
+    assert len(solver.confirms) == 1
+    assert "dorm_roommate_targets" not in vars(task)
+
+
+def test_fill_a_vacancy_with_only_the_previous_seating_known(solver, monkeypatch):
+    from arknights_mower.tests.dorm_recovery_continuation_tests import (
+        MANAGERS,
+        NEW,
+        PEER,
+        VIP,
+        change_roommate,
+        start_after_release,
+    )
+    from arknights_mower.utils.dorm_recovery import (
+        active_recovery_position,
+        verify_final_recovery,
+    )
+
+    start_after_release(solver, monkeypatch, bed=4)
+    solver.physical[-1] = ""
+    solver.game_recipient = None
+    observed = solver.get_agent_from_room(read_dorm_evidence=True)
+    data = solver.op_data
+    verify_final_recovery(
+        data,
+        ROOM,
+        solver.physical,
+        observed,
+        group_transitions={},
+        can_repair=True,
+        continued=VIP,
+    )
+    target = data.operators[VIP]
+    assert not target.dorm_recovery_roster and target.dorm_roommate_roster
+    expected = [*MANAGERS, PEER, VIP, NEW]
+    assert change_roommate(solver, "", NEW, None) == expected
+    assert solver.confirms == [expected]
+    assert active_recovery_position(data, target) is None
+    assert [name for name, _, _ in target.dorm_roommate_roster] == expected
 
 
 def test_retention_change_still_completes_pending_roster_restoration(solver):
@@ -341,7 +450,9 @@ def test_pending_fixed_cover_behind_target_uses_same_context(solver, cover_mood)
 
     temporary = ["银灰", "琴柳", "红" if cover_mood == 24 else "", "", ""]
     assert solver.confirms == [temporary, final]
-    assert solver.op_data.operators["银灰"].dorm_recovery_index == 0
+    assert solver.op_data.operators["银灰"].dorm_recovery_index == (
+        0 if cover_mood is not None else -1
+    )
     assert data.group_shift_state == {"联动": False, "另一组": True}
 
 
@@ -406,11 +517,12 @@ def test_clear_competitors_confirm_then_restore_exact_slots(solver, task_type):
     )
 
 
-def test_same_final_positions_still_fix_unknown_arrival_order(solver):
+def test_same_final_positions_without_distinguishable_bonus_do_not_clear(solver):
     solver.physical = FINAL.copy()
     solver.get_agent_from_room()
     arrange(solver)
-    assert len(solver.confirms) == 2
+    assert not solver.confirms
+    assert not solver.op_data.operators["银灰"].dorm_recovery_room
 
 
 def test_current_resolved_before_compact_confirmation(solver):
@@ -448,7 +560,13 @@ def test_ordinary_replacement_refreshes_room_timing_without_repeating_single_tar
     observed = []
 
     def observe(
-        room, read_time_index=None, *, departing_plan=None, expected_agents=None
+        room,
+        read_time_index=None,
+        *,
+        departing_plan=None,
+        expected_agents=None,
+        read_dorm_evidence=False,
+        record_dorm_evidence=False,
     ):
         if departing_plan is None:
             observed.append(
@@ -513,12 +631,15 @@ def test_target_leaves_then_returns_needs_new_confirmation(solver):
     assert target.dorm_recovery_room == ""
     assert target.dorm_recovery_fixed == ()
     arrange(solver, FINAL)
-    assert len(solver.confirms) == 4
+    assert len(solver.confirms) == 2
+    assert target.dorm_recovery_room == ROOM
 
 
 @pytest.mark.parametrize("name", ["琴柳", "银灰", "杜林", "红", "陈"])
 @pytest.mark.parametrize("move", ["leave", "same_room"])
-def test_only_provider_or_target_movement_invalidates_cycle(solver, name, move):
+def test_resident_moves_invalidate_evidence_without_forcing_another_confirmation(
+    solver, name, move
+):
     arrange(solver)
     op = solver.op_data.operators[name]
     old_index = op.current_index
@@ -528,9 +649,11 @@ def test_only_provider_or_target_movement_invalidates_cycle(solver, name, move):
     else:
         op.current_index = 4 if old_index != 4 else 3
         op.current_index = old_index
-    assert (recovery_order_plan(solver.op_data, ROOM, FINAL) is not None) == (
-        name in ("琴柳", "银灰")
-    )
+    assert recovery_order_plan(solver.op_data, ROOM, FINAL) is not None
+    previous = solver.confirms.copy()
+    arrange(solver, FINAL)
+    assert solver.confirms == previous
+    assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
 
 
 def test_single_manager_changes_slot_reconfigures_in_final_slot(solver):
@@ -640,43 +763,25 @@ def test_non_single_replacement_does_not_inherit_primary_skill(solver):
     assert solver.confirms == [updated]
 
 
-def test_only_first_single_manager_controls_recovery(solver):
-    from arknights_mower.utils.dorm_recovery import recovery_managers
-
-    solver.op_data.add(Operator("闪灵", ROOM, 0))
-    solver.op_data.plan[ROOM][0].agent = "闪灵"
-    solver.op_data.refresh_dorm_manager_flags(force=True)
-    updated = ["闪灵", "琴柳", "红", "银灰", "陈"]
-    arrange(solver, updated)
-    marker = solver.op_data.operators["银灰"].dorm_recovery_fixed
-    assert [(name, index) for name, index, _ in marker] == [("闪灵", 0)]
-    assert marker == recovery_managers(solver.op_data, ROOM, updated)
-    assert recovery_order_plan(solver.op_data, ROOM, updated) is None
-    solver.op_data.operators["闪灵"].current_index = 1
-    solver.op_data.operators["闪灵"].current_index = 0
-    assert recovery_order_plan(solver.op_data, ROOM, updated) is not None
-
-
 @pytest.mark.parametrize(
-    "updated, selected",
-    [
-        (["琴柳", "杜林", "红", "银灰", "闪灵"], ("琴柳", 0)),
-        (["闪灵", "杜林", "红", "银灰", "琴柳"], ("闪灵", 0)),
-        (["蜜莓", "琴柳", "红", "银灰", "陈"], ("蜜莓", 0)),
-        (["琴柳", "蜜莓", "红", "银灰", "陈"], ("琴柳", 0)),
-    ],
+    "sources", [("闪灵", "琴柳"), ("蜜莓", "琴柳"), ("琴柳", "蜜莓")]
 )
-def test_manager_selection_uses_position_even_when_later_skill_is_stronger(
-    solver, updated, selected
+def test_multiple_possible_providers_complete_roster_without_claiming_first(
+    solver, sources
 ):
     from arknights_mower.utils.dorm_recovery import recovery_managers
 
-    for name in ("闪灵", "蜜莓"):
-        solver.op_data.add(Operator(name, ""))
+    for name in sources:
+        if name not in solver.op_data.operators:
+            solver.op_data.add(Operator(name, ""))
+    updated = [*sources, "红", "银灰", "陈"]
     assert [
-        (name, index)
-        for name, index, _ in recovery_managers(solver.op_data, ROOM, updated)
-    ] == [selected]
+        entry[0] for entry in recovery_managers(solver.op_data, ROOM, updated)
+    ] == list(sources)
+    arrange(solver, updated)
+    assert solver.confirms == [updated]
+    assert not solver.op_data.operators["银灰"].dorm_recovery_fixed
+    assert not solver.task.plan
 
 
 def test_later_single_manager_in_free_slot_is_not_proactively_confirmed(solver):
@@ -697,7 +802,7 @@ def test_later_single_manager_in_free_slot_is_not_proactively_confirmed(solver):
     assert solver.op_data.operators["安赛尔"].dorm_recovery_room == ""
 
 
-def test_later_manager_movement_does_not_invalidate_first(solver):
+def test_multiple_possible_sources_never_start_another_setup(solver):
     solver.op_data.add(Operator("闪灵", ROOM, 0))
     solver.op_data.operators["闪灵"].mood = 24
     solver.op_data.operators["闪灵"].time_stamp = datetime.now()
@@ -745,7 +850,7 @@ def test_complete_roster_queries_reuse_skill_cache(solver):
         recovery_managers(solver.op_data, ROOM, FINAL)
     after = dorm_skills.is_single_recovery_manager.cache_info()
     assert after.misses == before.misses
-    assert after.hits - before.hits == 20
+    assert after.hits > before.hits
 
 
 def test_resource_reload_updates_roster_skills(solver, monkeypatch, tmp_path):
@@ -997,14 +1102,18 @@ def test_same_target_and_only_full_fixed_occupants_needs_no_extra_confirmation(s
     solver.get_agent_from_room()
     assert solver.ensure_dorm_recovery_order(ROOM, FINAL)
     solver.tap_confirm.assert_not_called()
-    assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
+    assert not solver.op_data.operators["银灰"].dorm_recovery_room
 
 
 def test_readback_with_remaining_competitor_never_marks_success(solver):
     solver.tap_confirm.side_effect = lambda room, new_plan: None
-    with pytest.raises(Exception, match="宿舍单回排序确认失败"):
+    with pytest.raises(base_schedule.RoomArrangementDeferred):
         arrange(solver)
+    selections = solver.choose_agent.call_args_list
+    assert sum(bool(call.kwargs.get("recovery_padding")) for call in selections) == 1
+    assert all(call.args[0] == FINAL for call in selections[1:])
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ""
+    assert solver.task.dorm_recovery_restore == [ROOM]
     assert solver.task.plan == {ROOM: FINAL}
 
 
@@ -1135,11 +1244,10 @@ def test_padding_actual_mood_is_checked_before_recording_single_recovery(solver)
     read = solver.get_agent_from_room.side_effect
 
     def read_changed_mood(*args, **kwargs):
-        if "departing_plan" in kwargs:
-            return read(*args, **kwargs)
-        result = read(*args)
-        solver.op_data.operators["黑角"].mood = 1
-        return result
+        if "departing_plan" not in kwargs:
+            solver.op_data.operators["黑角"].mood = 1
+            solver.game_recipient = "红" if solver.physical == FINAL else "黑角"
+        return read(*args, **kwargs)
 
     solver.get_agent_from_room.side_effect = read_changed_mood
     arrange(solver)
@@ -1266,12 +1374,10 @@ def test_retained_full_resident_readback_must_not_compete_with_target(solver):
     read = solver.get_agent_from_room.side_effect
 
     def read_mood(*args, **kwargs):
-        if "departing_plan" in kwargs:
-            return read(*args, **kwargs)
-        result = read(*args)
-        if solver.confirms:
+        if "departing_plan" not in kwargs and solver.confirms:
             solver.op_data.operators["红"].mood = 1
-        return result
+            solver.game_recipient = "红"
+        return read(*args, **kwargs)
 
     solver.get_agent_from_room.side_effect = read_mood
     arrange(solver)

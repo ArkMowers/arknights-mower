@@ -428,7 +428,8 @@ def test_generated_idle_release_preserves_resting_group(
     for _ in range(3):
         assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
         assert len(solver.tasks) == count
-    assert any("" in row for row in snapshots) == single_target
+    # 全满原班直接换入。该夹具不提供同帧倒计时，不能把入住成功当成单回确认。
+    assert all("" not in row for row in snapshots)
     completed = data.operators["斯卡蒂"]
     assert not completed.current_room
     assert completed.time_stamp is not None
@@ -445,7 +446,7 @@ def test_generated_idle_release_preserves_resting_group(
     )
     # 清退后仍正常补入新住客，并按需确认单回。
     assert data.operators["陈"].current_room == ROOM
-    assert data.operators["陈"].dorm_recovery_room == (ROOM if single_target else "")
+    assert not data.operators["陈"].dorm_recovery_room
 
 
 @pytest.mark.parametrize("sample", ["measured", "prediction", "unknown"])
@@ -528,7 +529,8 @@ def test_only_adding_residents_reuses_single_recovery_readback(incident):
 
     assert snapshots == [empty, temporary, target]
     assert solver.choose_agent.call_count == solver.tap_confirm.call_count == 2
-    assert solver.op_data.operators["歌蕾蒂娅"].dorm_recovery_index == 2
+    assert solver.op_data.operators["歌蕾蒂娅"].current_index == 2
+    assert solver.op_data.operators["歌蕾蒂娅"].dorm_recovery_index == -1
     assert not solver.task.plan
 
 

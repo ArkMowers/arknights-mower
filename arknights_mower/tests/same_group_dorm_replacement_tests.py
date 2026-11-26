@@ -343,8 +343,21 @@ def mock_arrangement(solver, monkeypatch, final, *, contact_cover=RESIDENT):
     solver.confirms, solver.reads = [], []
     solver.deadline = datetime.now() + timedelta(hours=2)
 
+    from arknights_mower.tests.dorm_recovery_tests import room_readings
+    from arknights_mower.utils import calculated_mood
+
+    monkeypatch.setattr(
+        calculated_mood, "known_operator_stages", lambda owner=None: {"蜜莓": (2, 1)}
+    )
+
     def observe(
-        room=ROOM, read_time_index=None, *, departing_plan=None, expected_agents=None
+        room=ROOM,
+        read_time_index=None,
+        *,
+        departing_plan=None,
+        expected_agents=None,
+        read_dorm_evidence=False,
+        record_dorm_evidence=False,
     ):
         solver.reads.append(list(read_time_index or []))
         for op in solver.op_data.operators.values():
@@ -358,7 +371,7 @@ def mock_arrangement(solver, monkeypatch, final, *, contact_cover=RESIDENT):
                     solver.op_data.refresh_dorm_time(
                         room, i, {"agent": name, "time": solver.deadline}
                     )
-        return [{"agent": name} for name in solver.physical]
+        return room_readings(solver.op_data.operators, solver.physical, WORKER)
 
     def choose(agents, room, fast_mode=True, **kwargs):
         if kwargs.get("recovery_padding") and "Free" in agents:
@@ -409,18 +422,11 @@ def test_ordinary_dorm_cover_competes_in_actual_lock_confirmation(
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
     target = solver.op_data.operators[WORKER]
     assert solver.physical == final
-    confirmed = mood == 24 or padding
-    assert (target.dorm_recovery_room == ROOM) is confirmed
-    if confirmed:
-        assert solver.confirms[0][:3] == [
-            "夜莺" if mood == 24 else "黑角",
-            "蜜莓",
-            WORKER,
-        ]
-        assert all(row[2] == WORKER for row in solver.confirms)
-        assert tuple(name for name, _, _ in target.dorm_recovery_fixed) == ("蜜莓",)
-    else:
-        assert len(solver.confirms) == 0
+    # 最终名单原已就位。无需垫位；读回能判明实际目标才记录。
+    assert not solver.confirms
+    # 空条不能量速；其余住客全满时也没有可比较的同房基准。
+    assert bool(target.dorm_recovery_room) == (mood is not None and 0 < mood < 24)
+    assert not solver.task.plan
 
 
 @pytest.mark.parametrize("index", [0, 2])
@@ -435,7 +441,7 @@ def test_fixed_single_target_reads_final_roster_countdown(monkeypatch, index):
     mock_arrangement(solver, monkeypatch, final)
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
     target = solver.op_data.operators[WORKER]
-    assert target.dorm_recovery_index == index
+    assert target.dorm_recovery_index == -1
     assert solver.physical == final
     assert index in solver.reads[-1]
     assert solver.op_data.get_dorm_by_name(WORKER)[1].time == solver.deadline
@@ -448,13 +454,14 @@ def test_recovery_lock_tracks_provider_and_target_movement(monkeypatch):
     initialize(solver)
     final = [WORKER, "蜜莓", "陈", "银灰", "黑角"]
     mock_arrangement(solver, monkeypatch, final)
+    solver.op_data.operators["陈"].mood = 8
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
     target = solver.op_data.operators[WORKER]
     assert recovery_order_plan(solver.op_data, ROOM, final) is None
-    # 普通群回成员更换不使单回失效。
+    # 换位后的投影不能沿用原阵容的实读证据。
     changed = [WORKER, "蜜莓", "银灰", "陈", "黑角"]
     solver.op_data = solver.op_data.project_arrangements([{ROOM: changed}])
-    assert recovery_order_plan(solver.op_data, ROOM, changed) is None
+    assert recovery_order_plan(solver.op_data, ROOM, changed) is not None
     manager = solver.op_data.operators["蜜莓"]
     manager.current_room, manager.current_index = "", -1
     manager.current_room, manager.current_index = ROOM, 1
@@ -888,15 +895,18 @@ def test_dorm_primary_exchange_confirms_actual_single_recovery_and_countdown(
     mock_arrangement(
         solver, monkeypatch, final, contact_cover=RESIDENT if mixed else "黑角"
     )
+    # 有另一名可测速的普通室友时，两组都能判明目标；固定绑定仍各自占床。
+    solver.op_data.operators["陈"].mood = 8
     if not mixed:
         solver.op_data.operators[RESIDENT].mood = 0
         solver.op_data.add(Operator("芬", "", mood=24, time_stamp=datetime.now()))
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
     target = solver.op_data.operators[WORKER]
     assert solver.physical == final
-    assert target.dorm_recovery_index == (1 if mixed else 2)
+    expected_index = final.index(WORKER)
+    assert target.dorm_recovery_index == expected_index
     assert tuple(name for name, _, _ in target.dorm_recovery_fixed) == ("蜜莓",)
-    assert target.dorm_recovery_index in solver.reads[-1]
+    assert expected_index in solver.reads[-1]
     assert solver.op_data.get_dorm_by_name(WORKER)[1].time == solver.deadline
     assert solver.op_data.get_dorm_by_name("蜜莓") == (None, None)
     assert solver.op_data.get_dorm_by_name(RESIDENT) == (None, None)

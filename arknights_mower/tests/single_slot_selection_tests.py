@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
 
+import cv2
 import numpy as np
 import pytest
 from PIL import Image
@@ -159,7 +160,7 @@ def test_single_slot_retry_cancels_actual_card_before_selecting_target(
             scope = ((left, top), (left + 189, top + 32))
             page.append((name, scope))
         frames[id(img)] = (page, set(selected))
-        solver.recog.img = img
+        solver.recog._img = solver.recog.img = img
 
     def sort(*_):
         cards[:] = selected + [name for name in cards if name not in selected]
@@ -269,6 +270,203 @@ def test_single_slot_clear_uses_captured_card_and_observes_feedback(
 
     assert solver.tap.call_count == (0 if already_clear else 1)
     assert solver.recog.img is images["cleared"]
+
+
+@pytest.fixture
+def single_slot_frames(selection_module):
+    from arknights_mower.utils.recognize import Recognizer
+
+    fixture_dir = Path(__file__).parent / "fixtures/selection"
+    images = {
+        state: np.array(Image.open(fixture_dir / f"trade_single_{state}_20261021.jpg"))
+        for state in ("selected", "cleared")
+    }
+    images["prompt"] = np.array(
+        Image.open(fixture_dir / "staffing_secondary_confirm_20261024.jpg")
+    )
+    images["network"] = images["selected"]
+    images["unreadable"] = images["selected"].copy()
+    for start in (488, 909):
+        images["unreadable"][start : start + 32, 600:] = 0
+    solver = selection_module.BaseMixin()
+    solver.op_data = SimpleNamespace(plan={ROOM: [None]})
+    device = Mock()
+    device.check_current_focus.return_value = False
+    solver.recog = Recognizer(device)
+    solver.recog.set_frame(
+        (None, images["cleared"], cv2.cvtColor(images["cleared"], cv2.COLOR_RGB2GRAY))
+    )
+    events = []
+
+    def install(sequence, *, sort_refresh=True):
+        frames = iter(sequence)
+        latest = None
+
+        def capture():
+            nonlocal latest
+            latest = next(frames)
+            events.append(latest)
+            if latest == "disconnect":
+                raise ConnectionError("capture interrupted")
+            img = images[latest].copy()
+            return None, img, cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+
+        def find(key):
+            solver.recog.img
+            if key == "connecting" and latest == "network":
+                return True
+            return solver.recog.find(key)
+
+        def tap(scope, **_):
+            assert selection_module.agent_card_selected(solver.recog.img, scope) is True
+            events.append("tap")
+
+        def wait(_capture_time, interval):
+            assert interval == solver.performance_profile.poll_interval
+            events.append("wait")
+            solver.recog.update()
+
+        def sort(*_):
+            if sort_refresh:
+                solver.recog.update()
+                solver.recog.img
+
+        device.screencap.side_effect = capture
+        solver.find = find
+        solver.tap = tap
+        solver.wait_for_next_observation = wait
+        solver.switch_arrange_order = sort
+        return solver
+
+    return install, events
+
+
+@pytest.mark.parametrize(
+    "mode,count", [("high", 3), ("xhigh", 3), ("medium", 4), ("low", 6)]
+)
+@pytest.mark.parametrize("occupied", [True, False])
+def test_single_slot_clear_capture_count(
+    monkeypatch, single_slot_frames, mode, count, occupied
+):
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode=mode))
+    install, events = single_slot_frames
+    clear_count = 2 if mode == "low" else 1
+    state = "selected" if occupied else "cleared"
+    sequence = [state] * (count - clear_count) + ["cleared"] * clear_count
+    solver = install(sequence)
+
+    page = solver.clear_agent_selection(ROOM)
+
+    assert page[0][0] == "但书"
+    assert [e for e in events if e not in ("tap", "wait")] == sequence
+    assert events.count("tap") == int(occupied)
+    if mode in ("high", "xhigh"):
+        assert events[:3] == [state, "wait", state]
+    if occupied:
+        assert events[events.index("tap") + 1] == "cleared"
+
+
+@pytest.mark.parametrize(
+    "sequence, expected_events",
+    [
+        # 排序箭头已经变了，下一帧名单才变。以新位置复核两次后才允许点击。
+        (
+            ["cleared", "selected", "selected", "cleared"],
+            ["cleared", "wait", "selected", "wait", "selected", "tap", "cleared"],
+        ),
+        # 连接中断了连续观测。若点按后蓝框还在，只观察，不重复点卡片。
+        (
+            ["cleared", "network", "selected", "selected", "selected", "cleared"],
+            [
+                "cleared",
+                "wait",
+                "network",
+                "wait",
+                "selected",
+                "wait",
+                "selected",
+                "tap",
+                "selected",
+                "wait",
+                "cleared",
+            ],
+        ),
+    ],
+)
+def test_fast_single_slot_reads_delayed_sort_and_cancel(
+    monkeypatch, single_slot_frames, sequence, expected_events
+):
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode="xhigh"))
+    install, events = single_slot_frames
+    solver = install(sequence)
+
+    assert solver.clear_agent_selection(ROOM)[0][0] == "但书"
+    assert events == expected_events
+
+
+@pytest.mark.parametrize("first", ["selected", "prompt"])
+def test_single_slot_sort_prompt_stops_before_card_input(
+    monkeypatch, selection_module, single_slot_frames, first
+):
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode="xhigh"))
+    install, events = single_slot_frames
+    solver = install([first, "prompt"])
+
+    with pytest.raises(selection_module.AgentSelectionPageChanged):
+        solver.clear_agent_selection(ROOM)
+    assert "tap" not in events
+
+
+def test_single_slot_without_a_new_sort_frame_requires_two_fresh_pages(
+    monkeypatch, single_slot_frames
+):
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode="xhigh"))
+    install, events = single_slot_frames
+    solver = install(["selected", "selected", "cleared"], sort_refresh=False)
+
+    solver.clear_agent_selection(ROOM)
+    assert events == ["selected", "wait", "selected", "tap", "cleared"]
+
+
+@pytest.mark.parametrize("seed", ["network", "unreadable"])
+def test_unusable_single_slot_sort_frame_keeps_the_full_fresh_read_budget(
+    monkeypatch, single_slot_frames, seed
+):
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode="xhigh"))
+    install, events = single_slot_frames
+    solver = install([seed] + ["network"] * 4 + ["selected", "selected", "cleared"])
+
+    solver.clear_agent_selection(ROOM)
+    assert events[:2] == [seed, "network"]
+    assert events[-3:] == ["selected", "tap", "cleared"]
+    assert events.count("tap") == 1
+
+
+def test_single_slot_missed_cancellation_stops_with_one_tap(
+    monkeypatch, selection_module, single_slot_frames
+):
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode="xhigh"))
+    install, events = single_slot_frames
+    solver = install(["selected"] * 8)
+
+    with pytest.raises(selection_module.AgentSelectionNotReady, match="清空"):
+        solver.clear_agent_selection(ROOM)
+    assert events.count("tap") == 1
+    assert events.count("selected") == 8
+
+
+@pytest.mark.parametrize("before_tap", [False, True])
+def test_single_slot_device_loss_propagates_without_repeating_input(
+    monkeypatch, single_slot_frames, before_tap
+):
+    monkeypatch.setattr(config, "conf", config.Conf(performance_mode="xhigh"))
+    install, events = single_slot_frames
+    solver = install(["selected"] * (1 if before_tap else 2) + ["disconnect"])
+
+    with pytest.raises(ConnectionError, match="capture interrupted"):
+        solver.clear_agent_selection(ROOM)
+    assert events.count("tap") == int(not before_tap)
+    assert events[-1] == "disconnect"
 
 
 def test_captured_workshop_single_slot_selection_border(selection_module):

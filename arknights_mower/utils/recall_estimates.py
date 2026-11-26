@@ -61,14 +61,16 @@ def _bed_role(data, op, *, projected=False):
     managers = recovery_managers(data, room, names, update_cache=False)
     if not managers:
         return room, "ordinary"
+    if len(managers) != 1:
+        return None
     confirmed = next(
         (
             resident
             for resident in occupants
             if resident is not None
             and resident.mood < resident.upper_limit
-            and active_recovery_position(resident) == (room, resident.current_index)
-            and getattr(resident, "dorm_recovery_fixed", ()) == managers
+            and active_recovery_position(data, resident, names=names)
+            == (room, resident.current_index)
         ),
         None,
     )

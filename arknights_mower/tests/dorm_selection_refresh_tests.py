@@ -355,9 +355,8 @@ def test_recovery_preparation_observes_candidates_with_tier_appropriate_confirma
     target = "陈" if priority_target else "伊芙利特"
     assert plan == selected and plan[-1] == target
     assert observations.count([]) == 1
-    assert data.operators[target].dorm_recovery_room == (
-        ROOM if priority_target else ""
-    )
+    # 夹具只回读姓名；即使临时选人成功，也没有证明实际恢复速度。
+    assert not data.operators[target].dorm_recovery_room
     if priority_target:
         instance.tap_confirm.assert_called_once()
     else:
