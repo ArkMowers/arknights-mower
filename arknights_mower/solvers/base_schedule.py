@@ -13347,50 +13347,70 @@ class BaseSchedulerSolver(
             if accelerate_template is not None
             else ("manufacture_accelerate", "bill_accelerate")
         )
-        pending = None
-        retry_ready = False
-        retry_at = 0
-        attempts_left = 10
-        while attempts_left:
-            if self.find("connecting"):
-                attempts_left -= 1
+        deadline = None
+        if page_template == "order_label" and retry_after:
+            # 关闭进驻面板和打开订单页共用期限。基线无反馈时，五次点击各用
+            # 1 秒等待和 0.2 秒补读，最多等待 6 秒。
+            budget = min(2 * self.performance_profile.transition_timeout, 6.0)
+            deadline = monotonic() + budget
+            retry_after = min(retry_after, budget / 2)
+        observation = (
+            self.observation_deadline(deadline)
+            if deadline is not None
+            else nullcontext()
+        )
+        failure = "未成功进入订单或制造详情界面"
+        try:
+            with observation:
+                pending = None
                 retry_ready = False
-                self.sleep()
-                continue
-            if any(self.find(template) is not None for template in templates):
-                return
-            close = self.find("arrange_check_in_on")
-            action = "close_detail" if close is not None else "open_order"
-            if (
-                page_template is not None
-                and pending == "open_order"
-                and self.find(page_template) is not None
-            ):
-                return
-            if pending == action and (remaining := retry_at - monotonic()) > 0:
-                retry_ready = True
-                self.sleep(min(0.2, remaining))
-                continue
-            attempts_left -= 1
-            if pending == action and not retry_ready:
-                # 等上次点击的反馈；旧面板仍在时先换帧，不连续戳同一入口。
-                retry_ready = True
-                self.sleep(0.2)
-                continue
-            retry_at = monotonic() + retry_after
-            self.tap(
-                close
-                if close is not None
-                else (self.recog.w * 0.05, self.recog.h * 0.95),
-                interval=interval,
-            )
-            pending, retry_ready = action, False
-        # 最后一次点击之后也要读到结果，再交回原有房间恢复流程。
-        ready = any(self.find(template) is not None for template in templates)
-        if page_template is not None and pending == "open_order":
-            ready = ready or self.find(page_template) is not None
-        if self.find("connecting") or not ready:
-            raise RecognizeError("未成功进入订单或制造详情界面")
+                retry_at = 0
+                attempts_left = 10
+                while attempts_left:
+                    if self.find("connecting"):
+                        attempts_left -= 1
+                        retry_ready = False
+                        self.sleep()
+                        continue
+                    if any(self.find(template) is not None for template in templates):
+                        return
+                    close = self.find("arrange_check_in_on")
+                    action = "close_detail" if close is not None else "open_order"
+                    if (
+                        page_template is not None
+                        and pending == "open_order"
+                        and self.find(page_template) is not None
+                    ):
+                        return
+                    if pending == action and (remaining := retry_at - monotonic()) > 0:
+                        retry_ready = True
+                        self.sleep(min(0.2, remaining))
+                        continue
+                    attempts_left -= 1
+                    if pending == action and not retry_ready:
+                        # 等上次点击的反馈；旧面板仍在时先换帧，不连续戳同一入口。
+                        retry_ready = True
+                        self.sleep(0.2)
+                        continue
+                    retry_at = monotonic() + retry_after
+                    self.tap(
+                        close
+                        if close is not None
+                        else (self.recog.w * 0.05, self.recog.h * 0.95),
+                        interval=interval,
+                    )
+                    pending, retry_ready = action, False
+                # 最后一次点击之后也要读到结果，再交回原有房间恢复流程。
+                ready = any(self.find(template) is not None for template in templates)
+                if page_template is not None and pending == "open_order":
+                    ready = ready or self.find(page_template) is not None
+                if not self.find("connecting") and ready:
+                    return
+        except ObservationTimeout as error:
+            if deadline is None or monotonic() < deadline:
+                raise
+            raise RecognizeError(failure) from error
+        raise RecognizeError(failure)
 
     def _remember_order_read_log_cohort(self, refreshes):
         """关联本轮实际保留的读取对象；展示状态不写入任务或存储。"""
