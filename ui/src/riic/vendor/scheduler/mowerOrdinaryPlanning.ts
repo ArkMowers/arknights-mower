@@ -1,4 +1,4 @@
-import {hasRestingMood,restingThresholdFor} from './mowerOperatorState'
+import {restingThresholdFor} from './mowerOperatorState'
 import {projectMowerArrangements} from './mowerObservations'
 import type {MowerDependencyReturnAdmission} from './mowerTaskDerivation'
 import {mowerForcedWorkGroups} from './mowerBackupGroupTasks'
@@ -14,7 +14,6 @@ import {MowerDormState,type MowerSchedulingData} from './mowerSchedulingData'
 import {mowerActiveHighRestingCount,mowerAvailableFree,mowerAssignDorm,mowerAssignDormGroup,mowerAverageMood,mowerStandbyCandidates} from './mowerDormAssignment'
 import {planMowerMetadata} from './mowerMetadata'
 import {mowerDormCandidateMood,mowerDormTaskReservations} from './mowerAlphaCandidates'
-import {mowerSchedulingMoodObservation} from './mowerSchedulingMood'
 import {alphaPosition,alphaRestingTier,alphaSlotTakable,mowerMatchReplacements,alphaPrioritizeRecovery} from './mowerAlphaDorm'
 import {MowerTask,MOWER_TASK_TYPES as T,type MowerTaskPlan,type MowerTaskQueue,fromMowerMicros,toMowerMicros} from './mowerTaskQueue'
 export interface MowerRestingOptions {
@@ -25,7 +24,7 @@ export interface MowerRestingOptions {
  urgentRecoveryPendingSupporters?:ReadonlySet<string>
  dependencyReturn?:MowerDependencyReturnAdmission
  coordinationMoods?:Readonly<Record<string,number>>
- coordinationRates?:(data:MowerSchedulingData,moods?:Readonly<Record<string,number>>)=>import('./mowerReplacementCoordination').MowerCoordinationRates|undefined
+ coordinationRates?:(data:MowerSchedulingData)=>import('./mowerReplacementCoordination').MowerCoordinationRates|undefined
  returning?:Set<string>;returningGroups?:Set<string>;tasks?:MowerTask[]
  fiaTargets?:string[];hasActiveMastery?:boolean;isMasteryBusy?:(name:string)=>boolean
  isDormReplacement?:(name:string)=>boolean;onBlocked?:(names:string[])=>void;onException?:(error:unknown)=>void
@@ -165,40 +164,12 @@ export function planMowerOrdinarySupportAdmission(data:MowerSchedulingData,names
  const reorder=mowerTryReorder(projected,plan,options);if(reorder)Object.assign(plan,reorder)
  return Object.keys(plan).length?plan:undefined
 }
-function ordinaryShiftOrder(data: MowerSchedulingData, candidates: MowerOperatorState[], observations: Map<string, [number, number] | undefined>, options: MowerRestingOptions): MowerOperatorState[] {
- const above = candidates.filter(op => observations.get(op.name)![0] > op.lowerLimit)
- if (new Set(above.map(op => op.group ? 'group:' + op.group : 'slot:' + op.name)).size < 2) return candidates
- const calculated = data.policy.predictiveMoodControl
- if (calculated && !data.calculatedMoodSnapshot) return candidates
- const rates = calculated ? options.coordinationRates?.(data, data.calculatedMoodSnapshot?.values)?.work : undefined
- const hours = new Map<string, number>()
- for (const op of above) {
-  if (op.currentRoom !== op.room || op.currentIndex !== op.index) continue
-  const [mood, stamp] = observations.get(op.name)!
-  if (calculated) {
-   const rate = rates?.[op.name]
-   if (rate !== undefined && Number.isFinite(rate)) hours.set(op.name, rate > 0 ? (mood - op.lowerLimit) / rate : Infinity)
-  } else if (stamp === op.timeStampMicros && !op.moodIsPrediction && !op.projectedWorkPositionChanged && hasRestingMood(op, data.nowMicros)) {
-   if (op.exhaustTimeMicros !== undefined && op.mood !== 24) hours.set(op.name, Math.max(0, fromMowerMicros(op.exhaustTimeMicros - data.nowMicros)))
-   else if (Number.isFinite(op.depletionRate) && op.depletionRate > 0) hours.set(op.name, Math.max(0, (op.mood - op.lowerLimit) / op.depletionRate - fromMowerMicros(data.nowMicros - stamp)))
-  }
- }
- const result: MowerOperatorState[] = []
- let start = 0
- for (let end = 0; end <= candidates.length; end++) {
-  if (end < candidates.length && hours.has(candidates[end]!.name)) continue
-  result.push(...candidates.slice(start, end).sort((a, b) => hours.get(a.name)! - hours.get(b.name)!))
-  if (end < candidates.length) result.push(candidates[end]!)
-  start = end + 1
- }
- return result
-}
 function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRestingOptions,metadataPrepared:boolean):MowerTaskPlan {
  options={...options,dormAdmissions:new Map()}
  if(data.policy.experimentalDormLogic)throw new Error('Experimental ordinary resting requires its source port')
- const observations = new Map(Object.values(data.operators).map(op => [op.name, data.alpha ? mowerSchedulingMoodObservation(data, op.name) : [op.currentMood(data.nowMicros), data.nowMicros] as [number, number]]))
+ const moods=new Map(Object.values(data.operators).map(op=>[op.name,data.alpha?mowerDormCandidateMood(data,op.name):op.currentMood(data.nowMicros)]))
  const total=Object.values(data.operators).filter(op=>(op.isHigh()||!data.alpha&&!op.currentRoom&&!op.room)&&!op.room.startsWith('dorm')&&!(op.group&&data.canStandby(op))).sort((a,b)=>data.alpha?0:a.currentMood(data.nowMicros)-b.currentMood(data.nowMicros))
- total.sort((a,b)=>Number(!observations.get(a.name))-Number(!observations.get(b.name))||((observations.get(a.name)?.[0]??0)-a.lowerLimit)-((observations.get(b.name)?.[0]??0)-b.lowerLimit))
+ total.sort((a,b)=>Number(moods.get(a.name)===undefined)-Number(moods.get(b.name)===undefined)||((moods.get(a.name)??0)-a.lowerLimit)-((moods.get(b.name)??0)-b.lowerLimit))
  if(!metadataPrepared)planMowerMetadata(data,queue,options.dependencyReturn)
  const current=mowerActiveHighRestingCount(data),effective=data.dorms.filter(b=>data.effectiveFreeSlot(b)).length
  const ideal=mowerAverageMood(data)>data.policy.restingThreshold*data.policy.rescueThreshold?Math.min(4,effective):effective
@@ -207,12 +178,12 @@ function resting(data:MowerSchedulingData,queue:MowerTaskQueue,options:MowerRest
  const eligible = (op: MowerOperatorState) => {
   if (working.has(op.group) || op.workaholic || op.isResting() || data.isStandby(op.name) || [op.room, op.currentRoom].includes('factory') || options.hasActiveMastery && [op.room, op.currentRoom].includes('train')) return false
   if (data.alpha && (op.multiGroup && !op.shiftGroup && !op.independentRest || op.group && !data.isGroupShiftAnchor(op) || data.reservedProductReplacements.has(op.name) || options.returning?.has(op.name) || options.returningGroups?.has(op.group) || op.group && data.group(op.group).some(n => options.returning?.has(n)) || alphaRestingTier(data, op.name) === 7)) return false
-  const mood = observations.get(op.name)?.[0]
+  const mood = moods.get(op.name)
   if (mood === undefined || ((data.alpha ? op.customMoodLimit : op.restMoodLimit) ? mood >= op.upperLimit : op.upperLimit - mood < 2)) return false
   const threshold = (op.upperLimit - op.lowerLimit) * restingThresholdFor(op, data.policy) + op.lowerLimit
   return !op.exhaustRequire && (!op.isHigh() || !op.group || !exhaustGroups.has(op.group)) && mood <= (data.alpha && op.customMoodLimit ? threshold : Math.floor(threshold))
  }
- const candidates = data.alpha ? ordinaryShiftOrder(data, total.filter(eligible), observations, options) : [...total.filter(op=>op.isHigh()),...total.filter(op=>!op.isHigh())]
+ const candidates = data.alpha ? total.filter(eligible) : [...total.filter(op=>op.isHigh()),...total.filter(op=>!op.isHigh())]
  for(const op of candidates){
   if (working.has(op.group) || data.alpha && replacements.includes(op.name)) continue
   if(op.isHigh()&&(data.alpha||!op.workshop)){

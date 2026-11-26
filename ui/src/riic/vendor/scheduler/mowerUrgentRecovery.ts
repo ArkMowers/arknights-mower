@@ -2,12 +2,40 @@ import {hasObservedFullMood} from './mowerOperatorState'
 import type {MowerSchedulingData} from './mowerSchedulingData'
 import {MOWER_TASK_TYPES as T,type MowerTask} from './mowerTaskQueue'
 
+function requestOrigins(request:MowerTask):string[] {
+ return request.coordinationRequestNames.length ? request.coordinationRequestNames : request.type===T.EXHAUST_OFF ? request.metadata.split(',') : request.urgentRecoveryRequestNames
+}
+
 /** A prepared departure retains the recovery request that released its covers. */
 export function mowerSupportRequestMatches(request:MowerTask,support:MowerTask):boolean {
  if(request===support||request.ordinaryCoordination!==support.ordinaryCoordination)return false
- const origins=request.coordinationRequestNames.length?request.coordinationRequestNames:request.type===T.EXHAUST_OFF?request.metadata.split(','):request.urgentRecoveryRequestNames
+ const origins=requestOrigins(request)
  return request.type===T.EXHAUST_OFF&&origins.some(name=>support.coordinationRequestNames.includes(name))
   ||request.type===T.SHIFT_OFF&&origins.length>0&&origins.every(name=>support.coordinationRequestNames.includes(name))
+}
+
+function sameNames(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every(name => right.includes(name))
+}
+
+/** Only the originating departure may reuse a support's freed covers and beds. */
+export function mowerReservationOwners(current: MowerTask | undefined, pending: readonly MowerTask[]): Set<MowerTask> {
+  if (!current) return new Set()
+  const own = current.urgentRecoveryRequestNames
+  if (!own.length && (current.ordinaryCoordination || !current.exhaustSupport)) return new Set()
+  const origins = requestOrigins(current).filter(Boolean)
+  if (!origins.length) return new Set()
+  const candidates = pending.filter(task => task !== current && task.urgentRecoveryRequestNames.length && task.ordinaryCoordination === current.ordinaryCoordination)
+  if (own.length) {
+    const affected = candidates.filter(task => sameNames(task.urgentRecoveryRequestNames, own))
+    if (current.type === T.SHIFT_OFF && !current.coordinationRequestNames.length && (current.urgentRecoveryReservedNames.length || current.urgentRecoveryReservedSlots.length)) {
+      const copies = affected.filter(task => sameNames(task.urgentRecoveryReservedNames, current.urgentRecoveryReservedNames) && sameNames(task.urgentRecoveryReservedSlots, current.urgentRecoveryReservedSlots))
+      return new Set(copies.length === 1 ? copies : [])
+    }
+    return new Set(affected.filter(task => sameNames(requestOrigins(task), origins)))
+  }
+  const parents = candidates.filter(task => (task.type === T.EXHAUST_OFF || task.type === T.SHIFT_OFF) && sameNames(requestOrigins(task), origins))
+  return new Set(parents.length === 1 ? parents : [])
 }
 
 /** Observed returns and completed recovery release this round's recall dependency. */

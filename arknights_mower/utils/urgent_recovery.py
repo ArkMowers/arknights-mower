@@ -37,14 +37,71 @@ def active_urgent_recovery(data):
     }
 
 
+def _request_origins(task):
+    if names := getattr(task, "coordination_request_names", ()):
+        return set(names)
+    if getattr(getattr(task, "type", None), "name", "") == "EXHAUST_OFF":
+        return set(filter(None, task.meta_data.split(",")))
+    return set(getattr(task, "urgent_recovery_request_names", ()))
+
+
+def _reservation_owners(current, tasks):
+    if current is None:
+        return set()
+    ordinary = getattr(current, "ordinary_coordination", False)
+    own = set(getattr(current, "urgent_recovery_request_names", ()))
+    if not own and (ordinary or not getattr(current, "exhaust_support", False)):
+        return set()
+    origins = _request_origins(current)
+    if not origins:
+        return set()
+    candidates = [
+        task
+        for task in tasks
+        if task is not current
+        and getattr(task, "urgent_recovery_request_names", ())
+        and getattr(task, "ordinary_coordination", False) == ordinary
+    ]
+    if own:
+        candidates = [
+            task
+            for task in candidates
+            if set(task.urgent_recovery_request_names) == own
+        ]
+        # 旧的派生任务只保存了受援者和从原请求复制的预约。
+        if current.type.name == "SHIFT_OFF" and not getattr(
+            current, "coordination_request_names", ()
+        ):
+            names = set(getattr(current, "urgent_recovery_reserved_names", ()))
+            slots = set(getattr(current, "urgent_recovery_reserved_slots", ()))
+            if names or slots:
+                copies = [
+                    task
+                    for task in candidates
+                    if set(getattr(task, "urgent_recovery_reserved_names", ())) == names
+                    and set(getattr(task, "urgent_recovery_reserved_slots", ()))
+                    == slots
+                ]
+                return {id(copies[0])} if len(copies) == 1 else set()
+        return {id(task) for task in candidates if _request_origins(task) == origins}
+    parents = [
+        task
+        for task in candidates
+        if task.type.name in {"EXHAUST_OFF", "SHIFT_OFF"}
+        and _request_origins(task) == origins
+    ]
+    if len(parents) == 1:
+        return {id(parents[0])}
+    return set()
+
+
 def pending_urgent_reservations(tasks, current=None):
     """前置交接释放的替班和床位归原下班请求使用，直到实际入宿。"""
     names, slots = set(), set()
-    own = set(getattr(current, "urgent_recovery_request_names", ()))
+    tasks = list(tasks)
+    owners = _reservation_owners(current, tasks)
     for task in tasks:
-        if task is None or task is current:
-            continue
-        if own and own == set(getattr(task, "urgent_recovery_request_names", ())):
+        if task is None or task is current or id(task) in owners:
             continue
         names.update(getattr(task, "urgent_recovery_reserved_names", ()))
         slots.update(getattr(task, "urgent_recovery_reserved_slots", ()))

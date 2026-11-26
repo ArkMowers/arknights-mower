@@ -3,10 +3,18 @@
 import { MOWER_RIGHT_SIDE_CAPACITY } from '../domain/mowerBackupFacilities'
 import { MOWER_OUTPUT_ROOM_IDS } from '../domain/roster'
 import type {BackupTiming} from './backupPlans'
+import type {MowerSchedulingData} from './mowerSchedulingData'
+import {hasRestingMood, type MowerOperatorState} from './mowerOperatorState'
+import {mowerSchedulingMoodObservation} from './mowerSchedulingMood'
 import {MowerRoomArrangementDeferred} from './mowerNativeErrors'
-import {MOWER_TASK_TYPES as T,MowerTask,isMowerRunOrderTask,type MowerTaskQueue,type MowerTaskPlan} from './mowerTaskQueue'
+import {MOWER_TASK_TYPES as T,MowerTask,fromMowerMicros,isMowerRunOrderTask,type MowerTaskQueue,type MowerTaskPlan} from './mowerTaskQueue'
 export interface MowerBackupResult {changed:boolean;generated:MowerTask[]}
+interface HandoffObservations {
+  data: MowerSchedulingData
+  workRate: (name: string, room: string) => number
+}
 export interface MowerTaskExecutionHooks {
+ handoff?:HandoffObservations
  currentRoom?:(name:string)=>string|undefined
  /** Enable the alpha complete-arrangement boundary in the application adapter. */
  protectShift?:boolean
@@ -55,6 +63,8 @@ export interface MowerRoomReturn {room:string;delayMicros:number;nativeRunOrderI
 const productionRooms = new Set<string>(MOWER_OUTPUT_ROOM_IDS)
 const rightRooms = new Set(Object.keys(MOWER_RIGHT_SIDE_CAPACITY))
 const placeholders = new Set(['Current', 'Free', '_', ''])
+const routableRooms = new Set([...productionRooms, ...rightRooms, 'central'])
+routableRooms.delete('train')
 
 function needsMapDrag(previous: string, room: string): boolean {
   if (rightRooms.has(previous)) {
@@ -64,10 +74,24 @@ function needsMapDrag(previous: string, room: string): boolean {
   return productionRooms.has(previous) && rightRooms.has(room)
 }
 
-function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>>, keepLast: boolean): string[] {
+function sameMapEntry(first: string, other: string): boolean {
+  if (first === other) return true
+  if (productionRooms.has(first) && productionRooms.has(other)) {
+    const [, firstFloor, firstColumn] = first.split('_'), [, otherFloor, otherColumn] = other.split('_')
+    return firstColumn === otherColumn && firstFloor !== '2' && otherFloor !== '2'
+  }
+  return ['factory', 'contact', 'recycle'].includes(first) && ['factory', 'contact', 'recycle'].includes(other)
+}
+
+function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>>, keepLast: boolean, handoffHours?: ReadonlyMap<string, number>): string[] {
   const original = rooms.slice(1).filter((room, index) => needsMapDrag(rooms[index]!, room)).length
-  if (!original) return rooms
+  if (!handoffHours && !original) return rooms
   const middle = rooms.slice(1, keepLast ? -1 : undefined)
+  const preference = [...middle.keys()]
+  if (handoffHours) {
+    preference.sort((a, b) => handoffHours.get(middle[a]!)! - handoffHours.get(middle[b]!)!)
+    if (preference.every((index, offset) => index === offset)) return rooms
+  }
   const bits = new Map(middle.map((room, index) => [room, 1 << index]))
   const required = middle.map(room => [...dependencies.get(room)!].reduce((mask, source) => mask | (bits.get(source) ?? 0), 0))
   const endBit = 1 << middle.length
@@ -80,7 +104,9 @@ function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>
     if (!pending) return budget > 0 || !(dragMask & endBit)
     const key = `${pending}:${dragMask}:${budget}`
     if (failed.has(key)) return false
-    for (const [index, room] of middle.entries()) {
+    for (const index of preference) {
+      const room = middle[index]!
+      if (!rooms[0] && pending === endBit - 1 && !sameMapEntry(middle[0]!, room)) continue
       const bit = 1 << index
       if (!(pending & bit) || (required[index]! & pending)) continue
       const cost = (dragMask & bit) ? 1 : 0
@@ -92,31 +118,125 @@ function shortestMapRoute(rooms: string[], dependencies: Map<string, Set<string>
     failed.add(key)
     return false
   }
-  for (let budget = 0; budget < original; budget++) {
+  const firstBudget = handoffHours ? original : 0, lastBudget = handoffHours ? original : original - 1
+  for (let budget = firstBudget; budget <= lastBudget; budget++) {
     if (visit(endBit - 1, drags(rooms[0]!), budget)) return [rooms[0]!, ...path, ...(keepLast ? rooms.slice(-1) : [])]
   }
   return rooms
 }
-/** Refill source workplaces first and preserve stops needed after the arrangement. */
-export function mowerArrangementRoomOrder(
-  plan: MowerTaskPlan,
-  currentRoom: (name: string) => string | undefined,
-  preferVisible = true,
-  allowOpenEnd = false,
-): string[] {
-  const work = Object.keys(plan).filter(room => !room.startsWith('dormitory_'))
-  const dependencies = new Map(work.map(room => [room, new Set(
-    plan[room]!.map(currentRoom).filter((source): source is string => !!source && source !== room && work.includes(source)),
-  )]))
+function handoffHoursToLimit(op: MowerOperatorState, { data, workRate }: HandoffObservations): number | undefined {
+  const now = data.nowMicros
+  if (data.policy.predictiveMoodControl && op.lowerLimit === 0 && op.mood === 0 && op.exhaustTimeMicros !== undefined &&
+      op.timeStampMicros !== undefined && op.timeStampMicros <= now && !op.moodIsPrediction && !op.projectedWorkPositionChanged) {
+    return Math.max(0, fromMowerMicros(op.exhaustTimeMicros - now))
+  }
+  const observation = mowerSchedulingMoodObservation(data, op.name)
+  if (!observation) return undefined
+  const [mood, stamp] = observation
+  if (data.policy.predictiveMoodControl) {
+    if (!data.calculatedMoodSnapshot) return undefined
+    if (mood <= op.lowerLimit) return 0
+    const rate = workRate(op.name, op.currentRoom)
+    if (!Number.isFinite(rate)) return undefined
+    return rate > 0 ? (mood - op.lowerLimit) / rate : Infinity
+  }
+  if (op.projectedWorkPositionChanged || stamp !== op.timeStampMicros || op.moodIsPrediction || !hasRestingMood(op, now)) return undefined
+  if (op.lowerLimit > 0 && op.mood <= op.lowerLimit) return 0
+  if (op.exhaustTimeMicros !== undefined && op.mood !== 24) return Math.max(0, fromMowerMicros(op.exhaustTimeMicros - now))
+  if (mood <= op.lowerLimit) return 0
+  if (!Number.isFinite(op.depletionRate) || op.depletionRate <= 0) return undefined
+  return Math.max(0, (op.mood - op.lowerLimit) / op.depletionRate - fromMowerMicros(now - stamp))
+}
+
+function plannedHandoffHours(plan: MowerTaskPlan, ordered: string[], counts: Map<string, number>, handoff: HandoffObservations): Map<string, number> {
+  const workTargets = new Set(Object.entries(plan).filter(([room]) => !room.startsWith('dormitory_')).flatMap(([, names]) => names))
+  const occupants = new Map<string, Map<number, MowerOperatorState | undefined>>()
+  for (const op of Object.values(handoff.data.operators)) {
+    if (!(op.currentRoom in plan) || op.currentIndex < 0) continue
+    const row = occupants.get(op.currentRoom) ?? new Map<number, MowerOperatorState | undefined>()
+    row.set(op.currentIndex, row.has(op.currentIndex) ? undefined : op)
+    occupants.set(op.currentRoom, row)
+  }
+  const departing = new Map<string, MowerOperatorState[]>()
+  for (const room of ordered) {
+    if (!routableRooms.has(room)) continue
+    const workers: MowerOperatorState[] = []
+    const row = occupants.get(room)
+    if (!row) continue
+    const targets = plan[room]!
+    const slots = new Set([...row.keys(), ...targets.keys()])
+    const confirmed = [...slots].every(index => {
+      const op = row.get(index), target = targets[index]
+      if (!op) return false
+      if (target === 'Current') return !counts.has(op.name)
+      if (target !== undefined && counts.get(target) !== 1) return false
+      if (op.isHigh() && !op.workaholic && op.room === room && !workTargets.has(op.name)) workers.push(op)
+      return true
+    })
+    if (confirmed && workers.length) departing.set(room, workers)
+  }
+  const hours = new Map<string, number>()
+  if (departing.size < 2) return hours
+  for (const [room, workers] of departing) {
+    const times = workers.map(op => handoffHoursToLimit(op, handoff))
+    if (times.includes(0)) hours.set(room, 0)
+    else if (times.every((value): value is number => value !== undefined)) hours.set(room, Math.min(...times))
+  }
+  return hours
+}
+
+function workRoomOrder(work: string[], dependencies: Map<string, Set<string>>): [string[], string[]] {
   const pending = [...work], ordered: string[] = []
   while (pending.length) {
     const index = pending.findIndex(room => !pending.some(source => dependencies.get(room)!.has(source)))
     if (index < 0) break
     ordered.push(pending.splice(index, 1)[0]!)
   }
+  return [ordered, pending]
+}
+
+function handoffDetourFits(original: string[], proposed: string[], work: string[], dependencies: Map<string, Set<string>>): boolean {
+  const dorms = original.slice(work.length), stops = [...routableRooms]
+  function remaining(done: Set<string>): [string, number] {
+    const [ready, cyclic] = workRoomOrder(work.filter(room => !done.has(room)), dependencies)
+    const rest = [...ready, ...cyclic, ...dorms]
+    return [rest[0]!, rest.slice(1).filter((room, i) => needsMapDrag(rest[i]!, room)).length]
+  }
+  const before = new Set<string>(), after = new Set<string>()
+  let extra = 0
+  for (let i = 0; i < Math.min(work.length, original.length - 1); i++) {
+    const old = original[i]!, next = proposed[i]!
+    if (i) extra += Number(needsMapDrag(proposed[i - 1]!, next)) - Number(needsMapDrag(original[i - 1]!, old))
+    before.add(old)
+    after.add(next)
+    let detour = extra
+    if (old !== next && stops.some(room => needsMapDrag(next, room) && !needsMapDrag(old, room))) detour++
+    if ([...before].some(room => !after.has(room))) {
+      const [oldNext, oldCost] = remaining(before), [newNext, newCost] = remaining(after)
+      detour += newCost - oldCost
+      if (oldNext !== newNext && stops.some(room => needsMapDrag(room, newNext) && !needsMapDrag(room, oldNext))) detour++
+    }
+    if (detour > 0) return false
+  }
+  return true
+}
+
+/** Refill source workplaces first and preserve stops needed after the arrangement. */
+export function mowerArrangementRoomOrder(
+  plan: MowerTaskPlan,
+  currentRoom: (name: string) => string | undefined,
+  preferVisible = true,
+  allowOpenEnd = false,
+  handoff?: HandoffObservations,
+): string[] {
+  const work = Object.keys(plan).filter(room => !room.startsWith('dormitory_'))
+  const dependencies = new Map(work.map(room => [room, new Set(
+    plan[room]!.map(currentRoom).filter((source): source is string => !!source && source !== room && work.includes(source)),
+  )]))
+  const [ordered, pending] = workRoomOrder(work, dependencies)
   const dorms = Object.keys(plan).filter(room => room.startsWith('dormitory_')).sort((a, b) => Number(a.split('_')[1]) - Number(b.split('_')[1]))
   const rooms = [...ordered, ...pending, ...dorms]
-  if (!preferVisible || ordered.length < 3) return rooms
+  if (!preferVisible || ordered.length < 2) return rooms
   const counts = new Map<string, number>()
   for (const names of Object.values(plan)) {
     for (const name of names) {
@@ -124,7 +244,7 @@ export function mowerArrangementRoomOrder(
     }
   }
   const movable = new Set(ordered.filter(room =>
-    room !== 'train' && (productionRooms.has(room) || rightRooms.has(room) || room === 'central') &&
+    routableRooms.has(room) &&
     plan[room]!.length > 0 && plan[room]!.every(name => counts.get(name) === 1),
   ))
   const openEnd = allowOpenEnd && movable.size === rooms.length && !movable.has('central')
@@ -134,6 +254,21 @@ export function mowerArrangementRoomOrder(
       if (end - start >= (openEnd ? 2 : 3)) rooms.splice(start, end - start + 1, ...shortestMapRoute(rooms.slice(start, end + 1), dependencies, !openEnd))
       start = end
     }
+  }
+  if (handoff) {
+    const original = [...rooms]
+    const hours = plannedHandoffHours(plan, ordered, counts, handoff)
+    if (!openEnd) hours.delete(rooms[rooms.length - 1]!)
+    for (let first = 0; first < rooms.length;) {
+      let after = first
+      while (after < rooms.length && hours.has(rooms[after]!)) after++
+      if (after - first > 1) {
+        const window = [rooms[first - 1] ?? '', ...rooms.slice(first, after), rooms[after] ?? '']
+        rooms.splice(first, after - first, ...shortestMapRoute(window, dependencies, true, hours).slice(1, -1))
+      }
+      first = after + 1
+    }
+    if (rooms.some((room, i) => room !== original[i]) && !handoffDetourFits(original, rooms, work, dependencies)) return original
   }
   return rooms
 }
@@ -152,7 +287,7 @@ export function* executeMowerTaskArrangementSteps(task:MowerTask,queue:MowerTask
  const preferVisible = !!hooks.alpha && !task.arrangementStarted && [T.SHIFT_ON, T.SHIFT_OFF, T.SELF_CORRECTION, T.NOT_SPECIFIC].includes(task.type) &&
    !task.retainsExecution && !task.strictMoodLimit && !task.arrangementRetryRoom && !task.dormRecoveryRestore.length &&
    !task.productShiftLocked && !task.exhaustSupport
- const rooms = mowerArrangementRoomOrder(task.plan, hooks.currentRoom ?? (() => undefined), preferVisible, hooks.hasRunOrderRooms === false)
+ const rooms = mowerArrangementRoomOrder(task.plan, hooks.currentRoom ?? (() => undefined), preferVisible, hooks.hasRunOrderRooms === false, task.type === T.SHIFT_OFF && task.ordinaryCoordination ? hooks.handoff : undefined)
  let beforeWork=false,beforeDorm=false;const restoration:MowerTaskPlan={}
  for(const room of rooms){
   if(!room.startsWith('dormitory_')&&!beforeWork){beforeWork=true;if(enterPhase('BEFORE_WORK',task,queue,hooks)){if(!Object.keys(task.plan).length)queue.consume(task);return false}}

@@ -1,4 +1,4 @@
-"""普通下班比较个人下限和可工作的时间，宿舍优先级参与床位分配。"""
+"""普通下班按心情余量分配替班和床位。"""
 
 import sys
 from datetime import datetime, timedelta
@@ -121,33 +121,32 @@ def test_shift_off_keeps_original_mood_margin_against_lower_limit(solver):
 
 
 @pytest.mark.parametrize(
-    "evidence,first",
+    "evidence",
     [
-        ("rate", "深海"),
-        ("countdown", "深海"),
-        ("different_member", "深海"),
-        ("unknown_after", "深海"),
-        ("unknown_between", "感知"),
-        ("incomplete_group", "感知"),
-        ("different_seat", "感知"),
-        ("observed_seat", "感知"),
-        ("source_observed_first", "感知"),
-        ("position_without_mood", "感知"),
-        ("projected_seat", "感知"),
-        ("projected_countdown", "感知"),
-        ("projected_same_seat", "深海"),
-        ("legacy_full_mood_timer", "深海"),
-        ("prediction_and_card", "感知"),
-        ("unknown", "感知"),
-        ("newer_card", "感知"),
-        ("at_floor", "感知"),
-        ("above_threshold", "感知"),
-        ("equal_time", "感知"),
+        "rate",
+        "countdown",
+        "different_member",
+        "unknown_after",
+        "unknown_between",
+        "incomplete_group",
+        "different_seat",
+        "observed_seat",
+        "source_observed_first",
+        "position_without_mood",
+        "projected_seat",
+        "projected_countdown",
+        "projected_same_seat",
+        "legacy_full_mood_timer",
+        "prediction_and_card",
+        "unknown",
+        "newer_card",
+        "at_floor",
+        "above_threshold",
+        "equal_time",
+        "smaller_margin",
     ],
 )
-def test_competing_groups_share_cover_by_time_to_personal_floor(
-    solver, evidence, first
-):
+def test_shared_cover_is_assigned_by_mood_margin(solver, evidence):
     data = solver.op_data
     now = data._projection_now = datetime.now()
     slow, fast = (data.operators[name] for name in ("令", "歌蕾蒂娅"))
@@ -220,10 +219,12 @@ def test_competing_groups_share_cover_by_time_to_personal_floor(
         fast.mood, fast.depletion_rate = 23, 50
     elif evidence == "equal_time":
         fast.depletion_rate = 1
+    elif evidence == "smaller_margin":
+        fast.mood = 1
 
     plan = solver.resting()
 
-    if first == "深海":
+    if evidence == "smaller_margin":
         assert plan["central"] == ["Current", "夕"]
         assert plan["room_2_1"] == ["伺夜"]
         assert {bed.name for bed in data.dorm if bed.name} == {"歌蕾蒂娅", "幽灵鲨"}
@@ -235,7 +236,7 @@ def test_competing_groups_share_cover_by_time_to_personal_floor(
 
 @pytest.mark.parametrize("solver", [{"深海": "甲", "感知": "乙"}], indirect=True)
 @pytest.mark.parametrize("hunter_in_dorm", [False, True])
-def test_tidal_watch_uses_actual_hunter_positions_with_custom_group_names(
+def test_tidal_watch_keeps_shared_cover_with_the_smaller_mood_margin(
     solver, monkeypatch, hunter_in_dorm
 ):
     from arknights_mower.tests.mood_calculation_consumers_tests import set_e0_box
@@ -260,12 +261,8 @@ def test_tidal_watch_uses_actual_hunter_positions_with_custom_group_names(
 
     plan = solver.resting()
 
-    if hunter_in_dorm:
-        assert plan["central"] == ["Mon3tr", "Current"]
-        assert {bed.name for bed in data.dorm if bed.name} == {"令", "黑键"}
-    else:
-        assert plan["central"] == ["Current", "夕"]
-        assert {bed.name for bed in data.dorm if bed.name} == {"歌蕾蒂娅", "幽灵鲨"}
+    assert plan["central"] == ["Mon3tr", "Current"]
+    assert {bed.name for bed in data.dorm if bed.name} == {"令", "黑键"}
 
 
 def test_dorm_priority_still_assigns_first_bed_within_selected_group(solver):

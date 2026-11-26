@@ -160,10 +160,12 @@ describe('urgent dependency recall and observed recovery ownership',()=>{
   const {source}=fixture(),owner=new MowerTask()
   owner.urgentRecoveryRequestNames=['A','Shared'];owner.urgentRecoveryReservedNames=['Y'];owner.urgentRecoveryReservedSlots=['dormitory_1\0'+'2']
   owner.productShiftLocked=true;owner.productLockNames.add('X');owner.productLockSlots.add('room_1_1\0'+'0')
-  const own=mowerReplacementReservations(source.data,[owner],['Shared','A'])
+  const current=new MowerTask();current.urgentRecoveryRequestNames=['Shared','A']
+  const own=mowerReplacementReservations(source.data,[owner],current)
   expect(own.reservedNames.has('Y')).toBe(false);expect(own.reservedSlots.has('dormitory_1\0'+'2')).toBe(false)
   expect(own.reservedNames.has('X')).toBe(true);expect(own.reservedSlots.has('room_1_1\0'+'0')).toBe(true)
-  const other=mowerReplacementReservations(source.data,[owner],['Shared','B'])
+  current.urgentRecoveryRequestNames=['Shared','B']
+  const other=mowerReplacementReservations(source.data,[owner],current)
   expect(other.reservedNames.has('Y')).toBe(true);expect(other.reservedSlots.has('dormitory_1\0'+'2')).toBe(true)
  })
  it('records observed admissions from idle without protecting unobserved or shared followers',()=>{

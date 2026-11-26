@@ -10,7 +10,6 @@ from contextlib import ExitStack, contextmanager, nullcontext
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from functools import cache, wraps
-from itertools import groupby
 from tempfile import TemporaryDirectory
 from time import monotonic, perf_counter
 from typing import Literal, Optional
@@ -391,6 +390,9 @@ def _merge_plan_overlay(plan: dict, overlay: dict, op_data: Operators) -> None:
 _PRODUCTION_ROOMS = frozenset(
     room for room in base_room_list if room.startswith("room_")
 )
+_ROUTABLE_ROOMS = (
+    _PRODUCTION_ROOMS | RIGHT_SIDE_ROOM_CAPACITY.keys() | {"central"}
+) - {"train"}
 
 
 def _needs_map_drag(previous: str, room: str) -> bool:
@@ -402,14 +404,37 @@ def _needs_map_drag(previous: str, room: str) -> bool:
     return previous in _PRODUCTION_ROOMS and room in RIGHT_SIDE_ROOM_CAPACITY
 
 
+def _same_map_entry(first: str, other: str) -> bool:
+    """从未知地图位置出发时，只互换横向边界相同的首站。"""
+    if first == other:
+        return True
+    if first in _PRODUCTION_ROOMS and other in _PRODUCTION_ROOMS:
+        _, first_floor, first_column = first.split("_")
+        _, other_floor, other_column = other.split("_")
+        return first_column == other_column and {first_floor, other_floor} == {"1", "3"}
+    return {first, other} <= {"factory", "contact", "recycle"}
+
+
 def _shortest_map_route(
-    rooms: list[str], dependencies: dict[str, set[str]], *, keep_last: bool
+    rooms: list[str],
+    dependencies: dict[str, set[str]],
+    *,
+    keep_last: bool,
+    handoff_hours: dict[str, float] | None = None,
 ) -> list[str]:
-    """从首个设施出发，在满足原岗位和末房要求的路线中选择拖图最少的一条。"""
+    """在补位和端点允许的拖图预算内，按给定顺序尝试可行路线。"""
     original = sum(_needs_map_drag(a, b) for a, b in zip(rooms, rooms[1:]))
-    if not original:
-        return rooms
     middle = rooms[1:-1] if keep_last else rooms[1:]
+    if handoff_hours is None:
+        if not original:
+            return rooms
+        preference = middle
+        drag_budgets = range(original)
+    else:
+        preference = sorted(middle, key=handoff_hours.__getitem__)
+        drag_budgets = (original,)
+        if preference == middle:
+            return rooms
     bits = {room: 1 << i for i, room in enumerate(middle)}
     required = {
         room: sum(bits.get(source, 0) for source in dependencies[room])
@@ -430,7 +455,14 @@ def _shortest_map_route(
     def visit(pending, drag_mask, budget):
         if not pending:
             return () if budget or not drag_mask & end_bit else None
-        for room, bit in bits.items():
+        for room in preference:
+            bit = bits[room]
+            if (
+                not rooms[0]
+                and pending == end_bit - 1
+                and not _same_map_entry(middle[0], room)
+            ):
+                continue
             if not pending & bit or required[room] & pending:
                 continue
             cost = int(bool(drag_mask & bit))
@@ -440,25 +472,14 @@ def _shortest_map_route(
                     return (room, *tail)
         return None
 
-    for budget in range(original):
+    for budget in drag_budgets:
         path = visit(end_bit - 1, drags[rooms[0]], budget)
         if path is not None:
             return [rooms[0], *path, *(rooms[-1:] if keep_last else ())]
     return rooms
 
 
-def _arrangement_room_order(
-    plan: dict, op_data: Operators, *, prefer_visible: bool = True, allow_open_end=False
-) -> list[str]:
-    """先补原工作设施，只在能少拖图时提前访问可独立换班的房间。"""
-    work = [room for room in plan if not room.startswith("dormitory_")]
-    dependencies = {room: set() for room in work}
-    for room in work:
-        for name in plan[room]:
-            operator = op_data.operators.get(name)
-            source = operator.current_room if operator is not None else ""
-            if source != room and source in dependencies:
-                dependencies[room].add(source)
+def _work_room_order(work, dependencies):
     pending = list(work)
     ordered = []
     while pending:
@@ -470,6 +491,70 @@ def _arrangement_room_order(
             break
         pending.remove(ready)
         ordered.append(ready)
+    return ordered, pending
+
+
+def _handoff_detour_fits(original, proposed, work, dependencies):
+    """逐站比较插队后按剩余计划续做的拖图费用。"""
+    dorms = original[len(work) :]
+
+    def remaining(done):
+        ready, cyclic = _work_room_order(
+            (room for room in work if room not in done), dependencies
+        )
+        rest = ready + cyclic + dorms
+        return rest[0], sum(_needs_map_drag(a, b) for a, b in zip(rest, rest[1:]))
+
+    before, after = set(), set()
+    extra = 0
+    for index in range(min(len(work), len(original) - 1)):
+        old, new = original[index], proposed[index]
+        if index:
+            extra += _needs_map_drag(proposed[index - 1], new) - _needs_map_drag(
+                original[index - 1], old
+            )
+        before.add(old)
+        after.add(new)
+        # 插队设施可能从另一处返回，分别计入去程和回程。
+        detour = extra
+        if old != new:
+            detour += any(
+                _needs_map_drag(new, room) and not _needs_map_drag(old, room)
+                for room in _ROUTABLE_ROOMS
+            )
+        if before != after:
+            old_next, old_cost = remaining(before)
+            new_next, new_cost = remaining(after)
+            detour += new_cost - old_cost
+            if old_next != new_next:
+                detour += any(
+                    _needs_map_drag(room, new_next)
+                    and not _needs_map_drag(room, old_next)
+                    for room in _ROUTABLE_ROOMS
+                )
+        if detour > 0:
+            return False
+    return True
+
+
+def _arrangement_room_order(
+    plan: dict,
+    op_data: Operators,
+    *,
+    prefer_visible: bool = True,
+    allow_open_end=False,
+    shift_off=False,
+) -> list[str]:
+    """先补原工作设施并减少拖图，再安排普通下班任务中的交接顺序。"""
+    work = [room for room in plan if not room.startswith("dormitory_")]
+    dependencies = {room: set() for room in work}
+    for room in work:
+        for name in plan[room]:
+            operator = op_data.operators.get(name)
+            source = operator.current_room if operator is not None else ""
+            if source != room and source in dependencies:
+                dependencies[room].add(source)
+    ordered, pending = _work_room_order(work, dependencies)
     rooms = (
         ordered
         + pending
@@ -478,7 +563,7 @@ def _arrangement_room_order(
             key=lambda room: int(room.split("_")[1]),
         )
     )
-    if not prefer_visible or len(ordered) < 3:
+    if not prefer_visible or len(ordered) < 2:
         return rooms
     counts = Counter(
         name
@@ -489,12 +574,7 @@ def _arrangement_room_order(
     movable = {
         room
         for room in ordered
-        if room != "train"
-        and (
-            room in _PRODUCTION_ROOMS
-            or room in RIGHT_SIDE_ROOM_CAPACITY
-            or room == "central"
-        )
+        if room in _ROUTABLE_ROOMS
         and plan[room]
         and all(counts[name] == 1 for name in plan[room])
     }
@@ -509,49 +589,116 @@ def _arrangement_room_order(
                     rooms[start : end + 1], dependencies, keep_last=not open_end
                 )
             start = end
+    if shift_off:
+        # 只在已排好的路线内比较下班时长，未确定的交接和需要读时的末站仍固定。
+        original = rooms.copy()
+        hours = _planned_handoff_hours(plan, ordered, counts, op_data)
+        if not open_end:
+            hours.pop(rooms[-1], None)
+        first = 0
+        while first < len(rooms):
+            after = first
+            while after < len(rooms) and rooms[after] in hours:
+                after += 1
+            if after - first > 1:
+                before = rooms[first - 1] if first else ""
+                following = rooms[after] if after < len(rooms) else ""
+                window = [before, *rooms[first:after], following]
+                rooms[first:after] = _shortest_map_route(
+                    window, dependencies, keep_last=True, handoff_hours=hours
+                )[1:-1]
+            first = after + 1
+        if rooms != original and not _handoff_detour_fits(
+            original, rooms, work, dependencies
+        ):
+            return original
     return rooms
 
 
-def _order_ordinary_departures(data, candidates, observations, now):
-    """已到个人下限的主班先下班，其余轮休组有可比较的工作时长时再调整顺序。"""
-    above = [op for op in candidates if observations[op.name][0] > op.lower_limit]
-    if len({(bool(op.group), op.group or op.name) for op in above}) < 2:
-        return candidates
+def _handoff_hours_to_limit(op, data, now, calculated_rates):
+    same_slot = not getattr(op, "_projected_work_position_changed", False)
+    if calculated_rates is not None and same_slot and op.lower_limit == 0:
+        deadline = op.working_zero_deadline(now)
+        if deadline is not None:
+            return (deadline - now).total_seconds() / 3600
+    observation = scheduling_mood_observation(data, op.name, now)
+    if observation is None:
+        return None
+    mood, stamp = observation
+    if calculated_rates is not None:
+        if mood <= op.lower_limit:
+            return 0.0
+        rate = calculated_rates.get(op.name)
+        if rate is None or not math.isfinite(rate):
+            return None
+        return (mood - op.lower_limit) / rate if rate > 0 else math.inf
+    if (
+        not same_slot
+        or stamp != op.time_stamp
+        or op.mood_is_prediction
+        or not has_resting_mood(op, now)
+    ):
+        return None
+    if op.lower_limit > 0 and op.mood <= op.lower_limit:
+        return 0.0
+    if op.exhaust_time is not None and op.mood != 24:
+        return max(0.0, (op.exhaust_time - now).total_seconds() / 3600)
+    if mood <= op.lower_limit:
+        return 0.0
+    if not math.isfinite(op.depletion_rate) or op.depletion_rate <= 0:
+        return None
+    elapsed = (now - stamp).total_seconds() / 3600
+    return max(0.0, (op.mood - op.lower_limit) / op.depletion_rate - elapsed)
+
+
+def _planned_handoff_hours(plan, ordered, counts, data):
+    """从本次已排定的交接中找出即将离岗的主班，每间房取最早到下限的时长。"""
+    work_targets = _assigned_operator_names(plan)
+    occupants = {}
+    for op in data.operators.values():
+        if op.current_room in plan and op.current_index >= 0:
+            row = occupants.setdefault(op.current_room, {})
+            row[op.current_index] = op if op.current_index not in row else None
+    departing = {}
+    for room in ordered:
+        if room not in _ROUTABLE_ROOMS:
+            continue
+        workers = []
+        row = occupants.get(room, {})
+        # 确认工作房时，短名单会清空已观察到的末尾岗位。
+        targets = dict.fromkeys(row)
+        targets.update(enumerate(plan[room]))
+        for index, target in targets.items():
+            op = row.get(index)
+            if op is None:
+                break
+            if target == "Current":
+                if counts[op.name]:
+                    break
+            elif target is not None and counts[target] != 1:
+                break
+            elif (
+                op.is_high()
+                and op.name not in work_targets
+                and not op.workaholic
+                and op.room == room
+            ):
+                workers.append(op)
+        else:
+            if workers:
+                departing[room] = workers
+    if len(departing) < 2:
+        return {}
+    now = getattr(data, "_projection_now", None) or datetime.now()
     rates = data.calculated_mood_rates(now) if data.mood_calculation_enabled else None
     hours = {}
-    for op in above:
-        if (op.current_room, op.current_index) != (op.room, op.index):
-            continue
-        mood, stamp = observations[op.name]
-        if rates is not None:
-            rate = rates.get(op.name)
-            if rate is not None and math.isfinite(rate):
-                hours[op.name] = (
-                    (mood - op.lower_limit) / rate if rate > 0 else math.inf
-                )
-        elif (
-            stamp == op.time_stamp
-            and not op.mood_is_prediction
-            and not getattr(op, "_projected_work_position_changed", False)
-            and has_resting_mood(op, now)
-        ):
-            # 旧版本把满心情工作读数的采样时间存成了用尽时间。
-            if op.exhaust_time is not None and op.mood != 24:
-                hours[op.name] = max(0, (op.exhaust_time - now).total_seconds() / 3600)
-            elif math.isfinite(op.depletion_rate) and op.depletion_rate > 0:
-                hours[op.name] = max(
-                    0,
-                    (op.mood - op.lower_limit) / op.depletion_rate
-                    - (now - stamp).total_seconds() / 3600,
-                )
-
-    # 已到下限或缺少工作时长的主班保持原有优先级，两侧分别比较。
-    result = []
-    for comparable, group in groupby(candidates, lambda op: op.name in hours):
-        result.extend(
-            sorted(group, key=lambda op: hours[op.name]) if comparable else group
-        )
-    return result
+    for room, workers in departing.items():
+        times = [_handoff_hours_to_limit(op, data, now, rates) for op in workers]
+        if 0 in times:
+            hours[room] = 0.0
+        elif None not in times:
+            hours[room] = min(times)
+    return hours
 
 
 def _assigned_operator_names(plan: dict) -> set[str]:
@@ -2464,6 +2611,9 @@ class BaseSchedulerSolver(
             )
             if getattr(self.task, "ordinary_coordination", False):
                 task.ordinary_coordination = True
+            if getattr(task, "ordinary_coordination", False) or getattr(
+                self.task, "urgent_recovery_request_names", ()
+            ):
                 task.coordination_request_names = list(request_names)
             from arknights_mower.utils.urgent_recovery import PENDING_FIELDS
 
@@ -8103,61 +8253,32 @@ class BaseSchedulerSolver(
         if self.agent_get_mood() is None:
             self.backup_plan_solver()
 
-    def _ordinary_shift_candidates(self, now, working, returning, returning_groups):
-        data = self.op_data
-        protected = self._protected_facility_names()
-        candidates = []
-        observations = {}
-        for op in self.total_agent:
-            if (
-                not op.is_high()
-                or op.multi_group
-                and not (op.independent_rest or op.shift_group)
-                or op.group
-                and not data.is_group_shift_anchor(op)
-            ):
-                continue
-            if (
-                op.group in working
-                or op.group in returning_groups
-                or not op.group
-                and op.name in returning
-                or op.name in data.reserved_product_replacements
-                or op.name in data.workaholic_agent
-                or op.name in data.exhaust_agent
-                or op.group
-                and op.group in data.exhaust_group
-            ):
-                continue
-            if (
-                op.is_resting()
-                or data.is_standby(op.name)
-                or "factory" in (op.current_room, op.room)
-                or op.name in protected
-                or self._resting_tier(op) == RestingTier.EXCLUDED
-            ):
-                continue
-            observation = scheduling_mood_observation(data, op.name, now)
-            if observation is None:
-                continue
-            mood = observation[0]
-            if (
-                mood >= op.upper_limit
-                if data.custom_mood_limits(op.name) is not None
-                else op.upper_limit - mood < 2
-            ) or mood > data.resting_mood_threshold(op):
-                continue
-            observations[op.name] = observation
-            candidates.append(op)
-
-        candidates.sort(key=lambda op: observations[op.name][0] - op.lower_limit)
-        return _order_ordinary_departures(data, candidates, observations, now)
-
     def resting(self, *, returning=(), returning_groups=()):
         from arknights_mower.utils.backup_group_tasks import forced_work_groups
 
+        working = forced_work_groups(self.op_data)
         self._refresh_deferred_product_reservations()
+        reserved_names = self.op_data.reserved_product_replacements
         now = getattr(self.op_data, "_projection_now", None) or datetime.now()
+        # 沿用原下班顺序：只比较距心情下限的余量。显式名单、高低优和
+        # 候补均属于宿舍分床规则，不能让仍有心情的组抢走红脸组的替班。
+        moods = {
+            op.name: dorm_candidate_mood(self.op_data, op.name, now)
+            for op in self.total_agent
+        }
+        self.total_agent.sort(
+            key=lambda op: (
+                moods[op.name] is None,
+                (moods[op.name] or 0) - op.lower_limit,
+            )
+        )
+        shift_candidates = [
+            op
+            for op in self.total_agent
+            if op.is_high()
+            and (not op.multi_group or op.independent_rest or op.shift_group)
+            and (not op.group or self.op_data.is_group_shift_anchor(op))
+        ]
         # 宿舍的普通空闲者统一交给补床入口，不依赖不养闲人开关；否则先预约
         # 床位并生成普通重排任务，会使真空床又被跑单避让推迟。
         self.plan_metadata()
@@ -8176,9 +8297,7 @@ class BaseSchedulerSolver(
             else effective_dorm_count
         )
         logger.debug(f"当前理想休息人数是{self.ideal_resting_count}")
-        shift_candidates = self._ordinary_shift_candidates(
-            now, forced_work_groups(self.op_data), returning, returning_groups
-        )
+        protected_training = self._protected_facility_names()
         _replacement = []
         _plan = {}
         dorm_admissions = {}
@@ -8187,11 +8306,23 @@ class BaseSchedulerSolver(
         ordinary_requests = []
         # 工作组先取得床位预约，空闲干员随后由统一补床入口安排。
         for op in shift_candidates:
+            if op.group in working:
+                continue
             if op.independent_rest and self.op_data.resting_binding_groups(
                 op, self.op_data.arrangement_group_transitions(_plan)
             ):
                 continue
+            mood = moods[op.name]
+            if mood is None:
+                continue
+            if op.group in returning_groups or not op.group and op.name in returning:
+                continue
             if op.name in _replacement:
+                # 本轮已接工作替班的人不能又预约休息床位。
+                continue
+            if self._resting_tier(op) == RestingTier.EXCLUDED:
+                continue
+            if op.name in reserved_names:
                 continue
             standby_scope = self.op_data.groups[op.group] if op.group else [op.name]
             can_standby = self.op_data.standby_candidates(standby_scope)
@@ -8215,6 +8346,29 @@ class BaseSchedulerSolver(
             ):
                 _high_done = True
                 continue
+            if op.name in self.op_data.workaholic_agent:
+                continue
+            if (
+                op.is_resting()
+                or self.op_data.is_standby(op.name)
+                or op.current_room in ["factory"]
+                or op.name in protected_training
+                or op.room in ["factory"]
+            ):
+                continue
+            # 忽略掉心情太高的
+            if (
+                mood >= op.upper_limit
+                if self.op_data.custom_mood_limits(op.name) is not None
+                else op.upper_limit - mood < 2
+            ):
+                continue
+            # 忽略 用尽，已经处理
+            if op.name in self.op_data.exhaust_agent:
+                continue
+            # 忽略掉心情值没低于上限的的
+            if mood > self.op_data.resting_mood_threshold(op):
+                continue
             members = (
                 self.op_data.shift_group_members(op.group) if op.group else [op.name]
             )
@@ -8222,6 +8376,9 @@ class BaseSchedulerSolver(
                 continue
             previous_plan = copy.deepcopy(_plan)
             if op.group != "":
+                if op.group in self.op_data.exhaust_group:
+                    # 忽略掉用尽心情的分组
+                    continue
                 if op.group in attempted_groups:
                     continue
                 attempted_groups.add(op.group)
@@ -23402,6 +23559,9 @@ class BaseSchedulerSolver(
                 and not getattr(self.task, "emergency_staffing", False)
                 and not self._emergency_active()
             ),
+            shift_off=self.task.type == TaskTypes.SHIFT_OFF
+            and getattr(self.task, "ordinary_coordination", False)
+            and not getattr(self.task, "mood_physical_started", False),
             allow_open_end=(
                 not getattr(self.op_data, "run_order_rooms", True)
                 and getattr(self, "_workshop_room_handoff", False) is not True
