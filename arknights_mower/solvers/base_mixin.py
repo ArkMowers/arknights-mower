@@ -258,6 +258,29 @@ _ARRANGE_ORDER_X_DORM = {
 _ARRANGE_ORDER_X_TRAINEE = {"等级": 1291, "稀有度": 1438, "信赖值": 1585}
 
 
+def _room_name_mask(gray):
+    text = thres2(gray, 200)
+    left, _, width, _ = cv2.boundingRect(text)
+    if not width:
+        return text
+
+    # 从最右侧的白点查找挂锁底色。进驻面板上的橙色方块约为 34×34 像素。
+    right = left + width - 1
+    seed = (right, int(text[:, right].argmax()))
+    area, _, _, (x, y, w, h) = cv2.floodFill(thres2(gray, 100), None, seed, 0)
+    if not (30 <= w <= 37 and 30 <= h <= 37):
+        return text
+    badge = text[y : y + h, x : x + w]
+    if area - cv2.countNonZero(badge) > w * h // 2:
+        # 底色占方块过半，白色挂锁轮廓内有锁梁和锁孔两处空隙。
+        contours, hierarchy = cv2.findContours(
+            badge, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if len(contours) == 3 and np.count_nonzero(hierarchy[0, :, 3] >= 0) == 2:
+            badge.fill(0)
+    return text
+
+
 def _foreground_width(img):
     points = cv2.findNonZero(img)
     if points is None:
@@ -2086,7 +2109,7 @@ class BaseMixin:
         return True
 
     def read_operator_in_room(self, img):
-        img = thres2(img, 200)
+        img = _room_name_mask(img)
         img = cv2.copyMakeBorder(img, 10, 10, 10, 10, cv2.BORDER_CONSTANT, None, (0,))
         dilation = cv2.dilate(img, kernel, iterations=1)
         contours, _ = cv2.findContours(dilation, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)

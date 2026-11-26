@@ -424,8 +424,9 @@ def test_ordinary_dorm_cover_competes_in_actual_lock_confirmation(
     assert solver.physical == final
     # 最终名单原已就位。无需垫位；读回能判明实际目标才记录。
     assert not solver.confirms
-    # 空条不能量速；其余住客全满时也没有可比较的同房基准。
-    assert bool(target.dorm_recovery_room) == (mood is not None and 0 < mood < 24)
+    # 夜莺 5 点时可比较两人的速度，24 点时只有目标能获得蜜莓的单回。
+    expected = (ROOM, 2) if mood in (5, 24) else ("", -1)
+    assert (target.dorm_recovery_room, target.dorm_recovery_index) == expected
     assert not solver.task.plan
 
 
@@ -441,8 +442,9 @@ def test_fixed_single_target_reads_final_roster_countdown(monkeypatch, index):
     mock_arrangement(solver, monkeypatch, final)
     solver.agent_arrange_room({}, ROOM, solver.task.plan)
     target = solver.op_data.operators[WORKER]
-    assert target.dorm_recovery_index == -1
+    assert (target.dorm_recovery_room, target.dorm_recovery_index) == (ROOM, index)
     assert solver.physical == final
+    assert not solver.confirms
     assert index in solver.reads[-1]
     assert solver.op_data.get_dorm_by_name(WORKER)[1].time == solver.deadline
 

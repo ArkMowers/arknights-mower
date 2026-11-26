@@ -87,12 +87,16 @@ def test_workshop_pair_before_and_after_original_recipient_leaves(
 @pytest.mark.parametrize(
     "third,fourth,fifth",
     [
-        ((258, 4878), (0, None), (0, None)),
-        ((258, 5026), (129, 21909), (0, None)),
-        ((259, 5003), (129, 21886), (297, 1560)),
+        ((258, 4877), (0, None), (0, None)),
+        ((258, 5024), (129, 21909), (0, None)),
+        ((259, 5001), (129, 21886), (297, 1560)),
     ],
+    ids=("A", "AB", "ABC"),
 )
-def test_workshop_g1_multiple_sources_remain_unknown(third, fourth, fifth):
+def test_workshop_g1_identifies_conviction_without_naming_the_source(
+    third, fourth, fifth
+):
+    # 三至五床取自同一张下端图。安赛尔在场时，两种加成都符合断罪者的读数。
     names = (
         "隐德来希",
         "波登可",
@@ -108,47 +112,386 @@ def test_workshop_g1_multiple_sources_remain_unknown(third, fourth, fifth):
         "安赛尔": (1, 55),
         "玫兰莎": (1, 55),
     }
+    assert observed_recovery_recipient(actual, stages) == "断罪者"
+
+
+def test_g1_lancet_and_ansel_with_three_unfinished_residents():
+    # g1_full 的第四床是空条且仍有倒计时，Lancet-2 可以接受安赛尔的单回。
+    actual = rows(
+        [(310, None), (174, 12808), (218, 11053), (0, 37255), (310, None)],
+        ("隐德来希", "结城理", "星源", "Lancet-2", "安赛尔"),
+    )
+    stages = {
+        "隐德来希": (2, 70),
+        "结城理": (2, 60),
+        "星源": (0, 1),
+        "Lancet-2": (0, 30),
+        "安赛尔": (1, 55),
+    }
+    assert observed_recovery_recipient(actual, stages) == "结城理"
+    actual[2]["recovery_seconds"] = None
     assert observed_recovery_recipient(actual, stages) is None
 
 
-def test_single_remaining_resident_needs_baseline_even_with_unlocked_source():
+@pytest.mark.parametrize("lancet_seconds,ansel_seconds", [(29673, 63), (29641, 31)])
+def test_g1_empty_and_near_full_bars_do_not_locate_the_bonus(
+    lancet_seconds, ansel_seconds
+):
+    # gb_low 和 gb_stay 只有两根边缘条。安赛尔进出时的同床计时跳变另作前后对照。
+    actual = rows(
+        [
+            (310, None),
+            (310, None),
+            (0, lancet_seconds),
+            (309, ansel_seconds),
+            (0, None),
+        ],
+        ("隐德来希", "波登可", "Lancet-2", "安赛尔", ""),
+    )
+    assert (
+        observed_recovery_recipient(
+            actual, {"波登可": (2, 1), "Lancet-2": (0, 30), "安赛尔": (1, 55)}
+        )
+        is None
+    )
+
+
+def test_single_remaining_resident_requires_an_unlocked_external_source():
     actual = rows(
         [(310, None), (310, None), (159, 13966), (0, None), (0, None)],
         ("隐德来希", "蜜莓", "结城理", "", ""),
     )
     assert observed_recovery_recipient(actual, {}) is None
     assert observed_recovery_recipient(actual, {"蜜莓": (1, 80)}) is None
-    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) == "结城理"
+    actual[1]["agent"] = "波登可"
     assert dorm_skill_effects("波登可", (0, 1)).single == {0.55}
     assert dorm_skill_effects("波登可", (1, 1)).single == {0.65}
     assert dorm_skill_effects("波登可", None).single == {0.55, 0.65}
+    assert observed_recovery_recipient(actual, {}) == "结城理"
 
 
-@pytest.mark.parametrize("peer", [(310, None), (309, 20), (0, 28709)])
+@pytest.mark.parametrize("clock", [{}, {"recovery_seconds": None}])
+@pytest.mark.parametrize("provider_mood", [{}, {"measured_mood": 24}])
+def test_only_eligible_resident_needs_no_timer_or_mood_from_sole_provider(
+    clock, provider_mood
+):
+    actual = [
+        {"agent": "隐德来希", "measured_mood": 24},
+        {"agent": "蜜莓", **provider_mood},
+        {"agent": "结城理", "measured_mood": 159 * 24 / 310, **clock},
+        {"agent": "菲亚梅塔", "measured_mood": 2, "recovery_seconds": 39600},
+        {"agent": ""},
+    ]
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) == "结城理"
+
+
+@pytest.mark.parametrize(
+    "last_bed",
+    [
+        {"agent": "", "observed": False},
+        {"agent": "行铃", "mood": 24},
+        {"agent": "子月", "measured_mood": 309 * 24 / 310},
+        {"agent": "未知姓名", "measured_mood": 24},
+    ],
+)
+def test_sole_measured_candidate_requires_a_complete_room(last_bed):
+    actual = rows(
+        [(310, None), (310, None), (159, None), (0, None), (0, None)],
+        ("隐德来希", "蜜莓", "结城理", "", ""),
+    )
+    actual[-1] = last_bed
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
+
+
+def test_unparsed_dorm_effect_keeps_a_single_candidate_unconfirmed():
+    actual = rows(
+        [(310, None), (310, None), (159, None), (0, None), (0, None)],
+        ("隐德来希", "蜜莓", "芳汀", "", ""),
+    )
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1), "芳汀": (1, 1)}) is None
+
+
+def test_only_unfinished_source_needs_someone_else_to_supply_the_bonus():
+    actual = rows(
+        [(310, None), (310, None), (258, 4877), (0, None), (0, None)],
+        ("隐德来希", "蜜莓", "断罪者", "", ""),
+    )
+    assert observed_recovery_recipient(actual, {"蜜莓": (1, 80)}) is None
+    assert observed_recovery_recipient(actual, {}) is None
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) == "断罪者"
+    # 两人都能给对方单回，蜜莓自己的心情漏读时，不能排除她也未满。
+    actual[1] = {"agent": "蜜莓"}
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
+
+
+def test_fiammetta_cannot_receive_external_recovery_even_as_the_only_unfinished_resident():
+    actual = rows(
+        [(310, None), (310, None), (308, 235), (0, None), (0, None)],
+        ("隐德来希", "蜜莓", "菲亚梅塔", "", ""),
+    )
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
+
+
+@pytest.mark.parametrize(
+    "first,second,recipient",
+    [
+        ((225, 7972), (179, 15882), "星源"),
+        ((179, 15882), (225, 7972), "结城理"),
+        ((155, 14400), (155, 14400), None),
+    ],
+)
+def test_equal_bonuses_from_two_sources_can_identify_one_recipient(
+    first, second, recipient
+):
+    # 用两位满心情的 +0.65 来源构造同值对照，互换普通室友的读数。
+    actual = rows(
+        [(310, None), (310, None), first, second, (0, None)],
+        ("波登可", "Lancet-2", "星源", "结城理", ""),
+    )
+    assert (
+        observed_recovery_recipient(actual, {"波登可": (1, 1), "Lancet-2": (0, 30)})
+        == recipient
+    )
+
+
+@pytest.mark.parametrize(
+    "first,second,third,recipient",
+    [
+        (17280, 18783, None, "星源"),
+        (17280, 18783, 18783, "星源"),
+        (18783, 16000, 18783, "结城理"),
+        (16000, 17280, 18783, None),
+    ],
+)
+def test_only_one_of_two_sources_gives_a_bonus_to_unfinished_roommates(
+    first, second, third, recipient
+):
+    # 每人缺 12 点。杰克可给一人 +0.2，隐现可给一人 +0.4。
+    # 最后一组的速度为 2.7、2.5、2.3，只有两人同时吃到单回才说得通。
+    actual = rows(
+        [(310, None), (310, None), (155, first), (155, second), (155, third)],
+        ("杰克", "隐现", "星源", "结城理", "行铃" if third else ""),
+    )
+    stages = {"杰克": (0, 1), "隐现": (2, 1)}
+    assert observed_recovery_recipient(actual, stages) == recipient
+
+
+@pytest.mark.parametrize(
+    "provider_stage,resident_stage,recipient",
+    [
+        ((2, 1), None, "灰喉"),
+        (None, None, None),
+        ((1, 80), None, None),
+        (None, (1, 80), "灰喉"),
+        (None, (2, 1), None),
+    ],
+)
+def test_only_a_locked_source_can_leave_the_room_without_a_single_target_bonus(
+    provider_stage, resident_stage, recipient
+):
+    # 灰喉和结城理分别为 3.0、2.3。灰喉精二自回 +0.7，蜜莓精二单回 +0.7。
+    actual = rows(
+        [(310, None), (155, 14400), (155, 18783), (0, None), (0, None)],
+        ("蜜莓", "灰喉", "结城理", "", ""),
+    )
+    stages = {"蜜莓": provider_stage, "灰喉": resident_stage}
+    assert observed_recovery_recipient(actual, stages) == recipient
+
+
+@pytest.mark.parametrize(
+    "resident_stages,recipient",
+    [
+        ({}, None),
+        ({"灰喉": (1, 80), "艾丝黛尔": (1, 1)}, "灰喉"),
+        ({"灰喉": (2, 1), "艾丝黛尔": (0, 1)}, "艾丝黛尔"),
+    ],
+)
+def test_two_residents_can_each_explain_the_only_single_target_bonus(
+    resident_stages, recipient
+):
+    # 两人的总速率都是 3.0，其中一人可自回 +0.7，另一人吃蜜莓的 +0.7。
+    actual = rows(
+        [(310, None), (155, 14400), (155, 14400), (155, 18783), (0, None)],
+        ("蜜莓", "灰喉", "艾丝黛尔", "行铃", ""),
+    )
+    stages = {"蜜莓": (2, 1), **resident_stages}
+    assert observed_recovery_recipient(actual, stages) == recipient
+
+
+@pytest.mark.parametrize(
+    "provider,member",
+    [
+        ("寒檀", "提丰"),
+        ("新约能天使", "翎羽"),
+        ("罗德岛隐秘队", "麒麟R夜刀"),
+        ("罗德岛隐秘队", "雷狼龙S空爆"),
+    ],
+)
+def test_group_target_bonus_requires_membership_at_the_active_stage(provider, member):
+    # 两名普通住客的读数相差 1.0。初雪只有 +0.5，另一来源对指定成员可给满 +1.0。
+    actual = rows(
+        [(310, None), (310, None), (155, 13091), (155, 18783), (0, None)],
+        (provider, "初雪", member, "结城理", ""),
+    )
+    stages = {provider: (2, 1)}
+    assert observed_recovery_recipient(actual, stages) == member
+    assert observed_recovery_recipient(actual, {}) == member
+    if provider == "新约能天使":
+        assert observed_recovery_recipient(actual, {provider: (1, 80)}) is None
+    actual[2]["agent"] = "星源"
+    assert observed_recovery_recipient(actual, stages) is None
+
+
+@pytest.mark.parametrize("stage", [None, (0, 1), (2, 1)])
+def test_perception_information_keeps_czernys_single_target_bonus(stage):
+    # 爱丽丝的梦境和车尔尼的小节均可转化为感知信息。房内单回始终只有车尔尼的 +0.65。
+    actual = rows(
+        [(310, None), (310, None), (155, 14644), (155, 18783), (0, None)],
+        ("爱丽丝", "车尔尼", "星源", "结城理", ""),
+    )
+    stages = {"爱丽丝": stage, "车尔尼": stage}
+    assert observed_recovery_recipient(actual, stages) == "星源"
+    actual[1] = {"agent": ""}
+    assert observed_recovery_recipient(actual, stages) is None
+
+
+def test_single_target_effects_take_the_highest_for_each_recipient():
+    from arknights_mower.utils import dorm_skills
+
+    index = dorm_skills._skill_index()
+    ordinary = next(s for s in index["安赛尔"] if s["roomType"] == "宿舍")
+    targeted = next(s for s in index["深靛"] if s["roomType"] == "宿舍")
+    # 同一人同时有普通 +0.75、定向 +0.55（蓝毒额外 +0.45）。
+    skills = [
+        dict(ordinary, des=ordinary["des"].replace("+0.55", "+0.75")),
+        dict(targeted, skill_key=1),
+    ]
+    effects = dorm_skills._effects_at_stage(skills, (2, 1))
+    assert effects.single_bonus_for("结城理") == 0.75
+    assert effects.single_bonus_for("蓝毒") == 1.0
+
+
+def test_unknown_stage_includes_a_dorm_skill_replaced_in_another_facility(monkeypatch):
+    from arknights_mower.utils import dorm_skills
+
+    index = dorm_skills._skill_index()
+    skill = next(s for s in index["安赛尔"] if s["roomType"] == "宿舍")
+    replacement = dict(skill, roomType="制造站", phase_level="精1 1级")
+    monkeypatch.setattr(
+        dorm_skills, "_skill_index", lambda: {"测试来源": [skill, replacement]}
+    )
+    options = dorm_skills.dorm_skill_options.__wrapped__("测试来源", None)
+    assert {effect.single for effect in options} == {frozenset({0}), frozenset({0.55})}
+
+
+@pytest.mark.parametrize(
+    "source_seconds,stage,recipient",
+    [
+        (18783, None, None),
+        (16941, None, "星源"),
+        (16941, (1, 80), None),
+        (16941, (2, 1), "星源"),
+    ],
+)
+def test_nearl_gives_and_recovers_at_the_same_unlock_stage(
+    source_seconds, stage, recipient
+):
+    # 临光在精二同时解锁给他人 +0.5 和自身 +0.25。两位普通室友分别为 2.8 和 2.3。
+    actual = rows(
+        [(155, source_seconds), (155, 15429), (155, 18783), (0, None), (0, None)],
+        ("临光", "星源", "结城理", "", ""),
+    )
+    assert observed_recovery_recipient(actual, {"临光": stage}) == recipient
+
+
+@pytest.mark.parametrize("pixels", [1, 2])
+def test_nearly_empty_bar_cannot_supply_a_second_rate(pixels):
+    actual = rows([(310, None), (310, None), (pixels, 28709), (155, 18783), (0, None)])
+    actual[-1] = {"agent": ""}
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
+
+
+@pytest.mark.parametrize("provider_bar", [0, 155, 309])
+def test_missing_clock_on_sole_source_still_allows_two_measured_peers(provider_bar):
+    actual = rows(
+        [(310, None), (provider_bar, None), (155, 14400), (155, 18783), (0, None)],
+        ("隐德来希", "蜜莓", "星源", "结城理", ""),
+    )
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) == "星源"
+
+
+@pytest.mark.parametrize(
+    "first,second,provider_stage,recipient",
+    [
+        (14400, 18783, None, "星源"),
+        (18783, 14400, (2, 1), "结城理"),
+        (18783, 18783, (2, 1), "行铃"),
+        (18783, 18783, None, None),
+        (14400, None, (2, 1), None),
+    ],
+)
+def test_unfinished_roommate_without_a_clock_remains_a_possible_recipient(
+    first, second, provider_stage, recipient
+):
+    # 行铃的中段条只能证明她未满。另两人为 3.0 和 2.3 时，快者获得 +0.7；
+    # 两人同速时，技能已解锁才可反推出行铃。只读到 3.0 不能区分普通速度和单回。
+    actual = rows(
+        [(310, None), (310, None), (155, first), (155, second), (155, None)],
+        ("隐德来希", "蜜莓", "星源", "结城理", "行铃"),
+    )
+    assert observed_recovery_recipient(actual, {"蜜莓": provider_stage}) == recipient
+
+
+def test_sole_candidate_still_checks_a_contradictory_measured_clock():
+    actual = rows(
+        [(310, None), (310, None), (155, 90000), (0, None), (0, None)],
+        ("隐德来希", "蜜莓", "结城理", "", ""),
+    )
+    # 缺 12 点、25 小时才满，所得速度比这间宿舍任何普通恢复都慢。
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
+    actual[2]["recovery_seconds"] = None
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) == "结城理"
+
+
+@pytest.mark.parametrize("peer", [(309, 20), (0, 28709)])
 def test_one_usable_rate_above_room_range_does_not_prove_bonus(peer):
     actual = rows([(310, None), (310, None), (155, 6545), peer, (310, None)])
     assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
 
 
-@pytest.mark.parametrize("invalid", [None, -1, 0, True, 1, 10**9, "04:30:00"])
-def test_invalid_or_missing_countdown_does_not_establish_single(invalid):
+@pytest.mark.parametrize("invalid", [-1, 0, True, 1, 10**9, "04:30:00"])
+def test_invalid_countdown_does_not_establish_single(invalid):
     actual = rows([(310, None), (310, None), (195, 10611), (145, invalid), (257, 6277)])
     assert observed_recovery_recipient(actual, {}) is None
 
 
-def test_incomplete_uncertain_and_special_residents_are_not_compared():
+def test_b304_measured_pair_distinguishes_the_recipient_without_the_fourth_clock():
+    actual = rows([(310, None), (310, None), (195, 10611), (145, None), (257, 6277)])
+    assert observed_recovery_recipient(actual, {}) == "星源"
+
+
+@pytest.mark.parametrize(
+    "change,recipient",
+    [
+        ({"observed": False}, None),
+        ({"measured_mood": 23.95}, None),
+        ({"agent": "杜林"}, "杜林"),
+        ({"agent": "闪灵"}, "闪灵"),
+        ({"agent": "结城理"}, None),
+        ({"agent": "未知姓名"}, None),
+    ],
+)
+def test_b304_measurements_with_changed_resident_or_incomplete_reading(
+    change, recipient
+):
+    actual = rows([(310, None), (310, None), (195, 10611), (145, 19924), (257, 6277)])
+    actual[2].update(change)
+    assert observed_recovery_recipient(actual, {}) == recipient
+
+
+def test_unfinished_fiammetta_does_not_change_the_ordinary_roommates_rate_comparison():
     base = rows([(310, None), (310, None), (195, 10611), (145, 19924), (257, 6277)])
-    for change in (
-        {"observed": False},
-        {"measured_mood": 23.95},
-        {"agent": "杜林"},
-        {"agent": "冰酿"},
-        {"agent": "闪灵"},
-        {"agent": "结城理"},
-        {"agent": "未知姓名"},
-    ):
-        actual = [*base[:2], {**base[2], **change}, *base[3:]]
-        assert observed_recovery_recipient(actual, {}) is None
     base[4] = {"agent": "菲亚梅塔", "measured_mood": 2, "recovery_seconds": 39600}
     assert observed_recovery_recipient(base, {}) == "星源"
     base[1].update(measured_mood=12, recovery_seconds=18783)
@@ -178,6 +521,79 @@ def test_b104_single_recipient_with_two_ordinary_roommates_sharing_recovery(
         assert observed_recovery_recipient(near_full, {}) is None
     actual[1]["agent"] = "桃金娘"
     assert observed_recovery_recipient(actual, {}) is None
+
+
+@pytest.mark.parametrize(
+    "provider_sample,target_sample,recipient",
+    [
+        ((155, 16000), (155, 12522), "结城理"),
+        ((155, None), (155, None), "结城理"),
+        ((155, 16000), (155, 16000), None),
+        ((310, None), (155, None), None),
+    ],
+)
+def test_sharing_counts_unfinished_residents_not_potential_single_targets(
+    provider_sample, target_sample, recipient
+):
+    # 闪灵和结城理都未满时，两人均分，只有结城理能获得闪灵的 +0.75。
+    # 闪灵回满后，结城理独得冰酿的 +0.8，覆盖普通单回。
+    actual = rows(
+        [(310, None), provider_sample, target_sample, (0, None), (0, None)],
+        ("冰酿", "闪灵", "结城理", "", ""),
+    )
+    stages = {"冰酿": (2, 1), "闪灵": (2, 1)}
+    assert observed_recovery_recipient(actual, stages) == recipient
+
+
+@pytest.mark.parametrize("first,recipient", [(14400, "星源"), (19200, "行铃")])
+def test_three_roommates_share_even_when_the_last_clock_is_missing(first, recipient):
+    # 三人平分冰酿的恢复，普通速度同为 2.25。闪灵还可给其中一人 +0.75。
+    actual = rows(
+        [(310, None), (310, None), (155, first), (155, 19200), (155, None)],
+        ("冰酿", "闪灵", "星源", "结城理", "行铃"),
+    )
+    stages = {"冰酿": (2, 1), "闪灵": (2, 1)}
+    assert observed_recovery_recipient(actual, stages) == recipient
+
+
+@pytest.mark.parametrize(
+    "provider,resident,share_stage,recipient",
+    [
+        ("桃金娘", "结城理", (2, 1), None),
+        ("闪灵", "结城理", (2, 1), None),
+        ("闪灵", "结城理", None, None),
+        ("闪灵", "结城理", (1, 1), "结城理"),
+        ("深靛", "结城理", (2, 1), None),
+        ("深靛", "蓝毒", (2, 1), "蓝毒"),
+    ],
+)
+def test_one_unfinished_resident_compares_the_share_with_the_target_specific_bonus(
+    provider, resident, share_stage, recipient
+):
+    # B104 原图的第二床是桃金娘。其他组合按技能构造，冰酿的单人分摊为 +0.8，
+    # 闪灵单回为 +0.75，深靛给普通目标 +0.55，给蓝毒 +1.0。
+    actual = rows(
+        [(310, None)] * 3 + [(255, 5179), (310, None)],
+        ("冰酿", provider, "菲亚梅塔", resident, "维什戴尔"),
+    )
+    stages = {"冰酿": share_stage, provider: (2, 1)}
+    assert observed_recovery_recipient(actual, stages) == recipient
+
+
+@pytest.mark.parametrize(
+    "honeyberry_stage,recipient",
+    [((2, 1), None), (None, None), ((1, 80), "蓝毒")],
+)
+def test_sole_recipient_can_have_a_weaker_source_than_the_one_person_share(
+    honeyberry_stage, recipient
+):
+    # 深靛给蓝毒 +1.0。若选到蜜莓的 +0.7，生效的是冰酿 +0.8 的分摊。
+    actual = rows(
+        [(310, None)] * 3 + [(155, 13500), (0, None)],
+        ("冰酿", "深靛", "蜜莓", "蓝毒", ""),
+    )
+    stages = {"冰酿": (2, 1), "深靛": (0, 1), "蜜莓": honeyberry_stage}
+    assert observed_recovery_recipient(actual, stages) == recipient
 
 
 @pytest.mark.parametrize("enabled", [False, True])
@@ -261,13 +677,23 @@ def test_first_arrival_reads_back_once_before_deciding_to_repair(
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-@pytest.mark.parametrize("roommate_stays", [False, True])
+@pytest.mark.parametrize(
+    "roommate_stays,pixels,direct",
+    [
+        (False, 1, False),
+        (False, 2, False),
+        (False, 3, True),
+        (False, 307, True),
+        (False, 308, False),
+        (True, 116, False),
+    ],
+)
 def test_arrivals_replacing_one_unfinished_resident(
-    solver, monkeypatch, enabled, roommate_stays
+    solver, monkeypatch, enabled, roommate_stays, pixels, direct
 ):
     monkeypatch.setattr(config.conf, "test_mood_calculation", enabled)
     solver.op_data.operators["红"].mood = 24
-    solver.op_data.operators["黑角"].mood = 9
+    solver.op_data.operators["黑角"].mood = pixels * 24 / 310
     solver.physical = ["杜林", "琴柳", "红", "黑角", "陈" if roommate_stays else ""]
     solver.game_recipient = "陈" if roommate_stays else "黑角"
     solver.get_agent_from_room()
@@ -276,7 +702,7 @@ def test_arrivals_replacing_one_unfinished_resident(
             solver.op_data.mood_model.observe(op.name, op.mood)
     solver.get_agent_from_room.reset_mock()
     arrange(solver)
-    expected = [FINAL] if not roommate_stays else [FINAL[:-1] + [""], FINAL]
+    expected = [FINAL] if direct else [FINAL[:-1] + [""], FINAL]
     assert solver.confirms == expected
     assert solver.get_agent_from_room.call_count == 1 + len(expected)
     assert solver.op_data.operators["银灰"].dorm_recovery_room == ROOM
@@ -285,7 +711,12 @@ def test_arrivals_replacing_one_unfinished_resident(
 
 @pytest.mark.parametrize(
     "unreadable",
-    [{"measured_mood": None}, {"measured_mood": 24}, {"recovery_seconds": None}],
+    [
+        {"measured_mood": None},
+        {"measured_mood": 24},
+        {"recovery_seconds": None},
+        {"measured_mood": 24 / 310, "recovery_seconds": 36370},
+    ],
 )
 def test_two_new_arrivals_need_a_measurable_departing_resident(unreadable):
     from arknights_mower.utils.dorm_recovery import direct_recovery_arrival
@@ -448,17 +879,19 @@ def test_full_width_with_running_countdown_is_still_an_unfinished_source(seconds
     )
     assert observed_recovery_recipient(actual, {"安赛尔": (0, 1)}) == "结城理"
     actual[3] = {"agent": ""}
-    assert observed_recovery_recipient(actual, {"安赛尔": (0, 1)}) is None
+    assert observed_recovery_recipient(actual, {"安赛尔": (0, 1)}) == "结城理"
 
 
 @pytest.mark.parametrize(
     "pixels,seconds", [(0, 28709), (309, 107), (309, 76), (309, 31)]
 )
-def test_edge_bar_alone_cannot_establish_a_measured_recipient(pixels, seconds):
+def test_only_eligible_resident_at_an_edge_needs_a_visible_countdown(pixels, seconds):
     actual = rows(
         [(310, None), (310, None), (pixels, seconds), (0, None), (0, None)],
         ("隐德来希", "波登可", "星源", "", ""),
     )
+    assert observed_recovery_recipient(actual, {"波登可": (1, 1)}) == "星源"
+    actual[2].pop("recovery_seconds")
     assert observed_recovery_recipient(actual, {"波登可": (1, 1)}) is None
 
 
@@ -927,8 +1360,8 @@ def test_indigo_ordinary_target_from_room_screenshots(first, second, last):
 @pytest.mark.parametrize(
     "blue,other,who",
     [
-        ((304, 470), (277, 3910), None),
-        ((305, 621), (278, 3119), None),
+        ((304, 470), (277, 3910), "蓝毒"),
+        ((305, 621), (278, 3119), "结城理"),
         ((155, 13091), (155, 18783), "蓝毒"),
         ((155, 18783), (155, 15158), "结城理"),
         ((155, 15158), (155, 18783), None),
@@ -941,6 +1374,59 @@ def test_indigo_extra_only_applies_when_blue_poison_is_the_recipient(blue, other
     actual = rows([(310, None), (310, None), blue, other, (0, None)], names)
     assert observed_recovery_recipient(actual, {}) == who
     assert not direct_recovery_arrival(names, "蓝毒", actual, {}, who)
+
+
+@pytest.mark.parametrize(
+    "resident,stage,self_seconds,ordinary_seconds,recipient",
+    [
+        ("子月", None, 11676, 18783, "子月"),
+        ("子月", None, 14400, 14400, "结城理"),
+        ("杜林", (0, 30), 14897, 18783, "杜林"),
+        ("杜林", None, 19636, 14400, "结城理"),
+        ("灰喉", None, 14400, 14400, "结城理"),
+        ("灰喉", (2, 1), 14400, 14400, "结城理"),
+    ],
+)
+def test_equal_bars_with_signed_or_stage_dependent_self_recovery(
+    resident, stage, self_seconds, ordinary_seconds, recipient
+):
+    # 两人均缺 12 点，共同速度为 2.3/小时。子月和精二灰喉自回 +0.7，杜林自回 -0.1。
+    actual = rows(
+        [
+            (310, None),
+            (310, None),
+            (155, self_seconds),
+            (155, ordinary_seconds),
+            (0, None),
+        ],
+        ("隐德来希", "蜜莓", resident, "结城理", ""),
+    )
+    assert (
+        observed_recovery_recipient(actual, {"蜜莓": (2, 1), resident: stage})
+        == recipient
+    )
+
+
+@pytest.mark.parametrize(
+    "provider,self_sample,other_sample,recipient",
+    [
+        ("絮雨", (307, 221), (0, None), None),
+        ("蜜莓", (308, 160), (0, None), "子月"),
+        ("絮雨", (308, 170), (0, None), None),
+        ("蜜莓", (308, 119), (0, None), "子月"),
+        ("蜜莓", (308, 94), (283, 3236), None),
+        ("絮雨", (309, 90), (283, 3213), None),
+    ],
+)
+def test_lunacub_alone_and_then_with_a_second_unfinished_resident(
+    provider, self_sample, other_sample, recipient
+):
+    # 两人同住时，撤蜜莓才从两床前后计时区分出子月受益。这里仅传入一次读房。
+    actual = rows(
+        [(310, None), (310, None), self_sample, other_sample, (0, None)],
+        ("隐德来希", provider, "子月", "结城理" if other_sample[1] else "", ""),
+    )
+    assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) == recipient
 
 
 @pytest.mark.parametrize(
@@ -959,7 +1445,7 @@ def test_two_ordinary_roommates_distinguish_bonus_with_lunacub_present(
         ("隐德来希", provider, "结城理", "行铃", "子月"),
     )
     assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) == recipient
-    # 自回住客也能接受外来单回，不能用她的速度代替第二个普通人的读数。
+    # 子月仍可能受益，但她的 309 像素近满条无法提供第二个可靠速度。
     actual[3] = {"agent": ""}
     assert observed_recovery_recipient(actual, {"蜜莓": (2, 1)}) is None
 
@@ -1145,6 +1631,9 @@ def test_middle_bed_correction_uses_measured_mood_and_keeps_the_fifth_slot(
 @pytest.mark.parametrize(
     "third,fifth,beds",
     [
+        (1, 5, (4, 3)),
+        (1, 6, (3,)),
+        (6, 1, (4, 3)),
         (291, 296, (3,)),
         (291, 295, (4, 3)),
         (289, 293, (4, 3)),
@@ -1471,7 +1960,7 @@ def test_borrowed_trader_has_no_individual_rate_at_zero_pixels(
 @pytest.mark.parametrize(
     ("samples", "recipient"),
     [
-        ([(309, 2), (295, 1704), (172, 16630)], None),
+        ([(309, 2), (295, 1704), (172, 16630)], "结城理"),
         ([(310, None), (295, 1702), (172, 16628)], None),
         ([(310, None), (296, 1701), (172, 12747)], "虎狼丸"),
     ],

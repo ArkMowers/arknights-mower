@@ -724,3 +724,289 @@ def test_unreadable_upper_fourth_deadline_reads_the_resident_at_the_lower_end(
     )
     s.swipe.assert_called_once()
     assert s.detect_room.call_count == 2
+
+
+@pytest.fixture
+def last_dorm_bed(room_reader):
+    path = (
+        Path(__file__).parent
+        / "fixtures/selection/blue_poison_full_countdown_20261125.png"
+    )
+    with Image.open(path) as img:
+        cards = np.array(img).reshape(2, 86, 310)
+
+    def make(state, *, width=310):
+        s, install = room_reader("remove-bed-3-bottom")
+        gray = s.recog.gray.copy()
+        card = cards[int(state == "finished")]
+        gray[823, 1470:1780] = card[0]
+        gray[823, 1470 + width : 1780] = 49
+        gray[877:912, 1470:1780] = card[51:]
+        clock = gray[877:912, 1650:1780]
+        if state == "covered":
+            clock[:] = 0
+        elif state == "faded":
+            clock[:] = (clock * 0.75).astype(np.uint8)
+        install(gray)
+        return s
+
+    return make
+
+
+@pytest.mark.parametrize(
+    ("state", "width", "measured_pixels", "seconds"),
+    [
+        ("finished", 310, 310, None),
+        ("last_second", 310, 310, 1),
+        ("ocr_failed", 310, None, None),
+        ("timeout", 310, None, None),
+        ("covered", 310, None, None),
+        ("faded", 310, None, None),
+        ("timeout", 309, 309, None),
+        ("timeout", 159, 159, None),
+    ],
+)
+def test_dorm_evidence_from_one_visible_resident(
+    last_dorm_bed, monkeypatch, state, width, measured_pixels, seconds
+):
+    from arknights_mower.utils import rapidocr
+
+    s = last_dorm_bed(state, width=width)
+    engine = Mock(return_value=([["00:00:01", 1.0]], None))
+    if state == "ocr_failed":
+        engine.return_value = ([], None)
+    elif state == "timeout":
+        engine.side_effect = TimeoutError
+    monkeypatch.setattr(rapidocr, "engine", engine)
+
+    rows = s.get_agent_from_room(DORM, record_dorm_evidence=True)
+
+    assert [row["agent"] for row in rows] == ["", "", "", "", FULL[4]]
+    assert all(row.get("observed", True) for row in rows)
+    last = rows[4]
+    assert last.get("recovery_seconds") == seconds
+    if measured_pixels is None:
+        assert "measured_mood" not in last
+    else:
+        assert last["measured_mood"] == pytest.approx(measured_pixels * 24 / 310)
+    sampled = state == "finished" or width < 310
+    assert last.get("mood_sampled", False) is sampled
+    assert s.op_data.update_detail.call_args.args[-1] is sampled
+    if state != "finished":
+        assert last["mood"] < 24
+    assert engine.call_count == int(state in ("last_second", "ocr_failed", "timeout"))
+    s.read_operator_time.assert_not_called()
+    s.recog.update.assert_not_called()
+    s.swipe.assert_not_called()
+
+
+@pytest.mark.parametrize("request_deadline", [False, True])
+def test_visible_zero_clock_does_not_set_full_mood(
+    last_dorm_bed, monkeypatch, request_deadline
+):
+    from arknights_mower.utils import rapidocr
+
+    s = last_dorm_bed("last_second")
+    # 用同一张清晰倒计时里的 0 字模替换秒数，保留仍有数字的满条画面。
+    path = Path(__file__).parent / "fixtures/resident_timers_20261125.png"
+    with Image.open(path) as image:
+        clock = np.asarray(image.convert("L"))[:35, :130].copy()
+    for x in (90, 107):
+        clock[:, x : x + 17] = clock[:, 12:29]
+    s.recog.gray[877:912, 1650:1780] = clock
+    s.recog.img[877:912, 1650:1780] = clock[:, :, None]
+    engine = Mock(side_effect=AssertionError("清晰字模应直接读出零秒"))
+    monkeypatch.setattr(rapidocr, "engine", engine)
+
+    row = s.get_agent_from_room(
+        DORM, [4] if request_deadline else [], record_dorm_evidence=True
+    )[4]
+
+    assert row["recovery_seconds"] == 0
+    assert "measured_mood" not in row and not row.get("mood_sampled")
+    assert s.op_data.update_detail.call_args.args[-1] is False
+    if request_deadline:
+        assert row["time"] == s.recog.capture_started_at
+    engine.assert_not_called()
+    s.recog.update.assert_not_called()
+    s.swipe.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "limit, cached_seconds, replace",
+    [(24, -60, True), (18, -60, True), (18, 600, False), (12, -60, False)],
+)
+def test_dorm_read_reconciles_expired_personal_deadline(
+    room_reader, limit, cached_seconds, replace
+):
+    from arknights_mower.utils.operators import Dormitory, Operators
+
+    s, _ = room_reader("clear-hi-off-pair_bottom")
+    s.recog.capture_started_at = datetime.now()
+    name = PAIR[2]
+    op = s.op_data.operators[name]
+    op.upper_limit = limit
+    op.need_to_refresh.return_value = True
+    bed = Dormitory((DORM, 2))
+    bed.name = name
+    bed.time = s.recog.capture_started_at + timedelta(seconds=cached_seconds)
+    cached = bed.time
+    s.op_data.all_dorms.return_value = [bed]
+    s.op_data.get_dorm_by_name.side_effect = lambda n: (
+        (0, bed) if n == name else (None, None)
+    )
+
+    def update(n, mood, room, index, update_time):
+        if n == name and update_time:
+            op.mood = mood
+            op.time_stamp = s.recog.capture_started_at
+            op.mood_is_prediction = False
+
+    s.op_data.update_detail.side_effect = update
+    row = s.get_agent_from_room(DORM, read_dorm_evidence=True)[2]
+
+    mood = 164 * 24 / 310
+    assert row["agent"] == name and row["measured_mood"] == pytest.approx(mood)
+    seconds = 3 * 3600 + 45 * 60 + 30
+    assert row["recovery_seconds"] == seconds
+    expected = (
+        s.recog.capture_started_at
+        + timedelta(seconds=seconds * (limit - mood) / (24 - mood))
+        if replace
+        else cached
+    )
+    assert row["time"] == bed.time == expected
+    Operators.correct_dorm(s.op_data)
+    assert op.mood == pytest.approx(mood) and not op.mood_is_prediction
+    s.read_operator_time.assert_not_called()
+
+
+@pytest.mark.parametrize("layout", ["known_end", "missing_stamp", "unknown_end"])
+def test_retained_bed_uses_only_the_observed_frame(room_reader, layout):
+    from arknights_mower.utils.operators import Dormitory
+
+    s, install = room_reader(
+        "clear-hi-off-pair_top", planned=3 if layout == "unknown_end" else 5
+    )
+    if layout == "unknown_end":
+        gray = s.recog.gray.copy()
+        gray[1003:1060, 1595:] = 0
+        install(gray)
+    elif layout == "missing_stamp":
+        s.recog.capture_started_at = None
+    sampled_at = s.recog.capture_started_at
+    cached = STAMP - timedelta(minutes=1)
+    bed = Dormitory((DORM, 2), PAIR[2], cached)
+    s.op_data.operators[bed.name].upper_limit = 24
+    s.op_data.all_dorms.return_value = [bed]
+    s.op_data.get_dorm_by_name.side_effect = lambda n: (
+        (0, bed) if n == bed.name else (None, None)
+    )
+
+    row = s.get_agent_from_room(DORM, read_dorm_evidence=True)[2]
+
+    assert row["agent"] == bed.name
+    seconds = 3 * 3600 + 45 * 60 + 30
+    assert row.get("recovery_seconds") == (None if layout == "unknown_end" else seconds)
+    assert (
+        bed.time
+        == row["time"]
+        == (
+            sampled_at + timedelta(seconds=seconds) if layout == "known_end" else cached
+        )
+    )
+    third_clock_reads = [
+        c
+        for c in s.read_screen.call_args_list
+        if c.kwargs.get("type") == "time" and c.kwargs["cord"][0][1] == 690
+    ]
+    assert len(third_clock_reads) == (0 if layout == "unknown_end" else 1)
+    s.read_operator_time.assert_not_called()
+    s.recog.update.assert_not_called()
+    s.swipe.assert_not_called()
+    s.sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["last_second", "covered", "invalid_bar"])
+@pytest.mark.parametrize("calculated", [False, True])
+def test_strict_roster_does_not_require_a_fresh_mood(last_dorm_bed, state, calculated):
+    s = last_dorm_bed(state)
+    s.op_data.mood_calculation_enabled = calculated
+    operator = s.op_data.operators[FULL[4]]
+    operator.need_to_refresh.return_value = not calculated
+    s.op_data.plan[DORM][4] = SimpleNamespace(agent=FULL[4])
+    if state == "invalid_bar":
+        s.read_accurate_mood = Mock(return_value=-1)
+
+    rows = s.get_agent_from_room(DORM, strict_observation=True)
+
+    assert [row["agent"] for row in rows] == ["", "", "", "", FULL[4]]
+    assert all(row.get("observed", True) for row in rows)
+    s.op_data.update_detail.assert_called_once_with(
+        FULL[4], operator.mood, DORM, 4, False
+    )
+    s._reconcile_room_observation.assert_called_once()
+    s.read_operator_time.assert_not_called()
+    s.recog.update.assert_not_called()
+    s.swipe.assert_not_called()
+
+
+@pytest.mark.parametrize("state", ["covered", "last_second", "finished"])
+def test_restart_requires_a_fresh_measurement_for_a_fixed_dorm_bed(
+    last_dorm_bed, state
+):
+    s = last_dorm_bed(state)
+    operator = s.op_data.operators[FULL[4]]
+    operator.current_room, operator.current_index, operator.time_stamp = "", -1, None
+    operator.current_mood.return_value = 24
+    s.op_data.plan[DORM][4] = SimpleNamespace(agent=FULL[4])
+
+    if state != "finished":
+        with pytest.raises(RecognizeError, match="心情未核实"):
+            s.get_agent_from_room(DORM, force_mood=True, strict_observation=True)
+        s.op_data.update_detail.assert_not_called()
+        s._reconcile_room_observation.assert_not_called()
+    else:
+        row = s.get_agent_from_room(DORM, force_mood=True, strict_observation=True)[4]
+        assert row["agent"] == FULL[4] and row["mood"] == 24
+        assert s.op_data.update_detail.call_args.args[-1] is True
+
+
+def test_required_dorm_timer_timeout_does_not_set_recovery_deadline(
+    last_dorm_bed, monkeypatch
+):
+    from arknights_mower.utils import rapidocr
+
+    s = last_dorm_bed("timeout")
+    s.read_operator_time = BaseSchedulerSolver.read_operator_time.__get__(s)
+    monkeypatch.setattr(rapidocr, "engine", Mock(side_effect=TimeoutError))
+
+    with pytest.raises(RecognizeError, match="倒计时"):
+        s.get_agent_from_room(DORM, [4], read_dorm_evidence=True)
+
+    s.op_data.update_detail.assert_not_called()
+    s.op_data.refresh_dorm_time.assert_not_called()
+    s._reconcile_room_observation.assert_not_called()
+    assert s.recog.update.call_count == 5
+    s.swipe.assert_not_called()
+
+
+@pytest.mark.parametrize("readable", [False, True])
+def test_dorm_read_keeps_unidentified_lower_bed_distinct_from_vacancies(
+    room_reader, frame, readable
+):
+    s, install = room_reader("remove-bed-1-top")
+    lower = frame("remove-bed-1-bottom")
+    if not readable:
+        lower[766:821, 1460:1785] = 49
+    s.swipe.side_effect = lambda *args, **kwargs: install(lower)
+
+    rows = s.get_agent_from_room(DORM, read_dorm_evidence=True)
+
+    expected = ["", "", FULL[2], "", FULL[4] if readable else ""]
+    assert [row["agent"] for row in rows] == expected
+    assert [row.get("observed", True) for row in rows] == [True] * 4 + [readable]
+    if not readable:
+        assert "measured_mood" not in rows[4]
+        assert "recovery_seconds" not in rows[4]
+    s.swipe.assert_called_once()

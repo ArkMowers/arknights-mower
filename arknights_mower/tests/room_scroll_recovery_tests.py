@@ -212,7 +212,8 @@ def five_slot_room():
             for i in range(3, 5) if end else range(3):
                 img[ys[i] + 25, 1460] = i + 1
                 img[mood_y[i], 1470] = i + 11
-                img[time_y[i], 1650] = i + 1
+                img[time_y[i] : time_y[i] + 35, 1650:1780] = 137
+                img[time_y[i], 1650] = 135 + i
             colors[end] = img
 
         def capture():
@@ -246,7 +247,7 @@ def five_slot_room():
                     return ""
                 return names[index]
             (x, y), _ = cord
-            index = int(img[y, x, 0]) - 1
+            index = int(img[y, x, 0]) - 135
             assert index in range(5)
             if ("time", index) in unread:
                 unread.remove(("time", index))

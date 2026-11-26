@@ -406,6 +406,15 @@ def test_generated_idle_release_preserves_resting_group(
 ):
     solver, physical, snapshots = incident
     data = solver.op_data
+    # 满心情室友的计时栏是清晰灰底，陈的心情条显示她仍未满。
+    solver.recog.gray[:, 1650:1780] = 137
+    solver.recog.img = np.repeat(solver.recog.gray[:, :, None], 3, axis=2)
+    solver.recog.capture_started_at = datetime.now()
+    read_name = solver.read_screen.side_effect
+    solver.read_screen.side_effect = lambda *args, **kw: (
+        "06:20:00" if kw.get("type") == "time" else read_name(*args, **kw)
+    )
+    solver.scroll_room_operators.side_effect = lambda *, bottom, **kwargs: bool(bottom)
     if single_target:
         data.config.ope_resting_priority.append("陈")
     before = [
@@ -428,7 +437,7 @@ def test_generated_idle_release_preserves_resting_group(
     for _ in range(3):
         assert solver.agent_get_mood(read_rooms=False, return_plan=True) == {}
         assert len(solver.tasks) == count
-    # 全满原班直接换入。该夹具不提供同帧倒计时，不能把入住成功当成单回确认。
+    # 全满原班直接换入，离队室友和仍在轮休的同组干员各保留原有记录。
     assert all("" not in row for row in snapshots)
     completed = data.operators["斯卡蒂"]
     assert not completed.current_room
@@ -446,7 +455,7 @@ def test_generated_idle_release_preserves_resting_group(
     )
     # 清退后仍正常补入新住客，并按需确认单回。
     assert data.operators["陈"].current_room == ROOM
-    assert not data.operators["陈"].dorm_recovery_room
+    assert data.operators["陈"].dorm_recovery_room == (ROOM if single_target else "")
 
 
 @pytest.mark.parametrize("sample", ["measured", "prediction", "unknown"])
