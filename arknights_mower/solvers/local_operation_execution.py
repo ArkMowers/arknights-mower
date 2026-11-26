@@ -21,6 +21,7 @@ from arknights_mower.utils.device.adb_client.server import SharedADBError
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.scene_recovery import SceneRecoveryExhausted
 from arknights_mower.utils.scheduler_task import scheduling
 
 
@@ -73,7 +74,18 @@ def run_local_operation(scheduler, one_time=False, *, manual=False):
                 return fixed_deadline if one_time else scheduler.tasks[0].time
 
             fixed_deadline = datetime.now() + timedelta(days=1)
-            rerun_played = run_event_rerun(scheduler, deadline)
+            try:
+                rerun_played = run_event_rerun(scheduler, deadline)
+            except SceneRecoveryExhausted:
+                logger.warning("复刻SS活动的场景恢复次数已用完，结束本轮刷理智")
+                finish_running_observations(
+                    scheduler,
+                    "mower",
+                    key="stage-plan",
+                    outcome="stopped",
+                    reason="interrupted",
+                )
+                return
             if rerun_played is not None and (
                 config.maintenance_recheck.is_set()
                 or (deadline() - datetime.now()) < timedelta(minutes=5)

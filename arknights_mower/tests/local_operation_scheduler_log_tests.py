@@ -371,3 +371,23 @@ def test_rerun_precedes_local_weekly_plan_on_due_dispatch_only(
     local.navigation.return_value.run.assert_called()
     dispatch(local, caplog)
     preflight.assert_called_once()
+
+
+@pytest.mark.parametrize("manual", [False, True])
+def test_rerun_scene_recovery_yields_without_weekly_battle_or_device_restart(
+    local, monkeypatch, manual
+):
+    local.plan("1-7", ap=120)
+    monkeypatch.setattr(
+        local_operation_execution,
+        "run_event_rerun",
+        MagicMock(side_effect=local_operation_execution.SceneRecoveryExhausted),
+    )
+    local.solver.mower_plan_solver(manual=manual)
+    local.navigation.assert_not_called()
+    local.solver.device.exit.assert_not_called()
+    local.solver.check_current_focus.assert_not_called()
+    local_operation_execution.save_exception.assert_not_called()
+    local_operation_execution.send_message.assert_not_called()
+    assert local.solver.last_execution["maa"] is None
+    assert local.solver.display_observations["stage-plan"]["outcome"] == "stopped"

@@ -759,7 +759,14 @@ def save_maa_sss_progress(progress):
         connection.commit()
 
 
-def load_event_rerun_progress(event_key, *, failure_reasons=None):
+EVENT_RERUN_PROXY_LOCKED = "目标关卡尚未解锁代理指挥"
+
+
+def event_rerun_failure_retries(reason):
+    return reason != EVENT_RERUN_PROXY_LOCKED
+
+
+def _event_rerun_records(event_key):
     path = get_path("@app/tmp/data.db")
     try:
         path.stat()
@@ -773,27 +780,42 @@ def load_event_rerun_progress(event_key, *, failure_reasons=None):
             "AND name = 'event_rerun_progress'"
         ).fetchone():
             return {}
-        progress = {}
-        for stage, value in conn.execute(
-            "SELECT stage, status FROM event_rerun_progress WHERE event_key = ?",
-            (event_key,),
-        ):
-            status, _, reason = value.partition(":")
-            progress[stage] = status
-            if failure_reasons is not None and status == "failed" and reason:
-                failure_reasons[stage] = reason
-        return progress
-
-
-def claim_event_rerun_stage(event_key, stage):
-    with _conn() as connection, connection:
-        return (
-            connection.execute(
-                "INSERT OR IGNORE INTO event_rerun_progress VALUES (?, ?, 'attempted')",
-                (event_key, stage),
-            ).rowcount
-            == 1
+        return dict(
+            conn.execute(
+                "SELECT stage, status FROM event_rerun_progress WHERE event_key = ?",
+                (event_key,),
+            )
         )
+
+
+def load_event_rerun_progress(event_key, *, failure_reasons=None):
+    progress = {}
+    for stage, value in _event_rerun_records(event_key).items():
+        status, _, reason = value.partition(":")
+        progress[stage] = status
+        if failure_reasons is not None and status == "failed" and reason:
+            failure_reasons[stage] = reason
+    return progress
+
+
+def _replace_event_rerun_stage(event_key, stage, previous, status):
+    with _conn() as connection, connection:
+        if previous == "pending":
+            changed = connection.execute(
+                "INSERT OR IGNORE INTO event_rerun_progress VALUES (?, ?, ?)",
+                (event_key, stage, status),
+            )
+        else:
+            changed = connection.execute(
+                "UPDATE event_rerun_progress SET status = ? "
+                "WHERE event_key = ? AND stage = ? AND status = ?",
+                (status, event_key, stage, previous),
+            )
+        return changed.rowcount == 1
+
+
+def claim_event_rerun_stage(event_key, stage, previous="pending"):
+    return _replace_event_rerun_stage(event_key, stage, previous, "attempted")
 
 
 _event_rerun_lock = Lock()
@@ -804,14 +826,16 @@ _active_rerun_stages = set()
 def event_rerun_execution(event_key, stage):
     key = (event_key, stage)
     with _event_rerun_lock:
-        admitted = (
-            key not in _active_rerun_stages
-            and stage not in load_event_rerun_progress(event_key)
+        previous = _event_rerun_records(event_key).get(stage, "pending")
+        status, _, reason = previous.partition(":")
+        admitted = key not in _active_rerun_stages and (
+            status == "pending"
+            or (status == "failed" and event_rerun_failure_retries(reason))
         )
         if admitted:
             _active_rerun_stages.add(key)
     try:
-        yield admitted
+        yield previous if admitted else None
     finally:
         if admitted:
             with _event_rerun_lock:
@@ -859,7 +883,10 @@ def set_event_rerun_completion(event_key, stage, expected, completed):
             return True
 
 
-def release_event_rerun_stage(event_key, stage):
+def release_event_rerun_stage(event_key, stage, previous="pending"):
+    if previous != "pending":
+        _replace_event_rerun_stage(event_key, stage, "attempted", previous)
+        return
     with _conn() as connection, connection:
         connection.execute(
             "DELETE FROM event_rerun_progress "
@@ -868,29 +895,14 @@ def release_event_rerun_stage(event_key, stage):
         )
 
 
-def fail_event_rerun_stage(event_key, stage, reason, *, attempted):
-    status = f"failed:{reason}"
-    with _conn() as connection, connection:
-        if attempted:
-            connection.execute(
-                "UPDATE event_rerun_progress SET status = ? "
-                "WHERE event_key = ? AND stage = ? AND status = 'attempted'",
-                (status, event_key, stage),
-            )
-        else:
-            connection.execute(
-                "INSERT OR IGNORE INTO event_rerun_progress VALUES (?, ?, ?)",
-                (event_key, stage, status),
-            )
+def fail_event_rerun_stage(event_key, stage, reason, *, attempted, previous="pending"):
+    _replace_event_rerun_stage(
+        event_key, stage, "attempted" if attempted else previous, f"failed:{reason}"
+    )
 
 
 def complete_event_rerun_stage(event_key, stage):
-    with _conn() as connection, connection:
-        connection.execute(
-            "UPDATE event_rerun_progress SET status = 'completed' "
-            "WHERE event_key = ? AND stage = ? AND status = 'attempted'",
-            (event_key, stage),
-        )
+    _replace_event_rerun_stage(event_key, stage, "attempted", "completed")
 
 
 def load_garrison_progress():

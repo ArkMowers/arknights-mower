@@ -11,6 +11,7 @@ from arknights_mower.solvers.local_operation import (
     compute_next_threshold_time,
 )
 from arknights_mower.solvers.record import (
+    EVENT_RERUN_PROXY_LOCKED,
     apply_workshop_inventory,
     battle_inventory_active,
     get_inventory_counts,
@@ -460,7 +461,7 @@ class OperationSolver(SceneGraphSolver):
         if (scene := self.scene()) == Scene.OPERATOR_BEFORE:
             if self.before_single_battle is not None and self.find("ope_agency_lock"):
                 if self.on_single_battle_failure and not self.single_battle_started:
-                    self.on_single_battle_failure("目标关卡尚未解锁代理指挥")
+                    self.on_single_battle_failure(EVENT_RERUN_PROXY_LOCKED)
                 return True
             if self.recog.gray[907][1600] < 127:
                 self.tap((1776, 908))

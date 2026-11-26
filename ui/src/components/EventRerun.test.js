@@ -119,3 +119,18 @@ it('clears prior failure reasons on refresh when the event ends or a response la
   await panel.refreshStatus()
   expect(panel.event.value).toBe(null)
 })
+
+it('shows the retry policy for each failed stage and clears hints for legacy responses', async () => {
+  const failures = { ...live, progress: { 'OS-1': 'failed', 'OS-10': 'failed' } }
+  state.client.get
+    .mockResolvedValueOnce({ data: { ...failures, retryable_failures: ['OS-1'] } })
+    .mockResolvedValueOnce({ data: { ...failures, retryable_failures: [] } })
+    .mockResolvedValueOnce({ data: failures })
+  await panel.refreshStatus()
+  expect(panel.failureRetryHint('OS-1')).toBe('下次刷理智时会自动重试')
+  expect(panel.failureRetryHint('OS-10')).toBe('需手动处理，点击关卡可更改状态')
+  await panel.refreshStatus()
+  expect(panel.failureRetryHint('OS-1')).toBe('需手动处理，点击关卡可更改状态')
+  await panel.refreshStatus()
+  expect(panel.failureRetryHint('OS-1')).toBe('')
+})

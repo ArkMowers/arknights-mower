@@ -12,9 +12,10 @@ from arknights_mower.utils.device.io_budget import device_io_budget
 from arknights_mower.utils.device.recovery import DeviceRecoveryError
 from arknights_mower.utils.event_rerun import current_rerun
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.scene_recovery import SceneRecoveryExhausted
 
 
-def pending_rerun(scheduler, deadline):
+def pending_rerun(scheduler, deadline, visited=()):
     conf = config.conf
     settings = getattr(conf, "event_rerun", None)
     if not settings or not settings.enabled or not conf.stage_plan_enable:
@@ -26,13 +27,20 @@ def pending_rerun(scheduler, deadline):
         event = current_rerun()
         if not event:
             return None
-        progress = record.event_rerun_status(event["key"])
+        reasons = {}
+        progress = record.event_rerun_status(event["key"], failure_reasons=reasons)
     except (OSError, ValueError, sqlite3.Error):
         logger.exception("读取复刻SS活动关卡或进度失败，本轮继续执行周计划")
         return None
     for stage in event["stages"]:
         code = stage["code"]
-        if code not in progress and stage["start_ts"] <= event["now"] < stage["end_ts"]:
+        if (event["key"], code) in visited:
+            continue
+        eligible = code not in progress or (
+            progress[code] == "failed"
+            and record.event_rerun_failure_retries(reasons.get(code))
+        )
+        if eligible and stage["start_ts"] <= event["now"] < stage["end_ts"]:
             return event, stage, settings.model_copy(deep=True), observed_at
     return None
 
@@ -77,7 +85,8 @@ def _play_ordinary(scheduler, stage, settings, prepare, claim, complete, fail):
 
 def run_event_rerun(scheduler, deadline) -> bool | None:
     """Return None if no stage was eligible, otherwise whether a battle was admitted."""
-    pending = pending_rerun(scheduler, deadline)
+    visited = set()
+    pending = pending_rerun(scheduler, deadline, visited)
     if pending is None:
         return None
     started_any = False
@@ -85,6 +94,7 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
     while pending is not None:
         event, stage, settings, observed_at = pending
         key, code = event["key"], stage["code"]
+        visited.add((key, code))
 
         def available():
             now = datetime.now()
@@ -113,12 +123,13 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
 
         claimed = False
         already_claimed = False
+        reported_failure = False
 
         def claim():
             nonlocal claimed, already_claimed
             if not can_start():
                 return False
-            if not record.claim_event_rerun_stage(key, code):
+            if not record.claim_event_rerun_stage(key, code, previous):
                 already_claimed = True
                 return False
             try:
@@ -126,20 +137,24 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
                 return claimed
             finally:
                 if not claimed:
-                    record.release_event_rerun_stage(key, code)
+                    record.release_event_rerun_stage(key, code, previous)
 
         def complete(key=key, code=code):
             record.complete_event_rerun_stage(key, code)
 
         def fail(reason):
-            if already_claimed or (not claimed and not can_start()):
+            nonlocal reported_failure
+            if reported_failure or already_claimed or (not claimed and not can_start()):
                 return
-            record.fail_event_rerun_stage(key, code, reason, attempted=claimed)
+            record.fail_event_rerun_stage(
+                key, code, reason, attempted=claimed, previous=previous
+            )
+            reported_failure = True
 
         try:
-            with record.event_rerun_execution(key, code) as active:
+            with record.event_rerun_execution(key, code) as previous:
                 outcome = None
-                if active:
+                if previous is not None:
                     try:
                         outcome = _play_ordinary(
                             scheduler, stage, settings, prepare, claim, complete, fail
@@ -148,6 +163,7 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
                         MowerExit,
                         SharedADBError,
                         DeviceRecoveryError,
+                        SceneRecoveryExhausted,
                         InterruptedError,
                         sqlite3.Error,
                     ):
@@ -156,8 +172,6 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
                         logger.exception("复刻SS活动关卡 %s 未完成", code)
                         if not claimed:
                             fail("准备关卡时发生异常，详情请查看日志")
-        except (MowerExit, SharedADBError, DeviceRecoveryError):
-            raise
         except InterruptedError:
             started_any |= claimed
             break
@@ -168,5 +182,5 @@ def run_event_rerun(scheduler, deadline) -> bool | None:
         started_any |= claimed
         if outcome == "defer" or not can_start():
             break
-        pending = pending_rerun(scheduler, deadline)
+        pending = pending_rerun(scheduler, deadline, visited)
     return started_any

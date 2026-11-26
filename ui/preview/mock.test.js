@@ -95,10 +95,14 @@ describe('offline preview', () => {
       const { data } = await client.get(url)
       expect(data.progress['OS-7']).toBe('failed')
       expect(data.failure_reasons['OS-7']).toBeTruthy()
+      expect(data.retryable_failures).toContain('OS-7')
+      expect(data.progress['OS-8']).toBe('failed')
+      expect(data.retryable_failures).not.toContain('OS-8')
       const change = { event_key: data.event.key, stage: 'OS-7', expected: 'failed', completed }
       const saved = (await client.patch(url, change)).data
       expect(saved.progress['OS-7'] || 'pending').toBe(completed ? 'completed' : 'pending')
       expect(saved.failure_reasons).not.toHaveProperty('OS-7')
+      expect(saved.retryable_failures).not.toContain('OS-7')
       expect((await client.get(url)).data).toEqual(saved)
     }
   )

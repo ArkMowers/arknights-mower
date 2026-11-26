@@ -2183,6 +2183,13 @@ def _event_rerun_status(event):
         "failure_reasons": {
             code: reason for code, reason in reasons.items() if code in stages
         },
+        "retryable_failures": [
+            code
+            for code, status in progress.items()
+            if code in stages
+            and status == "failed"
+            and record.event_rerun_failure_retries(reasons.get(code))
+        ],
     }
 
 
