@@ -468,6 +468,32 @@ def _shortest_map_route(
     return rooms
 
 
+def _mood_map_route(
+    rooms: list[str], *, skipped: set[str], fixed: set[str]
+) -> tuple[list[str], set[str]]:
+    """在宿舍及专项设施之间减少拖图，保留每段首站和专项设施前的末站。"""
+    ordered = rooms.copy()
+    routed_visits = set()
+    positions = []
+    for index, room in enumerate([*rooms, None]):
+        if room in skipped:
+            continue
+        if room in _ROUTABLE_ROOMS and room not in fixed:
+            positions.append(index)
+            continue
+        if len(positions) > 2:
+            stops = [rooms[position] for position in positions]
+            route = _shortest_map_route(
+                stops, {stop: set() for stop in stops}, keep_last=room is not None
+            )
+            if route != stops:
+                routed_visits.update(route)
+                for position, stop in zip(positions, route):
+                    ordered[position] = stop
+        positions.clear()
+    return ordered, routed_visits
+
+
 def _work_room_order(work, dependencies):
     pending = list(work)
     ordered = []
@@ -5500,8 +5526,29 @@ class BaseSchedulerSolver(
         initial_observation = initial_calculation or self._initial_mood_read_pending()
 
         facility_levels = getattr(self.op_data, "facility_levels", {})
+
+        def recently_read_occupants(room):
+            if room in force_rooms or room in restoration_observations:
+                return []
+            occupants = [
+                operator
+                for operator in self.op_data.operators.values()
+                if operator.current_room == room
+            ]
+            now = datetime.now()
+            if all(
+                operator.time_stamp
+                and operator.time_stamp
+                > now
+                - timedelta(
+                    hours=0.5 if operator.name in ("歌蕾蒂娅", "见行者") else 2.5
+                )
+                for operator in occupants
+            ):
+                return occupants
+            return []
+
         # 初始化先读取跑单设施与训练室，尽早取得会影响派单和训练冲突判断的实测状态。
-        # 其余设施保持稳定排序，避免同一轮初始化的访问顺序漂移。
         run_order_rooms = set(getattr(self.op_data, "run_order_rooms", ()) or ())
         priority_rooms = sorted(
             room
@@ -5510,15 +5557,31 @@ class BaseSchedulerSolver(
         )
         if "train" in need_read and facility_levels.get("train") != 0:
             priority_rooms.append("train")
+        priority_count = len(priority_rooms)
         ordered_rooms = priority_rooms + sorted(need_read - set(priority_rooms))
-        for room_index, room in enumerate(ordered_rooms):
-            # 优先设施实读或复用近期结果后，统一检查是否该先执行临近任务。
-            if (
-                initial_observation
-                and room_index == len(priority_rooms)
-                and self._yield_initial_mood_to_priority_task()
-            ):
-                return False
+        routed_visits = set()
+        for room_index in range(len(ordered_rooms)):
+            if room_index == priority_count:
+                # 优先设施实读或复用近期结果后，统一检查是否该先执行临近任务。
+                if initial_observation and self._yield_initial_mood_to_priority_task():
+                    return False
+                if not getattr(self, "_emergency_startup_pending", False):
+                    ordinary_rooms = ordered_rooms[room_index:]
+                    skipped = {
+                        room
+                        for room in ordinary_rooms
+                        if facility_levels.get(room) == 0
+                        or (room in _ROUTABLE_ROOMS and recently_read_occupants(room))
+                    }
+                    if getattr(self, "_recycle_unavailable", False) is True:
+                        skipped.add("recycle")
+                    route, routed_visits = _mood_map_route(
+                        ordinary_rooms,
+                        skipped=skipped,
+                        fixed=set(restoration_observations),
+                    )
+                    ordered_rooms[room_index:] = route
+            room = ordered_rooms[room_index]
             if facility_levels.get(room) == 0:
                 force_rooms.discard(room)
                 restoration_observations.pop(room, None)
@@ -5548,29 +5611,13 @@ class BaseSchedulerSolver(
                 ):
                     continue
             error_count = 0
-            # 近期可信读过的房内干员无需重复扫描；训练室保持原有巡检间隔。
-            current_working = [
-                value
-                for key, value in self.op_data.operators.items()
-                if value.current_room == room
-            ]
-
-            if (
-                room not in force_rooms
-                and room not in restoration_observations
-                and current_working
-                and all(
-                    operator.time_stamp
-                    and operator.time_stamp
-                    > datetime.now()
-                    - timedelta(
-                        hours=0.5 if operator.name in ["歌蕾蒂娅", "见行者"] else 2.5
-                    )
-                    for operator in current_working
-                )
+            # 其他房间可能先读到已调岗的干员，让原房间的剩余驻员看似都已读过。
+            # 重排后仍访问规划时选中的房间，核对完整驻员。
+            if room not in routed_visits and (
+                occupants := recently_read_occupants(room)
             ):
-                for e in current_working:
-                    logger.debug(e.time_stamp)
+                for operator in occupants:
+                    logger.debug(operator.time_stamp)
                 logger.debug(f"{room} 所有干员不满足扫描条件，跳过")
                 continue
             if room in restoration_observations and not self.no_pending_task(1):
@@ -5723,7 +5770,7 @@ class BaseSchedulerSolver(
 
         if (
             initial_observation
-            and len(ordered_rooms) == len(priority_rooms)
+            and len(ordered_rooms) == priority_count
             and self._yield_initial_mood_to_priority_task()
         ):
             return False
