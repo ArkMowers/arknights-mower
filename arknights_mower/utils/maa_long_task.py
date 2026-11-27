@@ -1,7 +1,91 @@
 import hashlib
 import json
+from dataclasses import dataclass
 
+from arknights_mower.utils.maa_callback import rogue_boss_stop_reached
 from arknights_mower.utils.maa_copilot import queue_key
+
+_ROGUE_COMPLETION_EVENTS = {
+    "investment": "RoguelikeInvestmentReachFull",
+    "monthly": "MonthlySquadCompleted",
+    "monthly_comms": "MonthlySquadCompleted",
+    "exploration": "DeepExplorationCompleted",
+}
+
+
+def rogue_goals(conf):
+    rogue = conf.rogue
+    if rogue.mode == 0:
+        goals = set()
+        if rogue.stop_at_max_level:
+            goals.add("level")
+        if rogue.stop_at_final_boss and conf.maa_rg_theme not in (
+            "Phantom",
+            "BlackFlow",
+        ):
+            goals.add("boss")
+        return goals
+    if rogue.mode == 1 and rogue.investment_enabled and rogue.stop_when_investment_full:
+        return {"investment"}
+    if rogue.mode == 6 and rogue.monthly_squad_auto_iterate:
+        return {"monthly_comms" if rogue.monthly_squad_check_comms else "monthly"}
+    if rogue.mode == 7 and rogue.deep_exploration_auto_iterate:
+        return {"exploration"}
+    return set()
+
+
+def automatic_rogue_completed(conf):
+    from arknights_mower.solvers import record
+
+    goals = rogue_goals(conf)
+    return bool(
+        goals and goals.intersection(record.completed_rogue_goals(conf.maa_rg_theme))
+    )
+
+
+@dataclass
+class RogueGoalRun:
+    task_id: int
+    theme: str
+    goals: set[str]
+    manual: bool
+    reached: str | None = None
+
+    def record(self, msg, data):
+        from arknights_mower.solvers import record
+
+        if (
+            data.get("taskchain") != "Roguelike"
+            or type(data.get("taskid")) is not int
+            or data["taskid"] != self.task_id
+        ):
+            return
+        if msg == 10001 and self.manual:
+            record.reopen_rogue_goals(self.theme, self.goals)
+        elif msg in (10000, 10002, 10004):
+            completed = self.reached if msg == 10002 else None
+            if completed:
+                record.mark_rogue_goal_complete(self.theme, completed)
+            self.reached = None
+            self.goals.clear()
+            return completed
+        elif msg == 20000 and "level" in self.goals:
+            # MAA 以这次识别未命中判定满级，等同一任务链正常结束再保存。
+            if (
+                data.get("subtask") == "ProcessTask"
+                and data.get("first") == ["Roguelike@CheckLevelMax"]
+                and "what" not in data
+            ):
+                self.reached = "level"
+        elif msg == 20003:
+            for goal in self.goals:
+                if goal == "boss" and rogue_boss_stop_reached(data, self.theme):
+                    self.reached = goal
+                elif (
+                    goal in _ROGUE_COMPLETION_EVENTS
+                    and data.get("what") == _ROGUE_COMPLETION_EVENTS[goal]
+                ):
+                    self.reached = goal
 
 
 def blackflow_preserved_run(conf):

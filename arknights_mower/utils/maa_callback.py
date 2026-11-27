@@ -707,13 +707,17 @@ def _inner(details: dict) -> dict:
     return _mapping(details.get("details"))
 
 
-def blackflow_boss_stop_reached(details: dict) -> bool:
+def rogue_boss_stop_reached(details: dict, theme: str) -> bool:
     inner = _inner(details)
     return (
         details.get("taskchain") == "Roguelike"
         and details.get("subtask") == "ProcessTask"
         and details.get("what") == "ExceededLimit"
-        and inner.get("task") == "BlackFlow@Roguelike@StageDreadfulFoe-5"
+        and (
+            inner.get("task") == f"{theme}@Roguelike@StageDreadfulFoe-5"
+            or inner.get("task") == "StageDreadfulFoe-5"
+            and details.get("first") == [f"{theme}@Roguelike@Begin"]
+        )
         and type(inner.get("max_times")) is int
         and inner["max_times"] == 0
         and type(inner.get("exec_times")) is int
@@ -1021,7 +1025,7 @@ class MaaCallbackLog:
                 entry = (logging.WARNING, f"{_chain(details)}：{subtask} 出错")
             return _entry_line(entry, details)
         if message == 20003:
-            if blackflow_boss_stop_reached(details):
+            if rogue_boss_stop_reached(details, "BlackFlow"):
                 return MaaLogLine(
                     logging.INFO, "黑流树海已在第五层 BOSS 前暂停，可手动接管本局"
                 )

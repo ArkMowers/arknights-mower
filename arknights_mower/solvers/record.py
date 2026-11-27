@@ -56,6 +56,8 @@ _DB_TABLE_STMTS = (
     "CREATE TABLE IF NOT EXISTS maa_event_shop_completion ("
     "activity_id TEXT NOT NULL, start_ts INTEGER NOT NULL,"
     "PRIMARY KEY (activity_id, start_ts))",
+    "CREATE TABLE IF NOT EXISTS maa_rogue_completion ("
+    "theme TEXT NOT NULL, goal TEXT NOT NULL, PRIMARY KEY (theme, goal))",
     "CREATE TABLE IF NOT EXISTS maa_blackflow_progress ("
     "id INTEGER PRIMARY KEY CHECK(id = 1), payload TEXT NOT NULL)",
     "CREATE TABLE IF NOT EXISTS maa_blackflow_boss_progress ("
@@ -697,6 +699,30 @@ def finish_copilot_item(key, token, outcome, *, paradox=False):
         _copilot_attempt_path(paradox).unlink(missing_ok=True)
         apply_copilot_result(progress, key, token, outcome)
     return progress
+
+
+def completed_rogue_goals(theme):
+    return {
+        goal
+        for (goal,) in _fetchall(
+            "SELECT goal FROM maa_rogue_completion WHERE theme = ?", theme
+        )
+    }
+
+
+def mark_rogue_goal_complete(theme, goal):
+    with _conn() as connection, connection:
+        connection.execute(
+            "INSERT OR IGNORE INTO maa_rogue_completion VALUES (?, ?)", (theme, goal)
+        )
+
+
+def reopen_rogue_goals(theme, goals):
+    with _conn() as connection, connection:
+        connection.executemany(
+            "DELETE FROM maa_rogue_completion WHERE theme = ? AND goal = ?",
+            ((theme, goal) for goal in goals),
+        )
 
 
 def load_maa_blackflow_progress(*, boss=False):

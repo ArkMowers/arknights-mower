@@ -165,8 +165,14 @@ from arknights_mower.utils.long_task_windows import (
 from arknights_mower.utils.maa_callback import (
     REPORT_REQUEST,
     MaaCallbackLog,
-    blackflow_boss_stop_reached,
     parse_details,
+    rogue_boss_stop_reached,
+)
+from arknights_mower.utils.maa_long_task import (
+    RogueGoalRun,
+    automatic_rogue_completed,
+    blackflow_preserved_run,
+    rogue_goals,
 )
 from arknights_mower.utils.maa_report import upload_report
 from arknights_mower.utils.manufacture_product import (
@@ -1173,6 +1179,7 @@ class BaseSchedulerSolver(
         self.maa_paradox_task = None
         self.maa_sss_task = None
         self.maa_blackflow_task = None
+        self.maa_rogue_goal_run = None
         self.maa_event_shop_task = None
         self.ideal_resting_count = 4
         self.choose_error = set()
@@ -24834,7 +24841,7 @@ class BaseSchedulerSolver(
             return
         boss = task[1].get("kind") == "boss"
         if boss:
-            completed = blackflow_boss_stop_reached(details)
+            completed = rogue_boss_stop_reached(details, "BlackFlow")
         else:
             completed = (
                 details.get("what") == "BlackFlowStartRun"
@@ -24966,10 +24973,17 @@ class BaseSchedulerSolver(
                 "保存 MAA 保全派驻进度失败", extra={"log_group": "maa-integration"}
             )
         try:
-            self._record_maa_blackflow_callback(msg, d)
+            if observation_run is getattr(self, "_maa_activity_generation", None):
+                self._record_maa_blackflow_callback(msg, d)
+                run = getattr(self, "maa_rogue_goal_run", None)
+                if run is not None and run.record(msg, d):
+                    logger.info(
+                        "集成战略已达到停止条件，后续空档将跳过这项目标。手动执行集成战略可重新检查",
+                        extra={"log_group": "maa-integration"},
+                    )
         except Exception:
             logger.exception(
-                "保存 MAA 黑流树海刷开局完成记录失败",
+                "保存 MAA 集成战略完成记录失败",
                 extra={"log_group": "maa-integration"},
             )
         if msg == 3:  # AllTasksCompleted follows the final StageDrops receipt.
@@ -25149,6 +25163,7 @@ class BaseSchedulerSolver(
         self.maa_paradox_task = None
         self.maa_sss_task = None
         self.maa_blackflow_task = None
+        self.maa_rogue_goal_run = None
         self.maa_event_shop_task = None
         battle_inventory_active.set()
 
@@ -25500,7 +25515,10 @@ class BaseSchedulerSolver(
         return (
             self.has_maa_daily_tasks()
             or getattr(conf, "maa_growth_enabled", False)
-            or kind in MAA_LONG_TASK_TYPES
+            or (
+                kind in MAA_LONG_TASK_TYPES
+                and (kind != "rogue" or not automatic_rogue_completed(conf))
+            )
         )
 
     def _maa_refresh_deadline(self):
@@ -25861,7 +25879,12 @@ class BaseSchedulerSolver(
             if selected_long and deadline() - datetime.now() < timedelta(seconds=30):
                 selected_long = None
             paradox = selected_long == "paradox"
-            from arknights_mower.utils.maa_long_task import blackflow_preserved_run
+            if (
+                selected_long == "rogue"
+                and not manual
+                and automatic_rogue_completed(conf)
+            ):
+                selected_long = None
 
             if (
                 selected_long == "rogue"
@@ -26214,6 +26237,11 @@ class BaseSchedulerSolver(
                         if not large_task_start_allowed():
                             break
                         task_id = self.MAA.append_task("Roguelike", rogue_params)
+                        goals = rogue_goals(conf)
+                        if goals and type(task_id) is int and task_id > 0:
+                            self.maa_rogue_goal_run = RogueGoalRun(
+                                task_id, conf.maa_rg_theme, goals, manual
+                            )
                         if (
                             blackflow_run is not None
                             and type(task_id) is int

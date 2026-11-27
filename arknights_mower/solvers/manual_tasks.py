@@ -9,6 +9,7 @@ from arknights_mower.utils.activity_observations import activity_observation
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.datetime import get_server_time
 from arknights_mower.utils.long_task_windows import long_task_schedule
+from arknights_mower.utils.maa_long_task import automatic_rogue_completed
 from arknights_mower.utils.scheduler_task import (
     TaskScope,
     TaskTypes,
@@ -76,7 +77,7 @@ def run_long_task_if_dorm_pending(scheduler):
     conf = config.conf
     now = datetime.now()
     kind, cutoff, opening = long_task_schedule(conf, now)
-    if kind is None:
+    if kind is None or (kind == "rogue" and automatic_rogue_completed(conf)):
         return False
     garrison = kind == "garrison"
     window = long_task_deadline(scheduler, cutoff) - now

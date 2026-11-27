@@ -54,6 +54,7 @@ def release(solver):
     solver.maa_paradox_task = None
     solver.maa_sss_task = None
     solver.maa_blackflow_task = None
+    solver.maa_rogue_goal_run = None
     solver.maa_event_shop_task = None
     return released
 
