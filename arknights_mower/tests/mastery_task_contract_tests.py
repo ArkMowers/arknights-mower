@@ -130,6 +130,27 @@ class TestTaskEndpointContract(unittest.TestCase):
         self.assertEqual(r.data.decode("utf-8"), "添加任务成功！")
         self.assertEqual(len(self.fake_scheduler.tasks), 1)
 
+    def test_placeholder_room_row_is_ignored(self):
+        for plan in ({}, {"room_1_1": ["芬"]}):
+            with self.subTest(plan=plan):
+                self.fake_scheduler.tasks.clear()
+                payload = _task_payload("空任务")
+                payload["task"]["plan"] = {"": [], **plan}
+                response = self.client.post("/task", json=payload)
+                self.assertEqual(response.get_data(as_text=True), "添加任务成功！")
+                self.assertEqual(
+                    [task.plan for task in self.fake_scheduler.tasks], [plan]
+                )
+
+    def test_operator_without_a_room_cannot_be_queued(self):
+        payload = _task_payload("空任务")
+        payload["task"]["plan"] = {"": ["芬"], "room_1_1": ["夜刀"]}
+        response = self.client.post("/task", json=payload)
+        self.assertEqual(
+            response.get_data(as_text=True), "请为已填写干员的任务选择房间"
+        )
+        self.assertEqual(self.fake_scheduler.tasks, [])
+
     def test_duplicate_time_rejected(self):
         self.fake_scheduler.find_next_task = lambda *a, **kw: object()
         r = self.client.post("/task", json=_task_payload("空任务"))
@@ -165,31 +186,23 @@ class TestTaskEndpointContract(unittest.TestCase):
         self.assertIn("请确保Mower正在运行", r.data.decode("utf-8"))
 
     def test_token_required_when_configured(self):
-        # /task 是唯一未走 _require_token 的状态变更路由——webview 配置 token 时
-        # 服务绑定 0.0.0.0，任意 LAN 对等端可 POST 注入调度任务 / GET 读任务队列。
         app = Flask(__name__)
         app.token = "secret"
         app.register_blueprint(task_bp)
         client = app.test_client()
-        # 无 token 头 → 403
-        self.assertEqual(
-            client.post("/task", json=_task_payload("空任务")).status_code, 403
-        )
-        self.assertEqual(client.get("/task").status_code, 403)
-        # 错误 token → 403
-        self.assertEqual(
-            client.post(
-                "/task", json=_task_payload("空任务"), headers={"token": "wrong"}
-            ).status_code,
-            403,
-        )
-        # 正确 token → 照常执行
-        self.assertEqual(
-            client.post(
-                "/task", json=_task_payload("空任务"), headers={"token": "secret"}
-            ).status_code,
-            200,
-        )
+        for headers in ({}, {"token": "wrong"}):
+            response = client.post(
+                "/task", data="{", content_type="application/json", headers=headers
+            )
+            self.assertEqual(response.status_code, 403)
+            self.assertEqual(client.get("/task", headers=headers).status_code, 403)
+        self.assertEqual(self.fake_scheduler.tasks, [])
+
+        payload = _task_payload("空任务")
+        payload["task"]["plan"] = {"": []}
+        response = client.post("/task", json=payload, headers={"token": "secret"})
+        self.assertEqual(response.get_data(as_text=True), "添加任务成功！")
+        self.assertEqual([task.plan for task in self.fake_scheduler.tasks], [{}])
         self.assertEqual(
             client.get("/task", headers={"token": "secret"}).status_code, 200
         )

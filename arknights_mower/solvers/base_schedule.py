@@ -2198,6 +2198,21 @@ class BaseSchedulerSolver(
                 task.__dict__.pop("startup_observation_pending", None)
             failure = getattr(task, "execution_failure", None)
             if (
+                task.type == TaskTypes.NOT_SPECIFIC
+                and isinstance(task.plan, dict)
+                and task.plan.get("") == []
+            ):
+                task.plan = {room: row for room, row in task.plan.items() if room != ""}
+                if failure and tuple(failure.get("rooms", ())) == ("",):
+                    del task.execution_failure
+                    task.execution_retained = True
+                    failure = None
+                elif failure:
+                    # 清理旧快照的占位行，避免把它当成实房间的安排变化。
+                    saved_plan = failure.get("snapshot", {}).get("plan", {})
+                    if saved_plan.get("") == []:
+                        del saved_plan[""]
+            if (
                 failure
                 and (refresh := getattr(task, "maa_refresh_until", None)) is not None
                 and datetime.now() >= refresh

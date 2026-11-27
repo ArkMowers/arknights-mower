@@ -52,6 +52,76 @@ def test_recovery_depot_completion_does_not_schedule_unchanged_stock_retry(
     scheduler.io.assert_not_called()
 
 
+@pytest.mark.parametrize("previously_failed", [False, True])
+def test_legacy_blank_room_task_allows_following_dispatch(scheduler, previously_failed):
+    solver = scheduler.solver
+    now = scheduler.clock.now()
+    due = now - (timedelta(hours=1) if previously_failed else timedelta(seconds=1))
+    solver.op_data.run_order_rooms = {}
+    task = SchedulerTask(due, {"": []})
+    if previously_failed:
+        solver._retain_failed_task(task, "''", [""])
+    task = jsonpickle.decode(jsonpickle.encode(task))
+    following = SchedulerTask(now + timedelta(hours=1), task_type=TaskTypes.DEPOT)
+    solver.tasks = [task, following]
+    solver.agent_arrange = Mock()
+    solver.仓库扫描 = Mock()
+
+    for _ in range(2):
+        solver.run()
+        assert task.plan == {}
+        assert task.time == due
+        assert len(solver.tasks) == 1 and solver.tasks[0] is following
+        assert not getattr(task, "execution_failure", None)
+        solver.agent_arrange.assert_not_called()
+        solver.仓库扫描.assert_not_called()
+
+    scheduler.clock.current = following.time
+    solver.run()
+    solver.仓库扫描.assert_called_once_with()
+    assert all(task is not following for task in solver.tasks)
+    scheduler.io.assert_not_called()
+
+
+def test_blank_room_failure_keeps_other_rooms_and_original_time(scheduler):
+    solver = scheduler.solver
+    due = scheduler.clock.now() - timedelta(hours=1)
+    plan = {"": [], ROOM: ["芬"]}
+    task = SchedulerTask(due, plan)
+    solver.tasks = [task]
+    solver._retain_failed_task(task, "''", [""], arrangement_room="")
+
+    solver._resume_failed_tasks()
+    solver._resume_failed_tasks()
+
+    assert task.plan == {ROOM: ["芬"]}
+    assert task.time == due
+    assert not getattr(task, "arrangement_failures", None)
+    assert find_next_task(solver.tasks) is task
+
+
+def test_blank_room_cleanup_does_not_reopen_unobserved_room_failure(scheduler):
+    solver = scheduler.solver
+    due = scheduler.clock.now() - timedelta(minutes=1)
+    solver.op_data.plan = {ROOM: [Room("芬", "", [])]}
+    task = SchedulerTask(due, {"": [], ROOM: ["芬"]})
+    following = SchedulerTask(due, task_type=TaskTypes.DEPOT)
+    solver.tasks = [task, following]
+    solver._retain_failed_task(task, "驻员名单未核实", [ROOM])
+
+    for _ in range(2):
+        solver._resume_failed_tasks()
+        assert find_next_task(solver.tasks) is following
+        assert task.execution_failure["rooms"] == (ROOM,)
+        assert task.plan == {ROOM: ["芬"]}
+
+    solver.op_data.plan[ROOM] = [Room("夜刀", "", [])]
+    solver._resume_failed_tasks()
+    assert find_next_task(solver.tasks) is task
+    assert task.time == due
+    assert not getattr(task, "execution_failure", None)
+
+
 @pytest.fixture
 def failed_arrangement(scheduler, monkeypatch):
     solver = scheduler.solver
