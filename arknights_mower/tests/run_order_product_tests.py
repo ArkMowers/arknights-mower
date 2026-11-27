@@ -1145,8 +1145,11 @@ def test_confirmed_pause_skips_digit_retries_and_reuses_order_observation(
     assert solver.scene() == Scene.INFRA_MAIN
 
 
-@pytest.mark.parametrize("occupancy", [(0, 2), None])
-def test_confirmed_pause_recovers_unreadable_order_type(solver, monkeypatch, occupancy):
+@pytest.mark.parametrize("capacity", [2, None])
+@pytest.mark.parametrize("staffed", [False, True])
+def test_confirmed_pause_checks_staff_before_retrying_order_type(
+    solver, monkeypatch, capacity, staffed
+):
     from arknights_mower.utils import product_recognition
 
     room = "room_1_1"
@@ -1155,12 +1158,16 @@ def test_confirmed_pause_recovers_unreadable_order_type(solver, monkeypatch, occ
     del solver._cache_facility_state_from_current_page
     solver.op_data.update_facility_state(room, "trade", "orundum")
     monkeypatch.setattr(product_recognition, "trade_order_is_paused", lambda _: True)
+    occupancy = None if capacity is None else (int(staffed), capacity)
     monkeypatch.setattr(base_schedule, "read_room_occupancy", lambda _: occupancy)
     solver._work_room_panel = MagicMock(return_value="open")
     solver.detect_room_type = MagicMock(return_value="贸易站")
     solver._can_refresh_idle_dorm_search = MagicMock(return_value=False)
     solver.turn_on_room_detail = MagicMock()
     solver.wait_product_complete = MagicMock()
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.read_screen = MagicMock(return_value="鸿雪")
+    solver.read_accurate_mood = MagicMock(return_value=18)
     find_order_marker = solver.find
     roster_read = False
 
@@ -1168,8 +1175,9 @@ def test_confirmed_pause_recovers_unreadable_order_type(solver, monkeypatch, occ
         nonlocal roster_read
         if resource == "infra_no_operator":
             assert solver.scene() == Scene.INFRA_DETAILS
+            vacant = roster_read or not staffed
             roster_read = True
-            return True
+            return vacant
         return find_order_marker(resource)
 
     def read_card():
@@ -1184,10 +1192,11 @@ def test_confirmed_pause_recovers_unreadable_order_type(solver, monkeypatch, occ
     assert solver.get_run_order_time(room) is None
 
     assert roster_read
-    assert solver.op_data.operators["鸿雪"].current_room == ""
-    assert solver.op_data.facility_product(room) == "lmd"
-    assert solver._read_trade_product_card.call_count == (2 if occupancy is None else 1)
-    assert solver.tap.call_count == (2 if occupancy is None else 1)
+    assert solver.op_data.operators["鸿雪"].current_room == (room if staffed else "")
+    assert solver.op_data.facility_product(room) == ("lmd" if staffed else "orundum")
+    order_page_visits = 2 if staffed and capacity is None else 1
+    assert solver._read_trade_product_card.call_count == order_page_visits
+    assert solver.tap.call_count == order_page_visits
     solver.read_time.assert_not_called()
     solver._product_ocr_text.assert_not_called()
     assert solver.scene() == Scene.INFRA_MAIN
