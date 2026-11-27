@@ -27,11 +27,12 @@ describe('一图流同步设置', () => {
   })
   it('保存只发本次token编辑，成功清空输入，不上传缓存', async () => {
     const page = setup()
-    page.token.value = 'write-token-for-test'
+    const pat = 'tlc_pat_' + 'a1'.repeat(32)
+    page.token.value = pat
     api.put.mockResolvedValue({ data: { configured: true } })
     await page.act('save')
     expect(api.put).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/growth-sync-token'), {
-      token: 'write-token-for-test'
+      token: pat
     })
     expect(page.token.value).toBe('')
     expect(page.feedback.value).toContain('下次森空岛刷新')

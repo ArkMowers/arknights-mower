@@ -11,7 +11,10 @@ import requests
 from arknights_mower.utils.config import atomic_write
 from arknights_mower.utils.path import get_path
 
-UPLOAD_URL = "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
+PAT_UPLOAD_URL = "https://auth.yituliu.cn/pat/ak-accounts/operators/save"
+OAUTH_UPLOAD_URL = "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
+LEGACY_HEX_TOKEN = re.compile(r"[0-9a-f]{64}")
+PAT_REQUIRED = "请先保存一图流的干员只写 PAT（arknights-data.write）"
 _lock = RLock()
 
 
@@ -25,7 +28,7 @@ def _settings():
             raise ValueError()
         return saved
     except (ValueError, OSError):
-        raise ValueError("一图流本地设置无法读取，请重新保存 Token") from None
+        raise ValueError("一图流本地设置无法读取，请重新保存 PAT") from None
 
 
 def _snapshot():
@@ -48,19 +51,22 @@ def token_status():
 
 
 def save_token(token):
-    if not isinstance(token, str) or not re.fullmatch(
-        r"[A-Za-z0-9._~-]{16,512}", token.strip()
-    ):
-        raise ValueError("请输入有效的一图流 OAuth access_token，不要填写森空岛凭据")
+    token = token.strip() if isinstance(token, str) else ""
+    if token.startswith("tlc_pat_"):
+        valid = LEGACY_HEX_TOKEN.fullmatch(token.removeprefix("tlc_pat_"))
+    else:
+        valid = re.fullmatch(r"[A-Za-z0-9._~-]{16,512}", token)
+    if not valid:
+        raise ValueError("请粘贴一图流生成的干员只写 PAT")
     with _lock:
         try:
             saved = _settings()
         except ValueError:
             saved = {}
-        if saved.get("token") == token.strip():
+        if saved.get("token") == token:
             return token_status()
         path = get_path("@app/config/yituliu_sync.json")
-        atomic_write(path, lambda stream: json.dump({"token": token.strip()}, stream))
+        atomic_write(path, lambda stream: json.dump({"token": token}, stream))
         path.chmod(0o600)
         return token_status()
 
@@ -78,7 +84,7 @@ def _integer(value, lower, upper, label):
 
 
 def build_upload_payload(snapshot, definitions):
-    """Map the bound UID and progression to the OAuth save request."""
+    """Map the bound UID and progression to the operator save request."""
     player = snapshot.get("_mower_player") if isinstance(snapshot, dict) else None
     if not isinstance(player, dict) or "uid" not in player:
         raise ValueError(
@@ -143,33 +149,51 @@ def build_upload_payload(snapshot, definitions):
     }
 
 
-def _upload(payload, token):
+def _post_operators(url, payload, token):
     try:
         with requests.Session() as session:
             session.trust_env = False
             with session.post(
-                UPLOAD_URL,
+                url,
                 headers={"Authorization": f"Bearer {token}"},
                 json=payload,
                 timeout=(3, 15),
                 allow_redirects=False,
             ) as response:
-                response.raise_for_status()
-                if response.status_code != 200:
+                if response.status_code not in (200, 400):
+                    response.raise_for_status()
                     raise ValueError()
                 result = response.json()
+                if response.status_code == 400 and (
+                    not isinstance(result, dict) or result.get("code") != 10002
+                ):
+                    raise ValueError()
     except requests.RequestException:
         raise ValueError(
-            "同步请求未得到确认，请核对一图流数据和 Token 权限后重试；未自动重试"
+            "同步请求未得到确认，请核对一图流数据和令牌写入权限后重试；未自动重试"
         ) from None
     except (TypeError, ValueError):
         raise ValueError("一图流返回无效响应，同步结果尚未确认") from None
     if not isinstance(result, dict) or type(result.get("code")) is not int:
         raise ValueError("一图流返回无效响应，同步结果尚未确认")
+    return result
+
+
+def _upload(payload, token):
+    legacy_hex = LEGACY_HEX_TOKEN.fullmatch(token)
+    url = (
+        PAT_UPLOAD_URL
+        if token.startswith("tlc_pat_") or legacy_hex
+        else OAUTH_UPLOAD_URL
+    )
+    result = _post_operators(url, payload, token)
+    # Migrated PATs and OAuth access tokens can have the same 64-hex format.
+    if legacy_hex and result["code"] == 80001:
+        result = _post_operators(OAUTH_UPLOAD_URL, payload, token)
     if result["code"] != 200:
         messages = {
-            80001: "一图流 OAuth 令牌已失效，请重新获取并保存 access_token",
-            80008: "一图流令牌缺少 gama-data.write 权限，请重新授权后保存 access_token",
+            80001: "一图流令牌无效或已失效，请重新生成并保存干员只写 PAT",
+            80008: "一图流令牌缺少 arknights-data.write 权限，请生成并保存干员只写 PAT",
             10002: "一图流拒绝上传字段，请更新资源并重新同步森空岛",
             30006: "一图流上传过于频繁，请稍后手动重试",
             40003: "一图流限流服务暂不可用，请稍后手动重试",
@@ -211,9 +235,7 @@ def sync_cached_operators(snapshot=None):
     with _lock:
         saved = _settings()
         if not saved.get("token"):
-            raise ValueError(
-                "请先保存具有 gama-data.write 权限的一图流 OAuth access_token"
-            )
+            raise ValueError(PAT_REQUIRED)
         try:
             from arknights_mower.utils.growth import growth_data
             from arknights_mower.utils.mastery_recommendation import get_skill_data
@@ -272,7 +294,7 @@ def sync_cached_operators(snapshot=None):
 def refresh_and_sync_operators():
     """Refresh Skland now and return that refresh's single upload result."""
     if not token_status()["configured"]:
-        raise ValueError("请先保存具有 gama-data.write 权限的一图流 OAuth access_token")
+        raise ValueError(PAT_REQUIRED)
     try:
         from arknights_mower.solvers.cultivate_depot import cultivate
 
@@ -288,9 +310,7 @@ def refresh_and_sync_operators():
         )
     result = syncer.yituliu_sync_result
     if not result:
-        raise ValueError(
-            "森空岛已同步，一图流 Token 未配置或已被清除，请重新保存后重试"
-        )
+        raise ValueError("森空岛已同步，一图流 PAT 未配置或已被清除，请重新保存后重试")
     if not result["success"]:
         raise ValueError(result["message"])
     return result
