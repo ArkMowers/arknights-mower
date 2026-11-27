@@ -12,7 +12,7 @@ import requests
 
 from arknights_mower.utils import yituliu_sync as sync
 
-TOKEN = "0123456789abcdef0123456789abcdef"
+TOKEN = "tlc_pat_" + "a1" * 32
 
 
 @pytest.fixture
@@ -88,7 +88,14 @@ def test_save_status_and_clear_are_local_and_never_echo_token(sync_case):
 
 
 @pytest.mark.parametrize(
-    "token", [None, {}, "short", "valid-looking-token\nAuthorization: bad"]
+    "token",
+    [
+        None,
+        {},
+        "short",
+        "tlc_pat_" + "G" * 64,
+        "valid-looking-token\nAuthorization: bad",
+    ],
 )
 def test_invalid_tokens_cannot_be_stored_or_sent(sync_case, token):
     paths, session, _, _, _ = sync_case
@@ -144,7 +151,7 @@ def test_explicit_sync_sends_only_fixed_target_header_and_whitelisted_snapshot(
     result = sync.sync_cached_operators()
     assert result["success"] and result["count"] == 1
     session.post.assert_called_once_with(
-        sync.UPLOAD_URL,
+        sync.PAT_UPLOAD_URL,
         headers={"Authorization": f"Bearer {TOKEN}"},
         json=sync.build_upload_payload(snapshot, definitions),
         timeout=(3, 15),
@@ -233,7 +240,22 @@ def test_token_and_sync_routes_require_local_auth_and_explicit_manual_action(
         SimpleNamespace(cultivate=lambda: syncer),
     )
     headers = {"token": "local-token"}
-    assert client.put("/growth-sync-token", json={"token": TOKEN}).status_code == 403
+    for denied in ({}, {"token": "wrong-local-token"}):
+        for method in ("get", "put", "delete"):
+            assert (
+                getattr(client, method)(
+                    "/growth-sync-token", headers=denied, json={"token": TOKEN}
+                ).status_code
+                == 403
+            )
+        assert (
+            client.post(
+                "/growth-sync", headers=denied, json={"confirmed": True}
+            ).status_code
+            == 403
+        )
+    assert not sync.token_status()["configured"]
+    syncer.start.assert_not_called()
     response = client.put("/growth-sync-token", json={"token": TOKEN}, headers=headers)
     assert response.status_code == 200 and TOKEN not in response.text
     assert TOKEN not in client.get("/growth-sync-token", headers=headers).text
@@ -361,7 +383,7 @@ def test_same_token_preserves_baseline_and_replacement_or_clear_resets_it(sync_c
     sync.save_token("  " + TOKEN + "  ")
     assert sync.sync_cached_operators(snapshot)["skipped"]
     session.post.assert_called_once()
-    replacement = "abcdef0123456789abcdef0123456789"
+    replacement = "tlc_pat_" + "b2" * 32
     sync.save_token(replacement)
     assert not sync.sync_cached_operators(snapshot).get("skipped")
     assert session.post.call_args.kwargs["headers"] == {
@@ -455,7 +477,7 @@ def test_invalid_confirmation_never_advances_success_baseline(sync_case, confirm
     "code, expected",
     [
         (80001, "失效"),
-        (80008, "gama-data.write"),
+        (80008, "arknights-data.write"),
         (10002, "字段"),
         (30006, "2 秒"),
         (40003, "限流服务"),
@@ -463,7 +485,7 @@ def test_invalid_confirmation_never_advances_success_baseline(sync_case, confirm
         (40001, "繁忙"),
     ],
 )
-def test_oauth_business_errors_are_actionable_without_retry_or_remote_echo(
+def test_pat_business_errors_are_actionable_without_retry_or_remote_echo(
     sync_case, code, expected, caplog
 ):
     paths, session, response, snapshot, _ = sync_case
@@ -482,23 +504,76 @@ def test_oauth_business_errors_are_actionable_without_retry_or_remote_echo(
     session.post.assert_called_once()
 
 
-def test_oauth_target_and_legacy_baseline_migration(sync_case):
+@pytest.mark.parametrize("previous", ["old-oauth-access-token", "ab" * 32])
+def test_existing_oauth_credential_survives_upgrade(sync_case, previous):
+    paths, session, response, snapshot, _ = sync_case
+    paths["@app/config/yituliu_sync.json"].write_text(json.dumps({"token": previous}))
+    expected_urls = []
+    success = response.json.return_value
+    if previous == "ab" * 32:
+        response.json.side_effect = [{"code": 80001}, success]
+        expected_urls.append(sync.PAT_UPLOAD_URL)
+    expected_urls.append("https://auth.yituliu.cn/oauth2/ak-accounts/operators/save")
+    assert sync.token_status()["configured"]
+    assert sync.sync_after_cultivate(snapshot)["success"]
+    assert [c.args[0] for c in session.post.call_args_list] == expected_urls
+    for call in session.post.call_args_list:
+        assert call.kwargs["headers"] == {"Authorization": f"Bearer {previous}"}
+    sync.save_token(previous)
+    assert sync.sync_cached_operators(snapshot)["skipped"]
+    assert session.post.call_count == len(expected_urls)
+
+
+@pytest.mark.parametrize(
+    "outcome", [80008, 30006, 40004, 10002, 80001.0, "timeout", "bad-json"]
+)
+def test_ambiguous_credential_does_not_resend_after_other_failures(sync_case, outcome):
+    _, session, response, snapshot, _ = sync_case
+    sync.save_token("ab" * 32)
+    if outcome == "timeout":
+        session.post.side_effect = requests.Timeout()
+    elif outcome == "bad-json":
+        response.json.side_effect = ValueError()
+    else:
+        response.json.return_value = {"code": outcome}
+    assert not sync.sync_after_cultivate(snapshot)["success"]
+    session.post.assert_called_once()
+    assert session.post.call_args.args == (sync.PAT_UPLOAD_URL,)
+
+
+def test_pat_http_400_field_error_preserves_local_diagnostic(sync_case):
+    _, session, response, snapshot, _ = sync_case
+    sync.save_token(TOKEN)
+    response.status_code = 400
+    response.raise_for_status.side_effect = requests.HTTPError()
+    response.json.return_value = {"code": 10002, "msg": TOKEN}
+    result = sync.sync_after_cultivate(snapshot)
+    assert not result["success"] and "字段" in result["message"]
+    assert TOKEN not in result["message"]
+    session.post.assert_called_once()
+
+
+def test_pat_target_and_legacy_baseline_migration(sync_case):
     paths, session, _, snapshot, _ = sync_case
     assert (
-        sync.UPLOAD_URL == "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
+        sync.PAT_UPLOAD_URL == "https://auth.yituliu.cn/pat/ak-accounts/operators/save"
     )
     paths["@app/config/yituliu_sync.json"].write_text(
         json.dumps(
             {
-                "token": TOKEN,
+                "token": "ab" * 32,
                 "last_synced_fingerprint": "legacy-payload-digest",
                 "last_synced_at": 1,
             }
         )
     )
+    assert sync.token_status()["configured"]
     assert not sync.sync_cached_operators(snapshot).get("skipped")
     assert sync.sync_cached_operators(snapshot)["skipped"]
     session.post.assert_called_once()
+    assert session.post.call_args.kwargs["headers"] == {
+        "Authorization": "Bearer " + "ab" * 32
+    }
 
 
 def test_only_bound_uid_is_required_and_untransmitted_identity_does_not_upload(
@@ -518,7 +593,7 @@ def test_only_bound_uid_is_required_and_untransmitted_identity_does_not_upload(
     "basic, mastery, expected",
     [(1, 0, 0), (3, 0, 0), (6, 0, 0), (7, 0, 0), (7, 1, 1), (7, 2, 2), (7, 3, 3)],
 )
-def test_oauth_mastery_stages_and_one_based_potential(
+def test_pat_mastery_stages_and_one_based_potential(
     sync_case, basic, mastery, expected
 ):
     _, _, _, snapshot, definitions = sync_case
@@ -595,7 +670,7 @@ def test_manual_refresh_failure_never_uploads_old_cache(
     assert sync.token_status() == before
 
 
-def test_manual_sync_without_oauth_token_does_not_start_refresh(sync_case, monkeypatch):
+def test_manual_sync_without_pat_does_not_start_refresh(sync_case, monkeypatch):
     factory = MagicMock()
     monkeypatch.setitem(
         sys.modules,

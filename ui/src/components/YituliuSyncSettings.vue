@@ -29,11 +29,11 @@ async function act(action) {
         await axios.put(`${base}/growth-sync-token`, { token: token.value.trim() })
       ).data
       token.value = ''
-      feedback.value = 'OAuth access_token 已保存，下次森空岛刷新成功后自动同步'
+      feedback.value = '一图流令牌已保存，下次森空岛刷新成功后自动同步'
     } else if (action === 'clear') {
       status.value = (await axios.delete(`${base}/growth-sync-token`)).data
       token.value = ''
-      feedback.value = '已清除本地 Token，自动同步已停止'
+      feedback.value = '已清除本地令牌，自动同步已停止'
     } else if (action === 'sync') {
       feedback.value = '正在同步森空岛并更新一图流…'
       const { data } = await axios.post(`${base}/growth-sync`, { confirmed: true })
@@ -49,7 +49,7 @@ async function act(action) {
     }
   } catch (error) {
     failed.value = true
-    feedback.value = error.response?.data?.message || '操作未成功，请检查本地连接或 OAuth 令牌'
+    feedback.value = error.response?.data?.message || '操作未成功，请检查本地连接或一图流令牌'
   } finally {
     busy.value = false
   }
@@ -62,10 +62,10 @@ onMounted(loadStatus)
   <n-card title="一图流干员同步">
     <n-space vertical :size="14">
       <n-text depth="3">
-        填入已授权 gama-data.write（干员数据写入）的一图流 OAuth
-        access_token。保存后，森空岛刷新成功时自动同步；清除 Token 即可停止。
-        <n-a href="https://auth.yituliu.cn" target="_blank" rel="noopener noreferrer"
-          >打开一图流用户中心</n-a
+        在一图流个人中心的“第三方 API PAT”中选择“生成干员只写
+        PAT”，将令牌粘贴到下方。保存后，每次森空岛刷新成功时自动同步。已有的有效令牌可继续使用。
+        <n-a href="https://ark.yituliu.cn/account/home" target="_blank" rel="noopener noreferrer"
+          >打开一图流个人中心</n-a
         >
       </n-text>
       <n-input
@@ -75,16 +75,14 @@ onMounted(loadStatus)
         autocomplete="new-password"
         :disabled="busy"
         :placeholder="
-          status.configured
-            ? '••••••••（已保存，输入新 Token 可替换）'
-            : '粘贴一图流 OAuth access_token'
+          status.configured ? '••••••••（已保存，输入新 PAT 可替换）' : '粘贴一图流干员只写 PAT'
         "
-        aria-label="一图流 OAuth access_token"
+        aria-label="一图流干员只写 PAT"
       />
       <n-space align="center" :size="8">
-        <n-button :disabled="busy || !token.trim()" @click="act('save')">保存 Token</n-button>
+        <n-button :disabled="busy || !token.trim()" @click="act('save')">保存令牌</n-button>
         <n-button :disabled="busy || !status.configured" @click="act('clear')"
-          >清除本地 Token</n-button
+          >清除本地令牌</n-button
         >
         <n-button
           type="primary"
