@@ -65,8 +65,8 @@ const failureSelection = ref(null)
 const retry = ref({ busy: false, message: '', error: false })
 const data = shallowRef(null)
 const loading = ref(!relayPage)
-// 最近一次读完月度奖励的月份（YYYY-MM），包括读取失败；还没读完过任何月份时为 null。
-const rewardsMonth = ref(null)
+// 记下已结束读取的月度奖励对应的月份，包括读取失败。首次读取结束前为 undefined，翻月时用 null 清除旧月份。
+const rewardsMonth = ref(undefined)
 const error = ref('')
 const account = computed({
   get: () => preferences.value.account,
@@ -222,6 +222,7 @@ function selectMonth(target, date = null) {
   failureSelection.value = null
   slotSelection.value = date ? { date } : null
   if (target === month.value) return
+  if (rewardsMonth.value !== undefined) rewardsMonth.value = null
   month.value = target
   return load()
 }
@@ -682,7 +683,7 @@ const summary = computed(
 )
 // 第一次读取时整页按上次的版面显示骨架屏，直到这个月的本机记录和月度奖励都读完，读完后内容
 // 在原处一次替换骨架。之后翻月只把日历换成占位格。
-const sklandSkeleton = computed(() => loading.value && rewardsMonth.value === null)
+const sklandSkeleton = computed(() => loading.value && rewardsMonth.value === undefined)
 // 记下上次读完后的版面，读取中按此占位：有没有签到日历（没有任何渠道时只显示提示）、账号
 // 选择框和渠道数、森空岛进度和本机记录两项读数、本机连续签到一行、奖励统计面板，以及各区服的
 // 奖励数。没有用 Mower 签到时本机记录、连续签到和统计面板都不出现，骨架也不画。

@@ -562,7 +562,21 @@ describe('森空岛签到统计页面', () => {
       rewards,
       async interact(page, axios) {
         expect(axios.post).not.toHaveBeenCalled()
-        await page.refreshPage()
+        const started = Promise.withResolvers()
+        const reply = Promise.withResolvers()
+        const post = axios.post.getMockImplementation()
+        axios.post.mockImplementationOnce(async (...args) => {
+          started.resolve()
+          await reply.promise
+          return post(...args)
+        })
+        const refreshing = page.refreshPage()
+        await started.promise
+        const signInWhileRefreshing = page.signIn.value
+        reply.resolve()
+        await refreshing
+        expect(signInWhileRefreshing.source).toBe('cache')
+        expect(signInWhileRefreshing.snapshotDate).toBe('2026-11-02')
       }
     })
     expect(axios.post).toHaveBeenCalledWith(
@@ -1472,6 +1486,54 @@ describe('森空岛签到统计页面', () => {
     expect(page.month.value).toBe('2026-11-01')
     expect(dayDetail).toContain('11月3日')
     expect(page.records.value).toHaveLength(5)
+  })
+
+  it('快速翻回原月时等这一次的月度奖励，晚到的上月响应不撤下占位', async () => {
+    const octoberStarted = Promise.withResolvers()
+    const novemberStarted = Promise.withResolvers()
+    const octoberReply = Promise.withResolvers()
+    const novemberReply = Promise.withResolvers()
+    const { html } = await render({
+      cachedRewards: { month: '2026-11', cached: true, pairs: [], warnings: [] },
+      interact: async (page, axios) => {
+        expect(page.signIn.value.source).toBe('local')
+        const get = axios.get.getMockImplementation()
+        axios.get.mockImplementation((url, options) => {
+          if (!url.endsWith('/skland/rewards')) return get(url, options)
+          if (options.params.month === '2026-10') {
+            octoberStarted.resolve()
+            return octoberReply.promise
+          }
+          novemberStarted.resolve()
+          return novemberReply.promise
+        })
+        const october = page.selectMonth('2026-10-01')
+        await octoberStarted.promise
+        const november = page.selectMonth('2026-11-01')
+        await novemberStarted.promise
+        const waitingForNovember = {
+          month: page.data.value.range.start,
+          pending: page.monthPending.value,
+          signIn: page.signIn.value,
+          fullPageSkeleton: page.sklandSkeleton.value
+        }
+        octoberReply.resolve({ data: { month: '2026-10', cached: true, pairs: [], warnings: [] } })
+        await october
+        const pendingAfterOctober = page.monthPending.value
+        novemberReply.resolve({ data: thirtySlots() })
+        await november
+
+        expect(waitingForNovember).toEqual({
+          month: '2026-11-01',
+          pending: true,
+          signIn: null,
+          fullPageSkeleton: false
+        })
+        expect(pendingAfterOctober).toBe(true)
+        expect(page.signIn.value.source).toBe('cache')
+      }
+    })
+    expect(html.match(/data-slot="/g)).toHaveLength(30)
   })
 
   it('当前月没有记录时可以跳到最近有记录的日期', async () => {
