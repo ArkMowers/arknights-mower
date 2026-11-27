@@ -63,7 +63,8 @@ onMounted(loadStatus)
     <n-space vertical :size="14">
       <n-text depth="3">
         在一图流个人中心的“第三方 API PAT”中选择“生成干员只写
-        PAT”，将令牌粘贴到下方。保存后，每次森空岛刷新成功时自动同步。已有的有效令牌可继续使用。
+        PAT”，将令牌粘贴到下方。保存后，每次森空岛刷新成功时自动同步。无前缀的旧令牌使用 OAuth
+        接口。
         <n-a href="https://ark.yituliu.cn/account/home" target="_blank" rel="noopener noreferrer"
           >打开一图流个人中心</n-a
         >
