@@ -95,6 +95,79 @@ def test_stopped_task_list_remains_empty(task_route):
     assert response.json == []
 
 
+@pytest.mark.parametrize(
+    "room, target, observed, label, previous",
+    [
+        (
+            "room_3_2",
+            "exp3",
+            {"facility": "manufacture", "product": "gold"},
+            "制造站 B302",
+            "gold",
+        ),
+        (
+            "room_2_1",
+            "orundum",
+            {"facility": "trade", "product": "lmd"},
+            "贸易站 B201",
+            "lmd",
+        ),
+        ("room_3_3", "exp3", {"facility": "manufacture"}, "制造站 B303", None),
+        (
+            "room_3_2",
+            "exp3",
+            {"facility": "trade", "product": "lmd"},
+            "贸易站 B302",
+            None,
+        ),
+    ],
+)
+def test_product_switch_reports_the_last_observed_source(
+    task_route, room, target, observed, label, previous
+):
+    task = SchedulerTask(
+        time=datetime(2026, 11, 4, 16, 5, 19),
+        task_type=TaskTypes.SWITCH_PRODUCT,
+        meta_data=f"{room},{target}",
+    )
+    data = SimpleNamespace(
+        facility_states={room: observed}, products={room: "gold"}, plan={}
+    )
+    scheduler = SimpleNamespace(tasks=[task], op_data=data)
+    task_route.main.base_scheduler = scheduler
+    before = copy.deepcopy(vars(scheduler))
+
+    response = task_route.client.get(
+        "/task", headers={"token": "task-presentation-token"}
+    )
+
+    assert response.status_code == 200
+    [item] = response.json
+    assert item["presentation"]["product_switch"] == {
+        "room": room,
+        "label": label,
+        "previous": previous,
+        "target": target,
+    }
+    assert item["meta_data"] == f"{room},{target}"
+    assert item["time"] == "2026-11-04T16:05:19"
+    assert vars(task) == vars(before["tasks"][0])
+    assert vars(data) == vars(before["op_data"])
+
+
+def test_unreadable_product_switch_metadata_keeps_task_readable(task_route):
+    task = SchedulerTask(task_type=TaskTypes.SWITCH_PRODUCT, meta_data="room_3_2")
+    task_route.main.base_scheduler = SimpleNamespace(tasks=[task], op_data=None)
+
+    response = task_route.client.get(
+        "/task", headers={"token": "task-presentation-token"}
+    )
+
+    assert response.status_code == 200
+    assert response.json[0]["meta_data"] == "room_3_2"
+    assert "product_switch" not in response.json[0]["presentation"]
+
+
 def test_restoration_list_displays_remaining_roster_without_changing_task(task_route):
     task = SchedulerTask(
         time=datetime(2026, 11, 6, 21, 10, 8),

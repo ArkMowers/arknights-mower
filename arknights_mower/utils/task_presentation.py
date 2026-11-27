@@ -2,6 +2,11 @@
 
 import re
 
+from arknights_mower.utils.manufacture_product import (
+    MANUFACTURE_PRODUCTS,
+    TRADE_PRODUCTS,
+    parse_product_task_meta,
+)
 from arknights_mower.utils.scheduler_task import TaskTypes
 
 _FACILITIES = {"trade": "贸易站", "manufacture": "制造站", "power": "发电站"}
@@ -32,7 +37,7 @@ _DIRECTION_TYPES = {
 _PLACEHOLDERS = {"", "Current", "Free", "_"}
 
 
-def facility_label(room, op_data=None):
+def facility_label(room, op_data=None, *, fallback_type=None):
     """优先采用实际设施类型，其次采用生效排班中的类型。"""
     if match := re.fullmatch(r"room_([1-3])_([1-3])", room):
         code = f"B{match[1]}0{match[2]}"
@@ -48,6 +53,7 @@ def facility_label(room, op_data=None):
                 if value in _FACILITIES.values():
                     name = value
                     break
+        name = name or _FACILITIES.get(fallback_type)
         return f"{name} {code}" if name else code
     if room in _FIXED_ROOMS:
         return _FIXED_ROOMS[room]
@@ -430,6 +436,34 @@ def build_task_presentation(task, op_data, *, predecessors=()):
         "targets": targets,
         "actions": actions,
     }
+
+
+def build_queue_task_presentation(task, op_data):
+    presentation = build_task_presentation(task, op_data)
+    if task.type != TaskTypes.SWITCH_PRODUCT or not isinstance(task.meta_data, str):
+        return presentation
+    try:
+        room, target = parse_product_task_meta(task.meta_data)
+    except ValueError:
+        return presentation
+    if not re.fullmatch(r"room_[1-3]_[1-3]", room):
+        return presentation
+
+    if target in MANUFACTURE_PRODUCTS:
+        facility, products = "manufacture", MANUFACTURE_PRODUCTS
+    else:
+        facility, products = "trade", TRADE_PRODUCTS
+    state = getattr(op_data, "facility_states", {}).get(room, {})
+    previous = state.get("product") if state.get("facility") == facility else None
+    presentation["product_switch"] = {
+        "room": room,
+        "label": facility_label(room, op_data, fallback_type=facility),
+        "previous": previous
+        if isinstance(previous, str) and previous in products
+        else None,
+        "target": target,
+    }
+    return presentation
 
 
 def format_wait_duration(seconds):

@@ -1,4 +1,5 @@
 import { formatFacilityLabel } from './base_facilities.js'
+import { factory_product_options, trade_product_options } from './base_products.js'
 
 const ROOM_ID =
   /^(?:room_[1-3]_[1-3]|dormitory_[1-4](?:_low)?|gaming_[1-3]|central|meeting|factory|contact|train|recycle)$/u
@@ -212,6 +213,34 @@ function refreshTaskTarget(task, plan) {
   }
 }
 
+function queueProductSwitch(task, plan) {
+  const type =
+    typeof task.type === 'string'
+      ? task.type
+      : (task.type?._value_ ?? task.type?.value ?? task.type?.display_value ?? task.display_name)
+  if (!['switch_product', '切换产物/订单'].includes(type) || typeof task.meta_data !== 'string')
+    return null
+  const match = /^(room_[1-3]_[1-3]),([^,]+)$/u.exec(task.meta_data)
+  if (!match) return null
+  const [, room, targetId] = match
+  const manufactured = factory_product_options.find(({ value }) => value === targetId)
+  const target = manufactured ?? trade_product_options.find(({ value }) => value === targetId)
+  if (!target) return null
+
+  const snapshot = task.presentation?.product_switch
+  const observed = snapshot?.room === room && snapshot.target === targetId ? snapshot : null
+  const options = manufactured ? factory_product_options : trade_product_options
+  return {
+    title: manufactured ? '切换产物' : '切换订单',
+    label:
+      typeof observed?.label === 'string' && observed.label.trim()
+        ? observed.label
+        : formatFacilityLabel(room, plan, manufactured ? '制造站' : '贸易站'),
+    previous: options.find(({ value }) => value === observed?.previous) ?? null,
+    target
+  }
+}
+
 function orderedQueueValue(value) {
   if (Array.isArray(value)) return value.map(orderedQueueValue)
   if (value && typeof value === 'object')
@@ -260,8 +289,11 @@ export function queueTaskRows(tasks, operatorNames = [], plan = {}, showNames = 
   const rows = []
   let lastRefreshKey = null
   for (const task of tasks) {
-    if (showNames) {
-      rows.push({ task, tasks: [task], roomEntries: Object.entries(task.plan ?? {}) })
+    const roomEntries = Object.entries(task.plan ?? {})
+    const productSwitch = roomEntries.length ? null : queueProductSwitch(task, plan)
+    if (showNames || productSwitch) {
+      rows.push({ task, tasks: [task], roomEntries, productSwitch })
+      lastRefreshKey = null
       continue
     }
     const target = refreshTaskTarget(task, plan)
@@ -277,9 +309,7 @@ export function queueTaskRows(tasks, operatorNames = [], plan = {}, showNames = 
     const row = {
       task,
       tasks: [task],
-      roomEntries: Object.entries(task.plan ?? {}).sort(([left], [right]) =>
-        compareFacilityIds(left, right)
-      ),
+      roomEntries: roomEntries.sort(([left], [right]) => compareFacilityIds(left, right)),
       actions: presentation?.actions ?? [],
       heading: target
         ? [{ type: 'text', text: '刷新跑单时间' }]

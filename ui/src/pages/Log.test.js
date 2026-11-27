@@ -1136,6 +1136,82 @@ describe('log page', () => {
     ).toEqual(['宿舍2', '发电站 B303'])
   })
 
+  it.each(['portraits', 'names'])(
+    'shows product and order switches on their own detail lines in %s mode',
+    (mode) => {
+      useGuiStore().taskQueueDisplay = mode
+      const time = '2026-11-07T13:26:26'
+      const type = { _value_: 'switch_product', display_value: '切换产物/订单' }
+      state.plan.refs.plan.value.room_3_3 = { name: '制造站', product: 'gold' }
+      state.mower.refs.task_list.value = [
+        {
+          time,
+          type,
+          plan: {},
+          meta_data: 'room_3_2,exp3',
+          presentation: {
+            title: '切换产物/订单',
+            product_switch: {
+              room: 'room_3_2',
+              label: '制造站 B302',
+              previous: 'gold',
+              target: 'exp3'
+            }
+          }
+        },
+        { time, type, plan: {}, meta_data: 'room_3_3,exp3' },
+        {
+          time,
+          type,
+          plan: {},
+          meta_data: 'room_2_1,orundum',
+          presentation: {
+            title: '切换产物/订单',
+            product_switch: {
+              room: 'room_2_1',
+              label: '贸易站 B201',
+              previous: 'lmd',
+              target: 'orundum'
+            }
+          }
+        }
+      ]
+      const { all, find } = mountWorkspace()
+      const queue = find((entry) => entry.props.class === 'task-table-scroll')
+      const rows = all(queue)
+        .filter((entry) => entry.tag === 'tr')
+        .slice(1)
+      const text = (entry) =>
+        all(entry)
+          .filter((node) => node.tag !== '#comment')
+          .map((node) => node.text)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      expect(rows.map(text)).toEqual([
+        '13:26:26 切换产物 制造站 B302 赤金 → 中级作战记录',
+        '13:26:26 切换产物 制造站 B303 当前未知 → 中级作战记录',
+        '13:26:26 切换订单 贸易站 B201 龙门商法 → 开采协力'
+      ])
+      expect(
+        all(queue)
+          .filter((entry) => entry.props.class === 'task-heading')
+          .map(text)
+      ).toEqual(['切换产物', '切换产物', '切换订单'])
+      expect(
+        all(queue)
+          .filter((entry) => entry.tag === 'img')
+          .map((entry) => entry.props.src)
+      ).toEqual([
+        '/product/gold.png',
+        '/product/exp3.png',
+        '/product/exp3.png',
+        '/product/lmd.png',
+        '/product/orundum.png'
+      ])
+    }
+  )
+
   it('shows full dates from non-today times on desktop hover or touch', async () => {
     vi.setSystemTime(new Date(2026, 10, 6, 20))
     state.mower.refs.task_list.value = [
