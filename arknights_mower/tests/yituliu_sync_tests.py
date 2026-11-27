@@ -506,30 +506,30 @@ def test_pat_business_errors_are_actionable_without_retry_or_remote_echo(
 
 @pytest.mark.parametrize("previous", ["old-oauth-access-token", "ab" * 32])
 def test_existing_oauth_credential_survives_upgrade(sync_case, previous):
-    paths, session, response, snapshot, _ = sync_case
+    paths, session, _, snapshot, _ = sync_case
     paths["@app/config/yituliu_sync.json"].write_text(json.dumps({"token": previous}))
-    expected_urls = []
-    success = response.json.return_value
-    if previous == "ab" * 32:
-        response.json.side_effect = [{"code": 80001}, success]
-        expected_urls.append(sync.PAT_UPLOAD_URL)
-    expected_urls.append("https://auth.yituliu.cn/oauth2/ak-accounts/operators/save")
     assert sync.token_status()["configured"]
     assert sync.sync_after_cultivate(snapshot)["success"]
-    assert [c.args[0] for c in session.post.call_args_list] == expected_urls
-    for call in session.post.call_args_list:
-        assert call.kwargs["headers"] == {"Authorization": f"Bearer {previous}"}
+    assert session.post.call_args.args == (
+        "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save",
+    )
+    assert session.post.call_args.kwargs["headers"] == {
+        "Authorization": f"Bearer {previous}"
+    }
     sync.save_token(previous)
     assert sync.sync_cached_operators(snapshot)["skipped"]
-    assert session.post.call_count == len(expected_urls)
+    session.post.assert_called_once()
 
 
 @pytest.mark.parametrize(
-    "outcome", [80008, 30006, 40004, 10002, 80001.0, "timeout", "bad-json"]
+    "token, url", [(TOKEN, sync.PAT_UPLOAD_URL), ("ab" * 32, sync.OAUTH_UPLOAD_URL)]
 )
-def test_ambiguous_credential_does_not_resend_after_other_failures(sync_case, outcome):
+@pytest.mark.parametrize(
+    "outcome", [80001, 80008, 30006, 40004, 10002, 80001.0, "timeout", "bad-json"]
+)
+def test_failure_never_switches_credential_endpoint(sync_case, token, url, outcome):
     _, session, response, snapshot, _ = sync_case
-    sync.save_token("ab" * 32)
+    sync.save_token(token)
     if outcome == "timeout":
         session.post.side_effect = requests.Timeout()
     elif outcome == "bad-json":
@@ -538,7 +538,7 @@ def test_ambiguous_credential_does_not_resend_after_other_failures(sync_case, ou
         response.json.return_value = {"code": outcome}
     assert not sync.sync_after_cultivate(snapshot)["success"]
     session.post.assert_called_once()
-    assert session.post.call_args.args == (sync.PAT_UPLOAD_URL,)
+    assert session.post.call_args.args == (url,)
 
 
 def test_pat_http_400_field_error_preserves_local_diagnostic(sync_case):

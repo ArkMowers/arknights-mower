@@ -13,7 +13,7 @@ from arknights_mower.utils.path import get_path
 
 PAT_UPLOAD_URL = "https://auth.yituliu.cn/pat/ak-accounts/operators/save"
 OAUTH_UPLOAD_URL = "https://auth.yituliu.cn/oauth2/ak-accounts/operators/save"
-LEGACY_HEX_TOKEN = re.compile(r"[0-9a-f]{64}")
+PAT_PREFIX = "tlc_pat_"
 PAT_REQUIRED = "请先保存一图流的干员只写 PAT（arknights-data.write）"
 _lock = RLock()
 
@@ -52,8 +52,8 @@ def token_status():
 
 def save_token(token):
     token = token.strip() if isinstance(token, str) else ""
-    if token.startswith("tlc_pat_"):
-        valid = LEGACY_HEX_TOKEN.fullmatch(token.removeprefix("tlc_pat_"))
+    if token.startswith(PAT_PREFIX):
+        valid = re.fullmatch(r"[0-9a-f]{64}", token.removeprefix(PAT_PREFIX))
     else:
         valid = re.fullmatch(r"[A-Za-z0-9._~-]{16,512}", token)
     if not valid:
@@ -149,7 +149,8 @@ def build_upload_payload(snapshot, definitions):
     }
 
 
-def _post_operators(url, payload, token):
+def _upload(payload, token):
+    url = PAT_UPLOAD_URL if token.startswith(PAT_PREFIX) else OAUTH_UPLOAD_URL
     try:
         with requests.Session() as session:
             session.trust_env = False
@@ -176,20 +177,6 @@ def _post_operators(url, payload, token):
         raise ValueError("一图流返回无效响应，同步结果尚未确认") from None
     if not isinstance(result, dict) or type(result.get("code")) is not int:
         raise ValueError("一图流返回无效响应，同步结果尚未确认")
-    return result
-
-
-def _upload(payload, token):
-    legacy_hex = LEGACY_HEX_TOKEN.fullmatch(token)
-    url = (
-        PAT_UPLOAD_URL
-        if token.startswith("tlc_pat_") or legacy_hex
-        else OAUTH_UPLOAD_URL
-    )
-    result = _post_operators(url, payload, token)
-    # Migrated PATs and OAuth access tokens can have the same 64-hex format.
-    if legacy_hex and result["code"] == 80001:
-        result = _post_operators(OAUTH_UPLOAD_URL, payload, token)
     if result["code"] != 200:
         messages = {
             80001: "一图流令牌无效或已失效，请重新生成并保存干员只写 PAT",
