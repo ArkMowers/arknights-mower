@@ -7,6 +7,7 @@ from contextlib import ExitStack
 from datetime import timedelta
 from unittest.mock import ANY, MagicMock
 
+import numpy as np
 import pytest
 
 from arknights_mower.tests import run_order_staffing_admission_tests as admission
@@ -55,7 +56,7 @@ def test_startup_observes_trade_staff_and_reads_one_order_page(
         "get_cultivate_characters",
         lambda: {"char_272_strong": {"evolvePhase": 0}},
     )
-    solver.recog.gray = MagicMock()
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
     solver.get_agent_from_room = (
         ui.base.BaseSchedulerSolver.get_agent_from_room.__get__(solver)
     )
@@ -66,9 +67,21 @@ def test_startup_observes_trade_staff_and_reads_one_order_page(
     )
     solver.detect_room_type = MagicMock(return_value="贸易站")
     solver.wait_product_complete = MagicMock()
+    solver._work_room_panel = MagicMock(return_value="open")
+    solver.detect_room = MagicMock(side_effect=lambda: solver._page["room"])
     solver.find = MagicMock(
-        side_effect=lambda resource, **_: resource == "infra_no_operator" and not name
+        side_effect=lambda resource, **_: (
+            resource == "arrange_check_in_on"
+            or (resource == "infra_no_operator" and not name)
+        )
     )
+
+    def read_level(target_room, *, panel):
+        assert solver._page["room"] == target_room == room and panel == "open"
+        assert solver.op_data.get_current_room(room, True) == [name]
+        return 3
+
+    solver._observed_trade_level = MagicMock(side_effect=read_level)
     solver.read_screen = MagicMock(return_value=name)
     solver.read_accurate_mood = MagicMock(return_value=18)
 
@@ -116,6 +129,7 @@ def test_startup_observes_trade_staff_and_reads_one_order_page(
     if not name:
         solver.read_time.assert_not_called()
     assert page_visits == ([room] if name else [])
+    assert solver._observed_trade_level.call_count == bool(name)
     assert solver.op_data.facility_states[room]["product"] == (
         "orundum" if strategy == "开采协力" else "lmd"
     )
@@ -130,7 +144,7 @@ def test_startup_observes_trade_staff_and_reads_one_order_page(
     expected_state = (
         (f"订单类型为{strategy}" if strategy else "订单类型未确认")
         if name
-        else "无人进驻，跳过订单详情"
+        else "无人进驻，跳过订单读取"
     )
     assert expected_state in facility_events[1]["summary"]
     assert ("心情18" if name else "第1位空位") in facility_events[1]["summary"]

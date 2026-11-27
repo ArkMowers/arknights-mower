@@ -228,23 +228,27 @@ def test_staffing_reuses_only_product_read_in_this_visit(
 
 
 @pytest.mark.parametrize(
-    ("starts_open", "change", "fail_first"),
+    ("starts_open", "change", "fail_first", "empty"),
     [
-        (True, False, False),
-        (False, False, False),
-        (True, True, False),
-        (True, True, True),
-        (False, True, True),
+        (True, False, False, False),
+        (False, False, False, False),
+        (True, True, False, False),
+        (True, True, True, False),
+        (False, True, True, False),
+        (True, True, False, True),
+        (False, True, False, True),
     ],
 )
 @pytest.mark.parametrize(
     ("strategy_name", "product"), [("开采协力", "orundum"), ("龙门商法", "lmd")]
 )
-def test_trade_staffing_reads_strategy_and_residents_in_current_panel_order(
-    incident, starts_open, change, fail_first, strategy_name, product
+def test_trade_staffing_reads_roster_before_strategy(
+    incident, starts_open, change, fail_first, empty, strategy_name, product
 ):
     solver, physical, snapshots = incident
     room = "room_3_2"
+    if empty:
+        physical[room][0] = ""
     resident = physical[room][0]
     target = "陈" if change else resident
     task = SchedulerTask(
@@ -343,16 +347,15 @@ def test_trade_staffing_reads_strategy_and_residents_in_current_panel_order(
 
     solver.agent_arrange_room({}, room, task.plan)
 
-    expected = (
-        ["roster", "close", "strategy"]
-        if starts_open
-        else ["strategy", "open", "roster"]
-    )
+    expected = [] if starts_open else ["open"]
+    expected.append("roster")
+    if not empty:
+        expected.extend(["close", "strategy"])
     if change:
-        if starts_open:
+        if not empty:
             expected.append("open")
         expected.extend(["select", "roster"])
-        if fail_first:
+        if fail_first or empty:
             expected.extend(["close", "strategy"])
     assert events == expected
     assert room_titles[:2] == ["room_3_1", room]
@@ -361,7 +364,7 @@ def test_trade_staffing_reads_strategy_and_residents_in_current_panel_order(
     assert task.plan == {}
     if change:
         assert solver.choose_agent.call_args.kwargs["selection_product"] == (
-            None if fail_first else product
+            None if fail_first or empty else product
         )
     assert solver.op_data.facility_product_count("orundum") == int(product == "orundum")
     assert solver.op_data.facility_product_count("lmd") == int(product == "lmd")
