@@ -195,7 +195,7 @@ def exhaust_rest_due(data, op, tasks, now):
 
 
 def native_opportunity(solver, required, now=None, *, budget=128, current_only=False):
-    """在副本上搜索轮休；当前模式只检查可立即执行的安排，不预测速率。"""
+    """在副本上搜索轮休；准入时只为可预演的菲亚梅塔充能推进时间。"""
     now = now or getattr(solver.op_data, "_projection_now", None) or datetime.now()
     check_cancelled()
     initial = copy.deepcopy(
@@ -219,22 +219,39 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
         and not getattr(task, "arrangement_retry_room", None)
     ]
     fia = initial.operators.get("菲亚梅塔")
-    charges = [
-        task
-        for task in solver.tasks
-        if task.type == TaskTypes.FIAMMETTA
-        and task.plan
-        and (not current_only or not getattr(task, "arrangement_retry_room", None))
-        and task.meta_data in required
-        and fia is not None
+    forecast_charge = current_only and initial.mood_calculation_enabled
+    charges = []
+    if (
+        fia is not None
         and fia.current_room == fia.room
         and _known_mood(initial, fia, now) is not None
-        and task.meta_data in fia.replacement
-        and any(
-            "菲亚梅塔" in names and task.meta_data in names
-            for names in task.plan.values()
-        )
-    ]
+    ):
+        for task in solver.tasks:
+            if task.type != TaskTypes.FIAMMETTA or (
+                current_only
+                and (
+                    task.retains_execution
+                    or getattr(task, "arrangement_retry_room", None)
+                    or getattr(task, "fia_return_queued", False)
+                )
+            ):
+                continue
+            if not task.plan:
+                if (
+                    forecast_charge
+                    and not task.meta_data
+                    and required.intersection(fia.replacement)
+                ):
+                    charges.append(task)
+            elif (
+                task.meta_data in required
+                and task.meta_data in fia.replacement
+                and any(
+                    "菲亚梅塔" in names and task.meta_data in names
+                    for names in task.plan.values()
+                )
+            ):
+                charges.append(task)
     queue = deque([(initial, now, frozenset(), frozenset())])
     visited = set()
     uncertain = False
@@ -356,7 +373,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             current_fia = data.operators.get("菲亚梅塔")
             if current_only and (
                 current_fia is None
-                or not _full_mood(data, current_fia, when)
+                or not forecast_charge
+                and not _full_mood(data, current_fia, when)
                 or (current_fia.current_room, current_fia.current_index)
                 != (current_fia.room, current_fia.index)
             ):
@@ -396,10 +414,12 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             events.append((max(when, due), event_id, plan))
         for time, event_id, plan in events:
             check_cancelled()
-            if current_only and time > now:
+            forecast = forecast_charge and event_id[0] == "charge"
+            if current_only and time > now and not forecast:
                 continue
             if time - now > timedelta(hours=12):
-                uncertain = True
+                if not current_only:
+                    uncertain = True
                 continue
             projected = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
             projected._apply_projected_arrangements([], now=time)
@@ -434,7 +454,8 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                     if getattr(projected, "mood_calculation_enabled", False):
                         mood = projected.calculated_mood(name, time)
                         if mood is None:
-                            uncertain = True
+                            if not forecast:
+                                uncertain = True
                             timely = False
                             break
                         if mood <= op.lower_limit:
@@ -467,15 +488,27 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                         op.mood, op.time_stamp = op.upper_limit, time
             charged = set()
             if event_id[0] == "charge":
-                name = charges[event_id[1]].meta_data
+                task = charges[event_id[1]]
+                name = task.meta_data
                 if getattr(projected, "mood_calculation_enabled", False):
-                    target_mood = projected.calculated_mood(name, time)
-                    fia = projected.operators.get("菲亚梅塔")
-                    if target_mood is None or not _full_mood(projected, fia, time):
+                    fia = projected.operators["菲亚梅塔"]
+                    model = projected.mood_model
+                    if model.value(fia.name, time) != 24:
+                        continue
+                    if not task.plan:
+                        name = projected.select_fiammetta_target(
+                            fia.replacement, at=time
+                        )
+                    target_mood = model.value(name, time)
+                    if (
+                        name not in remaining
+                        or target_mood is None
+                        or target_mood >= 24
+                    ):
                         continue
                     # 搜索中的充能由 used 标记消费，不与同刻真实观测竞争。
-                    projected.mood_model.moods[name] = 24
-                    projected.mood_model.moods[fia.name] = target_mood
+                    model.moods[name] = 24
+                    model.moods[fia.name] = target_mood
                 else:
                     projected.operators[name].mood = projected.operators[
                         name
