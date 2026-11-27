@@ -7,9 +7,8 @@
 - 放宽复刻普通关的开战时限，按失败原因在下一轮重试 [PR](https://github.com/ArkMowers/arknights-mower/pull/2126) @ALEXsun0
 - 在普通作业队列中逐项提示编队缺口和借用助战的条件 [PR](https://github.com/ArkMowers/arknights-mower/pull/2119) @ALEXsun0
 - 支持逐项调整普通自动战斗和悖论模拟的作业进度 [PR](https://github.com/ArkMowers/arknights-mower/pull/2117) @ALEXsun0
-- 移除普通作业编辑器中需要玩家先在游戏里打开关卡地图或详情页的「手动执行」功能。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2114) @ALEXsun0
+- 普通作业编辑器移除了「执行勾选列表」和「当前关卡作业」入口。可在大型任务中选择「自动战斗／作业 (MAA)」，按队列运行普通作业。 [移除说明](https://github.com/ArkMowers/arknights-mower/pull/2114) [原入口](https://github.com/ArkMowers/arknights-mower/pull/2110) @ALEXsun0
 - 支持在普通、保全派驻和悖论模拟作业库中分别导入和列出超过 64 个作业文件，并在整份配置备份的文件数接近上限时提醒用户。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2113) @ALEXsun0
-- 支持从关卡地图手动执行勾选的普通自动战斗作业，也可以在当前关卡重复执行一份作业。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2110) @ALEXsun0
 - 普通自动战斗作业可使用当前账号的森空岛干员练度辅助编队，提交作业时由 MAA 检查编队要求。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2109) @ALEXsun0
 - 支持逐份导入混合普通和保全作业的作业集 [PR](https://github.com/ArkMowers/arknights-mower/pull/2107) @ALEXsun0
 - 支持根据 MAA 地图索引识别普通自动战斗作业的导航关卡号，作业使用内部关卡标识时也可留空导航关卡名。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2105) @ALEXsun0
@@ -69,7 +68,7 @@
 - 修复活动地图因误读关号而反复滑动超时的问题 [PR](https://github.com/ArkMowers/arknights-mower/pull/2118) @ALEXsun0
 - 修复详情页将 OPERATION 误读为关号的一部分导致跳过作战的问题 [PR](https://github.com/ArkMowers/arknights-mower/pull/2116) @ALEXsun0
 - 修复复刻普通关已打开详情仍跳过作战和 EX 作业提交前误退地图的问题 [PR](https://github.com/ArkMowers/arknights-mower/pull/2115) @ALEXsun0
-- 修复普通作业导航选错同名关卡和导入作业集时可能重复执行首项的问题，并支持导入和手动执行超过 32 项的作业列表。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2111) @ALEXsun0
+- 修复普通作业导航选错同名关卡和导入作业集时可能重复执行首项的问题，并支持导入超过 32 项的作业列表。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2111) @ALEXsun0
 - 修正普通自动战斗作业的技能、精英化要求和动作目标 [PR](https://github.com/ArkMowers/arknights-mower/pull/2108) @ALEXsun0
 - 修复自动战斗作业入队时忽略突袭难度的问题 [PR](https://github.com/ArkMowers/arknights-mower/pull/2106) @ALEXsun0
 - 修复自动救急将同房宿管补回固定床位时，因两张床重复安排同一人而反复进入同一宿舍的问题。 [PR](https://github.com/ArkMowers/arknights-mower/pull/2099) @CarrotLouis
