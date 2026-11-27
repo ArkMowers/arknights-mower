@@ -409,6 +409,44 @@ def test_dorm_evidence_keeps_measured_bar_and_raw_timer_from_same_frame(
     s.read_operator_time.assert_not_called()
 
 
+@pytest.mark.parametrize(("index", "timer_y", "mood_y"), [(3, 668, 615), (4, 877, 823)])
+def test_full_dorm_resident_accepts_blank_timer_with_jpeg_noise(
+    five_slot_room, index, timer_y, mood_y
+):
+    room = "dormitory_1"
+    s, _, _, names, _ = five_slot_room(
+        True, empty=tuple(i for i in range(5) if i != index)
+    )
+    s.detect_room.return_value = room
+    s._execution_group_transitions = lambda: {}
+    s._reconcile_room_observation = Mock()
+    s.op_data.plan[room] = [SimpleNamespace(agent="Free")] * 5
+    s.op_data.update_detail.side_effect = None
+    s.op_data.update_detail.return_value = None
+    s.op_data.all_dorms.return_value = []
+    s.op_data.get_dorm_by_name.return_value = (None, None)
+    s.read_accurate_mood = BaseSchedulerSolver.read_accurate_mood.__get__(s)
+    s.recog.img[mood_y, 1470:1780] = 255
+    clock = s.recog.img[timer_y : timer_y + 35, 1650:1780]
+    clock[:] = 137
+    clock[0, 127] = 143
+    clock[0, 128] = 132
+    read = s.read_screen.side_effect
+    s.read_screen.side_effect = lambda img, *, type, cord=None: (
+        "25" if type == "time" else read(img, type=type, cord=cord)
+    )
+    s.read_time = BaseSchedulerSolver.read_time.__get__(s)
+
+    observed = s.get_agent_from_room(
+        room, [index], force_mood=True, read_dorm_evidence=True
+    )[index]
+
+    assert observed["agent"] == names[index]
+    assert observed["measured_mood"] == observed["mood"] == 24
+    assert observed.get("recovery_seconds") is None
+    s.read_operator_time.assert_not_called()
+
+
 @pytest.mark.parametrize("readable", [True, False])
 def test_full_width_with_visible_timer_is_not_recorded_as_a_full_departure(
     five_slot_room, readable

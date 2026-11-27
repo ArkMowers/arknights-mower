@@ -78,9 +78,14 @@ def add_task():
                         .astimezone(get_localzone())
                         .replace(tzinfo=None)
                     )
+                    plan = task["plan"]
+                    if isinstance(plan, dict) and "" in plan:
+                        if plan[""] != []:
+                            raise ValueError("请为已填写干员的任务选择房间")
+                        del plan[""]
                     new_task = SchedulerTask(
                         time=task_time,
-                        task_plan=task["plan"],
+                        task_plan=plan,
                         task_type=task["task_type"],
                         meta_data=task["meta_data"],
                     )

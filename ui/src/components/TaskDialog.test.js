@@ -212,6 +212,51 @@ describe('manual task dialog', () => {
     expect(state.plan.refs.backup_plans.value[1].group_tasks[0].action).toBe('off')
   })
 
+  it('rejects an operator without a room before dropping blank rows', async () => {
+    component.task_time.value = 1792800000000
+    component.task_list.value = [
+      { room: 'meeting', operators: ['阿米娅'] },
+      { room: '', operators: ['芬'] },
+      { room: '', operators: [] }
+    ]
+    await component.saveTasks()
+
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(state.mower.get_tasks).not.toHaveBeenCalled()
+    expect(component.error.value).toBe(true)
+    expect(component.msg.value).toBe('请为已填写干员的任务选择房间')
+
+    component.update_task(1, { room: 'central' })
+    await component.saveTasks()
+
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/task'),
+      {
+        task: {
+          time: new Date(1792800000000),
+          task_type: '空任务',
+          plan: { meeting: ['阿米娅'], central: ['芬'] },
+          meta_data: ''
+        }
+      },
+      { timeout: 30000 }
+    )
+    expect(component.error.value).toBe(false)
+    expect(state.mower.get_tasks).toHaveBeenCalledOnce()
+  })
+
+  it('submits an empty task when all room rows are blank', async () => {
+    component.task_time.value = 1792800000000
+    component.task_list.value = [{ room: '', operators: [] }]
+    await component.saveTasks()
+
+    expect(axios.post).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/task'),
+      { task: { time: new Date(1792800000000), task_type: '空任务', plan: {}, meta_data: '' } },
+      { timeout: 30000 }
+    )
+  })
+
   it.each(additionalTypes)('submits %s at the chosen time without a stale roster', async (kind) => {
     expect(component.taskTypeOptions.some((option) => option.value === kind)).toBe(true)
     component.task_type.value = kind

@@ -130,7 +130,7 @@ const task_help = [
   '新增加工材料或分解家具任务会唤醒调度器，按任务时间执行',
   '其他新增任务不会主动唤醒调度器，休眠期间添加的任务可能延后执行',
   '添加完任务可以【载入心情任务】启动',
-  '空任务，请确保任务房间名字，干员数量正确（没有判定）',
+  '空任务可安排房间干员。填写干员后须选择房间，并按房间岗位数填写。',
   '专精任务，UI有详细说明；新增完毕，UI上面的表会实时反馈',
   '线索任务，到点跑一次完整的会客室流程（信息板、领线索、摆线索、送线索）'
 ]
@@ -215,17 +215,21 @@ function clear() {
 
 async function saveTasks() {
   if (saving.value || (!isLogPage.value && edit_locked.value)) return
-  const plan = {}
-  for (const i of task_list.value) {
-    plan[i.room] = i.operators
-  }
   const task = {
     time: new Date(task_time.value),
-    plan,
+    plan: {},
     task_type: task_type.value === '日常任务' ? daily_task.value : task_type.value,
     meta_data: ''
   }
-  if (isMaintenance.value) {
+  if (task_type.value === '空任务') {
+    const rows = task_list.value
+    if (rows.some(({ room, operators }) => !room && operators.length > 0)) {
+      msg.value = '请为已填写干员的任务选择房间'
+      error.value = true
+      return
+    }
+    task.plan = task_from_rows(rows.filter(({ room }) => room))
+  } else if (isMaintenance.value) {
     if (
       !Number.isInteger(duration_minutes.value) ||
       duration_minutes.value < (task_type.value === '计划停止' ? 0 : 1) ||
@@ -240,7 +244,6 @@ async function saveTasks() {
     }
     task.duration_minutes = duration_minutes.value
     task.maintenance_mode = task_type.value === '计划停止' ? 'prepare' : maintenance_mode.value
-    task.plan = {}
   } else if (task_type.value == '技能专精') {
     saving.value = true
     try {
@@ -256,10 +259,6 @@ async function saveTasks() {
       return
     }
     task.meta_data = workshop_operator.value
-    task.plan = {}
-  } else if (task_type.value !== '空任务') {
-    // 独立任务不携带房间排班。
-    task.plan = {}
   }
   saving.value = true
   try {
