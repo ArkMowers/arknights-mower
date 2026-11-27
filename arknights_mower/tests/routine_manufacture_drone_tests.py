@@ -524,7 +524,7 @@ def test_product_switch_preserves_paused_queue_before_acceleration(routine_drone
     solver, _, frames, _, _ = routine_drone
     solver.recog.img = frames[True]
     solver._open_manufacture_product_detail = Mock()
-    solver._manufacture_is_idle = Mock(return_value=False)
+    solver._manufacture_is_idle = Mock(return_value=True)
     solver._start_product_switch_log = Mock()
     solver._tap_drone_accelerate = Mock()
     solver._select_manufacture_product = Mock()
@@ -538,6 +538,6 @@ def test_product_switch_preserves_paused_queue_before_acceleration(routine_drone
         else:
             solver._change_manufacture_product(observation)
 
-    solver._manufacture_is_idle.assert_called_once()
+    solver._manufacture_is_idle.assert_not_called()
     solver._tap_drone_accelerate.assert_not_called()
     solver._select_manufacture_product.assert_not_called()

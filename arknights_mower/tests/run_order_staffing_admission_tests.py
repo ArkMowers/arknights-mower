@@ -311,11 +311,61 @@ def test_later_room_refresh_operator_updates_already_read_station(
     assert not any(task.type == ui.task_type.REFRESH_TIME for task in solver.tasks)
 
 
+@pytest.mark.parametrize("pending", ["refresh", "prediction", "none"])
+def test_known_empty_trade_waits_for_staffing_before_reading_order(
+    staffed_order, pending
+):
+    ui = staffed_order
+    solver = ui.solver
+    room, other = "room_1_1", "room_2_2"
+    # 即使页面能识别出数字，明确无人进驻的房间也不能用这个读数规划。
+    ui.states.update({room: "active", other: "active"})
+    ui.occupants[other] = ["图耶"]
+    queued = None
+    if pending == "refresh":
+        queued = solver._queue_order_refresh(room)
+    elif pending == "prediction":
+        queued = solver._new_run_order_task(room, ui.clock.now())
+        solver.tasks.append(queued)
+    original_time = queued.time if queued else None
+
+    for _ in range(3):
+        solver.get_agent_from_room(room)
+        solver._resume_failed_tasks()
+        solver._queue_missing_run_order_reads()
+        solver._read_pending_order_times()
+        solver.run_order_solver()
+        ui.clock.current += timedelta(minutes=1)
+
+    assert not any(event[:2] == ("enter", room) for event in ui.events)
+    assert len(reads(ui, other)) == 1
+    assert [task for task in solver.tasks if task.meta_data == room] == (
+        [queued] if pending == "refresh" else []
+    )
+    task = correction(ui, {room})
+    solver.agent_arrange(task.plan)
+
+    assert not task.plan
+    assert [event[0] for event in ui.events if event[1] == room] == [
+        "enter",
+        "staffed",
+        "enter",
+        "read",
+    ]
+    assert len(reads(ui, other)) == 1
+    (order,) = [task for task in solver.tasks if task.meta_data == room]
+    assert order.type == ui.task_type.RUN_ORDER
+    assert order.time == ui.deadlines[room] - timedelta(minutes=3)
+    if queued:
+        assert queued is not order and queued.time == original_time
+
+
 def test_vacancy_dependent_refresh_resumes_after_confirmed_staffing(staffed_order):
     ui = staffed_order
     solver = ui.solver
     task = correction(ui, {"room_1_1"})
     ui.states["room_1_1"] = "paused"
+    solver._queue_order_refresh("room_1_1")
     solver.plan_run_order("room_1_1")
     waiting = next(
         task for task in solver.tasks if task.type == ui.task_type.REFRESH_TIME

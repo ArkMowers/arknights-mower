@@ -35,6 +35,7 @@ def orders(ui):
         ("active", "开采协力", "孑", 0),
         ("active", "", "孑", 3),
         ("paused", "龙门商法", "", None),
+        ("active", "龙门商法", "", None),
         ("unknown", "开采协力", "孑", None),
     ],
 )
@@ -105,14 +106,16 @@ def test_startup_observes_trade_staff_and_reads_one_order_page(
             else None
         )
         assert actual == expected
-        if state == "paused":
+        if not name:
             solver.scene_graph_navigation.assert_called_once_with(
                 ui.base.Scene.INFRA_MAIN
             )
         else:
             assert solver.back.call_count == 2
         assert solver._page["room"] is None
-    assert page_visits == [room]
+    if not name:
+        solver.read_time.assert_not_called()
+    assert page_visits == ([room] if name else [])
     assert solver.op_data.facility_states[room]["product"] == (
         "orundum" if strategy == "开采协力" else "lmd"
     )
@@ -124,7 +127,11 @@ def test_startup_observes_trade_staff_and_reads_one_order_page(
     ]
     assert [event["phase"] for event in facility_events] == ["started", "completed"]
     assert facility_events[0]["id"] == facility_events[1]["id"]
-    expected_state = f"订单类型为{strategy}" if strategy else "订单类型未确认"
+    expected_state = (
+        (f"订单类型为{strategy}" if strategy else "订单类型未确认")
+        if name
+        else "无人进驻，跳过订单详情"
+    )
     assert expected_state in facility_events[1]["summary"]
     assert ("心情18" if name else "第1位空位") in facility_events[1]["summary"]
 
