@@ -165,6 +165,28 @@ def assert_switch_retained(solver, switch, original_time):
     assert switch.time == original_time
 
 
+def test_cached_product_does_not_create_switch_before_staffing(base_schedule):
+    ui = base_schedule
+    solver = ui.solver
+    solver.op_data.update_facility_state(EMPTY_ROOM, "manufacture", "gold")
+    ui.observe_roster(EMPTY_ROOM)
+
+    for _ in range(2):
+        solver.queue_product_switches()
+        assert not solver.tasks
+        assert ui.dispatch() is None
+        assert not ui.events
+
+    ui.observe_roster(EMPTY_ROOM, WORKERS[EMPTY_ROOM])
+    solver.queue_product_switches()
+    assert ui.dispatch().type == ui.tasks.TaskTypes.SWITCH_PRODUCT
+    assert ui.events == [
+        ("survey", EMPTY_ROOM),
+        ("accelerate", EMPTY_ROOM),
+        ("change", EMPTY_ROOM),
+    ]
+
+
 def test_startup_correction_staffs_confirmed_empty_room_before_switch(base_schedule):
     ui = base_schedule
     ui.observe_roster(EMPTY_ROOM)
