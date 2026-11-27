@@ -27,12 +27,15 @@ export function createSkeletonShape(key, fields) {
     return shape
   }
 
+  // 返回实际记下的版面，页面可以接着按它绘制占位。
   function save(value) {
+    const shape = normalize(value)
     try {
-      localStorage.setItem(storageKey, JSON.stringify(normalize(value)))
+      localStorage.setItem(storageKey, JSON.stringify(shape))
     } catch {
       // 浏览器禁用存储或空间不足时仍可使用当前页面。
     }
+    return shape
   }
 
   function read() {

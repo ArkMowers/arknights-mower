@@ -65,7 +65,9 @@ const failureSelection = ref(null)
 const retry = ref({ busy: false, message: '', error: false })
 const data = shallowRef(null)
 const loading = ref(!relayPage)
-const monthlyRewardsSettled = ref(false)
+// 保留上次结束读取的奖励月份，本机记录读取失败时仍可显示已读的同月日历。
+const rewardsMonth = ref(null)
+const waitingForMonthlyRewards = ref(false)
 const error = ref('')
 const account = computed({
   get: () => preferences.value.account,
@@ -162,15 +164,19 @@ async function loadMonthlyRewards(version, target, refreshProgress, inFlight) {
       monthlyRewardsError.value = failure.response?.data?.error || '所选月份的奖励读取失败'
     }
   } finally {
-    if (version === requestVersion) monthlyRewardsSettled.value = true
+    if (version === requestVersion) {
+      rewardsMonth.value = rewardMonth
+      waitingForMonthlyRewards.value = false
+    }
   }
 }
 
-async function load({ refreshProgress = false } = {}) {
+async function load({ refreshProgress = false, monthChanged = false } = {}) {
   const version = ++requestVersion
   const requestedMonth = month.value
   const inFlight = rewardRefreshes.get(requestedMonth.slice(0, 7))
   const viewingCurrentMonth = requestedMonth === currentMonth.value
+  waitingForMonthlyRewards.value = monthChanged || !monthLoaded.value
   loading.value = true
   error.value = ''
   monthlyRewardsError.value = ''
@@ -209,6 +215,7 @@ async function load({ refreshProgress = false } = {}) {
     ])
   } catch (failure) {
     if (version !== requestVersion) return
+    waitingForMonthlyRewards.value = false
     error.value = failure.response?.data?.error || '签到统计读取失败，请重试'
     return
   } finally {
@@ -222,7 +229,7 @@ function selectMonth(target, date = null) {
   slotSelection.value = date ? { date } : null
   if (target === month.value) return
   month.value = target
-  return load()
+  return load({ monthChanged: true })
 }
 
 function pickMonth(value) {
@@ -437,7 +444,14 @@ function refreshPage() {
 
 const pairs = computed(() => data.value?.pairs || [])
 const ambiguousAccounts = computed(() => data.value?.ambiguous_accounts || [])
-const monthLoaded = computed(() => data.value?.range.start === month.value)
+// 签到日历同时用到本机记录和这个月的森空岛奖励，两项都读完才算读好这个月。期间日历只显示
+// 占位格，不会先按本机记录排出格子、奖励读到后再换成森空岛的格子。
+const monthLoaded = computed(
+  () =>
+    !waitingForMonthlyRewards.value &&
+    data.value?.range.start === month.value &&
+    rewardsMonth.value === month.value.slice(0, 7)
+)
 const end = computed(() =>
   month.value === currentMonth.value ? today.value : monthEnd(month.value)
 )
@@ -675,13 +689,9 @@ const summary = computed(
       today: today.value
     })
 )
-const sklandSkeleton = computed(
-  () =>
-    loading.value &&
-    !monthlyRewardsSettled.value &&
-    !selectedChannel.value &&
-    !failureLog.value.entries.length
-)
+// 第一次读取时整页按上次的版面显示骨架屏，直到这个月的本机记录和月度奖励都读完，读完后内容
+// 在原处一次替换骨架。之后翻月只把日历换成占位格。
+const sklandSkeleton = computed(() => loading.value && rewardsMonth.value === null)
 // 记下上次读完后的版面，读取中按此占位：有没有签到日历（没有任何渠道时只显示提示）、账号
 // 选择框和渠道数、森空岛进度和本机记录两项读数、本机连续签到一行、奖励统计面板，以及各区服的
 // 奖励数。没有用 Mower 签到时本机记录、连续签到和统计面板都不出现，骨架也不画。
@@ -704,7 +714,17 @@ const shapeCache = createSkeletonShape('skland', {
   groups: skeletonList(4, skeletonCount(24), [6]),
   months: skeletonCount(12)
 })
-const skeletonShape = shapeCache.read()
+const skeletonShape = shallowRef(shapeCache.read())
+// 读取中的读数占位按本月的版面画出森空岛进度、本机记录天数和本机连续签到：首次打开时画在
+// 骨架屏里，翻月时画在日历右栏，这一栏不会因为读数暂时消失而上下跳动。
+const readingPlaceholders = computed(() => ({
+  progress: [
+    skeletonShape.value.skland && '森空岛已签到',
+    skeletonShape.value.local && '本机有签到记录'
+  ].filter(Boolean),
+  streak: skeletonShape.value.streak && month.value === currentMonth.value
+}))
+const monthPending = computed(() => loading.value && !monthLoaded.value)
 watch(
   () => [
     loading.value,
@@ -727,19 +747,23 @@ watch(
       return
     const channel = selectedChannel.value
     const report = rewardReport.value
-    shapeCache.save({
+    // 打开页面时显示的是本月，所以读数和连续签到一行只按本月记下，看其他月份时沿用。
+    const readings =
+      month.value === currentMonth.value
+        ? {
+            skland: Boolean(sklandProgress.value),
+            local: recordedDays.value != null,
+            streak: Boolean(!channel?.shared && summary.value?.streakPair.current_streak)
+          }
+        : {}
+    skeletonShape.value = shapeCache.save({
+      ...skeletonShape.value,
       calendar: Boolean(channel),
       select: new Set(channels.value.map((item) => item.account)).size > 1,
       chips: channels.value
         .filter((item) => item.account === channel?.account)
         .map((item) => textWidthEm(channelChipLabel(item))),
-      skland: Boolean(sklandProgress.value),
-      local: recordedDays.value != null,
-      streak: Boolean(
-        month.value === currentMonth.value &&
-        !channel?.shared &&
-        summary.value?.streakPair.current_streak
-      ),
+      ...readings,
       stats: Boolean(statsOptionsSource.value?.pairs.length),
       game: statsGameOptions.value.length > 0,
       groups: report ? groupRewardTotals(report.items).map((group) => group.items.length) : [6],
@@ -973,7 +997,8 @@ onUnmounted(() => {
     </div>
 
     <!-- 首次读取时页面照常显示月份工具栏，日历按本月天数画出占位格，右栏的账号、渠道和明细
-         是占位块；上次读到过奖励统计时，统计面板也先占好位置。 -->
+         是占位块；上次读到过奖励统计时，统计面板也先占好位置。本机记录和本月奖励都读完后，
+         内容一次替换骨架。 -->
     <template v-if="sklandSkeleton || data || rewardPairs.length">
       <section class="skland-panel calendar-workspace" aria-label="按月查看签到">
         <div class="calendar-toolbar">
@@ -1025,7 +1050,11 @@ onUnmounted(() => {
               "
               @click="showToday"
             >
-              {{ month === currentMonth && signIn?.todayIndex ? '回到今天' : '回到本月' }}
+              {{
+                month === currentMonth && (monthPending || signIn?.todayIndex)
+                  ? '回到今天'
+                  : '回到本月'
+              }}
             </n-button>
           </div>
         </div>
@@ -1034,30 +1063,26 @@ onUnmounted(() => {
           <span v-if="monthlyRewardsError">{{ monthlyRewardsError }}</span>
           <span v-for="warning in rewardWarnings" :key="warning">{{ warning }}</span>
         </div>
-        <LoadingSkeleton v-if="sklandSkeleton" label="正在读取签到记录">
+        <LoadingSkeleton
+          v-if="sklandSkeleton || (monthPending && !selectedChannel)"
+          label="正在读取签到记录"
+        >
           <SklandCalendar v-if="skeletonShape.calendar" :month="month" :today="today" loading>
             <template #channels>
               <SklandChannelPicker
                 :channels="[]"
                 :placeholder="{ select: skeletonShape.select, chips: skeletonShape.chips }"
               />
-              <p v-if="skeletonShape.skland || skeletonShape.local" class="month-progress">
-                <span v-if="skeletonShape.skland"
-                  >森空岛已签到
-                  <strong
-                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
-                  /></strong>
-                  天</span
-                >
-                <span v-if="skeletonShape.local"
-                  >本机有签到记录
+              <p v-if="readingPlaceholders.progress.length" class="month-progress">
+                <span v-for="label in readingPlaceholders.progress" :key="label"
+                  >{{ label }}
                   <strong
                     ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
                   /></strong>
                   天</span
                 >
               </p>
-              <p v-if="skeletonShape.streak" class="month-summary">
+              <p v-if="readingPlaceholders.streak" class="month-summary">
                 本机连续签到
                 <strong
                   ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
@@ -1112,6 +1137,19 @@ onUnmounted(() => {
               </span>
             </p>
             <p
+              v-else-if="monthPending && readingPlaceholders.progress.length"
+              class="month-progress"
+              aria-hidden="true"
+            >
+              <span v-for="label in readingPlaceholders.progress" :key="label"
+                >{{ label }}
+                <strong
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
+                /></strong>
+                天</span
+              >
+            </p>
+            <p
               v-if="
                 month === currentMonth &&
                 !selectedChannel.shared &&
@@ -1120,6 +1158,17 @@ onUnmounted(() => {
               class="month-summary"
             >
               本机连续签到 <strong>{{ number(summary.streakPair.current_streak) }}</strong> 天
+            </p>
+            <p
+              v-else-if="monthPending && readingPlaceholders.streak"
+              class="month-summary"
+              aria-hidden="true"
+            >
+              本机连续签到
+              <strong
+                ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em"
+              /></strong>
+              天
             </p>
           </template>
           <template #retry>
@@ -1222,6 +1271,8 @@ onUnmounted(() => {
         :distribution="rewardDistribution"
         :loading="statsLoading"
         :error="statsError"
+        :placeholder-groups="skeletonShape.groups"
+        :placeholder-months="skeletonShape.months"
         :selected-item="
           activeStatsItem ? `${activeStatsItem.game_group}::${activeStatsItem.name}` : ''
         "
