@@ -20,13 +20,14 @@ const fixed_facility_labels = {
   recycle: '回收站'
 }
 
-export function formatFacilityLabel(roomId, plan = {}) {
+export function formatFacilityLabel(roomId, plan = {}, fallbackName) {
   if (typeof roomId !== 'string') return roomId
   const output = /^room_([1-3])_([1-3])$/.exec(roomId)
   if (output) {
     const code = `B${output[1]}0${output[2]}`
     const name = plan?.[roomId]?.name
-    return facility_types.some(({ label }) => label === name) ? `${name} ${code}` : code
+    const facility = facility_types.some(({ label }) => label === name) ? name : fallbackName
+    return facility ? `${facility} ${code}` : code
   }
   if (Object.hasOwn(fixed_facility_labels, roomId)) return fixed_facility_labels[roomId]
   const dormitory = /^dormitory_([1-4])(_low)?$/.exec(roomId)

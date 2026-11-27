@@ -38,7 +38,7 @@ def set_mower_thread(thread):
 def _task_response(task, op_data):
     from jsonpickle import encode
 
-    from arknights_mower.utils.task_presentation import build_task_presentation
+    from arknights_mower.utils.task_presentation import build_queue_task_presentation
 
     response = json.loads(encode(task, unpicklable=False))
     response["display_name"] = task.display_name
@@ -49,7 +49,7 @@ def _task_response(task, op_data):
     ):
         snapshot = copy(task)
         snapshot.plan = plan
-        response["presentation"] = build_task_presentation(snapshot, op_data)
+        response["presentation"] = build_queue_task_presentation(snapshot, op_data)
     return response
 
 
@@ -169,7 +169,7 @@ def add_task():
         if base_scheduler and mower_thread and mower_thread.is_alive():
             op_data = copy(getattr(base_scheduler, "op_data", None))
             if op_data is not None:
-                for name in ("operators", "group_shift_state"):
+                for name in ("operators", "group_shift_state", "facility_states"):
                     if (values := getattr(op_data, name, None)) is not None:
                         setattr(op_data, name, values.copy())
                 if (groups := getattr(op_data, "groups", None)) is not None:

@@ -56,6 +56,7 @@ import mastery2 from '@/assets/growth/mastery-2.png?url&no-inline'
 import mastery3 from '@/assets/growth/mastery-3.png?url&no-inline'
 import { usePlanStore } from '@/stores/plan'
 import { queueTaskRoom, queueTaskRows } from '@/utils/taskPresentation'
+import { publicAsset } from '@/utils/publicAsset'
 import { useResolvedTheme } from '@/composables/theme'
 import { getDailyStatusItems, hasDailyStatusTasks } from '@/task-workflow/model'
 import { parseRunningLogLayout } from '@/utils/logLayoutConfig'
@@ -1621,6 +1622,7 @@ async function db_delete(keys) {
                       roomAgents,
                       roomIndex = 0,
                       refreshTargets,
+                      productSwitch,
                       key
                     } in task_rows"
                     :key="key"
@@ -1666,7 +1668,37 @@ async function db_delete(keys) {
                         <div v-else-if="task.emergency_dorm">自动救急宿舍安排</div>
                       </template>
                     </td>
-                    <template v-if="show_task_names">
+                    <td
+                      v-if="productSwitch"
+                      class="task-content"
+                      :colspan="show_task_names ? 2 : undefined"
+                    >
+                      <div class="task-heading">{{ productSwitch.title }}</div>
+                      <div class="task-product-switch">
+                        <span class="task-room-label">{{ productSwitch.label }}</span>
+                        <span class="task-product-transition">
+                          <span
+                            v-for="(product, index) in [
+                              productSwitch.previous,
+                              productSwitch.target
+                            ]"
+                            :key="index"
+                            class="task-product-value"
+                          >
+                            <span v-if="index">→</span>
+                            <img
+                              v-if="product"
+                              :src="publicAsset(`/product/${product.icon ?? product.value}.png`)"
+                              width="18"
+                              height="18"
+                              alt=""
+                            />
+                            <span>{{ product?.label ?? '当前未知' }}</span>
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    <template v-else-if="show_task_names">
                       <template v-if="roomIndex < roomEntries.length">
                         <td>{{ roomId }}</td>
                         <td>
@@ -2749,6 +2781,38 @@ async function db_delete(keys) {
   display: grid;
   gap: 4px;
   margin-top: 2px;
+}
+
+.task-product-switch,
+.task-product-transition {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.task-product-switch {
+  column-gap: 8px;
+  margin-top: 2px;
+}
+
+.task-product-transition {
+  column-gap: 4px;
+  min-width: 0;
+  font-size: 13px;
+  line-height: 24px;
+}
+
+.task-product-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.task-product-value img {
+  flex: none;
+  object-fit: contain;
 }
 
 .task-facility {
