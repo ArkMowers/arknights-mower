@@ -65,8 +65,9 @@ const failureSelection = ref(null)
 const retry = ref({ busy: false, message: '', error: false })
 const data = shallowRef(null)
 const loading = ref(!relayPage)
-// 记下已结束读取的月度奖励对应的月份，包括读取失败。首次读取结束前为 undefined，翻月时用 null 清除旧月份。
-const rewardsMonth = ref(undefined)
+// 保留上次结束读取的奖励月份，本机记录读取失败时仍可显示已读的同月日历。
+const rewardsMonth = ref(null)
+const waitingForMonthlyRewards = ref(false)
 const error = ref('')
 const account = computed({
   get: () => preferences.value.account,
@@ -163,15 +164,19 @@ async function loadMonthlyRewards(version, target, refreshProgress, inFlight) {
       monthlyRewardsError.value = failure.response?.data?.error || '所选月份的奖励读取失败'
     }
   } finally {
-    if (version === requestVersion) rewardsMonth.value = rewardMonth
+    if (version === requestVersion) {
+      rewardsMonth.value = rewardMonth
+      waitingForMonthlyRewards.value = false
+    }
   }
 }
 
-async function load({ refreshProgress = false } = {}) {
+async function load({ refreshProgress = false, monthChanged = false } = {}) {
   const version = ++requestVersion
   const requestedMonth = month.value
   const inFlight = rewardRefreshes.get(requestedMonth.slice(0, 7))
   const viewingCurrentMonth = requestedMonth === currentMonth.value
+  waitingForMonthlyRewards.value = monthChanged || !monthLoaded.value
   loading.value = true
   error.value = ''
   monthlyRewardsError.value = ''
@@ -210,6 +215,7 @@ async function load({ refreshProgress = false } = {}) {
     ])
   } catch (failure) {
     if (version !== requestVersion) return
+    waitingForMonthlyRewards.value = false
     error.value = failure.response?.data?.error || '签到统计读取失败，请重试'
     return
   } finally {
@@ -222,9 +228,8 @@ function selectMonth(target, date = null) {
   failureSelection.value = null
   slotSelection.value = date ? { date } : null
   if (target === month.value) return
-  if (rewardsMonth.value !== undefined) rewardsMonth.value = null
   month.value = target
-  return load()
+  return load({ monthChanged: true })
 }
 
 function pickMonth(value) {
@@ -442,7 +447,10 @@ const ambiguousAccounts = computed(() => data.value?.ambiguous_accounts || [])
 // 签到日历同时用到本机记录和这个月的森空岛奖励，两项都读完才算读好这个月。期间日历只显示
 // 占位格，不会先按本机记录排出格子、奖励读到后再换成森空岛的格子。
 const monthLoaded = computed(
-  () => data.value?.range.start === month.value && rewardsMonth.value === month.value.slice(0, 7)
+  () =>
+    !waitingForMonthlyRewards.value &&
+    data.value?.range.start === month.value &&
+    rewardsMonth.value === month.value.slice(0, 7)
 )
 const end = computed(() =>
   month.value === currentMonth.value ? today.value : monthEnd(month.value)
@@ -683,7 +691,7 @@ const summary = computed(
 )
 // 第一次读取时整页按上次的版面显示骨架屏，直到这个月的本机记录和月度奖励都读完，读完后内容
 // 在原处一次替换骨架。之后翻月只把日历换成占位格。
-const sklandSkeleton = computed(() => loading.value && rewardsMonth.value === undefined)
+const sklandSkeleton = computed(() => loading.value && rewardsMonth.value === null)
 // 记下上次读完后的版面，读取中按此占位：有没有签到日历（没有任何渠道时只显示提示）、账号
 // 选择框和渠道数、森空岛进度和本机记录两项读数、本机连续签到一行、奖励统计面板，以及各区服的
 // 奖励数。没有用 Mower 签到时本机记录、连续签到和统计面板都不出现，骨架也不画。

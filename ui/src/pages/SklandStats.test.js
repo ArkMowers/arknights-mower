@@ -1536,6 +1536,34 @@ describe('森空岛签到统计页面', () => {
     expect(html.match(/data-slot="/g)).toHaveLength(30)
   })
 
+  it('翻回已读月份时本机统计读取失败，保留同月日历并显示错误', async () => {
+    const payload = history()
+    const octoberReply = Promise.withResolvers()
+    const { html } = await render({
+      payload,
+      cachedRewards: thirtySlots(),
+      interact: async (page, axios) => {
+        expect(page.signIn.value.slots).toHaveLength(30)
+        const get = axios.get.getMockImplementation()
+        axios.get.mockImplementation((url, options) => {
+          if (!url.endsWith('/skland/statistics')) return get(url, options)
+          if (options.params.startDate === '2026-10-01') return octoberReply.promise
+          return Promise.reject({ response: { data: { error: '本机签到记录读取失败' } } })
+        })
+        const october = page.selectMonth('2026-10-01')
+        await page.selectMonth('2026-11-01')
+        octoberReply.resolve(
+          monthResponse(payload, { startDate: '2026-10-01', endDate: '2026-10-31' })
+        )
+        await october
+      }
+    })
+    expect(html).toContain('本机签到记录读取失败')
+    expect(html).toContain('当前显示上次读取的记录。')
+    expect(html.match(/data-slot="/g)).toHaveLength(30)
+    expect(html).not.toContain('这个渠道本月还没有签到记录')
+  })
+
   it('当前月没有记录时可以跳到最近有记录的日期', async () => {
     const entry = pair(firstAccount, arknights, {
       first_date: '2026-10-20',
