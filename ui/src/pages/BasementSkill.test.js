@@ -141,3 +141,35 @@ describe('基建技能森空岛数据读取', () => {
     expect(JSON.stringify(planState)).toBe(before)
   })
 })
+
+describe('基建技能筛选', () => {
+  it('重新进入页面时保留五项筛选，重置后再次进入显示全部干员', () => {
+    state.skill.value = [...catalog, { ...catalog[0], name: '另一位干员' }]
+    state.snapshot.value = owned
+    const page = setup()
+    const selected = {
+      name: '能天使',
+      description: '物流',
+      facility: '贸易站',
+      ownership: 'owned',
+      status: 'active'
+    }
+    Object.assign(page.filters.value, selected)
+    expect(page.filteredItems.value.map((item) => item.key)).toEqual(['能天使'])
+
+    const returned = setup()
+    expect(returned.filteredItems.value.map((item) => item.key)).toEqual(['能天使'])
+    expect(returned.filters.value).toEqual(selected)
+
+    returned.resetFilters()
+    const cleared = setup()
+    expect(cleared.filters.value).toEqual({
+      name: '',
+      description: '',
+      facility: null,
+      ownership: null,
+      status: null
+    })
+    expect(cleared.filteredItems.value.map((item) => item.key)).toEqual(['能天使', '另一位干员'])
+  })
+})

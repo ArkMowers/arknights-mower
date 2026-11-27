@@ -9,6 +9,13 @@ import bufferBundled from '@/pages/basement_skill/buffer.json'
 const skill = ref(skillBundled)
 const buffer = ref(bufferBundled)
 const snapshot = ref(null)
+const defaultFilters = { name: '', description: '', facility: null, ownership: null, status: null }
+const filters = ref({ ...defaultFilters })
+
+function resetFilters() {
+  filters.value = { ...defaultFilters }
+}
+
 let snapshotRequest = null
 let loaded = false
 
@@ -41,5 +48,5 @@ export function useBasementSkill() {
       // 资源包未安装或加载失败：保留内置兜底，下次进入页面再试
     }
   }
-  return { skill, buffer, load, snapshot, loadOwnedOperators }
+  return { skill, buffer, load, snapshot, loadOwnedOperators, filters, resetFilters }
 }

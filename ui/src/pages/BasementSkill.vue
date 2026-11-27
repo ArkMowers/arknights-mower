@@ -18,7 +18,7 @@
               <label
                 ><span>干员</span
                 ><n-input
-                  v-model:value="name_select"
+                  v-model:value="filters.name"
                   clearable
                   placeholder="干员名称 / 拼音"
                   aria-label="搜索干员"
@@ -26,7 +26,7 @@
               <label
                 ><span>技能</span
                 ><n-input
-                  v-model:value="des_select"
+                  v-model:value="filters.description"
                   clearable
                   placeholder="技能名称或描述 / 拼音"
                   aria-label="搜索技能"
@@ -39,11 +39,11 @@
               @click="showFilters = !showFilters"
             >
               {{ showFilters ? '收起设施与状态筛选' : '展开设施与状态筛选' }}
-              <span v-if="facility_select || ownership_select || status_select"> · 已筛选</span>
+              <span v-if="filters.facility || filters.ownership || filters.status"> · 已筛选</span>
             </button>
             <div class="filter-extras" :class="{ 'is-open': showFilters }">
               <n-select
-                v-model:value="facility_select"
+                v-model:value="filters.facility"
                 clearable
                 :options="facilityOptions"
                 placeholder="全部设施"
@@ -52,14 +52,14 @@
               />
               <div class="status-filters">
                 <n-select
-                  v-model:value="ownership_select"
+                  v-model:value="filters.ownership"
                   clearable
                   :options="ownershipOptions"
                   placeholder="全部持有状态"
                   aria-label="持有状态筛选"
                 />
                 <n-select
-                  v-model:value="status_select"
+                  v-model:value="filters.status"
                   clearable
                   :options="statusOptions"
                   placeholder="全部解锁状态"
@@ -131,7 +131,14 @@ import {
   skillStatusLabels
 } from '@/utils/basementSkills'
 
-const { skill, load, snapshot, loadOwnedOperators: readOwnedOperators } = useBasementSkill()
+const {
+  skill,
+  load,
+  snapshot,
+  loadOwnedOperators: readOwnedOperators,
+  filters,
+  resetFilters
+} = useBasementSkill()
 const planStore = usePlanStore()
 const planDefaults = computed(() => {
   try {
@@ -158,11 +165,6 @@ const loading = ref(false)
 const snapshotRequested = ref(false)
 const syncing = ref(false)
 const error = ref('')
-const name_select = ref('')
-const des_select = ref('')
-const facility_select = ref(null)
-const ownership_select = ref(null)
-const status_select = ref(null)
 
 const skill_items = computed(() => annotateBasementSkills(skill.value, snapshot.value))
 const facilityOptions = computed(() =>
@@ -174,15 +176,7 @@ const ownershipOptions = Object.entries(ownershipLabels).map(([value, label]) =>
 const statusOptions = Object.entries(skillStatusLabels)
   .filter(([value]) => value !== 'unowned')
   .map(([value, label]) => ({ value, label }))
-const filteredItems = computed(() =>
-  filterBasementSkills(skill_items.value, {
-    name: name_select.value,
-    description: des_select.value,
-    facility: facility_select.value,
-    ownership: ownership_select.value,
-    status: status_select.value
-  })
-)
+const filteredItems = computed(() => filterBasementSkills(skill_items.value, filters.value))
 const filteredSkillCount = computed(() =>
   filteredItems.value.reduce((count, item) => count + item.childSkill.length, 0)
 )
@@ -190,14 +184,6 @@ const dataMessage = computed(() => {
   if (loading.value) return '正在读取本地森空岛练度…'
   return snapshot.value?.message || '同步森空岛练度后可显示持有和技能解锁状态。'
 })
-
-function resetFilters() {
-  name_select.value = ''
-  des_select.value = ''
-  facility_select.value = null
-  ownership_select.value = null
-  status_select.value = null
-}
 
 // 冷启动只复用整张表共有的行布局，逐个干员的标签和练度等本次快照返回后再显示。
 const shapeCache = createSkeletonShape('basement-skill', { allTagged: false, allProgressed: false })
