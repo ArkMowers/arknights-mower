@@ -23706,9 +23706,18 @@ class BaseSchedulerSolver(
                         deadline = monotonic() + profile.transition_timeout + interval
                     interval = min(interval, 0.75 * profile.screenshot_interval / 1000)
                 self.back(interval)
-                self._wait_for_room_exit(
-                    deadline=deadline, early_feedback=early_feedback
-                )
+                try:
+                    self._wait_for_room_exit(
+                        deadline=deadline,
+                        early_feedback=early_feedback,
+                        retry_room=room
+                        if room in ("meeting", "factory", "contact")
+                        else None,
+                    )
+                except RecognizeError as exc:
+                    if getattr(self, "_emergency_handoff", False):
+                        raise RoomArrangementDeferred(room, exc) from exc
+                    raise
         remember_roommate_target(self.task, room)
         if room in getattr(self.task, "dorm_recovery_restore", []):
             self.task.dorm_recovery_restore.remove(room)
@@ -23748,15 +23757,30 @@ class BaseSchedulerSolver(
                 return True
             self.sleep(min(poll_interval, remaining))
 
-    def _wait_for_room_exit(self, *, deadline=None, early_feedback=False):
+    def _wait_for_room_exit(
+        self, *, deadline=None, early_feedback=False, retry_room=None
+    ):
         """确认已发送的返回键生效，再把地图交给下一次房间操作。"""
         profile = self.performance_profile
+        started = monotonic()
         if deadline is None:
-            deadline = monotonic() + profile.transition_timeout
+            deadline = started + profile.transition_timeout
         while True:
             self.recog.update()
-            if self.scene() == Scene.INFRA_MAIN:
+            scene = self.scene()
+            if scene == Scene.INFRA_MAIN:
                 return
+            if (
+                retry_room is not None
+                and scene == Scene.INFRA_DETAILS
+                and monotonic() - started >= profile.screenshot_interval / 1000
+                and self.detect_room() == retry_room
+                and monotonic() < deadline
+            ):
+                # 进驻信息页仍显示原房间，只在本次退出中补发一次返回键。
+                retry_room = None
+                self.back(0)
+                continue
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise RecognizeError("换人后未确认返回基建全局视角")

@@ -559,6 +559,71 @@ def test_confirmed_room_exit_needs_no_extra_sleep(solver):
     solver.sleep.assert_not_called()
 
 
+@pytest.mark.parametrize("room", ["meeting", "factory", "contact"])
+def test_special_facility_retries_back_without_reentering(solver, monkeypatch, room):
+    task, state, events = restoration_exit_screen(solver, monkeypatch)
+    task.plan = {room: ORIGINAL.copy()}
+    task.run_order_original_roster = copy.deepcopy(task.plan)
+    solver._selection_profile_snapshot.transition_timeout = 2
+    solver.detect_room = MagicMock(return_value=room)
+    state["page"] = "room"
+
+    def back(interval):
+        events.append(("back", state["page"]))
+        state["clock"] += interval
+        if len(events) == 2:
+            state["page"] = "map"
+
+    solver.back.side_effect = back
+    solver._complete_room_arrangement({}, room, task.plan)
+
+    assert events == [("back", "room"), ("back", "room")]
+    assert state["page"] == "map" and task.plan == {}
+    assert state["clock"] < 2
+    solver.enter_room.assert_not_called()
+    solver.choose_agent.assert_not_called()
+
+
+@pytest.mark.parametrize("page", [Scene.INFRA_DETAILS, Scene.DOUBLE_CONFIRM])
+def test_special_facility_does_not_retry_back_on_another_page(
+    solver, monkeypatch, page
+):
+    room = "meeting"
+    task, state, _ = restoration_exit_screen(solver, monkeypatch)
+    task.plan = {room: ORIGINAL.copy()}
+    solver._selection_profile_snapshot.transition_timeout = 1
+    solver.detect_room = MagicMock(return_value="factory")
+    solver.scene.side_effect = None
+    solver.scene.return_value = page
+    solver.back.side_effect = lambda interval: None
+
+    with pytest.raises(RecognizeError, match="返回基建全局视角"):
+        solver._complete_room_arrangement({}, room, task.plan)
+
+    solver.back.assert_called_once_with(0.5)
+    assert task.plan == {room: ORIGINAL}
+    assert state["clock"] == pytest.approx(1)
+
+
+def test_persistent_exit_in_rescue_handoff_yields_to_scheduler(solver, monkeypatch):
+    room = "meeting"
+    task, state, _ = restoration_exit_screen(solver, monkeypatch)
+    task.plan = {room: ORIGINAL.copy()}
+    solver._emergency_handoff = True
+    solver._selection_profile_snapshot.transition_timeout = 1
+    solver.detect_room = MagicMock(return_value=room)
+    state["page"] = "room"
+    solver.back.side_effect = lambda interval: None
+
+    with pytest.raises(base_schedule.RoomArrangementDeferred) as raised:
+        solver._complete_room_arrangement({}, room, task.plan)
+
+    assert raised.value.room == room
+    assert solver.back.call_count == 2
+    assert task.plan == {room: ORIGINAL}
+    assert state["clock"] == pytest.approx(1)
+
+
 @pytest.mark.parametrize("cancel_at", ["capture", "sleep"])
 def test_room_exit_cancellation_preserves_original_roster(
     solver, monkeypatch, cancel_at
