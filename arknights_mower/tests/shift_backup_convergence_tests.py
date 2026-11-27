@@ -84,6 +84,164 @@ def solver(monkeypatch):
     return instance
 
 
+@pytest.fixture
+def startup_waiting_backup(solver):
+    factory = "room_3_1"
+    group_factory = "room_3_2"
+    group = "自动化"
+    config = PlanConfig("", "", "")
+    solver.op_data = Operators(
+        {
+            "default_plan": Plan(
+                {
+                    factory: [Room("阿罗玛", "", ["娜斯提"], "制造站")],
+                    group_factory: [
+                        Room("森蚺", group, ["八幡海铃"], "制造站"),
+                        Room("温蒂", group, ["娜斯提"], "制造站"),
+                    ],
+                    "room_1_2": [Room("薇薇安娜", "红松", ["陈"], "制造站")],
+                    "room_1_3": [Room("槐琥", "", ["娜斯提"], "制造站")],
+                    "dormitory_1": [
+                        Room("杜林", "", []),
+                        Room("桃金娘", "", []),
+                        *[Room("Free", "", []) for _ in range(3)],
+                    ],
+                },
+                config,
+            ),
+            "backup_plans": [
+                Plan(
+                    {factory: [Room("阿罗玛", "", ["多萝西"], "制造站")]},
+                    config,
+                    trigger=LogicExpression(
+                        "op_data.operators['森蚺'].is_working()", "!=", "True"
+                    ),
+                )
+            ],
+        }
+    )
+    assert solver.op_data.init_and_validate() is None
+    assert solver.op_data.swap_plan([True], refresh=True) is None
+    solver.op_data.commit_group_shifts({group: True})
+    for room in (factory, group_factory):
+        solver._reconcile_room_observation(
+            room, [{"agent": "", "mood": -1} for _ in solver.op_data.plan[room]]
+        )
+    waiting = SchedulerTask(
+        time=datetime.now() - timedelta(seconds=10),
+        task_plan={
+            factory: ["阿罗玛"],
+            group_factory: ["森蚺", "温蒂"],
+            "room_1_3": ["娜斯提"],
+        },
+        task_type=TaskTypes.RE_ORDER,
+        meta_data="副表内存收敛",
+    )
+    correction = SchedulerTask(
+        task_plan={factory: ["多萝西"], group_factory: ["森蚺", "温蒂"]},
+        task_type=TaskTypes.SELF_CORRECTION,
+    )
+    correction.initial_staffing = correction.derived_correction = True
+    solver.tasks = [correction]
+    solver.task = correction
+    solver._suspend_group_shift(waiting, {group})
+    return correction, waiting, factory, group_factory, group
+
+
+@pytest.mark.parametrize("resume", [False, True])
+def test_startup_correction_can_release_unstarted_backup_wait(
+    solver, startup_waiting_backup, resume
+):
+    correction, waiting, factory, group_factory, group = startup_waiting_backup
+    before_waiting = copy.deepcopy(waiting.__dict__)
+    original_time = correction.time
+    if resume:
+        solver._retain_failed_task(
+            correction, "副表换班暂缓", (factory, group_factory), dependency=True
+        )
+        solver._resume_failed_tasks()
+        assert correction.execution_failure
+        solver._reconcile_room_observation(factory, [{"agent": "", "mood": -1}])
+        solver._resume_failed_tasks()
+        assert not correction.retains_execution
+    solver._prepare_group_shift(correction)
+    solver._prepare_shift_cycle(correction)
+
+    assert correction.plan[group_factory] == ["森蚺", "温蒂"]
+    assert correction.plan[factory][0] in {"阿罗玛", "娜斯提"}
+    assert correction.backup_shift_conditions == [False]
+    assert correction.group_shift_transitions[group] is False
+    assert correction.time == original_time
+    assert solver.op_data.plan_condition == [True]
+    assert solver.op_data.group_is_resting(group)
+    assert solver.op_data.get_current_operator(factory, 0) is None
+    assert solver.op_data.get_current_operator(group_factory, 0) is None
+    assert solver.waiting_group_shifts[0] is waiting
+    assert waiting.__dict__ == before_waiting
+
+
+@pytest.mark.parametrize("extra_work", [False, True])
+def test_confirmed_startup_correction_retires_superseded_backup_targets(
+    solver, startup_waiting_backup, extra_work
+):
+    correction, waiting, factory, group_factory, _ = startup_waiting_backup
+    independent_room = "room_1_2"
+    resident = solver.op_data.operators["薇薇安娜"]
+    resident.current_room, resident.current_index = independent_room, 0
+    resident.mood, resident.time_stamp = 24, datetime.now()
+    if extra_work:
+        waiting.plan[independent_room] = ["陈"]
+    waiting.backup_explicit_slots = {
+        (room, index)
+        for room, row in waiting.plan.items()
+        for index, name in enumerate(row)
+        if name != "Current"
+    }
+    original_waiting = copy.deepcopy(waiting.__dict__)
+    solver._prepare_group_shift(correction)
+    solver._prepare_shift_cycle(correction)
+    solver._activate_shift_backup(correction)
+    solver._prepare_group_shift(correction, remember_targets=True)
+    final = copy.deepcopy(correction.plan)
+    assert final[factory] == ["阿罗玛"]
+    assert final["room_1_3"] == ["槐琥"]
+    assert independent_room not in final
+    assert final[group_factory] == ["森蚺", "温蒂"]
+    assert not solver._complete_group_shift(correction)
+    assert waiting.__dict__ == original_waiting
+    assert solver.waiting_group_shifts == [waiting]
+
+    solver.op_data = solver.op_data.project_arrangements([final])
+    assert solver._complete_group_shift(correction)
+    assert not solver.waiting_group_shifts
+    if extra_work:
+        assert any(task is waiting for task in solver.tasks)
+        assert waiting.plan == {independent_room: ["陈"]}
+        assert waiting.backup_explicit_slots == {(independent_room, 0)}
+        assert waiting.time == original_waiting["time"]
+    else:
+        assert all(task is not waiting for task in solver.tasks)
+
+
+@pytest.mark.parametrize("protected", ["started", "additional_group"])
+def test_startup_correction_keeps_other_backup_reservations(
+    solver, startup_waiting_backup, protected
+):
+    correction, waiting, factory, group_factory, _ = startup_waiting_backup
+    if protected == "started":
+        waiting.mood_physical_started = True
+    else:
+        waiting.group_shift_waiting.add("红松")
+        solver.op_data.commit_group_shifts({"红松": True})
+    before_waiting = copy.deepcopy(waiting.__dict__)
+    solver._prepare_group_shift(correction)
+    with pytest.raises(base.ProductSwitchDeferred, match="无法为阿罗玛匹配替班"):
+        solver._prepare_shift_cycle(correction)
+
+    assert correction.plan == {factory: ["多萝西"], group_factory: ["森蚺", "温蒂"]}
+    assert waiting.__dict__ == before_waiting
+
+
 def downshift(solver, kind=TaskTypes.SHIFT_OFF):
     task = SchedulerTask(
         task_type=kind,

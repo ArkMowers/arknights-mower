@@ -1899,11 +1899,31 @@ class BaseSchedulerSolver(
         simulation.op_data = self.op_data.project_arrangements([])
         simulation.tasks = [pending for pending in self.tasks if pending is not task]
         simulation.task = task
-        plan = simulation.agent_get_mood(
+        options = dict(
             skip_dorm=getattr(task, "correction_skip_dorm", False),
             read_rooms=False,
             return_plan=True,
         )
+        releasable = []
+        if getattr(task, "initial_staffing", False) and getattr(
+            self, "waiting_group_shifts", ()
+        ):
+            transitions = self.op_data.arrangement_group_transitions(task.plan)
+            simulation.waiting_group_shifts, releasable = (
+                self._initial_staffing_backup_waits(transitions)
+            )
+        plan = simulation.agent_get_mood(**options)
+        if releasable:
+            # 重算后仍需包含回班目标，完整换班预演会核对最终回班结果。
+            proposed = self.op_data.arrangement_group_transitions(plan or {})
+            if any(
+                proposed.get(group) is not False
+                for pending in releasable
+                for group in pending.group_shift_waiting
+            ):
+                simulation.op_data = self.op_data.project_arrangements([])
+                simulation.waiting_group_shifts = self.waiting_group_shifts
+                plan = simulation.agent_get_mood(**options)
         task.plan = plan or {}
         for name in ("group_shift_transitions", "dorm_fill_plan"):
             task.__dict__.pop(name, None)
@@ -4309,6 +4329,40 @@ class BaseSchedulerSolver(
         names.update(waiting_names)
         slots.update(waiting_slots)
         return names, slots, waiting_names, waiting_slots
+
+    def _initial_staffing_backup_waits(self, transitions):
+        """找出启动纠错可以解除回班依赖的未开始副表任务。"""
+        returning = {group for group, resting in transitions.items() if not resting}
+        still_waiting, releasable = [], []
+        for task in getattr(self, "waiting_group_shifts", ()):
+            if (
+                task.meta_data == "副表内存收敛"
+                and task.group_shift_waiting
+                and task.group_shift_waiting <= returning
+                and not task.retains_execution
+                and not has_pending_roommate_readback(task)
+                and not hasattr(task, "backup_shift_intent")
+                and not hasattr(task, "backup_shift_conditions")
+                and not any(
+                    getattr(task, flag, False)
+                    for flag in (
+                        "mood_physical_started",
+                        "derived_correction_started",
+                        "group_shift_expected",
+                        "backup_shift_active",
+                        "backup_retention_started",
+                        "ordinary_coordination",
+                        "product_shift_locked",
+                        "product_switched_before_arrangement",
+                        "group_shift_predecessors",
+                        "departure_recovery_names",
+                    )
+                )
+            ):
+                releasable.append(task)
+            else:
+                still_waiting.append(task)
+        return still_waiting, releasable
 
     def _returning_groups_releasing_waits(self, task):
         return {
@@ -10492,6 +10546,14 @@ class BaseSchedulerSolver(
                     task for task in self.tasks if id(task) not in obsolete_ids
                 ]
                 continue
+            if empty_manufacture:
+                obsolete = {
+                    id(task) for task in existing if task.meta_data != target_meta
+                }
+                self.tasks[:] = [
+                    task for task in self.tasks if id(task) not in obsolete
+                ]
+                continue
             state = facility_states.get(room)
             expected_facility = "manufacture" if facility == "制造站" else "trade"
             if not state or state.get("facility") != expected_facility:
@@ -10523,14 +10585,6 @@ class BaseSchedulerSolver(
                     )
                 continue
 
-            if empty_manufacture and state.get("product") is None:
-                obsolete = {
-                    id(task) for task in existing if task.meta_data != target_meta
-                }
-                self.tasks[:] = [
-                    task for task in self.tasks if id(task) not in obsolete
-                ]
-                continue
             if len(existing) == 1 and existing[0].meta_data == target_meta:
                 continue
             self.tasks[:] = [
@@ -11217,6 +11271,59 @@ class BaseSchedulerSolver(
             self._refresh_deferred_product_reservations()
             logger.debug("换班等待条件已满足，恢复原安排：%s", task.plan)
 
+    def _reconcile_initial_staffing_backup_waits(self, transitions, confirmed):
+        """启动换人确认后，撤销旧副表安排中已完成或被覆盖的动作。"""
+        _, releasable = self._initial_staffing_backup_waits(transitions)
+        confirmed_names = set(confirmed.values())
+        completed = []
+        for pending in releasable:
+            remaining_slots = {
+                (room, index)
+                for room, row in pending.plan.items()
+                for index, name in enumerate(row)
+                if name != "Current"
+                and (room, index) not in confirmed
+                and name not in confirmed_names
+            }
+            remaining = self._plan_for_slots(pending.plan, remaining_slots)
+            if remaining == pending.plan:
+                continue
+            pending.plan = remaining
+            if not remaining:
+                completed.append(pending)
+                pending.__dict__.pop("group_shift_waiting", None)
+                continue
+            for field in ("group_shift_transitions", "dorm_fill_plan"):
+                pending.__dict__.pop(field, None)
+            if hasattr(pending, "backup_explicit_slots"):
+                pending.backup_explicit_slots &= remaining_slots
+            if getattr(pending, "backup_retention_admissions", None):
+                pending.backup_retention_admissions &= _assigned_operator_names(
+                    remaining
+                )
+            if getattr(pending, "backup_retention_releases", None):
+                pending.backup_retention_releases = {
+                    name: slot
+                    for name, slot in pending.backup_retention_releases.items()
+                    if slot not in confirmed and name not in confirmed_names
+                }
+            if getattr(pending, "backup_retention_empty_slots", None):
+                pending.backup_retention_empty_slots = {
+                    slot: name
+                    for slot, name in pending.backup_retention_empty_slots.items()
+                    if slot in remaining_slots
+                }
+        if completed:
+            completed_ids = {id(pending) for pending in completed}
+            self.waiting_group_shifts[:] = [
+                pending
+                for pending in self.waiting_group_shifts
+                if id(pending) not in completed_ids
+            ]
+            resolve_mastery_backup_tasks(
+                [*self.tasks, *self.waiting_group_shifts], completed
+            )
+
     def _complete_group_shift(self, task):
         """Confirm required targets; mastery-owned slots retain their protection."""
         if not hasattr(task, "group_shift_transitions"):
@@ -11228,7 +11335,8 @@ class BaseSchedulerSolver(
             return True
         missing = {}
         differences = []
-        for (room, index), name in getattr(task, "group_shift_expected", {}).items():
+        expected = getattr(task, "group_shift_expected", {})
+        for (room, index), name in expected.items():
             actual = self.op_data.get_current_operator(room, index)
             if actual is None or actual.name != name:
                 missing.setdefault(
@@ -11259,6 +11367,8 @@ class BaseSchedulerSolver(
             if self.op_data.group_is_resting(group) != resting
         }
         self.op_data.commit_group_shifts(transitions)
+        if expected and getattr(task, "initial_staffing", False):
+            self._reconcile_initial_staffing_backup_waits(transitions, expected)
         from arknights_mower.utils.urgent_recovery import complete_urgent_recovery
 
         self._queue_ordinary_coordination_admission(task)
@@ -11635,6 +11745,31 @@ class BaseSchedulerSolver(
                 ),
             )
             return
+        waiting_shifts = getattr(self, "waiting_group_shifts", ())
+        if getattr(task, "initial_staffing", False) and waiting_shifts:
+            transitions = self.op_data.arrangement_group_transitions(task.plan)
+            still_waiting, releasable = self._initial_staffing_backup_waits(transitions)
+            if releasable:
+                # 只有最终安排能让全部前置组回班，才采用暂时释放预约的预演。
+                try:
+                    if self._converge_shift_cycle(
+                        task,
+                        projection_now,
+                        still_waiting,
+                        required_returns={
+                            group
+                            for pending in releasable
+                            for group in pending.group_shift_waiting
+                        },
+                    ):
+                        return
+                except (ProductSwitchDeferred, ValueError):
+                    pass
+        self._converge_shift_cycle(task, projection_now, waiting_shifts)
+
+    def _converge_shift_cycle(
+        self, task, projection_now, waiting_shifts, *, required_returns=()
+    ):
         timing = _backup_timing_runtime.current
         if self.op_data.backup_plans:
             timing.start()
@@ -11794,6 +11929,7 @@ class BaseSchedulerSolver(
         step.coordination_request_names = list(dict.fromkeys(ordinary_requests))
         step.dorm_fill_plan = copy.deepcopy(getattr(task, "dorm_fill_plan", {}))
         initial_correction = getattr(task, "initial_staffing", False)
+        initial_staffing_returns = set(getattr(task, "initial_staffing_returns", ()))
         returning_groups = self._returning_groups_releasing_waits(task)
         returning = set()
         seen = set()
@@ -11814,7 +11950,7 @@ class BaseSchedulerSolver(
         for _ in range(64):
             timing.rounds["完整换班"] += 1
             simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
-                (pending, getattr(self, "waiting_group_shifts", []))
+                (pending, list(waiting_shifts))
             )
             simulation.task = step
             previous_dorm_layout = dorm_rebalance_signature(simulation.op_data)
@@ -11922,9 +12058,7 @@ class BaseSchedulerSolver(
                         _merge_shift_transition(
                             return_plan, queued.plan, simulation.op_data
                         )
-                task.initial_staffing_returns = set(
-                    getattr(task, "initial_staffing_returns", ())
-                ) | _assigned_operator_names(return_plan)
+                initial_staffing_returns.update(_assigned_operator_names(return_plan))
                 returning_groups.update(
                     group
                     for group, resting in simulation.op_data.arrangement_group_transitions(
@@ -12041,7 +12175,7 @@ class BaseSchedulerSolver(
             if not rest:
                 # 所有可下班组已安排后才补最终空床；补床触发的副表继续参与收敛。
                 simulation.tasks, simulation.waiting_group_shifts = copy.deepcopy(
-                    (pending, getattr(self, "waiting_group_shifts", []))
+                    (pending, list(waiting_shifts))
                 )
                 count = len(simulation.tasks)
                 try_add_release_dorm(
@@ -12271,6 +12405,12 @@ class BaseSchedulerSolver(
                     # 恢复完成前保留原回班意图，不提交预演中的副表安排。
                     task.time = max(task.time, deadline)
                     return
+            if any(
+                simulation.op_data.group_is_resting(group) for group in required_returns
+            ):
+                return False
+            if getattr(task, "initial_staffing", False):
+                task.initial_staffing_returns = initial_staffing_returns
             task.group_shift_transitions = {
                 group: resting
                 for group, resting in simulation.op_data.group_shift_state.items()
@@ -12339,7 +12479,7 @@ class BaseSchedulerSolver(
                 format_task_log_message(snapshot, summary),
                 extra={"log_task": snapshot},
             )
-            return
+            return True
         raise ValueError("完整换班预演未收敛，保留原任务，暂不执行换人")
 
     @log_mood_calculation("上下班副表")
@@ -15214,19 +15354,10 @@ class BaseSchedulerSolver(
             )
             if trade_level in (1, 2):
                 room_product = "lmd"
-        if facility == "manufacture":
-            if after_roster is None:
-                after_roster = manufacture_after_roster
-            if panel == "closed":
-                room_product = self._visible_manufacture_product()
+        if facility == "manufacture" and after_roster is None:
+            after_roster = manufacture_after_roster
         if read_with_countdown or (
-            after_roster is not None
-            and (
-                panel == "open"
-                or (
-                    facility == "manufacture" and panel == "closed" and not room_product
-                )
-            )
+            after_roster is not None and (facility == "manufacture" or panel == "open")
         ):
             if read_with_countdown:
                 facility_observation["order_pending"] = True
@@ -15251,7 +15382,7 @@ class BaseSchedulerSolver(
                     f"{state_name}待确认",
                 )
             return False
-        if facility == "manufacture" and panel == "open":
+        if facility == "manufacture" and panel in ("open", "closed"):
             room_product = self._visible_manufacture_product()
         return self._read_room_facility_product(
             room,
@@ -21209,15 +21340,15 @@ class BaseSchedulerSolver(
             and not any(item["agent"] for item in result)
         )
         if after_roster and facility:
-            room_product = (
-                self._visible_manufacture_product()
-                if facility == "manufacture"
-                else after_roster["room_product"]
-            )
-            if facility == "manufacture" and empty_roster and not room_product:
+            if facility == "manufacture" and empty_roster:
                 if facility_observation is not None:
-                    facility_observation["state_summary"] = "无人进驻，跳过产物详情"
+                    facility_observation["state_summary"] = "无人进驻，跳过产物读取"
             else:
+                room_product = (
+                    self._visible_manufacture_product()
+                    if facility == "manufacture"
+                    else after_roster["room_product"]
+                )
                 observed = self._read_room_facility_product(
                     room,
                     facility,

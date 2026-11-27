@@ -378,6 +378,7 @@ def test_mood_patrol_updates_one_facility_observation(
         return_value="无法识别的文字" if outcome == "unknown_product" else reading
     )
     in_room = False
+    read_after_roster = facility == "manufacture" or panel == "open"
 
     def return_to_room(*args, **kwargs):
         nonlocal in_room
@@ -405,7 +406,7 @@ def test_mood_patrol_updates_one_facility_observation(
 
     def measure(_):
         assert instance._wait_drone_interface.call_count == (
-            0 if panel == "open" else 1
+            0 if read_after_roster else 1
         )
         assert [
             record.log_event["phase"]
@@ -432,7 +433,7 @@ def test_mood_patrol_updates_one_facility_observation(
     assert start.log_event["id"] == end.log_event["id"]
     parent = {"type": "facility-observation", "id": start.log_event["id"]}
     assert start.log_parent == end.log_parent == parent
-    interrupted_before_product = panel == "open" and outcome == "interrupted"
+    interrupted_before_product = read_after_roster and outcome == "interrupted"
     if interrupted_before_product:
         assert navigation == []
         instance._wait_drone_interface.assert_not_called()
@@ -451,7 +452,7 @@ def test_mood_patrol_updates_one_facility_observation(
     state = (
         f"{subject}未确认" if outcome == "unknown_product" else f"{subject}为{reading}"
     )
-    initial_state = f"{subject}待确认" if panel == "open" else state
+    initial_state = f"{subject}待确认" if read_after_roster else state
     assert start.getMessage() == f"{room_label}：{initial_state}，正在读取干员心情"
     expected_detail = {
         "cached_mood": f"[[operator:{name}]]（心情未实读）",
@@ -476,9 +477,7 @@ def test_mood_patrol_updates_one_facility_observation(
         instance.read_accurate_mood.assert_not_called()
     instance._work_room_panel.assert_called_once_with(room)
     assert instance._visible_manufacture_product.call_count == (
-        1
-        if facility == "manufacture" and panel and not interrupted_before_product
-        else 0
+        1 if facility == "manufacture" and not interrupted_before_product else 0
     )
 
 
@@ -489,8 +488,9 @@ def test_mood_patrol_updates_one_facility_observation(
 @pytest.mark.parametrize(
     "task_type", [base.TaskTypes.SELF_CORRECTION, base.TaskTypes.NOT_SPECIFIC]
 )
-def test_staffing_reads_visible_product_once_in_an_empty_factory(
-    monkeypatch, visible, next_frame, task_type
+@pytest.mark.parametrize("panel", ["open", "closed"])
+def test_staffing_skips_even_visible_product_in_an_empty_factory(
+    monkeypatch, visible, next_frame, task_type, panel
 ):
     monkeypatch.setattr(config, "conf", config.Conf(product_switching={"enable": True}))
     room, plan = product_plan()
@@ -510,7 +510,7 @@ def test_staffing_reads_visible_product_once_in_an_empty_factory(
         events.append("panel")
         if solver.recog.capture_started_at == 2 and next_frame == "wrong_room":
             raise base.RecognizeError("房号不符")
-        return "open"
+        return panel if len(events) == 1 else "open"
 
     def find(resource, **kwargs):
         if resource == "infra_no_operator":
@@ -546,12 +546,11 @@ def test_staffing_reads_visible_product_once_in_an_empty_factory(
         expected = ["panel", "slot"]
         if next_frame:
             expected.append("panel")
-        expected.append("label")
         assert events == expected
-        assert observed == ({room} if visible else set())
-        assert solver.op_data.facility_states[room]["product"] == visible
+        assert observed == set()
+        assert solver.op_data.facility_states[room]["product"] is None
         solver._wait_drone_interface.assert_not_called()
-        solver._visible_manufacture_product.assert_called_once_with()
+        solver._visible_manufacture_product.assert_not_called()
     solver.detect_room_type.assert_called_once_with()
 
 
