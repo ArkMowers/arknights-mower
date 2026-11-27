@@ -519,7 +519,7 @@ def test_manufacture_pause_status_from_capture(image, status):
     assert manufacture_detail_pause_state(frame) is status
 
 
-@pytest.mark.parametrize("step", ["survey", "accelerate", "switch"])
+@pytest.mark.parametrize("step", ["survey", "accelerate", "switch", "direct"])
 def test_product_switch_preserves_paused_queue_before_acceleration(routine_drone, step):
     solver, _, frames, _, _ = routine_drone
     solver.recog.img = frames[True]
@@ -527,7 +527,9 @@ def test_product_switch_preserves_paused_queue_before_acceleration(routine_drone
     solver._manufacture_is_idle = Mock(return_value=True)
     solver._start_product_switch_log = Mock()
     solver._tap_drone_accelerate = Mock()
-    solver._select_manufacture_product = Mock()
+    solver._select_manufacture_product = Mock(
+        side_effect=AssertionError("制造暂停时切换了尚未完成的队列")
+    )
     observation = {"room": ROOM, "current_product": "gold", "target_product": "exp3"}
 
     with pytest.raises(RecognizeError, match="制造暂停，无法加速当前制造队列"):
@@ -536,7 +538,7 @@ def test_product_switch_preserves_paused_queue_before_acceleration(routine_drone
         elif step == "accelerate":
             solver._execute_manufacture_acceleration(observation)
         else:
-            solver._change_manufacture_product(observation)
+            solver._change_manufacture_product(observation, direct=step == "direct")
 
     solver._manufacture_is_idle.assert_not_called()
     solver._tap_drone_accelerate.assert_not_called()

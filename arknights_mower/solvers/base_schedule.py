@@ -15920,9 +15920,8 @@ class BaseSchedulerSolver(
             )
             self._update_product_switch_log(observation["room"], "completed")
             return
+        self._require_manufacture_acceleration(observation["room"])
         confirm_after = None
-        if not direct:
-            self._require_manufacture_acceleration(observation["room"])
         if not direct and not self._manufacture_is_idle():
             state = observation.get("switch_progress")
             remaining_base = None

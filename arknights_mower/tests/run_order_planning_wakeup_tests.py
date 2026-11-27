@@ -743,6 +743,10 @@ def test_staffing_change_resumes_original_paused_order_refresh(paused_empty_orde
     primary.current_room, primary.current_index = "room_1_1", 0
     primary.mood, primary.time_stamp = 24, clock.now()
     states["room_1_1"] = "active"
+    original_failure = refresh.execution_failure
+    solver._resume_failed_tasks()
+    assert refresh.execution_failure is original_failure
+    solver._read_room_mood("room_1_1", force_mood=True)
     solver._resume_failed_tasks()
     assert not getattr(refresh, "execution_failure", None)
     assert refresh.time == original_time
