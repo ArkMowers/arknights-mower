@@ -645,7 +645,9 @@ def use_order_pages(solver, order_states):
     solver.get_agent_from_room = MagicMock(side_effect=get_agent)
 
 
-def use_trade_frames(solver, room, order_frame, *, panel_gray=None):
+def use_trade_frames(
+    solver, room, order_frame, *, panel_gray=None, first_slot_occupied=False
+):
     use_order_pages(solver, {room: "active"})
     del solver._cache_facility_state_from_current_page
     del solver.get_agent_from_room
@@ -681,7 +683,12 @@ def use_trade_frames(solver, room, order_frame, *, panel_gray=None):
 
     def find(resource, **kwargs):
         if solver.scene() == Scene.INFRA_DETAILS:
-            if panel_open and resource in ("arrange_check_in_on", "infra_no_operator"):
+            if panel_open and resource == "arrange_check_in_on":
+                return open_button
+            if panel_open and resource == "infra_no_operator":
+                scope = kwargs.get("scope")
+                if first_slot_occupied and scope and scope[0][1] == 135:
+                    return None
                 return open_button
             if not panel_open and resource == "arrange_check_in":
                 return closed_button
@@ -754,7 +761,15 @@ def test_three_slot_panel_requires_strategy_card_with_low_order_page_title(
     order_frame = card(2)
     marks = bytes2img((FIXTURES / "trade_level_marks.png").read_bytes())
     order_frame[28:86, 876:944] = marks[116:174]
-    use_trade_frames(solver, room, order_frame, panel_gray=frame("b102-empty3"))
+    use_trade_frames(
+        solver,
+        room,
+        order_frame,
+        panel_gray=frame("b102-empty2"),
+        first_slot_occupied=True,
+    )
+    solver.read_screen = MagicMock(return_value="鸿雪")
+    solver.read_accurate_mood = MagicMock(return_value=24)
 
     assert solver.get_run_order_time(room, read_mood=read_mood) is not None
 
@@ -1335,15 +1350,17 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
     ]
     assert len(corrections) == 1
     assert corrections[0].plan["room_1_1"] == ["鸿雪"]
-    waiting = next(
+    waiting = [
         task
         for task in solver.tasks
         if task.type == TaskTypes.REFRESH_TIME and task.meta_data == "room_1_1"
-    )
-    assert waiting.execution_failure
-    if refresh is not None:
-        assert waiting is refresh
-    original_time = waiting.time
+    ]
+    if refresh is None:
+        assert not waiting
+    else:
+        assert len(waiting) == 1 and waiting[0] is refresh
+        assert refresh.execution_failure
+        original_time = refresh.time
     assert not any(
         task.type == TaskTypes.RUN_ORDER and task.meta_data == "room_1_1"
         for task in solver.tasks
@@ -1394,8 +1411,9 @@ def test_paused_order_reconciles_empty_room_despite_recent_occupancy_cache(
     assert solver.op_data.get_current_room("room_1_1", True) == ["鸿雪"]
     assert correction.plan == {}
     solver.tasks.remove(correction)
-    assert waiting.time == original_time
-    assert waiting not in solver.tasks
+    if refresh is not None:
+        assert refresh.time == original_time
+        assert all(task is not refresh for task in solver.tasks)
     assert any(
         task.type == TaskTypes.RUN_ORDER and task.meta_data == "room_1_1"
         for task in solver.tasks
@@ -1472,6 +1490,7 @@ def test_two_paused_empty_rooms_keep_independent_refresh_responsibilities(
     use_order_pages(solver, dict.fromkeys(rooms, "paused"))
     use_mood_pages(solver, monkeypatch, {room: [""] for room in rooms})
     for room in rooms:
+        solver._queue_order_refresh(room)
         solver.plan_run_order(room)
     waiting = {
         task.meta_data: task
