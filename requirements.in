@@ -8,6 +8,9 @@ rapidocr==3.10.0
 ddddocr==1.5.6
 onnxruntime<=1.32.0
 
+# 游戏资源
+orjson==3.10.18
+
 # 二维码
 base45==0.4.4
 pyzbar==0.1.9

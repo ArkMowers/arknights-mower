@@ -1,5 +1,8 @@
+import json
 import unittest
 from copy import deepcopy
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import numpy as np
@@ -33,7 +36,9 @@ class TestResourceCacheReload(unittest.TestCase):
                 }
             },
             "recruit_result.json": {"6": ["测试干员"]},
-            "key_mapping.json": {"item_test": ["item_test", "MATERIAL", "测试材料"]},
+            "key_mapping.json": {
+                "item_test": ["item_test", "item_icon", "测试材料", "MATERIAL", 12]
+            },
         }
         containers = {
             "_stage_data_base": data._stage_data_base,
@@ -51,29 +56,27 @@ class TestResourceCacheReload(unittest.TestCase):
         }
         originals = {name: deepcopy(value) for name, value in containers.items()}
 
+        root = Path(self.enterContext(TemporaryDirectory()))
+        data_dir = root / "arknights_mower" / "data"
+        data_dir.mkdir(parents=True)
+        for name, value in targets.items():
+            (data_dir / name).write_text(
+                json.dumps(value, ensure_ascii=False), encoding="utf-8"
+            )
+
         try:
-            with (
-                patch.object(
-                    data,
-                    "_read_resource_json",
-                    side_effect=lambda name, expected_type: deepcopy(targets[name]),
-                ),
-                patch.object(
-                    data,
-                    "_agent_views",
-                    return_value=(
-                        targets["agent.json"],
-                        targets["agent_profession.json"],
-                    ),
-                ),
-            ):
+            with patch.object(data, "resource_pkg_path", side_effect=root.joinpath):
                 data.reload_resource_data()
 
             for name, original_ref in containers.items():
                 self.assertIs(getattr(data, name), original_ref)
             self.assertEqual(data.agent_list, ["测试干员"])
             self.assertEqual(data.agent_branch, {"测试干员": "领主"})
-            self.assertEqual(data._stage_data_base, [{"id": "HOT-1"}])
+            self.assertEqual(list(data.stage_data_full), [{"id": "HOT-1"}])
+            self.assertEqual(
+                data.key_mapping["item_test"],
+                ["item_test", "item_icon", "测试材料", "MATERIAL", 12],
+            )
             self.assertEqual(
                 data.agent_with_tags["测试标签"],
                 [{"id": "char_test", "name": "测试干员", "star": 6}],

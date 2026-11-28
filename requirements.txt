@@ -162,6 +162,7 @@ opencv-python-headless==4.11.0.86
     #   rapidocr
 orjson==3.10.18
     # via
+    #   -r requirements.in
     #   langgraph-sdk
     #   langsmith
 ormsgpack==1.10.0
