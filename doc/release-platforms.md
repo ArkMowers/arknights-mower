@@ -198,7 +198,7 @@ workflow 不读取代码签名 secrets。
 
 当前平台矩阵不包含 Windows ARM64。仓库锁定的
 [`opencv-python-headless==4.11.0.86`](https://pypi.org/project/opencv-python-headless/4.11.0.86/)
-和 [`rjieba==0.2.1`](https://pypi.org/project/rjieba/0.2.1/) 没有
+和 [`rjieba==0.2.2`](https://pypi.org/project/rjieba/0.2.2/) 没有
 `win_arm64` wheel，现有依赖安装步骤无法产出完整的 Windows ARM64 构建。
 
 在依赖提供对应 wheel，或者仓库确定并验证固定版本的源码构建方案之前，

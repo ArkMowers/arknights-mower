@@ -358,7 +358,7 @@ requests-toolbelt==1.0.0
     # via
     #   -r requirements.txt
     #   langsmith
-rjieba==0.2.1
+rjieba==0.2.2
     # via -r requirements.txt
 scikit-image==0.23.2
     # via -r requirements-dev.in
