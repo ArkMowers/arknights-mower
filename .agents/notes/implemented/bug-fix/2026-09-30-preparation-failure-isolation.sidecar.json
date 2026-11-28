@@ -1,0 +1,21 @@
+{
+  "title": "Preparation failure isolation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-30",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-DEV-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.application._is_device_verdict",
+    "arknights_mower.utils.device.application.DeviceControl",
+    "arknights_mower.utils.device.preparation.PreparationSession"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_preparation_tests.py",
+    "arknights_mower/tests/device_control_shutdown_tests.py"
+  ]
+}

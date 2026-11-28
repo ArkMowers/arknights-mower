@@ -1,0 +1,24 @@
+{
+  "title": "Chip Stage Priority",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-05",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-05]",
+    "[INV-UI-06]"
+  ],
+  "code_symbols": [
+    "ui/src/utils/maa_weekly_plan.js:promoteChipStageOrder",
+    "ui/src/components/MaaWeekly.vue:applyChipStageSelection",
+    "ui/src/components/MaaWeeklyTable.vue:applyStageOrder"
+  ],
+  "test_suites": [
+    "ui/src/components/MaaWeekly.test.js",
+    "ui/src/utils/maa_weekly_plan.test.js",
+    "ui/src/components/MaaWeeklyTable.test.js",
+    "ui/src/utils/maa_stage_inventory.test.js"
+  ]
+}

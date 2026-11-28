@@ -1,0 +1,412 @@
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import cv2
+import numpy as np
+import pytest
+
+from arknights_mower.solvers import base_schedule as base
+from arknights_mower.utils import product_recognition
+from arknights_mower.utils.image import bytes2img, loadres
+from arknights_mower.utils.recognize import RecognizeError, Recognizer
+from arknights_mower.utils.scene import Scene
+
+FIXTURES = Path(__file__).parent / "fixtures/manufacture"
+
+
+def solver_for(frame):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = SimpleNamespace(
+        img=frame, gray=cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY), h=1080, w=1920
+    )
+    return solver
+
+
+def card(number):
+    crops = bytes2img((FIXTURES / "trade_strategy_cards.webp").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[840:1040, 1400:1810] = crops[number * 200 : (number + 1) * 200]
+    return frame
+
+
+@pytest.mark.parametrize(
+    ("filename", "product"),
+    [("b303_room_20261123.jpg", "gold"), ("b102_check_in_exp_20261123.jpg", "exp3")],
+)
+def test_open_and_closed_manufacture_room_labels_skip_ocr(
+    monkeypatch, filename, product
+):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = Recognizer(None, (FIXTURES / filename).read_bytes())
+    ocr = Mock(side_effect=AssertionError("unexpected OCR"))
+    monkeypatch.setattr(base.rapidocr, "engine", ocr)
+    assert solver._visible_manufacture_product() == product
+    ocr.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "case", ["repeated_prefix", "suffix", "missing_template", "zoom"]
+)
+def test_room_label_falls_back_to_single_line_ocr(monkeypatch, case):
+    filename = {
+        "repeated_prefix": "b102_check_in_exp_20261123.jpg",
+        "zoom": "b102_room_zoom_20261123.jpg",
+    }.get(case, "b303_room_20261123.jpg")
+    frame = bytes2img((FIXTURES / filename).read_bytes())
+    if case == "suffix":
+        frame[934:968, 314:385] = frame[934:968, 239:310].copy()
+    elif case == "repeated_prefix":
+        frame[934:968, 239:275] = frame[934:968, 275:311].copy()
+    elif case == "missing_template":
+        monkeypatch.setattr(
+            product_recognition, "loadres", Mock(side_effect=FileNotFoundError)
+        )
+    text = {
+        "suffix": "赤金赤金",
+        "repeated_prefix": "级级作战记录",
+        "zoom": "中级作战记录",
+        "missing_template": "赤金",
+    }[case]
+    ocr = Mock(return_value=([[text, 1.0]], []))
+    monkeypatch.setattr(base.rapidocr, "engine", ocr)
+    result = solver_for(frame)._visible_manufacture_product()
+    assert result == {"zoom": "exp3", "missing_template": "gold"}.get(case)
+    assert ocr.call_count == 1
+    assert ocr.call_args.kwargs == dict(use_det=False, use_cls=False, use_rec=True)
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "b303_product_opening_20261123.jpg",
+        "b303_product_settled_20261123.jpg",
+        "adjusted_total.jpg",
+    ],
+)
+def test_manufacture_detail_gold_without_ocr(filename):
+    solver = object.__new__(base.BaseSchedulerSolver)
+    solver.recog = Recognizer(None, (FIXTURES / filename).read_bytes())
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+    assert solver.read_manufacture_product() == "gold"
+    solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize("partial", [False, True])
+def test_manufacture_detail_requires_all_six_record_characters(partial):
+    title = bytes2img((FIXTURES / "detail_exp3_20261018.webp").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[330:430, 1540:1835] = title
+    if partial:
+        frame[365:402, 1570:1608] = frame[365:402, 1608:1646].copy()
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(return_value="级级作战记录")
+    if partial:
+        with pytest.raises(RecognizeError, match="无法识别当前制造产物"):
+            solver.read_manufacture_product()
+        assert solver._product_ocr_text.call_count == 2
+    else:
+        assert solver.read_manufacture_product() == "exp3"
+        solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize("damage_template", [False, True])
+def test_missing_manufacture_character_uses_ocr(monkeypatch, damage_template):
+    title = bytes2img((FIXTURES / "detail_exp3_20261018.webp").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[330:430, 1540:1835] = title
+    # 擦去“中级作战记录”的第三个字，保留首尾和标题外框。
+    frame[365:402, 1646:1684] = 50
+    if damage_template:
+        template = product_recognition.loadres("room/product_detail_exp3", True).copy()
+        template[:, 76:114] = 0
+        monkeypatch.setattr(product_recognition, "loadres", Mock(return_value=template))
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(side_effect=["中级战记录", ""])
+    with pytest.raises(RecognizeError, match="无法识别当前制造产物"):
+        solver.read_manufacture_product()
+    assert [call.args[0] for call in solver._product_ocr_text.call_args_list] == [
+        ((1540, 330), (1835, 430)),
+        ((430, 330), (650, 430)),
+    ]
+
+
+@pytest.mark.parametrize("score", [np.nan, np.inf, -np.inf])
+def test_room_label_with_nonfinite_match_falls_back_to_ocr(monkeypatch, score):
+    frame = bytes2img((FIXTURES / "b303_room_20261123.jpg").read_bytes())
+    monkeypatch.setattr(
+        cv2, "matchTemplate", Mock(return_value=np.array([[score]], dtype=np.float32))
+    )
+    ocr = Mock(return_value=([], []))
+    monkeypatch.setattr(base.rapidocr, "engine", ocr)
+    assert solver_for(frame)._visible_manufacture_product() is None
+    ocr.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("material", "expected"),
+    [("固源岩", "orirock"), ("装置", "orirock_device"), ("", None)],
+)
+def test_missing_title_keeps_detail_material_read(material, expected):
+    frame = bytes2img((FIXTURES / "b303_product_settled_20261123.jpg").read_bytes())
+    frame[364:405, 1640:1683] = 50
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(side_effect=["源石碎片", material])
+    if expected:
+        assert solver.read_manufacture_product() == expected
+    else:
+        with pytest.raises(RecognizeError, match="源石碎片配方"):
+            solver.read_manufacture_product()
+    assert [call.args[0] for call in solver._product_ocr_text.call_args_list] == [
+        ((1540, 330), (1835, 430)),
+        ((430, 330), (650, 430)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("index", "expected"),
+    [(0, ("lmd", True)), (1, ("lmd", False)), (2, ("orundum", True))],
+)
+def test_open_and_locked_trade_cards_without_ocr(index, expected):
+    solver = solver_for(card(index))
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+    assert solver._read_trade_product_card() == expected
+    solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("index", "roi"),
+    [
+        (0, (slice(912, 957), slice(1606, 1694))),
+        (1, (slice(978, 1007), slice(1544, 1564))),
+        (2, (slice(956, 1003), slice(1652, 1694))),
+    ],
+)
+def test_partial_trade_words_request_ocr(index, roi):
+    frame = card(index)
+    frame[roi] = 20
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(return_value="")
+    with pytest.raises(RecognizeError, match="订单类型"):
+        solver._read_trade_product_card()
+    solver._product_ocr_text.assert_called_once_with(((1400, 840), (1810, 1040)))
+
+
+@pytest.mark.parametrize(("index", "other"), [(0, 2), (2, 0)])
+def test_disagreeing_readable_trade_fields_cannot_authorize_a_switch(index, other):
+    frame = card(index)
+    frame[912:1003, 1606:1694] = card(other)[912:1003, 1606:1694]
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("conflicting card"))
+    with pytest.raises(RecognizeError, match="底色不一致"):
+        solver._read_trade_product_card()
+    solver._product_ocr_text.assert_not_called()
+
+
+def test_flat_trade_template_cells_cannot_hide_conflicting_card(monkeypatch):
+    frame = card(0)
+    frame[912:1003, 1606:1694] = card(2)[912:1003, 1606:1694]
+    loadres = product_recognition.loadres
+    damaged = np.zeros_like(loadres("room/strategy_lmd", True))
+    damaged[: damaged.shape[0] // 2] = 128
+    monkeypatch.setattr(
+        product_recognition,
+        "loadres",
+        lambda name, gray: (
+            damaged if name == "room/strategy_lmd" else loadres(name, gray)
+        ),
+    )
+    solver = solver_for(frame)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("conflicting card"))
+    with pytest.raises(RecognizeError, match="底色不一致"):
+        solver._read_trade_product_card()
+    solver._product_ocr_text.assert_not_called()
+
+
+def test_foreign_layout_can_recover_through_scaled_trade_ocr():
+    frame = cv2.resize(card(0), (1280, 720))
+    solver = solver_for(frame)
+    solver.recog.w, solver.recog.h = 1280, 720
+    solver._product_ocr_text = Mock(return_value="贸易站3级后可切换")
+    assert solver._read_trade_product_card() == ("lmd", False)
+    solver._product_ocr_text.assert_called_once_with(((933, 560), (1206, 693)))
+
+
+@pytest.mark.parametrize(("crop", "matches"), [(0, True), (1, False), (2, False)])
+def test_trade_order_pause_banner_distinguishes_recorded_pages(crop, matches):
+    crops = bytes2img((FIXTURES / "trade_order_status_crops.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[351:411, 405:725] = crops[crop * 60 : (crop + 1) * 60]
+    assert bool(product_recognition.trade_order_is_paused(frame)) is matches
+
+
+def test_orange_banner_without_pause_text_does_not_skip_countdown():
+    crops = bytes2img((FIXTURES / "trade_order_status_crops.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    frame[351:411, 405:725] = crops[:60]
+    frame[366:391, 465:660] = frame[374, 430]
+    assert not product_recognition.trade_order_is_paused(frame)
+
+
+@pytest.mark.parametrize(
+    ("index", "expected"), [(0, 1), (1, 1), (2, 1), (3, 3), (4, 3)]
+)
+def test_trade_level_marks_in_room_panel_and_order_views(index, expected):
+    crops = bytes2img((FIXTURES / "trade_level_marks.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[28:86, 876:944] = crops[index * 58 : (index + 1) * 58]
+    assert product_recognition.trade_title_level(frame) == expected
+    frame[46:70, 915:937] = 85
+    assert product_recognition.trade_title_level(frame) is None
+
+
+def test_two_trade_level_marks_allow_room_confirmed_fixed_product():
+    title = bytes2img((FIXTURES.parent / "room_titles/trade_20261013.png").read_bytes())
+    frame = np.zeros((1080, 1920, 3), np.uint8)
+    frame[18:95, 568:957] = title
+    assert product_recognition.trade_title_level(frame) == 2
+    solver = solver_for(frame)
+    assert solver._fixed_trade_product("room_1_1") == "lmd"
+    assert solver._fixed_trade_product("room_2_2") is None
+
+
+@pytest.mark.parametrize("constant_template", [False, True])
+def test_unconfirmed_trade_title_reads_strategy_card(monkeypatch, constant_template):
+    title = bytes2img((FIXTURES.parent / "room_titles/trade_20261013.png").read_bytes())
+    frame = card(2)
+    frame[18:95, 568:957] = title
+    frame[36:80, 880:945] = (46, 46, 46)
+    for x, rgb in (
+        (894, (34, 187, 255)),
+        (912, (34, 187, 255)),
+        (930, (153, 153, 153)),
+    ):
+        frame[43:74, x - 7 : x + 8] = rgb
+
+    if constant_template:
+        loadres = product_recognition.loadres
+
+        def load_template(resource, *args, **kwargs):
+            if resource == "room/trade_level_mark":
+                return np.full((38, 15), 153, dtype=np.uint8)
+            return loadres(resource, *args, **kwargs)
+
+        monkeypatch.setattr(product_recognition, "loadres", load_template)
+    solver = solver_for(frame)
+    solver.op_data = SimpleNamespace()
+    solver._cache_facility_state = Mock()
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    solver._cache_facility_state_from_current_page("room_1_1", "trade", defer_log=True)
+
+    solver._cache_facility_state.assert_called_once_with("room_1_1", "trade", "orundum")
+    solver._product_ocr_text.assert_not_called()
+
+
+@pytest.mark.parametrize("level", [1, 2])
+def test_configured_trade_level_skips_detail_during_room_observation(
+    monkeypatch, level
+):
+    room = "room_1_1"
+    solver = solver_for(np.zeros((1080, 1920, 3), dtype=np.uint8))
+    solver.op_data = SimpleNamespace(
+        facility_levels={room: level}, update_facility_state=Mock()
+    )
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._work_room_panel = Mock(return_value="closed")
+    solver.scene_graph_navigation = Mock()
+    solver.detect_room_type = Mock(return_value="贸易站")
+    solver._wait_drone_interface = Mock(side_effect=AssertionError("opened orders"))
+    solver._read_trade_product_card = Mock(side_effect=AssertionError("read card"))
+    title_level = Mock(return_value=None)
+    monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
+
+    assert solver.refresh_facility_state(room)
+
+    solver.op_data.update_facility_state.assert_called_once_with(room, "trade")
+    title_level.assert_not_called()
+    solver._wait_drone_interface.assert_not_called()
+    solver.scene_graph_navigation.assert_not_called()
+    solver._read_trade_product_card.assert_not_called()
+
+
+def test_configured_third_level_reads_card_without_matching_title_level(monkeypatch):
+    room = "room_1_1"
+    solver = solver_for(card(2))
+    solver.op_data = SimpleNamespace(
+        facility_levels={room: 3}, update_facility_state=Mock()
+    )
+    solver._product_switching_enabled = Mock(return_value=True)
+    solver._work_room_panel = Mock(return_value="closed")
+    solver.detect_room_type = Mock(return_value="贸易站")
+    solver._wait_drone_interface = Mock()
+    solver.scene_graph_navigation = Mock()
+    title_level = Mock(return_value=1)
+    monkeypatch.setattr(product_recognition, "trade_title_level", title_level)
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    assert solver.refresh_facility_state(room)
+
+    assert solver.op_data.update_facility_state.call_args.args == (
+        room,
+        "trade",
+        "orundum",
+    )
+    solver._wait_drone_interface.assert_called_once()
+    title_level.assert_not_called()
+
+
+def test_trade_switch_uses_actual_strategy_even_with_outdated_configured_level():
+    room = "room_1_1"
+    solver = solver_for(card(2))
+    solver.op_data = SimpleNamespace(facility_levels={room: 1})
+    solver._open_trade_product_detail = Mock()
+    solver._cache_facility_state = Mock()
+    solver._start_product_switch_log = Mock()
+    solver._product_ocr_text = Mock(side_effect=AssertionError("unexpected OCR"))
+
+    observation = solver._survey_trade_switch(room, "lmd")
+
+    assert observation["current_product"] == "orundum"
+    assert observation["needs_switch"] is True
+    assert observation["switchable"] is True
+
+
+@pytest.mark.parametrize("first_reader", ["get_scene", "get_factory_scene"])
+def test_trade_order_opening_caches_order_scene(first_reader):
+    recog = Recognizer(None, (FIXTURES / "trade_order_opening.webp").read_bytes())
+
+    assert recog.find("order_label") == ((404, 137), (556, 195))
+    assert getattr(recog, first_reader)() == Scene.ORDER_LIST
+    assert recog.get_scene() == recog.get_factory_scene() == Scene.ORDER_LIST
+
+
+@pytest.mark.parametrize("first_reader", ["get_scene", "get_factory_scene"])
+def test_trade_order_keeps_drone_dialog_priority(first_reader):
+    frame = bytes2img((FIXTURES / "trade_order_opening.webp").read_bytes()) // 2
+    drone = loadres("drone")
+    height, width = drone.shape[:2]
+    frame[437 : 437 + height, 274 : 274 + width] = drone
+    encoded = cv2.imencode(".png", cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))[1]
+    recog = Recognizer(None, encoded.tobytes())
+
+    assert recog.find("order_label") is not None
+    assert recog.find("drone") is not None
+    assert getattr(recog, first_reader)() == Scene.DRONE_ACCELERATE
+    assert recog.get_scene() == recog.get_factory_scene() == Scene.DRONE_ACCELERATE
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("workshop/deer_dashboard_20261103.jpg", Scene.FACTORY_DASHBOARD),
+        ("workshop/deer_formula_transition_20261103.jpg", Scene.FACTORY_FORMULA),
+        ("login/login_cancelled_20261021.jpg", Scene.LOGIN_CANCELLED),
+    ],
+)
+def test_order_title_matching_preserves_other_scenes(filename, expected):
+    recog = Recognizer(None, (FIXTURES.parent / filename).read_bytes())
+
+    assert recog.find("order_label") is None
+    assert recog.get_scene() == expected

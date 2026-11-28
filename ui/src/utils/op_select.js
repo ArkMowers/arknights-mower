@@ -1,7 +1,9 @@
+import { publicAsset } from '@/utils/publicAsset'
 import { NAvatar, NTag } from 'naive-ui'
 import { h } from 'vue'
+import OperatorSkillTooltip from '@/components/OperatorSkillTooltip.vue'
 
-export const render_op_tag = ({ option, handleClose }) => {
+const renderTag = ({ option, handleClose }) => {
   return h(
     NTag,
     {
@@ -27,7 +29,7 @@ export const render_op_tag = ({ option, handleClose }) => {
           },
           [
             h(NAvatar, {
-              src: 'avatar/' + option.value + '.webp',
+              src: publicAsset('avatar/' + option.value + '.webp'),
               round: true,
               size: 22,
               style: {
@@ -41,7 +43,7 @@ export const render_op_tag = ({ option, handleClose }) => {
   )
 }
 
-export const render_op_label = (option) => {
+const renderLabel = (option) => {
   return h(
     'div',
     {
@@ -53,11 +55,21 @@ export const render_op_label = (option) => {
     },
     [
       h(NAvatar, {
-        src: 'avatar/' + option.value + '.webp',
+        src: publicAsset('avatar/' + option.value + '.webp'),
         round: true,
-        size: 'small'
+        size: 'small',
+        style: {
+          flexShrink: 0
+        }
       }),
       option.label
     ]
   )
 }
+
+const withSkillTooltip = (option, render) =>
+  h(OperatorSkillTooltip, { name: option.label || option.value }, { default: render })
+
+export const render_op_label = renderLabel
+export const render_op_option = ({ option, node }) => withSkillTooltip(option, () => node)
+export const render_op_tag = renderTag

@@ -1,0 +1,36 @@
+/* 森空岛签到统计页共用的面板表面；页面与各展示组件共享同一套圆角与描边。 */
+.skland-page {
+  /* 10–11px 的中文说明文字需要比 naive-ui 的 textColor3 更高的对比度。 */
+  --skland-muted: color-mix(in srgb, var(--mower-text) 64%, transparent);
+  --skland-link: color-mix(in srgb, var(--mower-primary) 62%, var(--mower-text));
+  --skland-radius: calc(18px * var(--mower-corner-scale));
+  --skland-inner-radius: calc(12px * var(--mower-corner-scale));
+}
+
+.skland-panel {
+  position: relative;
+  min-width: 0;
+  padding: 20px;
+  border-radius: var(--skland-radius, 18px);
+  corner-shape: var(--mower-corner-shape);
+  background: var(--mower-surface);
+  box-shadow: 0 0 0 1px var(--mower-divider);
+}
+
+.skland-empty {
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  min-height: 118px;
+  padding: 10px;
+  color: var(--skland-muted, var(--mower-text-muted));
+  font-size: 12px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+@container main-content (max-width: 680px) {
+  .skland-panel {
+    padding: 15px;
+  }
+}

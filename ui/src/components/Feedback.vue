@@ -1,7 +1,10 @@
 <script setup>
-import { inject, ref, watch, computed, h } from 'vue'
+defineOptions({ name: 'MowerFeedback' })
+
+import { ref, computed } from 'vue'
 import axios from 'axios'
-const show = inject('show_feedback')
+const show = defineModel('show', { type: Boolean })
+const checkboxRowStyle = { display: 'flex', alignItems: 'center', gap: '8px' }
 
 const feedbackData = ref({
   acknowledged1: false,
@@ -26,7 +29,7 @@ async function submitFeedback() {
       const req = feedbackData.value
       const msg = (await axios.post(`${import.meta.env.VITE_HTTP_URL}/submit_feedback`, req)).data
       if (msg == '邮件发送成功！') {
-        alert(msg + '，内容已经自动复制到剪切板,请前往频道发帖')
+        alert(msg + '，可在反馈表查看已有记录；邮件内容不会自动写入表格。')
         copy_descrioption()
       } else {
         alert(msg)
@@ -134,19 +137,37 @@ function copy_descrioption() {
       <template #header>
         <h3>反馈</h3>
       </template>
-      <n-form-item path="acknowledged1" class="checkbox-wrapper">
+      <n-space vertical :size="8" style="margin-bottom: 16px">
+        <n-a
+          href="https://docs.qq.com/sheet/DUEJ6UWN5VFVRU0dG?tab=BB08J2"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          打开 Mower 反馈表
+        </n-a>
+        <n-text depth="3"
+          >此处提交通过已配置邮箱发送给开发组，并自动携带当前 Mower
+          版本；反馈表可单独查阅，填写需相应编辑权限。</n-text
+        >
+        <n-text v-if="showTimeFields" depth="3">
+          Bug 邮件会附一个 ZIP，包含所选区间日志、关键截图、版本与平台信息。<br />
+          同时附任务与干员历史、当前主副表、排班高级设置及专精状态，并按日志位置尝试附带相关代码片段。
+          当前配置和代码不代表故障时的历史状态；缺失和截断情况会写入附件清单。
+        </n-text>
+      </n-space>
+      <n-form-item path="acknowledged1" :style="checkboxRowStyle">
         <n-checkbox v-model:checked="feedbackData.acknowledged1">
-          我查看了更新公告/下崽器，确保软件版本是最新版本
+          我已在 Mower 设置 → 软件更新中检查当前版本，并查看相关更新说明
         </n-checkbox>
       </n-form-item>
-      <n-form-item path="acknowledged2" class="checkbox-wrapper">
+      <n-form-item path="acknowledged2" :style="checkboxRowStyle">
         <n-checkbox v-model:checked="feedbackData.acknowledged2">
-          我查看了Mower频道，确保没有人提交过类似问题在对应版块
+          我已查看反馈表和相关讨论，核对是否已有相同问题
         </n-checkbox>
       </n-form-item>
-      <n-form-item path="acknowledged3" class="checkbox-wrapper">
+      <n-form-item path="acknowledged3" :style="checkboxRowStyle">
         <n-checkbox v-model:checked="feedbackData.acknowledged3">
-          反馈成功后，我会点击复制反馈内容按钮并在频道版块发帖以供他人查看
+          我会提供版本、实际现象、期望行为和必要日志，并去除敏感信息
         </n-checkbox>
       </n-form-item>
       <n-form-item label="反馈类型" path="type">
@@ -154,7 +175,7 @@ function copy_descrioption() {
       </n-form-item>
 
       <template v-if="showTimeFields">
-        <div class="time-row">
+        <div style="display: flex; gap: 16px; align-items: center">
           <n-form-item label="开始时间" path="startTime" v-model:show="showTimeFields">
             <n-date-picker
               v-model:value="feedbackData.startTime"
@@ -184,7 +205,7 @@ function copy_descrioption() {
       </n-form-item>
 
       <!-- 操作按钮 -->
-      <div class="button_row">
+      <div style="margin-top: 8px">
         <n-button type="warning" @click="submitFeedback">提交</n-button>
         <n-button @click="copy_descrioption">复制反馈内容</n-button>
         <n-button @click="reset">重置</n-button>
@@ -192,26 +213,3 @@ function copy_descrioption() {
     </n-form>
   </n-modal>
 </template>
-
-<style scoped lang="scss">
-.button_row {
-  margin-top: 8px;
-}
-
-.checkbox-wrapper {
-  display: flex;
-  /* 让复选框与内容水平对齐 */
-  align-items: center;
-  /* 垂直对齐 */
-  gap: 8px;
-  /* 控制复选框与文字的间距 */
-}
-
-.time-row {
-  display: flex;
-  /* 横向排列 */
-  gap: 16px;
-  /* 设置开始和结束时间之间的间距 */
-  align-items: center;
-}
-</style>

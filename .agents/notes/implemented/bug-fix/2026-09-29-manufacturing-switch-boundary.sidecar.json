@@ -1,0 +1,19 @@
+{
+  "title": "Manufacturing Switch Boundary After Drone Acceleration",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-06]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._execute_manufacture_acceleration",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._change_manufacture_product"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/manufacture_product_switch_tests.py"
+  ]
+}

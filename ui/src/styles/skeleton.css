@@ -1,0 +1,119 @@
+/* 骨架屏：页面读取数据时，标题、标签和卡片框等不依赖数据的部分照常显示，只在数据将要出现的
+   位置画出与内容同样大小的灰色占位块，打开页面时版面已经就位，读完后内容直接在原处替换占位块，
+   真实的标题和卡片框不跟着重新淡入。占位块等 0.15 秒才淡入，数据读得快时不会出现。
+   占位块的颜色和高光与启动画面（src/boot/boot-screen.html）相同，从启动画面到页面自己的骨架
+   看起来是同一套。所有占位块共用一道随视口固定的高光，从左向右扫过整个页面，不会每块各闪各的。
+   尺寸、圆角和排布写在 :where() 里，页面自己的 class 无论先后都能覆盖；颜色和高光保持统一。 */
+:where(.skeleton-bone) {
+  display: block;
+  flex: none;
+  min-width: 0;
+  border-radius: calc(4px * var(--mower-corner-scale, 1));
+  corner-shape: var(--mower-corner-shape);
+}
+
+/* 深色底的区域（如养成规划的顶部）可以设置 --skeleton-color 和 --skeleton-sheen 改用浅色占位。 */
+.skeleton-bone {
+  background-color: var(
+    --skeleton-color,
+    color-mix(in srgb, var(--mower-text, #333639) 7%, transparent)
+  );
+  background-image: linear-gradient(
+    100deg,
+    transparent 35%,
+    var(--skeleton-sheen, rgb(255 255 255 / 0.72)) 50%,
+    transparent 65%
+  );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  background-size: 70vw 100vh;
+  background-position: -70vw 0;
+  animation:
+    skeleton-bone-in 200ms ease-out 150ms backwards,
+    skeleton-sheen 2s ease-in-out infinite;
+}
+
+html[data-mower-theme='dark'] {
+  --skeleton-sheen: rgb(255 255 255 / 0.07);
+}
+
+/* 文字占位：放进真实的文字元素里代替数据。占位块比文字细，两端各收进 0.2em，与旁边的标签、
+   单位和其他占位块之间留出空隙；占住的宽度仍是 --skeleton-w（用 em 时随字号缩放），
+   行高仍由元素自己决定，读完后文字不位移。 */
+:where(.skeleton-text) {
+  display: inline-block;
+  width: calc(var(--skeleton-w, 4em) - 0.4em);
+  height: 0.6em;
+  margin-inline: 0.2em;
+  vertical-align: 0.06em;
+  border-radius: 0.3em;
+}
+
+/* 文字行：高 10px，宽度由 --skeleton-w 给出，默认铺满。 */
+:where(.skeleton-line) {
+  width: var(--skeleton-w, 100%);
+  height: 10px;
+}
+
+/* 卡片：与页面卡片位置相同的细框，框里竖排占位块。 */
+:where(.skeleton-card) {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--mower-text, #333639) 10%, transparent);
+  border-radius: calc(12px * var(--mower-corner-scale, 1));
+  corner-shape: var(--mower-corner-shape);
+}
+
+.loading-skeleton__shapes {
+  display: contents;
+}
+
+.loading-skeleton__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 骨架里没有对应占位的内容（如空状态、骨架以下才出现的面板）加 .skeleton-reveal，读完后淡入。
+   骨架画过的部分不加，避免标题和卡片框跟着重新淡入。只改透明度，减弱动效时也保留。 */
+.skeleton-reveal {
+  animation: skeleton-reveal 180ms ease-out backwards;
+}
+
+@keyframes skeleton-reveal {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes skeleton-bone-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes skeleton-sheen {
+  0% {
+    background-position: -70vw 0;
+  }
+
+  70%,
+  100% {
+    background-position: 130vw 0;
+  }
+}
+
+/* 减弱动效时没有高光，占位块只做透明度的淡入。 */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-bone {
+    animation: skeleton-bone-in 200ms ease-out 150ms backwards;
+    background-image: none;
+  }
+}

@@ -19,9 +19,9 @@ const { ra_timeout } = storeToRefs(store)
     label-align="left"
   >
     <n-form-item label="超时时长">
-      <n-input-number v-model:value="ra_timeout">
+      <mower-input-number v-model:value="ra_timeout">
         <template #suffix>秒</template>
-      </n-input-number>
+      </mower-input-number>
     </n-form-item>
   </n-form>
 </template>

@@ -1,0 +1,21 @@
+{
+  "title": "Log window navigation and shared loading",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-10",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-12]"
+  ],
+  "code_symbols": [
+    "ui.src.pages.LogSchedule.loadLogs",
+    "server.diagnostic_timeline",
+    "arknights_mower.utils.diagnostics.timeline"
+  ],
+  "test_suites": [
+    "ui/src/pages/LogSchedule.test.js",
+    "arknights_mower/tests/diagnostics_tests.py"
+  ]
+}

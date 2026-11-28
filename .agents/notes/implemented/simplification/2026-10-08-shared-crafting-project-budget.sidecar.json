@@ -1,0 +1,23 @@
+{
+  "title": "Shared crafting project budget",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-GROWTH-01]",
+    "[INV-GROWTH-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.growth.material_entries",
+    "arknights_mower.utils.growth_order.prepare_project_materials",
+    "arknights_mower.utils.growth_workshop.next_recipe"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/growth_crafting_order_tests.py",
+    "arknights_mower/tests/growth_planning_tests.py",
+    "arknights_mower/tests/workshop_continuation_tests.py"
+  ]
+}

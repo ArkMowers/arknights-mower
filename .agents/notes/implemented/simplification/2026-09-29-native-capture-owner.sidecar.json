@@ -1,0 +1,20 @@
+{
+  "title": "Native Capture Process Ownership",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-DEV-06]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.native_capture.NativeCaptureSession"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_mumu_capture_tests.py",
+    "arknights_mower/tests/device_ld_capture_tests.py"
+  ]
+}

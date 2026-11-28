@@ -1,0 +1,893 @@
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createApp, createSSRApp, nextTick, ref } from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { setup as setupCssRenderSsr } from '@css-render/vue3-ssr'
+import { createPinia } from 'pinia'
+import axios from 'axios'
+import { useConfigStore } from './config'
+import { startPhysicalPreparation } from '@/utils/deviceSettings'
+import Email from '@/components/Email.vue'
+import ChatBotSetting from '@/components/ChatBotSetting.vue'
+
+vi.mock('axios', () => ({ default: { get: vi.fn(), post: vi.fn(), patch: vi.fn() } }))
+let store
+
+afterEach(() => {
+  store?.$dispose()
+  vi.clearAllMocks()
+})
+
+async function setup(overrides = {}) {
+  const loaded = ref(false)
+  const app = createApp({})
+  const pinia = createPinia()
+  app.use(pinia)
+  app.provide('loaded', loaded)
+  store = app.runWithContext(() => useConfigStore())
+  const data = {
+    account: 'saved account',
+    package_type: 1,
+    free_blacklist: '',
+    reload_room: '',
+    maa_mall_buy: '',
+    maa_mall_blacklist: '',
+    favorite: '',
+    reclamation_algorithm: {},
+    secret_front: {},
+    maa_weekly_plan: [],
+    maa_weekly_plan_active: '默认',
+    simulator: { name: 'ReDroid', index: '0' },
+    droidcast: { enable: false, rotate: false },
+    custom_screenshot: { enable: false },
+    device: {
+      preset_id: 'linux.redroid',
+      installation_path: '',
+      manager_path: '',
+      adb_path: '/adb',
+      instance_id: 'game',
+      instance_name: 'Game',
+      last_serial: '127.0.0.1:5555',
+      game_package: 'com.hypergryph.arknights',
+      screenshot_backend: 'adb_gzip',
+      touch_backend: 'scrcpy'
+    },
+    ...overrides
+  }
+  axios.get.mockImplementation(async (url) => ({
+    data: url.endsWith('/conf') ? data : { plans: ['默认'] }
+  }))
+  axios.patch.mockResolvedValue({ data: {} })
+  await store.load_config()
+  loaded.value = true
+  await nextTick()
+  await store.flush_config_saves()
+  return { loaded, data, pinia }
+}
+
+async function renderSettings(component, { loaded, pinia, mobile = false }) {
+  const app = createSSRApp(component)
+  setupCssRenderSsr(app)
+  app.use(pinia)
+  app.provide('loaded', loaded)
+  app.provide('mobile', mobile)
+  app.provide('axios', axios)
+  return renderToString(app)
+}
+
+function selectedLabels(html) {
+  return Array.from(
+    html.matchAll(
+      /<div[^>]*class="[^"]*n-base-selection-(?:label__render-label|input__content)[^"]*"[^>]*>([\s\S]*?)<\/div>/g
+    ),
+    ([, content]) => content.replace(/<!--[\s\S]*?-->|<[^>]*>/g, '').trim()
+  )
+}
+
+describe('partial configuration saves', () => {
+  it('defaults information-board collection on without saving defaults', async () => {
+    await setup()
+    expect(store.clue_message_board_enable).toBe(true)
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('preserves information-board false and saves only its edited key', async () => {
+    const { data } = await setup({ clue_message_board_enable: false, enable_party: 0 })
+    expect(store.clue_message_board_enable).toBe(false)
+    expect(store.build_config().clue_message_board_enable).toBe(false)
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.clue_message_board_enable = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      clue_message_board_enable: true
+    })
+    expect(store.enable_party).toBe(false)
+    data.clue_message_board_enable = false
+    await store.load_config()
+    expect(store.clue_message_board_enable).toBe(false)
+  })
+
+  it('persists all group thresholds across additions, edits, removals and reloads', async () => {
+    const { data } = await setup({ resting_threshold: 0.65, group_resting_thresholds: {} })
+    axios.patch.mockImplementation(async (_url, patch) => {
+      // Conf replaces dictionary fields with the submitted value.
+      Object.assign(data, patch)
+      return { data }
+    })
+    const saveAndReload = async (expected) => {
+      await nextTick()
+      await store.flush_config_saves()
+      expect(data.group_resting_thresholds).toEqual(expected)
+      await store.load_config()
+      expect(store.group_resting_thresholds).toEqual(expected)
+    }
+
+    store.group_resting_thresholds = { 主表组: 0.65 }
+    await saveAndReload({ 主表组: 0.65 })
+    store.group_resting_thresholds = { ...store.group_resting_thresholds, 副表组: 0.5 }
+    await saveAndReload({ 主表组: 0.65, 副表组: 0.5 })
+    store.group_resting_thresholds.主表组 = 0.35
+    await saveAndReload({ 主表组: 0.35, 副表组: 0.5 })
+    delete store.group_resting_thresholds.副表组
+    await saveAndReload({ 主表组: 0.35 })
+    store.group_resting_thresholds = {}
+    await saveAndReload({})
+    expect(data.resting_threshold).toBe(0.65)
+    expect(axios.patch).toHaveBeenCalledTimes(5)
+  })
+
+  it.each([undefined, false, true])(
+    'loads activity sign-in %s with a disabled default and saves only its explicit change',
+    async (saved) => {
+      await setup(saved === undefined ? {} : { event_sign_in_enable: saved })
+      const enabled = saved ?? false
+      expect(store.event_sign_in_enable).toBe(enabled)
+      expect(store.build_config().event_sign_in_enable).toBe(enabled)
+      expect(axios.patch).not.toHaveBeenCalled()
+      store.event_sign_in_enable = !enabled
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        event_sign_in_enable: !enabled
+      })
+    }
+  )
+
+  it.each([undefined, false, true])(
+    'loads error-mail screenshots %s with a disabled default and saves only the explicit change',
+    async (saved) => {
+      const context = await setup({
+        custom_smtp_server: { enable: false },
+        ...(saved === undefined ? {} : { mail_attach_error_screenshot: saved })
+      })
+      const enabled = saved ?? false
+      expect(store.mail_attach_error_screenshot).toBe(enabled)
+      expect(store.build_config().mail_attach_error_screenshot).toBe(enabled)
+      expect(await renderSettings(Email, context)).toContain('异常邮件附带截图')
+      expect(axios.patch).not.toHaveBeenCalled()
+      store.mail_attach_error_screenshot = !enabled
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        mail_attach_error_screenshot: !enabled
+      })
+    }
+  )
+
+  it.each([
+    ['load_shop', 'shop_list'],
+    ['load_item', 'item_list']
+  ])(
+    'keeps the latest %s response when a background request finishes later',
+    async (load, list) => {
+      await setup({ maa_mall_buy: '招聘许可' })
+      const recipe = { rarity: 5 }
+      const response = (name) => ({ data: [load === 'load_item' ? { name, ...recipe } : name] })
+      let finishInitial
+      axios.get
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              finishInitial = resolve
+            })
+        )
+        .mockResolvedValueOnce(response('新资源'))
+      const initial = store[load]()
+      await store[load]()
+      finishInitial(response('旧资源'))
+      await initial
+      await nextTick()
+      await store.flush_config_saves()
+      expect(store[list]).toEqual([
+        { value: '新资源', label: '新资源', ...(load === 'load_item' ? recipe : {}) }
+      ])
+      expect(store.maa_mall_buy).toEqual(['招聘许可'])
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it('keeps legacy workshop names searchable when the item response has no rarity', async () => {
+    await setup()
+    axios.get.mockResolvedValueOnce({ data: ['聚合剂', '糖聚块'] })
+    await store.load_item()
+    expect(store.item_list).toEqual([
+      { value: '聚合剂', label: '聚合剂' },
+      { value: '糖聚块', label: '糖聚块' }
+    ])
+  })
+
+  it.each([
+    ['INFO', 'INFO - 接收正常通知、警告和错误'],
+    ['WARNING', 'WARNING - 仅接收警告和错误'],
+    ['ERROR', 'ERROR - 仅接收错误']
+  ])(
+    'shows the notification threshold for %s without changing its saved value',
+    async (level, label) => {
+      const context = await setup({
+        custom_smtp_server: { enable: false },
+        notification_level: level
+      })
+      const html = await renderSettings(Email, context)
+      expect(selectedLabels(html)).toEqual(['QQ邮箱', label])
+      expect(html).toContain('aria-label="查看通知等级说明"')
+      expect(html).toContain('settings-select-wrap')
+      expect(html).not.toContain('email-level-description')
+      expect(store.notification_level).toBe(level)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it('provides a tappable notification help trigger on mobile', async () => {
+    const context = await setup({
+      custom_smtp_server: { enable: false },
+      notification_level: 'WARNING'
+    })
+    const html = await renderSettings(Email, { ...context, mobile: true })
+    expect(html).toMatch(
+      /<button(?=[^>]*aria-label="查看通知等级说明")(?=[^>]*aria-expanded="false")/
+    )
+  })
+
+  it.each([
+    ['deepseek-flash', 'DeepSeek Flash（deepseek-flash）'],
+    ['deepseek-v4-pro', 'DeepSeek V4 Pro（deepseek-v4-pro）'],
+    [
+      'custom-model-with-a-long-provider-name-and-complete-version-id',
+      'custom-model-with-a-long-provider-name-and-complete-version-id'
+    ]
+  ])(
+    'shows the original complete model label without replacing saved ID %s',
+    async (model, label) => {
+      const context = await setup({ ai_type: 'deepseek', ai_deepseek_model: model })
+      const html = await renderSettings(ChatBotSetting, context)
+      expect(selectedLabels(html)).toEqual(['DeepSeek', label])
+      expect(html).toContain('settings-select-wrap')
+      expect(html).not.toContain('deepseek-model-description')
+      expect(store.ai_deepseek_model).toBe(model)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    ['custom-local', '本地模型（OpenAI 兼容）'],
+    ['custom-online', '在线模型 / 中转商（OpenAI 兼容）']
+  ])(
+    'shows the original complete %s service label and retains the custom model ID',
+    async (service, label) => {
+      const model = 'provider/model-with-a-long-name-and-complete-version-id'
+      const context = await setup({ ai_type: service, ai_model: model })
+      const html = await renderSettings(ChatBotSetting, context)
+      expect(selectedLabels(html)).toEqual([label, '自动（默认）'])
+      expect(html).toContain(`value="${model}"`)
+      expect(html).not.toContain('custom-model-description')
+      expect(store.ai_type).toBe(service)
+      expect(store.ai_model).toBe(model)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    {},
+    {
+      visit_friend_mode: 'maa',
+      maa_mall_mode: 'maa',
+      clue_credit_on_demand: false,
+      credit_shop_by_value: false
+    }
+  ])('uses fixed credit policies for new and old responses %s', async (legacy) => {
+    await setup({
+      ...legacy,
+      visit_friend_enable: false,
+      maa_mall_enable: false,
+      credit_shop_value_threshold: 0.032,
+      maa_mall_buy: '招聘许可',
+      maa_mall_blacklist: '家具零件'
+    })
+    expect(store.visit_friend_mode).toBe('mower')
+    expect(store.maa_mall_mode).toBe('mower')
+    expect(store.clue_credit_on_demand).toBe(true)
+    expect(store.credit_shop_by_value).toBe(true)
+    expect(store.build_config()).toMatchObject({
+      visit_friend_enable: false,
+      maa_mall_enable: false,
+      visit_friend_mode: 'mower',
+      maa_mall_mode: 'mower',
+      clue_credit_on_demand: true,
+      credit_shop_by_value: true,
+      credit_shop_value_threshold: 0.032,
+      maa_mall_buy: '招聘许可',
+      maa_mall_blacklist: '家具零件'
+    })
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it.each([0, 0.036])('saves only the edited threshold from %s', async (threshold) => {
+    await setup({ credit_shop_value_threshold: threshold })
+    expect(store.credit_shop_value_threshold).toBe(threshold)
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.credit_shop_value_threshold = 0.043
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      credit_shop_value_threshold: 0.043
+    })
+    expect(store.credit_shop_by_value).toBe(true)
+    expect(store.clue_credit_on_demand).toBe(true)
+  })
+
+  it.each(['auto', 'chat-completions', 'responses'])(
+    'loads and saves API protocol %s without changing service credentials',
+    async (protocol) => {
+      await setup({
+        ai_type: 'custom-online',
+        ai_api_protocol: protocol,
+        ai_custom_key: 'saved-key',
+        ai_model: 'saved-model'
+      })
+      expect(store.ai_api_protocol).toBe(protocol)
+      expect(axios.patch).not.toHaveBeenCalled()
+      const next = protocol === 'responses' ? 'chat-completions' : 'responses'
+      store.ai_api_protocol = next
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        ai_api_protocol: next
+      })
+      expect(store.ai_model).toBe('saved-model')
+      expect(store.ai_custom_key).toBe('saved-key')
+      store.ai_type = 'deepseek'
+      await nextTick()
+      expect(store.ai_api_protocol).toBe(next)
+    }
+  )
+
+  it('shows a protocol selector for custom services and keeps old configuration on auto', async () => {
+    const context = await setup({ ai_type: 'custom-online' })
+    expect(store.ai_api_protocol).toBe('auto')
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.ai_api_protocol = 'responses'
+    const html = await renderSettings(ChatBotSetting, context)
+    expect(html).toContain('OpenAI Responses')
+    expect(html).toContain('请求失败时不切换协议')
+    store.ai_type = 'deepseek'
+    expect(await renderSettings(ChatBotSetting, context)).not.toContain('aria-label="API 协议"')
+  })
+
+  it.each(['deepseek', 'custom-local', 'custom-online'])(
+    'keeps independent context capacities when editing %s',
+    async (service) => {
+      const context = await setup({ ai_type: service, ai_custom_key: 'saved-key' })
+      expect(store.ai_context_tokens).toBe(256000)
+      expect(store.ai_deepseek_context_tokens).toBe(1000000)
+      expect(axios.patch).not.toHaveBeenCalled()
+      const html = await renderSettings(ChatBotSetting, context)
+      expect(html).toContain('上下文长度（token）')
+      expect(html).toContain(service === 'deepseek' ? '1M（1,000,000）' : '256K（256,000）')
+      const key = service === 'deepseek' ? 'ai_deepseek_context_tokens' : 'ai_context_tokens'
+      store[key] = 64000
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        [key]: 64000
+      })
+      Object.assign(context.data, { [key]: 64000 })
+      await store.load_config()
+      expect(store[key]).toBe(64000)
+      expect(store.ai_custom_key).toBe('saved-key')
+      expect(
+        store[service === 'deepseek' ? 'ai_context_tokens' : 'ai_deepseek_context_tokens']
+      ).toBe(service === 'deepseek' ? 256000 : 1000000)
+    }
+  )
+
+  it.each(['deepseek-flash', 'deepseek-v4-pro', 'deepseek-future-model'])(
+    'loads and saves DeepSeek model %s independently of custom interfaces',
+    async (model) => {
+      await setup({
+        ai_type: 'deepseek',
+        ai_deepseek_model: model,
+        ai_model: 'relay-model',
+        ai_base_url: 'https://relay.example/v1',
+        ai_key: 'deepseek-key',
+        ai_custom_key: 'relay-key'
+      })
+      expect(store.ai_deepseek_model).toBe(model)
+      expect(axios.patch).not.toHaveBeenCalled()
+      store.ai_deepseek_model = 'another-deepseek-model'
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        ai_deepseek_model: 'another-deepseek-model'
+      })
+      expect(store.ai_model).toBe('relay-model')
+      expect(store.ai_base_url).toBe('https://relay.example/v1')
+      expect(store.ai_key).toBe('deepseek-key')
+      expect(store.ai_custom_key).toBe('relay-key')
+      axios.patch.mockClear()
+      store.ai_type = 'custom-online'
+      await nextTick()
+      await store.flush_config_saves()
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        ai_type: 'custom-online'
+      })
+      expect(store.ai_deepseek_model).toBe('another-deepseek-model')
+    }
+  )
+
+  it.each(['windows', 'darwin', 'linux', 'android'])(
+    'starts auto at xhigh on %s',
+    async (platform) => {
+      await setup({ runtime_platform: platform, performance_mode: 'auto' })
+      expect(store.performance_mode).toBe('auto')
+      expect(store.performance_effective_mode).toBe('xhigh')
+    }
+  )
+
+  it('uses shared numeric defaults for Android auto', async () => {
+    await setup({ runtime_platform: 'android', performance_mode: 'auto' })
+    expect(store.performance_effective_mode).toBe('xhigh')
+    expect(store.selection_poll_interval).toBe(0.1)
+    expect(store.build_config().low_frame_rate_mode).toBe(false)
+  })
+
+  it('shows the backend automatic verdict after a downgrade', async () => {
+    await setup({
+      runtime_platform: 'darwin',
+      performance_mode: 'auto',
+      performance_effective_mode: 'high'
+    })
+    expect(store.performance_effective_mode).toBe('high')
+  })
+
+  it('preserves an explicitly selected high mode', async () => {
+    await setup({ runtime_platform: 'darwin', performance_mode: 'high' })
+    expect(store.performance_mode).toBe('high')
+    expect(store.performance_effective_mode).toBe('high')
+  })
+
+  it.each(['high', 'xhigh'])('preserves Android %s through load and save', async (mode) => {
+    await setup({ runtime_platform: 'android', performance_mode: mode })
+    expect(store.performance_mode).toBe(mode)
+    expect(store.performance_effective_mode).toBe(mode)
+    expect(store.build_config()).toMatchObject({
+      performance_mode: mode,
+      low_frame_rate_mode: false
+    })
+    store.performance_mode = mode === 'high' ? 'xhigh' : 'high'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toMatchObject({ performance_mode: store.performance_mode })
+  })
+
+  it('keeps legacy switching disabled and saves only an explicit master toggle', async () => {
+    await setup({
+      product_switching: { grandet_mode: false, waiting_seconds: 4 },
+      run_order_grandet_mode: { enable: true }
+    })
+    expect(store.product_switching.enable).toBe(false)
+    store.product_switching.enable = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      product_switching: { enable: true }
+    })
+    expect(store.product_switching.grandet_mode).toBe(false)
+    expect(store.product_switching.waiting_seconds).toBe(4)
+    expect(store.run_order_grandet_mode.enable).toBe(true)
+  })
+
+  it('preserves explicitly enabled product switching on load', async () => {
+    await setup({ product_switching: { enable: true, waiting_seconds: 4 } })
+    expect(store.product_switching.enable).toBe(true)
+    expect(store.product_switching.waiting_seconds).toBe(4)
+  })
+
+  it('saves the existing startup protection independently of device identity', async () => {
+    await setup({ simulator: { name: 'ReDroid', index: '0', wait_time: 75 } })
+    store.simulator.wait_time = 90
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      simulator: { wait_time: 90 }
+    })
+  })
+
+  it.each([null, 'com.hypergryph.arknights'])(
+    'saves the same serial after a physical identity change with package confirmation %s',
+    async (confirmedPackage) => {
+      await setup({
+        device: {
+          preset_id: 'manual.other',
+          last_serial: 'USB-phone',
+          adb_path: '/adb',
+          screenshot_backend: 'adb_gzip',
+          touch_backend: 'scrcpy',
+          game_package: 'com.hypergryph.arknights',
+          game_package_confirmed: false
+        }
+      })
+      let accepted = { ...store.device_profile }
+      const saves = []
+      axios.patch.mockImplementation(async (_url, payload) => {
+        const next = { ...accepted, ...payload.device }
+        // Conf.updated clears an unchanged endpoint when its binding changes,
+        // including an explicitly reentered serial equal to the old target.
+        if (next.preset_id !== accepted.preset_id && next.last_serial === accepted.last_serial) {
+          next.last_serial = ''
+        }
+        if (next.preset_id !== accepted.preset_id || next.last_serial !== accepted.last_serial) {
+          next.game_package_confirmed = false
+        }
+        if (payload.device?.game_package) {
+          next.game_package_confirmed = payload.device.game_package_confirmed ?? true
+        }
+        accepted = next
+        saves.push({ ...accepted })
+        return { data: { device: accepted, adb: accepted.last_serial } }
+      })
+      axios.post.mockImplementation(async (_url, payload) => {
+        expect(accepted.last_serial).toBe(payload.preparation_serial)
+        expect(accepted.preset_id).toBe('manual.physical')
+        return { data: true }
+      })
+
+      await startPhysicalPreparation({
+        axios,
+        config: store,
+        profile: { ...store.device_profile, preset_id: 'manual.physical' },
+        serial: 'USB-phone',
+        confirmedPackage
+      })
+
+      expect(saves[0]).toMatchObject({ preset_id: 'manual.physical', last_serial: '' })
+      expect(accepted).toMatchObject({
+        preset_id: 'manual.physical',
+        last_serial: 'USB-phone',
+        game_package_confirmed: Boolean(confirmedPackage)
+      })
+      expect(store.device_profile).toEqual(accepted)
+      expect(axios.post).toHaveBeenCalledExactlyOnceWith('/start/0', {
+        preparation_serial: 'USB-phone'
+      })
+      expect(
+        axios.patch.mock.calls.every(([, payload]) => !('preparation_serial' in payload))
+      ).toBe(true)
+    }
+  )
+
+  it('keeps the saved physical identity without an endpoint if the final save fails', async () => {
+    await setup({
+      device: {
+        preset_id: 'manual.other',
+        last_serial: 'USB-phone',
+        game_package: 'com.hypergryph.arknights',
+        game_package_confirmed: false
+      }
+    })
+    const accepted = {
+      ...store.device_profile,
+      preset_id: 'manual.physical',
+      last_serial: '',
+      game_package_confirmed: false
+    }
+    axios.patch.mockImplementation(async (_url, payload) => {
+      if (payload.device?.last_serial === 'USB-phone') throw new Error('endpoint save failed')
+      return { data: { device: accepted, adb: '' } }
+    })
+
+    await expect(
+      startPhysicalPreparation({
+        axios,
+        config: store,
+        profile: { ...store.device_profile, preset_id: 'manual.physical' },
+        serial: 'USB-phone'
+      })
+    ).rejects.toThrow('endpoint save failed')
+
+    expect(store.device_profile).toEqual(accepted)
+    expect(axios.post).not.toHaveBeenCalled()
+  })
+
+  it('ignores confirmation belonging to a different target or package', async () => {
+    await setup()
+    await store.save_config({ serial: 'other-phone', game_package: 'com.hypergryph.arknights' })
+    await store.save_config({
+      serial: '127.0.0.1:5555',
+      game_package: 'com.hypergryph.arknights.bilibili'
+    })
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it.each([false, true])(
+    'sends explicit same-package confirmation after switching serial when the old confirmation is %s',
+    async (confirmed) => {
+      const { data } = await setup()
+      data.device.game_package_confirmed = confirmed
+      await store.load_config()
+      await nextTick()
+      store.device_profile.last_serial = 'new-phone'
+      store.device_profile.game_package_confirmed = true
+      await nextTick()
+      // Ordinary autosave may have consumed the changed fields before the
+      // successful preflight explicitly confirms this target and package.
+      await store.flush_config_saves()
+      axios.patch.mockClear()
+      await store.save_config({ serial: 'new-phone', game_package: 'com.hypergryph.arknights' })
+      expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+        device: { game_package: 'com.hypergryph.arknights', game_package_confirmed: true }
+      })
+    }
+  )
+
+  it.each([
+    ['adding a reward', { shield: true }, { shield: true, hot_water: true }],
+    ['removing a reward', { shield: true, hot_water: true }, { shield: true }],
+    ['clearing all rewards', { shield: true }, {}],
+    [
+      'editing arbitrary reward keys',
+      { future_reward: true, 'vendor.reward': true },
+      { future_reward: true, 'new/reward': false }
+    ]
+  ])('replaces the entire selection map when %s', async (_, initial, selected) => {
+    await setup({ rogue: { core_char: '棘刺', collectible_mode_start_list: initial } })
+    store.rogue.collectible_mode_start_list = selected
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      rogue: { collectible_mode_start_list: selected }
+    })
+    expect(store.rogue.core_char).toBe('棘刺')
+    await store.save_config()
+    expect(axios.patch).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not save on page load, then sends only the edited nested device field', async () => {
+    await setup()
+    expect(axios.post).not.toHaveBeenCalled()
+    expect(axios.patch).not.toHaveBeenCalled()
+    store.device_profile.last_serial = '127.0.0.1:5556'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledExactlyOnceWith(expect.stringContaining('/conf'), {
+      device: { last_serial: '127.0.0.1:5556' }
+    })
+  })
+  it('keeps failed edits available and retries without sending unrelated settings', async () => {
+    await setup()
+    axios.patch.mockRejectedValueOnce({ response: { data: { error: '设备配置组合无效' } } })
+    store.device_profile.last_serial = 'usb-device'
+    await nextTick()
+    await expect(store.flush_config_saves()).rejects.toMatchObject({
+      response: { data: { error: '设备配置组合无效' } }
+    })
+    expect(store.config_save_error).toBe('设备配置组合无效')
+    expect(store.device_profile.last_serial).toBe('usb-device')
+    axios.patch.mockResolvedValueOnce({ data: {} })
+    await store.save_config()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ device: { last_serial: 'usb-device' } })
+    expect(store.config_save_error).toBe('')
+  })
+
+  it('preserves typing made during a save while accepting canonical compatibility fields', async () => {
+    const { data } = await setup()
+    let finish
+    axios.patch.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    store.device_profile.last_serial = 'first'
+    await nextTick()
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'))
+    store.device_profile.last_serial = 'latest'
+    store.account = 'new draft'
+    await nextTick()
+    finish({ data: { device: { ...data.device, last_serial: 'first' }, adb: 'first' } })
+    await store.flush_config_saves()
+    expect(store.device_profile.last_serial).toBe('latest')
+    expect(axios.patch.mock.calls[1][1]).toEqual({
+      account: 'new draft',
+      device: { last_serial: 'latest' }
+    })
+  })
+
+  it('sends empty arrays and ignores unchanged fields absent from the page', async () => {
+    await setup()
+    store.free_blacklist = ['one']
+    await nextTick()
+    await store.flush_config_saves()
+    store.free_blacklist = []
+    store.device_profile.instance_name = 'Renamed'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({
+      free_blacklist: '',
+      device: { instance_name: 'Renamed' }
+    })
+  })
+
+  it('chooses MuMu IPC as one consistent screenshot and touch pair', async () => {
+    await setup()
+    store.select_screenshot_backend('mumu_ipc')
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({
+      device: { screenshot_backend: 'mumu_ipc', touch_backend: 'mumu_ipc' }
+    })
+    store.select_screenshot_backend('custom')
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({
+      device: { screenshot_backend: 'custom', touch_backend: 'scrcpy' }
+    })
+  })
+
+  it('reloads a configuration without writing normalized or changed server values back', async () => {
+    const { data } = await setup()
+    data.account = 'changed on the server'
+    data.device.last_serial = 'server-device'
+    await store.load_config()
+    await nextTick()
+    await store.flush_config_saves()
+    expect(store.account).toBe('changed on the server')
+    expect(axios.patch).not.toHaveBeenCalled()
+  })
+
+  it('selecting a touch backend keeps the MuMu IPC pair consistent', async () => {
+    await setup()
+    store.select_touch_backend('mumu_ipc')
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({
+      device: { screenshot_backend: 'mumu_ipc', touch_backend: 'mumu_ipc' }
+    })
+    store.select_touch_backend('maatouch')
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({
+      device: { screenshot_backend: 'droidcast', touch_backend: 'maatouch' }
+    })
+  })
+  it('accepts the canonical Bilibili package without a compatibility save loop', async () => {
+    await setup()
+    axios.patch.mockResolvedValueOnce({ data: { package_type: 2 } })
+    store.package_type = 'bilibili'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch).toHaveBeenCalledTimes(1)
+    expect(axios.patch.mock.lastCall[1]).toEqual({ package_type: 2 })
+    expect(store.package_type).toBe('bilibili')
+    store.account = 'later edit'
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ account: 'later edit' })
+  })
+
+  it('shows the server explanation when a configuration patch is rejected', async () => {
+    await setup()
+    axios.patch.mockRejectedValueOnce({
+      response: {
+        data: { error: 'invalid_configuration', message: 'MuMu IPC 截图与触控必须同时启用' }
+      }
+    })
+    store.device_profile.touch_backend = 'mumu_ipc'
+    await nextTick()
+    await expect(store.flush_config_saves()).rejects.toBeDefined()
+    expect(store.config_save_error).toBe('MuMu IPC 截图与触控必须同时启用')
+  })
+
+  it.each([
+    ['maa_stage_inventory_enable', true],
+    ['maa_stage_limit_rules', [{ stage: '1-7', operator: 'and', enabled: true, items: [] }]],
+    ['maa_stage_ratio_rules', [{ name: 'Ratio', enabled: true, members: [] }]]
+  ])('includes the plan identity when only %s changes', async (field, value) => {
+    await setup()
+    store[field] = value
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({
+      maa_weekly_plan_active: '默认',
+      [field]: value
+    })
+  })
+})
+
+it('saves room drag swaps locally with a layout-only patch', async () => {
+  await setup({ swap_contact_train: true })
+  expect(store.right_side_room_order).toEqual(['train', 'contact', 'recycle'])
+  axios.patch.mockClear()
+  store.swap_right_side_facilities('train', 'recycle')
+  await nextTick()
+  await store.flush_config_saves()
+  expect(axios.patch).toHaveBeenCalledTimes(1)
+  expect(axios.patch.mock.lastCall[1]).toEqual({
+    right_side_room_order: ['recycle', 'contact', 'train']
+  })
+  expect(store.build_advanced_settings()).not.toHaveProperty('right_side_room_order')
+  const before = store.build_config().right_side_room_order
+  store.swap_right_side_facilities('room_1_1', 'contact')
+  store.swap_right_side_facilities('', 'train')
+  store.swap_right_side_facilities('contact', 'contact')
+  expect(store.right_side_room_order).toEqual(before)
+  await nextTick()
+  await store.flush_config_saves()
+  expect(axios.patch).toHaveBeenCalledTimes(1)
+})
+
+it('loads the explicit three-room order before the legacy switch', async () => {
+  await setup({ swap_contact_train: true, right_side_room_order: ['recycle', 'train', 'contact'] })
+  expect(store.right_side_room_order).toEqual(['recycle', 'train', 'contact'])
+  expect(store.build_config()).not.toHaveProperty('swap_contact_train')
+})
+
+describe('growth automation dependency', () => {
+  it.each([false, true])(
+    'migrates the legacy combined switch %s without saving on load',
+    async (enabled) => {
+      await setup({ enable_mastery: enabled })
+      expect(store.enable_crafting).toBe(enabled)
+      expect(store.enable_mastery).toBe(enabled)
+      expect(axios.patch).not.toHaveBeenCalled()
+    }
+  )
+
+  it('saves only the crafting switch and preserves dependent choices across reloads', async () => {
+    await setup({ enable_crafting: true, enable_mastery: true, maa_growth_enable: true })
+    store.enable_mastery = false
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ enable_mastery: false })
+    expect(store.enable_crafting).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+    store.enable_mastery = true
+    await nextTick()
+    await store.flush_config_saves()
+    store.enable_crafting = false
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ enable_crafting: false })
+    expect(store.enable_mastery).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+    store.enable_crafting = true
+    await nextTick()
+    await store.flush_config_saves()
+    expect(axios.patch.mock.lastCall[1]).toEqual({ enable_crafting: true })
+    expect(store.enable_mastery).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+  })
+
+  it('loads explicit crafting-only preferences and retains paused imported selections', async () => {
+    const { data } = await setup({
+      enable_crafting: true,
+      enable_mastery: false,
+      maa_growth_enable: false
+    })
+    expect(store.enable_crafting).toBe(true)
+    expect(store.enable_mastery).toBe(false)
+    Object.assign(data, { enable_crafting: false, enable_mastery: true, maa_growth_enable: true })
+    await store.load_config()
+    expect(store.enable_mastery).toBe(true)
+    expect(store.maa_growth_enable).toBe(true)
+  })
+})

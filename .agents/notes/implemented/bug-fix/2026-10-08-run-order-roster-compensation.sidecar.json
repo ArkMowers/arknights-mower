@@ -1,0 +1,47 @@
+{
+  "title": "Run Order Roster Compensation",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-04]"
+  ],
+  "code_symbols": [
+    "arknights_mower.__main__.simulate",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_arrange_room",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.plan_run_order",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.infra_main",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.handle_error",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._advance_orders_before_maintenance",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver._prepare_shift_cycle",
+    "arknights_mower.utils.scheduler_task.SchedulerTask.prepare_run_order_restoration",
+    "arknights_mower.utils.scheduler_task.blocked_run_order_ids",
+    "arknights_mower.utils.scheduler_task.adjust_run_order_for_maintenance",
+    "arknights_mower.utils.scheduler_task.scheduling",
+    "arknights_mower.utils.dorm_candidates.dorm_task_reservations",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_filter_tasks",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_startup",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_schedule_staffing",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_reconcile_staffing"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/run_order_restoration_tests.py",
+    "arknights_mower/tests/priority_admission_tests.py",
+    "arknights_mower/tests/scheduler_task_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py",
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/maintenance_run_order_tests.py",
+    "arknights_mower/tests/scheduler_recovery_preservation_tests.py",
+    "arknights_mower/tests/run_order_planning_wakeup_tests.py",
+    "arknights_mower/tests/emergency_compensation_tests.py",
+    "arknights_mower/tests/dorm_run_order_guard_tests.py",
+    "arknights_mower/tests/run_order_room_change_guard_tests.py",
+    "arknights_mower/tests/mood_limit_deadline_tests.py",
+    "arknights_mower/tests/run_order_product_tests.py",
+    "arknights_mower/tests/shift_backup_convergence_tests.py"
+  ]
+}

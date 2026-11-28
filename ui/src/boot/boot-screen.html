@@ -1,0 +1,508 @@
+<script>
+  // 启动画面：在脚本载入前按配置的主题着色。桌面窗口在地址里带上配置的主题；
+  // 浏览器访问时沿用上次显示的主题。读取失败时的“重新加载”在界面脚本载入前也可用。
+  ;(() => {
+    const root = document.documentElement
+    const params = new URLSearchParams(location.search)
+    let theme = params.get('window_theme')
+    if (theme === 'system') {
+      theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+    }
+    if (theme !== 'light' && theme !== 'dark') {
+      try {
+        theme = localStorage.getItem('mower-theme')
+      } catch {
+        theme = null
+      }
+    }
+    root.dataset.mowerTheme = theme === 'dark' ? 'dark' : 'light'
+    if (params.get('window_shell') === '1') root.dataset.mowerBootShell = ''
+  })()
+</script>
+<style>
+  html {
+    background: #faf9f7;
+  }
+  html[data-mower-theme='dark'] {
+    background: #18181c;
+  }
+  /* 骨架屏：按界面的布局画出侧栏和手机底栏的占位；内容区只留底色，与侧栏稍作区分，
+     页面自己的内容或骨架在启动画面淡出后出现在原处。配置读到、页面画好后淡出，露出位置
+     相同的真实界面。尺寸与侧栏和手机底栏一致：宽度不足 850px 时侧栏收成图标栏，
+     不足 680px 时侧栏换成底部的页面栏。 */
+  #mower-boot {
+    --boot-frame: rgb(250 250 252);
+    --boot-content: #fff;
+    --boot-border: rgb(239 239 245);
+    --boot-bone: rgb(51 54 57 / 0.07);
+    --boot-sheen: rgb(255 255 255 / 0.72);
+    --boot-text: #333639;
+    --boot-muted: rgb(51 54 57 / 0.6);
+    --boot-line: rgb(51 54 57 / 0.1);
+    --boot-card: #fff;
+    --boot-card-shadow: 0 10px 30px rgb(63 55 47 / 0.12), 0 2px 6px rgb(63 55 47 / 0.08);
+    --boot-accent: #18a058;
+    --boot-radius: 10px;
+    --boot-sider: 210px;
+    position: fixed;
+    inset: 0;
+    z-index: 4000;
+    display: flex;
+    overflow: hidden;
+    background: var(--boot-frame);
+    color: var(--boot-text);
+    font-family:
+      v-sans,
+      system-ui,
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      'Microsoft YaHei',
+      sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  html[data-mower-theme='dark'] #mower-boot {
+    --boot-frame: rgb(24 24 28);
+    --boot-content: rgb(16 16 20);
+    --boot-border: rgb(255 255 255 / 0.09);
+    --boot-bone: rgb(255 255 255 / 0.07);
+    --boot-sheen: rgb(255 255 255 / 0.07);
+    --boot-text: #e8e8ea;
+    --boot-muted: rgb(255 255 255 / 0.52);
+    --boot-line: rgb(255 255 255 / 0.12);
+    --boot-card: rgb(44 44 50);
+    --boot-card-shadow: 0 10px 30px rgb(0 0 0 / 0.45), 0 2px 6px rgb(0 0 0 / 0.3);
+    --boot-accent: #63e2b7;
+  }
+  /* 自绘标题栏的窗口留出标题栏，启动期间仍可拖动和关闭窗口；侧栏画在窗框上，
+     内容区是左上角带圆角的面板。 */
+  html[data-mower-boot-shell] #mower-boot {
+    --boot-frame: #faf9f7;
+    top: 36px;
+  }
+  html[data-mower-boot-shell][data-mower-theme='dark'] #mower-boot {
+    --boot-frame: #18181c;
+    --boot-content: #101014;
+  }
+  @supports (corner-shape: squircle) {
+    #mower-boot {
+      --boot-radius: 20px;
+    }
+  }
+  .mower-boot__skeleton {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    animation: mower-boot-fade 180ms ease-out backwards;
+    transition: opacity 240ms ease-out;
+  }
+  /* 占位块：所有块共用一道随视口固定的高光，高光从左向右扫过整个界面。 */
+  .mower-boot__bone,
+  .mower-boot__row::before,
+  .mower-boot__row::after,
+  .mower-boot__tab::before,
+  .mower-boot__tab::after {
+    display: block;
+    flex: none;
+    border-radius: 4px;
+    background-color: var(--boot-bone);
+    background-image: linear-gradient(
+      100deg,
+      transparent 35%,
+      var(--boot-sheen) 50%,
+      transparent 65%
+    );
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: 70vw 100vh;
+    background-position: -70vw 0;
+    animation: mower-boot-sheen 2s ease-in-out infinite;
+  }
+  .mower-boot__row::before,
+  .mower-boot__row::after,
+  .mower-boot__tab::before,
+  .mower-boot__tab::after {
+    content: '';
+  }
+  .mower-boot__sider {
+    position: relative;
+    flex: 0 0 var(--boot-sider);
+    overflow: hidden;
+    background: var(--boot-frame);
+  }
+  html:not([data-mower-boot-shell]) .mower-boot__sider {
+    box-shadow: inset -1px 0 var(--boot-border);
+  }
+  .mower-boot__brand {
+    position: relative;
+    height: 112px;
+  }
+  /* 刊头：Mower、软件版本号和它的后缀、资源版本。 */
+  .mower-boot__brand .mower-boot__bone {
+    position: absolute;
+    left: 16px;
+  }
+  .mower-boot__name {
+    top: 14px;
+    width: 76px;
+    height: 18px;
+    border-radius: 5px;
+  }
+  .mower-boot__release {
+    top: 49px;
+    width: 66px;
+    height: 22px;
+    border-radius: 6px;
+  }
+  .mower-boot__brand .mower-boot__suffix {
+    top: 54px;
+    left: 96px;
+    width: 44px;
+    height: 8px;
+    border-radius: 3px;
+  }
+  .mower-boot__resource {
+    top: 89px;
+    width: 104px;
+    height: 9px;
+    border-radius: 3px;
+  }
+  .mower-boot__nav {
+    position: absolute;
+    top: 116px;
+    right: 0;
+    bottom: 60px;
+    left: 16px;
+    overflow: hidden;
+  }
+  .mower-boot__heading {
+    width: var(--w);
+    height: 9px;
+    margin: 12px 0 13px;
+  }
+  .mower-boot__row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    margin-bottom: 2px;
+    padding-left: 15px;
+  }
+  .mower-boot__row::before {
+    width: 18px;
+    height: 18px;
+    border-radius: 5px;
+  }
+  .mower-boot__row::after {
+    width: var(--w);
+    height: 12px;
+  }
+  .mower-boot__footer {
+    position: absolute;
+    right: 0;
+    bottom: 16px;
+    left: 16px;
+  }
+  .mower-boot__content {
+    position: relative;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    background: var(--boot-content);
+  }
+  html[data-mower-boot-shell] .mower-boot__content {
+    border-radius: var(--boot-radius) 0 0 0;
+    corner-shape: squircle;
+    box-shadow:
+      -7px 0 18px -14px rgb(63 55 47 / 0.13),
+      0 -6px 16px -14px rgb(63 55 47 / 0.07);
+  }
+  html[data-mower-boot-shell][data-mower-theme='dark'] .mower-boot__content {
+    box-shadow:
+      -7px 0 18px -14px rgb(0 0 0 / 0.34),
+      0 -6px 16px -14px rgb(0 0 0 / 0.2);
+  }
+  .mower-boot__tabs,
+  .mower-boot__header {
+    display: none;
+  }
+  /* 浏览器里的手机布局顶部还有一行应用菜单。 */
+  .mower-boot__header {
+    flex: 0 0 36px;
+    align-items: center;
+    gap: 14px;
+    padding-left: 16px;
+    background: var(--boot-content);
+    box-shadow: inset 0 -1px var(--boot-border);
+  }
+  .mower-boot__header .mower-boot__bone {
+    width: 28px;
+    height: 10px;
+  }
+  /* 读取失败时，原因和重新加载按钮画在内容区中央；载入过程中只有骨架，不显示进度说明。 */
+  .mower-boot__below {
+    position: absolute;
+    top: 50%;
+    left: calc(var(--boot-sider) + 16px);
+    right: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    transform: translateY(-50%);
+  }
+  .mower-boot__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .mower-boot__help {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    max-width: 320px;
+    padding: 18px 20px;
+    border-radius: 12px;
+    background: var(--boot-card);
+    box-shadow:
+      0 0 0 1px var(--boot-line),
+      var(--boot-card-shadow);
+    text-align: center;
+    text-wrap: balance;
+    animation: mower-boot-fade 240ms ease-out backwards;
+  }
+  .mower-boot__message {
+    margin: 0;
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--boot-muted);
+  }
+  .mower-boot--failed .mower-boot__message {
+    color: var(--boot-text);
+  }
+  .mower-boot__retry {
+    height: 30px;
+    padding: 0 16px;
+    border: 1px solid var(--boot-line);
+    border-radius: 15px;
+    background: transparent;
+    color: var(--boot-text);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .mower-boot__retry:hover {
+    background: var(--boot-line);
+  }
+  .mower-boot__retry:focus-visible {
+    outline: 2px solid var(--boot-accent);
+    outline-offset: 2px;
+  }
+  /* 失败时骨架停住并变淡，只留下原因和重新加载按钮。 */
+  .mower-boot--failed .mower-boot__help {
+    display: flex;
+  }
+  .mower-boot--failed .mower-boot__label {
+    display: none;
+  }
+  .mower-boot--failed .mower-boot__skeleton {
+    opacity: 0.5;
+  }
+  .mower-boot--failed .mower-boot__skeleton *,
+  .mower-boot--failed .mower-boot__skeleton *::before,
+  .mower-boot--failed .mower-boot__skeleton *::after {
+    animation: none;
+    background-image: none;
+  }
+  /* 准备好后整体淡出，露出位置相同的真实界面。 */
+  .mower-boot--leaving {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 360ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  @media (max-width: 849.98px) {
+    #mower-boot {
+      --boot-sider: 64px;
+    }
+    .mower-boot__brand,
+    .mower-boot__heading,
+    .mower-boot__row::after {
+      display: none;
+    }
+    .mower-boot__nav {
+      top: 0;
+      left: 0;
+      padding-top: 18px;
+    }
+    .mower-boot__nav .mower-boot__row + .mower-boot__heading + .mower-boot__row {
+      margin-top: 16px;
+    }
+    .mower-boot__row {
+      justify-content: center;
+      padding-left: 0;
+    }
+    .mower-boot__row::before {
+      width: 22px;
+      height: 22px;
+      border-radius: 6px;
+    }
+    .mower-boot__footer {
+      left: 0;
+    }
+  }
+  /* 手机布局：没有侧栏，底部是页面栏。 */
+  @media (max-width: 679.98px) {
+    #mower-boot {
+      flex-direction: column;
+    }
+    .mower-boot__skeleton {
+      flex-direction: column;
+    }
+    .mower-boot__sider {
+      display: none;
+    }
+    .mower-boot__below {
+      left: 16px;
+      margin-top: -30px;
+    }
+    html[data-mower-boot-shell] .mower-boot__content {
+      border-radius: 0;
+      box-shadow: none;
+    }
+    html:not([data-mower-boot-shell]) .mower-boot__header {
+      display: flex;
+    }
+    .mower-boot__tabs {
+      display: grid;
+      flex: none;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      padding: 2px 0 calc(2px + env(safe-area-inset-bottom, 0px));
+      background: var(--boot-content);
+      box-shadow: inset 0 1px var(--boot-border);
+    }
+    .mower-boot__tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 54px;
+    }
+    .mower-boot__tab::before {
+      width: 20px;
+      height: 20px;
+      border-radius: 6px;
+    }
+    .mower-boot__tab::after {
+      width: 22px;
+      height: 8px;
+      border-radius: 3px;
+    }
+  }
+  @keyframes mower-boot-sheen {
+    0% {
+      background-position: -70vw 0;
+    }
+    70%,
+    100% {
+      background-position: 130vw 0;
+    }
+  }
+  @keyframes mower-boot-fade {
+    from {
+      opacity: 0;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mower-boot__skeleton {
+      animation: none;
+    }
+    .mower-boot__bone,
+    .mower-boot__row::before,
+    .mower-boot__row::after,
+    .mower-boot__tab::before,
+    .mower-boot__tab::after {
+      animation: none;
+      background-image: none;
+    }
+  }
+</style>
+<div id="mower-boot" role="status" aria-live="polite" aria-busy="true">
+  <div class="mower-boot__skeleton" aria-hidden="true">
+    <div class="mower-boot__sider">
+      <div class="mower-boot__brand">
+        <span class="mower-boot__bone mower-boot__name"></span>
+        <span class="mower-boot__bone mower-boot__release"></span>
+        <span class="mower-boot__bone mower-boot__suffix"></span>
+        <span class="mower-boot__bone mower-boot__resource"></span>
+      </div>
+      <div class="mower-boot__nav">
+        <span class="mower-boot__bone mower-boot__heading" style="--w: 26px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 42px"></span>
+        <span class="mower-boot__bone mower-boot__heading" style="--w: 48px"></span>
+        <span class="mower-boot__row" style="--w: 84px"></span>
+        <span class="mower-boot__row" style="--w: 70px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 28px"></span>
+        <span class="mower-boot__row" style="--w: 98px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 70px"></span>
+        <span class="mower-boot__bone mower-boot__heading" style="--w: 26px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+        <span class="mower-boot__row" style="--w: 56px"></span>
+      </div>
+      <div class="mower-boot__footer">
+        <span class="mower-boot__row" style="--w: 96px"></span>
+      </div>
+    </div>
+    <div class="mower-boot__header">
+      <span class="mower-boot__bone"></span>
+      <span class="mower-boot__bone"></span>
+      <span class="mower-boot__bone"></span>
+      <span class="mower-boot__bone"></span>
+    </div>
+    <div class="mower-boot__content"></div>
+    <div class="mower-boot__tabs">
+      <span class="mower-boot__tab"></span>
+      <span class="mower-boot__tab"></span>
+      <span class="mower-boot__tab"></span>
+      <span class="mower-boot__tab"></span>
+      <span class="mower-boot__tab"></span>
+      <span class="mower-boot__tab"></span>
+      <span class="mower-boot__tab"></span>
+    </div>
+  </div>
+  <div class="mower-boot__below" data-boot-below>
+    <span class="mower-boot__label">正在载入界面</span>
+    <div class="mower-boot__help">
+      <p class="mower-boot__message" data-boot-error></p>
+      <button type="button" class="mower-boot__retry" data-boot-retry>重新加载</button>
+    </div>
+  </div>
+</div>
+<script>
+  ;(() => {
+    const screen = document.getElementById('mower-boot')
+    screen.querySelector('[data-boot-retry]').addEventListener('click', () => location.reload())
+    // 入口模块下载失败时 Vue 尚未挂载，由静态页面显示重试按钮。
+    function entryFailed(event) {
+      if (!event.target?.matches?.('script[type="module"][src]')) return
+      screen.querySelector('[data-boot-error]').textContent = '界面脚本加载失败，请重新加载。'
+      screen.setAttribute('aria-busy', 'false')
+      screen.classList.add('mower-boot--failed')
+    }
+    window.addEventListener('error', entryFailed, true)
+    window.addEventListener('load', () => window.removeEventListener('error', entryFailed, true), {
+      once: true
+    })
+  })()
+</script>

@@ -1,0 +1,25 @@
+{
+  "title": "Shared Group Shift Selection",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators",
+    "ui/src/components/TriggerString.vue",
+    "ui/src/stores/plan.js"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/multi_group_shift_tests.py",
+    "ui/src/utils/plan_bindings.test.js",
+    "ui/src/components/PlanEditor.test.js",
+    "ui/src/components/TriggerString.test.js",
+    "ui/src/utils/trigger_group.test.js",
+    "arknights_mower/tests/group_shift_independence_tests.py"
+  ]
+}

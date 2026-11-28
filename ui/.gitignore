@@ -10,9 +10,12 @@ lerna-debug.log*
 node_modules
 .DS_Store
 dist
+dist-preview
 dist-ssr
 coverage
 *.local
+auto-imports.d.ts
+components.d.ts
 
 /cypress/videos/
 /cypress/screenshots/

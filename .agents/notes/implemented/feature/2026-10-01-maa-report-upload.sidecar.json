@@ -1,0 +1,34 @@
+{
+  "title": "Delegated Drop Data Upload",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-01",
+  "authors": [
+    "DeepSeek"
+  ],
+  "invariants": [
+    "[INV-MAA-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.maa_report.upload_report",
+    "arknights_mower.utils.maa_report._post",
+    "arknights_mower.utils.maa_report._attempt_domain",
+    "arknights_mower.utils.maa_report.report_label",
+    "arknights_mower.utils.maa_report.REPORT_TIMEOUT",
+    "arknights_mower.utils.maa_report.REPORT_ATTEMPTS",
+    "arknights_mower.utils.maa_report.REPORT_BACKOFF",
+    "arknights_mower.utils.maa_report.REPORT_BACKOFF_FACTOR",
+    "arknights_mower.utils.maa_report.PENGUIN_SUBTASK",
+    "arknights_mower.utils.maa_report.PENGUIN_DOMAIN",
+    "arknights_mower.utils.maa_report.PENGUIN_BACKUP_DOMAINS",
+    "arknights_mower.utils.maa_report.SUBTASK_TEXT",
+    "arknights_mower.utils.maa_callback.REPORT_REQUEST",
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.on_maa_callback",
+    "arknights_mower.solvers.base_schedule._maa_client_type",
+    "arknights_mower.utils.config.conf.Conf.maa_report_to_penguin"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_report_tests.py",
+    "arknights_mower/tests/maa_stage_inventory_scheduler_tests.py"
+  ]
+}

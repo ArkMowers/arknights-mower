@@ -1,0 +1,268 @@
+{
+  "freeSlots": [
+    {
+      "name": "closed shared Free bed",
+      "reserved": "",
+      "active": [],
+      "inactive": [],
+      "state": {},
+      "effective": false
+    },
+    {
+      "name": "unconfirmed shared reservation",
+      "reserved": "A",
+      "active": [],
+      "inactive": [],
+      "state": {},
+      "effective": true
+    },
+    {
+      "name": "explicit downshift opens shared Free bed",
+      "reserved": "",
+      "active": [
+        "a"
+      ],
+      "inactive": [],
+      "state": {},
+      "effective": true
+    },
+    {
+      "name": "explicit return closes shared reservation",
+      "reserved": "A",
+      "active": [],
+      "inactive": [
+        "a"
+      ],
+      "state": {},
+      "effective": false
+    },
+    {
+      "name": "overlapping rest keeps shared Free bed open",
+      "reserved": "A",
+      "active": [],
+      "inactive": [
+        "a"
+      ],
+      "state": {
+        "a": true,
+        "b": true
+      },
+      "effective": true
+    }
+  ],
+  "revision": "ab0a4e5bec23f6f8d7c37b0648f05dda28f31866",
+  "scope": "Unmodified shared-group methods; explicit offline occupancy and no standby operators. No device or full scheduler equivalence claim.",
+  "sourceSha256": {
+    "arknights_mower/utils/operators.py": "3cea0b585418154621f82958a47677f58cd1d30dfa2572530fff2eb647aa2982",
+    "arknights_mower/utils/exhaust_replacement.py": "64d21e0a4e5ebfe0380d695d855bf83acdefb79a0d1b6c490984876397efd29d"
+  },
+  "cases": [
+    {
+      "name": "shared working follower",
+      "dorm": false,
+      "disjoint": false,
+      "steps": [
+        {
+          "input": {
+            "room_1_1": [
+              "X"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_1": [
+              "X"
+            ],
+            "room_1_3": [
+              "C"
+            ]
+          },
+          "groups": {
+            "a": true,
+            "b": false
+          }
+        },
+        {
+          "input": {
+            "room_1_2": [
+              "Y"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_2": [
+              "Y"
+            ],
+            "room_1_3": [
+              "D"
+            ]
+          },
+          "groups": {
+            "a": true,
+            "b": true
+          }
+        },
+        {
+          "input": {
+            "room_1_1": [
+              "A"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_1": [
+              "A"
+            ]
+          },
+          "groups": {
+            "a": false,
+            "b": true
+          }
+        },
+        {
+          "input": {
+            "room_1_2": [
+              "B"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_2": [
+              "B"
+            ],
+            "room_1_3": [
+              "F"
+            ]
+          },
+          "groups": {
+            "a": false,
+            "b": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "shared Free keeper",
+      "dorm": true,
+      "disjoint": false,
+      "steps": [
+        {
+          "input": {
+            "room_1_1": [
+              "X"
+            ],
+            "dormitory_1": [
+              "C",
+              "Current",
+              "Current",
+              "Current",
+              "Current"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_1": [
+              "X"
+            ],
+            "dormitory_1": [
+              "C",
+              "Current",
+              "Current",
+              "Current",
+              "Current"
+            ]
+          },
+          "groups": {
+            "a": true,
+            "b": false
+          }
+        },
+        {
+          "input": {
+            "room_1_2": [
+              "Y"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_2": [
+              "Y"
+            ]
+          },
+          "groups": {
+            "a": true,
+            "b": true
+          }
+        },
+        {
+          "input": {
+            "room_1_1": [
+              "A"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_1": [
+              "A"
+            ]
+          },
+          "groups": {
+            "a": false,
+            "b": true
+          }
+        },
+        {
+          "input": {
+            "room_1_2": [
+              "B"
+            ]
+          },
+          "accepted": true,
+          "plan": {
+            "room_1_2": [
+              "B"
+            ],
+            "dormitory_1": [
+              "F",
+              "Current",
+              "Current",
+              "Current",
+              "Current"
+            ]
+          },
+          "groups": {
+            "a": false,
+            "b": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "incompatible binding intersection",
+      "dorm": false,
+      "disjoint": true,
+      "steps": [
+        {
+          "input": {
+            "room_1_1": [
+              "X"
+            ],
+            "room_1_2": [
+              "Y"
+            ]
+          },
+          "accepted": false,
+          "plan": {
+            "room_1_1": [
+              "X"
+            ],
+            "room_1_2": [
+              "Y"
+            ]
+          },
+          "groups": {}
+        }
+      ]
+    }
+  ]
+}

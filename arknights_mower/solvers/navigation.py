@@ -8,12 +8,36 @@ import numpy as np
 
 from arknights_mower import __rootdir__
 from arknights_mower.data import stage_data_full
+from arknights_mower.solvers.activity_navigation import (
+    ActivityNavigation,
+    resolve_activity_stage,
+)
 from arknights_mower.solvers.base_mixin import BaseMixin
 from arknights_mower.utils import config, rapidocr
+from arknights_mower.utils.csleep import MowerExit
+from arknights_mower.utils.device.io_budget import io_timeout
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import loadres, thres2
 from arknights_mower.utils.log import logger
+from arknights_mower.utils.nav_steps import (
+    empty_nav_steps,
+    load_nav_file,
+    merge_nav_steps,
+    select_replay_steps,
+)
 from arknights_mower.utils.scene import Scene
+from arknights_mower.utils.stage_code_glyphs import read_stage_code
+from arknights_mower.utils.stage_map_labels import read_map_stage_labels
+
+# 剧情/故事「进入」按钮（OCR 常读成 "Story >>"）不是关卡入口，LLM 在线构建选它只会
+# 录进没用的路由，从导航候选中剔除。"Story Line · XX" 章节名不带 ">>"，不受影响。
+_NAV_ENTRY_EXCLUDE = ("story", "剧情")
+
+
+def _is_story_entry(text) -> bool:
+    """命中剧情入口按钮形态：以 ">>" 结尾且含 story/剧情 关键词。"""
+    t = str(text).strip()
+    return t.endswith(">>") and any(kw in t.lower() for kw in _NAV_ENTRY_EXCLUDE)
 
 
 class NavigationSolver(SceneGraphSolver, BaseMixin):
@@ -45,14 +69,7 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         logger.debug("Start: 关卡导航")
         self.success = False
         self.name = name
-        self.stage_meta = next(
-            (
-                item
-                for item in stage_data_full
-                if item.get("id") == name or item.get("name") == name
-            ),
-            None,
-        )
+        self.stage_meta = resolve_activity_stage(name)
         self.stageType = (
             "UNKNOWN" if not self.stage_meta else self.stage_meta.get("stageType")
         )
@@ -69,6 +86,7 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         self._activity_entry_done = False
         self._activity_entry_failed = False
         self._builder_attempted = False
+        self._activity_stage_opened = False
         self.scene_graph_navigation(Scene.TERMINAL_MAIN)
         # rapid OCR: 如果右下角显示“上次作战”的关卡名与目标相同，直接点击进入
         if self.name == "Annihilation":
@@ -107,6 +125,40 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             self.persist_nav_steps()
         return self.success
 
+    def _read_stage_detail_code(self) -> str | None:
+        """Read the operation header only after the Start Operation button appears."""
+        self.recog.update()
+        for attempt in range(5):
+            io_timeout(0)
+            if self.find("ope_start"):
+                code = read_stage_code(self.recog.img)
+                if code:
+                    return code
+            if attempt < 4:
+                self.sleep(io_timeout(0.4))
+        return None
+
+    def confirm_selected_stage(self) -> bool:
+        target = self.normalize_stage_text(self.name)
+        observed = self._read_stage_detail_code()
+        if observed is None:
+            logger.warning("未能读取 %s 的详情页关号", target)
+            return False
+        if observed == target:
+            return True
+
+        logger.warning("目标关卡 %s，详情页显示 %s，返回地图重新选关", target, observed)
+        io_timeout(0)
+        self.back()
+        if self.find("ope_start") or not self.find_target_stage_after_entry(target):
+            return False
+        observed = self._read_stage_detail_code()
+        if observed != target:
+            logger.warning(
+                "重新选择 %s 后未确认目标关卡，详情页关号=%s", target, observed
+            )
+        return observed == target
+
     def transition(self):
         if (scene := self.scene()) == Scene.TERMINAL_MAIN:
             logger.debug(
@@ -128,7 +180,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 if self.try_activity_entry():
                     # Entry-building success means same-pattern page is reached.
                     # Exact stage positioning (left/right swipe) is the final step.
-                    if self.is_stage_code(self.name):
+                    if (
+                        self.is_stage_code(self.name)
+                        and not self._activity_stage_opened
+                    ):
                         self.find_target_stage_after_entry(self.name, max_swipes=6)
                     return
             if self._activity_entry_failed:
@@ -165,6 +220,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         elif scene in self.waiting_scene:
             self.waiting_solver()
         else:
+            # LLM 导航会进入活动页，这些页面场景识别为 UNKNOWN；导航已成功
+            # （success）就别退回终端主界面，直接结束，否则会退掉刚进入的活动页
+            if self.success:
+                return True
             self.scene_graph_navigation(Scene.TERMINAL_MAIN)
 
     def enter_annihilation_from_terminal_main(self) -> bool:
@@ -273,20 +332,31 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         logger.debug("在线构建失败，终止本次导航")
         return False
 
+    def activity_entry_names(self) -> set[str]:
+        return ActivityNavigation(self).entry_names()
+
+    def enter_activity_from_terminal(self) -> bool:
+        return ActivityNavigation(self).enter_from_terminal()
+
     def try_quick_entry_from_main(self) -> bool:
         if self.scene() != Scene.TERMINAL_MAIN:
-            return False
-        if self.should_use_llm_navigation():
-            logger.debug(
-                "skip quick entry and use llm navigation | target=%s | stageType=%s | endTs=%s",
-                self.name,
-                self.stageType,
-                self._activity_end_ts(),
-            )
             return False
         prev_suppress = self._suppress_nav_recording
         self._suppress_nav_recording = True
         try:
+            if self.stageType == "ACTIVITY":
+                self._activity_stage_opened = ActivityNavigation(self).open_stage(
+                    self.name
+                )
+                return self._activity_stage_opened
+            if self.should_use_llm_navigation():
+                logger.debug(
+                    "skip quick entry and use llm navigation | target=%s | stageType=%s | endTs=%s",
+                    self.name,
+                    self.stageType,
+                    self._activity_end_ts(),
+                )
+                return False
             # Quick entry is runtime-only and should not be persisted into trie steps.
             logger.debug(
                 "尝试快速入口: stageType=%s zone=%s",
@@ -494,6 +564,15 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         return False
 
     def find_stage_banner(self, zone_name: str, scope=None):
+        found = self.find_stage_banner_image(zone_name, scope=scope)
+        if found or self.stageType != "ACTIVITY":
+            return found
+        navigator = ActivityNavigation(self)
+        if zone_name != navigator.activity:
+            return None
+        return navigator.find_banner(scope)
+
+    def find_stage_banner_image(self, zone_name: str, scope=None):
         key = f"navigation/stage/{zone_name}"
         template_path = (
             Path(__rootdir__)
@@ -618,7 +697,9 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             self.wait_for_scene_stable(timeout_seconds=3, interval_seconds=0.2)
         return self.find("navigation/orderby_time")
 
-    def find_stage_image_and_enter(self, zone_name: str, max_swipes: int = 10) -> bool:
+    def find_stage_image_and_enter(
+        self, zone_name: str, max_swipes: int = 10, *, confirm_entry=None
+    ) -> bool:
         key = f"navigation/stage/{zone_name}"
         logger.debug(
             f"find_stage_image_and_enter start: zone={zone_name}, key={key}, max_swipes={max_swipes}"
@@ -629,6 +710,9 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
             pos = self.find_stage_banner(zone_name)
             logger.debug(f"find_stage_image_and_enter round={i}, pos_found={bool(pos)}")
             if pos:
+                if confirm_entry is not None:
+                    self.tap(pos[0], interval=0.2)
+                    return confirm_entry()
                 moved = self.tap_and_detect_page_move(pos[0], zone_name)
                 logger.debug(
                     f"find_stage_image_and_enter tap result: moved={moved}, zone={zone_name}"
@@ -821,6 +905,8 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 except Exception:
                     continue
                 score = float(item[2]) if len(item) > 2 else 0.0
+                if _is_story_entry(text):
+                    continue
                 candidates.append(
                     {"text": str(text).strip(), "center": center, "score": score}
                 )
@@ -852,7 +938,10 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 ocr_items=candidates,
                 api_key=config.conf.resolved_ai_key,
             )
+        except (MowerExit, InterruptedError):
+            raise
         except Exception as e:
+            io_timeout(0)
             logger.debug(f"LLM 入口排序不可用，回退规则打分: {e}")
         if llm_ranked_indices:
             llm_texts = [
@@ -890,15 +979,19 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
     def find_target_stage_after_entry(
         self, target_stage: str, max_swipes: int = 6, pattern_only: bool = False
     ) -> bool:
-        """
-        进入活动后继续 OCR，若在同一 pattern 页面（如 AP-1）则横向滑动直到找到目标。
-        """
+        """Find the full stage code on the map, swiping within its chapter as needed."""
         target_norm = self.normalize_stage_text(target_stage)
         pattern_stem = self.stage_pattern_stem(target_norm)
         target_tail_match = re.search(r"-(\d+)$", target_norm)
         target_tail_num = int(target_tail_match.group(1)) if target_tail_match else None
         for swipe_idx in range(max_swipes + 1):
             self.wait_for_scene_stable(timeout_seconds=3, interval_seconds=0.2)
+            labels = read_map_stage_labels(self.recog.img)
+            points = [point for code, point in labels if code == target_norm]
+            if len(points) == 1:
+                self.tap_map_stage(points[0], target_norm, "字模")
+                return True
+
             candidates = self.collect_terminal_ocr_candidates(save_shot=False)
             texts = [c["text"] for c in candidates]
             logger.debug(
@@ -910,32 +1003,31 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 len(texts),
                 texts[:20],
             )
-            exact = next(
-                (
-                    c
-                    for c in candidates
-                    if self.normalize_stage_text(c["text"]) == target_norm
-                ),
-                None,
-            )
-            if exact:
-                self.tap(exact["center"], interval=0.2)
-                self.record_nav_step(
-                    "tap", pos=exact["center"], text=exact["text"], success=True
-                )
-                # Mark route as successful only when final pattern-level target is reached.
-                self.nav_route_success = True
-                logger.debug(f"OCR 直接命中目标关卡 {target_stage}，导航成功")
-                # Persist immediately so successful path survives unexpected early exits.
-                if not self._suppress_nav_recording:
-                    self.persist_nav_steps()
-                return True
+            matches = [
+                c
+                for c in candidates
+                if self.normalize_stage_text(c["text"]) == target_norm
+            ]
+            if not points and len(matches) == 1:
+                point = matches[0]["center"]
+                # A word over a plate already decoded as another code cannot identify the target.
+                if not any(
+                    abs(point[0] - x) < 95 and abs(point[1] - y) < 22
+                    for _, (x, y) in labels
+                ):
+                    self.tap_map_stage(point, matches[0]["text"], "OCR")
+                    return True
 
-            has_same_pattern = any(
-                self.is_stage_code(t) and self.stage_pattern_stem(t) == pattern_stem
-                for t in texts
-            )
-            if not has_same_pattern:
+            def in_chapter(text):
+                return (
+                    self.is_stage_code(text)
+                    and self.stage_pattern_stem(text) == pattern_stem
+                )
+
+            chapter_codes = [code for code, _ in labels if in_chapter(code)]
+            if not chapter_codes:
+                chapter_codes = [text for text in texts if in_chapter(text)]
+            if not chapter_codes:
                 logger.debug("当前页面未识别到同 pattern 关卡，停止继续滑动")
                 return False
 
@@ -952,14 +1044,8 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 return True
 
             same_pattern_nums = []
-            for t in texts:
-                norm_t = self.normalize_stage_text(t)
-                if (
-                    not self.is_stage_code(norm_t)
-                    or self.stage_pattern_stem(norm_t) != pattern_stem
-                ):
-                    continue
-                m = re.search(r"-(\d+)$", norm_t)
+            for code in chapter_codes:
+                m = re.search(r"-(\d+)$", self.normalize_stage_text(code))
                 if m:
                     same_pattern_nums.append(int(m.group(1)))
 
@@ -992,6 +1078,14 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         )
         return False
 
+    def tap_map_stage(self, point, text, method):
+        self.tap(point, interval=0.2)
+        self.record_nav_step("tap", pos=point, text=text, success=True)
+        self.nav_route_success = True
+        logger.debug("%s 命中地图关号 %s，点击 %s", method, text, point)
+        if not self._suppress_nav_recording:
+            self.persist_nav_steps()
+
     def record_nav_step(self, action: str, **payload):
         if self._suppress_nav_recording:
             return
@@ -1003,45 +1097,34 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
         return f"{self.stage_pattern_stem(stage_name)}*"
 
     def load_nav_steps_data(self) -> dict:
-        path = Path(__rootdir__) / "data" / "nav_trie_steps.json"
-        if not path.exists():
-            return {"version": 1, "stages": {}, "patterns": {}}
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-            if "stages" not in data or not isinstance(data["stages"], dict):
-                data["stages"] = {}
-            if "patterns" not in data or not isinstance(data["patterns"], dict):
-                data["patterns"] = {}
-            return data
-        except Exception:
-            return {"version": 1, "stages": {}, "patterns": {}}
+        """本机用户自学文件（nav_trie_steps.json）——persist_nav_steps 只写这儿。
+
+        与官方层分开存，互不覆盖。
+        """
+        return load_nav_file(Path(__rootdir__) / "data" / "nav_trie_steps.json")
+
+    def load_official_nav_steps(self) -> dict:
+        """读取随程序发布的官方导航步骤；本地自学步骤单独保存。"""
+        path = Path(__rootdir__) / "data" / "nav_steps.json"
+        if not path.is_file():
+            return empty_nav_steps()
+        return load_nav_file(path)
+
+    def load_merged_nav_steps(self) -> dict:
+        """官方打底 + 本机优先的合并视图（回放用）。"""
+        return merge_nav_steps(
+            self.load_official_nav_steps(), self.load_nav_steps_data()
+        )
 
     def get_replay_steps(self) -> list[dict]:
-        data = self.load_nav_steps_data()
-        stage_entry = data["stages"].get(self.name, {})
-        stage_steps = stage_entry.get("steps", [])
-        if stage_steps and stage_entry.get("success") is True:
-            logger.debug(
-                f"找到精确关卡历史步骤: {self.name} steps={len(stage_steps)} success=true"
-            )
-            return stage_steps
-        if stage_steps:
-            logger.debug(f"忽略精确关卡历史步骤: {self.name}（缺少success=true）")
+        data = self.load_merged_nav_steps()
         pattern_key = self.stage_pattern_key(self.name)
-        if pattern_key:
-            # Fallback to shared prefix path when exact stage path is absent.
-            pattern_entry = data["patterns"].get(pattern_key, {})
-            pattern_steps = pattern_entry.get("steps", [])
-            if pattern_steps and pattern_entry.get("success") is True:
-                logger.debug(
-                    f"找到同pattern历史步骤: {pattern_key} steps={len(pattern_steps)} success=true"
-                )
-                return pattern_steps
-            if pattern_steps:
-                logger.debug(
-                    f"忽略同pattern历史步骤: {pattern_key}（缺少success=true）"
-                )
-        return []
+        steps = select_replay_steps(data, self.name, pattern_key)
+        if steps:
+            logger.debug(
+                f"命中导航步骤（官方+本机合并）: {self.name} steps={len(steps)}"
+            )
+        return steps
 
     def try_replay_nav_steps(self) -> bool:
         if not self.back_to_terminal_main():
@@ -1083,14 +1166,27 @@ class NavigationSolver(SceneGraphSolver, BaseMixin):
                 )
                 self.wait_for_scene_stable(timeout_seconds=5, interval_seconds=0.2)
             # Verify target after each step; return immediately on success.
-            if self.is_stage_code(self.name) and self.find_target_stage_after_entry(
-                self.name, max_swipes=3, pattern_only=True
-            ):
-                return True
+            # 验证期间的定位滑动不该混入录制结果（路由只到同 pattern 页面，
+            # 具体关卡定位由 find_target_stage_after_entry 运行时完成），临时压制录制。
+            prev_suppress = self._suppress_nav_recording
+            self._suppress_nav_recording = True
+            try:
+                if self.is_stage_code(self.name) and self.find_target_stage_after_entry(
+                    self.name, max_swipes=3, pattern_only=True
+                ):
+                    return True
+            finally:
+                self._suppress_nav_recording = prev_suppress
         if self.is_stage_code(self.name):
-            return self.find_target_stage_after_entry(
-                self.name, max_swipes=6, pattern_only=True
-            )
+            prev_suppress = self._suppress_nav_recording
+            self._suppress_nav_recording = True
+            try:
+                ok = self.find_target_stage_after_entry(
+                    self.name, max_swipes=6, pattern_only=True
+                )
+            finally:
+                self._suppress_nav_recording = prev_suppress
+            return ok
         return False
 
     def persist_nav_steps(self):

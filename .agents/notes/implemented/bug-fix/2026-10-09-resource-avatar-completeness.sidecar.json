@@ -1,0 +1,18 @@
+{
+  "title": "Complete Operator Avatars",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-RES-04]"
+  ],
+  "code_symbols": [
+    "auto_get_res_new.Arknights数据处理器.添加干员"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/resource_generation_tests.py"
+  ]
+}

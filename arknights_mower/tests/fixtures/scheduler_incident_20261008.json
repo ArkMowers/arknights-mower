@@ -1,0 +1,37 @@
+{
+  "baseline_commit": "87b9d3aa2c265cb90adb7b1a62f07bd8c505e97c",
+  "configuration_capture": "2026-10-08",
+  "conf": {
+    "run_order_delay": 3.0
+  },
+  "trace": [
+    {
+      "source_file": "runtime.log",
+      "source_line": 3933,
+      "at": "2026-10-08 10:55:38,643",
+      "event": "idle",
+      "message": "出现任务调度情况休息298.417708秒等待下一个任务开始"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 3935,
+      "at": "2026-10-08 10:56:15,034",
+      "event": "resources",
+      "message": "已在任务边界加载资源：v2026.09.26-ac65a67"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 3950,
+      "at": "2026-10-08 11:00:37,237",
+      "event": "scene",
+      "message": "Scene 201: 基建全局视角"
+    },
+    {
+      "source_file": "runtime.log",
+      "source_line": 3951,
+      "at": "2026-10-08 11:00:37,239",
+      "event": "watchdog",
+      "message": "相同场景等待超时 "
+    }
+  ]
+}

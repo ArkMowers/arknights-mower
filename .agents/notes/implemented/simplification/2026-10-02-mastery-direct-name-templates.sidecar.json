@@ -1,0 +1,22 @@
+{
+  "title": "Direct Training Panel Name Templates",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-REC-05]",
+    "[INV-DIAG-06]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.mastery_reader._read_panel_text",
+    "arknights_mower.utils.mastery_panel_template.recognize_operator"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/mastery_panel_identity_tests.py",
+    "arknights_mower/tests/mastery_panel_template_tests.py",
+    "arknights_mower/tests/mastery_panel_ocr_tests.py"
+  ]
+}

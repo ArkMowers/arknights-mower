@@ -1,0 +1,1365 @@
+<script setup>
+import { publicAsset } from '@/utils/publicAsset'
+import { computed, inject, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useConfigStore } from '@/stores/config'
+import { useResolvedTheme } from '@/composables/theme'
+import LoadingSkeleton from '@/components/LoadingSkeleton.vue'
+import { createSkeletonShape, skeletonCount, skeletonList } from '@/utils/skeletonShape'
+import { format, use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { CustomChart, PieChart } from 'echarts/charts'
+import { TooltipComponent } from 'echarts/components'
+import VChart from 'vue-echarts'
+import CubeOutline from '@vicons/ionicons5/es/CubeOutline'
+import RefreshOutline from '@vicons/ionicons5/es/RefreshOutline'
+import DownloadOutline from '@vicons/ionicons5/es/DownloadOutline'
+import TimeOutline from '@vicons/ionicons5/es/TimeOutline'
+import PersonOutline from '@vicons/ionicons5/es/PersonOutline'
+import LeafOutline from '@vicons/ionicons5/es/LeafOutline'
+
+use([CanvasRenderer, PieChart, CustomChart, TooltipComponent])
+const axios = inject('axios')
+const { theme: themePreference } = storeToRefs(useConfigStore())
+const theme = useResolvedTheme(themePreference)
+const today = new Date()
+const since = new Date(today)
+since.setDate(today.getDate() - 29)
+const range = ref([since.getTime(), today.getTime()])
+const page = ref(1)
+const loading = ref(false)
+// 骨架按上次读到的收取明细条数、品质行和材料种数占位；明细和汇总只画列表可见的部分。
+const shapeCache = createSkeletonShape('recycling', {
+  records: skeletonCount(5, 3),
+  qualities: skeletonList(
+    5,
+    (rarity) => ([0, 2, 3, 4, 5].includes(rarity) ? rarity : undefined),
+    [2, 3, 4]
+  ),
+  materials: skeletonCount(6, 4)
+})
+const skeletonShape = shapeCache.read()
+const error = ref('')
+const exporting = ref(false)
+const exportError = ref('')
+const retrying = ref('')
+const retryError = ref('')
+const data = ref({ total: 0, materials: [], qualities: [], records: [], comparison: null })
+const displayedQuery = ref(null)
+const initialLoading = computed(() => !displayedQuery.value && !error.value)
+const qualityChart = ref(null)
+const failedIcons = reactive(new Set())
+let requestVersion = 0
+let refreshTimer
+let refreshesRemaining = 0
+let disposed = false
+const uploadLabels = {
+  submitted: '已上传',
+  failed: '上传失败',
+  pending: '待上传',
+  waiting: '待上传',
+  skipped: '未上传（材料未识别）'
+}
+const quantity = computed(() => data.value.materials.reduce((sum, item) => sum + item.count, 0))
+const comparison = computed(() => data.value.comparison)
+const qualityLabels = {
+  0: '未知品质',
+  2: '绿色材料',
+  3: '蓝色材料',
+  4: '紫色材料',
+  5: '金色材料'
+}
+const qualityColors = {
+  0: '#8b98a6',
+  2: '#79ae59',
+  3: '#549bd4',
+  4: '#a078d0',
+  5: '#dcb153'
+}
+const materialRarities = computed(() =>
+  Object.fromEntries(data.value.materials.map((item) => [item.name, item.rarity]))
+)
+const qualityRows = computed(() => {
+  const expected = comparison.value?.qualities || []
+  const rarities = new Set([
+    ...data.value.qualities.map((row) => row.rarity),
+    ...expected.map((row) => row.rarity)
+  ])
+  return [...rarities]
+    .sort((a, b) => (a || 0) - (b || 0))
+    .map((rarity) => ({
+      rarity,
+      count: data.value.qualities.find((row) => row.rarity === rarity)?.count || 0,
+      probability: expected.find((row) => row.rarity === rarity)?.probability ?? null
+    }))
+})
+const chart = computed(() => {
+  const total = data.value.qualities.reduce((sum, row) => sum + row.count, 0)
+  let preceding = 0
+  const slices = data.value.qualities.map((row) => {
+    const angle = total ? (row.count / total) * Math.PI * 2 : 0
+    const middle = -Math.PI / 2 + preceding + angle / 2
+    preceding += angle
+    return {
+      name: qualityLabels[row.rarity] || qualityLabels[0],
+      value: row.count,
+      materials: data.value.materials.filter((item) => (item.rarity ?? 0) === (row.rarity ?? 0)),
+      itemStyle: { color: qualityColors[row.rarity] || qualityColors[0] },
+      angle,
+      middle
+    }
+  })
+  return {
+    backgroundColor: 'transparent',
+    animationDuration: 350,
+    tooltip: {
+      trigger: 'item',
+      renderMode: 'html',
+      confine: true,
+      enterable: true,
+      formatter: ({ name, value, percent, data: slice }) => {
+        const share = percent ?? Math.round((value / total) * 10000) / 100
+        const materials = slice.materials
+          .map(
+            (item) =>
+              `<div class="quality-tooltip-row"><span>${format.encodeHTML(item.name)}</span><strong>× ${item.count}</strong></div>`
+          )
+          .join('')
+        return `<div class="quality-tooltip"><div class="quality-tooltip-heading">${format.encodeHTML(name)}：${value} 个（${share}%）</div><div class="quality-tooltip-materials">${materials}</div></div>`
+      }
+    },
+    series: [
+      {
+        type: 'pie',
+        radius: ['66%', '83%'],
+        center: ['50%', '50%'],
+        label: { show: false },
+        itemStyle: {
+          borderRadius: 6,
+          borderWidth: 3,
+          borderColor: theme.value === 'dark' ? '#252a2f' : '#ffffff'
+        },
+        emphasis: { scaleSize: 5 },
+        data: slices
+      },
+      {
+        type: 'custom',
+        coordinateSystem: 'none',
+        z: 3,
+        animation: false,
+        data: slices,
+        // 透明扇区扩大窄扇区的命中范围，可见扇区仍按实际数量绘制。
+        renderItem: (params, api) => {
+          const slice = slices[params.dataIndex]
+          const minimumAngle = Math.PI / 12
+          if (slice.angle <= 0 || slice.angle >= minimumAngle) return
+          const previous = slices[(params.dataIndex + slices.length - 1) % slices.length]
+          const next = slices[(params.dataIndex + 1) % slices.length]
+          const radius = Math.min(api.getWidth(), api.getHeight()) / 2
+          return {
+            type: 'sector',
+            shape: {
+              cx: api.getWidth() / 2,
+              cy: api.getHeight() / 2,
+              r0: radius * 0.61,
+              r: radius * 0.88,
+              startAngle:
+                slice.middle - Math.min(minimumAngle / 2, (previous.angle + slice.angle) / 4),
+              endAngle: slice.middle + Math.min(minimumAngle / 2, (slice.angle + next.angle) / 4)
+            },
+            style: { fill: 'transparent' }
+          }
+        }
+      }
+    ]
+  }
+})
+function showQualityTooltip(rarity) {
+  const dataIndex = data.value.qualities.findIndex((row) => row.rarity === rarity && row.count > 0)
+  if (dataIndex < 0) return
+  qualityChart.value?.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex })
+}
+function hideQualityTooltip() {
+  qualityChart.value?.dispatchAction({ type: 'hideTip' })
+}
+function localDate(at) {
+  const date = new Date(at)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+function formatTime(at) {
+  return new Date(at * 1000).toLocaleString('zh-CN', { hour12: false })
+}
+function number(value, digits = 1) {
+  return value == null
+    ? '—'
+    : value.toLocaleString('zh-CN', {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: digits
+      })
+}
+function percent(value) {
+  return value == null ? '—' : `${(value * 100).toFixed(2)}%`
+}
+function materialColor(name) {
+  return qualityColors[materialRarities.value[name]] || qualityColors[0]
+}
+const differenceText = computed(() => {
+  const value = comparison.value?.difference
+  if (value == null || !comparison.value?.expected_sanity) return '等待有效样本'
+  return `${value >= 0 ? '高于' : '低于'}预期 ${percent(Math.abs(value) / comparison.value.expected_sanity)}`
+})
+async function load(resetRefresh = true) {
+  if (disposed) return
+  clearTimeout(refreshTimer)
+  if (resetRefresh) refreshesRemaining = 60
+  const version = ++requestVersion
+  loading.value = Boolean(resetRefresh)
+  error.value = ''
+  const params = {
+    startDate: localDate(range.value[0]),
+    endDate: localDate(range.value[1]),
+    page: page.value
+  }
+  try {
+    const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/report/recycling_history`, {
+      params
+    })
+    if (version === requestVersion) {
+      displayedQuery.value = params
+      data.value = response.data
+      if (
+        refreshesRemaining > 0 &&
+        data.value.records.some((row) => ['pending', 'waiting'].includes(row.upload_status))
+      ) {
+        refreshTimer = setTimeout(() => {
+          refreshesRemaining--
+          load(false)
+        }, 2000)
+      }
+    }
+  } catch {
+    if (version === requestVersion) {
+      error.value = '回收站统计读取失败，请重试'
+    }
+  } finally {
+    if (version === requestVersion) {
+      loading.value = false
+      if (!error.value)
+        shapeCache.save({
+          records: Math.min(data.value.records.length, 5),
+          qualities: qualityRows.value.map((row) => row.rarity),
+          materials: Math.min(data.value.materials.length, 6)
+        })
+    }
+  }
+}
+async function retryUpload(row) {
+  if (disposed || retrying.value || row.upload_status !== 'failed') return
+  retrying.value = row.id
+  retryError.value = ''
+  try {
+    await axios.post(
+      `${import.meta.env.VITE_HTTP_URL}/report/recycling_history/${encodeURIComponent(row.id)}/retry`
+    )
+  } catch (error) {
+    retryError.value = error.response?.data?.error || '重试上传未能启动，请稍后再试'
+  } finally {
+    retrying.value = ''
+    await load()
+  }
+}
+function changeRange() {
+  page.value = 1
+  load()
+}
+async function exportExcel() {
+  if (exporting.value) return
+  exporting.value = true
+  exportError.value = ''
+  const startDate = localDate(range.value[0])
+  const endDate = localDate(range.value[1])
+  try {
+    const response = await axios.get(
+      `${import.meta.env.VITE_HTTP_URL}/report/recycling_history/export`,
+      {
+        params: { startDate, endDate },
+        responseType: 'blob'
+      }
+    )
+    const url = URL.createObjectURL(response.data)
+    const link = document.createElement('a')
+    try {
+      link.href = url
+      link.download = `回收站材料统计-${startDate}-${endDate}.xlsx`
+      document.body.appendChild(link)
+      link.click()
+    } finally {
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+  } catch {
+    exportError.value = 'Excel 导出失败，请重试或缩小日期范围'
+  } finally {
+    exporting.value = false
+  }
+}
+onMounted(() => {
+  load()
+})
+onUnmounted(() => {
+  disposed = true
+  requestVersion++
+  clearTimeout(refreshTimer)
+})
+</script>
+
+<template>
+  <div class="recycling-page" :class="{ dark: theme === 'dark' }">
+    <header class="page-heading">
+      <div class="heading-copy">
+        <div class="title-line">
+          <span class="heading-icon"><n-icon :component="CubeOutline" /></span>
+          <h1>回收站材料统计</h1>
+        </div>
+        <p>收取记录、材料品质与理智收益</p>
+      </div>
+      <div class="filters">
+        <n-date-picker
+          v-model:value="range"
+          type="daterange"
+          :clearable="false"
+          @update:value="changeRange"
+        />
+        <n-button secondary :loading="loading" class="refresh-button" @click="load"
+          ><template #icon><n-icon :component="RefreshOutline" /></template>刷新</n-button
+        >
+        <n-button
+          secondary
+          :loading="exporting"
+          :disabled="loading"
+          class="refresh-button"
+          title="导出所选日期范围的全部记录与收益统计"
+          @click="exportExcel"
+          ><template #icon><n-icon :component="DownloadOutline" /></template>导出 Excel</n-button
+        >
+      </div>
+    </header>
+    <n-alert v-if="error" type="error" class="notice"
+      >{{ error
+      }}<template v-if="displayedQuery"
+        >。当前显示 {{ displayedQuery.startDate }} 至 {{ displayedQuery.endDate }} 的第
+        {{ displayedQuery.page }} 页。</template
+      ></n-alert
+    >
+    <n-alert v-if="exportError" type="error" class="notice">{{ exportError }}</n-alert>
+    <section class="valuation-panel valuation-source">
+      <span v-if="initialLoading"
+        ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 14em"
+      /></span>
+      <span v-else>{{ comparison?.valuation?.source || '材料价值未读取' }}</span>
+      <SessionLink to="/settings#task-accounts">管理材料价值与基报算法</SessionLink>
+    </section>
+    <n-alert
+      v-if="comparison?.unknown_collections || comparison?.unknown_materials.length"
+      type="warning"
+      class="notice"
+    >
+      存在 {{ comparison.unknown_collections }} 条未完整识别的记录<span
+        v-if="comparison.unknown_materials.length"
+        >，未定价材料：{{ comparison.unknown_materials.join('、') }}</span
+      >。材料汇总仅含已识别数量，总理智收益和预期对比暂不计算。
+    </n-alert>
+    <n-alert v-if="comparison?.unmodeled_materials?.length" type="warning" class="notice">
+      以下材料尚未加入概率表：{{
+        comparison.unmodeled_materials.join('、')
+      }}。已导入价格可用于实际收益；期望收益对比暂不计算，等待概率表更新。
+    </n-alert>
+    <!-- 骨架用读完后的同一套卡片和标题，数据处是占位块；收取明细、品质行和材料汇总的行数
+         按上次读到的结果。 -->
+    <LoadingSkeleton v-if="initialLoading" label="正在读取回收站统计">
+      <div class="metrics">
+        <section class="metric">
+          <span class="metric-label">累计获得材料</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.6em" /><small
+              >个</small
+            >
+          </div>
+          <span class="metric-note"
+            ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.4em" /> 次收取 ·
+            所选日期</span
+          >
+        </section>
+        <section class="metric">
+          <span class="metric-label">总理智收益</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.2em" /><small
+              >理智</small
+            >
+          </div>
+          <span class="metric-note">按实际材料及当前保存价值折算</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">理论期望收益</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.2em" /><small
+              >理智</small
+            >
+          </div>
+          <span class="metric-note">与实际相同材料总数的长期期望</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">与期望的差额</span>
+          <div class="metric-value">
+            <span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.2em" /><small
+              >理智</small
+            >
+          </div>
+          <span class="metric-note"
+            ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 6em"
+          /></span>
+        </section>
+      </div>
+      <div class="statistics">
+        <section class="surface history-panel">
+          <div class="section-heading">
+            <div>
+              <h2>收取明细</h2>
+              <p>收取时刻、进驻干员与实际获得材料</p>
+            </div>
+            <span class="count-badge"
+              ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.2em" /> 条记录</span
+            >
+          </div>
+          <div class="history recycling-skeleton__history">
+            <article v-for="row in skeletonShape.records" :key="row" class="collection">
+              <div class="timeline-dot"></div>
+              <div class="collection-body">
+                <time
+                  ><n-icon :component="TimeOutline" /><span
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 8em" /></span
+                ></time>
+                <div class="operators">
+                  <n-icon :component="PersonOutline" /><span class="operator-label">进驻干员</span
+                  ><span v-for="name in 2" :key="name" class="operator-name"
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.4em"
+                  /></span>
+                </div>
+                <div class="materials">
+                  <div v-for="chip in 2" :key="chip" class="material-chip">
+                    <span class="skeleton-bone material-icon" />
+                    <span
+                      ><span
+                        class="skeleton-bone skeleton-text"
+                        style="--skeleton-w: 3.5em" /></span
+                    ><strong
+                      ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1.6em"
+                    /></strong>
+                  </div>
+                </div>
+                <div class="upload-state">
+                  <span class="upload-label"
+                    ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 3em"
+                  /></span>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+        <div class="right-column">
+          <section class="surface">
+            <div class="section-heading">
+              <div>
+                <h2>材料品质分布</h2>
+                <p>悬停扇区或下方品质行，查看材料明细</p>
+              </div>
+              <n-icon :component="LeafOutline" class="section-icon" />
+            </div>
+            <div v-if="skeletonShape.records" class="donut-wrap">
+              <span class="skeleton-bone recycling-skeleton__donut" />
+            </div>
+            <div class="quality-table">
+              <div class="quality-table-head">
+                <span>材料品质</span><span>实际数量 / 占比</span><span>理论占比</span>
+              </div>
+              <div v-for="rarity in skeletonShape.qualities" :key="rarity" class="quality-row">
+                <span
+                  ><i :style="{ background: qualityColors[rarity] || qualityColors[0] }"></i
+                  >{{ qualityLabels[rarity] || qualityLabels[0] }}</span
+                ><span
+                  ><strong
+                    ><span
+                      class="skeleton-bone skeleton-text"
+                      style="--skeleton-w: 3.6em" /></strong
+                ></span>
+                <span class="muted"
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2.6em"
+                /></span>
+              </div>
+            </div>
+          </section>
+          <section class="surface totals-panel">
+            <div class="section-heading">
+              <div>
+                <h2>材料汇总</h2>
+                <p><span class="skeleton-bone skeleton-text" style="--skeleton-w: 1em" /> 种材料</p>
+              </div>
+            </div>
+            <div class="material-totals">
+              <div v-for="row in skeletonShape.materials" :key="row" class="total-row">
+                <span
+                  ><i class="recycling-skeleton__dot"></i
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 4em" /></span
+                ><strong
+                  ><span class="skeleton-bone skeleton-text" style="--skeleton-w: 2em"
+                /></strong>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </LoadingSkeleton>
+    <n-spin v-else-if="displayedQuery" :show="loading">
+      <div class="metrics">
+        <section class="metric">
+          <span class="metric-label">累计获得材料</span>
+          <div class="metric-value">{{ number(quantity, 0) }}<small>个</small></div>
+          <span class="metric-note">{{ data.total }} 次收取 · 所选日期</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">总理智收益</span>
+          <div class="metric-value accent">
+            {{ number(comparison?.actual_sanity) }}<small>理智</small>
+          </div>
+          <span class="metric-note">按实际材料及当前保存价值折算</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">理论期望收益</span>
+          <div class="metric-value">
+            {{ number(comparison?.expected_sanity) }}<small>理智</small>
+          </div>
+          <span class="metric-note">与实际相同材料总数的长期期望</span>
+        </section>
+        <section class="metric">
+          <span class="metric-label">与期望的差额</span>
+          <div class="metric-value" :class="{ accent: comparison?.difference > 0 }">
+            {{ comparison?.difference > 0 ? '+' : '' }}{{ number(comparison?.difference)
+            }}<small>理智</small>
+          </div>
+          <span class="metric-note">{{ differenceText }}</span>
+        </section>
+      </div>
+      <div class="statistics">
+        <section class="surface history-panel">
+          <div class="section-heading">
+            <div>
+              <h2>收取明细</h2>
+              <p>收取时刻、进驻干员与实际获得材料</p>
+            </div>
+            <span class="count-badge">{{ data.total }} 条记录</span>
+          </div>
+          <n-alert v-if="retryError" type="error" class="notice">{{ retryError }}</n-alert>
+          <n-scrollbar style="max-height: 600px" class="history">
+            <n-empty
+              v-if="!data.records.length"
+              description="所选日期暂无收取记录"
+              class="empty-state"
+              ><template #icon><n-icon :component="CubeOutline" /></template
+            ></n-empty>
+            <article v-for="row in data.records" :key="row.id" class="collection">
+              <div class="timeline-dot"></div>
+              <div class="collection-body">
+                <time><n-icon :component="TimeOutline" />{{ formatTime(row.collected_at) }}</time>
+                <div class="operators">
+                  <n-icon :component="PersonOutline" /><span class="operator-label">进驻干员</span
+                  ><span v-if="row.operators === null" class="muted">未识别</span
+                  ><span v-else-if="!row.operators.length" class="muted">无人进驻</span
+                  ><span v-for="name in row.operators || []" :key="name" class="operator-name">{{
+                    name
+                  }}</span>
+                </div>
+                <div v-if="row.materials" class="materials">
+                  <div
+                    v-for="(count, name) in row.materials"
+                    :key="name"
+                    class="material-chip"
+                    :style="{ '--quality': materialColor(name) }"
+                  >
+                    <div class="material-icon">
+                      <img
+                        v-if="!failedIcons.has(name)"
+                        :src="publicAsset(`/depot/${encodeURIComponent(name)}.webp`)"
+                        :alt="name"
+                        loading="lazy"
+                        @error="failedIcons.add(name)"
+                      /><span v-else>◇</span>
+                    </div>
+                    <span>{{ name }}</span><strong>× {{ count }}</strong>
+                  </div>
+                </div>
+                <span v-else class="muted">材料未完整识别，请查看收取截图</span>
+                <div class="upload-state" aria-live="polite">
+                  <span
+                    :class="['upload-label', row.upload_status]"
+                    :title="
+                      row.upload_status === 'submitted'
+                        ? '请求已提交，接口不提供入库确认'
+                        : undefined
+                    "
+                    >{{ uploadLabels[row.upload_status] || '待上传' }}</span
+                  >
+                  <n-button
+                    v-if="row.upload_status === 'failed'"
+                    size="tiny"
+                    secondary
+                    :loading="retrying === row.id"
+                    :disabled="Boolean(retrying)"
+                    @click="retryUpload(row)"
+                    >重试上传</n-button
+                  >
+                </div>
+              </div>
+            </article>
+          </n-scrollbar>
+          <div v-if="data.total > 50" class="pagination">
+            <n-pagination
+              v-model:page="page"
+              :item-count="data.total"
+              :page-size="50"
+              :page-slot="5"
+              @update:page="load"
+            />
+          </div>
+        </section>
+        <div class="right-column">
+          <section class="surface">
+            <div class="section-heading">
+              <div>
+                <h2>材料品质分布</h2>
+                <p>悬停扇区或下方品质行，查看材料明细</p>
+              </div>
+              <n-icon :component="LeafOutline" class="section-icon" />
+            </div>
+            <div v-if="quantity" class="donut-wrap">
+              <v-chart
+                ref="qualityChart"
+                :option="chart"
+                :theme="theme === 'dark' ? 'dark' : undefined"
+                autoresize
+                class="quality-chart"
+              />
+              <div class="donut-center">
+                <strong>{{ number(quantity, 0) }}</strong><span>材料总数</span>
+              </div>
+            </div>
+            <n-empty v-else description="等待首次收取" class="empty-chart" />
+            <div class="quality-table">
+              <div class="quality-table-head">
+                <span>材料品质</span><span>实际数量 / 占比</span><span>理论占比</span>
+              </div>
+              <div
+                v-for="row in qualityRows"
+                :key="row.rarity ?? 'unknown'"
+                class="quality-row"
+                :tabindex="row.count ? 0 : undefined"
+                @mouseenter="showQualityTooltip(row.rarity)"
+                @mouseleave="hideQualityTooltip"
+                @focus="showQualityTooltip(row.rarity)"
+                @blur="hideQualityTooltip"
+              >
+                <span
+                  ><i :style="{ background: qualityColors[row.rarity] || qualityColors[0] }"></i
+                  >{{ qualityLabels[row.rarity] || qualityLabels[0] }}</span
+                ><span
+                  ><strong>{{ row.count }}</strong
+                  ><small>{{ quantity ? percent(row.count / quantity) : '—' }}</small></span
+                ><span class="muted">{{ percent(row.probability) }}</span>
+              </div>
+            </div>
+          </section>
+          <section class="surface totals-panel">
+            <div class="section-heading">
+              <div>
+                <h2>材料汇总</h2>
+                <p>{{ data.materials.length }} 种材料</p>
+              </div>
+            </div>
+            <div class="material-totals">
+              <div v-for="item in data.materials" :key="item.name" class="total-row">
+                <span><i :style="{ background: materialColor(item.name) }"></i>{{ item.name }}</span
+                ><strong>× {{ item.count }}</strong>
+              </div>
+              <n-empty v-if="!data.materials.length" description="暂无材料" />
+            </div>
+          </section>
+        </div>
+      </div>
+      <section v-if="comparison" class="model-note">
+        <h3>回收站理论收益</h3>
+        <div v-if="comparison.calculator" class="calculator-results">
+          <div>
+            <span>100%效率理论日产</span
+            ><strong
+              >{{ number(comparison.calculator.daily_sanity, 3) }}<small> 理智/天</small></strong
+            >
+          </div>
+          <div>
+            <span>等效制造站效率</span
+            ><strong>{{ percent(comparison.calculator.manufacturing_equivalent) }}</strong>
+          </div>
+          <div>
+            <span>10%回收站效率等效制造站</span>
+            <strong>{{ percent(comparison.calculator.ten_percent_equivalent) }}</strong>
+          </div>
+        </div>
+        <p class="model-summary">
+          100%回收站效率每两天完成一次生产周期，100%制造站效率每日产出8000经验。理论换算分别以固定
+          100% 和 10% 回收站效率作参考，不使用手填效率。
+        </p>
+        <n-collapse
+          class="model-collapse"
+          :theme-overrides="{
+            titleTextColor: 'var(--ink)',
+            textColor: 'var(--muted)',
+            arrowColor: 'var(--muted)',
+            dividerColor: 'var(--line)',
+            titleFontSize: '13px',
+            fontSize: '12px'
+          }"
+        >
+          <n-collapse-item title="计算口径与概率来源" name="model">
+            <div class="model-details">
+              <section>
+                <h4>收益计算</h4>
+                <p>实际理智收益 = 各材料数量 × 当前材料理智价值，再求和。</p>
+                <p>
+                  理论期望 = 材料总数 × {{ number(comparison.per_material, 4) }} 理智/件。
+                  单件期望与品质比例按普通池和额外池的权重及长期抽取比例计算，额外抽取率为
+                  {{ number(comparison.extra_rate, 6) }}。
+                </p>
+                <p>
+                  进驻干员仅供回溯分析；收取次数不用于推算抽数或实际日产量，短期结果可能偏离期望。
+                </p>
+              </section>
+              <section>
+                <h4>生产换算</h4>
+                <p>100%效率理论日产 = 单件材料期望 ÷ 2。</p>
+                <p>
+                  等效制造站效率 = 理论日产理智 ÷ 龙门币理智价值 ×（赤金价值比例 + 订单价值比例）÷
+                  经验书价值比例 ÷ 8000。
+                </p>
+                <p>10%回收站效率的换算固定使用0.1作为效率，采用当前产物价值比例与材料价格。</p>
+              </section>
+              <section class="model-sources">
+                <h4>数据来源</h4>
+                <p>概率：{{ comparison.source.source }} · {{ comparison.source.sheet }}</p>
+                <p v-if="comparison.source.ranges.length">
+                  来源范围：{{ comparison.source.ranges.join('、') }}
+                </p>
+                <p>
+                  材料价值：{{
+                    comparison.valuation?.source || '材料价值未读取'
+                  }}，使用本地保存的快照，不自动更新。
+                </p>
+              </section>
+            </div>
+          </n-collapse-item>
+        </n-collapse>
+      </section>
+    </n-spin>
+  </div>
+</template>
+
+<style scoped>
+.valuation-panel {
+  margin-bottom: 18px;
+  padding: 18px 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+}
+.valuation-source,
+.calculator-results span {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.8;
+}
+.valuation-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 12px 0;
+}
+.calculator-results {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0;
+}
+.calculator-results > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+.calculator-results strong {
+  font-size: 19px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.calculator-results small {
+  font-size: 12px;
+  font-weight: 400;
+}
+@media (max-width: 800px) {
+  .calculator-results {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .valuation-panel {
+    padding: 16px;
+  }
+}
+.recycling-page {
+  --surface: #fff;
+  --ink: #25333c;
+  --muted: #7c8991;
+  --soft: #f5f8f7;
+  --line: rgba(27, 51, 42, 0.08);
+  --accent: #238570;
+  width: 100%;
+  min-width: 0;
+  max-width: 932px;
+  box-sizing: border-box;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  padding: 8px 0 28px;
+}
+.recycling-page.dark {
+  --surface: #252a2f;
+  --ink: #e1e8eb;
+  --muted: #9aa6ad;
+  --soft: #2c3237;
+  --line: rgba(255, 255, 255, 0.08);
+  --accent: #72cdb2;
+}
+.page-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 26px;
+}
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.heading-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: calc(13px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  background: var(--soft);
+  color: var(--accent);
+  font-size: 25px;
+}
+h1 {
+  font-size: 25px;
+  line-height: 1.3;
+  margin: 0;
+  font-weight: 650;
+  text-wrap: balance;
+  letter-spacing: -0.6px;
+}
+.heading-copy p {
+  margin: 9px 0 0 54px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.filters {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.refresh-button {
+  min-height: 40px;
+  transition: transform 0.15s;
+}
+.refresh-button:active {
+  transform: scale(0.96);
+}
+.notice {
+  margin-bottom: 18px;
+}
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.metric,
+.surface {
+  background: var(--surface);
+  border-radius: calc(16px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.025),
+    0 0 0 1px var(--line);
+}
+.metric {
+  padding: 22px 24px;
+}
+.metric-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.metric-value {
+  font-size: 32px;
+  font-weight: 650;
+  letter-spacing: -0.7px;
+  margin: 9px 0 7px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.metric-value small {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 400;
+  margin-left: 8px;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.metric-note {
+  font-size: 12px;
+  color: var(--muted);
+}
+.accent {
+  color: var(--accent);
+}
+/* 第一次读取时的骨架：收取明细与读完后同样限高，品质图是圆形占位。 */
+.recycling-skeleton__history {
+  max-height: 600px;
+  overflow: hidden;
+}
+.recycling-skeleton__donut {
+  width: min(220px, 70%);
+  aspect-ratio: 1;
+  margin: 18px auto 0;
+  border-radius: 50%;
+  corner-shape: round;
+}
+.recycling-skeleton__dot {
+  background: color-mix(in srgb, var(--mower-text) 12%, transparent);
+}
+.statistics {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: 22px;
+  align-items: start;
+}
+.surface {
+  padding: 24px;
+  min-width: 0;
+}
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+h2 {
+  font-size: 16px;
+  margin: 0;
+  font-weight: 600;
+}
+.section-heading p {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 5px 0 0;
+}
+.count-badge {
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 12px;
+  padding: 5px 10px;
+  border-radius: calc(8px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  white-space: nowrap;
+}
+.section-icon {
+  font-size: 22px;
+  color: var(--accent);
+}
+.collection {
+  position: relative;
+  display: flex;
+  gap: 18px;
+  padding: 20px 10px 22px 3px;
+}
+.collection::before {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 31px;
+  bottom: -21px;
+  width: 1px;
+  background: var(--line);
+}
+.collection:last-child::before {
+  display: none;
+}
+.timeline-dot {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin-top: 8px;
+  box-shadow: 0 0 0 4px var(--soft);
+}
+.collection-body {
+  min-width: 0;
+  flex: 1;
+}
+time {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+}
+time .n-icon {
+  color: var(--muted);
+  font-size: 15px;
+}
+.operators {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin: 12px 0;
+  font-size: 12px;
+}
+.operators > .n-icon,
+.operator-label,
+.muted {
+  color: var(--muted);
+}
+.operator-name {
+  padding: 3px 8px;
+  background: var(--soft);
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+}
+.materials {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.upload-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.upload-label {
+  color: var(--muted);
+}
+.upload-label.submitted {
+  color: var(--accent);
+}
+.upload-label.failed {
+  color: #d35454;
+}
+.dark .upload-label.failed {
+  color: #f28b82;
+}
+.material-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: calc(10px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  background: var(--soft);
+  padding: 5px 10px 5px 5px;
+  font-size: 12px;
+  border-left: 2px solid var(--quality);
+}
+.material-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+  background: var(--surface);
+}
+.material-icon img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  outline: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: calc(6px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+}
+.dark .material-icon img {
+  outline-color: rgba(255, 255, 255, 0.1);
+}
+.material-chip strong {
+  font-weight: 600;
+  margin-left: 4px;
+}
+.pagination {
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+  margin-top: 12px;
+}
+.right-column {
+  display: grid;
+  gap: 22px;
+}
+.donut-wrap {
+  height: 255px;
+  position: relative;
+}
+.quality-chart {
+  width: 100%;
+  height: 100%;
+}
+.quality-chart :deep(.quality-tooltip) {
+  max-width: min(260px, 60vw);
+  white-space: normal;
+  font-variant-numeric: tabular-nums;
+}
+.quality-chart :deep(.quality-tooltip-heading) {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.quality-chart :deep(.quality-tooltip-materials) {
+  max-height: min(180px, 35vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.quality-chart :deep(.quality-tooltip-row) {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 3px 0;
+}
+.quality-chart :deep(.quality-tooltip-row span) {
+  overflow-wrap: anywhere;
+}
+.quality-chart :deep(.quality-tooltip-row strong) {
+  white-space: nowrap;
+}
+.quality-row[tabindex='0'] {
+  cursor: help;
+}
+.quality-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: calc(4px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+}
+.donut-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  pointer-events: none;
+}
+.donut-center strong {
+  font-size: 34px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.donut-center span {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+.quality-table-head,
+.quality-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1.1fr 0.8fr;
+  align-items: center;
+  gap: 8px;
+}
+.quality-table-head {
+  font-size: 11px;
+  color: var(--muted);
+  padding: 11px 0;
+  border-bottom: 1px solid var(--line);
+}
+.quality-table-head > :not(:first-child),
+.quality-row > :not(:first-child) {
+  text-align: right;
+}
+.quality-row {
+  font-size: 12px;
+  padding: 12px 0;
+}
+.quality-row i,
+.total-row i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+.quality-row small {
+  display: inline-block;
+  min-width: 57px;
+  color: var(--muted);
+  margin-left: 8px;
+  font-size: 11px;
+}
+.material-totals {
+  max-height: 220px;
+  overflow-y: auto;
+}
+.total-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.total-row:last-child {
+  border: none;
+}
+.total-row strong {
+  font-weight: 600;
+}
+.model-note {
+  margin: 24px 2px 0;
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.model-note h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+}
+.model-note p {
+  line-height: 1.8;
+  text-wrap: pretty;
+}
+.model-summary {
+  margin: 0 0 16px;
+}
+.model-collapse {
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.model-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 28px;
+  padding: 18px;
+  background: var(--soft);
+  border-radius: calc(12px * var(--mower-corner-scale));
+  corner-shape: var(--mower-corner-shape);
+}
+.model-details section {
+  min-width: 0;
+}
+.model-details h4 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+.model-details p {
+  margin: 0 0 8px;
+}
+.model-details p:last-child {
+  margin-bottom: 0;
+}
+.model-sources {
+  grid-column: 1 / -1;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 600px) {
+  .model-details {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+    padding: 16px;
+  }
+}
+.empty-state {
+  padding: 110px 0;
+}
+.empty-chart {
+  padding: 85px 0;
+}
+@media (max-width: 1100px) {
+  .metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .page-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 18px;
+  }
+}
+@media (max-width: 850px) {
+  .statistics {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 540px) {
+  h1 {
+    font-size: 22px;
+  }
+  .filters {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .filters :deep(.n-date-picker) {
+    width: 100%;
+  }
+  .metric {
+    padding: 17px;
+  }
+  .metric-value {
+    font-size: 25px;
+  }
+  .metrics {
+    gap: 12px;
+  }
+  .surface {
+    padding: 18px;
+  }
+  .collection {
+    gap: 12px;
+  }
+  .quality-row small {
+    margin-left: 4px;
+    min-width: 48px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .refresh-button {
+    transition: none;
+  }
+}
+</style>

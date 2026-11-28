@@ -1,0 +1,489 @@
+[
+  {
+    "id": "work-skill-boundary",
+    "input": {
+      "moods": {
+        "A": 14,
+        "B": 15,
+        "X": 24
+      },
+      "workRate": 2,
+      "recoveryRate": 24,
+      "threshold": 0,
+      "exhaust": [],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300,
+      "workBelow12": 4,
+      "lower": 10
+    },
+    "expected": {
+      "decision": "operator:A",
+      "status": "feasible",
+      "score": [0, 109724.999998, 4, 5400],
+      "events": [
+        {
+          "time": 0,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 600,
+          "type": "departure-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 2125,
+          "type": "return-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 2425,
+          "type": "return-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 7200.000001,
+          "type": "departure-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 7800.000001,
+          "type": "departure-complete",
+          "group": "operator:B"
+        },
+        {
+          "time": 9950.000002,
+          "type": "return-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 10250.000002,
+          "type": "return-complete",
+          "group": "operator:B"
+        }
+      ],
+      "nextWake": 600
+    }
+  },
+  {
+    "id": "shared-bed-cover-early",
+    "input": {
+      "moods": {
+        "A": 2,
+        "B": 3,
+        "X": 24
+      },
+      "workRate": 1,
+      "recoveryRate": 24,
+      "threshold": 0,
+      "exhaust": [],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300
+    },
+    "expected": {
+      "decision": "operator:A",
+      "status": "feasible",
+      "score": [0, 6887.5, 4, 7200],
+      "events": [
+        {
+          "time": 0,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 600,
+          "type": "departure-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 3912.5,
+          "type": "return-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 4212.5,
+          "type": "return-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 10800,
+          "type": "departure-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 11400,
+          "type": "departure-complete",
+          "group": "operator:B"
+        },
+        {
+          "time": 15000,
+          "type": "return-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 15300,
+          "type": "return-complete",
+          "group": "operator:B"
+        }
+      ],
+      "nextWake": 600
+    }
+  },
+  {
+    "id": "exhaust-hard-limit",
+    "input": {
+      "moods": {
+        "A": 2,
+        "B": 3,
+        "X": 24
+      },
+      "workRate": 1,
+      "recoveryRate": 24,
+      "threshold": 0,
+      "exhaust": ["A", "B"],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300
+    },
+    "expected": {
+      "decision": null,
+      "status": "feasible",
+      "score": [900, 1500, 4, 0],
+      "events": [
+        {
+          "time": 7200,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 7800,
+          "type": "departure-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 11400,
+          "type": "return-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 11700,
+          "type": "return-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 11700,
+          "type": "departure-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 12300,
+          "type": "departure-complete",
+          "group": "operator:B"
+        },
+        {
+          "time": 15900,
+          "type": "return-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 16200,
+          "type": "return-complete",
+          "group": "operator:B"
+        }
+      ],
+      "nextWake": 7200
+    }
+  },
+  {
+    "id": "nonzero-exhaust-hard-limit",
+    "input": {
+      "moods": {
+        "A": 4,
+        "B": 5,
+        "X": 24
+      },
+      "workRate": 1,
+      "recoveryRate": 24,
+      "threshold": 0,
+      "exhaust": ["A", "B"],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300,
+      "lower": 2
+    },
+    "expected": {
+      "decision": null,
+      "status": "feasible",
+      "score": [612.5, 0, 4, 0],
+      "events": [
+        {
+          "time": 7200,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 7800,
+          "type": "departure-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 11112.5,
+          "type": "return-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 11412.5,
+          "type": "return-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 11412.5,
+          "type": "departure-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 12012.5,
+          "type": "departure-complete",
+          "group": "operator:B"
+        },
+        {
+          "time": 15350.520834,
+          "type": "return-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 15650.520834,
+          "type": "return-complete",
+          "group": "operator:B"
+        }
+      ],
+      "nextWake": 7200
+    }
+  },
+  {
+    "id": "slow-recovery-no-complete-chain",
+    "input": {
+      "moods": {
+        "A": 2,
+        "B": 3,
+        "X": 24
+      },
+      "workRate": 1,
+      "recoveryRate": 0.25,
+      "threshold": 0,
+      "exhaust": [],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300
+    },
+    "expected": {
+      "decision": null,
+      "status": "insufficient",
+      "score": [86400, 90000, 1, 0],
+      "events": [
+        {
+          "time": 7200,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 7800,
+          "type": "departure-complete",
+          "group": "operator:A"
+        }
+      ],
+      "nextWake": 7200
+    }
+  },
+  {
+    "id": "full-recovery-remains-binding",
+    "input": {
+      "moods": {
+        "A": 2,
+        "B": 3,
+        "X": 8
+      },
+      "workRate": 1,
+      "recoveryRate": 2,
+      "threshold": 0,
+      "exhaust": [],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300
+    },
+    "expected": {
+      "decision": "operator:A",
+      "status": "feasible",
+      "score": [29850, 85500.00000000001, 4, 7200],
+      "events": [
+        {
+          "time": 0,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 600,
+          "type": "departure-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 40350,
+          "type": "return-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 40650,
+          "type": "return-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 40650,
+          "type": "departure-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 41250,
+          "type": "departure-complete",
+          "group": "operator:B"
+        },
+        {
+          "time": 84450,
+          "type": "return-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 84750,
+          "type": "return-complete",
+          "group": "operator:B"
+        }
+      ],
+      "nextWake": 600
+    }
+  },
+  {
+    "id": "node-budget-41",
+    "input": {
+      "moods": {
+        "A": 2,
+        "B": 3,
+        "X": 24
+      },
+      "workRate": 1,
+      "recoveryRate": 24,
+      "threshold": 0,
+      "exhaust": [],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300,
+      "maxEvents": 41
+    },
+    "expected": {
+      "decision": "operator:A",
+      "status": "feasible",
+      "score": [0, 6887.5, 4, 7200],
+      "events": [
+        {
+          "time": 0,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 600,
+          "type": "departure-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 3912.5,
+          "type": "return-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 4212.5,
+          "type": "return-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 10800,
+          "type": "departure-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 11400,
+          "type": "departure-complete",
+          "group": "operator:B"
+        },
+        {
+          "time": 15000,
+          "type": "return-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 15300,
+          "type": "return-complete",
+          "group": "operator:B"
+        }
+      ],
+      "nextWake": 600
+    }
+  },
+  {
+    "id": "node-budget-40",
+    "input": {
+      "moods": {
+        "A": 2,
+        "B": 3,
+        "X": 24
+      },
+      "workRate": 1,
+      "recoveryRate": 24,
+      "threshold": 0,
+      "exhaust": [],
+      "restInFull": ["A", "B"],
+      "roomSeconds": 300,
+      "maxEvents": 40
+    },
+    "expected": {
+      "decision": null,
+      "status": "budget-exhausted",
+      "score": [900, 1500, 4, 0],
+      "events": [
+        {
+          "time": 7200,
+          "type": "departure-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 7800,
+          "type": "departure-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 11400,
+          "type": "return-start",
+          "group": "operator:A"
+        },
+        {
+          "time": 11700,
+          "type": "return-complete",
+          "group": "operator:A"
+        },
+        {
+          "time": 11700,
+          "type": "departure-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 12300,
+          "type": "departure-complete",
+          "group": "operator:B"
+        },
+        {
+          "time": 15900,
+          "type": "return-start",
+          "group": "operator:B"
+        },
+        {
+          "time": 16200,
+          "type": "return-complete",
+          "group": "operator:B"
+        }
+      ],
+      "nextWake": 7200
+    }
+  }
+]

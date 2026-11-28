@@ -3,10 +3,11 @@ import axios from 'axios'
 
 export const useReportStore = defineStore('report', () => {
   // 通用请求函数
-  async function fetchData(endpoint, params = {}) {
+  async function fetchData(endpoint, params = {}, options = {}) {
     try {
       const response = await axios.get(`${import.meta.env.VITE_HTTP_URL}/${endpoint}`, {
-        params
+        params,
+        ...options
       })
       console.log(`[${endpoint}] Response:`, response.data)
       return response.data
@@ -36,10 +37,15 @@ export const useReportStore = defineStore('report', () => {
     return await fetchData('report/trading_history', params)
   }
 
+  async function getOrderCandles(startDate, endDate, period = '4h') {
+    return fetchData('report/order-candles', { startDate, endDate, period }, { timeout: 10000 })
+  }
+
   return {
     getReportData,
     getOrundumData,
     getTradingHistory,
+    getOrderCandles,
     restoreTradingHistory
   }
 })

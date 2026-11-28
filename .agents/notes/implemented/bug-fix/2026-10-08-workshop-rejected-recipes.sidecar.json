@@ -1,0 +1,19 @@
+{
+  "title": "Workshop rejected recipes",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-WORKSHOP-01]",
+    "[INV-STOCK-01]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.workshop_limits.blocked_workshop_recipes"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/workshop_rejection_tests.py"
+  ]
+}

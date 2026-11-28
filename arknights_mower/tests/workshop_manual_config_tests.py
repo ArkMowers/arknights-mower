@@ -1,0 +1,428 @@
+"""The editable manual table survives scans, takeovers and concurrent saves."""
+
+import json
+from threading import Event
+from unittest.mock import MagicMock
+
+import pytest
+
+from arknights_mower.tests.workshop_automation_tests import manual_setting
+from arknights_mower.tests.workshop_plan_fixtures import next_skill as next_skill
+from arknights_mower.utils import config
+from arknights_mower.utils import workshop_automation as auto
+from arknights_mower.utils import workshop_config as state
+
+
+def payload():
+    data = state.read_user_config()
+    data["workshop_manual_settings_revision"] = data["workshop_manual_revision"]
+    return data
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("saved", [[], [{"operator": "年", "items": []}]])
+def test_legacy_form_is_visible_without_changing_runtime_before_takeover(
+    next_skill, enabled, saved
+):
+    from arknights_mower.solvers.base_schedule import BaseSchedulerSolver
+
+    next_skill.plans.clear()
+    config.conf.enable_mastery = enabled
+    config.conf.workshop_settings = [manual_setting()]
+    state.get_path("").write_text(json.dumps(saved))
+    data = payload()
+    assert [s["operator"] for s in data["workshop_manual_settings"]] == [
+        s["operator"] for s in saved
+    ]
+    solver = object.__new__(BaseSchedulerSolver)
+    solver._dispatch_scan_start_tasks = MagicMock()
+    for _ in range(2):
+        solver._auto_schedule_mastery_after_scan()
+        state.save_user_config(data)  # An unrelated autosave is not a manual edit.
+        assert config.conf.workshop_settings == [manual_setting()]
+        assert not config.conf.workshop_auto_active
+
+
+@pytest.mark.parametrize("cleared", [False, True])
+def test_form_open_before_takeover_edits_backup_and_restores_latest_edit(
+    next_skill, cleared
+):
+    import server
+
+    config.conf.workshop_settings = [manual_setting()]
+    req = payload()
+    auto.update_workshop_config()
+    running = config.conf.workshop_settings
+    generation = config.conf.workshop_generation
+    edited = [] if cleared else [{"operator": "年", "items": [], "enabled": False}]
+    req["workshop_manual_settings"] = edited
+    # These backend-owned fields cannot be overwritten by a browser.
+    req.update(
+        workshop_settings=[], workshop_manual_backup=[], workshop_auto_active=False
+    )
+    response = server.app.test_client().post("/conf", json=req)
+    assert response.status_code == 200
+    assert not response.json["workshop_manual_conflict"]
+    assert config.conf.workshop_settings == running
+    assert config.conf.workshop_generation == generation
+    assert config.conf.workshop_auto_active
+    expected = state.settings(edited, "manual")
+    assert config.conf.workshop_manual_backup == expected
+    auto.update_workshop_config()
+    assert config.conf.workshop_manual_backup == expected
+    next_skill.plans.clear()
+    auto.restore_if_no_plans()
+    assert config.conf.workshop_settings == expected
+    assert config.conf.workshop_manual_backup == expected
+    assert not config.conf.workshop_auto_active
+
+
+def test_edit_when_idle_updates_runtime_and_cannot_be_replaced_by_old_tab(next_skill):
+    first, old = payload(), payload()
+    first["workshop_manual_settings"] = [manual_setting().model_dump()]
+    response = state.save_user_config(first)
+    assert not response["workshop_manual_conflict"]
+    assert config.conf.workshop_settings == [manual_setting()]
+    old["workshop_manual_settings"] = [{"operator": "年"}]
+    old["drone_interval"] = 9
+    response = state.save_user_config(old)
+    assert response["workshop_manual_conflict"]
+    assert config.conf.workshop_manual_backup == [manual_setting()]
+    assert config.conf.workshop_settings == [manual_setting()]
+    assert config.conf.drone_interval == 9
+
+
+@pytest.mark.parametrize(("rarity", "cost"), [(2, 1), (3, 2), (4, 4), (5, 8)])
+def test_saved_material_tier_admits_recipes_from_refreshed_resources(
+    next_skill, monkeypatch, rarity, cost
+):
+    from types import SimpleNamespace
+
+    from arknights_mower import data
+    from arknights_mower.utils import crash_recovery, scheduler_task
+    from arknights_mower.utils import mastery_recommendation as rec
+    from arknights_mower.utils.workshop_fodder import deer_manual_t4
+    from arknights_mower.utils.workshop_recipes import scope_workshop_items
+
+    formulas = {"碳素": data.workshop_formula["碳素"]}
+    catalog = {}
+    monkeypatch.setattr(data, "workshop_formula", formulas)
+    monkeypatch.setattr(rec, "get_skill_data", lambda: {"items": catalog})
+    config.conf.enable_crafting = False
+    operator = "九色鹿" if rarity == 4 else "能天使"
+    req = payload()
+    selected = {
+        "item_names": ["碳素"],
+        "material_rarities": [rarity],
+        "children_lower_limit": 0,
+        "self_upper_limit": 3,
+    }
+    duplicate = {
+        "item_names": ["碳素"],
+        "children_lower_limit": 50,
+        "self_upper_limit": 0,
+    }
+    req["workshop_manual_settings"] = [
+        {"operator": operator, "items": [selected, duplicate]}
+    ]
+    response = state.save_user_config(req)
+    assert response["workshop_manual_settings"][0]["items"] == [selected, duplicate]
+
+    monkeypatch.setattr(
+        config, "conf", config.Conf.model_validate_json(config.conf.model_dump_json())
+    )
+    inventory = {"碳素": 3, "碳": 10, "新配方成品": 0, "新增材料原料": 200}
+    monkeypatch.setattr(scheduler_task, "get_inventory_counts", lambda: inventory)
+    op_data = SimpleNamespace(operators={operator: SimpleNamespace(mood=24)})
+    tasks = []
+    scheduler_task.try_workshop_tasks(op_data, tasks)
+    assert tasks == []
+
+    formulas.update(
+        {
+            "新配方": {
+                "tab": "精英材料",
+                "apCost": cost,
+                "output_name": "新配方成品",
+                "output_count": 1,
+                "items": ["新增材料原料"],
+                "costs": {"新增材料原料": 2},
+            },
+            "其他配方": {"tab": "基建材料", "apCost": 4},
+        }
+    )
+    catalog.update(
+        material={"name": "新配方成品", "rarity": rarity},
+        unrelated={"name": "其他配方", "rarity": rarity},
+    )
+    settings = config.conf.workshop_settings[0].items
+    assert [
+        item.model_dump() for item in scope_workshop_items(operator, settings, formulas)
+    ] == [
+        {
+            "item_names": ["碳素", "新配方"],
+            "children_lower_limit": 0,
+            "self_upper_limit": 3,
+        }
+    ]
+    assert crash_recovery.workshop_inventory_names() == {
+        "碳素",
+        "碳",
+        "新配方成品",
+        "新增材料原料",
+    }
+    if rarity == 4:
+        inventory["碳素"] = 0
+        assert deer_manual_t4(inventory, {}, formulas) == [
+            {
+                "item_names": ["新配方"],
+                "children_lower_limit": 0,
+                "self_upper_limit": 1,
+            }
+        ]
+    scheduler_task.try_workshop_tasks(op_data, tasks)
+    assert [task.meta_data for task in tasks] == [operator]
+    assert state.read_user_config()["workshop_manual_settings"][0]["items"] == [
+        selected,
+        duplicate,
+    ]
+
+
+def test_version_update_policy_change_wakes_running_scheduler(next_skill):
+    from arknights_mower import __main__ as mower_main
+
+    req = payload()
+    req["version_update_resting_threshold"] = 0.85
+    req["version_update_threshold_advance_hours"] = 18
+    config.wake_scheduler.clear()
+    mower_main.base_scheduler = MagicMock()
+
+    try:
+        state.save_user_config(req)
+
+        assert config.wake_scheduler.is_set()
+    finally:
+        mower_main.base_scheduler = None
+        config.wake_scheduler.clear()
+
+
+def test_version_update_policy_change_does_not_wake_stopped_mower(next_skill):
+    from arknights_mower import __main__ as mower_main
+
+    req = payload()
+    req["version_update_resting_threshold"] = 0.85
+    config.wake_scheduler.clear()
+    mower_main.base_scheduler = None
+
+    state.save_user_config(req)
+
+    assert not config.wake_scheduler.is_set()
+
+
+@pytest.mark.parametrize("running", [False, True])
+@pytest.mark.parametrize(
+    "edit",
+    [
+        {"resting_threshold": 0.35},
+        {"group_resting_thresholds": {"感知": 0.35, "副表组": 0.5}},
+        {"group_resting_thresholds": {}},
+    ],
+)
+def test_ordinary_threshold_edits_save_without_waking_scheduler(
+    next_skill, monkeypatch, running, edit
+):
+    import server
+    from arknights_mower import __main__ as mower_main
+
+    config.conf.group_resting_thresholds = {"感知": 0.65}
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock() if running else None)
+    monkeypatch.setattr(server, "mower_thread", None)
+    monkeypatch.setattr(mower_main, "device_control", MagicMock(active=False))
+    config.wake_scheduler.clear()
+    try:
+        response = server.app.test_client().patch("/conf", json=edit)
+        assert response.status_code == 200
+        assert not config.wake_scheduler.is_set()
+        assert config.conf.group_resting_thresholds == edit.get(
+            "group_resting_thresholds", {"感知": 0.65}
+        )
+        assert config.conf.resting_threshold == edit.get("resting_threshold", 0.65)
+        assert config.conf.drone_interval == 3
+    finally:
+        config.wake_scheduler.clear()
+
+
+def test_edit_during_restore_uses_manual_revision_not_runtime_generation(next_skill):
+    config.conf.workshop_settings = [manual_setting()]
+    auto.update_workshop_config()
+    req = payload()
+    next_skill.plans.clear()
+    auto.restore_if_no_plans()
+    req["workshop_manual_settings"] = []
+    state.save_user_config(req)
+    assert config.conf.workshop_settings == []
+    assert config.conf.workshop_manual_backup == []
+    assert not config.conf.workshop_auto_active
+
+
+def test_old_active_backup_migrates_and_can_still_restore():
+    old = config.Conf().model_dump()
+    old.pop("workshop_auto_active")
+    old["workshop_manual_backup"] = []
+    conf = config.Conf(**old)
+    assert conf.workshop_auto_active
+    assert state.restore_manual_settings(conf)
+    assert not conf.workshop_auto_active
+
+
+def test_preview_is_read_only_and_explicit_save_preserves_inactive_form_on_reload(
+    next_skill, tmp_path, monkeypatch
+):
+    from arknights_mower.tests.workshop_automation_tests import _real_save_conf
+
+    monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
+    monkeypatch.setattr(config, "save_conf", _real_save_conf)
+    config.conf.workshop_settings = [manual_setting()]
+    config.save_conf()
+    before = config.conf_path.read_bytes()
+    state.get_path("").write_text("[]")
+    assert state.read_user_config()["workshop_manual_settings"] == []
+    assert config.conf_path.read_bytes() == before
+    config.load_conf()
+    assert config.conf.workshop_manual_backup is None
+    assert config.conf.workshop_settings == [manual_setting()]
+    state.save_user_config({})
+    config.load_conf()
+    assert not config.conf.workshop_auto_active
+    assert config.conf.workshop_manual_backup == []
+    assert config.conf.workshop_settings == [manual_setting()]
+
+
+def test_edited_backup_is_persisted_across_restart(next_skill, tmp_path, monkeypatch):
+    from arknights_mower.tests.workshop_automation_tests import _real_save_conf
+
+    monkeypatch.setattr(config, "conf_path", tmp_path / "conf.yml")
+    monkeypatch.setattr(config, "save_conf", _real_save_conf)
+    auto.update_workshop_config()
+    req = payload()
+    req["workshop_manual_settings"] = [manual_setting().model_dump()]
+    state.save_user_config(req)
+    config.load_conf()
+    assert config.conf.workshop_auto_active
+    assert config.conf.workshop_manual_backup == [manual_setting()]
+    next_skill.plans.clear()
+    auto.restore_if_no_plans()
+    config.load_conf()
+    assert not config.conf.workshop_auto_active
+    assert config.conf.workshop_manual_backup == config.conf.workshop_settings
+
+
+@pytest.mark.parametrize("legacy_start", ["8:5", "\u0668:\u0665"])
+def test_conf_read_preserves_legacy_long_task_times_for_weekly_editor(
+    next_skill, monkeypatch, legacy_start
+):
+    import server
+
+    monkeypatch.setattr(server.app, "token", "long-task-instance", raising=False)
+    manager = MagicMock()
+    manager.get_active_plan_key.return_value = "默认"
+    get_manager = MagicMock(return_value=manager)
+    monkeypatch.setattr(
+        "arknights_mower.utils.config.weekly_plan_loader.get_weekly_plan_manager",
+        get_manager,
+    )
+    save = MagicMock()
+    monkeypatch.setattr(config, "save_conf", save)
+    conf = config.conf.updated(
+        {"maa_rg_sleep_max": legacy_start, "maa_rg_sleep_min": "11:0"}
+    )
+    monkeypatch.setattr(config, "conf", conf)
+
+    client = server.app.test_client()
+    for headers in ({}, {"token": "wrong"}):
+        assert client.get("/conf", headers=headers).status_code == 403
+    get_manager.assert_not_called()
+    response = client.get("/conf", headers={"token": "long-task-instance"})
+    assert response.status_code == 200
+    data = response.get_json()
+    assert (data["maa_rg_sleep_max"], data["maa_rg_sleep_min"]) == ("08:05", "11:00")
+    assert data["maa_long_task_weekly_windows"] is None
+    assert (conf.maa_rg_sleep_max, conf.maa_rg_sleep_min) == (legacy_start, "11:0")
+    save.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "switch", ["enable_mastery", "maa_growth_enable", "maa_rg_enable"]
+)
+def test_task_switch_wakes_only_when_enabled(next_skill, monkeypatch, switch):
+    import server
+    from arknights_mower import __main__ as mower_main
+    from arknights_mower.solvers import record
+
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    monkeypatch.setattr(config, "wake_scheduler", Event())
+    monkeypatch.setattr(record, "workshop_inventory_changed", Event())
+    setattr(config.conf, switch, False)
+    client = server.app.test_client()
+    for enabled, wake in [(True, True), (True, False), (False, False), (False, False)]:
+        changed = getattr(config.conf, switch) != enabled
+        response = client.patch("/conf", json={switch: enabled})
+        assert response.status_code == 200
+        assert getattr(config.conf, switch) == enabled
+        assert config.wake_scheduler.is_set() is wake
+        assert record.workshop_inventory_changed.is_set() is (
+            changed and switch != "maa_rg_enable"
+        )
+        config.wake_scheduler.clear()
+        record.workshop_inventory_changed.clear()
+
+
+def test_growth_preferences_saved_with_crafting_off_do_not_wake(
+    next_skill, monkeypatch
+):
+    from arknights_mower import __main__ as mower_main
+
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    monkeypatch.setattr(config, "wake_scheduler", Event())
+    config.conf.enable_mastery = False
+    state.save_user_config(
+        {"enable_crafting": False, "enable_mastery": True, "maa_growth_enable": True}
+    )
+    assert config.conf.enable_mastery and config.conf.maa_growth_enable
+    assert not config.conf.mastery_enabled and not config.conf.maa_growth_enabled
+    assert not config.wake_scheduler.is_set()
+
+
+def test_disabling_one_task_preserves_other_wake_requests(next_skill, monkeypatch):
+    from arknights_mower import __main__ as mower_main
+
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    monkeypatch.setattr(config, "wake_scheduler", Event())
+    state.save_user_config({"enable_mastery": False, "maa_growth_enable": True})
+    assert config.wake_scheduler.is_set()
+    state.save_user_config({"maa_growth_enable": False})
+    assert config.wake_scheduler.is_set()
+
+
+@pytest.mark.parametrize("method", ["POST", "PATCH"])
+def test_maa_growth_setting_uses_current_token_and_wakes_running_scheduler(
+    next_skill, monkeypatch, method
+):
+    import server
+    from arknights_mower import __main__ as mower_main
+
+    monkeypatch.setattr(server.app, "token", "growth-instance", raising=False)
+    monkeypatch.setattr(mower_main, "base_scheduler", MagicMock())
+    config.wake_scheduler.clear()
+    try:
+        response = server.app.test_client().open(
+            "/conf",
+            method=method,
+            json={"maa_growth_enable": True},
+            headers={"token": "growth-instance"},
+        )
+        assert response.status_code == 200
+        assert config.conf.maa_growth_enable is True
+        assert config.wake_scheduler.is_set()
+    finally:
+        config.wake_scheduler.clear()

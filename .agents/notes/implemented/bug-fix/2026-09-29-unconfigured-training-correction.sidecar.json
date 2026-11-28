@@ -1,0 +1,19 @@
+{
+  "title": "Correction from an unconfigured training room",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-09-29",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-08]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.agent_get_mood"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/train_follow_correction_tests.py",
+    "arknights_mower/tests/mastery_choose_train_tests.py"
+  ]
+}

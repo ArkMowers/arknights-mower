@@ -1,0 +1,22 @@
+{
+  "title": "Optional right-side backup staffing",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-08",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-34]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.backup_validation.validate_backup_facilities",
+    "arknights_mower.utils.operators.Operators.merge_plan",
+    "arknights_mower.solvers.base_schedule._merge_plan_overlay"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/backup_validation_tests.py",
+    "arknights_mower/tests/backup_relocation_state_tests.py",
+    "arknights_mower/tests/recycle_station_tests.py"
+  ]
+}

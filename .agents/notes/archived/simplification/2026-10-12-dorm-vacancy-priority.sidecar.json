@@ -1,0 +1,21 @@
+{
+  "title": "Dormitory Vacancy Priority",
+  "status": "archived",
+  "category": "simplification",
+  "date": "2026-10-12",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-20]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.scheduler_task.prioritize_new_dorm_recovery",
+    "arknights_mower.utils.scheduler_task.try_reorder"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_single_free_departure_tests.py",
+    "arknights_mower/tests/dorm_admission_priority_tests.py",
+    "arknights_mower/tests/workshop_rest_priority_tests.py"
+  ]
+}

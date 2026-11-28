@@ -1,9 +1,8 @@
 import cv2
-from scipy.signal import argrelmin
 
 from arknights_mower.solvers.auto_fight import AutoFight
 from arknights_mower.solvers.navigation import NavigationSolver
-from arknights_mower.utils import config
+from arknights_mower.utils import config, vision_np
 from arknights_mower.utils.email import send_message
 from arknights_mower.utils.graph import SceneGraphSolver
 from arknights_mower.utils.image import cropimg, loadres
@@ -30,7 +29,7 @@ class CreditFight(SceneGraphSolver):
         result = cv2.matchTemplate(img, res, cv2.TM_SQDIFF_NORMED)[0]
         threshold = 0.1
         match = []
-        for i in argrelmin(result, order=100)[0]:
+        for i in vision_np.argrelmin(result, order=100):
             if result[i] < threshold:
                 match.append(i)
         logger.debug(match)
@@ -97,9 +96,9 @@ class CreditFight(SceneGraphSolver):
         elif scene == Scene.OPERATOR_FINISH:
             return True
         elif scene == Scene.OPERATOR_FAILED:
-            msg = "OF-1失败，请检查干员，*今天*不会继续进行信用作战"
+            msg = "OF-1 作战失败，请检查干员；今天不会继续进行信用作战。"
             logger.info(msg)
-            send_message(msg, level="ERROR")
+            send_message(msg, subject="OF-1 信用作战失败", level="ERROR")
             return True
         elif scene in self.waiting_scene:
             self.waiting_solver()

@@ -1,0 +1,175 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { effectScope, reactive } from 'vue'
+import axios from 'axios'
+import BasementSkill from './BasementSkill.vue'
+import { useBasementSkill } from '@/stores/basementSkill'
+
+const state = useBasementSkill()
+const planState = reactive({ plan: {}, facility_levels: {} })
+vi.mock('@/stores/plan', () => ({ usePlanStore: () => planState }))
+vi.mock('axios', () => ({ default: { get: vi.fn() } }))
+vi.mock('vue', async (original) => ({
+  ...(await original()),
+  onMounted: vi.fn(),
+  useSSRContext: () => ({ modules: new Set() })
+}))
+const catalog = [
+  {
+    name: '能天使',
+    child_skill: [
+      { skill_key: 0, skill_level: 0, skillname: '物流', roomType: '贸易站', des: '效率' }
+    ]
+  }
+]
+const owned = {
+  has_data: true,
+  operators: [
+    {
+      name: '能天使',
+      owned: true,
+      phase: 0,
+      level: 1,
+      skills: [{ skill_key: 0, skill_level: 0, status: 'active' }]
+    }
+  ]
+}
+function setup() {
+  const scope = effectScope()
+  const component = scope.run(() => BasementSkill.setup({}, { expose: vi.fn() }))
+  scope.stop()
+  return component
+}
+beforeEach(() => {
+  vi.clearAllMocks()
+  state.skill.value = catalog
+  state.snapshot.value = null
+  planState.plan = {}
+  planState.facility_levels = {}
+})
+afterEach(() => vi.unstubAllGlobals())
+describe('基建技能森空岛数据读取', () => {
+  it('清除旧缓存中的干员名单，只保留表格共有的布局', async () => {
+    const key = 'mower_skeleton_shape:basement-skill'
+    const entries = new Map([
+      [key, JSON.stringify({ known: true, progressed: {}, untagged: ['旧干员'] })]
+    ])
+    vi.stubGlobal('localStorage', {
+      getItem: (k) => entries.get(k),
+      setItem: (k, value) => entries.set(k, value)
+    })
+    const page = setup()
+    expect(page.rowPlaceholder.value).toBeNull()
+    expect(JSON.parse(entries.get(key))).toEqual({ allTagged: false, allProgressed: false })
+    state.skill.value = [...catalog, { ...catalog[0], name: '另一位干员' }]
+    axios.get.mockResolvedValue({
+      data: { ...owned, operators: [...owned.operators, { name: '另一位干员', owned: false }] }
+    })
+    await page.loadOwnedOperators()
+    expect(page.skill_items.value[0].progression).toBe('精0 1级')
+    expect(JSON.parse(entries.get(key))).toEqual({ allTagged: true, allProgressed: false })
+    expect(setup().rowPlaceholder.value).toBeNull()
+    state.snapshot.value = null
+    const cold = setup()
+    expect(cold.rowPlaceholder.value).toEqual({ progression: false })
+    axios.get.mockRejectedValue(new Error('快照读取失败'))
+    await cold.loadOwnedOperators()
+    expect(cold.rowPlaceholder.value).toBeNull()
+    expect(JSON.parse(entries.get(key))).toEqual({ allTagged: true, allProgressed: false })
+  })
+  it('默认不显示持有标签，进入读取只请求本地快照', async () => {
+    const page = setup()
+    expect(page.skill_items.value[0].ownership).toBe('unknown')
+    expect(page.ownershipLabels.unknown).toBeUndefined()
+    axios.get.mockResolvedValue({ data: owned })
+    await page.loadOwnedOperators()
+    expect(axios.get).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/basement-skill/operators')
+    )
+    expect(page.skill_items.value[0].ownership).toBe('owned')
+  })
+  it('显式同步成功后再读本地解析状态', async () => {
+    const page = setup()
+    axios.get
+      .mockResolvedValueOnce({ data: { success: true } })
+      .mockResolvedValueOnce({ data: owned })
+    await page.syncCultivate()
+    expect(axios.get.mock.calls.map(([url]) => url.split('/').at(-1))).toEqual([
+      'cultivate-fetch',
+      'operators'
+    ])
+    expect(page.skill_items.value[0].childSkill[0].status).toBe('active')
+    expect(page.syncing.value).toBe(false)
+  })
+  it('同步失败展示具体原因并保留现有快照', async () => {
+    const page = setup()
+    page.snapshot.value = owned
+    axios.get.mockResolvedValue({ data: { success: false, message: '未配置森空岛账号' } })
+    await page.syncCultivate()
+    expect(page.error.value).toBe('未配置森空岛账号')
+    expect(axios.get).toHaveBeenCalledOnce()
+    expect(page.skill_items.value[0].ownership).toBe('owned')
+    expect(page.syncing.value).toBe(false)
+  })
+  it('读取失败仍展示技能目录、不显示缺失的状态', async () => {
+    const page = setup()
+    axios.get.mockRejectedValue(new Error('连接失败'))
+    await page.loadOwnedOperators()
+    expect(page.error.value).toContain('连接失败')
+    expect(page.filteredItems.value).toHaveLength(1)
+    expect(page.skillStatusLabels[page.skill_items.value[0].childSkill[0].status]).toBeUndefined()
+    expect(page.loading.value).toBe(false)
+  })
+  it('优先取当前主排班，最高宿舍等级覆盖快照，缺失字段保留快照', () => {
+    planState.plan = {
+      room_1_1: { name: '制造站', product: 'gold', plans: [] },
+      room_1_2: { name: '发电站', plans: [] },
+      dormitory_1: { name: '', plans: [{ agent: 'Free' }] },
+      dormitory_2: { name: '', plans: [{ agent: 'Free' }] }
+    }
+    planState.facility_levels = { room_1_1: 3, room_1_2: 3, dormitory_1: 1, dormitory_2: 4 }
+    state.snapshot.value = { base_conditions: { dormLevel: 2, power: 3, droneCap: 200 } }
+    const before = JSON.stringify(planState)
+    const page = setup()
+    expect(page.baseConditions.value).toMatchObject({
+      power: 1,
+      factories: 1,
+      dormLevel: 4,
+      dormLevels: 5,
+      droneCap: 200
+    })
+    expect(page.conditionSource.value).toContain('当前主排班')
+    expect(JSON.stringify(planState)).toBe(before)
+  })
+})
+
+describe('基建技能筛选', () => {
+  it('重新进入页面时保留五项筛选，重置后再次进入显示全部干员', () => {
+    state.skill.value = [...catalog, { ...catalog[0], name: '另一位干员' }]
+    state.snapshot.value = owned
+    const page = setup()
+    const selected = {
+      name: '能天使',
+      description: '物流',
+      facility: '贸易站',
+      ownership: 'owned',
+      status: 'active'
+    }
+    Object.assign(page.filters.value, selected)
+    expect(page.filteredItems.value.map((item) => item.key)).toEqual(['能天使'])
+
+    const returned = setup()
+    expect(returned.filteredItems.value.map((item) => item.key)).toEqual(['能天使'])
+    expect(returned.filters.value).toEqual(selected)
+
+    returned.resetFilters()
+    const cleared = setup()
+    expect(cleared.filters.value).toEqual({
+      name: '',
+      description: '',
+      facility: null,
+      ownership: null,
+      status: null
+    })
+    expect(cleared.filteredItems.value.map((item) => item.key)).toEqual(['能天使', '另一位干员'])
+  })
+})

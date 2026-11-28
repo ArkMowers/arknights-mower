@@ -1,0 +1,22 @@
+{
+  "title": "Intelligent Rescue Startup Release Windows",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-02",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-03]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_startup",
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_read_rooms",
+    "arknights_mower.solvers.record.current_state"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/emergency_observation_budget_tests.py",
+    "arknights_mower/tests/initial_dorm_mood_tests.py",
+    "arknights_mower/tests/base_scheduler_tests.py"
+  ]
+}

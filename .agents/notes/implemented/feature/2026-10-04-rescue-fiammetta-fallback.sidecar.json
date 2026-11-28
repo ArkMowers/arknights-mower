@@ -1,0 +1,19 @@
+{
+  "title": "Rescue Fiammetta Fallback",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-04",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-09]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.emergency.EmergencyRecoveryMixin._emergency_fia_fallback"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/automatic_rescue_tests.py",
+    "arknights_mower/tests/fiammetta_dorm_isolation_tests.py"
+  ]
+}

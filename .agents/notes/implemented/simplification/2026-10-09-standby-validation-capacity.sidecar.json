@@ -1,0 +1,21 @@
+{
+  "title": "Group Capacity Validation for Standby",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-42]",
+    "[INV-SCHED-22]",
+    "[INV-SCHED-16]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.init_and_validate",
+    "arknights_mower.utils.operators.Operators._can_standby"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/standby_validation_capacity_tests.py"
+  ]
+}

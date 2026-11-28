@@ -1,0 +1,29 @@
+{
+  "title": "MuMu Startup Command Deadlines",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-03",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-03]",
+    "[INV-05]",
+    "[INV-DEV-03]",
+    "[INV-DEV-20]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.device.preflight_io.ProductionPreflightIO",
+    "arknights_mower.utils.device.mumu12ipc.input.MuMuInputSession",
+    "arknights_mower.utils.device.adb_client.server.run_adb",
+    "arknights_mower.utils.device.adb_client.utils.run_cmd",
+    "arknights_mower.utils.device.application.DeviceControl"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_command_tests.py",
+    "arknights_mower/tests/device_preflight_io_tests.py",
+    "arknights_mower/tests/device_mumu_input_tests.py",
+    "arknights_mower/tests/adb_shared_transport_tests.py",
+    "arknights_mower/tests/device_application_tests.py"
+  ]
+}

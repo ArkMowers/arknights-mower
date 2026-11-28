@@ -1,8 +1,13 @@
+import os
+from contextlib import contextmanager
+from itertools import pairwise
+from threading import RLock
 from typing import Union
 
 from arknights_mower import __rootdir__
 from arknights_mower.utils import config
 from arknights_mower.utils.device.adb_client.core import Client as ADBClient
+from arknights_mower.utils.device.io_budget import touch_release_budget
 from arknights_mower.utils.device.maatouch.command import CommandBuilder
 from arknights_mower.utils.device.maatouch.session import Session
 from arknights_mower.utils.log import logger
@@ -15,13 +20,62 @@ class Client:
 
     def __init__(self, client: ADBClient) -> None:
         self.client = client
+        self.owner_pid = os.getpid()
+        self._lock = RLock()
+        self._closed = False
+        self._interrupted = False
+        self._sessions = set()
         self.start()
 
     def start(self) -> None:
+        if self._closed or self._interrupted or self.owner_pid != os.getpid():
+            raise ConnectionError("MaaTouch 已关闭")
         self.__install()
 
-    def __del__(self) -> None:
-        pass
+    @contextmanager
+    def _operation(self):
+        session = None
+        try:
+            with self._lock:
+                if self._closed or self._interrupted or self.owner_pid != os.getpid():
+                    raise ConnectionError("MaaTouch 已关闭")
+                session = Session(self.client, defer_start=True)
+                self._sessions.add(session)
+            with session:
+                yield session
+        except BaseException as exc:
+            exc.delivery_unknown = (
+                session.input_started if session is not None else False
+            )
+            raise
+        finally:
+            if session is not None:
+                with self._lock:
+                    self._sessions.discard(session)
+
+    def close(self) -> None:
+        with self._lock:
+            if self._closed or self.owner_pid != os.getpid():
+                return
+            self._closed = True
+            sessions = tuple(self._sessions)
+        failures = []
+        for session in sessions:
+            try:
+                session.close()
+            except Exception as exc:
+                failures.append(exc)
+        if failures:
+            raise RuntimeError("；".join(str(exc) for exc in failures))
+
+    def interrupt(self):
+        with self._lock:
+            if self.owner_pid != os.getpid() or self._interrupted:
+                return
+            self._interrupted = True
+            sessions = tuple(self._sessions)
+        for session in sessions:
+            session.interrupt()
 
     def __install(self) -> None:
         """install maatouch for android devices"""
@@ -88,11 +142,9 @@ class Client:
         :param duration: in milliseconds
         :param lift: if True, "lift" the touch point
         """
-        self.check_adb_alive()
-
         builder = CommandBuilder()
         points = [list(map(int, point)) for point in points]
-        with Session(self.client) as conn:
+        with self._operation() as conn:
             for id, point in enumerate(points):
                 x, y = self.convert_coordinate(
                     point, display_frames, int(conn.max_x), int(conn.max_y)
@@ -119,6 +171,7 @@ class Client:
         up_wait: int = 0,
         fall: bool = True,
         lift: bool = True,
+        before_release=None,
     ) -> None:
         """
         swipe between points one by one, with pressure and duration
@@ -131,15 +184,13 @@ class Client:
         :param fall: if True, "fall" the first touch point
         :param lift: if True, "lift" the last touch point
         """
-        self.check_adb_alive()
-
         points = [list(map(int, point)) for point in points]
         if not isinstance(duration, list):
             duration = [duration] * (len(points) - 1)
         assert len(duration) + 1 == len(points)
 
         builder = CommandBuilder()
-        with Session(self.client) as conn:
+        with self._operation() as conn:
             if fall:
                 x, y = self.convert_coordinate(
                     points[0], display_frames, int(conn.max_x), int(conn.max_y)
@@ -147,21 +198,30 @@ class Client:
                 builder.down(0, x, y, pressure)
                 builder.publish(conn)
 
-            for idx, point in enumerate(points[1:]):
+            for point, wait_ms in zip(points[1:], duration, strict=True):
                 x, y = self.convert_coordinate(
                     point, display_frames, int(conn.max_x), int(conn.max_y)
                 )
                 builder.move(0, x, y, pressure)
-                if duration[idx - 1]:
-                    builder.wait(duration[idx - 1])
+                if wait_ms:
+                    builder.wait(wait_ms)
                 builder.commit()
             builder.publish(conn)
 
             if lift:
-                builder.up(0)
-                if up_wait:
-                    builder.wait(up_wait)
-                builder.publish(conn)
+                if before_release is None:
+                    if up_wait:
+                        builder.wait(up_wait)
+                        builder.publish(conn)
+                    builder.up(0)
+                    builder.publish(conn)
+                else:
+                    try:
+                        before_release()
+                    finally:
+                        with touch_release_budget():
+                            builder.up(0)
+                            builder.publish(conn)
 
     def swipe(
         self,
@@ -173,6 +233,7 @@ class Client:
         part: int = 10,
         fall: bool = True,
         lift: bool = True,
+        before_release=None,
     ) -> None:
         """
         swipe between points one by one, with pressure and duration
@@ -192,23 +253,30 @@ class Client:
             duration = [duration] * (len(points) - 1)
         assert len(duration) + 1 == len(points)
 
+        if part < 1:
+            raise ValueError("滑动分段数必须大于零")
         new_points = [points[0]]
         new_duration = []
-        for id in range(1, len(points)):
-            pre_point = points[id - 1]
-            cur_point = points[id]
-            offset = (
-                (cur_point[0] - pre_point[0]) // part,
-                (cur_point[1] - pre_point[1]) // part,
-            )
-            new_points += [
-                (pre_point[0] + i * offset[0], pre_point[1] + i * offset[1])
-                for i in range(1, part + 1)
-            ]
-            if duration[id - 1] is None:
-                new_duration += [None] * part
-            else:
-                new_duration += [duration[id - 1] // part] * part
+        for (start, end), segment_ms in zip(pairwise(points), duration, strict=True):
+            dx, dy = end[0] - start[0], end[1] - start[1]
+            elapsed_ms = 0
+            for step in range(1, part + 1):
+                new_points.append(
+                    (start[0] + dx * step // part, start[1] + dy * step // part)
+                )
+                if segment_ms is None:
+                    new_duration.append(None)
+                else:
+                    next_ms = segment_ms * step // part
+                    new_duration.append(next_ms - elapsed_ms)
+                    elapsed_ms = next_ms
         self.__swipe(
-            new_points, display_frames, pressure, new_duration, up_wait, fall, lift
+            new_points,
+            display_frames,
+            pressure,
+            new_duration,
+            up_wait,
+            fall,
+            lift,
+            before_release,
         )

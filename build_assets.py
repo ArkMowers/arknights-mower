@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import sys
+from importlib.metadata import distribution
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -8,7 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 def _require_path(relative_path: str) -> str:
     path = PROJECT_ROOT / relative_path
-    if not path.exists():
+    if not path.is_file():
         raise FileNotFoundError(f"required build asset is missing: {path}")
     return str(path)
 
@@ -76,10 +77,40 @@ def _collect_ui_dist_datas():
     return result
 
 
+def get_rapidocr_datas():
+    import rapidocr
+
+    for filename in ("PP-OCRv6_det_tiny.onnx", "PP-OCRv6_rec_tiny.onnx"):
+        _require_path(f"arknights_mower/models/rapidocr/{filename}")
+
+    install_dir = Path(rapidocr.__file__).resolve().parent
+    result = []
+    # 检测与识别模型由 Mower 自带；只收集 SDK 配置和实际使用的方向分类模型。
+    for relative in (
+        "config.yaml",
+        "default_models.yaml",
+        "models/ch_ppocr_mobile_v2.0_cls_mobile.onnx",
+    ):
+        path = install_dir / relative
+        if not path.is_file():
+            raise FileNotFoundError(f"required RapidOCR asset is missing: {path}")
+        destination = (Path("rapidocr") / Path(relative).parent).as_posix()
+        result.append((str(path), destination))
+    return result
+
+
 def get_pyinstaller_common_datas():
     ensure_frontend_built()
+    orjson_licenses = [
+        (str(path.locate()), path.parent.as_posix())
+        for path in distribution("orjson").files or ()
+        if path.parent.name == "licenses"
+    ]
+    if not orjson_licenses:
+        raise FileNotFoundError("orjson wheel license files are missing")
     return [
         *[(src, dst) for src, dst in _collect_arknights_mower_datas()],
+        *orjson_licenses,
         (_require_path("logo.png"), "."),
         (_require_path("CHANGELOG.md"), "."),
         *[(src, dst) for src, dst in _collect_ui_dist_datas()],

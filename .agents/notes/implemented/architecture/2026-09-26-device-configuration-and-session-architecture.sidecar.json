@@ -1,0 +1,28 @@
+{
+  "title": "Device Configuration Compatibility & Session Architecture",
+  "status": "implemented",
+  "category": "architecture",
+  "date": "2026-09-26",
+  "authors": [
+    "Antigravity"
+  ],
+  "invariants": [
+    "[INV-01]",
+    "[INV-02]",
+    "[INV-03]",
+    "[INV-04]",
+    "[INV-05]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.config.device_profile.DeviceProfile",
+    "arknights_mower.utils.device.session.DeviceSession",
+    "arknights_mower.utils.device.recovery.RecoveryPolicy",
+    "arknights_mower.utils.device.session.ReadinessResult"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/device_session_tests.py",
+    "arknights_mower/tests/device_session_io_tests.py",
+    "arknights_mower/tests/device_config_tests.py",
+    "ui/src/utils/deviceSettings.test.js"
+  ]
+}

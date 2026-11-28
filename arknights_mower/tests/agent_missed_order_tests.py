@@ -413,3 +413,30 @@ class TestMissedOrderTool(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_task_log_labels_preserve_run_order_analysis():
+    from arknights_mower.utils.scheduler_task import SchedulerTask, TaskTypes
+
+    at = datetime(2026, 10, 18, 8)
+    order = SchedulerTask(at, task_type=TaskTypes.RUN_ORDER, meta_data="room_3_1")
+    order.adjusted = True
+    support = SchedulerTask(at, task_type=TaskTypes.SELF_CORRECTION)
+    support.exhaust_support = True
+    observation = SchedulerTask(at, task_type=TaskTypes.REFRESH_TIME)
+    observation.recovery_observation_rooms = ["dormitory_1"]
+    observation.recovery_observation_targets = {"图耶": "dormitory_1"}
+    refresh = SchedulerTask(at, task_type=TaskTypes.REFRESH_TIME)
+    assert str(support).startswith("替班交接: SchedulerTask(")
+    assert str(observation).startswith("复查宿舍心情：宿舍1（图耶）: SchedulerTask(")
+    assert str(refresh).startswith("刷新跑单时间: SchedulerTask(")
+    assert str(support.format()).startswith("替班交接: SchedulerTask(")
+    log = "||".join(map(str, [support, order, observation, refresh]))
+    parsed = analyze_mod.extract_scheduler_tasks(log)
+    assert len(parsed) == 4
+    assert parsed[0]["task_type"] == "SELF_CORRECTION"
+    assert parsed[1]["task_type"] == "RUN_ORDER"
+    assert parsed[1]["room"] == "room_3_1"
+    assert parsed[1]["planned_at"] == at
+    assert parsed[1]["adjusted"]
+    assert len(analyze_mod.extract_run_order_tasks([{"task": log}])) == 1

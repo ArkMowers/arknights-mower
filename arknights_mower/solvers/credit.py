@@ -5,6 +5,24 @@ from arknights_mower.utils.image import cropimg, loadres, thres2
 from arknights_mower.utils.log import logger
 from arknights_mower.utils.recognize import Scene
 
+# 访问下位按钮固定在页面右下角。原先用 ORB 模板匹配找它，但在大片纯橙、纹理很平的
+# 按钮上 ORB 关键点不稳，会被判据误判成不存在而提前放弃。这里改用 HSV 计数识别橙色，
+# 灰/禁用态用模板 clue_next_black 识别。
+CLUE_NEXT_REGION = ((1636, 866), (1920, 1020))
+# 橙色亮着时约占区域 3/4，灰/禁用态不到 1%，以 15% 为界区分
+ORANGE_RATIO = 0.15
+
+
+def count_orange(img) -> int:
+    """统计访问下位按钮区域内橙色（HSV 色调<=30、饱和度>=200）像素数。"""
+    hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    return int(((hsv[..., 0] <= 30) & (hsv[..., 1] >= 200)).sum())
+
+
+def region_size(region) -> int:
+    """计算矩形区域（((x0, y0), (x1, y1))）的像素面积。"""
+    return (region[1][0] - region[0][0]) * (region[1][1] - region[0][1])
+
 
 class CreditSolver(SceneGraphSolver):
     def run(self) -> None:
@@ -34,14 +52,14 @@ class CreditSolver(SceneGraphSolver):
             logger.info("今日参与交流已达上限")
             return True
         elif scene == Scene.FRIEND_VISITING:
-            if clue_next := self.find("clue_next"):
-                x, y = self.get_pos(clue_next, x_rate=0.5, y_rate=0.85)
-                hsv = cv2.cvtColor(self.recog.img, cv2.COLOR_RGB2HSV)
-                if abs(hsv[y][x][0] - 12) < 3:
-                    self.wait_times = 5
-                    self.tap(clue_next)
-                else:
-                    return True
+            region = CLUE_NEXT_REGION
+            img = cropimg(self.recog.img, region)
+            if count_orange(img) >= region_size(region) * ORANGE_RATIO:
+                self.wait_times = 5
+                self.tap(self.get_pos(region, 0.5, 0.5))
+            elif self.find("clue_next_black"):
+                logger.info("没有可访问的好友了")
+                return True
             else:
                 if self.wait_times > 0:
                     self.wait_times -= 1

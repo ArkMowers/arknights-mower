@@ -1,0 +1,20 @@
+{
+  "title": "MAA Normal Long-Task Termination",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-09",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-MAA-07]"
+  ],
+  "code_symbols": [
+    "arknights_mower.solvers.base_schedule.BaseSchedulerSolver.maa_plan_solver"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/maa_error_no_exit_tests.py",
+    "arknights_mower/tests/maa_scene_handoff_tests.py",
+    "arknights_mower/tests/maa_callback_tests.py"
+  ]
+}

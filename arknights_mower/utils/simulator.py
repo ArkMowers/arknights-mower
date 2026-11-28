@@ -1,12 +1,12 @@
 import subprocess
 from dataclasses import dataclass
 from enum import Enum
-from os import system
+from pathlib import Path
 
 from arknights_mower import __system__
 from arknights_mower.utils import config
-from arknights_mower.utils.csleep import MowerExit, csleep
-from arknights_mower.utils.device.adb_client.session import Session
+from arknights_mower.utils.device.adb_client.core import is_tcp_serial
+from arknights_mower.utils.device.adb_client.server import SharedADBError, run_adb
 from arknights_mower.utils.log import logger
 
 
@@ -14,6 +14,7 @@ class Simulator_Type(Enum):
     Nox = "夜神"
     MuMu12 = "MuMu12"
     Leidian9 = "雷电9"
+    Leidian14 = "雷电14"
     Waydroid = "Waydroid"
     ReDroid = "ReDroid"
     MuMuPro = "MuMuPro"
@@ -22,106 +23,115 @@ class Simulator_Type(Enum):
 
 @dataclass
 class SimulatorCommandSet:
-    stop: str
-    start: str
+    stop: list[str]
+    start: list[str]
     blocking: bool = False
 
 
+def _clear_mumu_adb_transport() -> None:
+    """仅断开活动设备会话验证过的 MuMu TCP 端点，保留共享 ADB 服务。"""
+    from arknights_mower.__main__ import device_control
+
+    def disconnect(device):
+        client = device.client
+        if client is None:
+            return
+        target, adb_bin = client.device_id, client.adb_bin
+        if not target or not adb_bin or not is_tcp_serial(target):
+            return
+        try:
+            # No runner override: the guarded route's default bounded runner
+            # cannot wait for an output handle a descendant inherited.
+            run_adb(
+                [adb_bin, "disconnect", target],
+                check=False,
+                capture_output=True,
+                timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW
+                if __system__ == "windows"
+                else 0,
+            )
+            logger.info("已断开当前 MuMu 实例的 ADB 端点")
+        except (OSError, subprocess.SubprocessError, SharedADBError):
+            logger.debug("断开 MuMu adb 端点失败", exc_info=True)
+
+    # The session lock keeps the verified client bound until cleanup completes.
+    # A closed session skips cleanup instead of reusing its saved endpoint.
+    device_control.execute(disconnect)
+
+
 def restart_simulator(stop: bool = True, start: bool = True) -> bool:
-    return _restart_simulator(stop=stop, start=start, allow_retry=True)
+    """Compatibility entry: application sessions decide startup and recovery.
 
-
-def _restart_simulator(stop: bool, start: bool, allow_retry: bool) -> bool:
-    data = config.conf.simulator
-    simulator_type = data.name
-
-    if simulator_type not in [item.value for item in Simulator_Type]:
-        logger.warning(f"尚未支持{simulator_type}重启/自动启动")
-        csleep(10)
+    A stop-only request is the user's explicit idle shutdown policy.
+    """
+    if config.conf.device.preset_id == "manual.physical":
         return False
+    if start:
+        from arknights_mower.__main__ import device_control
 
-    commands = build_command_set(simulator_type, data.index)
-
-    if stop:
-        logger.info(f"关闭{simulator_type}模拟器")
-        run_command(commands.stop, data.simulator_folder, 0, commands.blocking)
-        if (
-            simulator_type == Simulator_Type.MuMu12.value
-            and config.conf.fix_mumu12_adb_disconnect
-        ):
-            logger.info("结束adb进程")
-            system("taskkill /f /t /im adb.exe")
-
-    if not start:
+        result = device_control.recover() if stop else device_control.start()
+        result.unwrap()
+        return result.ok
+    if not stop:
         return True
+    from arknights_mower.__main__ import device_control
 
-    csleep(3)
-    logger.info(f"启动{simulator_type}模拟器")
-    started = run_command(
-        commands.start,
-        data.simulator_folder,
-        data.wait_time,
-        commands.blocking,
-    )
-    if not started and allow_retry:
-        logger.warning(f"{simulator_type}重启后ADB未恢复，重试一次")
-        return _restart_simulator(stop=True, start=True, allow_retry=False)
-    if not started:
-        return False
-
-    hotkey = data.hotkey.strip()
-    if hotkey:
-        import pyautogui
-
-        pyautogui.FAILSAFE = False
-        pyautogui.hotkey(*hotkey.split("+"))
-    return True
+    stopped = device_control.stop_bound_simulator()
+    if (
+        stopped
+        and config.conf.device.preset_id == "windows.mumu12"
+        and config.conf.fix_mumu12_adb_disconnect
+    ):
+        _clear_mumu_adb_transport()
+    return stopped
 
 
 def build_command_set(simulator_type: str, index) -> SimulatorCommandSet:
+    if simulator_type == Simulator_Type.Waydroid.value:
+        return SimulatorCommandSet(
+            stop=["waydroid", "session", "stop"],
+            start=["waydroid", "show-full-ui"],
+        )
+    identifier = str(index).strip() if index is not None else ""
+    if not identifier or identifier.startswith("-") or "\x00" in identifier:
+        raise ValueError("模拟器操作需要有效的实例标识。")
     idx = normalize_index(index)
 
     if simulator_type == Simulator_Type.Nox.value:
-        base = "Nox.exe"
-        if idx >= 0:
-            base += f" -clone:Nox_{idx}"
-        return SimulatorCommandSet(stop=f"{base} -quit", start=base)
+        if idx < 0:
+            raise ValueError("夜神操作需要有效的实例索引。")
+        base = ["Nox.exe", f"-clone:Nox_{idx}"]
+        return SimulatorCommandSet(stop=[*base, "-quit"], start=base)
 
     if simulator_type == Simulator_Type.MuMu12.value:
-        cmd = "MuMuManager.exe api -v "
-        if idx >= 0:
-            cmd += f"{idx} "
-        return SimulatorCommandSet(
-            stop=cmd + "shutdown_player",
-            start=cmd + "launch_player",
-        )
-
-    if simulator_type == Simulator_Type.Waydroid.value:
-        return SimulatorCommandSet(
-            stop="waydroid session stop",
-            start="waydroid show-full-ui",
-        )
-
-    if simulator_type == Simulator_Type.Leidian9.value:
         if idx < 0:
-            idx = 0
+            raise ValueError("MuMu 操作需要有效的实例索引。")
+        cmd = ["MuMuManager.exe", "api", "-v", str(idx)]
         return SimulatorCommandSet(
-            stop=f"ldconsole.exe quit --index {idx}",
-            start=f"ldconsole.exe launch --index {idx}",
+            stop=[*cmd, "shutdown_player"],
+            start=[*cmd, "launch_player"],
+        )
+
+    if simulator_type in {
+        Simulator_Type.Leidian9.value,
+        Simulator_Type.Leidian14.value,
+    }:
+        if idx < 0:
+            raise ValueError("雷电操作需要有效的实例索引。")
+        return SimulatorCommandSet(
+            stop=["ldconsole.exe", "quit", "--index", str(idx)],
+            start=["ldconsole.exe", "launch", "--index", str(idx)],
         )
 
     if simulator_type == Simulator_Type.ReDroid.value:
         return SimulatorCommandSet(
-            stop=f"docker stop {index} -t 0",
-            start=f"docker start {index}",
+            stop=["docker", "stop", "-t", "0", identifier],
+            start=["docker", "start", identifier],
         )
 
-    if simulator_type == Simulator_Type.MuMuPro.value:
-        return SimulatorCommandSet(
-            stop=f"Contents/MacOS/mumutool close {index}",
-            start=f"Contents/MacOS/mumutool open {index}",
-        )
-
+    if simulator_type != Simulator_Type.Genymotion.value:
+        raise ValueError("不支持的模拟器类型。")
     if __system__ == "windows":
         gmtool = "gmtool.exe"
     elif __system__ == "darwin":
@@ -129,72 +139,42 @@ def build_command_set(simulator_type: str, index) -> SimulatorCommandSet:
     else:
         gmtool = "./gmtool"
     return SimulatorCommandSet(
-        stop=f'{gmtool} admin stop "{index}"',
-        start=f'{gmtool} admin start "{index}"',
+        stop=[gmtool, "admin", "stop", identifier],
+        start=[gmtool, "admin", "start", identifier],
         blocking=True,
     )
 
 
 def normalize_index(index) -> int:
+    if isinstance(index, str) and index.startswith("Nox_"):
+        index = index.removeprefix("Nox_")
     try:
         return int(index)
     except (TypeError, ValueError):
         return -1
 
 
-def run_command(cmd: str, folder_path: str, wait_time: int, blocking: bool) -> bool:
+def run_command(
+    cmd: list[str], folder_path: str, wait_time: int, blocking: bool
+) -> bool:
     logger.debug(cmd)
-    process = subprocess.Popen(
-        cmd,
-        shell=True,
-        cwd=folder_path or None,
-        creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        universal_newlines=True,
-    )
-
-    if blocking:
-        return wait_for_process(process, wait_time)
-    if wait_time <= 0:
-        return True
-    return wait_for_adb(process, wait_time)
-
-
-def wait_for_process(process: subprocess.Popen, wait_time: int) -> bool:
-    while wait_time > 0:
-        try:
-            csleep(0)
-            logger.debug(process.communicate(timeout=1))
-            return process.returncode == 0
-        except MowerExit:
-            raise
-        except subprocess.TimeoutExpired:
-            wait_time -= 1
-    return False
-
-
-def wait_for_adb(process: subprocess.Popen, wait_time: int) -> bool:
-    for _ in range(wait_time):
-        try:
-            if adb_ready():
-                return True
-        except MowerExit:
-            raise
-        except Exception as e:
-            logger.debug(e)
-        if process.poll() is not None and process.returncode not in (0, None):
-            logger.debug(process.communicate())
-        csleep(1)
-    return adb_ready()
-
-
-def adb_ready() -> bool:
-    target = config.conf.adb
-    if not target:
-        return len(Session().devices_list()) > 0
-    Session().connect(target, throw_error=True)
-    devices = [
-        device for device, status in Session().devices_list() if status != "offline"
-    ]
-    return target in devices
+    try:
+        argv = list(cmd)
+        if folder_path:
+            executable = Path(folder_path) / argv[0]
+            if executable.is_file():
+                argv[0] = str(executable.resolve())
+        process = subprocess.run(
+            argv,
+            shell=False,
+            cwd=folder_path or None,
+            creationflags=subprocess.CREATE_NO_WINDOW if __system__ == "windows" else 0,
+            capture_output=True,
+            text=True,
+            timeout=max(1, wait_time),
+        )
+        logger.debug((process.stdout, process.stderr))
+        return process.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        logger.debug("模拟器命令失败", exc_info=True)
+        return False

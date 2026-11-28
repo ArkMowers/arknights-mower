@@ -1,39 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 from pathlib import Path
+import os
+import subprocess
 import sys
 
-import rapidocr_onnxruntime
+import rapidocr
 
 SPEC_DIR = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
 if str(SPEC_DIR) not in sys.path:
     sys.path.insert(0, str(SPEC_DIR))
 
-from build_assets import get_pyinstaller_common_datas
+from build_assets import get_pyinstaller_common_datas, get_rapidocr_datas
 
 block_cipher = None
 
-# 参考 https://github.com/RapidAI/RapidOCR/blob/main/ocrweb/rapidocr_web/ocrweb.spec
-package_name = "rapidocr_onnxruntime"
-install_dir = Path(rapidocr_onnxruntime.__file__).resolve().parent
-
-onnx_paths = list(install_dir.rglob("*.onnx"))
-yaml_paths = list(install_dir.rglob("*.yaml"))
-
-onnx_add_data = [(str(v.parent), f"{package_name}/{v.parent.name}") for v in onnx_paths]
-
-yaml_add_data = []
-for v in yaml_paths:
-    if package_name == v.parent.name:
-        yaml_add_data.append((str(v.parent / "*.yaml"), package_name))
-    else:
-        yaml_add_data.append(
-            (str(v.parent / "*.yaml"), f"{package_name}/{v.parent.name}")
-        )
-
-add_data = list(set(yaml_add_data + onnx_add_data))
-
-
-site_packages = install_dir.parent
+site_packages = Path(rapidocr.__file__).resolve().parent.parent
 
 
 mower_a = Analysis(
@@ -49,8 +30,16 @@ mower_a = Analysis(
         (f"{site_packages}/pyzbar/libzbar-64.dll", "."),
         (f"{site_packages}/pyzbar/libiconv.dll", "."),
     ]
-    + add_data,
-    hiddenimports=[],
+    + get_rapidocr_datas(),
+    hiddenimports=[
+        "rapidocr.main",
+        "quickjs",
+        "_quickjs",
+        "arknights_mower.utils.instance_supervisor",
+        "arknights_mower.utils.crash_recovery",
+        "arknights_mower.utils.jpeg_worker",
+        "arknights_mower.utils.jpeg_codec",
+    ],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
@@ -60,6 +49,9 @@ mower_a = Analysis(
         "safetensors",
         "huggingface_hub",
         "accelerate",
+        "scipy",
+        "skimage",
+        "sklearn",
         "opencv_videoio_ffmpeg",
         "sympy",
         "mpmath",
@@ -79,10 +71,17 @@ mower_a = Analysis(
     noarchive=False,
 )
 
-mower_pure = [i for i in mower_a.pure if not i[0].startswith("arknights_mower")]
+
+def modules_without_project_sources(analysis):
+    return [
+        entry
+        for entry in analysis.pure
+        if entry[0].partition(".")[0] != "arknights_mower"
+    ]
+
 
 mower_pyz = PYZ(
-    mower_pure,
+    modules_without_project_sources(mower_a),
     mower_a.zipped_data,
     cipher=block_cipher,
 )
@@ -94,6 +93,7 @@ mower_exe = EXE(
     [],
     exclude_binaries=True,
     name="mower",
+    uac_admin=False,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -137,7 +137,7 @@ manager_a = Analysis(
 )
 
 manager_pyz = PYZ(
-    manager_a.pure,
+    modules_without_project_sources(manager_a),
     manager_a.zipped_data,
     cipher=block_cipher,
 )
@@ -148,6 +148,7 @@ manager_exe = EXE(
     [],
     exclude_binaries=True,
     name="多开管理器",
+    uac_admin=False,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -175,4 +176,18 @@ coll = COLLECT(
     upx=True,
     upx_exclude=[],
     name="mower",
+)
+
+# Apply after COLLECT so UPX cannot rewrite CPython's signed DLLs.
+openssl_source = os.environ.get("MOWER_OPENSSL_SOURCE")
+subprocess.run(
+    [
+        sys.executable,
+        str(SPEC_DIR / "scripts" / "install_windows_openssl.py"),
+        *(["--source", openssl_source] if openssl_source else ["--download"]),
+        "--bundle",
+        coll.name,
+    ],
+    check=True,
+    timeout=300,
 )

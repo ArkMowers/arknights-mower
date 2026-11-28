@@ -1,0 +1,17 @@
+{
+  "title": "Shared Plan Group Colors",
+  "status": "implemented",
+  "category": "simplification",
+  "date": "2026-10-06",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-25]"
+  ],
+  "code_symbols": [],
+  "test_suites": [
+    "ui/src/utils/plan_bindings.test.js",
+    "ui/src/components/PlanEditor.test.js"
+  ]
+}

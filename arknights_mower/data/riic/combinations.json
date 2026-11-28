@@ -1,0 +1,771 @@
+[
+  {
+    "id": "builtin-run-order",
+    "title": "跑单干员",
+    "facility": "贸易",
+    "core": [
+      "但书",
+      "龙舌兰",
+      "可露希尔",
+      "佩佩"
+    ],
+    "coreTitle": "跑单干员",
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {
+      "但书": "所有等级贸易站均推荐使用",
+      "龙舌兰": "推荐在3级贸易站与但书一同使用",
+      "可露希尔": "推荐在停服更新时使用；无但书时单独使用",
+      "佩佩": "推荐在停服更新超过4.5小时的一级贸易站使用"
+    }
+  },
+  {
+    "id": "builtin-smoke",
+    "title": "人间烟火",
+    "facility": "通用",
+    "core": [
+      "重岳",
+      "桑葚",
+      "乌有"
+    ],
+    "support": [
+      "令",
+      "夕",
+      "截云",
+      "黍",
+      "望"
+    ],
+    "accessory": [
+      "余",
+      "年"
+    ],
+    "note": "同时有5名岁干员在工作设施，如在意公招效率，不推荐使用",
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-perception",
+    "title": "感知信息",
+    "facility": "通用",
+    "core": [
+      "迷迭香",
+      "黑键",
+      "絮雨",
+      "令"
+    ],
+    "support": [
+      "夕",
+      "塑心",
+      "车尔尼",
+      "爱丽丝",
+      "琴柳"
+    ],
+    "note": "如在意公招效率，不推荐使用",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-lgd",
+    "title": "龙门近卫局",
+    "facility": "通用",
+    "core": [
+      "斩业星熊",
+      "诗怀雅"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-monster-hunter",
+    "title": "怪物猎人小队",
+    "facility": "通用",
+    "core": [
+      "火龙S黑角",
+      "麒麟R夜刀",
+      "泰拉大陆调查团"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-automation",
+    "title": "自动化",
+    "facility": "金属",
+    "core": [
+      "森蚺",
+      "温蒂",
+      "承曦格雷伊",
+      "清流",
+      "冬时"
+    ],
+    "support": [
+      "流明"
+    ],
+    "accessory": [
+      "Lancet-2"
+    ],
+    "memberNotes": {
+      "清流": "非153",
+      "冬时": "3电",
+      "Lancet-2": "0心情"
+    },
+    "note": ""
+  },
+  {
+    "id": "builtin-abyss",
+    "title": "深海猎人",
+    "facility": "通用",
+    "core": [
+      "歌蕾蒂娅",
+      "斯卡蒂",
+      "幽灵鲨",
+      "乌尔比安",
+      "安哲拉"
+    ],
+    "support": [
+      "深巡"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-redpine",
+    "title": "红松林",
+    "facility": "经验",
+    "core": [
+      "薇薇安娜",
+      "焰尾",
+      "远牙",
+      "灰毫",
+      "野鬃",
+      "砾"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-tianmao",
+    "title": "精英干员",
+    "facility": "通用",
+    "core": [
+      "凯尔希·思衡托",
+      "机械师",
+      "烛煌"
+    ],
+    "support": [
+      "真言"
+    ],
+    "accessory": [
+      "迷迭香",
+      "煌",
+      "逻各斯",
+      "电弧"
+    ],
+    "memberNotes": {
+      "真言": "目前5精干35%贸易",
+      "迷迭香": "可0心情，分别进驻不同设施",
+      "煌": "可0心情，分别进驻不同设施",
+      "逻各斯": "可0心情，分别进驻不同设施",
+      "电弧": "可0心情，分别进驻不同设施"
+    },
+    "note": "至少5名精英干员位于不同设施"
+  },
+  {
+    "id": "builtin-nasti",
+    "title": "莱茵生命",
+    "facility": "金属",
+    "core": [
+      "多萝西",
+      "娜斯提"
+    ],
+    "support": [
+      "淬羽赫默",
+      "缪尔赛思"
+    ],
+    "accessory": [
+      "赫默",
+      "伊芙利特",
+      "塞雷娅",
+      "白面鸮",
+      "梅尔",
+      "麦哲伦",
+      "星源"
+    ],
+    "note": "需要5名莱茵生命干员（不含缪尔赛思）",
+    "memberNotes": {
+      "赫默": "不可0心情",
+      "伊芙利特": "不可0心情",
+      "塞雷娅": "不可0心情",
+      "白面鸮": "不可0心情",
+      "梅尔": "不可0心情",
+      "麦哲伦": "不可0心情",
+      "星源": "不可0心情"
+    }
+  },
+  {
+    "id": "builtin-makoto",
+    "title": "结城理·S.E.E.S.",
+    "facility": "通用",
+    "core": [
+      "结城理",
+      "埃癸斯"
+    ],
+    "accessory": [
+      "岳羽由加莉",
+      "虎狼丸"
+    ],
+    "note": "",
+    "support": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-pozy",
+    "title": "鸿雪杜林组",
+    "facility": "贸易",
+    "core": [
+      "鸿雪",
+      "图耶"
+    ],
+    "support": [
+      "绮良",
+      "褐果"
+    ],
+    "accessory": [
+      "杜林",
+      "桃金娘",
+      "至简",
+      "特克诺"
+    ],
+    "memberNotes": {
+      "绮良": "4赤使用",
+      "杜林": "不可0心情",
+      "桃金娘": "不可0心情",
+      "至简": "不可0心情",
+      "褐果": "不可0心情",
+      "特克诺": "不可0心情"
+    },
+    "note": ""
+  },
+  {
+    "id": "builtin-siracusa",
+    "title": "叙拉古",
+    "facility": "贸易",
+    "core": [
+      "伺夜",
+      "贝洛内",
+      "八幡海铃"
+    ],
+    "note": "",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-exusiai",
+    "title": "拉特兰贸易",
+    "facility": "贸易",
+    "core": [
+      "能天使",
+      "蕾缪安"
+    ],
+    "note": "能天使搭配为双人核心，留一个岗位；新约能天使搭配为三人组合。",
+    "support": [],
+    "accessory": [],
+    "memberNotes": {},
+    "variantTitle": "能天使双人核心",
+    "recommended": [
+      "能天使",
+      "蕾缪安"
+    ],
+    "variants": [
+      {
+        "id": "builtin-laterano",
+        "title": "拉特兰贸易",
+        "facility": "贸易",
+        "core": [
+          "新约能天使",
+          "安比尔",
+          "蕾缪安"
+        ],
+        "support": [],
+        "accessory": [],
+        "note": "三级贸易站，三人同站；安比尔30%＋蕾缪安45%＋新约能天使30%，合计105%。适合没有能天使时使用。",
+        "memberNotes": {},
+        "placements": {},
+        "recommended": [
+          "新约能天使",
+          "安比尔",
+          "蕾缪安"
+        ],
+        "parentId": "builtin-exusiai",
+        "variantTitle": "新约能天使三人组合"
+      }
+    ]
+  },
+  {
+    "id": "builtin-glasgow",
+    "title": "格拉斯哥帮",
+    "facility": "贸易",
+    "core": [
+      "摩根",
+      "推进之王",
+      "戴菲恩"
+    ],
+    "support": [
+      "维娜·维多利亚"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-karlan",
+    "title": "孑贸易",
+    "facility": "贸易",
+    "core": [
+      "孑",
+      "银灰",
+      "琳琅诗怀雅",
+      "灵知"
+    ],
+    "support": [
+      "崖心",
+      "锏"
+    ],
+    "note": "仅限3级贸易站，推荐精0孑；同站搭档最多选两人，按空单估算。",
+    "accessory": [],
+    "memberNotes": {
+      "孑": "推荐精0，仅限3级贸易站"
+    },
+    "variantTitle": "喀兰贸易",
+    "recommended": [
+      "孑",
+      "银灰",
+      "琳琅诗怀雅",
+      "灵知"
+    ],
+    "placements": {
+      "孑": "贸易站",
+      "银灰": "贸易站",
+      "琳琅诗怀雅": "贸易站",
+      "崖心": "贸易站",
+      "锏": "贸易站",
+      "灵知": "中枢"
+    },
+    "variants": [
+      {
+        "id": "builtin-jaye-siracusa",
+        "title": "精零孑叙拉古",
+        "facility": "贸易",
+        "core": [
+          "孑",
+          "伺夜",
+          "贝洛内"
+        ],
+        "support": [
+          "八幡海铃"
+        ],
+        "accessory": [],
+        "note": "精零孑、三级贸易站；会客室等级影响伺夜，中枢海铃提供额外加成。",
+        "memberNotes": {
+          "孑": "限精零，三级贸易站"
+        },
+        "placements": {
+          "孑": "贸易站",
+          "伺夜": "贸易站",
+          "贝洛内": "贸易站",
+          "八幡海铃": "中枢"
+        },
+        "recommended": [
+          "孑",
+          "伺夜",
+          "贝洛内",
+          "八幡海铃"
+        ],
+        "parentId": "builtin-karlan",
+        "variantTitle": "精零孑叙拉古",
+        "supportTitle": "中枢支援"
+      },
+      {
+        "id": "builtin-jaye-hunters",
+        "title": "精零孑怪猎二期",
+        "facility": "贸易",
+        "core": [
+          "孑",
+          "焰狐龙梓兰",
+          "雷狼龙S空爆"
+        ],
+        "support": [],
+        "accessory": [],
+        "note": "精零孑、三级贸易站，三人同站。",
+        "memberNotes": {
+          "孑": "限精零，三级贸易站"
+        },
+        "placements": {
+          "孑": "贸易站",
+          "焰狐龙梓兰": "贸易站",
+          "雷狼龙S空爆": "贸易站"
+        },
+        "recommended": [
+          "孑",
+          "焰狐龙梓兰",
+          "雷狼龙S空爆"
+        ],
+        "parentId": "builtin-karlan",
+        "variantTitle": "精零孑怪猎二期"
+      },
+      {
+        "id": "builtin-jaye-penguin",
+        "title": "精零孑企鹅物流",
+        "facility": "贸易",
+        "core": [
+          "孑",
+          "德克萨斯",
+          "拉普兰德"
+        ],
+        "support": [
+          "八幡海铃"
+        ],
+        "accessory": [],
+        "note": "精零孑、三级贸易站；八幡海铃在中枢，仅为其中的叙拉古干员提供加成。",
+        "memberNotes": {
+          "孑": "限精零，三级贸易站"
+        },
+        "placements": {
+          "孑": "贸易站",
+          "德克萨斯": "贸易站",
+          "拉普兰德": "贸易站",
+          "八幡海铃": "中枢"
+        },
+        "recommended": [
+          "孑",
+          "德克萨斯",
+          "拉普兰德",
+          "八幡海铃"
+        ],
+        "parentId": "builtin-karlan",
+        "variantTitle": "精零孑企鹅物流",
+        "supportTitle": "中枢支援"
+      },
+      {
+        "id": "builtin-jaye-parts",
+        "title": "精零孑散件",
+        "facility": "贸易",
+        "core": [
+          "孑"
+        ],
+        "support": [
+          "泰拉大陆调查团",
+          "赫德雷",
+          "瑰盐",
+          "齐尔查克"
+        ],
+        "accessory": [
+          "麒麟R夜刀",
+          "火龙S黑角",
+          "维什戴尔",
+          "伊内丝",
+          "W",
+          "森西"
+        ],
+        "note": "从备选中选择至多两名搭档。搭档贡献包含其订单上限为孑增加的效率，孑的基础贡献只计一次。",
+        "memberNotes": {
+          "孑": "限精零，三级贸易站"
+        },
+        "placements": {
+          "孑": "贸易站",
+          "泰拉大陆调查团": "贸易站",
+          "赫德雷": "贸易站",
+          "瑰盐": "贸易站",
+          "齐尔查克": "贸易站",
+          "麒麟R夜刀": "中枢",
+          "火龙S黑角": "中枢",
+          "维什戴尔": "中枢",
+          "伊内丝": "会客室",
+          "W": "训练室",
+          "森西": "宿舍"
+        },
+        "recommended": [
+          "孑",
+          "泰拉大陆调查团",
+          "瑰盐",
+          "麒麟R夜刀",
+          "火龙S黑角"
+        ],
+        "defaultAccessories": [],
+        "parentId": "builtin-karlan",
+        "variantTitle": "精零孑散件"
+      }
+    ]
+  },
+  {
+    "id": "builtin-gold",
+    "title": "金属工艺",
+    "facility": "金属",
+    "core": [
+      "苍苔",
+      "引星棘刺",
+      "砾"
+    ],
+    "support": [
+      "斑点",
+      "夜烟",
+      "温米"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-bubble",
+    "title": "泡泡仓库",
+    "facility": "通用",
+    "core": [
+      "泡泡",
+      "火神"
+    ],
+    "support": [
+      "圣约送葬人",
+      "刻俄柏",
+      "贝娜"
+    ],
+    "memberNotes": {
+      "圣约送葬人": "经验"
+    },
+    "note": "",
+    "accessory": []
+  },
+  {
+    "id": "builtin-cloud",
+    "title": "红云经验",
+    "facility": "经验",
+    "core": [
+      "红云",
+      "稀音"
+    ],
+    "support": [
+      "帕拉斯",
+      "刻俄柏"
+    ],
+    "note": "",
+    "accessory": [],
+    "memberNotes": {}
+  },
+  {
+    "id": "builtin-standardization",
+    "title": "黑钢标准化",
+    "facility": "通用",
+    "core": [
+      "水月",
+      "杰西卡",
+      "香草",
+      "涤火杰西卡"
+    ],
+    "note": "",
+    "support": [
+      "杏仁",
+      "褐果"
+    ],
+    "accessory": [],
+    "memberNotes": {
+      "杏仁": "赤金，3名黑钢时31%",
+      "褐果": "水月＋褐果双人：源石碎片80%（通用50%）"
+    }
+  },
+  {
+    "id": "builtin-aroma",
+    "title": "阿罗玛槐琥",
+    "facility": "金属",
+    "core": [
+      "阿罗玛",
+      "槐琥"
+    ],
+    "support": [],
+    "accessory": [],
+    "note": "默认三人制造站，额外岗位提供的可复制生产力单独设置。82.02%是槐琥全程达到40%时的两人贡献，不含第三人自身产出。",
+    "memberNotes": {},
+    "placements": {},
+    "recommended": [
+      "阿罗玛",
+      "槐琥"
+    ]
+  },
+  {
+    "id": "builtin-ursus",
+    "title": "熊团经验",
+    "facility": "经验",
+    "core": [
+      "怒潮凛冬",
+      "烈夏"
+    ],
+    "support": [
+      "古米"
+    ],
+    "accessory": [],
+    "note": "怒潮凛冬、烈夏同在制造站，古米在贸易站。两处设施分别显示效率。",
+    "memberNotes": {},
+    "placements": {
+      "怒潮凛冬": "制造站",
+      "烈夏": "制造站",
+      "古米": "贸易站"
+    },
+    "recommended": [
+      "怒潮凛冬",
+      "烈夏",
+      "古米"
+    ],
+    "supportTitle": "贸易站支援"
+  },
+  {
+    "id": "builtin-cuisine",
+    "title": "魔物料理",
+    "facility": "通用",
+    "core": [
+      "玛露西尔",
+      "齐尔查克"
+    ],
+    "support": [
+      "森西"
+    ],
+    "accessory": [],
+    "note": "玛露西尔在制造站，齐尔查克在贸易站，森西住宿舍；魔物料理按森西所在宿舍等级计算。",
+    "memberNotes": {},
+    "placements": {
+      "玛露西尔": "制造站",
+      "齐尔查克": "贸易站",
+      "森西": "宿舍"
+    },
+    "recommended": [
+      "玛露西尔",
+      "齐尔查克",
+      "森西"
+    ],
+    "supportTitle": "宿舍支援"
+  },
+  {
+    "id": "builtin-control-babel",
+    "title": "巴别塔中枢",
+    "facility": "中枢",
+    "estimator": "control",
+    "core": [
+      "维什戴尔",
+      "魔王"
+    ],
+    "support": [
+      "阿米娅",
+      "伊内丝"
+    ],
+    "supportTitle": "联动支援",
+    "accessory": [],
+    "placements": {
+      "维什戴尔": "中枢",
+      "魔王": "中枢",
+      "阿米娅": "中枢",
+      "伊内丝": "会客室"
+    },
+    "memberNotes": {},
+    "note": "中枢联动与会客支援分别显示；维什戴尔提供的其他设施减耗与玛恩纳等同类效果取最高。",
+    "recommended": [
+      "维什戴尔",
+      "魔王",
+      "阿米娅",
+      "伊内丝"
+    ]
+  },
+  {
+    "id": "builtin-control-mlynar",
+    "title": "玛恩纳中枢减耗",
+    "facility": "中枢",
+    "estimator": "control",
+    "core": [
+      "玛恩纳"
+    ],
+    "support": [
+      "Mon3tr",
+      "可露希尔",
+      "电弧",
+      "红隼",
+      "薇薇安娜",
+      "冰酿",
+      "焰尾",
+      "暴雨",
+      "灰喉",
+      "苇草",
+      "送葬人",
+      "坚雷",
+      "临光",
+      "红",
+      "清道夫",
+      "杜宾"
+    ],
+    "accessory": [],
+    "placements": {
+      "可露希尔": "中枢",
+      "电弧": "中枢",
+      "Mon3tr": "中枢",
+      "红隼": "中枢",
+      "薇薇安娜": "中枢",
+      "冰酿": "中枢",
+      "玛恩纳": "中枢",
+      "焰尾": "中枢",
+      "暴雨": "中枢",
+      "灰喉": "中枢",
+      "苇草": "中枢",
+      "送葬人": "中枢",
+      "坚雷": "中枢",
+      "临光": "中枢",
+      "红": "中枢",
+      "清道夫": "中枢",
+      "杜宾": "中枢"
+    },
+    "memberNotes": {},
+    "note": "按公事公办的技能清单列出全部备选；已选干员须在中枢工作，相关技能已解锁时才计入。最多5人同班，其他非减耗技能请查看技能提示。",
+    "recommended": [
+      "玛恩纳",
+      "Mon3tr"
+    ],
+    "supportTitle": "备选干员"
+  },
+  {
+    "id": "builtin-control-mujica",
+    "title": "Ave Mujica 乐队",
+    "facility": "中枢",
+    "estimator": "control",
+    "core": [
+      "丰川祥子",
+      "八幡海铃"
+    ],
+    "support": [
+      "三角初华",
+      "祐天寺若麦",
+      "若叶睦"
+    ],
+    "supportTitle": "热情值与中枢联动",
+    "accessory": [],
+    "placements": {
+      "丰川祥子": "中枢",
+      "八幡海铃": "中枢",
+      "三角初华": "中枢",
+      "祐天寺若麦": "中枢",
+      "若叶睦": "中枢"
+    },
+    "memberNotes": {
+      "丰川祥子": "仅加成非自动化赤金制造站；不对温蒂、冬时生效"
+    },
+    "note": "最多5人同驻中枢；热情值随已选支援及宿舍人数计算。制造、贸易、办公、会客与心情效果分别列出。",
+    "recommended": [
+      "丰川祥子",
+      "八幡海铃",
+      "三角初华",
+      "祐天寺若麦",
+      "若叶睦"
+    ]
+  }
+]

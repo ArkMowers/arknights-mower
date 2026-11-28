@@ -1,0 +1,503 @@
+"""启动订单检查只发布临近跑单，实际驻员心情供首次全设施扫描复用。"""
+
+import copy
+import logging
+import pickle
+from contextlib import ExitStack
+from datetime import timedelta
+from unittest.mock import ANY, MagicMock
+
+import numpy as np
+import pytest
+
+from arknights_mower.tests import run_order_staffing_admission_tests as admission
+
+staffed_order = admission.staffed_order
+
+
+def prepare(ui):
+    solver = ui.solver
+    solver._startup_run_order_check_pending = True
+    solver._startup_mood_observations = {}
+    solver._state_restore_complete = True
+    ui.occupants.update({"room_1_1": ["孑"], "room_2_2": ["图耶"]})
+    ui.states.update({"room_1_1": "active", "room_2_2": "active"})
+    return solver
+
+
+def orders(ui):
+    return [task for task in ui.solver.tasks if task.type == ui.task_type.RUN_ORDER]
+
+
+@pytest.mark.parametrize(
+    ("state", "strategy", "name", "advance_minutes"),
+    [
+        ("active", "龙门商法", "孑", 3),
+        ("active", "开采协力", "孑", 0),
+        ("active", "", "孑", 3),
+        ("paused", "龙门商法", "", None),
+        ("active", "龙门商法", "", None),
+        ("unknown", "开采协力", "孑", None),
+    ],
+)
+def test_startup_observes_trade_staff_and_reads_one_order_page(
+    staffed_order, monkeypatch, caplog, state, strategy, name, advance_minutes
+):
+    from arknights_mower.utils import mastery_recommendation
+
+    ui = staffed_order
+    solver = prepare(ui)
+    room = "room_1_1"
+    ui.states[room] = state
+    solver.op_data.update_facility_state(room, "trade", "lmd")
+    caplog.set_level(logging.INFO)
+    monkeypatch.setattr(
+        mastery_recommendation,
+        "get_cultivate_characters",
+        lambda: {"char_272_strong": {"evolvePhase": 0}},
+    )
+    solver.recog.gray = np.zeros((1080, 1920), dtype=np.uint8)
+    solver.get_agent_from_room = (
+        ui.base.BaseSchedulerSolver.get_agent_from_room.__get__(solver)
+    )
+    solver._cache_facility_state_from_current_page = (
+        ui.base.BaseSchedulerSolver._cache_facility_state_from_current_page.__get__(
+            solver
+        )
+    )
+    solver.detect_room_type = MagicMock(return_value="贸易站")
+    solver.wait_product_complete = MagicMock()
+    solver._work_room_panel = MagicMock(return_value="open")
+    solver.detect_room = MagicMock(side_effect=lambda: solver._page["room"])
+    solver.find = MagicMock(
+        side_effect=lambda resource, **_: (
+            resource == "arrange_check_in_on"
+            or (resource == "infra_no_operator" and not name)
+        )
+    )
+
+    def read_level(target_room, *, panel):
+        assert solver._page["room"] == target_room == room and panel == "open"
+        assert solver.op_data.get_current_room(room, True) == [name]
+        return 3
+
+    solver._observed_trade_level = MagicMock(side_effect=read_level)
+    solver.read_screen = MagicMock(return_value=name)
+    solver.read_accurate_mood = MagicMock(return_value=18)
+
+    def observe(occupant, mood, location, index, *args, **kwargs):
+        operator = solver.op_data.operators[occupant]
+        operator.current_room, operator.current_index = location, index
+        operator.mood, operator.time_stamp = mood, ui.clock.now()
+
+    solver.op_data.update_detail = MagicMock(side_effect=observe)
+    page_visits = []
+
+    def open_order_page(**kwargs):
+        assert solver._page["room"] == room and not solver._page["open"]
+        assert solver.op_data.get_current_room(room, True) == [name]
+        solver._page["open"] = True
+        page_visits.append(room)
+
+    def read_text(scope):
+        assert solver._page["open"]
+        if scope[0][0] == 1400:
+            return strategy
+        return "订单暂停获取中" if state == "paused" else ""
+
+    solver._wait_drone_interface = MagicMock(side_effect=open_order_page)
+    solver._product_ocr_text = MagicMock(side_effect=read_text)
+    if state == "unknown":
+        solver.read_time.side_effect = lambda *args, **kwargs: None
+        with pytest.raises(ui.base.RecognizeError, match="未确认订单暂停"):
+            solver.get_run_order_time(room, read_mood=True)
+    else:
+        actual = solver.get_run_order_time(room, read_mood=True)
+        expected = (
+            ui.deadlines[room] - timedelta(minutes=advance_minutes)
+            if advance_minutes is not None
+            else None
+        )
+        assert actual == expected
+        if not name:
+            solver.scene_graph_navigation.assert_called_once_with(
+                ui.base.Scene.INFRA_MAIN
+            )
+        else:
+            assert solver.back.call_count == 2
+        assert solver._page["room"] is None
+    if not name:
+        solver.read_time.assert_not_called()
+    assert page_visits == ([room] if name else [])
+    assert solver._observed_trade_level.call_count == bool(name)
+    assert solver.op_data.facility_states[room]["product"] == (
+        "orundum" if strategy == "开采协力" else "lmd"
+    )
+    assert room in solver._startup_mood_observations
+    facility_events = [
+        record.log_event
+        for record in caplog.records
+        if getattr(record, "log_event", {}).get("type") == "facility-observation"
+    ]
+    assert [event["phase"] for event in facility_events] == ["started", "completed"]
+    assert facility_events[0]["id"] == facility_events[1]["id"]
+    expected_state = (
+        (f"订单类型为{strategy}" if strategy else "订单类型未确认")
+        if name
+        else "无人进驻，跳过订单读取"
+    )
+    assert expected_state in facility_events[1]["summary"]
+    assert ("心情18" if name else "第1位空位") in facility_events[1]["summary"]
+
+
+@pytest.mark.parametrize(
+    "delay,minutes,urgent",
+    [(3, 10, True), (3, 10.1, False), (8, 16, True), (8, 16.1, False)],
+)
+def test_startup_checks_all_stations_once_and_publishes_only_urgent(
+    staffed_order, delay, minutes, urgent
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    ui.config.conf.run_order_delay = delay
+    ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(minutes=minutes + delay)
+    solver._check_startup_run_orders()
+    assert {task.meta_data for task in orders(ui)} == (
+        {"room_1_1"} if urgent else set()
+    )
+    assert len(admission.reads(ui)) == len(admission.reads(ui, "room_2_2")) == 1
+    assert not any(task.type == ui.task_type.REFRESH_TIME for task in solver.tasks)
+    restored = pickle.loads(pickle.dumps(solver.tasks))
+    assert {task.meta_data for task in restored} == ({"room_1_1"} if urgent else set())
+    solver.tasks.clear()
+    solver._check_startup_run_orders()
+    assert len(admission.reads(ui)) == 1
+
+
+@pytest.mark.parametrize("retained", [False, True])
+def test_existing_order_including_restoration_consumes_startup_check(
+    staffed_order, retained
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    task = ui.task(task_type=ui.task_type.RUN_ORDER, task_plan={"room_1_1": ["鸿雪"]})
+    if retained:
+        task.run_order_restore_pending = True
+        task.execution_retained = True
+    solver.tasks.append(task)
+    solver._check_startup_run_orders()
+    solver.tasks.clear()
+    solver._check_startup_run_orders()
+    assert not admission.reads(ui)
+
+
+def test_startup_keeps_first_urgent_order_when_second_return_is_unresolved(
+    staffed_order, monkeypatch
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(minutes=4)
+    second = solver._queue_order_refresh("room_2_2")
+    original_time = second.time
+    room_scene = solver.scene.side_effect
+    solver.scene.side_effect = lambda: (
+        ui.base.Scene.UNKNOWN
+        if solver._page == {"room": "room_2_2", "open": True}
+        else room_scene()
+    )
+    monkeypatch.setattr(ui.base, "monotonic", lambda: ui.clock.now().timestamp())
+    with pytest.raises(ui.base.OrderReturnUnresolved):
+        solver._check_startup_run_orders()
+    assert {task.meta_data for task in orders(ui)} == {"room_1_1"}
+    assert second in solver.tasks and second.time == original_time
+    assert second.execution_failure
+    assert solver.read_time.call_count == 2
+    solver.scene_graph_navigation.assert_not_called()
+
+
+@pytest.mark.parametrize("maintenance", ["entry", "replacement"])
+def test_maintenance_does_not_start_ordinary_order_checks(staffed_order, maintenance):
+    ui = staffed_order
+    solver = prepare(ui)
+    if maintenance == "entry":
+        solver.maintenance_entry_pending = True
+    else:
+        task = ui.task(task_type=ui.task_type.SELF_CORRECTION)
+        task.maintenance_replacement_run = True
+        solver.tasks.append(task)
+    solver._check_startup_run_orders()
+    assert not admission.reads(ui) and not orders(ui)
+
+
+@pytest.mark.parametrize("state", ["paused", "unreadable"])
+def test_incomplete_startup_order_does_not_create_refresh_or_block_other_stations(
+    staffed_order, state
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    if state == "paused":
+        ui.states["room_1_1"] = "paused"
+    else:
+        read = solver.read_time.side_effect
+
+        def unreadable(*args, **kwargs):
+            if solver._page["room"] == "room_1_1":
+                raise ui.base.RecognizeError("订单未核实")
+            return read(*args, **kwargs)
+
+        solver.read_time.side_effect = unreadable
+    solver._check_startup_run_orders()
+    assert not solver.tasks
+    assert len(admission.reads(ui, "room_2_2")) == 1
+    assert "room_1_1" in solver._startup_mood_observations
+    assert [call.args[0] for call in solver.get_agent_from_room.call_args_list].count(
+        "room_1_1"
+    ) == 1
+
+
+@pytest.mark.parametrize("shortage", [False, True])
+def test_shared_drone_adjustment_uses_temporary_tasks_and_returns_to_main(
+    staffed_order, shortage
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    solver.drone_room = "room_1_1"
+    ui.deadlines.update(
+        {room: ui.clock.now() + timedelta(minutes=8) for room in ui.states}
+    )
+    solver.recog.gray = MagicMock()
+    solver.digit_reader = MagicMock()
+    solver.digit_reader.get_drone.return_value = 20 if shortage else 100
+    solver.double_read_time = MagicMock(
+        return_value=ui.clock.now() + timedelta(minutes=3)
+    )
+
+    def adjust(room, *, adjust_time, order_tasks):
+        assert not solver.tasks
+        assert len(pickle.loads(pickle.dumps(solver.tasks))) == 0
+        solver.enter_room(room)
+        return solver.adjust_order_time(True, room, order_tasks=order_tasks)
+
+    solver.drone = MagicMock(side_effect=adjust)
+    solver._check_startup_run_orders()
+    assert solver.drone.call_count == 1
+    assert len(orders(ui)) == 2
+    first = next(task for task in orders(ui) if task.meta_data == "room_1_1")
+    assert first.time == ui.clock.now() + timedelta(minutes=5 if shortage else 0)
+    assert solver.scene_graph_navigation.call_args.args[0] == ui.base.Scene.INFRA_MAIN
+    assert not solver._page["open"]
+
+
+def test_startup_urgent_order_yields_and_resumes_same_arrangement(staffed_order):
+    ui = staffed_order
+    solver = prepare(ui)
+    ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(minutes=3)
+    original = admission.correction(ui)
+    original_time, original_plan = original.time, copy.deepcopy(original.plan)
+    solver.infra_main()
+    assert solver.task is None
+    assert any(task is original for task in solver.tasks)
+    assert original.time == original_time and original.plan == original_plan
+    assert not any(event[0] == "staffed" for event in ui.events)
+    solver.task = next(task for task in orders(ui) if task.meta_data == "room_1_1")
+    solver.infra_main()
+    assert not orders(ui)
+    assert original.time == original_time and original.plan == original_plan
+    solver.task = original
+    solver.infra_main()
+    assert original.plan == {} and original.time == original_time
+
+
+@pytest.mark.parametrize("changed", [False, True])
+def test_initial_mood_scan_reuses_only_unchanged_strict_startup_observation(
+    staffed_order, monkeypatch, changed
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    solver.defer_backup_plan_until_mood_read = True
+    monkeypatch.setattr(ui.config.conf, "test_mood_calculation", True)
+    read_room = solver.get_agent_from_room.side_effect
+
+    def low_mood(room, *args, **kwargs):
+        result = read_room(room, *args, **kwargs)
+        if room == "room_1_1":
+            solver.op_data.operators["孑"].mood = 3
+            result[0]["mood"] = 3
+        return result
+
+    solver.get_agent_from_room.side_effect = low_mood
+    solver._check_startup_run_orders()
+    read_options = solver.get_agent_from_room.call_args_list[0].kwargs
+    assert read_options == {
+        "force_mood": True,
+        "strict_observation": True,
+        "defer_trade_order": True,
+        "facility_observation": {},
+        "facility_observation_scope": ANY,
+    }
+    assert isinstance(read_options["facility_observation_scope"], ExitStack)
+    operator = solver.op_data.operators["孑"]
+    if changed:
+        operator.current_room = ""
+    monkeypatch.setattr(ui.base, "base_room_list", ["room_1_1", "room_2_2"])
+    solver.get_agent_from_room.reset_mock()
+    solver._read_agent_mood()
+    scanned = [call.args[0] for call in solver.get_agent_from_room.call_args_list]
+    assert scanned == (["room_1_1"] if changed else [])
+    if not changed:
+        assert operator.mood == 3 and "孑" in solver._initial_mood_room_observations
+    if not changed:
+        solver._read_agent_mood()
+        assert not solver.get_agent_from_room.call_args_list
+
+
+def test_startup_future_order_waits_once_without_retiming_unfinished_correction(
+    staffed_order, monkeypatch
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    ui.deadlines["room_1_1"] = ui.clock.now() + timedelta(minutes=4)
+    solver._check_startup_run_orders()
+    task = admission.correction(ui)
+    original_time = task.time
+    assert solver.agent_arrange(task.plan) is False
+    remaining = copy.deepcopy(task.plan)
+    order = next(
+        queued for queued in solver.tasks if queued.type == ui.task_type.RUN_ORDER
+    )
+    assert order.time == original_time + timedelta(minutes=1)
+    assert order.time > ui.clock.now()
+    for _ in range(3):
+        ui.scheduling.scheduling(solver.tasks, op_data=solver.op_data)
+        assert task.time == original_time and task.plan == remaining
+        assert len(admission.reads(ui)) == 1
+    waited = []
+
+    def idle_sleep(seconds):
+        waited.append(seconds)
+        assert len(waited) <= 2, "到期订单不能反复等待或阻塞原纠错续行"
+        ui.clock.current += timedelta(seconds=seconds)
+
+    transition = solver.transition
+    transitions = []
+
+    def bounded_transition():
+        transitions.append(ui.clock.now())
+        assert len(transitions) <= 12, "已到期订单应结束本轮场景执行"
+        return transition()
+
+    monkeypatch.setattr(solver, "_idle_sleep", idle_sleep)
+    monkeypatch.setattr(solver, "transition", bounded_transition)
+    monkeypatch.setattr(solver, "_fill_empty_dorms", MagicMock())
+    monkeypatch.setattr(solver, "handle_error", MagicMock(return_value=True))
+    monkeypatch.setattr(solver, "check_current_focus", MagicMock())
+
+    solver.run()
+
+    assert waited == [60]
+    assert solver.accept_order.call_count == 1
+    assert task.time == original_time and task.plan == remaining
+    assert len(admission.reads(ui)) == 1
+
+
+def test_incomplete_strict_mood_is_not_reused_and_does_not_block_other_station(
+    staffed_order,
+):
+    ui = staffed_order
+    solver = prepare(ui)
+    read_room = solver.get_agent_from_room.side_effect
+
+    def incomplete(room, *args, **kwargs):
+        if room == "room_1_1":
+            raise ui.base.RecognizeError("槽位心情未核实")
+        return read_room(room, *args, **kwargs)
+
+    solver.get_agent_from_room.side_effect = incomplete
+    solver._check_startup_run_orders()
+    assert "room_1_1" not in solver._startup_mood_observations
+    assert not admission.reads(ui)
+    assert len(admission.reads(ui, "room_2_2")) == 1
+    assert not solver.tasks
+
+
+def test_stale_startup_mood_does_not_bypass_normal_refresh(staffed_order, monkeypatch):
+    ui = staffed_order
+    solver = prepare(ui)
+    solver.defer_backup_plan_until_mood_read = True
+    solver._check_startup_run_orders()
+    ui.clock.current += timedelta(hours=3)
+    monkeypatch.setattr(ui.base, "base_room_list", ["room_1_1", "room_2_2"])
+    solver.get_agent_from_room.reset_mock()
+    solver._read_agent_mood()
+    assert {call.args[0] for call in solver.get_agent_from_room.call_args_list} == {
+        "room_1_1",
+        "room_2_2",
+    }
+
+
+@pytest.mark.parametrize("queued_order", [False, True])
+def test_startup_training_read_follows_order_checks_before_staffing(
+    staffed_order, monkeypatch, queued_order
+):
+    from arknights_mower.solvers import mastery_reader
+
+    ui = staffed_order
+    solver = prepare(ui)
+    monkeypatch.setattr(ui.config.conf, "enable_mastery", True)
+    solver._initial_mood_refresh_rooms = {"train"}
+    solver.last_train_mood_read = ui.clock.now()
+    solver.last_train_mood_attempt = ui.clock.now()
+    solver.op_data.facility_levels = {"train": 3}
+    room_state = mastery_reader.RoomState("empty", slots_reliable=True)
+    observed = []
+    enter_room = solver.enter_room.side_effect
+    solver.enter_room.side_effect = lambda room, **kwargs: enter_room(room)
+    if queued_order:
+        solver.tasks.append(
+            ui.task(
+                ui.clock.now() + timedelta(hours=1),
+                task_type=ui.task_type.RUN_ORDER,
+                meta_data="room_1_1",
+            )
+        )
+
+    def read_room(*args, **kwargs):
+        assert solver._state_restore_complete is True
+        assert solver._startup_run_order_check_pending is False
+        assert len(admission.reads(ui)) == (0 if queued_order else 1)
+        assert len(admission.reads(ui, "room_2_2")) == (0 if queued_order else 1)
+        assert not any(event[0] == "staffed" for event in ui.events)
+        observed.append("train")
+        return room_state, []
+
+    monkeypatch.setattr(mastery_reader, "read_room_state", read_room)
+    monkeypatch.setattr(mastery_reader, "reconcile_short", MagicMock())
+    task = admission.correction(ui)
+    original_time = task.time
+    solver.infra_main()
+    assert observed == ["train"]
+    assert "train" not in solver._initial_mood_refresh_rooms
+    assert task.time == original_time
+    solver.infra_main()
+    assert observed == ["train"]
+
+
+def test_startup_training_waits_for_confirmed_base_overview(staffed_order):
+    ui = staffed_order
+    solver = prepare(ui)
+    solver._initial_mood_refresh_rooms = {"train"}
+    solver.find.side_effect = lambda *args, **kwargs: None
+    solver.infra_main()
+    solver.enter_room.assert_not_called()
+    assert solver._initial_mood_refresh_rooms == {"train"}
+    assert solver._startup_run_order_check_pending is True
+
+
+def test_startup_facilities_wait_for_completed_state_restoration(staffed_order):
+    solver = prepare(staffed_order)
+    solver._state_restore_complete = False
+    solver._initial_mood_refresh_rooms = {"train"}
+    solver._initialize_startup_facilities()
+    solver.enter_room.assert_not_called()
+    assert solver._initial_mood_refresh_rooms == {"train"}
+    assert solver._startup_run_order_check_pending is True

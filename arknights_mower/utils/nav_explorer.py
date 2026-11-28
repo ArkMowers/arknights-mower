@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Callable, Dict, List
 
 from arknights_mower.utils.graph import SceneGraphSolver
+from arknights_mower.utils.log import logger
 from arknights_mower.utils.nav_trie import Navigator, NavNode, NavTrie
 
 STAGE_DATA_PATH = Path("arknights_mower/data/stage_data_full.json")
@@ -89,7 +90,7 @@ def export_nav_trie_json(output_path: Path = TRIE_OUTPUT_PATH) -> None:
         json.dumps({"root": node_to_dict(root)}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    print(f"nav trie json exported to {output_path}")
+    logger.info("nav trie json exported to %s", output_path)
 
 
 # ----------------- Nav Explorer -----------------
@@ -131,6 +132,11 @@ class NavExplorer(SceneGraphSolver):
 
 
 if __name__ == "__main__":
-    meta = build_stage_meta_map()
-    print(f"关卡元数据条目: {len(meta)}")
-    export_nav_trie_json()
+    from arknights_mower.utils.log import close_logging
+
+    try:
+        meta = build_stage_meta_map()
+        logger.info("关卡元数据条目: %s", len(meta))
+        export_nav_trie_json()
+    finally:
+        close_logging()

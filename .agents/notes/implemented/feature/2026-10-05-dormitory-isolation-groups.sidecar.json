@@ -1,0 +1,20 @@
+{
+  "title": "Dormitory Isolation Groups",
+  "status": "implemented",
+  "category": "feature",
+  "date": "2026-10-05",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-SCHED-23]"
+  ],
+  "code_symbols": [
+    "arknights_mower.utils.operators.Operators.dorm_isolation_cost",
+    "arknights_mower.utils.scheduler_task.plan_dorm_isolation"
+  ],
+  "test_suites": [
+    "arknights_mower/tests/dorm_isolation_tests.py",
+    "ui/src/stores/configDormIsolation.test.js"
+  ]
+}

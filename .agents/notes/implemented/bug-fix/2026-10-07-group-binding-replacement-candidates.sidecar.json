@@ -1,0 +1,16 @@
+{
+  "title": "Group Binding Replacement Candidates",
+  "status": "implemented",
+  "category": "bug-fix",
+  "date": "2026-10-07",
+  "authors": [
+    "Codex"
+  ],
+  "invariants": [
+    "[INV-UI-10]"
+  ],
+  "code_symbols": [],
+  "test_suites": [
+    "ui/src/utils/plan_edit.test.js"
+  ]
+}
