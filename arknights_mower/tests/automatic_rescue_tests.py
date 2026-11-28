@@ -854,6 +854,13 @@ def test_startup_keeps_executable_native_return_before_rescue(solver, delay):
         ("normal", True),
         ("assigned", True),
         ("different_target", False),
+        ("priority_enters_dorm", False),
+        ("priority_returns_before_charge", True),
+        ("priority_enters_after_charge", True),
+        ("priority_same_time", False),
+        ("clue_party_before_charge", True),
+        ("fia_leaves_before_charge", False),
+        ("dynamic_predecessor", False),
         ("other_group_blocked", False),
         ("too_late", False),
         ("not_full", False),
@@ -907,6 +914,56 @@ def test_startup_projects_scheduled_charge_with_ordinary_rest(
     if scenario == "retained":
         task.execution_retained = True
     solver.tasks = [task]
+    if scenario.startswith("priority_"):
+        delay = {"priority_enters_after_charge": 40, "priority_same_time": 35}.get(
+            scenario, 5
+        )
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=delay),
+                task_type=TaskTypes.SELF_CORRECTION,
+                task_plan={
+                    "dormitory_1": [
+                        "Current",
+                        "Current",
+                        "Current",
+                        "Current",
+                        priority,
+                    ]
+                },
+            )
+        )
+        if scenario == "priority_returns_before_charge":
+            solver.tasks.insert(
+                0,
+                SchedulerTask(
+                    time=NOW + timedelta(minutes=15),
+                    task_type=TaskTypes.SHIFT_ON,
+                    task_plan={data.operators[priority].room: [priority]},
+                ),
+            )
+    if scenario == "fia_leaves_before_charge":
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=5),
+                task_type=TaskTypes.SELF_CORRECTION,
+                task_plan={"dormitory_1": ["冰酿"]},
+            )
+        )
+    if scenario == "dynamic_predecessor":
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=5),
+                task_type=TaskTypes.EXHAUST_OFF,
+            )
+        )
+    if scenario == "clue_party_before_charge":
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=3), task_type=TaskTypes.CLUE_PARTY
+            )
+        )
+    original_tasks = list(solver.tasks)
     enable(
         data,
         NOW,
@@ -925,7 +982,7 @@ def test_startup_projects_scheduled_charge_with_ordinary_rest(
     assert (data.mood_model.at, data.mood_model.moods) == model_before
     assert observations(data) == before
     if can_charge:
-        assert solver.tasks == [task] and solver.tasks[0] is task
+        assert list(map(id, solver.tasks)) == list(map(id, original_tasks))
         assert (task.time, task.plan) == (NOW + timedelta(minutes=35), original_plan)
     solver.enter_room.assert_not_called()
 

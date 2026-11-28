@@ -17,7 +17,7 @@ from arknights_mower.utils.resting_priority import (
     resting_mood,
     resting_tier,
 )
-from arknights_mower.utils.scheduler_task import TaskTypes
+from arknights_mower.utils.scheduler_task import TaskTypes, project_admitted_task
 
 WORK_EVENTS = {"crafting", "fiammetta_before", "fiammetta_after", "fiammetta_charge"}
 ORDINARY_SHIFTS = {
@@ -194,6 +194,36 @@ def exhaust_rest_due(data, op, tasks, now):
     )
 
 
+def _before_scheduled_charge(data, tasks, charge, used, event_ids, waiting, when):
+    """依次预演充能前的驻员变更，任何一段无法确认时放弃这条充能路径。"""
+    for task in tasks:
+        if task.time > charge.time:
+            break
+        event = event_ids.get(id(task))
+        if task is charge or event in used:
+            continue
+        if task.time == charge.time:
+            # 同时到期的驻员任务可能先于充能派发。
+            return None
+        at = max(when, task.time)
+        if at > when:
+            for name in waiting:
+                op = data.operators[name]
+                if not op.is_working():
+                    continue
+                mood = data.calculated_mood(name, at)
+                if mood is None or mood <= op.lower_limit:
+                    return None
+        if not task.plan:
+            return None
+        data = project_admitted_task(data, task, now=at)
+        if data is None:
+            return None
+        used = used | {event}
+        when = at
+    return data, used, when
+
+
 def native_opportunity(solver, required, now=None, *, budget=128, current_only=False):
     """在副本上搜索轮休；准入时只为可预演的菲亚梅塔充能推进时间。"""
     now = now or getattr(solver.op_data, "_projection_now", None) or datetime.now()
@@ -252,6 +282,31 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 )
             ):
                 charges.append(task)
+    event_ids = {id(task): ("task", i) for i, task in enumerate(pending)}
+    event_ids.update({id(task): ("charge", i) for i, task in enumerate(charges)})
+    staffing_before_charge = (
+        sorted(
+            (
+                task
+                for task in solver.tasks
+                if task.plan
+                or task.type in ORDINARY_SHIFTS
+                or task.type
+                in (
+                    TaskTypes.FIAMMETTA,
+                    TaskTypes.FILL_DORM,
+                    TaskTypes.RELEASE_DORM,
+                    TaskTypes.WORKSHOP,
+                    TaskTypes.SKILL_UPGRADE,
+                    TaskTypes.SWAP_SUPPORT,
+                    TaskTypes.RUN_ORDER,
+                )
+            ),
+            key=lambda task: task.time,
+        )
+        if forecast_charge and charges
+        else []
+    )
     queue = deque([(initial, now, frozenset(), frozenset())])
     visited = set()
     uncertain = False
@@ -421,7 +476,23 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 if not current_only:
                     uncertain = True
                 continue
-            projected = copy.deepcopy(data, {id(data.eval_model): data.eval_model})
+            event_data, event_used, start = data, used, when
+            if forecast and time > now:
+                before = _before_scheduled_charge(
+                    data,
+                    staffing_before_charge,
+                    charges[event_id[1]],
+                    used,
+                    event_ids,
+                    remaining,
+                    when,
+                )
+                if before is None:
+                    continue
+                event_data, event_used, start = before
+            projected = copy.deepcopy(
+                event_data, {id(event_data.eval_model): event_data.eval_model}
+            )
             projected._apply_projected_arrangements([], now=time)
             if current_only and event_id[0] == "task":
                 event_task = copy.deepcopy(pending[event_id[1]])
@@ -450,7 +521,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
             timely = True
             for name in remaining:
                 op = projected.operators[name]
-                if time > when and op.is_working():
+                if time > start and op.is_working():
                     if getattr(projected, "mood_calculation_enabled", False):
                         mood = projected.calculated_mood(name, time)
                         if mood is None:
@@ -493,6 +564,11 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 if getattr(projected, "mood_calculation_enabled", False):
                     fia = projected.operators["菲亚梅塔"]
                     model = projected.mood_model
+                    if current_only and (fia.current_room, fia.current_index) != (
+                        fia.room,
+                        fia.index,
+                    ):
+                        continue
                     if model.value(fia.name, time) != 24:
                         continue
                     if not task.plan:
@@ -523,7 +599,7 @@ def native_opportunity(solver, required, now=None, *, budget=128, current_only=F
                 (
                     projected.project_arrangements([plan], now=time),
                     time,
-                    used | {event_id},
+                    event_used | {event_id},
                     served | charged,
                 )
             )
