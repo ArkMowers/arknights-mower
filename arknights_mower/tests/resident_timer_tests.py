@@ -45,6 +45,14 @@ def ocr_result(text):
     return ([[text, 1.0]], None)
 
 
+@pytest.mark.parametrize(("gray_level", "pixels"), [(144, 5), (150, 1), (124, 1)])
+def test_blank_resident_timer_requires_gray_background(gray_level, pixels):
+    clock = np.full((35, 130), 137, dtype=np.uint8)
+    clock[16, 48 : 48 + pixels] = gray_level
+
+    assert not resident_timer.resident_timer_is_blank(clock, 690)
+
+
 @pytest.mark.parametrize(
     ("name", "value", "mood_pixels"),
     [
