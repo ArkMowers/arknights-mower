@@ -1,10 +1,17 @@
 import unittest
 from contextlib import ExitStack
+from threading import Event
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
+
+import pytest
 
 from arknights_mower.utils import config
 from arknights_mower.utils.csleep import MowerExit
 from arknights_mower.utils.device.device import Device
+from arknights_mower.utils.device.recovery import DeviceRecoveryError
+
+FOCUS_COMMAND = "dumpsys window | grep mCurrentFocus"
 
 
 def _device() -> Device:
@@ -203,6 +210,106 @@ class TestCheckCurrentFocus(unittest.TestCase):
                         call.operation(),
                     ],
                 )
+
+
+@pytest.fixture
+def foreground_device(monkeypatch):
+    device = _device()
+    device._profile = config.conf.device.model_copy(
+        update={"game_package": "com.hypergryph.arknights.bilibili"}
+    )
+    device._connect_once = MagicMock(side_effect=AssertionError("Unexpected reconnect"))
+    monkeypatch.setattr(config, "stop_mower", Event())
+    monkeypatch.setattr(config.conf.tap_to_launch_game, "mode", "adb")
+    clock = [0.0]
+
+    def sleep(seconds):
+        if config.stop_mower.is_set():
+            raise MowerExit
+        clock[0] += seconds
+
+    monkeypatch.setattr(
+        "arknights_mower.utils.device.device.time",
+        SimpleNamespace(monotonic=lambda: clock[0]),
+    )
+    monkeypatch.setattr("arknights_mower.utils.device.device.csleep", sleep)
+    monkeypatch.setattr("arknights_mower.utils.device.io_budget.csleep", sleep)
+    return device, clock
+
+
+def test_waits_for_launcher_before_starting_after_bilibili_login(foreground_device):
+    device, clock = foreground_device
+    app = device.game_package
+    game_focus = f"{app}/{config.APP_ACTIVITY_NAME}"
+    start_times = []
+    launcher_at = 4.2
+
+    def run(command):
+        if command == FOCUS_COMMAND:
+            if clock[0] < launcher_at:
+                return b"  mCurrentFocus=null\n"
+            if start_times and launcher_at <= start_times[-1] <= clock[0] - 14:
+                return f"  mCurrentFocus=Window{{123 u0 {game_focus}}}\n".encode()
+            return b"  mCurrentFocus=Window{123 u0 com.mumu.launcher/.Launcher}\n"
+        if command == f"ps -A | grep {app} | grep -v grep":
+            if clock[0] < launcher_at:
+                return f"u0_a34 27881 1087 0 0 0 0 S {app}\n".encode()
+            return b""
+        if command == f"am start -n {game_focus}":
+            start_times.append(clock[0])
+            if clock[0] < launcher_at:
+                return (
+                    b"Warning: Activity not started, intent has been delivered "
+                    b"to currently running top-most instance.\n"
+                )
+            return b"Starting: Intent\n"
+        raise AssertionError(f"Unexpected Android command: {command}")
+
+    device.client.run.side_effect = run
+
+    assert device.check_current_focus() is True
+    assert start_times == [pytest.approx(launcher_at, abs=0.2)]
+    assert start_times[0] >= launcher_at
+    assert clock[0] >= start_times[0] + 14
+    device._connect_once.assert_not_called()
+
+
+@pytest.mark.parametrize("missing_focus", [b"  mCurrentFocus=null\n", b""])
+def test_window_returning_on_its_own_needs_only_focus_reads(
+    foreground_device, missing_focus
+):
+    device, clock = foreground_device
+    game_focus = f"{device.game_package}/{config.APP_ACTIVITY_NAME}"
+
+    def run(command):
+        if command != FOCUS_COMMAND:
+            return b""
+        if clock[0] < 1:
+            return missing_focus
+        return f"  mCurrentFocus=Window{{123 u0 {game_focus}}}\n".encode()
+
+    device.client.run.side_effect = run
+
+    assert device.check_current_focus() is True
+    assert clock[0] >= 1
+    assert {entry.args[0] for entry in device.client.run.call_args_list} == {
+        FOCUS_COMMAND
+    }
+    device._connect_once.assert_not_called()
+
+
+def test_unresolved_window_times_out_without_starting(foreground_device):
+    device, clock = foreground_device
+    device.client.run.return_value = b"  mCurrentFocus=null\n"
+
+    with pytest.raises(DeviceRecoveryError):
+        device.check_current_focus()
+
+    assert clock[0] == pytest.approx(30)
+    assert {entry.args[0] for entry in device.client.run.call_args_list} == {
+        FOCUS_COMMAND
+    }
+    device._connect_once.assert_not_called()
 
 
 class TestDroidCastConnectionOrdering(unittest.TestCase):
