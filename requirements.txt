@@ -249,7 +249,7 @@ requests[socks]==2.34.2
     #   tiktoken
 requests-toolbelt==1.0.0
     # via langsmith
-rjieba==0.2.1
+rjieba==0.2.2
     # via -r requirements.in
 shapely==2.0.5
     # via rapidocr
