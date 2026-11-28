@@ -1166,7 +1166,7 @@ def independent_room_plans(task, op_data):
     return result
 
 
-def _project_admitted_task(op_data, task):
+def project_admitted_task(op_data, task, *, now=None):
     if op_data is None or not _static_room_task(task) or op_data.backup_plans:
         return None
     if any(
@@ -1175,7 +1175,9 @@ def _project_admitted_task(op_data, task):
         for name in names
     ) or any(room not in op_data.plan for room in task.plan):
         return None
-    return op_data.project_arrangements([task.plan])
+    if now is None:
+        return op_data.project_arrangements([task.plan])
+    return op_data.project_arrangements([task.plan], now=now)
 
 
 def _find_run_order_conflict(tasks, run_order_delay=5, time_now=None, op_data=None):
@@ -1359,7 +1361,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
                 )
                 if deferred is None:
                     cursor = start + duration
-                    projected = _project_admitted_task(projected, task)
+                    projected = project_admitted_task(projected, task)
                     index += 1
                     continue
                 # 同一跑单后的宿舍安排按原顺序追加，避免后移任务覆盖最终驻员。
@@ -1387,7 +1389,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
                 deferred_dorm_tail[id(priority)] = deferred[-1]
             else:
                 cursor = start + duration
-                projected = _project_admitted_task(projected, task)
+                projected = project_admitted_task(projected, task)
                 index += 1
             continue
         # Runtime dorm dispatch keeps its one-minute margin and observed budget.
@@ -1425,7 +1427,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             and _fits_before_priority(task, start, duration, priority)
         ):
             cursor = start + duration
-            projected = _project_admitted_task(projected, task)
+            projected = project_admitted_task(projected, task)
             index += 1
             continue
 
@@ -1456,7 +1458,7 @@ def _schedule_priority_tasks(tasks, execution_time=None, time_now=None, op_data=
             task.plan = copy.deepcopy(before_plan)
             pending = [remainder] + ordered[index + 1 : next_priority_index]
             cursor = start + estimate_task_duration(task, execution_time, projected)
-            projected = _project_admitted_task(projected, task)
+            projected = project_admitted_task(projected, task)
         retained = [t for t in pending if id(t) in protected]
         deferred = [t for t in pending if id(t) not in protected]
         # Preserve phase state; ordinary deferred dorm plans reuse composition.

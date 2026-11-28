@@ -2052,6 +2052,50 @@ class Operators:
         else:
             return res
 
+    def select_fiammetta_target(self, names, *, rescue_fallback=False, at=None):
+        """按名单顺序选择充能对象；预演使用预约时刻的心情。"""
+
+        def mood_of(op):
+            if at is None:
+                return op.current_mood()
+            return self.mood_model.value(op.name, at)
+
+        conf = self.runtime_conf or config.conf
+        threshold = 24 * (0.9 if conf.fia_fool else conf.fia_threshold)
+        lowest_candidate = None
+        lowest_mood = 24
+        for name in names:
+            op = self.operators[name]
+            if op.rest_in_full and op.exhaust_require and not op.is_resting():
+                continue
+            mood = mood_of(op)
+            if mood is None:
+                return None
+            if mood < lowest_mood:
+                lowest_mood, lowest_candidate = mood, name
+            if mood >= 24 or mood > threshold:
+                continue
+            for member in self.groups.get(op.group, ()):
+                peer = self.operators[member]
+                if (
+                    member == name
+                    or rescue_fallback
+                    and self.has_rest_mood_limit(member)
+                    or peer.multi_group
+                    or peer.room.startswith("dorm")
+                    or peer.workaholic
+                    and member not in names
+                ):
+                    continue
+                peer_mood = mood_of(peer)
+                if peer_mood is None:
+                    return None
+                if peer_mood - peer.lower_limit < mood - op.lower_limit:
+                    break
+            else:
+                return name
+        return None if conf.fia_fool else lowest_candidate
+
     def predict_fia(self, operators, fia_mood, hours=240):
         recover_hours = (24 - fia_mood) / 2
         for agent in operators:

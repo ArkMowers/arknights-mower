@@ -551,7 +551,13 @@ class EmergencyRecoveryMixin:
                     )
                 )
                 self._emergency_save()
-            logger.info("当前原生轮休可执行，不启动自动救急")
+            if projection.opportunity > now:
+                logger.info(
+                    "普通轮休可通过 %s 的菲亚梅塔充能接续，不启动自动救急",
+                    projection.opportunity,
+                )
+            else:
+                logger.info("当前原生轮休可执行，不启动自动救急")
             return
         if not projection.complete:
             logger.info("原生轮休检查未完成，不启动自动救急：%s", projection.reason)

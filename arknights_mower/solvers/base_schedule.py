@@ -3697,63 +3697,9 @@ class BaseSchedulerSolver(
         if self._fia_targets_all_full(fia_plan) or (not fia_plan and configured_full):
             logger.info("菲亚充能目标均已满心情，跳过本次充能")
             return
-        # 肥鸭充能新模式：https://github.com/ArkMowers/arknights-mower/issues/551
-        target = None
-        if not config.conf.fia_fool:
-            fia_threshold = config.conf.fia_threshold
-            logger.info(f"菲亚防呆设计未开启，菲亚阈值为{fia_threshold}")
-        else:
-            fia_threshold = 0.9
-            logger.info(f"菲亚防呆设计已开启，菲亚阈值为{fia_threshold}")
-        for operator in fia_plan:
-            data = self.op_data.operators[operator]
-            operator_morale = data.current_mood()
-            operator_limit = data.lower_limit
-            logger.debug(f"{operator}的心情为{operator_morale}")
-            if operator_morale >= 24 or operator_morale > fia_threshold * 24:
-                logger.debug(f"{operator}的心情高于阈值，跳过充能")
-                continue
-            if data.rest_in_full and data.exhaust_require and not data.is_resting():
-                logger.debug(f"{operator}为暖机干员但不在宿舍，跳过充能")
-                continue
-            if data.group:
-                lowest = True
-                for member in self.op_data.groups[data.group]:
-                    if member == operator:
-                        continue
-                    # Lancet-2
-                    if (
-                        fallback is not None
-                        and self.op_data.has_rest_mood_limit(member)
-                        or self.op_data.operators[member].multi_group
-                        or self.op_data.operators[member].room.startswith("dorm")
-                        or self.op_data.operators[member].workaholic
-                        and member not in fia_plan
-                    ):
-                        continue
-                    member_morale = self.op_data.operators[member].current_mood()
-                    member_limit = self.op_data.operators[member].lower_limit
-                    logger.debug(f"{data.group}组内{member}的心情为{member_morale}")
-                    if member_morale - member_limit < operator_morale - operator_limit:
-                        lowest = False
-                        logger.debug(f"{operator}的心情高于{member}，跳过充能")
-                        break
-                if not lowest:
-                    continue
-            target = operator
-            break
-        # 若全部跳过且关闭防呆则令目标干员为心情最低干员
-        if target is None and fia_plan and not config.conf.fia_fool:
-            op_mood = 24
-            for op in fia_plan:
-                data = self.op_data.operators[op]
-                op_mood_t = data.current_mood()
-                if data.rest_in_full and data.exhaust_require and not data.is_resting():
-                    logger.debug(f"{operator}为暖机干员但不在宿舍，跳过充能")
-                    continue
-                if op_mood_t < op_mood:
-                    target = op
-                    op_mood = op_mood_t
+        target = self.op_data.select_fiammetta_target(
+            fia_plan, rescue_fallback=fallback is not None
+        )
         if target:
             self.tasks.append(
                 SchedulerTask(
@@ -3794,6 +3740,7 @@ class BaseSchedulerSolver(
                             return
         else:
             logger.info("肥鸭充能干员不足，请添加更多干员！")
+            fia_threshold = 0.9 if config.conf.fia_fool else config.conf.fia_threshold
             retry = SchedulerTask(
                 time=self.task.time + timedelta(hours=24 * (1 - fia_threshold) / 2),
                 task_type=TaskTypes.FIAMMETTA,

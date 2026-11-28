@@ -848,6 +848,145 @@ def test_startup_keeps_executable_native_return_before_rescue(solver, delay):
         solver._emergency_schedule_staffing.assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "scenario,can_charge",
+    [
+        ("normal", True),
+        ("assigned", True),
+        ("different_target", False),
+        ("priority_enters_dorm", False),
+        ("priority_returns_before_charge", True),
+        ("priority_enters_after_charge", True),
+        ("priority_same_time", False),
+        ("clue_party_before_charge", True),
+        ("fia_leaves_before_charge", False),
+        ("dynamic_predecessor", False),
+        ("other_group_blocked", False),
+        ("too_late", False),
+        ("not_full", False),
+        ("wrong_slot", False),
+        ("retained", False),
+        ("disabled", False),
+        ("unknown_priority", False),
+    ],
+)
+def test_startup_projects_scheduled_charge_with_ordinary_rest(
+    solver, monkeypatch, scenario, can_charge
+):
+    from arknights_mower.tests.mood_calculation_projection_consumers_tests import (
+        enable,
+        observations,
+    )
+
+    setup_startup(solver)
+    config.conf.automatic_rescue_enable = True
+    data = solver.op_data
+    target, other, priority = PRIMARY[:3]
+    for name in PRIMARY[2:]:
+        data.operators[name].mood = 24
+    if scenario == "other_group_blocked":
+        data.operators[COVERS[1]].mood = 0
+    data.operators[target].mood = 0.1 if scenario == "too_late" else 6
+    data.operators[other].mood = 6
+    data.operators[COVERS[0]].mood = 0
+    data.operators[priority].mood = 12
+    if scenario not in ("different_target", "unknown_priority"):
+        data.operators[priority].rest_in_full = True
+        data.operators[priority].exhaust_require = True
+    data.plan["dormitory_1"][0].agent = "菲亚梅塔"
+    data.operators["冰酿"]._current_room, data.operators["冰酿"].current_index = "", -1
+    data.operators["菲亚梅塔"] = Operator(
+        "菲亚梅塔",
+        "dormitory_1",
+        index=0,
+        current_room="dormitory_1",
+        current_index=4 if scenario == "wrong_slot" else 0,
+        mood=5 if scenario == "not_full" else 23,
+        time_stamp=NOW,
+        operator_type="high",
+        replacement=[priority, target],
+    )
+    task = SchedulerTask(
+        time=NOW + timedelta(minutes=35), task_type=TaskTypes.FIAMMETTA
+    )
+    if scenario == "assigned":
+        task.plan, task.meta_data = {"dormitory_1": [target, "菲亚梅塔"]}, target
+    if scenario == "retained":
+        task.execution_retained = True
+    solver.tasks = [task]
+    if scenario.startswith("priority_"):
+        delay = {"priority_enters_after_charge": 40, "priority_same_time": 35}.get(
+            scenario, 5
+        )
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=delay),
+                task_type=TaskTypes.SELF_CORRECTION,
+                task_plan={
+                    "dormitory_1": [
+                        "Current",
+                        "Current",
+                        "Current",
+                        "Current",
+                        priority,
+                    ]
+                },
+            )
+        )
+        if scenario == "priority_returns_before_charge":
+            solver.tasks.insert(
+                0,
+                SchedulerTask(
+                    time=NOW + timedelta(minutes=15),
+                    task_type=TaskTypes.SHIFT_ON,
+                    task_plan={data.operators[priority].room: [priority]},
+                ),
+            )
+    if scenario == "fia_leaves_before_charge":
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=5),
+                task_type=TaskTypes.SELF_CORRECTION,
+                task_plan={"dormitory_1": ["冰酿"]},
+            )
+        )
+    if scenario == "dynamic_predecessor":
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=5),
+                task_type=TaskTypes.EXHAUST_OFF,
+            )
+        )
+    if scenario == "clue_party_before_charge":
+        solver.tasks.append(
+            SchedulerTask(
+                time=NOW + timedelta(minutes=3), task_type=TaskTypes.CLUE_PARTY
+            )
+        )
+    original_tasks = list(solver.tasks)
+    enable(
+        data,
+        NOW,
+        monkeypatch,
+        omitted=(priority,) if scenario == "unknown_priority" else (),
+    )
+    if scenario == "disabled":
+        data.runtime_conf.test_mood_calculation = False
+    before = observations(data)
+    model_before = data.mood_model.at, data.mood_model.moods.copy()
+    original_plan = copy.deepcopy(task.plan)
+
+    solver._emergency_admit()
+
+    assert solver._emergency_active() is (not can_charge)
+    assert (data.mood_model.at, data.mood_model.moods) == model_before
+    assert observations(data) == before
+    if can_charge:
+        assert list(map(id, solver.tasks)) == list(map(id, original_tasks))
+        assert (task.time, task.plan) == (NOW + timedelta(minutes=35), original_plan)
+    solver.enter_room.assert_not_called()
+
+
 @pytest.mark.parametrize("delay,mood", [(0, 24), (10, 24), (0, 8)])
 def test_startup_keeps_executable_fiammetta_before_rescue(solver, delay, mood):
     setup_startup(solver)
