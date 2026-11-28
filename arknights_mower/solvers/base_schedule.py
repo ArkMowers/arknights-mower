@@ -23434,12 +23434,11 @@ class BaseSchedulerSolver(
                             guarded_selection = self._is_ordinary_facility_arrangement(
                                 self.task
                             )
-                            # 显式换人读完生产详情后，进驻面板可能仍关闭。
+                            # 读取设施详情可能收起进驻面板，选人前按需重新展开。
                             if error_count == 0 and (
                                 ordinary_work_room
                                 or (
                                     guarded_selection
-                                    and self.task.type == TaskTypes.NOT_SPECIFIC
                                     and room.startswith("room_")
                                     and not self.find("room_detail")
                                 )

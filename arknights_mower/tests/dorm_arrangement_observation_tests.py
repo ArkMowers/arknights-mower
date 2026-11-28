@@ -242,8 +242,9 @@ def test_staffing_reuses_only_product_read_in_this_visit(
 @pytest.mark.parametrize(
     ("strategy_name", "product"), [("开采协力", "orundum"), ("龙门商法", "lmd")]
 )
+@pytest.mark.parametrize("task_type", [TaskTypes.SELF_CORRECTION, TaskTypes.RE_ORDER])
 def test_trade_staffing_reads_roster_before_strategy(
-    incident, starts_open, change, fail_first, empty, strategy_name, product
+    incident, starts_open, change, fail_first, empty, strategy_name, product, task_type
 ):
     solver, physical, snapshots = incident
     room = "room_3_2"
@@ -251,9 +252,7 @@ def test_trade_staffing_reads_roster_before_strategy(
         physical[room][0] = ""
     resident = physical[room][0]
     target = "陈" if change else resident
-    task = SchedulerTask(
-        task_type=TaskTypes.SELF_CORRECTION, task_plan={room: [target]}
-    )
+    task = SchedulerTask(task_type=task_type, task_plan={room: [target]})
     solver.task, solver.tasks = task, [task]
     config.conf.product_switching.enable = True
     solver.op_data.update_facility_state(room, "trade", "lmd")
@@ -358,13 +357,16 @@ def test_trade_staffing_reads_roster_before_strategy(
         if fail_first or empty:
             expected.extend(["close", "strategy"])
     assert events == expected
+    solver.enter_room.assert_called_once_with(room)
     assert room_titles[:2] == ["room_3_1", room]
     assert snapshots == ([[resident], [target]] if change else [[resident]])
     assert physical[room] == [target]
     assert task.plan == {}
     if change:
         assert solver.choose_agent.call_args.kwargs["selection_product"] == (
-            None if fail_first or empty else product
+            product
+            if task_type == TaskTypes.SELF_CORRECTION and not (fail_first or empty)
+            else None
         )
     assert solver.op_data.facility_product_count("orundum") == int(product == "orundum")
     assert solver.op_data.facility_product_count("lmd") == int(product == "lmd")
