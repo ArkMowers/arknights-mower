@@ -917,7 +917,8 @@ class Device:
             _, error_marker, package = focus.partition(marker)
             if error_marker:
                 return error_marker + package
-        return focus.split(" ")[-1]
+        focus = focus.split(" ")[-1]
+        return "" if focus in {"mCurrentFocus=null", "null"} else focus
 
     def display_frames(self) -> tuple[int, int, int]:
         """get display frames if in compatibility mode"""
@@ -1525,22 +1526,25 @@ class Device:
                 "系统界面错误弹窗恢复失败，尚未恢复游戏前台"
             ) from exc
 
-    def _wait_game_foreground(self) -> None:
+    def _wait_window_focus(self, *, require_game: bool) -> str:
         deadline = time.monotonic() + 30
+        target = "游戏窗口恢复前台" if require_game else "窗口获得焦点"
 
         def remaining():
             csleep(0)
             seconds = deadline - time.monotonic()
             if seconds <= 0:
-                raise DeviceRecoveryError("等待游戏窗口恢复前台超时，停止本次画面识别")
+                raise DeviceRecoveryError(f"等待{target}超时，停止本次画面识别")
             return seconds
 
         try:
             with device_io_budget(remaining):
                 while True:
                     focus = self.current_focus()
-                    if focus.startswith(self.game_package + "/"):
-                        return
+                    if focus and (
+                        not require_game or focus.startswith(self.game_package + "/")
+                    ):
+                        return focus
                     if focus.startswith(
                         ("Application Error: ", "Application Not Responding: ")
                     ):
@@ -1551,7 +1555,7 @@ class Device:
         except (MowerExit, DeviceRecoveryError):
             raise
         except Exception as exc:
-            raise DeviceRecoveryError("等待游戏前台失败，停止本次画面识别") from exc
+            raise DeviceRecoveryError(f"等待{target}失败，停止本次画面识别") from exc
 
     def check_current_focus(self) -> bool:
         """检查游戏前台状态，设备故障交回所属应用会话。"""
@@ -1560,13 +1564,18 @@ class Device:
         def check() -> bool:
             nonlocal update
             focus = self.current_focus()
+            if not focus:
+                focus = self._wait_window_focus(require_game=False)
+                update = True
             if focus in {
                 "Application Not Responding: com.android.systemui",
                 "Application Error: com.android.systemui",
             }:
                 self._close_system_ui_error()
                 update = True
-                focus = self.current_focus()
+                focus = self.current_focus() or self._wait_window_focus(
+                    require_game=False
+                )
                 if focus.startswith(
                     ("Application Error: ", "Application Not Responding: ")
                 ):
@@ -1586,9 +1595,8 @@ class Device:
             else:
                 # 游戏进程未运行，重新启动
                 self.launch()
-            self._wait_game_foreground()
-            update = True
-            return update
+            self._wait_window_focus(require_game=True)
+            return True
 
         return self.recover(check)
 
