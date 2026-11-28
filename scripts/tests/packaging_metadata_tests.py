@@ -6,8 +6,10 @@ import tarfile
 import unittest
 import zipfile
 from email.parser import Parser
+from importlib.metadata import distribution
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from packaging.requirements import Requirement
 
@@ -195,6 +197,30 @@ class PackagingMetadataTests(unittest.TestCase):
                         "arknights-mower = arknights_mower.__main__:main",
                         wheel.read(entry_points).decode("utf-8"),
                     )
+
+
+class DesktopDependencyLicenseTests(unittest.TestCase):
+    def test_desktop_bundle_includes_orjson_license_and_source(self):
+        import build_assets
+
+        with patch.object(build_assets, "ensure_frontend_built"):
+            files = {
+                (Path(destination) / Path(source).name).as_posix(): Path(source)
+                for source, destination in build_assets.get_pyinstaller_common_datas()
+            }
+
+        package = distribution("orjson")
+        notice = files["arknights_mower/data/orjson-NOTICE.txt"].read_text("utf-8")
+        self.assertIn(
+            f"https://pypi.org/project/orjson/{package.version}/#files", notice
+        )
+        license_dir = f"orjson-{package.version}.dist-info/licenses"
+        for name in ("LICENSE-APACHE", "LICENSE-MIT", "LICENSE-MPL-2.0"):
+            with self.subTest(license=name):
+                self.assertEqual(
+                    files[f"{license_dir}/{name}"].read_bytes(),
+                    package.locate_file(f"{license_dir}/{name}").read_bytes(),
+                )
 
 
 if __name__ == "__main__":

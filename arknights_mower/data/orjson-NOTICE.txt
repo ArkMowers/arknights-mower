@@ -1,0 +1,7 @@
+orjson 3.13.0
+
+The bundled orjson distribution declares MPL-2.0 AND (Apache-2.0 OR MIT).
+The license texts are in the orjson-3.13.0.dist-info/licenses directory.
+
+The corresponding source distribution is available from PyPI.
+https://pypi.org/project/orjson/3.13.0/#files
