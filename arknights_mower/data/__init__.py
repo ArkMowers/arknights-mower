@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import orjson
+
 from .. import __rootdir__
 from ..utils.operator_data import (
     OPERATOR_CATALOG_DATA,
@@ -15,8 +17,20 @@ def _data_path(name: str) -> Path:
     return resource_pkg_path(f"arknights_mower/data/{name}")
 
 
+def _load_large_resource_json(path: Path):
+    payload = path.read_bytes()
+    try:
+        return orjson.loads(payload)
+    except orjson.JSONDecodeError:
+        return json.loads(payload.decode("utf-8"))
+
+
 def _read_resource_json(name: str, expected_type: type):
-    value = json.loads(_data_path(name).read_text("utf-8"))
+    path = _data_path(name)
+    if name in ("stage_data_full.json", "key_mapping.json"):
+        value = _load_large_resource_json(path)
+    else:
+        value = json.loads(path.read_text("utf-8"))
     if not isinstance(value, expected_type):
         raise ValueError(f"资源数据 {name} 类型错误")
     return value
@@ -61,7 +75,7 @@ def _selection_branches():
 
 
 # 全量关卡数据：启动时读入，资源包更新后原位刷新。
-_stage_data_base = json.loads(stage_data_path().read_text("utf-8"))
+_stage_data_base = _load_large_resource_json(stage_data_path())
 
 
 class StageData:
@@ -120,7 +134,7 @@ recruit_agent = json.loads(_data_path("recruit.json").read_text("utf-8"))
 
 recruit_result = json.loads(_data_path("recruit_result.json").read_text("utf-8"))
 
-key_mapping = json.loads(_data_path("key_mapping.json").read_text("utf-8"))
+key_mapping = _load_large_resource_json(_data_path("key_mapping.json"))
 
 
 def _build_recruit_views(recruit_data: dict, result_data: dict):

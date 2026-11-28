@@ -1,6 +1,7 @@
 import shutil
 import subprocess
 import sys
+from importlib.metadata import distribution
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -100,8 +101,16 @@ def get_rapidocr_datas():
 
 def get_pyinstaller_common_datas():
     ensure_frontend_built()
+    orjson_licenses = [
+        (str(path.locate()), path.parent.as_posix())
+        for path in distribution("orjson").files or ()
+        if path.parent.name == "licenses"
+    ]
+    if not orjson_licenses:
+        raise FileNotFoundError("orjson wheel license files are missing")
     return [
         *[(src, dst) for src, dst in _collect_arknights_mower_datas()],
+        *orjson_licenses,
         (_require_path("logo.png"), "."),
         (_require_path("CHANGELOG.md"), "."),
         *[(src, dst) for src, dst in _collect_ui_dist_datas()],
