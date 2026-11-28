@@ -58,9 +58,13 @@ def _timer_gray(image):
 def resident_timer_is_blank(gray, top):
     """满心情卡的计时栏只留灰底。上端第四岗有逐行渐变的遮罩。"""
     low, high, _, _ = cv2.minMaxLoc(gray)
-    # 空栏灰底为 137，JPEG 压缩可能使少量像素偏离这个灰度值。
+    # 空栏灰底为 137。JPEG 压缩后，允许至多四个像素超出常规灰度范围，偏差仍须小于等于 12。
     if 131 <= low <= high <= 143:
         return True
+    if 125 <= low <= high <= 149:
+        background_pixels = cv2.countNonZero(cv2.inRange(gray, 131, 143))
+        if gray.size - background_pixels <= 4:
+            return True
     return (
         top == 898
         and 125 <= low <= high <= 175

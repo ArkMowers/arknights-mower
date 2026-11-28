@@ -409,13 +409,16 @@ def test_dorm_evidence_keeps_measured_bar_and_raw_timer_from_same_frame(
     s.read_operator_time.assert_not_called()
 
 
-@pytest.mark.parametrize(("index", "timer_y", "mood_y"), [(3, 668, 615), (4, 877, 823)])
+@pytest.mark.parametrize(
+    ("index", "timer_y", "mood_y", "bright_pixel"),
+    [(2, 690, 637, 144), (3, 668, 615, 143), (4, 877, 823, 143)],
+)
 def test_full_dorm_resident_accepts_blank_timer_with_jpeg_noise(
-    five_slot_room, index, timer_y, mood_y
+    five_slot_room, index, timer_y, mood_y, bright_pixel
 ):
     room = "dormitory_1"
     s, _, _, names, _ = five_slot_room(
-        True, empty=tuple(i for i in range(5) if i != index)
+        index >= 3, empty=tuple(i for i in range(5) if i != index)
     )
     s.detect_room.return_value = room
     s._execution_group_transitions = lambda: {}
@@ -429,7 +432,7 @@ def test_full_dorm_resident_accepts_blank_timer_with_jpeg_noise(
     s.recog.img[mood_y, 1470:1780] = 255
     clock = s.recog.img[timer_y : timer_y + 35, 1650:1780]
     clock[:] = 137
-    clock[0, 127] = 143
+    clock[33, 126] = bright_pixel
     clock[0, 128] = 132
     read = s.read_screen.side_effect
     s.read_screen.side_effect = lambda img, *, type, cord=None: (
